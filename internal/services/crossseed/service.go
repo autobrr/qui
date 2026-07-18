@@ -3987,9 +3987,36 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			// Check if releases are related (quick filter)
+			// Check if releases are related (quick filter). Only search-origin
+			// exact-size fallbacks may defer soft metadata differences to the normal
+			// file-level validation below.
 			if !s.releasesMatch(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
-				continue
+				exactSizeIdentity := req.ExactSizeFallback &&
+					positiveExactSize(req.TorrentSize, torrent.Size)
+				if exactSizeIdentity {
+					var reason string
+					exactSizeIdentity, reason = s.validateExactSizeSearchIdentity(searchCandidateInput{
+						SourceRelease:          targetRelease,
+						CandidateRelease:       candidateRelease,
+						SourceName:             req.TorrentName,
+						CandidateName:          torrent.Name,
+						SourceSize:             req.TorrentSize,
+						CandidateSize:          torrent.Size,
+						FindIndividualEpisodes: req.FindIndividualEpisodes,
+					})
+					if !exactSizeIdentity {
+						log.Debug().
+							Str("targetTitle", req.TorrentName).
+							Str("existingTorrent", torrent.Name).
+							Int64("targetSize", req.TorrentSize).
+							Int64("existingSize", torrent.Size).
+							Str("rejectReason", reason).
+							Msg("[CROSSSEED] Exact-size search fallback failed candidate identity prefilter")
+					}
+				}
+				if !exactSizeIdentity {
+					continue
+				}
 			}
 
 			hashKey := normalizeHash(torrent.Hash)
@@ -4109,12 +4136,23 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		torrentHash = meta.HashV2
 	}
 	sourceRelease := s.releaseCache.Parse(meta.Name)
+	var actualTorrentSize int64
+	for _, file := range meta.Files {
+		actualTorrentSize += file.Size
+	}
+	if req.SearchDecisionClass == searchCandidateClassExactSizeFallback {
+		if req.AdvertisedCandidateSize <= 0 || actualTorrentSize != req.AdvertisedCandidateSize {
+			return nil, exactSizeFallbackValidationError(req.AdvertisedCandidateSize, actualTorrentSize)
+		}
+	}
 
 	// Use FindCandidates to locate matching torrents
 	findReq := &FindCandidatesRequest{
 		TorrentName:            meta.Name,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
+		ExactSizeFallback:      req.SearchDecisionClass == searchCandidateClassExactSizeFallback,
+		TorrentSize:            actualTorrentSize,
 	}
 	// Pass through source filters for RSS automation
 	if len(req.SourceFilterCategories) > 0 {
@@ -4151,12 +4189,8 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 
 	if response.TorrentInfo != nil {
 		response.TorrentInfo.TotalFiles = len(meta.Files)
-		var totalSize int64
-		for _, f := range meta.Files {
-			totalSize += f.Size
-		}
-		if totalSize > 0 {
-			response.TorrentInfo.Size = totalSize
+		if actualTorrentSize > 0 {
+			response.TorrentInfo.Size = actualTorrentSize
 		}
 	}
 
@@ -7014,21 +7048,21 @@ func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) 
 	return missing
 }
 
-// searchResultUsable reports whether a primary-pass result would survive the
-// match loop's release/size filtering and become a real cross-seed candidate: a
-// direct release match (or an accepted web-source relabel) that is not a
-// forbidden season-pack pairing and is within size tolerance. It mirrors the
-// match loop's acceptance so both judge a hit's usability by the same rule.
+// searchResultUsable reports whether the shared search classifier accepts a
+// primary-pass result. Keeping this a boolean projection prevents alternate-query
+// scheduling from drifting from the main result loop.
 func (s *Service) searchResultUsable(searchRelease, candidateRelease *rls.Release, sourceName string, sourceSize int64, candidateTitle string, candidateSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) bool {
-	ignoreSizeCheck := findIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
-	match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceName, candidateTitle, arrTitles, nil, findIndividualEpisodes)
-	if !match && !s.shouldAcceptWebSourceRelabel(searchRelease, candidateRelease, sourceName, candidateTitle, arrTitles, nil, findIndividualEpisodes, ignoreSizeCheck, sourceSize, candidateSize, tolerancePercent, mismatchReason) {
-		return false
-	}
-	if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, findIndividualEpisodes); reject {
-		return false
-	}
-	return ignoreSizeCheck || s.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent)
+	return s.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:          searchRelease,
+		CandidateRelease:       candidateRelease,
+		SourceName:             sourceName,
+		CandidateName:          candidateTitle,
+		SourceTitles:           arrTitles,
+		SourceSize:             sourceSize,
+		CandidateSize:          candidateSize,
+		TolerancePercent:       tolerancePercent,
+		FindIndividualEpisodes: findIndividualEpisodes,
+	}).Accepted
 }
 
 // indexersWithoutUsableResults returns the requested indexer IDs whose primary
@@ -7778,6 +7812,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
 	releaseFilterReasons := make(map[string]int)
+	exactSizeCandidates := 0
+	exactSizeFallbackAccepted := 0
+	exactSizeHardRejected := 0
 
 	for _, res := range searchResults {
 		key := res.GUID
@@ -7792,88 +7829,80 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
-		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
-		if !match {
-			// Cross-tracker relabel tolerance: the same web encode is frequently
-			// relabeled WEBRip<->WEB-DL across trackers. When the source label is the
-			// only difference and the candidate is within size tolerance, accept it and
-			// let the apply-stage file-size verification + qBittorrent recheck make the
-			// final call, rather than dropping a byte-identical release on its label.
-			relabelMatch := s.shouldAcceptWebSourceRelabel(
-				searchRelease, candidateRelease,
-				sourceTorrent.Name, res.Title,
-				arrTitles, nil,
-				opts.FindIndividualEpisodes, ignoreSizeCheck,
-				sourceTorrent.Size, res.Size,
-				tolerancePercent, mismatchReason,
-			)
-			if !relabelMatch {
+		decision := s.classifySearchCandidate(searchCandidateInput{
+			SourceRelease:          searchRelease,
+			CandidateRelease:       candidateRelease,
+			SourceName:             sourceTorrent.Name,
+			CandidateName:          res.Title,
+			SourceTitles:           arrTitles,
+			SourceSize:             sourceTorrent.Size,
+			CandidateSize:          res.Size,
+			TolerancePercent:       tolerancePercent,
+			FindIndividualEpisodes: opts.FindIndividualEpisodes,
+		})
+		if decision.ExactSize {
+			exactSizeCandidates++
+		}
+		if !decision.Accepted {
+			if decision.SizeRejected {
+				sizeFilteredCount++
+			} else {
 				releaseFilteredCount++
+				reason := decision.RejectReason
+				if reason == "" {
+					reason = decision.StrictMismatchReason
+				}
 				recordReleaseRejection(
 					releaseFilterReasons,
-					mismatchReason,
+					reason,
 					sourceTorrent.Name,
 					res.Title,
 					opts.FindIndividualEpisodes,
 					releaseFilterDebugInfoFrom(searchRelease),
 					releaseFilterDebugInfoFrom(candidateRelease),
-					"[CROSSSEED-SEARCH] Candidate filtered out by release match",
+					"[CROSSSEED-SEARCH] Candidate rejected by search classifier",
 				)
-				continue
 			}
-
-			log.Info().
-				Str("sourceTitle", sourceTorrent.Name).
-				Str("candidateTitle", res.Title).
-				Str("sourceSource", searchRelease.Source).
-				Str("candidateSource", candidateRelease.Source).
-				Int64("sourceSize", sourceTorrent.Size).
-				Int64("candidateSize", res.Size).
-				Float64("tolerancePercent", tolerancePercent).
-				Msg("[CROSSSEED-SEARCH] Accepting cross-tracker web-source relabel; apply-stage file verification will confirm")
-		}
-
-		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
-		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
-		if reject, reason := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
-			releaseFilteredCount++
-			recordReleaseRejection(
-				releaseFilterReasons,
-				reason,
-				sourceTorrent.Name,
-				res.Title,
-				opts.FindIndividualEpisodes,
-				releaseFilterDebugInfoFrom(searchRelease),
-				releaseFilterDebugInfoFrom(candidateRelease),
-				"[CROSSSEED-SEARCH] Candidate filtered out by release pairing rule",
-			)
-			continue
-		}
-
-		// Size validation: check if candidate size is within tolerance of source size
-		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) {
-			sizeFilteredCount++
+			if decision.ExactSize && decision.StrictMismatchReason != "" {
+				exactSizeHardRejected++
+			}
 			log.Debug().
+				Int("indexerID", res.IndexerID).
+				Str("indexer", res.Indexer).
 				Str("sourceTitle", sourceTorrent.Name).
 				Str("candidateTitle", res.Title).
 				Int64("sourceSize", sourceTorrent.Size).
 				Int64("candidateSize", res.Size).
-				Float64("tolerancePercent", tolerancePercent).
-				Bool("ignoredSizeCheck", ignoreSizeCheck).
-				Msg("[CROSSSEED-SEARCH] Candidate filtered out due to size mismatch")
+				Int64("sizeDeltaBytes", res.Size-sourceTorrent.Size).
+				Str("decisionClass", string(decision.Class)).
+				Str("strictMismatchReason", decision.StrictMismatchReason).
+				Str("rejectReason", decision.RejectReason).
+				Msg("[CROSSSEED-SEARCH] Candidate rejected")
 			continue
 		}
 
-		score, reason := evaluateReleaseMatch(searchRelease, candidateRelease)
-		if score <= 0 {
-			score = 1.0
+		if decision.Class == searchCandidateClassExactSizeFallback {
+			exactSizeFallbackAccepted++
 		}
+		log.Debug().
+			Int("indexerID", res.IndexerID).
+			Str("indexer", res.Indexer).
+			Str("sourceTitle", sourceTorrent.Name).
+			Str("candidateTitle", res.Title).
+			Int64("sourceSize", sourceTorrent.Size).
+			Int64("candidateSize", res.Size).
+			Int64("sizeDeltaBytes", res.Size-sourceTorrent.Size).
+			Str("decisionClass", string(decision.Class)).
+			Str("strictMismatchReason", decision.StrictMismatchReason).
+			Strs("relaxedDifferences", decision.RelaxedDifferences).
+			Msg("[CROSSSEED-SEARCH] Candidate accepted")
 
 		scored = append(scored, scoredTorrentSearchResult{
-			result: res,
-			score:  score,
-			reason: reason,
+			result:    res,
+			score:     decision.Score,
+			reason:    decision.MatchReason,
+			exactSize: decision.ExactSize,
+			class:     decision.Class,
 		})
 	}
 
@@ -7887,6 +7916,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("sizeFiltered", sizeFilteredCount).
 		Int("lateContentFiltered", lateExcludedCount).
 		Int("finalMatches", matchedResults).
+		Int("exactSizeCandidates", exactSizeCandidates).
+		Int("exactSizeFallbackAccepted", exactSizeFallbackAccepted).
+		Int("exactSizeHardRejected", exactSizeHardRejected).
 		Float64("tolerancePercent", tolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
@@ -7915,15 +7947,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		sourceInfo.FileCount = len(sourceFiles)
 	}
 
-	sort.SliceStable(scored, func(i, j int) bool {
-		if scored[i].score == scored[j].score {
-			if scored[i].result.Seeders == scored[j].result.Seeders {
-				return scored[i].result.PublishDate.After(scored[j].result.PublishDate)
-			}
-			return scored[i].result.Seeders > scored[j].result.Seeders
-		}
-		return scored[i].score > scored[j].score
-	})
+	sortScoredTorrentSearchResults(scored)
 
 	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, limit)
 	if err != nil {
@@ -7948,10 +7972,44 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}, gazelleLookupAttempted, remoteRequestsMade, nil
 }
 
+func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {
+	sort.SliceStable(scored, func(i, j int) bool {
+		if scored[i].exactSize != scored[j].exactSize {
+			return scored[i].exactSize
+		}
+		if scored[i].class != scored[j].class {
+			return searchCandidateClassPriority(scored[i].class) > searchCandidateClassPriority(scored[j].class)
+		}
+		if scored[i].score == scored[j].score {
+			if scored[i].result.Seeders == scored[j].result.Seeders {
+				return scored[i].result.PublishDate.After(scored[j].result.PublishDate)
+			}
+			return scored[i].result.Seeders > scored[j].result.Seeders
+		}
+		return scored[i].score > scored[j].score
+	})
+}
+
 type scoredTorrentSearchResult struct {
-	result jackett.SearchResult
-	score  float64
-	reason string
+	result    jackett.SearchResult
+	score     float64
+	reason    string
+	exactSize bool
+	class     searchCandidateClass
+}
+
+func searchCandidateClassPriority(class searchCandidateClass) int {
+	switch class {
+	case searchCandidateClassStrict:
+		return 3
+	case searchCandidateClassWebSourceRelabel:
+		return 2
+	case searchCandidateClassExactSizeFallback:
+		return 1
+	case searchCandidateClassRejected:
+		return 0
+	}
+	return 0
 }
 
 func (s *Service) completedAsyncContentFilterSnapshot(instanceID int, hash string) (*AsyncIndexerFilteringState, string, bool) {
@@ -8134,7 +8192,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 							Str("existingName", existing.Name)
 					}
 					event.Msg("[CROSSSEED-SEARCH] Keeping duplicate search result because existing torrent was rejected by content prefilter")
-					results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score))
+					results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class))
 					if len(results) >= limit {
 						break
 					}
@@ -8158,7 +8216,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 		}
 
-		results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score))
+		results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class))
 		if len(results) >= limit {
 			break
 		}
@@ -8167,7 +8225,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 	return results, duplicateFilteredCount, nil
 }
 
-func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, score float64) TorrentSearchResult {
+func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, score float64, class searchCandidateClass) TorrentSearchResult {
 	return TorrentSearchResult{
 		Indexer:              res.Indexer,
 		IndexerID:            res.IndexerID,
@@ -8189,6 +8247,7 @@ func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, sco
 		TVDbID:               res.TVDbID,
 		MatchReason:          reason,
 		MatchScore:           score,
+		SearchDecisionClass:  class,
 	}
 }
 
@@ -8388,6 +8447,8 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipAutoResume:               skipAutoResume,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
+				SearchDecisionClass:          cachedResult.SearchDecisionClass,
+				AdvertisedCandidateSize:      cachedResult.Size,
 			}
 			payload.SizeMismatchTolerancePercent = cachedSearchResults.sizeMismatchTolerancePercent
 			payload.SizeMismatchTolerancePercentSet = true
@@ -9790,6 +9851,8 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SourceFilterTags:              append([]string(nil), state.opts.Tags...),
 		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
 		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
+		SearchDecisionClass:           match.SearchDecisionClass,
+		AdvertisedCandidateSize:       match.Size,
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride

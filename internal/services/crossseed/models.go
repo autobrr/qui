@@ -73,6 +73,11 @@ type CrossSeedRequest struct {
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	// Internal-only, not exposed via JSON API.
 	SourceFilterExcludeTags []string `json:"-"`
+	// SearchDecisionClass records the private search classification that admitted
+	// this torrent. Only cached search results may set it.
+	SearchDecisionClass searchCandidateClass `json:"-"`
+	// AdvertisedCandidateSize is the Torznab size used by the search classifier.
+	AdvertisedCandidateSize int64 `json:"-"`
 }
 
 func (r *CrossSeedRequest) UnmarshalJSON(data []byte) error {
@@ -184,6 +189,10 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeCategories []string `json:"-"`
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	SourceFilterExcludeTags []string `json:"-"`
+	// ExactSizeFallback permits the scoped search-origin release prefilter fallback.
+	ExactSizeFallback bool `json:"-"`
+	// TorrentSize is the downloaded torrent's actual metainfo total.
+	TorrentSize int64 `json:"-"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates
@@ -296,6 +305,8 @@ type TorrentSearchResult struct {
 	TVDbID               string  `json:"tvdb_id,omitempty"`
 	MatchReason          string  `json:"match_reason,omitempty"`
 	MatchScore           float64 `json:"match_score"`
+	// SearchDecisionClass is retained only in the in-memory search result cache.
+	SearchDecisionClass searchCandidateClass `json:"-"`
 }
 
 // TorrentSearchResponse bundles the seeded torrent information with potential cross-seed matches.
