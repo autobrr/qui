@@ -23,7 +23,7 @@
     "language": "Idioma",
     "viewOnGitHub": "Ver no GitHub",
     "rssRunning": "RSS rodando",
-    "rssEnabled": "RSS habilitado",
+    "rssEnabled": "RSS ativado",
     "scanRunning": "Scan rodando",
     "showSidebar": "Mostrar barra lateral",
     "hideSidebar": "Ocultar barra lateral"
@@ -59,7 +59,7 @@
     "updateAvailable": "Atualização Disponível",
     "updateVersion": "Versão {{version}}",
     "rssRunning": "RSS rodando",
-    "rssEnabled": "RSS habilitado",
+    "rssEnabled": "RSS ativado",
     "scanRunning": "Scan rodando",
     "allScope": "TODOS",
     "unified": "Unificado"
@@ -82,7 +82,7 @@
     "updateAvailable": "Atualização Disponível",
     "updateVersion": "Versão {{version}}",
     "rssRunning": "RSS rodando",
-    "rssEnabled": "RSS habilitado",
+    "rssEnabled": "RSS ativado",
     "scanRunning": "Scan rodando",
     "logout": "Sair",
     "version": "Versão {{version}}",
@@ -154,7 +154,7 @@
     "registerPrompt": "Registrar o qui como seu manipulador de links magnet",
     "register": "Registrar",
     "dismiss": "Dispensar",
-    "registrationRequested": "Solicitação de registro do manipulador de links magnet",
+    "registrationRequested": "Registro do manipulador de links magnet solicitado",
     "registrationFailed": "Falha ao registrar o manipulador magnet",
     "guidance": {
       "standalone": "Abra o qui em uma aba normal do navegador para registrar (o aviso pode aparecer na barra de endereços, o que PWAs não mostram).",

@@ -16,7 +16,7 @@
   },
   "managementBar": {
     "ariaLabel": "{{count}} torrent(s) selecionado(s) - Ações em massa disponíveis",
-    "resume": "Continuar",
+    "resume": "Retomar",
     "pause": "Pausar",
     "forceRecheck": "Forçar Verificação",
     "reannounce": "Anunciar Novamente",
@@ -44,7 +44,7 @@
   },
   "contextMenu": {
     "viewDetails": "Ver Detalhes",
-    "resume": "Continuar",
+    "resume": "Retomar",
     "forceStart": "Forçar Início",
     "disableForceStart": "Desativar Forçar Início",
     "mixed": "(Misto)",
@@ -99,7 +99,7 @@
     "title": "Excluir {{count}} torrent(s)?",
     "description": "Essa ação não pode ser desfeita. Os torrents serão removidos do qBittorrent.",
     "totalSize": "Tamanho total: {{size}}",
-    "blockCrossSeeds": "Bloquear infohashes de cross-seed (evitar readição)",
+    "blockCrossSeeds": "Bloquear infohashes de cross-seed (evitar readicionar)",
     "cancel": "Cancelar",
     "delete": "Excluir"
   },
@@ -126,7 +126,7 @@
     "retry": "Tentar novamente",
     "noCrossSeeds": "Nenhum cross-seed encontrado",
     "deleteCrossSeeds": "Estes cross-seeds também serão excluídos",
-    "deletingFilesBreaks": "Excluir arquivos corromperá estes cross-seeds",
+    "deletingFilesBreaks": "Excluir os arquivos vai quebrar estes cross-seeds",
     "dataPreserved": "Cross-seeds detectados: os dados serão preservados",
     "torrentShares": "{{count}} torrent compartilha estes arquivos",
     "torrentsShare": "{{count}} torrents compartilham estes arquivos",
@@ -183,8 +183,8 @@
       }
     },
     "success": {
-      "resume_one": "Continuou {{count}} torrent",
-      "resume_other": "Continuou {{count}} torrents",
+      "resume_one": "Retomou {{count}} torrent",
+      "resume_other": "Retomou {{count}} torrents",
       "pause_one": "Pausou {{count}} torrent",
       "pause_other": "Pausou {{count}} torrents",
       "delete_one": "Excluiu {{count}} torrent",
@@ -235,8 +235,8 @@
       "setComment_other": "Atualizou comentário para {{count}} torrents"
     },
     "failed": {
-      "resume_one": "Falha ao continuar {{count}} torrent",
-      "resume_other": "Falha ao continuar {{count}} torrents",
+      "resume_one": "Falha ao retomar {{count}} torrent",
+      "resume_other": "Falha ao retomar {{count}} torrents",
       "pause_one": "Falha ao pausar {{count}} torrent",
       "pause_other": "Falha ao pausar {{count}} torrents",
       "delete_one": "Falha ao excluir {{count}} torrent",
@@ -280,7 +280,7 @@
   "dialogs": {
     "tagEditor": {
       "title": "Definir Tags para {{count}} torrent(s)",
-      "description": "Tags mistas permanecem inalteradas até serem clicadas. Clique em uma linha para alternar de Misto para Ligado, Ligado para Desligado, e Desligado para Ligado.",
+      "description": "Tags mistas permanecem inalteradas até serem clicadas. Clique em uma linha para alternar de Mista para Ligado, Ligado para Desligado, e Desligado para Ligado.",
       "baselineError": "Não foi possível criar a linha de base completa de tags para esta seleção",
       "loadFailed": "Falha ao carregar tags dos torrents selecionados",
       "availableTags": "Tags Disponíveis",
@@ -323,7 +323,7 @@
     },
     "locationWarning": {
       "title": "Definir Local para {{count}} torrent(s)?",
-      "description": "Alterar o local salvará e moverá os arquivos no disco. Isso pode afetar torrents em cross-seed que compartilham os mesmos dados.",
+      "description": "Alterar o local de salvamento moverá os arquivos no disco. Isso pode afetar torrents em cross-seed que compartilham os mesmos dados.",
       "continue": "Continuar"
     },
     "tmm": {
@@ -474,7 +474,7 @@
     "saveTorrentToHelp": "Caminho completo para o arquivo .torrent no servidor; apenas o diretório é inválido",
     "saveTorrentToInvalid": "Insira o caminho completo do arquivo .torrent, não um diretório",
     "saveTorrentToTooltip": "O qBittorrent precisa de acesso de gravação a este diretório. É melhor deixar em branco e baixar o arquivo .torrent da janela de tarefas mais tarde.",
-    "webSeeds": "Sementes da Web (HTTP/HTTPS)",
+    "webSeeds": "Web Seeds (HTTP/HTTPS)",
     "webSeedsPlaceholder": "https://mirror1.exemplo.com/caminho\nhttps://mirror2.exemplo.com/caminho",
     "webSeedsHelp": "URLs HTTP/HTTPS de onde o conteúdo pode ser baixado. Uma URL por linha.",
     "cancel": "Cancelar",
@@ -675,12 +675,12 @@
     "size": "Tamanho: {{size}}",
     "servedFromCache": "Fornecido pelo cache",
     "freshSearch": "Nova busca",
-    "cached": "Armazenado em cache há {{time}}",
-    "expires": "Expira em {{time}}",
+    "cached": "Armazenado em cache {{time}}",
+    "expires": "Expira {{time}}",
     "refreshFromIndexers": "Atualizar dos indexadores",
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
-    "noIndexersHelp": "Adicione ou habilite indexadores Torznab nas Configurações.",
+    "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",
     "capabilityNote": "Nota de capacidade",
     "capabilityDescription": "Estes indexadores não possuem as capacidades/categorias necessárias para este torrent e serão ignorados:",
     "contentFilteringInProgress": "Filtragem de Conteúdo em Andamento",
@@ -689,7 +689,7 @@
     "indexersFiltered": "{{count}} indexador(es) filtrado(s)",
     "contentFilteringDescription": "Verificando seus torrents existentes para encontrar duplicatas e excluir trackers redundantes.",
     "excludedDescription": "Você já compartilha este lançamento destes trackers, então eles foram excluídos da busca.",
-    "noContentDuplicates": "Filtragem de conteúdo concluída. Nenhum conteúdo duplicado encontrado nos seus trackers habilitados.",
+    "noContentDuplicates": "Filtragem de conteúdo concluída. Nenhum conteúdo duplicado encontrado nos seus trackers ativados.",
     "searchingIndexers": "Pesquisando indexadores…",
     "noMatchesFound": "Nenhuma correspondência encontrada em sua pesquisa.",
     "selectReleasesToAdd": "Selecione os lançamentos que deseja adicionar",
@@ -722,7 +722,7 @@
       "filtering": "Filtrando…",
       "searching": "Pesquisando",
       "noneSelected": "Nenhum selecionado",
-      "enabledIndexers": "{{count}} {{suffix}} habilitado(s)",
+      "enabledIndexers": "{{count}} {{suffix}} ativado(s)",
       "selectedOfTotal": "{{selected}} de {{total}} selecionados",
       "indexersForSearch": "{{count}} {{suffix}} para busca"
     },
@@ -786,14 +786,14 @@
     },
     "states": {
       "downloading": "Baixando",
-      "uploading": "Enviando",
+      "uploading": "Semeando",
       "completed": "Concluído",
       "stopped": "Parado",
       "paused": "Pausado",
       "active": "Ativo",
       "stalled": "Estagnado",
       "stalledUp": "Estagnado (Envio)",
-      "stalledDown": "Estagnado (Down)",
+      "stalledDown": "Estagnado (Recebimento)",
       "errored": "Erro",
       "checking": "Verificando",
       "moving": "Movendo"
@@ -807,7 +807,7 @@
     "customFilterHelp": "Filtro de expressão personalizada ativo (ex: resultados cross-seed)",
     "filterTips": "O botão esquerdo alterna entre incluir e neutro. Cmd/Ctrl + clique ou um toque longo alterna a exclusão.",
     "filterSelectionTips": "Dicas de seleção de filtro",
-    "instanceDisabled": "Esta instância está desabilitada. Habilite-a em Configurações → Instâncias.",
+    "instanceDisabled": "Esta instância está desativada. Ative-a em Configurações → Instâncias.",
     "unavailableUnifiedView": "Indisponível na visualização unificada",
     "viewMode": "Modo de Visualização",
     "viewModeNormal": "Normal",
@@ -872,7 +872,7 @@
       "running": "Executando",
       "stalled": "Estagnado",
       "stalledUp": "Estagnado (Envio)",
-      "stalledDown": "Estagnado (Down)",
+      "stalledDown": "Estagnado (Recebimento)",
       "errored": "Erro",
       "checking": "Verificando",
       "moving": "Movendo",
@@ -1239,7 +1239,7 @@
     "statusLabels": {
       "trackerDown": "Tracker Fora",
       "unregistered": "Não Registrado",
-      "trackerError": "Erro no Tracker"
+      "trackerError": "Erro de Tracker"
     },
     "matchTypes": {
       "contentPath": {
@@ -1478,7 +1478,7 @@
     "amountLeft": "Restante",
     "timeActive": "Tempo Ativo",
     "seedingTime": "Tempo Seed",
-    "savePath": "Caminho Salvo",
+    "savePath": "Caminho de Salvamento",
     "completed": "Concluído",
     "ratioLimit": "Lim. Ratio",
     "seenComplete": "Visto Completo",
@@ -1491,7 +1491,7 @@
     "instance": "Instância",
     "trackerDown": "Tracker Fora",
     "unregistered": "Não Registrado",
-    "trackerError": "Erro Tracker",
+    "trackerError": "Erro de Tracker",
     "now": "agora",
     "yes": "Sim",
     "no": "Não"

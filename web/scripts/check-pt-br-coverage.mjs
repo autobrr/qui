@@ -135,7 +135,24 @@ function hasBOM(buffer) {
 function checkMissingKeys(enFlat, ptBrFlat, namespace) {
   const errors = []
 
+  // Build set of en plural bases that have _one/_other pairs (v4 CLDR style).
+  // For these, pt-BR only needs _other -- _one is not required.
+  const v4PluralBases = new Set()
+  for (const key of enFlat.keys()) {
+    if (key.endsWith("_one")) {
+      const base = key.slice(0, -4)
+      if (enFlat.has(`${base}_other`)) {
+        v4PluralBases.add(base)
+      }
+    }
+  }
+
   for (const [key, value] of enFlat) {
+    // Skip _one keys for v4 plural pairs -- pt-BR collapses to _other only.
+    if (key.endsWith("_one") && v4PluralBases.has(key.slice(0, -4))) {
+      continue
+    }
+
     if (!ptBrFlat.has(key)) {
       const truncated = value.length > 80 ? `${value.slice(0, 77)}...` : value
       errors.push(`${namespace}.${key}: ${JSON.stringify(truncated)}`)
@@ -150,6 +167,11 @@ function checkExtraKeys(enFlat, ptBrFlat, namespace) {
 
   for (const key of ptBrFlat.keys()) {
     if (!enFlat.has(key)) {
+      // If pt-BR has _other and en has _one/_other pair, that is fine.
+      if (key.endsWith("_other") && enFlat.has(`${key.slice(0, -6)}_one`)) {
+        continue
+      }
+
       errors.push(`${namespace}.${key}`)
     }
   }
@@ -222,7 +244,7 @@ function checkEncoding(filePath) {
 
   const buffer = fs.readFileSync(filePath)
   if (hasBOM(buffer)) {
-    errors.push(`${path.basename(filePath)}: UTF-8 BOM detected, remove pt-BR`)
+    errors.push(`${path.basename(filePath)}: UTF-8 BOM detected, remove the BOM`)
   }
 
   try {
@@ -307,24 +329,24 @@ const warnings = {
 
 for (const ns of namespaces) {
   const enPath = path.join(enRoot, `${ns}.json`)
-  const itPath = path.join(ptBrRoot, `${ns}.json`)
+  const ptBrPath = path.join(ptBrRoot, `${ns}.json`)
 
   if (!fs.existsSync(enPath)) {
     errors.missingKeys.push(`${ns}: English locale file missing`)
     continue
   }
 
-  if (!fs.existsSync(itPath)) {
+  if (!fs.existsSync(ptBrPath)) {
     errors.missingKeys.push(`${ns}: pt-BR locale file missing`)
     continue
   }
 
-  errors.encoding.push(...checkEncoding(itPath))
+  errors.encoding.push(...checkEncoding(ptBrPath))
 
   let enData, ptBrData
   try {
     enData = JSON.parse(fs.readFileSync(enPath, "utf8"))
-    ptBrData = JSON.parse(fs.readFileSync(itPath, "utf8"))
+    ptBrData = JSON.parse(fs.readFileSync(ptBrPath, "utf8"))
   } catch {
     errors.encoding.push(`${ns}: failed to parse JSON, skipping checks`)
     continue
@@ -396,4 +418,3 @@ console.log(`  Warnings: ${totalWarnings} (${warnParts})`)
 console.log(`  Result:   ${totalErrors > 0 ? "FAIL" : "PASS (warnings only)"}`)
 
 process.exit(totalErrors > 0 ? 1 : 0)
-

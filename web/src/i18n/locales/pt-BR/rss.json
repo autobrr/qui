@@ -13,8 +13,8 @@
   "warnings": {
     "processingDisabled": "A busca de feeds RSS está desativada. Os feeds não serão atualizados automaticamente.",
     "autoDownloadDisabled": "O download automático RSS está desativado. As regras não baixarão torrents automaticamente.",
-    "enableRss": "Habilitar RSS",
-    "enableAutoDownload": "Habilitar Download Automático"
+    "enableRss": "Ativar RSS",
+    "enableAutoDownload": "Ativar Download Automático"
   },
   "tabs": {
     "feeds": "Feeds",
@@ -133,7 +133,7 @@
     "title": "Adicionar Regra de Download Automático",
     "description": "Crie uma regra para baixar torrents automaticamente que correspondam aos seus critérios.",
     "ruleName": "Nome da Regra",
-    "ruleNamePlaceholder": "Minha Serie S01",
+    "ruleNamePlaceholder": "Minha Série S01",
     "cancel": "Cancelar",
     "createRule": "Criar Regra"
   },
@@ -162,13 +162,13 @@
   },
   "toast": {
     "liveRssDisconnected": "Atualizações RSS ao vivo desconectadas",
-    "rssProcessingEnabled": "Processamento RSS habilitado",
-    "failedToEnableProcessing": "Falha ao habilitar processamento RSS",
-    "rssAutoDownloadEnabled": "Download automático RSS habilitado",
-    "failedToEnableAutoDownload": "Falha ao habilitar download automático RSS",
+    "rssProcessingEnabled": "Processamento RSS ativado",
+    "failedToEnableProcessing": "Falha ao ativar processamento RSS",
+    "rssAutoDownloadEnabled": "Download automático RSS ativado",
+    "failedToEnableAutoDownload": "Falha ao ativar download automático RSS",
     "refreshingAllFeeds": "Atualizando todos os feeds...",
     "failedToRefreshFeeds": "Falha ao atualizar feeds",
-    "rulesReprocessed": "Regras reprocessadas - artigos não lidos serão verificados em todas as regras",
+    "rulesReprocessed": "Regras reprocessadas - artigos não lidos serão verificados em relação a todas as regras",
     "failedToReprocessRules": "Falha ao reprocessar regras",
     "feedRemoved": "Feed removido com sucesso",
     "failedToRemoveFeed": "Falha ao remover feed",
@@ -182,8 +182,8 @@
     "failedToUpdateUrl": "Falha ao atualizar URL do feed",
     "failedToMarkSingleAsRead": "Falha ao marcar como lido",
     "ruleToggled": "Regra {{state}}",
-    "ruleStateEnabled": "habilitada",
-    "ruleStateDisabled": "desabilitada",
+    "ruleStateEnabled": "ativada",
+    "ruleStateDisabled": "desativada",
     "failedToUpdateRule": "Falha ao atualizar regra",
     "ruleRemoved": "Regra removida com sucesso",
     "failedToRemoveRule": "Falha ao remover regra",

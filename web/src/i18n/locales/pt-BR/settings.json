@@ -168,8 +168,8 @@
     "loadFailed": "Falha ao carregar programas externos",
     "unknownError": "Erro desconhecido",
     "empty": "Nenhum programa externo configurado. Crie um para começar.",
-    "enabled": "Habilitado",
-    "disabled": "Desabilitado",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
     "created": "Criado {{date}}",
     "updated": "Atualizado {{date}}",
     "programPath": "Caminho do Programa:",
@@ -243,8 +243,8 @@
     "showList": "Mostrar lista",
     "hideList": "Ocultar lista",
     "badges": {
-      "enabled": "Habilitado",
-      "disabled": "Desabilitado"
+      "enabled": "Ativado",
+      "disabled": "Desativado"
     },
     "groups": {
       "torrent": "Torrent",
@@ -341,7 +341,7 @@
   },
   "security": {
     "changePassword": {
-      "title": "Mudar Senha",
+      "title": "Alterar Senha",
       "description": "Atualize a senha da sua conta"
     },
     "browserIntegration": {
@@ -578,7 +578,7 @@
     "addButton": "Adicionar Instância ARR",
     "addDialog": {
       "title": "Adicionar Instância ARR",
-      "description": "Configure uma instância do Sonarr ou Radarr para pesquisas de ID durante as varreduras de cross-seed."
+      "description": "Configure uma instância do Sonarr ou Radarr para pesquisas de ID durante as buscas de cross-seed."
     },
     "editDialog": {
       "title": "Editar Instância ARR"
@@ -595,7 +595,7 @@
     },
     "loading": "Carregando instâncias ARR...",
     "loadFailed": "Falha ao carregar instâncias ARR",
-    "empty": "Nenhuma instância ARR configurada. Adicione uma instância Sonarr ou Radarr para permitir varreduras de cross-seed baseadas em ID.",
+    "empty": "Nenhuma instância ARR configurada. Adicione uma instância Sonarr ou Radarr para permitir buscas de cross-seed baseadas em ID.",
     "created": "Criada em {{date}}",
     "sonarrInstances": "Instâncias Sonarr",
     "radarrInstances": "Instâncias Radarr",
@@ -841,7 +841,7 @@
       "priority": "Prioridade",
       "status": "Status",
       "testStatus": "Status do Teste",
-      "capabilities": "Recursos Suportados (Capabilities)",
+      "capabilities": "Recursos (Capabilities)",
       "timeout": "Tempo Limite",
       "actions": "Ações",
       "enabled": "Ativado",

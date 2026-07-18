@@ -9,7 +9,7 @@
     "sectionLabels": {
       "server-stats": "Estatísticas do Servidor",
       "tracker-breakdown": "Detalhamento de Trackers",
-      "global-stats": "Estatísticas Globais",
+      "global-stats": "Cartões de Estatísticas Globais",
       "instances": "Cartões de Instâncias"
     },
     "trackerDefaults": "Padrões do Detalhamento de Trackers",
@@ -60,12 +60,12 @@
     "unregisteredTorrents": "Torrents não registrados",
     "trackerDown": "Tracker Offline",
     "errors": "Erros",
-    "reannounceTooltip": "Reanúncio automático habilitado",
+    "reannounceTooltip": "Reanúncio automático ativado",
     "altSpeedLimits": "Limites de velocidade alternativos: {{status}}",
-    "localFileAccess": "Acesso a arquivos locais habilitado",
+    "localFileAccess": "Acesso a arquivos locais ativado",
     "connectable": "Conectável",
     "portInfo": ". Porta: {{port}}",
-    "connectionStatus": "Status da conexão: {{status}}",
+    "connectionStatus": "Status da conexão do qBittorrent: {{status}}",
     "streamStatus": {
       "live": "Transmissão ao vivo conectada",
       "cached": "Mostrando snapshot em cache enquanto atualiza",
@@ -73,12 +73,12 @@
       "error": "Erro na transmissão; usando atualização reserva"
     },
     "altSpeedDialog": {
-      "enableTitle": "Habilitar Limites de Velocidade Alternativos?",
-      "disableTitle": "Desabilitar Limites de Velocidade Alternativos?",
-      "enableDescription": "Isso habilitará limites de velocidade alternativos para {{name}}, reduzindo as velocidades de transferência com base nos limites configurados.",
-      "disableDescription": "Isso desabilitará os limites de velocidade alternativos para {{name}} e retornará aos limites normais.",
-      "enable": "Habilitar",
-      "disable": "Desabilitar",
+      "enableTitle": "Ativar Limites de Velocidade Alternativos?",
+      "disableTitle": "Desativar Limites de Velocidade Alternativos?",
+      "enableDescription": "Isso ativará limites de velocidade alternativos para {{name}}, reduzindo as velocidades de transferência com base nos limites configurados.",
+      "disableDescription": "Isso desativará os limites de velocidade alternativos para {{name}} e retornará aos limites normais.",
+      "enable": "Ativar",
+      "disable": "Desativar",
       "cancel": "Cancelar"
     }
   },
@@ -212,7 +212,7 @@
     "noInstances": "Nenhuma instância configurada",
     "getStarted": "Comece adicionando sua primeira instância do qBittorrent",
     "allDisabled": "Todas as instâncias estão desativadas",
-    "enableInstance": "Habilite uma instância em Configurações → Instâncias para ver as estatísticas do painel.",
+    "enableInstance": "Ative uma instância em Configurações → Instâncias para ver as estatísticas do painel.",
     "manageInstances": "Gerenciar Instâncias"
   }
 }

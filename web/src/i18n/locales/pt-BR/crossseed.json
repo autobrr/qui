@@ -5,9 +5,9 @@
   "automationOffBadge": "Automação desligada",
   "indexersMissing": {
     "title": "Indexadores Torznab ausentes",
-    "description": "A automação RSS precisa de pelo menos um indexador Torznab habilitado. A Busca de Torrents Semeados ainda pode executar correspondências OPS/RED via Gazelle se habilitado.",
+    "description": "A automação RSS precisa de pelo menos um indexador Torznab ativado. A Busca de Torrents Semeados ainda pode executar correspondências OPS/RED via Gazelle se ativado.",
     "manageLink": "Gerenciar indexadores em Configurações",
-    "linkSuffix": "para adicionar ou habilitar um."
+    "linkSuffix": "para adicionar ou ativar um."
   },
   "overview": {
     "rssAutomation": {
@@ -18,9 +18,9 @@
       "lastRun": "Última execução",
       "cooldown": "Espera {{display}}",
       "ready": "Pronto",
-      "disabled": "Desabilitado",
+      "disabled": "Desativado",
       "noRunsYet": "Nenhuma execução ainda",
-      "disabledUpper": "DESABILITADO"
+      "disabledUpper": "DESATIVADO"
     },
     "seededSearch": {
       "title": "Busca de torrents semeados",
@@ -39,16 +39,16 @@
   "tabs": {
     "auto": "Auto",
     "scan": "Buscar",
-    "dirScan": "Busca Dir",
+    "dirScan": "Scanner Dir",
     "rules": "Regras",
     "blocklist": "Lista de Bloqueios"
   },
   "automation": {
     "title": "Automação RSS",
     "description": "Sonda feeds RSS de trackers em um intervalo fixo e adiciona cross-seeds correspondentes automaticamente.",
-    "enableSwitch": "Habilitar automação RSS",
+    "enableSwitch": "Ativar automação RSS",
     "intervalLabel": "Intervalo de execução RSS (minutos)",
-    "intervalTooltip": "A automação processa o feed completo de cada indexador Torznab habilitado a cada execução. O intervalo mínimo é de {{min}} minutos para evitar sobrecarregar os indexadores.",
+    "intervalTooltip": "A automação processa o feed completo de cada indexador Torznab ativado a cada execução. O intervalo mínimo é de {{min}} minutos para evitar sobrecarregar os indexadores.",
     "targetInstances": "Instâncias alvo",
     "selectInstances": "Selecione as instâncias do qBittorrent",
     "noActiveInstances": "Nenhuma instância ativa disponível",
@@ -56,10 +56,10 @@
     "pickInstance": "Escolha pelo menos uma instância para receber cross-seeds.",
     "instancesSelected": "Instâncias selecionadas: {{count}}.",
     "targetIndexers": "Indexadores alvo",
-    "allEnabledIndexers": "Todos os indexadores habilitados (deixe vazio para todos)",
+    "allEnabledIndexers": "Todos os indexadores ativados (deixe vazio para todos)",
     "noIndexersConfigured": "Nenhum indexador Torznab configurado",
     "noIndexersConfiguredDot": "Nenhum indexador Torznab configurado.",
-    "allIndexersEligible": "Todos os indexadores Torznab habilitados são elegíveis para automação RSS.",
+    "allIndexersEligible": "Todos os indexadores Torznab ativados são elegíveis para automação RSS.",
     "selectedIndexersPolled": "Indexadores selecionados para sondagem: {{count}}.",
     "includeCategories": "Incluir categorias",
     "allCategories": "Todas as categorias (deixe vazio para todas)",
@@ -107,7 +107,7 @@
   },
   "scan": {
     "title": "Busca na Biblioteca",
-    "description": "Varre os torrents que você já semeia na instância selecionada, reduz o conteúdo idêntico à cópia mais antiga e consulta o Torznab uma vez por lançamento único. Se o Gazelle estiver habilitado, a correspondência com a API RED/OPS também será tentada.",
+    "description": "Varre os torrents que você já semeia na instância selecionada, reduz o conteúdo idêntico à cópia mais antiga e consulta o Torznab uma vez por lançamento único. Se o Gazelle estiver ativado, a correspondência com a API RED/OPS também será tentada.",
     "runSparingly": "Execute com moderação",
     "runSparinglyDescription": "Esta varredura profunda toca em todos os torrents que você semeia e pode sobrecarregar trackers, apesar dos tempos de espera embutidos. Prefira anúncios do autobrr ou automação RSS para cobertura de rotina e reserve buscas manuais para atualizações ocasionais.",
     "intervalLabel": "Intervalo entre torrents (segundos)",
@@ -166,7 +166,7 @@
     "hardlinkDescription": "Crie árvores de arquivos hardlinked ou reflinked (cópia na gravação) para cross-seeds. Cada instância pode ser configurada independentemente. O diretório base deve estar no mesmo sistema de arquivos que os caminhos de download da instância.",
     "reflinkNote": "O modo Reflink permite o cross-seeding seguro de torrents com arquivos extras/ausentes. Quando arquivos extras estão presentes, o qui dispara uma reverificação; se abaixo do limite, o torrent permanece pausado para revisão manual.",
     "crossSeedMode": "Modo cross-seed",
-    "enableLocalFilesystem": "Habilite \"Acesso ao sistema de arquivos local\" nas Configurações da Instância para usar os modos hardlink ou reflink.",
+    "enableLocalFilesystem": "Ative \"Acesso ao sistema de arquivos local\" nas Configurações da Instância para usar os modos hardlink ou reflink.",
     "regular": "Regular",
     "regularDescription": "Reutilizar arquivos existentes no local. Rápido, sem espaço em disco extra.",
     "hardlink": "Hardlink",
@@ -180,7 +180,7 @@
     "flat": "Plano (tudo no diretório base)",
     "byTracker": "Por Tracker",
     "byInstance": "Por Instância",
-    "fallbackToRegular": "Recair para o modo regular em caso de erro",
+    "fallbackToRegular": "Retornar ao modo regular em caso de erro",
     "fallbackDescription": "Se o {{mode}} falhar (ex: sistemas de arquivos diferentes), retorne ao modo regular usando os arquivos existentes.",
     "saveChanges": "Salvar Alterações",
     "noLocalAccess": "Sem acesso local",
@@ -192,7 +192,7 @@
     "seasonPack": {
       "title": "Pacotes de Temporada (Season packs)",
       "description": "Quando o autobrr captura um pacote de temporada, o qui verifica se você já tem dados locais suficientes para injetá-lo e depois permite que o qBittorrent baixe tudo o que ainda estiver faltando.",
-      "enable": "Habilitar correspondência de pacote de temporada",
+      "enable": "Ativar correspondência de pacote de temporada",
       "enableDescription": "Permitir que o autobrr chame o qui para verificação e aplicação de pacotes de temporada.",
       "coverageThreshold": "Limite de cobertura (%)",
       "coverageThresholdDescription": "Cobertura local mínima antes que o qui injete um pacote de temporada. Se o Sonarr resolver o show, o qui usa o total de temporada maior; caso contrário, recai para os arquivos reproduzíveis no pacote. Pacotes incompletos são adicionados pausados, reverificados e depois retomados automaticamente.",
@@ -208,7 +208,7 @@
       "ignoreYearDescription": "Permitir correspondências quando um lançamento inclui um ano e o outro não.",
       "tvdbApiKey": "Chave de API do TVDB",
       "pasteTvdbApiKey": "Cole a chave de API do TVDB",
-      "enableToConfigure": "Habilite para configurar",
+      "enableToConfigure": "Ative para configurar",
       "tvdbPin": "PIN de Assinante do TVDB",
       "pasteTvdbPin": "Cole o PIN do TVDB",
       "tvdbDescription": "Opcional. Melhora a precisão do limite quando o endpoint de verificação é chamado sem dados do torrent. O TVMaze é usado automaticamente como um substituto gratuito.",
@@ -234,14 +234,14 @@
     },
     "gazelle": {
       "title": "Gazelle (OPS/RED)",
-      "description": "Habilite a correspondência direta via API com Orpheus e Redacted. Funciona em conjunto com o Torznab; indexadores Torznab OPS/RED são ignorados.",
-      "enableMatching": "Habilitar correspondência Gazelle",
+      "description": "Ative a correspondência direta via API com Orpheus e Redacted. Funciona em conjunto com o Torznab; indexadores Torznab OPS/RED são ignorados.",
+      "enableMatching": "Ativar correspondência Gazelle",
       "enableDescription": "Aplica-se a todos os torrents de origem. Se possível, o qui também verifica o RED/OPS via Gazelle.",
       "redactedApiKey": "Chave API Redacted",
       "orpheusApiKey": "Chave API Orpheus",
       "pasteRedKey": "Cole a chave API do RED",
       "pasteOpsKey": "Cole a chave API do OPS",
-      "enableToConfigure": "Habilitar para configurar",
+      "enableToConfigure": "Ativar para configurar",
       "redDescription": "Usado para pesquisas no redacted.sh. Cole para substituir; limpe para remover.",
       "opsDescription": "Usado para pesquisas no orpheus.network. Cole para substituir; limpe para remover."
     },
@@ -266,7 +266,7 @@
     "categories": {
       "title": "Categorias",
       "description": "Controle como os cross-seeds são categorizados no qBittorrent.",
-      "reuseCategory": "Reutilizar a categoria do torrent original",
+      "reuseCategory": "Reutilizar a categoria do torrent correspondido",
       "reuseCategoryHelp": "Os cross-seeds usam a mesma categoria exata do torrent correspondido. No modo regular, o AutoTMM espelha o torrent correspondido; no modo hardlink/reflink, o AutoTMM é desativado e um caminho de salvamento explícito é usado.",
       "reuseCategoryDescription": "Mantenha a categoria do torrent inalterada (sem o sufixo .cross).",
       "categoryAffix": "Afixo de categoria",
@@ -283,7 +283,7 @@
       "selectOrTypeCategory": "Selecione ou digite uma categoria..."
     },
     "tagging": {
-      "title": "Tags (Etiquetamento)",
+      "title": "Tags (Marcação)",
       "description": "Configure as tags aplicadas a torrents cross-seed com base em como foram descobertos.",
       "rssAutomationTags": "Tags de Automação RSS",
       "selectRssTags": "Selecione tags para automação RSS",
@@ -394,13 +394,13 @@
     "unknownError": "Erro desconhecido",
     "noIndexersConfigured": "Nenhum indexador Torznab configurado",
     "pickInstanceBeforeRunning": "Escolha pelo menos uma instância para receber cross-seeds antes de executar a automação RSS.",
-    "enableAutomationAfterIndexers": "Habilite a automação RSS apenas depois de configurar os indexadores Torznab.",
+    "enableAutomationAfterIndexers": "Ative a automação RSS apenas depois de configurar os indexadores Torznab.",
     "saveSettingsFirst": "Salve as configurações de automação RSS para aplicar as instâncias alvo atualizadas antes de executar.",
     "selectInstanceToRun": "Selecione uma instância para execução",
     "seededSearchNeedsGazelle": "A Busca de Torrents Semeados requer o Gazelle",
-    "enableGazelleDescription": "Habilite a correspondência Gazelle (OPS/RED) antes de executar com o Torznab desativado.",
+    "enableGazelleDescription": "Ative a correspondência Gazelle (OPS/RED) antes de executar com o Torznab desativado.",
     "seededSearchNeedsTorznabOrGazelle": "A Busca de Torrents Semeados requer Torznab ou Gazelle",
-    "configureTorznabOrGazelle": "Configure pelo menos um indexador Torznab ou habilite a correspondência Gazelle para torrents OPS/RED.",
+    "configureTorznabOrGazelle": "Configure pelo menos um indexador Torznab ou ative a correspondência Gazelle para torrents OPS/RED.",
     "selectAtLeastOneInstance": "Selecione pelo menos uma instância para automação RSS.",
     "customCategoryRequired": "O modo de categoria personalizada requer um nome de categoria"
   },
@@ -422,7 +422,7 @@
     "search": {
       "noMatches": "Nenhuma correspondência de cross-seed encontrada",
       "noIndexers": "Configure pelo menos um indexador Torznab para procurar por cross-seeds",
-      "completedOnly": "Apenas torrents completos podem sofrer cross-seed",
+      "completedOnly": "Apenas torrents completos podem passar por cross-seed",
       "selectTracker": "Selecione pelo menos um tracker para executar uma pesquisa personalizada",
       "selectResult": "Selecione pelo menos um resultado para adicionar",
       "searchFailed": "Falha ao buscar cross-seeds",
@@ -439,8 +439,8 @@
       "applyFailed": "{{completedPrefix}}{{failed}} falharam - verifique os resultados para detalhes",
       "applyCompletedUnavailable": "Solicitação de cross-seed concluída (detalhes indisponíveis)",
       "applyNoChanges": "Nenhum cross-seed foi adicionado",
-      "applyCompletedPart": ", {{count}} concluídos",
-      "applyCompletedPrefix": "{{count}} concluídos, "
+      "applyCompletedPart": ", {{count}} completos",
+      "applyCompletedPrefix": "{{count}} completos, "
     }
   },
   "validation": {
@@ -477,9 +477,9 @@
     "title": "Scanner de Diretório",
     "description": "Varra diretórios locais em busca de downloads completos e faça cross-seed automaticamente.",
     "settings": "Configurações",
-    "enabled": "Habilitado",
-    "disabled": "Desabilitado",
-    "noLocalAccessWarning": "Nenhuma instância do qBittorrent tem acesso ao sistema de arquivos local ativado. Habilite-o nas configurações da instância para usar o Scanner de Diretório.",
+    "enabled": "Ativado",
+    "disabled": "Desativado",
+    "noLocalAccessWarning": "Nenhuma instância do qBittorrent tem acesso ao sistema de arquivos local ativado. Ative-o nas configurações da instância para usar o Scanner de Diretório.",
     "scanDirectories": "Diretórios de Busca",
     "scanDirectoriesDescription": "Configure diretórios a serem varridos em busca de conteúdo compatível com cross-seed.",
     "addDirectory": "Adicionar Diretório",
@@ -535,7 +535,7 @@
     },
     "statusLabels": {
       "queued": "Na fila",
-      "scanning": "Buscando",
+      "scanning": "Varrendo",
       "searching": "Procurando",
       "injecting": "Injetando",
       "success": "Sucesso",
@@ -671,7 +671,7 @@
     },
     "statusLabelsUpper": {
       "queued": "NA FILA",
-      "scanning": "BUSCANDO",
+      "scanning": "VARRENDO",
       "searching": "PROCURANDO",
       "injecting": "INJETANDO",
       "success": "SUCESSO",
