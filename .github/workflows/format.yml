@@ -24,7 +24,7 @@ jobs:
           cache: true
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v6.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
