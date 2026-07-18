@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/anacrolix/torrent/bencode"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -37,23 +38,23 @@ func (s *gettableIndexerStore) Get(_ context.Context, id int) (*models.TorznabIn
 	return nil, nil
 }
 
-// Regression: when the Torznab leg of a cross-seed search fails entirely (for
-// example the only filtered indexer is a downed tracker), matches already
-// found via Gazelle (RED/OPS) must be returned as a partial response instead
-// of being discarded by a whole-search error.
-func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
+const torznabGazelleSourceHash = "223759985c562a644428312c8cd3585d04686847"
+
+// newTorznabGazelleFixture builds a Service with one music-capable Torznab
+// indexer pointing at trackerURL and a RED-sourced music torrent whose Gazelle
+// lookup is stubbed to return one match.
+func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service, int, *gazelleClientSet) {
+	t.Helper()
 	ctx := context.Background()
-	db := testdb.NewMigratedSQLite(t, "crossseed-torznab-fail-gazelle")
+	db := testdb.NewMigratedSQLite(t, dbName)
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	sourceHash := "223759985c562a644428312c8cd3585d04686847"
-	sourceHashNorm := strings.ToLower(sourceHash)
 	sourceTorrent := qbt.Torrent{
-		Hash:     sourceHash,
+		Hash:     torznabGazelleSourceHash,
 		Name:     "During - LMK (2024 WF)",
 		Progress: 1.0,
 		Size:     123,
@@ -80,14 +81,9 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	findGazelleMatch = func(_ context.Context, _ *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
 		return &gazellemusic.Match{TorrentID: 4242, Title: "During - LMK (2024 WF)", Size: 123, Reason: "hash"}, nil
 	}
-	defer func() {
+	t.Cleanup(func() {
 		findGazelleMatch = prevFindMatch
-	}()
-
-	downedTracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}))
-	t.Cleanup(downedTracker.Close)
+	})
 
 	svc := &Service{
 		instanceStore: instanceStore,
@@ -96,7 +92,7 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 				ID:           1,
 				Name:         "Generic Indexer",
 				Enabled:      true,
-				BaseURL:      downedTracker.URL,
+				BaseURL:      trackerURL,
 				Backend:      models.TorznabBackendNative,
 				Capabilities: []string{"search", "music-search", "audio-search"},
 				Categories:   []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 3000, CategoryName: "Audio"}},
@@ -106,7 +102,7 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 			gazelleSkipHashSyncManager: gazelleSkipHashSyncManager{
 				torrents: []qbt.Torrent{sourceTorrent},
 				filesByHash: map[string]qbt.TorrentFiles{
-					sourceHashNorm: sourceFiles,
+					strings.ToLower(torznabGazelleSourceHash): sourceFiles,
 				},
 				exportedTorrent: torrentBytes,
 			},
@@ -114,8 +110,22 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
+	return svc, instance.ID, clients
+}
 
-	resp, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{
+// Regression: when the Torznab leg of a cross-seed search fails entirely (for
+// example the only filtered indexer is a downed tracker), matches already
+// found via Gazelle (RED/OPS) must be returned as a partial response instead
+// of being discarded by a whole-search error.
+func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
+	downedTracker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}))
+	t.Cleanup(downedTracker.Close)
+
+	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-torznab-fail-gazelle", downedTracker.URL)
+
+	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
 		IndexerIDs: []int{1},
 	}, clients)
 
@@ -125,4 +135,30 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	require.Len(t, resp.Results, 1)
 	require.Equal(t, "gazelle:hash", resp.Results[0].MatchReason)
 	require.Contains(t, resp.Results[0].DownloadURL, "4242", "download URL should reference the gazelle torrent")
+}
+
+// Regression (PR #2156 review): caller cancellation must propagate as an
+// error, not be degraded into a Gazelle-only partial success.
+func TestSearchTorrentMatches_CancellationIsNotPartialSuccess(t *testing.T) {
+	blockingTracker := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	t.Cleanup(blockingTracker.Close)
+
+	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-torznab-cancel-gazelle", blockingTracker.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	timer := time.AfterFunc(250*time.Millisecond, cancel)
+	t.Cleanup(func() {
+		timer.Stop()
+		cancel()
+	})
+
+	resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
+		IndexerIDs: []int{1},
+	}, clients)
+
+	require.Error(t, err, "canceled search must not be reported as partial success")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, resp)
 }

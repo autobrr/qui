@@ -7642,7 +7642,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// torznabFailed degrades a fatal Torznab-leg error to a Gazelle-only
 	// partial response when Gazelle already produced matches; a failing
 	// tracker must not discard results the other source already returned.
+	// Caller cancellation is not a tracker failure: propagate it so a
+	// canceled candidate is never recorded as a partial success.
 	torznabFailed := func(err error) (*TorrentSearchResponse, bool, bool, error) {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+		}
 		if len(gazelleResults) == 0 {
 			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(err)
 		}
