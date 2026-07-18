@@ -370,7 +370,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 
 	baseCtx := s.baseContext()
 	if baseCtx == nil {
-		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "Service not started")
+		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
 		return false
 	}
 
@@ -401,9 +401,9 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
 			var reason string
 			if isAggressive {
-				reason = "Debounced during retry interval window"
+				reason = "debounced during retry interval window"
 			} else {
-				reason = "Debounced during cooldown window"
+				reason = "debounced during cooldown window"
 			}
 			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
 			return true
@@ -437,18 +437,18 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	client, err := s.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: client unavailable")
-		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("Client unavailable: %v", err))
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("client unavailable: %v", err))
 		return
 	}
 	trackerList, err := client.GetTorrentTrackersCtx(ctx, hash)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to load trackers")
-		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("Failed to load trackers: %v", err))
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
 		return
 	}
 	if s.hasHealthyTracker(trackerList) {
 		healthyTrackers := s.getHealthyTrackers(trackerList)
-		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "Tracker healthy")
+		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
 		return
 	}
 	// No healthy tracker - proceed with reannounce (trackers may be updating or have errors)
@@ -462,14 +462,14 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		DeleteOnFailure: false,
 	}
 
-	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeStarted, fmt.Sprintf("Reannounce job started (max %d retries)", opts.MaxAttempts))
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeStarted, fmt.Sprintf("reannounce job started (max %d retries)", opts.MaxAttempts))
 
 	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: retry failed")
-		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("Reannounce failed: %v", err))
+		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
 		return
 	}
-	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "Reannounce job succeeded")
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce job succeeded")
 }
 
 func (s *Service) finishJob(instanceID int, hash string) {
@@ -852,7 +852,6 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 			s.historyFailed[instanceID] = s.historyFailed[instanceID][len(s.historyFailed[instanceID])-limit*2:]
 		}
 	case ActivityOutcomeSkipped, ActivityOutcomeStarted:
-		// Not counting skipped/started in prometheus
 		s.historySkipped[instanceID] = append(s.historySkipped[instanceID], event)
 		if len(s.historySkipped[instanceID]) > limit {
 			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]

@@ -76,13 +76,13 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const translateReason = (reason: string | undefined) => {
     if (!reason) return ""
-    if (reason === "Debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
-    if (reason === "Debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
-    if (reason === "Service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
-    if (reason === "Tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
-    if (reason === "Reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
+    if (reason === "debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
+    if (reason === "debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
+    if (reason === "service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
+    if (reason === "tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
+    if (reason === "reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
 
-    const startedMatch = reason.match(/^Reannounce job started \(max (\d+) retries\)$/)
+    const startedMatch = reason.match(/^reannounce job started \(max (\d+) retries\)$/)
     if (startedMatch) {
       return t("preferences.reannounceOverview.reasons.jobStarted", { count: parseInt(startedMatch[1], 10) })
     }
