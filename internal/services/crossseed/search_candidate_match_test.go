@@ -87,6 +87,19 @@ func TestClassifySearchCandidateTorznabFloat32Fallback(t *testing.T) {
 	require.Contains(t, decision.MatchReason, "Torznab float32-compatible size")
 	require.Equal(t, sourceSize, canonicalSearchResultSize(decision, sourceSize, torznabSize))
 
+	zeroToleranceDecision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       sourceSize,
+		CandidateSize:    torznabSize,
+		TolerancePercent: 0,
+	})
+	require.True(t, zeroToleranceDecision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, zeroToleranceDecision.Class)
+	require.Equal(t, searchSizeEvidenceTorznabFloat32, zeroToleranceDecision.SizeEvidence)
+
 	exactDecision := decision
 	exactDecision.SizeEvidence = searchSizeEvidenceExact
 	require.Equal(t, sourceSize, canonicalSearchResultSize(exactDecision, sourceSize, sourceSize))

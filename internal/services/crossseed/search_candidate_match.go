@@ -123,7 +123,8 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 		return decision
 	}
 
-	if !ignoreSizeCheck && !s.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
+	if class != searchCandidateClassExactSizeFallback &&
+		!ignoreSizeCheck && !s.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
 		decision.RejectReason = "size mismatch"
 		decision.SizeRejected = true
 		return decision
