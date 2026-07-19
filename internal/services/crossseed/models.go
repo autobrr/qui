@@ -76,6 +76,8 @@ type CrossSeedRequest struct {
 	// SearchDecisionClass records the private search classification that admitted
 	// this torrent. Only cached search results may set it.
 	SearchDecisionClass searchCandidateClass `json:"-"`
+	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
+	SearchSourceTitles []string `json:"-"`
 	// AdvertisedCandidateSize is the Torznab size used by the search classifier.
 	AdvertisedCandidateSize int64 `json:"-"`
 }
@@ -193,6 +195,8 @@ type FindCandidatesRequest struct {
 	ExactSizeFallback bool `json:"-"`
 	// TorrentSize is the downloaded torrent's actual metainfo total.
 	TorrentSize int64 `json:"-"`
+	// SearchSourceTitles are ARR aliases for the existing torrent that originated the search.
+	SearchSourceTitles []string `json:"-"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates
@@ -307,6 +311,8 @@ type TorrentSearchResult struct {
 	MatchScore           float64 `json:"match_score"`
 	// SearchDecisionClass is retained only in the in-memory search result cache.
 	SearchDecisionClass searchCandidateClass `json:"-"`
+	// SearchSourceTitles retains ARR aliases used to admit this cached result.
+	SearchSourceTitles []string `json:"-"`
 }
 
 // TorrentSearchResponse bundles the seeded torrent information with potential cross-seed matches.

@@ -37,6 +37,7 @@ type searchCandidateDecision struct {
 	Accepted             bool
 	Class                searchCandidateClass
 	ExactSize            bool
+	SourceTitles         []string
 	RejectReason         string
 	StrictMismatchReason string
 	RelaxedDifferences   []string
@@ -122,6 +123,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 
 	decision.Accepted = true
 	decision.Class = class
+	decision.SourceTitles = slices.Clone(input.SourceTitles)
 	decision.Score, decision.MatchReason = evaluateReleaseMatch(input.SourceRelease, input.CandidateRelease)
 	if decision.Score <= 0 {
 		decision.Score = 1

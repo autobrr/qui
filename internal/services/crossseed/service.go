@@ -3987,10 +3987,20 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				continue
 			}
 
-			// Check if releases are related (quick filter). Only search-origin
-			// exact-size fallbacks may defer soft metadata differences to the normal
-			// file-level validation below.
-			if !s.releasesMatch(targetRelease, candidateRelease, req.FindIndividualEpisodes) {
+			// Check if releases are related (quick filter). Search-origin ARR aliases
+			// belong to the existing torrent, which is the candidate in this reversed
+			// apply-stage comparison. Only exact-size fallbacks may defer remaining
+			// soft metadata differences to the normal file-level validation below.
+			releasesMatch, _ := s.releasesMatchWithReasonAndNamesAndTitles(
+				targetRelease,
+				candidateRelease,
+				req.TorrentName,
+				torrent.Name,
+				nil,
+				req.SearchSourceTitles,
+				req.FindIndividualEpisodes,
+			)
+			if !releasesMatch {
 				exactSizeIdentity := req.ExactSizeFallback &&
 					positiveExactSize(req.TorrentSize, torrent.Size)
 				if exactSizeIdentity {
@@ -4000,6 +4010,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 						CandidateRelease:       candidateRelease,
 						SourceName:             req.TorrentName,
 						CandidateName:          torrent.Name,
+						CandidateTitles:        req.SearchSourceTitles,
 						SourceSize:             req.TorrentSize,
 						CandidateSize:          torrent.Size,
 						FindIndividualEpisodes: req.FindIndividualEpisodes,
@@ -4153,6 +4164,7 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
 		ExactSizeFallback:      req.SearchDecisionClass == searchCandidateClassExactSizeFallback,
 		TorrentSize:            actualTorrentSize,
+		SearchSourceTitles:     slices.Clone(req.SearchSourceTitles),
 	}
 	// Pass through source filters for RSS automation
 	if len(req.SourceFilterCategories) > 0 {
@@ -7898,11 +7910,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Candidate accepted")
 
 		scored = append(scored, scoredTorrentSearchResult{
-			result:    res,
-			score:     decision.Score,
-			reason:    decision.MatchReason,
-			exactSize: decision.ExactSize,
-			class:     decision.Class,
+			result:       res,
+			score:        decision.Score,
+			reason:       decision.MatchReason,
+			exactSize:    decision.ExactSize,
+			class:        decision.Class,
+			sourceTitles: decision.SourceTitles,
 		})
 	}
 
@@ -7991,11 +8004,12 @@ func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {
 }
 
 type scoredTorrentSearchResult struct {
-	result    jackett.SearchResult
-	score     float64
-	reason    string
-	exactSize bool
-	class     searchCandidateClass
+	result       jackett.SearchResult
+	score        float64
+	reason       string
+	exactSize    bool
+	class        searchCandidateClass
+	sourceTitles []string
 }
 
 func searchCandidateClassPriority(class searchCandidateClass) int {
@@ -8192,7 +8206,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 							Str("existingName", existing.Name)
 					}
 					event.Msg("[CROSSSEED-SEARCH] Keeping duplicate search result because existing torrent was rejected by content prefilter")
-					results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class))
+					results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class, item.sourceTitles))
 					if len(results) >= limit {
 						break
 					}
@@ -8216,7 +8230,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 		}
 
-		results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class))
+		results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class, item.sourceTitles))
 		if len(results) >= limit {
 			break
 		}
@@ -8225,7 +8239,7 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 	return results, duplicateFilteredCount, nil
 }
 
-func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, score float64, class searchCandidateClass) TorrentSearchResult {
+func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, score float64, class searchCandidateClass, sourceTitles []string) TorrentSearchResult {
 	return TorrentSearchResult{
 		Indexer:              res.Indexer,
 		IndexerID:            res.IndexerID,
@@ -8248,6 +8262,7 @@ func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, sco
 		MatchReason:          reason,
 		MatchScore:           score,
 		SearchDecisionClass:  class,
+		SearchSourceTitles:   slices.Clone(sourceTitles),
 	}
 }
 
@@ -8448,6 +8463,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 				SearchDecisionClass:          cachedResult.SearchDecisionClass,
+				SearchSourceTitles:           slices.Clone(cachedResult.SearchSourceTitles),
 				AdvertisedCandidateSize:      cachedResult.Size,
 			}
 			payload.SizeMismatchTolerancePercent = cachedSearchResults.sizeMismatchTolerancePercent
@@ -8648,8 +8664,7 @@ func (s *Service) cacheSearchResults(instanceID int, hash string, results []Torr
 
 	key := searchResultCacheKey(instanceID, hash)
 
-	cloned := make([]TorrentSearchResult, len(results))
-	copy(cloned, results)
+	cloned := cloneTorrentSearchResults(results)
 
 	s.searchResultCache.Set(key, cachedTorrentSearchResults{
 		results:                      cloned,
@@ -8664,8 +8679,7 @@ func (s *Service) getCachedSearchResults(instanceID int, hash string) *cachedTor
 
 	key := searchResultCacheKey(instanceID, hash)
 	if cached, found := s.searchResultCache.Get(key); found {
-		cloned := make([]TorrentSearchResult, len(cached.results))
-		copy(cloned, cached.results)
+		cloned := cloneTorrentSearchResults(cached.results)
 		return &cachedTorrentSearchResults{
 			results:                      cloned,
 			sizeMismatchTolerancePercent: cached.sizeMismatchTolerancePercent,
@@ -8673,6 +8687,15 @@ func (s *Service) getCachedSearchResults(instanceID int, hash string) *cachedTor
 	}
 
 	return nil
+}
+
+func cloneTorrentSearchResults(results []TorrentSearchResult) []TorrentSearchResult {
+	cloned := make([]TorrentSearchResult, len(results))
+	copy(cloned, results)
+	for i := range cloned {
+		cloned[i].SearchSourceTitles = slices.Clone(results[i].SearchSourceTitles)
+	}
+	return cloned
 }
 
 func (s *Service) resolveSelectionFromCache(cached []TorrentSearchResult, selection TorrentSearchSelection) (*TorrentSearchResult, error) {
@@ -9852,6 +9875,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
 		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
 		SearchDecisionClass:           match.SearchDecisionClass,
+		SearchSourceTitles:            slices.Clone(match.SearchSourceTitles),
 		AdvertisedCandidateSize:       match.Size,
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {

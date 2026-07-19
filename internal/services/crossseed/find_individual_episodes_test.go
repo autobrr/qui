@@ -136,6 +136,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		GUID:                "guid-2",
 		Size:                2048,
 		SearchDecisionClass: searchCandidateClassExactSizeFallback,
+		SearchSourceTitles:  []string{"ARR Alias"},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached}, 20)
 
@@ -176,6 +177,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.InDelta(t, 20, captured.SizeMismatchTolerancePercent, 0.001, "apply must reuse the search tolerance cached with the selected result")
 	require.True(t, captured.SizeMismatchTolerancePercentSet)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
+	require.Equal(t, cached.SearchSourceTitles, captured.SearchSourceTitles)
 	require.Equal(t, cached.Size, captured.AdvertisedCandidateSize)
 }
 

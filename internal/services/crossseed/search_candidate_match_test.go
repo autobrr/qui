@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
@@ -52,6 +53,73 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Contains(t, decision.RelaxedDifferences, "hdr")
 	require.Contains(t, decision.MatchReason, "exact byte size")
 	require.Contains(t, decision.MatchReason, "relaxed collection")
+}
+
+func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
+	service := &Service{
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+	}
+	const (
+		sourceName    = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		candidateName = "Money.Heist.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+	)
+	source := rls.ParseString(sourceName)
+	candidate := rls.ParseString(candidateName)
+	sourceTitles := []string{"Money Heist"}
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceTitles:     sourceTitles,
+		SourceSize:       100,
+		CandidateSize:    101,
+		TolerancePercent: 5,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Equal(t, []string{"Money Heist"}, decision.SourceTitles)
+
+	// The decision owns the title lineage it accepted; later mutations of the ARR
+	// response must not alter an in-flight or cached search result.
+	sourceTitles[0] = "mutated"
+	require.Equal(t, []string{"Money Heist"}, decision.SourceTitles)
+
+	results, duplicateFiltered, err := service.buildTorrentSearchResults(context.Background(), 1, "source", []scoredTorrentSearchResult{
+		{
+			result:       jackett.SearchResult{Title: candidateName},
+			class:        decision.Class,
+			sourceTitles: decision.SourceTitles,
+		},
+	}, 1)
+	require.NoError(t, err)
+	require.Zero(t, duplicateFiltered)
+	require.Len(t, results, 1)
+	require.Equal(t, []string{"Money Heist"}, results[0].SearchSourceTitles)
+
+	service.cacheSearchResults(1, "source", results, 5)
+	results[0].SearchSourceTitles[0] = "mutated after cache write"
+	cached := service.getCachedSearchResults(1, "source")
+	require.NotNil(t, cached)
+	require.Equal(t, []string{"Money Heist"}, cached.results[0].SearchSourceTitles)
+	cached.results[0].SearchSourceTitles[0] = "mutated after cache read"
+	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchSourceTitles)
+
+	rejected := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceTitles:     []string{"Unrelated Show"},
+		SourceSize:       100,
+		CandidateSize:    101,
+		TolerancePercent: 5,
+	})
+	require.False(t, rejected.Accepted)
+	require.Equal(t, "title mismatch", rejected.RejectReason)
+	require.Empty(t, rejected.SourceTitles)
 }
 
 func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
@@ -195,16 +263,20 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	resultBytes, err := json.Marshal(TorrentSearchResult{
 		Title:               "candidate",
 		SearchDecisionClass: searchCandidateClassExactSizeFallback,
+		SearchSourceTitles:  []string{"ARR secret result alias"},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "exact-size-fallback")
+	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
 		SearchDecisionClass:     searchCandidateClassExactSizeFallback,
+		SearchSourceTitles:      []string{"ARR secret request alias"},
 		AdvertisedCandidateSize: 123,
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "exact-size-fallback")
+	require.NotContains(t, string(requestBytes), "ARR secret request alias")
 	require.NotContains(t, string(requestBytes), "123")
 }
 
@@ -227,6 +299,7 @@ func TestSortScoredTorrentSearchResultsExactSizePriority(t *testing.T) {
 
 func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) {
 	const size = int64(94_329_473_840)
+	sourceTitles := []string{"ARR Alias"}
 	var captured *CrossSeedRequest
 	service := &Service{
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
@@ -245,6 +318,7 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 		DownloadURL:         "https://example.invalid/candidate.torrent",
 		Size:                size,
 		SearchDecisionClass: searchCandidateClassExactSizeFallback,
+		SearchSourceTitles:  sourceTitles,
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
@@ -259,6 +333,7 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.Equal(t, models.CrossSeedSearchResultStatusAdded, result.Status)
 	require.NotNil(t, captured)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
+	require.Equal(t, sourceTitles, captured.SearchSourceTitles)
 	require.Equal(t, size, captured.AdvertisedCandidateSize)
 }
 
@@ -370,4 +445,53 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	})
 	require.NoError(t, err)
 	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
+}
+
+func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
+	const (
+		instanceID   = 1
+		targetName   = "Money.Heist.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		existingName = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		existingHash = "existing"
+	)
+	torrentData := createTestTorrent(t, targetName, []string{"payload.mkv"}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(torrentData)
+	require.NoError(t, err)
+	var torrentSize int64
+	for _, file := range meta.Files {
+		torrentSize += file.Size
+	}
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{
+		Hash:     existingHash,
+		Name:     existingName,
+		Size:     torrentSize,
+		Progress: 1,
+	}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{existingHash: meta.Files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	apply := func(sourceTitles []string) *CrossSeedResponse {
+		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
+			TorrentData:         base64.StdEncoding.EncodeToString(torrentData),
+			TargetInstanceIDs:   []int{instanceID},
+			SearchDecisionClass: searchCandidateClassStrict,
+			SearchSourceTitles:  sourceTitles,
+		})
+		require.NoError(t, applyErr)
+		require.Len(t, response.Results, 1)
+		return response
+	}
+
+	require.Equal(t, "no_match", apply(nil).Results[0].Status)
+	require.Equal(t, "no_match", apply([]string{"Unrelated Show"}).Results[0].Status)
+
+	aliased := apply([]string{"Money Heist"})
+	require.NotEqual(t, "no_match", aliased.Results[0].Status)
+	require.Contains(t, aliased.Results[0].Message, "torrent properties")
 }
