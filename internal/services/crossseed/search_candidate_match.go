@@ -20,6 +20,14 @@ const (
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
 )
 
+type searchSizeEvidence string
+
+const (
+	searchSizeEvidenceNone           searchSizeEvidence = "none"
+	searchSizeEvidenceExact          searchSizeEvidence = "exact"
+	searchSizeEvidenceTorznabFloat32 searchSizeEvidence = "torznab-float32"
+)
+
 type searchCandidateInput struct {
 	SourceRelease          *rls.Release
 	CandidateRelease       *rls.Release
@@ -36,7 +44,7 @@ type searchCandidateInput struct {
 type searchCandidateDecision struct {
 	Accepted             bool
 	Class                searchCandidateClass
-	ExactSize            bool
+	SizeEvidence         searchSizeEvidence
 	SourceTitles         []string
 	RejectReason         string
 	StrictMismatchReason string
@@ -46,19 +54,19 @@ type searchCandidateDecision struct {
 	SizeRejected         bool
 }
 
-// Score bands mirror the explicit sorter: any exact-size decision outranks the
-// release scorer's tolerance-only range, and stricter exact classes display a
-// higher score than relaxed classes.
+// Score bands mirror the explicit sorter: positive size evidence outranks the
+// release scorer's tolerance-only range, and stricter classes display a higher
+// score than relaxed classes within the same evidence tier.
 const (
-	exactSizeFallbackScoreBonus = 2.0
-	exactSizeRelabelScoreBonus  = 3.0
-	exactSizeStrictScoreBonus   = 4.0
+	sizeEvidenceFallbackScoreBonus = 2.0
+	sizeEvidenceRelabelScoreBonus  = 3.0
+	sizeEvidenceStrictScoreBonus   = 4.0
 )
 
 func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
 	decision := searchCandidateDecision{
-		Class:     searchCandidateClassRejected,
-		ExactSize: positiveExactSize(input.SourceSize, input.CandidateSize),
+		Class:        searchCandidateClassRejected,
+		SizeEvidence: classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
 	}
 	ignoreSizeCheck := input.FindIndividualEpisodes &&
 		isTVSeasonPack(input.SourceRelease) && isTVEpisode(input.CandidateRelease)
@@ -92,7 +100,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 		mismatchReason,
 	):
 		class = searchCandidateClassWebSourceRelabel
-	case decision.ExactSize:
+	case decision.SizeEvidence.matches():
 		if ok, reason := s.validateExactSizeSearchIdentity(input); ok {
 			class = searchCandidateClassExactSizeFallback
 			decision.RelaxedDifferences = softMetadataDifferences(input.SourceRelease, input.CandidateRelease)
@@ -131,22 +139,22 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 
 	switch class {
 	case searchCandidateClassExactSizeFallback:
-		decision.Score += exactSizeFallbackScoreBonus
-		decision.MatchReason = "exact byte size; strict title/season/resolution/group"
+		decision.Score += sizeEvidenceFallbackScoreBonus
+		decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict title/season/resolution/group"
 		if len(decision.RelaxedDifferences) > 0 {
 			decision.MatchReason += "; relaxed " + strings.Join(decision.RelaxedDifferences, ",")
 		}
 	case searchCandidateClassWebSourceRelabel:
-		if decision.ExactSize {
-			decision.Score += exactSizeRelabelScoreBonus
-			decision.MatchReason = "exact byte size; web-source relabel; " + decision.MatchReason
+		if decision.SizeEvidence.matches() {
+			decision.Score += sizeEvidenceRelabelScoreBonus
+			decision.MatchReason = decision.SizeEvidence.matchReason() + "; web-source relabel; " + decision.MatchReason
 		} else {
 			decision.MatchReason = "web-source relabel; " + decision.MatchReason
 		}
 	case searchCandidateClassStrict:
-		if decision.ExactSize {
-			decision.Score += exactSizeStrictScoreBonus
-			decision.MatchReason = "exact byte size; strict metadata; " + decision.MatchReason
+		if decision.SizeEvidence.matches() {
+			decision.Score += sizeEvidenceStrictScoreBonus
+			decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict metadata; " + decision.MatchReason
 		}
 	case searchCandidateClassRejected:
 	}
@@ -156,6 +164,50 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 
 func positiveExactSize(sourceSize, candidateSize int64) bool {
 	return sourceSize > 0 && candidateSize > 0 && sourceSize == candidateSize
+}
+
+func classifySearchSizeEvidence(sourceSize, candidateSize int64) searchSizeEvidence {
+	if sourceSize <= 0 || candidateSize <= 0 {
+		return searchSizeEvidenceNone
+	}
+	if sourceSize == candidateSize {
+		return searchSizeEvidenceExact
+	}
+	// Cardigann-based Torznab indexers parse raw byte counts through a 32-bit
+	// float. Reproduce that exact conversion only as secondary evidence after
+	// literal equality.
+	if int64(float32(sourceSize)) == candidateSize {
+		return searchSizeEvidenceTorznabFloat32
+	}
+	return searchSizeEvidenceNone
+}
+
+func (evidence searchSizeEvidence) matches() bool {
+	return evidence == searchSizeEvidenceExact || evidence == searchSizeEvidenceTorznabFloat32
+}
+
+func (evidence searchSizeEvidence) priority() int {
+	switch evidence {
+	case searchSizeEvidenceExact:
+		return 2
+	case searchSizeEvidenceTorznabFloat32:
+		return 1
+	case searchSizeEvidenceNone:
+		return 0
+	}
+	return 0
+}
+
+func (evidence searchSizeEvidence) matchReason() string {
+	switch evidence {
+	case searchSizeEvidenceExact:
+		return "exact byte size"
+	case searchSizeEvidenceTorznabFloat32:
+		return "Torznab float32-compatible size"
+	case searchSizeEvidenceNone:
+		return ""
+	}
+	return ""
 }
 
 func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (bool, string) {

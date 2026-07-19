@@ -7825,8 +7825,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	releaseFilteredCount := 0
 	releaseFilterReasons := make(map[string]int)
 	exactSizeCandidates := 0
+	torznabFloat32Candidates := 0
 	exactSizeFallbackAccepted := 0
+	torznabFloat32FallbackAccepted := 0
 	exactSizeHardRejected := 0
+	torznabFloat32HardRejected := 0
 
 	for _, res := range searchResults {
 		key := res.GUID
@@ -7852,8 +7855,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			TolerancePercent:       tolerancePercent,
 			FindIndividualEpisodes: opts.FindIndividualEpisodes,
 		})
-		if decision.ExactSize {
+		switch decision.SizeEvidence {
+		case searchSizeEvidenceExact:
 			exactSizeCandidates++
+		case searchSizeEvidenceTorznabFloat32:
+			torznabFloat32Candidates++
+		case searchSizeEvidenceNone:
 		}
 		if !decision.Accepted {
 			if decision.SizeRejected {
@@ -7875,8 +7882,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					"[CROSSSEED-SEARCH] Candidate rejected by search classifier",
 				)
 			}
-			if decision.ExactSize && decision.StrictMismatchReason != "" {
-				exactSizeHardRejected++
+			if decision.StrictMismatchReason != "" {
+				switch decision.SizeEvidence {
+				case searchSizeEvidenceExact:
+					exactSizeHardRejected++
+				case searchSizeEvidenceTorznabFloat32:
+					torznabFloat32HardRejected++
+				case searchSizeEvidenceNone:
+				}
 			}
 			log.Debug().
 				Int("indexerID", res.IndexerID).
@@ -7886,6 +7899,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				Int64("sourceSize", sourceTorrent.Size).
 				Int64("candidateSize", res.Size).
 				Int64("sizeDeltaBytes", res.Size-sourceTorrent.Size).
+				Str("sizeEvidence", string(decision.SizeEvidence)).
 				Str("decisionClass", string(decision.Class)).
 				Str("strictMismatchReason", decision.StrictMismatchReason).
 				Str("rejectReason", decision.RejectReason).
@@ -7895,6 +7909,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		if decision.Class == searchCandidateClassExactSizeFallback {
 			exactSizeFallbackAccepted++
+			if decision.SizeEvidence == searchSizeEvidenceTorznabFloat32 {
+				torznabFloat32FallbackAccepted++
+			}
 		}
 		log.Debug().
 			Int("indexerID", res.IndexerID).
@@ -7904,16 +7921,18 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Int64("sourceSize", sourceTorrent.Size).
 			Int64("candidateSize", res.Size).
 			Int64("sizeDeltaBytes", res.Size-sourceTorrent.Size).
+			Str("sizeEvidence", string(decision.SizeEvidence)).
 			Str("decisionClass", string(decision.Class)).
 			Str("strictMismatchReason", decision.StrictMismatchReason).
 			Strs("relaxedDifferences", decision.RelaxedDifferences).
 			Msg("[CROSSSEED-SEARCH] Candidate accepted")
 
+		res.Size = canonicalSearchResultSize(decision, sourceTorrent.Size, res.Size)
 		scored = append(scored, scoredTorrentSearchResult{
 			result:       res,
 			score:        decision.Score,
 			reason:       decision.MatchReason,
-			exactSize:    decision.ExactSize,
+			sizeEvidence: decision.SizeEvidence,
 			class:        decision.Class,
 			sourceTitles: decision.SourceTitles,
 		})
@@ -7930,8 +7949,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("lateContentFiltered", lateExcludedCount).
 		Int("finalMatches", matchedResults).
 		Int("exactSizeCandidates", exactSizeCandidates).
+		Int("torznabFloat32Candidates", torznabFloat32Candidates).
 		Int("exactSizeFallbackAccepted", exactSizeFallbackAccepted).
+		Int("torznabFloat32FallbackAccepted", torznabFloat32FallbackAccepted).
 		Int("exactSizeHardRejected", exactSizeHardRejected).
+		Int("torznabFloat32HardRejected", torznabFloat32HardRejected).
 		Float64("tolerancePercent", tolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
@@ -7987,8 +8009,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {
 	sort.SliceStable(scored, func(i, j int) bool {
-		if scored[i].exactSize != scored[j].exactSize {
-			return scored[i].exactSize
+		if scored[i].sizeEvidence != scored[j].sizeEvidence {
+			return scored[i].sizeEvidence.priority() > scored[j].sizeEvidence.priority()
 		}
 		if scored[i].class != scored[j].class {
 			return searchCandidateClassPriority(scored[i].class) > searchCandidateClassPriority(scored[j].class)
@@ -8007,9 +8029,21 @@ type scoredTorrentSearchResult struct {
 	result       jackett.SearchResult
 	score        float64
 	reason       string
-	exactSize    bool
+	sizeEvidence searchSizeEvidence
 	class        searchCandidateClass
 	sourceTitles []string
+}
+
+func canonicalSearchResultSize(decision searchCandidateDecision, sourceSize, candidateSize int64) int64 {
+	// Downstream exact-size validation remains literal. For an admitted legacy
+	// Torznab result, carry the exact source size that the reported float32 value
+	// represents; a different downloaded metainfo size will still be rejected.
+	if decision.Accepted &&
+		decision.Class == searchCandidateClassExactSizeFallback &&
+		decision.SizeEvidence == searchSizeEvidenceTorznabFloat32 {
+		return sourceSize
+	}
+	return candidateSize
 }
 
 func searchCandidateClassPriority(class searchCandidateClass) int {

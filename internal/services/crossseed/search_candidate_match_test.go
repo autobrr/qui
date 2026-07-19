@@ -52,11 +52,98 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.True(t, decision.ExactSize)
+	require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
 	require.Contains(t, decision.RelaxedDifferences, "collection")
 	require.Contains(t, decision.RelaxedDifferences, "hdr")
 	require.Contains(t, decision.MatchReason, "exact byte size")
 	require.Contains(t, decision.MatchReason, "relaxed collection")
+}
+
+func TestClassifySearchCandidateTorznabFloat32Fallback(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName        = "Example.Show.2024.S01.2160p.ATV.WEB-DL.DDP5.1.DV.HDR.H.265-NTb"
+		candidateName     = "Example Show 2024 S01 2160p ATVP WEB-DL DD+ 5.1 DV HDR10+ H.265-NTb"
+		sourceSize        = int64(94_329_473_840)
+		torznabSize       = int64(94_329_470_976)
+		unrelatedNearSize = sourceSize - 1
+	)
+	source := rls.ParseString(sourceName)
+	candidate := rls.ParseString(candidateName)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       sourceSize,
+		CandidateSize:    torznabSize,
+		TolerancePercent: 5,
+	})
+
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, searchSizeEvidenceTorznabFloat32, decision.SizeEvidence)
+	require.Contains(t, decision.MatchReason, "Torznab float32-compatible size")
+	require.Equal(t, sourceSize, canonicalSearchResultSize(decision, sourceSize, torznabSize))
+
+	exactDecision := decision
+	exactDecision.SizeEvidence = searchSizeEvidenceExact
+	require.Equal(t, sourceSize, canonicalSearchResultSize(exactDecision, sourceSize, sourceSize))
+
+	unrelatedDecision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       sourceSize,
+		CandidateSize:    unrelatedNearSize,
+		TolerancePercent: 5,
+	})
+	require.False(t, unrelatedDecision.Accepted)
+	require.Equal(t, searchSizeEvidenceNone, unrelatedDecision.SizeEvidence)
+	require.Equal(t, unrelatedNearSize, canonicalSearchResultSize(unrelatedDecision, sourceSize, unrelatedNearSize))
+
+	differentGroup := candidate
+	differentGroup.Group = "FLUX"
+	hardRejected := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &differentGroup,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       sourceSize,
+		CandidateSize:    torznabSize,
+		TolerancePercent: 5,
+	})
+	require.False(t, hardRejected.Accepted)
+	require.Equal(t, searchSizeEvidenceTorznabFloat32, hardRejected.SizeEvidence)
+	require.Equal(t, "group/site mismatch", hardRejected.RejectReason)
+}
+
+func TestClassifySearchSizeEvidenceExactFirst(t *testing.T) {
+	const (
+		sourceSize  = int64(94_329_473_840)
+		torznabSize = int64(94_329_470_976)
+	)
+
+	tests := []struct {
+		name          string
+		sourceSize    int64
+		candidateSize int64
+		want          searchSizeEvidence
+	}{
+		{name: "exact before compatibility", sourceSize: sourceSize, candidateSize: sourceSize, want: searchSizeEvidenceExact},
+		{name: "Torznab float32 compatibility", sourceSize: sourceSize, candidateSize: torznabSize, want: searchSizeEvidenceTorznabFloat32},
+		{name: "arbitrary near size", sourceSize: sourceSize, candidateSize: sourceSize - 1, want: searchSizeEvidenceNone},
+		{name: "missing source size", sourceSize: 0, candidateSize: torznabSize, want: searchSizeEvidenceNone},
+		{name: "missing candidate size", sourceSize: sourceSize, candidateSize: 0, want: searchSizeEvidenceNone},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, classifySearchSizeEvidence(test.sourceSize, test.candidateSize))
+		})
+	}
 }
 
 func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
@@ -355,20 +442,22 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	require.NotContains(t, string(requestBytes), "123")
 }
 
-func TestSortScoredTorrentSearchResultsExactSizePriority(t *testing.T) {
+func TestSortScoredTorrentSearchResultsSizeEvidencePriority(t *testing.T) {
 	now := time.Now()
 	items := []scoredTorrentSearchResult{
 		{result: jackett.SearchResult{Title: "tolerance", Seeders: 100, PublishDate: now}, score: 10, class: searchCandidateClassStrict},
-		{result: jackett.SearchResult{Title: "fallback", Seeders: 1, PublishDate: now.Add(-time.Hour)}, score: 2, exactSize: true, class: searchCandidateClassExactSizeFallback},
-		{result: jackett.SearchResult{Title: "strict", Seeders: 0, PublishDate: now.Add(-2 * time.Hour)}, score: 1, exactSize: true, class: searchCandidateClassStrict},
+		{result: jackett.SearchResult{Title: "compatible", Seeders: 100, PublishDate: now}, score: 10, sizeEvidence: searchSizeEvidenceTorznabFloat32, class: searchCandidateClassStrict},
+		{result: jackett.SearchResult{Title: "fallback", Seeders: 1, PublishDate: now.Add(-time.Hour)}, score: 2, sizeEvidence: searchSizeEvidenceExact, class: searchCandidateClassExactSizeFallback},
+		{result: jackett.SearchResult{Title: "strict", Seeders: 0, PublishDate: now.Add(-2 * time.Hour)}, score: 1, sizeEvidence: searchSizeEvidenceExact, class: searchCandidateClassStrict},
 	}
 
 	sortScoredTorrentSearchResults(items)
 
-	require.Equal(t, []string{"strict", "fallback", "tolerance"}, []string{
+	require.Equal(t, []string{"strict", "fallback", "compatible", "tolerance"}, []string{
 		items[0].result.Title,
 		items[1].result.Title,
 		items[2].result.Title,
+		items[3].result.Title,
 	})
 }
 
