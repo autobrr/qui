@@ -23,9 +23,8 @@ const (
 type searchSizeEvidence string
 
 const (
-	searchSizeEvidenceNone           searchSizeEvidence = "none"
-	searchSizeEvidenceExact          searchSizeEvidence = "exact"
-	searchSizeEvidenceTorznabFloat32 searchSizeEvidence = "torznab-float32"
+	searchSizeEvidenceNone  searchSizeEvidence = "none"
+	searchSizeEvidenceExact searchSizeEvidence = "exact"
 )
 
 type searchCandidateInput struct {
@@ -123,8 +122,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 		return decision
 	}
 
-	if class != searchCandidateClassExactSizeFallback &&
-		!ignoreSizeCheck && !s.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
+	if !ignoreSizeCheck && !s.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
 		decision.RejectReason = "size mismatch"
 		decision.SizeRejected = true
 		return decision
@@ -168,30 +166,19 @@ func positiveExactSize(sourceSize, candidateSize int64) bool {
 }
 
 func classifySearchSizeEvidence(sourceSize, candidateSize int64) searchSizeEvidence {
-	if sourceSize <= 0 || candidateSize <= 0 {
-		return searchSizeEvidenceNone
-	}
-	if sourceSize == candidateSize {
+	if positiveExactSize(sourceSize, candidateSize) {
 		return searchSizeEvidenceExact
-	}
-	// Cardigann-based Torznab indexers parse raw byte counts through a 32-bit
-	// float. Reproduce that exact conversion only as secondary evidence after
-	// literal equality.
-	if int64(float32(sourceSize)) == candidateSize {
-		return searchSizeEvidenceTorznabFloat32
 	}
 	return searchSizeEvidenceNone
 }
 
 func (evidence searchSizeEvidence) matches() bool {
-	return evidence == searchSizeEvidenceExact || evidence == searchSizeEvidenceTorznabFloat32
+	return evidence == searchSizeEvidenceExact
 }
 
 func (evidence searchSizeEvidence) priority() int {
 	switch evidence {
 	case searchSizeEvidenceExact:
-		return 2
-	case searchSizeEvidenceTorznabFloat32:
 		return 1
 	case searchSizeEvidenceNone:
 		return 0
@@ -203,8 +190,6 @@ func (evidence searchSizeEvidence) matchReason() string {
 	switch evidence {
 	case searchSizeEvidenceExact:
 		return "exact byte size"
-	case searchSizeEvidenceTorznabFloat32:
-		return "Torznab float32-compatible size"
 	case searchSizeEvidenceNone:
 		return ""
 	}
