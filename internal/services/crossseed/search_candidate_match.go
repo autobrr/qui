@@ -207,9 +207,10 @@ func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (b
 	if (sourceArtist != "" || candidateArtist != "") && sourceArtist != candidateArtist {
 		return false, "artist mismatch"
 	}
-	sourceHasDate := source.Year > 0 && source.Month > 0 && source.Day > 0
-	candidateHasDate := candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0
-	if sourceHasDate != candidateHasDate {
+	if source.Year != candidate.Year {
+		return false, "year mismatch"
+	}
+	if source.Month != candidate.Month || source.Day != candidate.Day {
 		return false, "date mismatch"
 	}
 

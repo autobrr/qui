@@ -7,6 +7,9 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -16,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -198,6 +202,77 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 				TolerancePercent: 5,
 			})
 			require.False(t, decision.Accepted)
+			require.Equal(t, test.reason, decision.RejectReason)
+		})
+	}
+}
+
+func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const size = int64(94_329_473_840)
+	base := rls.ParseString("Example.Show.S01.2160p.ATV.WEB-DL.HDR.H.265-NTb")
+
+	tests := []struct {
+		name                                        string
+		sourceYear, sourceMonth, sourceDay          int
+		candidateYear, candidateMonth, candidateDay int
+		accepted                                    bool
+		reason                                      string
+	}{
+		{
+			name:          "source year with missing candidate year",
+			sourceYear:    2024,
+			candidateYear: 0,
+			reason:        "year mismatch",
+		},
+		{
+			name:           "unequal incomplete dates",
+			sourceYear:     2024,
+			sourceMonth:    1,
+			candidateYear:  2024,
+			candidateMonth: 2,
+			reason:         "date mismatch",
+		},
+		{
+			name:           "equal complete dates",
+			sourceYear:     2024,
+			sourceMonth:    1,
+			sourceDay:      2,
+			candidateYear:  2024,
+			candidateMonth: 1,
+			candidateDay:   2,
+			accepted:       true,
+		},
+		{
+			name:     "both dates absent",
+			accepted: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := base
+			candidate := base
+			source.Collection = "ATV"
+			candidate.Collection = "ATVP"
+			source.Year, source.Month, source.Day = test.sourceYear, test.sourceMonth, test.sourceDay
+			candidate.Year, candidate.Month, candidate.Day = test.candidateYear, test.candidateMonth, test.candidateDay
+
+			decision := service.classifySearchCandidate(searchCandidateInput{
+				SourceRelease:    &source,
+				CandidateRelease: &candidate,
+				SourceName:       source.Title,
+				CandidateName:    candidate.Title,
+				SourceSize:       size,
+				CandidateSize:    size,
+				TolerancePercent: 5,
+			})
+
+			require.Equal(t, test.accepted, decision.Accepted)
+			if test.accepted {
+				require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+				return
+			}
 			require.Equal(t, test.reason, decision.RejectReason)
 		})
 	}
@@ -494,4 +569,141 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	aliased := apply([]string{"Money Heist"})
 	require.NotEqual(t, "no_match", aliased.Results[0].Status)
 	require.Contains(t, aliased.Results[0].Message, "torrent properties")
+}
+
+func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
+	const (
+		instanceID    = 1
+		sourceHash    = "0123456789abcdef0123456789abcdef01234567"
+		sourceName    = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		candidateName = "Money.Heist.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+	)
+	aliases := []string{"Money Heist"}
+	candidateData := createTestTorrent(t, candidateName, []string{"payload.mkv"}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(candidateData)
+	require.NoError(t, err)
+	var candidateSize int64
+	for _, file := range meta.Files {
+		candidateSize += file.Size
+	}
+
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/candidate.torrent" {
+			w.Header().Set("Content-Type", "application/x-bittorrent")
+			if _, writeErr := w.Write(candidateData); writeErr != nil {
+				t.Errorf("write candidate torrent: %v", writeErr)
+			}
+			return
+		}
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, writeErr := fmt.Fprintf(w, `<rss version="2.0"><channel><title>Alias Indexer</title><item>
+			<title>%s</title><guid>alias-only-candidate</guid><size>%d</size>
+			<enclosure url="%s/candidate.torrent" length="%d" type="application/x-bittorrent" />
+		</item></channel></rss>`, candidateName, candidateSize, server.URL, candidateSize); writeErr != nil {
+			t.Errorf("write Torznab response: %v", writeErr)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	source := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     sourceName,
+		Size:     candidateSize,
+		Progress: 1,
+	}
+	filterCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+	filterCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      false,
+		CapabilityIndexers:    []int{1},
+		FilteredIndexers:      []int{1},
+	}, ttlcache.DefaultTTL)
+	arrLookup := &spyARRLookupService{
+		result: &arr.ExternalIDsResult{
+			IDs:         &models.ExternalIDs{},
+			ContentType: arr.ContentTypeTV,
+			Source:      "test",
+		},
+	}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{
+				ID:             1,
+				Name:           "Alias Indexer",
+				BaseURL:        server.URL,
+				Backend:        models.TorznabBackendNative,
+				TimeoutSeconds: 5,
+				Enabled:        true,
+			},
+		}),
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: meta.Files,
+		}),
+		arrService:          arrLookup,
+		asyncFilteringCache: filterCache,
+		releaseCache:        NewReleaseCache(),
+		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		stringNormalizer:    stringutils.NewDefaultNormalizer(),
+	}
+
+	search := func(titles []string) *TorrentSearchResponse {
+		arrLookup.result.Titles = append([]string(nil), titles...)
+		response, _, _, searchErr := service.searchTorrentMatches(
+			context.Background(),
+			instanceID,
+			sourceHash,
+			TorrentSearchOptions{
+				IndexerIDs:                      []int{1},
+				SkipGazelle:                     true,
+				SizeMismatchTolerancePercent:    5,
+				SizeMismatchTolerancePercentSet: true,
+			},
+			nil,
+		)
+		require.NoError(t, searchErr)
+		return response
+	}
+
+	require.Empty(t, search([]string{"Unrelated Show"}).Results)
+	response := search(aliases)
+	require.Len(t, response.Results, 1)
+	match := response.Results[0]
+	require.Equal(t, searchCandidateClassStrict, match.SearchDecisionClass)
+	require.Equal(t, aliases, match.SearchSourceTitles)
+
+	t.Run("manual apply", func(t *testing.T) {
+		applyResponse, applyErr := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
+			Selections: []TorrentSearchSelection{
+				{
+					IndexerID:   match.IndexerID,
+					Indexer:     match.Indexer,
+					DownloadURL: match.DownloadURL,
+					Title:       match.Title,
+					GUID:        match.GUID,
+				},
+			},
+		})
+		require.NoError(t, applyErr)
+		require.Len(t, applyResponse.Results, 1)
+		require.Len(t, applyResponse.Results[0].InstanceResults, 1)
+		instanceResult := applyResponse.Results[0].InstanceResults[0]
+		require.NotEqual(t, "no_match", instanceResult.Status)
+		require.Contains(t, instanceResult.Message, "torrent properties")
+	})
+
+	t.Run("automated apply", func(t *testing.T) {
+		result, applyErr := service.executeCrossSeedSearchAttempt(
+			context.Background(),
+			&searchRunState{opts: SearchRunOptions{InstanceID: instanceID}},
+			&source,
+			match,
+			time.Now(),
+		)
+		require.NoError(t, applyErr)
+		require.Equal(t, models.CrossSeedSearchResultStatusFailed, result.Status)
+		require.Contains(t, result.Message, "torrent properties")
+	})
 }
