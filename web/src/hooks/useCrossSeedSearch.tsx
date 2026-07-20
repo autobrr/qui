@@ -439,9 +439,7 @@ export function useCrossSeedSearch(instanceId: number) {
 
       if (hasAdded && !hasFailed) {
         toast.success(
-          hasCompleted
-            ? t("hooks.search.applySuccessWithCompleted", { count: addedCount, completed: completedWithoutDetails })
-            : t("hooks.search.applySuccess", { count: addedCount })
+          hasCompleted? t("hooks.search.applySuccessWithCompleted", { count: addedCount, completed: completedWithoutDetails }): t("hooks.search.applySuccess", { count: addedCount })
         )
       } else if (hasAdded && hasFailed) {
         const completedPart = hasCompleted ? t("hooks.search.applyCompletedPart", { count: completedWithoutDetails }) : ""
@@ -481,9 +479,7 @@ export function useCrossSeedSearch(instanceId: number) {
   const crossSeedSourceTorrent = crossSeedSearchResponse?.sourceTorrent
   const crossSeedSelectionCount = crossSeedSelectedKeys.size
   const crossSeedRefreshRemaining = Math.max(0, crossSeedRefreshCooldownUntil - Date.now())
-  const crossSeedRefreshLabel = crossSeedRefreshRemaining > 0
-    ? t("hooks.search.refreshReadyIn", { seconds: Math.ceil(crossSeedRefreshRemaining / 1000) })
-    : undefined
+  const crossSeedRefreshLabel = crossSeedRefreshRemaining > 0? t("hooks.search.refreshReadyIn", { seconds: Math.ceil(crossSeedRefreshRemaining / 1000) }): undefined
   const canForceCrossSeedRefresh = !!crossSeedTorrent && !crossSeedSearchLoading && crossSeedRefreshRemaining <= 0
 
   useEffect(() => {
@@ -592,6 +588,7 @@ export function useCrossSeedSearch(instanceId: number) {
       onStartPausedChange={setCrossSeedStartPaused}
       hasSearched={crossSeedHasSearched}
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
+      partial={crossSeedSearchResponse?.partial ?? false}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
       canForceRefresh={canForceCrossSeedRefresh}
       refreshCooldownLabel={crossSeedRefreshLabel}

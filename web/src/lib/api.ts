@@ -1291,6 +1291,7 @@ class ApiClient {
       source_torrent: RawTorrentInfo
       results?: RawSearchResult[]
       cache?: TorznabSearchCacheMetadata
+      partial?: boolean
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -1346,6 +1347,7 @@ class ApiClient {
         matchScore: result.match_score ?? 0,
       })),
       cache: response.cache,
+      partial: response.partial ?? undefined,
     }
   }
 

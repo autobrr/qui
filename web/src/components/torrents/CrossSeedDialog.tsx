@@ -38,7 +38,7 @@ import type {
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -89,6 +89,7 @@ export interface CrossSeedDialogProps {
   onStartPausedChange: (value: boolean) => void
   hasSearched: boolean
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
+  partial?: boolean
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
   onForceRefresh?: () => void
@@ -130,6 +131,7 @@ const CrossSeedDialogComponent = ({
   onStartPausedChange,
   hasSearched,
   cacheMetadata,
+  partial,
   canForceRefresh,
   refreshCooldownLabel,
   onForceRefresh,
@@ -248,6 +250,12 @@ const CrossSeedDialogComponent = ({
                   )}
                 </div>
               )}
+            </div>
+          )}
+          {partial && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{t("crossSeedDialog.partialResults")}</span>
             </div>
           )}
         </DialogHeader>
@@ -592,7 +600,7 @@ function formatCrossSeedPublishDate(value: string): string {
 function getInstanceStatusDisplay(
   t: ReturnType<typeof useTranslation<"torrents">>["t"],
   status: string,
-  success: boolean,
+  success: boolean
 ): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
   switch (status) {
     case "added":

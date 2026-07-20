@@ -678,6 +678,7 @@
     "cached": "Z mezipaměti {{time}}",
     "expires": "Vyprší {{time}}",
     "refreshFromIndexers": "Aktualizovat z indexerů",
+    "partialResults": "Částečné výsledky — některé indexery neodpověděly",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",

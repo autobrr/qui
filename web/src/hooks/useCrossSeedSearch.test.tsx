@@ -291,6 +291,27 @@ describe("useCrossSeedSearch", () => {
     expect(selected.size).toBe(2)
   })
 
+  it("forwards the partial flag from the search response to the dialog", async () => {
+    mockedApi.searchCrossSeedTorrent.mockResolvedValue(
+      makeSearchResponse({ results: [makeResult()], partial: true })
+    )
+
+    const { result } = await renderSettled()
+    const torrent = makeTorrent({ progress: 1, hash: "hash-partial-flag" })
+
+    await act(async () => {
+      result.current.openCrossSeedSearch(torrent)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      ;(dialogProps(result).onScopeSearch as () => void)()
+      await Promise.resolve()
+    })
+
+    expect(dialogProps(result).partial).toBe(true)
+  })
+
   it("forwards sorted indexer ids, excludes filtered ids, and forwards findIndividualEpisodes", async () => {
     mockedApi.getCrossSeedSettings.mockResolvedValue({
       findIndividualEpisodes: true,

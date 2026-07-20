@@ -278,6 +278,7 @@ describe("api.crossseed contract", () => {
               },
             ],
             cache: { hit: true },
+            partial: true,
           })
         )
       )
@@ -313,6 +314,7 @@ describe("api.crossseed contract", () => {
         },
       ])
       expect(result.cache).toEqual({ hit: true })
+      expect(result.partial).toBe(true)
     })
 
     it("falls back source name to trimmed query and match_score to 0 when absent", async () => {
@@ -350,6 +352,8 @@ describe("api.crossseed contract", () => {
       expect(result.sourceTorrent.name).toBe("My Show S01")
       expect(result.results[0].matchScore).toBe(0)
       expect(result.results[0].infoUrl).toBeUndefined()
+      // partial absent -> undefined
+      expect(result.partial).toBeUndefined()
     })
   })
 

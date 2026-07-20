@@ -81,6 +81,7 @@ export interface CrossSeedTorrentSearchResponse {
   sourceTorrent: CrossSeedTorrentInfo
   results: CrossSeedTorrentSearchResult[]
   cache?: TorznabSearchCacheMetadata
+  partial?: boolean
 }
 
 export interface CrossSeedTorrentSearchSelection {

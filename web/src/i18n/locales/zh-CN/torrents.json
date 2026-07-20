@@ -630,6 +630,7 @@
     "cached": "已缓存 {{time}}",
     "expires": "过期 {{time}}",
     "refreshFromIndexers": "从索引器刷新",
+    "partialResults": "部分结果——部分索引器未响应",
     "searchScope": "搜索范围",
     "noIndexers": "没有可用的 Torznab 索引器",
     "noIndexersHelp": "在设置中添加或启用 Torznab 索引器以搜索辅种。",
