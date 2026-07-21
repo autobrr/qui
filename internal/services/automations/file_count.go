@@ -11,8 +11,6 @@ import (
 )
 
 // detectFileCounts fetches the number of files qBittorrent reports for each torrent.
-// Unlike missing-files detection, this only needs the qBittorrent API (not local
-// filesystem access), so it applies to every torrent regardless of completion state.
 // Returns a map of torrent hash to file count.
 func (s *Service) detectFileCounts(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]int {
 	result := make(map[string]int)

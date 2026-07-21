@@ -63,7 +63,7 @@ type EvalContext struct {
 	HardlinkCrossScopeByHash map[string]string
 	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
 	HasMissingFilesByHash map[string]bool
-	// FileCountByHash maps torrent hash to its number of files (from qBittorrent's file list)
+	// FileCountByHash maps torrent hash to its number of files
 	FileCountByHash map[string]int
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
@@ -523,9 +523,6 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareInt64(size, cond)
 	case FieldFileCount:
-		// If the file count couldn't be computed for this torrent (fetch failed, rule
-		// didn't request it, etc.), treat as unknown and don't match to prevent unintended
-		// rule triggers.
 		if ctx == nil || ctx.FileCountByHash == nil {
 			return false
 		}

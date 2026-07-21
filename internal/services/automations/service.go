@@ -1089,7 +1089,6 @@ func (s *Service) setupMissingFilesContext(
 }
 
 // setupFileCountContext sets up file count detection if needed for preview sorting/conditions.
-// Unlike missing files detection, this doesn't require local filesystem access.
 func (s *Service) setupFileCountContext(
 	ctx context.Context,
 	instanceID int,
@@ -2114,7 +2113,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 	}
 
-	// On-demand file count detection (only if rules use FILE_COUNT; no local access needed)
+	// On-demand file count detection (only if rules use FILE_COUNT)
 	if rulesUseCondition(eligibleRules, FieldFileCount) {
 		evalCtx.FileCountByHash = s.detectFileCounts(ctx, instanceID, torrents)
 	}

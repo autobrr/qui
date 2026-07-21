@@ -177,7 +177,7 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 
 | Field                            | Description                                                                                                    |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| File Count                       | Number of files in the torrent, as reported by qBittorrent (no local filesystem access required)              |
+| File Count                       | Number of files in the torrent, reported by qBittorrent                                                        |
 | Hardlink Scope                   | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access)                         |
 | Hardlink Scope (Cross-Instance)  | `none`, `torrents_only`, or `outside_qbittorrent` considering ALL instances (requires local filesystem access) |
 | Has Missing Files                | Boolean - completed torrent has files missing on disk (requires local filesystem access)                      |
