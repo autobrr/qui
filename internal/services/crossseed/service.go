@@ -3989,11 +3989,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			// Check if releases are related (quick filter). Search-origin ARR aliases
 			// belong to the existing torrent, which is the candidate in this reversed
-			// apply-stage comparison. An exact-size fallback already established byte
-			// equality from qBittorrent and Torznab during search, so its private marker
-			// may bypass this duplicate release check. File matching below and the later
-			// apply safety checks remain unchanged and authoritative.
-			releasesMatch, _ := s.releasesMatchWithReasonAndNamesAndTitles(
+			// apply-stage comparison. Exact-size provenance may relax only the recorded
+			// soft differences for the specific torrent whose qBittorrent size supplied
+			// the search evidence. File matching and later safety checks still run.
+			releasesMatch, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(
 				targetRelease,
 				candidateRelease,
 				req.TorrentName,
@@ -4003,13 +4002,34 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				req.FindIndividualEpisodes,
 			)
 			if !releasesMatch {
-				if !req.ExactSizeFallback {
+				hashKey := normalizeHash(torrent.Hash)
+				searchSourceHash := normalizeHash(req.SearchSourceHash)
+				isExactSizeSource := req.SearchDecisionClass == searchCandidateClassExactSizeFallback &&
+					req.SearchSourceInstanceID == instanceID &&
+					searchSourceHash != "" && hashKey == searchSourceHash
+				if !isExactSizeSource {
+					continue
+				}
+
+				fallbackInput := searchCandidateInput{
+					SourceRelease:          candidateRelease,
+					CandidateRelease:       targetRelease,
+					SourceName:             torrent.Name,
+					CandidateName:          req.TorrentName,
+					SourceTitles:           req.SearchSourceTitles,
+					FindIndividualEpisodes: req.FindIndividualEpisodes,
+				}
+				if ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, req.SearchRelaxedDifferences); !ok {
 					continue
 				}
 				log.Debug().
 					Str("targetTitle", req.TorrentName).
 					Str("existingTorrent", torrent.Name).
-					Msg("[CROSSSEED] Search-origin exact-size fallback bypassed strict release prefilter")
+					Str("sourceHash", hashKey).
+					Str("searchMismatchReason", req.SearchStrictMismatchReason).
+					Str("applyMismatchReason", mismatchReason).
+					Strs("relaxedDifferences", req.SearchRelaxedDifferences).
+					Msg("[CROSSSEED] Search-origin exact-size fallback relaxed release prefilter")
 			}
 
 			hashKey := normalizeHash(torrent.Hash)
@@ -4130,16 +4150,19 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 	sourceRelease := s.releaseCache.Parse(meta.Name)
 
-	// Carry only the private search decision into candidate discovery. Exact byte
-	// equality is not recalculated from downloaded metainfo: the marker merely
-	// prevents the quick release prefilter from undoing search admission, after
-	// which the existing file and apply safety checks run normally.
+	// Carry private search provenance into candidate discovery. Source identity
+	// and recorded soft differences constrain the release-prefilter relaxation;
+	// existing file and apply safety checks still run normally.
 	findReq := &FindCandidatesRequest{
-		TorrentName:            meta.Name,
-		TargetInstanceIDs:      req.TargetInstanceIDs,
-		FindIndividualEpisodes: req.FindIndividualEpisodes,
-		ExactSizeFallback:      req.SearchDecisionClass == searchCandidateClassExactSizeFallback,
-		SearchSourceTitles:     slices.Clone(req.SearchSourceTitles),
+		TorrentName:                meta.Name,
+		TargetInstanceIDs:          req.TargetInstanceIDs,
+		FindIndividualEpisodes:     req.FindIndividualEpisodes,
+		SearchDecisionClass:        req.SearchDecisionClass,
+		SearchSourceInstanceID:     req.SearchSourceInstanceID,
+		SearchSourceHash:           req.SearchSourceHash,
+		SearchStrictMismatchReason: req.SearchStrictMismatchReason,
+		SearchRelaxedDifferences:   slices.Clone(req.SearchRelaxedDifferences),
+		SearchSourceTitles:         slices.Clone(req.SearchSourceTitles),
 	}
 	// Pass through source filters for RSS automation
 	if len(req.SourceFilterCategories) > 0 {
@@ -7894,12 +7917,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Candidate accepted")
 
 		scored = append(scored, scoredTorrentSearchResult{
-			result:       res,
-			score:        decision.Score,
-			reason:       decision.MatchReason,
-			sizeEvidence: decision.SizeEvidence,
-			class:        decision.Class,
-			sourceTitles: decision.SourceTitles,
+			result:               res,
+			score:                decision.Score,
+			reason:               decision.MatchReason,
+			sizeEvidence:         decision.SizeEvidence,
+			class:                decision.Class,
+			strictMismatchReason: decision.StrictMismatchReason,
+			relaxedDifferences:   decision.RelaxedDifferences,
+			sourceTitles:         decision.SourceTitles,
 		})
 	}
 
@@ -7988,12 +8013,14 @@ func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {
 }
 
 type scoredTorrentSearchResult struct {
-	result       jackett.SearchResult
-	score        float64
-	reason       string
-	sizeEvidence searchSizeEvidence
-	class        searchCandidateClass
-	sourceTitles []string
+	result               jackett.SearchResult
+	score                float64
+	reason               string
+	sizeEvidence         searchSizeEvidence
+	class                searchCandidateClass
+	strictMismatchReason string
+	relaxedDifferences   []string
+	sourceTitles         []string
 }
 
 func searchCandidateClassPriority(class searchCandidateClass) int {
@@ -8190,7 +8217,15 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 							Str("existingName", existing.Name)
 					}
 					event.Msg("[CROSSSEED-SEARCH] Keeping duplicate search result because existing torrent was rejected by content prefilter")
-					results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class, item.sourceTitles))
+					results = append(results, torrentSearchResultFromJackett(
+						res,
+						item.reason,
+						item.score,
+						item.class,
+						item.strictMismatchReason,
+						item.relaxedDifferences,
+						item.sourceTitles,
+					))
 					if len(results) >= limit {
 						break
 					}
@@ -8214,7 +8249,15 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 			}
 		}
 
-		results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score, item.class, item.sourceTitles))
+		results = append(results, torrentSearchResultFromJackett(
+			res,
+			item.reason,
+			item.score,
+			item.class,
+			item.strictMismatchReason,
+			item.relaxedDifferences,
+			item.sourceTitles,
+		))
 		if len(results) >= limit {
 			break
 		}
@@ -8223,30 +8266,40 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 	return results, duplicateFilteredCount, nil
 }
 
-func torrentSearchResultFromJackett(res jackett.SearchResult, reason string, score float64, class searchCandidateClass, sourceTitles []string) TorrentSearchResult {
+func torrentSearchResultFromJackett(
+	res jackett.SearchResult,
+	reason string,
+	score float64,
+	class searchCandidateClass,
+	strictMismatchReason string,
+	relaxedDifferences []string,
+	sourceTitles []string,
+) TorrentSearchResult {
 	return TorrentSearchResult{
-		Indexer:              res.Indexer,
-		IndexerID:            res.IndexerID,
-		Title:                res.Title,
-		DownloadURL:          res.DownloadURL,
-		InfoURL:              res.InfoURL,
-		Size:                 res.Size,
-		Seeders:              res.Seeders,
-		Leechers:             res.Leechers,
-		CategoryID:           res.CategoryID,
-		CategoryName:         res.CategoryName,
-		PublishDate:          res.PublishDate.Format(time.RFC3339),
-		DownloadVolumeFactor: res.DownloadVolumeFactor,
-		UploadVolumeFactor:   res.UploadVolumeFactor,
-		GUID:                 res.GUID,
-		InfoHashV1:           strings.TrimSpace(res.InfoHashV1),
-		InfoHashV2:           strings.TrimSpace(res.InfoHashV2),
-		IMDbID:               res.IMDbID,
-		TVDbID:               res.TVDbID,
-		MatchReason:          reason,
-		MatchScore:           score,
-		SearchDecisionClass:  class,
-		SearchSourceTitles:   slices.Clone(sourceTitles),
+		Indexer:                    res.Indexer,
+		IndexerID:                  res.IndexerID,
+		Title:                      res.Title,
+		DownloadURL:                res.DownloadURL,
+		InfoURL:                    res.InfoURL,
+		Size:                       res.Size,
+		Seeders:                    res.Seeders,
+		Leechers:                   res.Leechers,
+		CategoryID:                 res.CategoryID,
+		CategoryName:               res.CategoryName,
+		PublishDate:                res.PublishDate.Format(time.RFC3339),
+		DownloadVolumeFactor:       res.DownloadVolumeFactor,
+		UploadVolumeFactor:         res.UploadVolumeFactor,
+		GUID:                       res.GUID,
+		InfoHashV1:                 strings.TrimSpace(res.InfoHashV1),
+		InfoHashV2:                 strings.TrimSpace(res.InfoHashV2),
+		IMDbID:                     res.IMDbID,
+		TVDbID:                     res.TVDbID,
+		MatchReason:                reason,
+		MatchScore:                 score,
+		SearchDecisionClass:        class,
+		SearchStrictMismatchReason: strictMismatchReason,
+		SearchRelaxedDifferences:   slices.Clone(relaxedDifferences),
+		SearchSourceTitles:         slices.Clone(sourceTitles),
 	}
 }
 
@@ -8447,6 +8500,10 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 				SearchDecisionClass:          cachedResult.SearchDecisionClass,
+				SearchSourceInstanceID:       instanceID,
+				SearchSourceHash:             hash,
+				SearchStrictMismatchReason:   cachedResult.SearchStrictMismatchReason,
+				SearchRelaxedDifferences:     slices.Clone(cachedResult.SearchRelaxedDifferences),
 				SearchSourceTitles:           slices.Clone(cachedResult.SearchSourceTitles),
 			}
 			payload.SizeMismatchTolerancePercent = cachedSearchResults.sizeMismatchTolerancePercent
@@ -8676,6 +8733,7 @@ func cloneTorrentSearchResults(results []TorrentSearchResult) []TorrentSearchRes
 	cloned := make([]TorrentSearchResult, len(results))
 	copy(cloned, results)
 	for i := range cloned {
+		cloned[i].SearchRelaxedDifferences = slices.Clone(results[i].SearchRelaxedDifferences)
 		cloned[i].SearchSourceTitles = slices.Clone(results[i].SearchSourceTitles)
 	}
 	return cloned
@@ -9858,6 +9916,10 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
 		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
 		SearchDecisionClass:           match.SearchDecisionClass,
+		SearchSourceInstanceID:        state.opts.InstanceID,
+		SearchSourceHash:              torrent.Hash,
+		SearchStrictMismatchReason:    match.SearchStrictMismatchReason,
+		SearchRelaxedDifferences:      slices.Clone(match.SearchRelaxedDifferences),
 		SearchSourceTitles:            slices.Clone(match.SearchSourceTitles),
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {

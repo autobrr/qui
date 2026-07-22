@@ -154,14 +154,19 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Zero(t, duplicateFiltered)
 	require.Len(t, results, 1)
 	require.Equal(t, []string{"Money Heist"}, results[0].SearchSourceTitles)
+	results[0].SearchRelaxedDifferences = []string{"collection"}
 
 	service.cacheSearchResults(1, "source", results, 5)
 	results[0].SearchSourceTitles[0] = "mutated after cache write"
+	results[0].SearchRelaxedDifferences[0] = "mutated after cache write"
 	cached := service.getCachedSearchResults(1, "source")
 	require.NotNil(t, cached)
 	require.Equal(t, []string{"Money Heist"}, cached.results[0].SearchSourceTitles)
+	require.Equal(t, []string{"collection"}, cached.results[0].SearchRelaxedDifferences)
 	cached.results[0].SearchSourceTitles[0] = "mutated after cache read"
+	cached.results[0].SearchRelaxedDifferences[0] = "mutated after cache read"
 	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchSourceTitles)
+	require.Equal(t, []string{"collection"}, service.getCachedSearchResults(1, "source").results[0].SearchRelaxedDifferences)
 
 	rejected := service.classifySearchCandidate(searchCandidateInput{
 		SourceRelease:    &source,
@@ -388,20 +393,32 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 
 func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	resultBytes, err := json.Marshal(TorrentSearchResult{
-		Title:               "candidate",
-		SearchDecisionClass: searchCandidateClassExactSizeFallback,
-		SearchSourceTitles:  []string{"ARR secret result alias"},
+		Title:                      "candidate",
+		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+		SearchStrictMismatchReason: "secret mismatch",
+		SearchRelaxedDifferences:   []string{"secret difference"},
+		SearchSourceTitles:         []string{"ARR secret result alias"},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "exact-size-fallback")
+	require.NotContains(t, string(resultBytes), "secret mismatch")
+	require.NotContains(t, string(resultBytes), "secret difference")
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
-		SearchDecisionClass: searchCandidateClassExactSizeFallback,
-		SearchSourceTitles:  []string{"ARR secret request alias"},
+		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+		SearchSourceInstanceID:     12345,
+		SearchSourceHash:           "secret source hash",
+		SearchStrictMismatchReason: "secret request mismatch",
+		SearchRelaxedDifferences:   []string{"secret request difference"},
+		SearchSourceTitles:         []string{"ARR secret request alias"},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "exact-size-fallback")
+	require.NotContains(t, string(requestBytes), "12345")
+	require.NotContains(t, string(requestBytes), "secret source hash")
+	require.NotContains(t, string(requestBytes), "secret request mismatch")
+	require.NotContains(t, string(requestBytes), "secret request difference")
 	require.NotContains(t, string(requestBytes), "ARR secret request alias")
 }
 
@@ -437,13 +454,15 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	}
 	state := &searchRunState{opts: SearchRunOptions{InstanceID: 1}}
 	match := TorrentSearchResult{
-		Indexer:             "Indexer",
-		IndexerID:           7,
-		Title:               "candidate",
-		DownloadURL:         "https://example.invalid/candidate.torrent",
-		Size:                size,
-		SearchDecisionClass: searchCandidateClassExactSizeFallback,
-		SearchSourceTitles:  sourceTitles,
+		Indexer:                    "Indexer",
+		IndexerID:                  7,
+		Title:                      "candidate",
+		DownloadURL:                "https://example.invalid/candidate.torrent",
+		Size:                       size,
+		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+		SearchStrictMismatchReason: "collection mismatch",
+		SearchRelaxedDifferences:   []string{"collection"},
+		SearchSourceTitles:         sourceTitles,
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
@@ -458,16 +477,21 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.Equal(t, models.CrossSeedSearchResultStatusAdded, result.Status)
 	require.NotNil(t, captured)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
+	require.Equal(t, 1, captured.SearchSourceInstanceID)
+	require.Equal(t, "source", captured.SearchSourceHash)
+	require.Equal(t, "collection mismatch", captured.SearchStrictMismatchReason)
+	require.Equal(t, []string{"collection"}, captured.SearchRelaxedDifferences)
 	require.Equal(t, sourceTitles, captured.SearchSourceTitles)
 }
 
 func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *testing.T) {
 	const (
-		instanceID   = 1
-		torrentSize  = int64(94_329_473_840)
-		targetName   = "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb"
-		existingName = "Example.Show.2024.S01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb"
-		existingHash = "existing"
+		instanceID    = 1
+		torrentSize   = int64(94_329_473_840)
+		targetName    = "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb"
+		existingName  = "Example.Show.2024.S01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb"
+		existingHash  = "existing"
+		unrelatedHash = "unrelated"
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	existing := qbt.Torrent{
@@ -478,8 +502,16 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 		Size:     torrentSize + 1,
 		Progress: 1,
 	}
+	unrelated := existing
+	unrelated.Hash = unrelatedHash
 	files := map[string]qbt.TorrentFiles{
 		existingHash: {
+			{
+				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
+				Size: torrentSize,
+			},
+		},
+		unrelatedHash: {
 			{
 				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
 				Size: torrentSize,
@@ -488,9 +520,34 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	}
 	service := &Service{
 		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
-		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing, unrelated}, files),
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	sourceRelease := rls.ParseString(existingName)
+	targetRelease := rls.ParseString(targetName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &sourceRelease,
+		CandidateRelease: &targetRelease,
+		SourceName:       existingName,
+		CandidateName:    targetName,
+		SourceSize:       torrentSize,
+		CandidateSize:    torrentSize,
+		TolerancePercent: 5,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+
+	fallbackRequest := func() *FindCandidatesRequest {
+		return &FindCandidatesRequest{
+			TorrentName:                targetName,
+			TargetInstanceIDs:          []int{instanceID},
+			SearchDecisionClass:        decision.Class,
+			SearchSourceInstanceID:     instanceID,
+			SearchSourceHash:           existingHash,
+			SearchStrictMismatchReason: decision.StrictMismatchReason,
+			SearchRelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
+		}
 	}
 
 	directResponse, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
@@ -500,16 +557,34 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.NoError(t, err)
 	require.Empty(t, directResponse.Candidates, "direct requests must retain strict release matching")
 
-	fallbackResponse, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:       targetName,
-		TargetInstanceIDs: []int{instanceID},
-		ExactSizeFallback: true,
-	})
+	fallbackResponse, err := service.FindCandidates(context.Background(), fallbackRequest())
 	require.NoError(t, err)
 	require.Len(t, fallbackResponse.Candidates, 1)
 	require.Len(t, fallbackResponse.Candidates[0].Torrents, 1)
 	require.Equal(t, existingHash, fallbackResponse.Candidates[0].Torrents[0].Hash)
 	require.NotEmpty(t, fallbackResponse.Candidates[0].MatchType)
+
+	unrecordedDifferenceRequest := fallbackRequest()
+	unrecordedDifferenceRequest.SearchRelaxedDifferences = []string{"hdr"}
+	unrecordedDifferenceResponse, err := service.FindCandidates(context.Background(), unrecordedDifferenceRequest)
+	require.NoError(t, err)
+	require.Empty(t, unrecordedDifferenceResponse.Candidates, "fallback must retain the search-recorded relaxation")
+
+	for name, hardMismatchTitle := range map[string]string{
+		"title":      "Different.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"season":     "Example.Show.2024.S02.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"episode":    "Example.Show.2024.S01E02.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"resolution": "Example.Show.2024.S01.1080p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"group":      "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-FLUX",
+	} {
+		t.Run("retains strict "+name, func(t *testing.T) {
+			request := fallbackRequest()
+			request.TorrentName = hardMismatchTitle
+			response, findErr := service.FindCandidates(context.Background(), request)
+			require.NoError(t, findErr)
+			require.Empty(t, response.Candidates)
+		})
+	}
 
 	incompatibleFiles := map[string]qbt.TorrentFiles{
 		existingHash: {
@@ -525,11 +600,7 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
-	incompatibleResponse, err := incompatibleService.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:       targetName,
-		TargetInstanceIDs: []int{instanceID},
-		ExactSizeFallback: true,
-	})
+	incompatibleResponse, err := incompatibleService.FindCandidates(context.Background(), fallbackRequest())
 	require.NoError(t, err)
 	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
 }

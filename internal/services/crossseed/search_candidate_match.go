@@ -119,9 +119,10 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	):
 		class = searchCandidateClassWebSourceRelabel
 	case decision.SizeEvidence.matches():
-		if ok, reason := s.validateExactSizeSearchIdentity(input); ok {
+		relaxedDifferences := softMetadataDifferences(input.SourceRelease, input.CandidateRelease)
+		if ok, reason := s.validateExactSizeFallback(input, mismatchReason, relaxedDifferences); ok {
 			class = searchCandidateClassExactSizeFallback
-			decision.RelaxedDifferences = softMetadataDifferences(input.SourceRelease, input.CandidateRelease)
+			decision.RelaxedDifferences = relaxedDifferences
 		} else {
 			decision.RejectReason = reason
 			return decision
@@ -276,6 +277,38 @@ func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (b
 	}
 
 	return true, ""
+}
+
+// validateExactSizeFallback keeps hard release identity strict and permits only
+// mismatch categories explicitly recorded as relaxed for this search result.
+func (s *Service) validateExactSizeFallback(input searchCandidateInput, mismatchReason string, relaxedDifferences []string) (bool, string) {
+	if ok, reason := s.validateExactSizeSearchIdentity(input); !ok {
+		return false, reason
+	}
+
+	difference, ok := exactSizeRelaxedDifferenceForReason(input, mismatchReason)
+	if !ok || !slices.Contains(relaxedDifferences, difference) {
+		return false, mismatchReason
+	}
+
+	return true, ""
+}
+
+func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchReason string) (string, bool) {
+	reason := strings.ToLower(strings.TrimSpace(mismatchReason))
+	reason = strings.TrimSuffix(reason, " mismatch")
+	difference := strings.ReplaceAll(reason, " ", "-")
+	switch difference {
+	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture":
+		return difference, true
+	}
+
+	compatible, variantReason := checkVariantsCompatible(input.SourceRelease, input.CandidateRelease)
+	if !compatible && strings.EqualFold(strings.TrimSpace(mismatchReason), variantReason) {
+		return "variant", true
+	}
+
+	return "", false
 }
 
 func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {

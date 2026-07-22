@@ -77,6 +77,14 @@ type CrossSeedRequest struct {
 	// this torrent. Only cached search results may set it; exact-size provenance
 	// bypasses only the duplicate apply-stage release prefilter.
 	SearchDecisionClass searchCandidateClass `json:"-"`
+	// SearchSourceInstanceID and SearchSourceHash identify the torrent whose size
+	// was compared with the selected search result.
+	SearchSourceInstanceID int    `json:"-"`
+	SearchSourceHash       string `json:"-"`
+	// SearchStrictMismatchReason and SearchRelaxedDifferences preserve the exact
+	// metadata relaxation admitted during search.
+	SearchStrictMismatchReason string   `json:"-"`
+	SearchRelaxedDifferences   []string `json:"-"`
 	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
 	SearchSourceTitles []string `json:"-"`
 }
@@ -190,10 +198,15 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeCategories []string `json:"-"`
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	SourceFilterExcludeTags []string `json:"-"`
-	// ExactSizeFallback permits a search-origin exact-size result to bypass the
-	// duplicate release prefilter. Candidate file matching and apply safety checks
-	// still run normally. The field is internal so direct requests remain strict.
-	ExactSizeFallback bool `json:"-"`
+	// SearchDecisionClass and source identity bind an exact-size search decision
+	// to the one existing torrent that supplied the size evidence.
+	SearchDecisionClass    searchCandidateClass `json:"-"`
+	SearchSourceInstanceID int                  `json:"-"`
+	SearchSourceHash       string               `json:"-"`
+	// SearchStrictMismatchReason and SearchRelaxedDifferences limit the apply-stage
+	// bypass to metadata differences explicitly admitted during search.
+	SearchStrictMismatchReason string   `json:"-"`
+	SearchRelaxedDifferences   []string `json:"-"`
 	// SearchSourceTitles are ARR aliases for the existing torrent that originated the search.
 	SearchSourceTitles []string `json:"-"`
 }
@@ -310,6 +323,10 @@ type TorrentSearchResult struct {
 	MatchScore           float64 `json:"match_score"`
 	// SearchDecisionClass is retained only in the in-memory search result cache.
 	SearchDecisionClass searchCandidateClass `json:"-"`
+	// SearchStrictMismatchReason and SearchRelaxedDifferences retain the exact
+	// release-metadata relaxation admitted for this cached result.
+	SearchStrictMismatchReason string   `json:"-"`
+	SearchRelaxedDifferences   []string `json:"-"`
 	// SearchSourceTitles retains ARR aliases used to admit this cached result.
 	SearchSourceTitles []string `json:"-"`
 }
