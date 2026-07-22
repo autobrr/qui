@@ -397,14 +397,12 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
-		SearchDecisionClass:     searchCandidateClassExactSizeFallback,
-		SearchSourceTitles:      []string{"ARR secret request alias"},
-		AdvertisedCandidateSize: 123,
+		SearchDecisionClass: searchCandidateClassExactSizeFallback,
+		SearchSourceTitles:  []string{"ARR secret request alias"},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "exact-size-fallback")
 	require.NotContains(t, string(requestBytes), "ARR secret request alias")
-	require.NotContains(t, string(requestBytes), "123")
 }
 
 func TestSortScoredTorrentSearchResultsSizeEvidencePriority(t *testing.T) {
@@ -461,35 +459,6 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.NotNil(t, captured)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
 	require.Equal(t, sourceTitles, captured.SearchSourceTitles)
-	require.Equal(t, size, captured.AdvertisedCandidateSize)
-}
-
-func TestCrossSeedRejectsInvalidAdvertisedExactSize(t *testing.T) {
-	torrentData := createTestTorrent(
-		t,
-		"Example.Show.S01.2160p.ATVP.WEB-DL.HDR10+.H.265-NTb",
-		[]string{"Example.Show.S01E01.mkv"},
-		256*1024,
-	)
-	meta, err := ParseTorrentMetadataWithInfo(torrentData)
-	require.NoError(t, err)
-	var actualSize int64
-	for _, file := range meta.Files {
-		actualSize += file.Size
-	}
-	service := &Service{releaseCache: NewReleaseCache()}
-
-	_, err = service.CrossSeed(context.Background(), &CrossSeedRequest{
-		TorrentData:             base64.StdEncoding.EncodeToString(torrentData),
-		SearchDecisionClass:     searchCandidateClassExactSizeFallback,
-		AdvertisedCandidateSize: actualSize + 1,
-		TargetInstanceIDs:       []int{1},
-		FindIndividualEpisodes:  false,
-	})
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "advertised size")
-	require.Contains(t, err.Error(), "downloaded torrent size")
 }
 
 func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *testing.T) {
@@ -502,9 +471,11 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	)
 	instance := &models.Instance{ID: instanceID, Name: "main"}
 	existing := qbt.Torrent{
-		Hash:     existingHash,
-		Name:     existingName,
-		Size:     torrentSize,
+		Hash: existingHash,
+		Name: existingName,
+		// Search already established exact size. Apply must not replace that
+		// evidence with a new comparison against downloaded metainfo.
+		Size:     torrentSize + 1,
 		Progress: 1,
 	}
 	files := map[string]qbt.TorrentFiles{
@@ -533,22 +504,12 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		ExactSizeFallback: true,
-		TorrentSize:       torrentSize,
 	})
 	require.NoError(t, err)
 	require.Len(t, fallbackResponse.Candidates, 1)
 	require.Len(t, fallbackResponse.Candidates[0].Torrents, 1)
 	require.Equal(t, existingHash, fallbackResponse.Candidates[0].Torrents[0].Hash)
 	require.NotEmpty(t, fallbackResponse.Candidates[0].MatchType)
-
-	wrongSizeResponse, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:       targetName,
-		TargetInstanceIDs: []int{instanceID},
-		ExactSizeFallback: true,
-		TorrentSize:       torrentSize + 1,
-	})
-	require.NoError(t, err)
-	require.Empty(t, wrongSizeResponse.Candidates)
 
 	incompatibleFiles := map[string]qbt.TorrentFiles{
 		existingHash: {
@@ -568,7 +529,6 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 		TorrentName:       targetName,
 		TargetInstanceIDs: []int{instanceID},
 		ExactSizeFallback: true,
-		TorrentSize:       torrentSize,
 	})
 	require.NoError(t, err)
 	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")

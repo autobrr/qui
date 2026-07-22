@@ -4,7 +4,6 @@
 package crossseed
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -298,8 +297,4 @@ func softMetadataDifferences(source, candidate *rls.Release) []string {
 	}
 
 	return differences
-}
-
-func exactSizeFallbackValidationError(advertisedSize, actualSize int64) error {
-	return fmt.Errorf("exact-size search evidence invalid: advertised size %d does not match downloaded torrent size %d", advertisedSize, actualSize)
 }

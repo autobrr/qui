@@ -78,8 +78,6 @@ type CrossSeedRequest struct {
 	SearchDecisionClass searchCandidateClass `json:"-"`
 	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
 	SearchSourceTitles []string `json:"-"`
-	// AdvertisedCandidateSize is the Torznab size used by the search classifier.
-	AdvertisedCandidateSize int64 `json:"-"`
 }
 
 func (r *CrossSeedRequest) UnmarshalJSON(data []byte) error {
@@ -193,8 +191,6 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeTags []string `json:"-"`
 	// ExactSizeFallback permits the scoped search-origin release prefilter fallback.
 	ExactSizeFallback bool `json:"-"`
-	// TorrentSize is the downloaded torrent's actual metainfo total.
-	TorrentSize int64 `json:"-"`
 	// SearchSourceTitles are ARR aliases for the existing torrent that originated the search.
 	SearchSourceTitles []string `json:"-"`
 }

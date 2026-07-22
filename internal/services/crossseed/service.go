@@ -4001,33 +4001,13 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				req.FindIndividualEpisodes,
 			)
 			if !releasesMatch {
-				exactSizeIdentity := req.ExactSizeFallback &&
-					positiveExactSize(req.TorrentSize, torrent.Size)
-				if exactSizeIdentity {
-					var reason string
-					exactSizeIdentity, reason = s.validateExactSizeSearchIdentity(searchCandidateInput{
-						SourceRelease:          targetRelease,
-						CandidateRelease:       candidateRelease,
-						SourceName:             req.TorrentName,
-						CandidateName:          torrent.Name,
-						CandidateTitles:        req.SearchSourceTitles,
-						SourceSize:             req.TorrentSize,
-						CandidateSize:          torrent.Size,
-						FindIndividualEpisodes: req.FindIndividualEpisodes,
-					})
-					if !exactSizeIdentity {
-						log.Debug().
-							Str("targetTitle", req.TorrentName).
-							Str("existingTorrent", torrent.Name).
-							Int64("targetSize", req.TorrentSize).
-							Int64("existingSize", torrent.Size).
-							Str("rejectReason", reason).
-							Msg("[CROSSSEED] Exact-size search fallback failed candidate identity prefilter")
-					}
-				}
-				if !exactSizeIdentity {
+				if !req.ExactSizeFallback {
 					continue
 				}
+				log.Debug().
+					Str("targetTitle", req.TorrentName).
+					Str("existingTorrent", torrent.Name).
+					Msg("[CROSSSEED] Search-origin exact-size fallback bypassed strict release prefilter")
 			}
 
 			hashKey := normalizeHash(torrent.Hash)
@@ -4147,15 +4127,6 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		torrentHash = meta.HashV2
 	}
 	sourceRelease := s.releaseCache.Parse(meta.Name)
-	var actualTorrentSize int64
-	for _, file := range meta.Files {
-		actualTorrentSize += file.Size
-	}
-	if req.SearchDecisionClass == searchCandidateClassExactSizeFallback {
-		if req.AdvertisedCandidateSize <= 0 || actualTorrentSize != req.AdvertisedCandidateSize {
-			return nil, exactSizeFallbackValidationError(req.AdvertisedCandidateSize, actualTorrentSize)
-		}
-	}
 
 	// Use FindCandidates to locate matching torrents
 	findReq := &FindCandidatesRequest{
@@ -4163,7 +4134,6 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
 		ExactSizeFallback:      req.SearchDecisionClass == searchCandidateClassExactSizeFallback,
-		TorrentSize:            actualTorrentSize,
 		SearchSourceTitles:     slices.Clone(req.SearchSourceTitles),
 	}
 	// Pass through source filters for RSS automation
@@ -4201,8 +4171,12 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 
 	if response.TorrentInfo != nil {
 		response.TorrentInfo.TotalFiles = len(meta.Files)
-		if actualTorrentSize > 0 {
-			response.TorrentInfo.Size = actualTorrentSize
+		var totalSize int64
+		for _, f := range meta.Files {
+			totalSize += f.Size
+		}
+		if totalSize > 0 {
+			response.TorrentInfo.Size = totalSize
 		}
 	}
 
@@ -8466,7 +8440,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 				SearchDecisionClass:          cachedResult.SearchDecisionClass,
 				SearchSourceTitles:           slices.Clone(cachedResult.SearchSourceTitles),
-				AdvertisedCandidateSize:      cachedResult.Size,
 			}
 			payload.SizeMismatchTolerancePercent = cachedSearchResults.sizeMismatchTolerancePercent
 			payload.SizeMismatchTolerancePercentSet = true
@@ -9878,7 +9851,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
 		SearchDecisionClass:           match.SearchDecisionClass,
 		SearchSourceTitles:            slices.Clone(match.SearchSourceTitles),
-		AdvertisedCandidateSize:       match.Size,
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride

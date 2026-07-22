@@ -178,7 +178,6 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.True(t, captured.SizeMismatchTolerancePercentSet)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
 	require.Equal(t, cached.SearchSourceTitles, captured.SearchSourceTitles)
-	require.Equal(t, cached.Size, captured.AdvertisedCandidateSize)
 }
 
 func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
