@@ -7822,7 +7822,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	scored := make([]scoredTorrentSearchResult, 0, len(searchResults))
-	seen := make(map[string]struct{})
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
 	releaseFilterReasons := make(map[string]int)
@@ -7831,17 +7830,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	exactSizeHardRejected := 0
 
 	for _, res := range searchResults {
-		key := res.GUID
-		if key == "" {
-			key = res.DownloadURL
-		}
-		if key != "" {
-			if _, exists := seen[key]; exists {
-				continue
-			}
-			seen[key] = struct{}{}
-		}
-
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		// Search has only qBittorrent's wanted source size and Torznab's advertised
 		// candidate size. Positive exact equality may replace soft release metadata;
@@ -7928,6 +7916,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		})
 	}
 
+	// Classify every result before deduplication, then use the existing evidence
+	// ordering so a rejected or tolerance-only occurrence cannot hide an exact-size
+	// occurrence with the same GUID/download URL. Keyless results remain distinct.
+	sortScoredTorrentSearchResults(scored)
+	scored = deduplicateScoredTorrentSearchResults(scored)
+
 	// Log filtering statistics
 	totalResults := len(searchResults)
 	matchedResults := len(scored)
@@ -7969,8 +7963,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		sourceInfo.FileCount = len(sourceFiles)
 	}
 
-	sortScoredTorrentSearchResults(scored)
-
 	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, limit)
 	if err != nil {
 		return nil, gazelleLookupAttempted, remoteRequestsMade, err
@@ -8010,6 +8002,27 @@ func sortScoredTorrentSearchResults(scored []scoredTorrentSearchResult) {
 		}
 		return scored[i].score > scored[j].score
 	})
+}
+
+func deduplicateScoredTorrentSearchResults(scored []scoredTorrentSearchResult) []scoredTorrentSearchResult {
+	seen := make(map[string]struct{}, len(scored))
+	deduplicated := scored[:0]
+	for _, item := range scored {
+		key := item.result.GUID
+		if key == "" {
+			key = item.result.DownloadURL
+		}
+		if key == "" {
+			deduplicated = append(deduplicated, item)
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		deduplicated = append(deduplicated, item)
+	}
+	return deduplicated
 }
 
 type scoredTorrentSearchResult struct {

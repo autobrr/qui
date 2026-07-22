@@ -439,6 +439,65 @@ func TestSortScoredTorrentSearchResultsSizeEvidencePriority(t *testing.T) {
 	})
 }
 
+func TestDeduplicateScoredTorrentSearchResultsKeepsBestClassificationAndKeylessResults(t *testing.T) {
+	items := []scoredTorrentSearchResult{
+		{
+			result: jackett.SearchResult{
+				Title: "guid-tolerance",
+				GUID:  "shared-guid",
+			},
+			score: 10,
+			class: searchCandidateClassStrict,
+		},
+		{
+			result: jackett.SearchResult{
+				Title:       "url-tolerance",
+				DownloadURL: "https://example.invalid/shared.torrent",
+			},
+			score: 10,
+			class: searchCandidateClassStrict,
+		},
+		{
+			result: jackett.SearchResult{Title: "keyless-one"},
+			score:  1,
+			class:  searchCandidateClassStrict,
+		},
+		{
+			result: jackett.SearchResult{
+				Title: "guid-exact",
+				GUID:  "shared-guid",
+			},
+			score:        2,
+			sizeEvidence: searchSizeEvidenceExact,
+			class:        searchCandidateClassExactSizeFallback,
+		},
+		{
+			result: jackett.SearchResult{
+				Title:       "url-exact",
+				DownloadURL: "https://example.invalid/shared.torrent",
+			},
+			score:        2,
+			sizeEvidence: searchSizeEvidenceExact,
+			class:        searchCandidateClassExactSizeFallback,
+		},
+		{
+			result: jackett.SearchResult{Title: "keyless-two"},
+			score:  1,
+			class:  searchCandidateClassStrict,
+		},
+	}
+
+	sortScoredTorrentSearchResults(items)
+	items = deduplicateScoredTorrentSearchResults(items)
+
+	require.Len(t, items, 4)
+	titles := make([]string, 0, len(items))
+	for _, item := range items {
+		titles = append(titles, item.result.Title)
+	}
+	require.ElementsMatch(t, []string{"guid-exact", "url-exact", "keyless-one", "keyless-two"}, titles)
+}
+
 func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) {
 	const size = int64(94_329_473_840)
 	sourceTitles := []string{"ARR Alias"}
