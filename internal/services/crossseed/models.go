@@ -74,7 +74,8 @@ type CrossSeedRequest struct {
 	// Internal-only, not exposed via JSON API.
 	SourceFilterExcludeTags []string `json:"-"`
 	// SearchDecisionClass records the private search classification that admitted
-	// this torrent. Only cached search results may set it.
+	// this torrent. Only cached search results may set it; exact-size provenance
+	// bypasses only the duplicate apply-stage release prefilter.
 	SearchDecisionClass searchCandidateClass `json:"-"`
 	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
 	SearchSourceTitles []string `json:"-"`
@@ -189,7 +190,9 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeCategories []string `json:"-"`
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	SourceFilterExcludeTags []string `json:"-"`
-	// ExactSizeFallback permits the scoped search-origin release prefilter fallback.
+	// ExactSizeFallback permits a search-origin exact-size result to bypass the
+	// duplicate release prefilter. Candidate file matching and apply safety checks
+	// still run normally. The field is internal so direct requests remain strict.
 	ExactSizeFallback bool `json:"-"`
 	// SearchSourceTitles are ARR aliases for the existing torrent that originated the search.
 	SearchSourceTitles []string `json:"-"`

@@ -10,15 +10,23 @@ import (
 	"github.com/moistari/rls"
 )
 
+// searchCandidateClass identifies the search-only rule that admitted a result.
+// The class is carried privately through cached search results so apply can
+// preserve that decision without exposing a client-settable bypass.
 type searchCandidateClass string
 
 const (
-	searchCandidateClassRejected          searchCandidateClass = "rejected"
-	searchCandidateClassStrict            searchCandidateClass = "strict"
-	searchCandidateClassWebSourceRelabel  searchCandidateClass = "web-source-relabel"
+	searchCandidateClassRejected         searchCandidateClass = "rejected"
+	searchCandidateClassStrict           searchCandidateClass = "strict"
+	searchCandidateClassWebSourceRelabel searchCandidateClass = "web-source-relabel"
+	// searchCandidateClassExactSizeFallback means positive exact byte equality
+	// replaced only the soft release-attribute checks rejected by strict matching.
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
 )
 
+// searchSizeEvidence describes size evidence available before a candidate
+// torrent is downloaded. SourceSize is qBittorrent's wanted size and
+// CandidateSize is the Torznab-advertised size.
 type searchSizeEvidence string
 
 const (
@@ -26,6 +34,8 @@ const (
 	searchSizeEvidenceExact searchSizeEvidence = "exact"
 )
 
+// searchCandidateInput contains the source and Torznab candidate data available
+// to both main result filtering and alternate-query usability checks.
 type searchCandidateInput struct {
 	SourceRelease          *rls.Release
 	CandidateRelease       *rls.Release
@@ -39,6 +49,9 @@ type searchCandidateInput struct {
 	FindIndividualEpisodes bool
 }
 
+// searchCandidateDecision records admission provenance, including which strict
+// mismatch exact-size evidence relaxed. Rejected decisions never grant apply
+// access to the release-prefilter bypass.
 type searchCandidateDecision struct {
 	Accepted             bool
 	Class                searchCandidateClass
@@ -61,6 +74,13 @@ const (
 	sizeEvidenceStrictScoreBonus   = 4.0
 )
 
+// classifySearchCandidate applies the shared search-only admission rules.
+// Exact-size fallback requires positive byte-for-byte size equality plus strict
+// title, TV structure, resolution, group/site, checksum, artist, and date
+// identity. It may relax descriptive attributes such as source, collection,
+// HDR, codec, or bit depth. Apply later uses the private decision class only to
+// skip its duplicate release prefilter; normal torrent-file validation remains
+// authoritative.
 func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
 	decision := searchCandidateDecision{
 		Class:        searchCandidateClassRejected,
@@ -160,6 +180,8 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	return decision
 }
 
+// positiveExactSize requires both search APIs to report the same non-zero byte
+// count. Missing sizes and tolerance-only matches cannot activate the fallback.
 func positiveExactSize(sourceSize, candidateSize int64) bool {
 	return sourceSize > 0 && candidateSize > 0 && sourceSize == candidateSize
 }
@@ -195,6 +217,8 @@ func (evidence searchSizeEvidence) matchReason() string {
 	return ""
 }
 
+// validateExactSizeSearchIdentity enforces identity attributes that exact size
+// must never replace. It returns the first hard mismatch for search diagnostics.
 func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (bool, string) {
 	source := input.SourceRelease
 	candidate := input.CandidateRelease

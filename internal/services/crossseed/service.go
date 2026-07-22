@@ -3989,8 +3989,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			// Check if releases are related (quick filter). Search-origin ARR aliases
 			// belong to the existing torrent, which is the candidate in this reversed
-			// apply-stage comparison. Only exact-size fallbacks may defer remaining
-			// soft metadata differences to the normal file-level validation below.
+			// apply-stage comparison. An exact-size fallback already established byte
+			// equality from qBittorrent and Torznab during search, so its private marker
+			// may bypass this duplicate release check. File matching below and the later
+			// apply safety checks remain unchanged and authoritative.
 			releasesMatch, _ := s.releasesMatchWithReasonAndNamesAndTitles(
 				targetRelease,
 				candidateRelease,
@@ -4128,7 +4130,10 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 	sourceRelease := s.releaseCache.Parse(meta.Name)
 
-	// Use FindCandidates to locate matching torrents
+	// Carry only the private search decision into candidate discovery. Exact byte
+	// equality is not recalculated from downloaded metainfo: the marker merely
+	// prevents the quick release prefilter from undoing search admission, after
+	// which the existing file and apply safety checks run normally.
 	findReq := &FindCandidatesRequest{
 		TorrentName:            meta.Name,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
@@ -7815,6 +7820,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
+		// Search has only qBittorrent's wanted source size and Torznab's advertised
+		// candidate size. Positive exact equality may replace soft release metadata;
+		// the downloaded torrent is inspected later by the normal apply pipeline.
 		decision := s.classifySearchCandidate(searchCandidateInput{
 			SourceRelease:          searchRelease,
 			CandidateRelease:       candidateRelease,
