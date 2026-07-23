@@ -129,12 +129,16 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	}
 
 	cached := TorrentSearchResult{
-		Indexer:     "Indexer",
-		IndexerID:   99,
-		Title:       "Show.S01E01.1080p.BluRay-GROUP",
-		DownloadURL: "https://example.invalid/episode.torrent",
-		GUID:        "guid-2",
-		Size:        2048,
+		Indexer:                    "Indexer",
+		IndexerID:                  99,
+		Title:                      "Show.S01E01.1080p.BluRay-GROUP",
+		DownloadURL:                "https://example.invalid/episode.torrent",
+		GUID:                       "guid-2",
+		Size:                       2048,
+		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+		SearchStrictMismatchReason: "collection mismatch",
+		SearchRelaxedDifferences:   []string{"collection"},
+		SearchSourceTitles:         []string{"ARR Alias"},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached}, 20)
 
@@ -174,6 +178,12 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
 	require.InDelta(t, 20, captured.SizeMismatchTolerancePercent, 0.001, "apply must reuse the search tolerance cached with the selected result")
 	require.True(t, captured.SizeMismatchTolerancePercentSet)
+	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
+	require.Equal(t, instanceID, captured.SearchSourceInstanceID)
+	require.Equal(t, sourceTorrent.Hash, captured.SearchSourceHash)
+	require.Equal(t, cached.SearchStrictMismatchReason, captured.SearchStrictMismatchReason)
+	require.Equal(t, cached.SearchRelaxedDifferences, captured.SearchRelaxedDifferences)
+	require.Equal(t, cached.SearchSourceTitles, captured.SearchSourceTitles)
 }
 
 func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
