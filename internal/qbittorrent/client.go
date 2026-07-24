@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"sync"
@@ -695,7 +696,10 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		}
 		for hash, torrent := range data.Torrents {
 			normalized := normalizeHashForCompletion(hash)
-			c.completionState[normalized] = isTorrentComplete(&torrent)
+			// Baseline on the stamp alone: a completed torrent observed
+			// mid-recheck at startup reports fractional progress and must not
+			// look like a fresh completion once the recheck finishes.
+			c.completionState[normalized] = hasCompletionStamp(&torrent)
 		}
 		c.completionInit = true
 		c.completionMu.Unlock()
@@ -704,18 +708,21 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 
 	ready := make([]qbt.Torrent, 0)
 	for hash, torrent := range data.Torrents {
+		if isCompletionIndeterminateState(torrent.State) {
+			// Progress can be verification progress in these states; keep
+			// the last known state instead of misreading it.
+			continue
+		}
 		normalized := normalizeHashForCompletion(hash)
 		alreadyHandled := c.completionState[normalized]
 		isComplete := isTorrentComplete(&torrent)
+		// Track current completeness rather than latching: if qbit knocks a
+		// completed torrent back to downloading (failed recheck-on-completion),
+		// this re-arms so the eventual real completion fires again.
+		c.completionState[normalized] = isComplete
 
 		if !alreadyHandled && isComplete {
-			c.completionState[normalized] = true
 			ready = append(ready, torrent)
-			continue
-		}
-
-		if !isComplete && !alreadyHandled {
-			c.completionState[normalized] = false
 		}
 	}
 	c.completionMu.Unlock()
@@ -791,12 +798,41 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 	}
 }
 
+// hasCompletionStamp reports whether completion_on holds a real completion
+// timestamp. Never-completed torrents don't serialize a clean sentinel on
+// every qbit version: 5.x emits -1, but 4.2-4.6 emit minus the host's 1970
+// UTC offset, which is POSITIVE west of UTC (+28800 on US Pacific), and 4.1
+// emits uint32(-1). Real timestamps all sit far above a day.
+func hasCompletionStamp(t *qbt.Torrent) bool {
+	return t.CompletionOn > 86400 && t.CompletionOn != math.MaxUint32
+}
+
 func isTorrentComplete(t *qbt.Torrent) bool {
 	if t == nil {
 		return false
 	}
 
-	return t.CompletionOn > 0
+	// completion_on survives a failed post-completion recheck, so it alone
+	// can't mean "data is complete"; require progress too.
+	return hasCompletionStamp(t) && t.Progress >= 1
+}
+
+// isCompletionIndeterminateState reports states where the progress field
+// can't be trusted for completion detection. During checking/moving it is
+// verification progress, and qbit gates that on the raw libtorrent state, so
+// it also leaks under stopped/paused/missingFiles/error state strings (e.g.
+// a force-recheck on a stopped torrent).
+func isCompletionIndeterminateState(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStateCheckingDl ||
+		state == qbt.TorrentStateCheckingUp ||
+		state == qbt.TorrentStateCheckingResumeData ||
+		state == qbt.TorrentStateMoving ||
+		state == qbt.TorrentStatePausedDl ||
+		state == qbt.TorrentStatePausedUp ||
+		state == qbt.TorrentStateStoppedDl ||
+		state == qbt.TorrentStateStoppedUp ||
+		state == qbt.TorrentStateMissingFiles ||
+		state == qbt.TorrentStateError
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent

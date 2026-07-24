@@ -11,19 +11,79 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-func TestIsTorrentCompleteUsesCompletionOn(t *testing.T) {
+func TestIsTorrentCompleteRequiresCompletionOnAndProgress(t *testing.T) {
 	t.Parallel()
 
-	torrent := &qbt.Torrent{
-		Hash:         "abc",
-		Name:         "Example",
-		CompletionOn: 123,
-		Progress:     0.12,
-		State:        qbt.TorrentStateCheckingResumeData,
+	tests := []struct {
+		name    string
+		torrent *qbt.Torrent
+		want    bool
+	}{
+		{
+			name: "completed with full progress",
+			torrent: &qbt.Torrent{
+				CompletionOn: 1700000123,
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+			},
+			want: true,
+		},
+		{
+			// completion_on set once, then a failed recheck-on-completion
+			// knocked the torrent back to downloading. Not complete.
+			name: "completion_on set but data incomplete",
+			torrent: &qbt.Torrent{
+				CompletionOn: 1700000123,
+				Progress:     0.12,
+				State:        qbt.TorrentStateDownloading,
+			},
+			want: false,
+		},
+		{
+			name: "downloading without completion_on",
+			torrent: &qbt.Torrent{
+				CompletionOn: -1,
+				Progress:     0.5,
+				State:        qbt.TorrentStateDownloading,
+			},
+			want: false,
+		},
+		{
+			// qbit 4.2-4.6 serialize never-completed as minus the host's 1970
+			// UTC offset: positive west of UTC (+28800 US Pacific). Data being
+			// present (seed-mode add) must not make this look completed.
+			name: "qbit 4.x west-of-UTC sentinel with full data",
+			torrent: &qbt.Torrent{
+				CompletionOn: 28800,
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+			},
+			want: false,
+		},
+		{
+			// qbit 4.1 serializes never-completed as uint32(-1).
+			name: "qbit 4.1 uint32 sentinel with full data",
+			torrent: &qbt.Torrent{
+				CompletionOn: 4294967295,
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+			},
+			want: false,
+		},
+		{
+			name:    "nil torrent",
+			torrent: nil,
+			want:    false,
+		},
 	}
 
-	if !isTorrentComplete(torrent) {
-		t.Fatal("expected torrent to be treated as complete when CompletionOn is set")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isTorrentComplete(tt.torrent); got != tt.want {
+				t.Fatalf("isTorrentComplete() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -50,7 +110,7 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 			"abc": {
 				Hash:         "abc",
 				Name:         "Done",
-				CompletionOn: 123,
+				CompletionOn: 1700000123,
 				Progress:     1.0,
 				State:        qbt.TorrentStateCheckingResumeData,
 			},
@@ -66,7 +126,7 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 			"abc": {
 				Hash:         "abc",
 				Name:         "Done",
-				CompletionOn: 123,
+				CompletionOn: 1700000123,
 				Progress:     1.0,
 				State:        qbt.TorrentStateUploading,
 			},
@@ -114,7 +174,7 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 			"def": {
 				Hash:         "def",
 				Name:         "Done now",
-				CompletionOn: 999,
+				CompletionOn: 1700000999,
 				Progress:     1.0,
 				State:        qbt.TorrentStateUploading,
 			},
@@ -137,7 +197,7 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 			"def": {
 				Hash:         "def",
 				Name:         "Done now",
-				CompletionOn: 999,
+				CompletionOn: 1700000999,
 				Progress:     1.0,
 				State:        qbt.TorrentStateStalledUp,
 			},
@@ -146,6 +206,98 @@ func TestHandleCompletionUpdatesFiresOnceWhenCompletionOnAppears(t *testing.T) {
 
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 	requireNoIntEvent(t, wrongID)
+}
+
+func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 3}
+
+	seen := make(chan qbt.Torrent, 2)
+	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+		seen <- torrent
+	})
+
+	update := func(torrent qbt.Torrent) {
+		client.handleCompletionUpdates(&qbt.MainData{
+			Torrents: map[string]qbt.Torrent{"ghi": torrent},
+		})
+	}
+
+	// Baseline: torrent still downloading.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: -1, Progress: 0.9, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Finishes: completion event fires.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateUploading})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected first completion event")
+	}
+
+	// Recheck-on-completion runs; verification progress must not touch state.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.3, State: qbt.TorrentStateCheckingUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Recheck failed: qbit re-downloads. completion_on stays set. Re-arms.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.5, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Real completion: must fire again.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700001000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected completion event after re-download finished")
+	}
+
+	// Steady seeding: no re-fire.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700001000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+}
+
+// qbit 4.2-4.6 on a host west of UTC: every fresh torrent is born with a
+// positive completion_on sentinel. The hook must not fire at add time, and
+// must fire once when the download actually finishes (issue report: search
+// ran seconds after adding, then never retried).
+func TestHandleCompletionUpdatesIgnoresWestOfUTCSentinel(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 4}
+
+	seen := make(chan qbt.Torrent, 2)
+	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+		seen <- torrent
+	})
+
+	update := func(torrent qbt.Torrent) {
+		client.handleCompletionUpdates(&qbt.MainData{
+			Torrents: map[string]qbt.Torrent{"jkl": torrent},
+		})
+	}
+
+	// Init baseline with an unrelated torrent so "jkl" arrives mid-run.
+	client.handleCompletionUpdates(&qbt.MainData{
+		Torrents: map[string]qbt.Torrent{
+			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
+		},
+	})
+
+	// Fresh add: positive sentinel, barely any data. Must not fire.
+	update(qbt.Torrent{Hash: "jkl", CompletionOn: 28800, Progress: 0.04, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Real completion: fires once.
+	update(qbt.Torrent{Hash: "jkl", CompletionOn: 1700002000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected completion event when download finished")
+	}
+
+	update(qbt.Torrent{Hash: "jkl", CompletionOn: 1700002000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
 func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, d time.Duration) {
