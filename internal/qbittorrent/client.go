@@ -708,14 +708,20 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 
 	ready := make([]qbt.Torrent, 0)
 	for hash, torrent := range data.Torrents {
-		if isCompletionIndeterminateState(torrent.State) {
-			// Progress can be verification progress in these states; keep
+		if isCheckingState(torrent.State) {
+			// Progress is verification progress while checking/moving; keep
 			// the last known state instead of misreading it.
+			continue
+		}
+		isComplete := isTorrentComplete(&torrent)
+		if !isComplete && isStoppedOrErrorState(torrent.State) {
+			// One-way door for stopped/error states: qbit can serialize a
+			// stale verification fraction as progress there, so completeness
+			// may mark a torrent handled but never un-mark one.
 			continue
 		}
 		normalized := normalizeHashForCompletion(hash)
 		alreadyHandled := c.completionState[normalized]
-		isComplete := isTorrentComplete(&torrent)
 		// Track current completeness rather than latching: if qbit knocks a
 		// completed torrent back to downloading (failed recheck-on-completion),
 		// this re-arms so the eventual real completion fires again.
@@ -817,17 +823,22 @@ func isTorrentComplete(t *qbt.Torrent) bool {
 	return hasCompletionStamp(t) && t.Progress >= 1
 }
 
-// isCompletionIndeterminateState reports states where the progress field
-// can't be trusted for completion detection. During checking/moving it is
-// verification progress, and qbit gates that on the raw libtorrent state, so
-// it also leaks under stopped/paused/missingFiles/error state strings (e.g.
-// a force-recheck on a stopped torrent).
-func isCompletionIndeterminateState(state qbt.TorrentState) bool {
+// isCheckingState reports states where progress is verification progress
+// rather than download progress, so completion detection must not read it.
+func isCheckingState(state qbt.TorrentState) bool {
 	return state == qbt.TorrentStateCheckingDl ||
 		state == qbt.TorrentStateCheckingUp ||
 		state == qbt.TorrentStateCheckingResumeData ||
-		state == qbt.TorrentStateMoving ||
-		state == qbt.TorrentStatePausedDl ||
+		state == qbt.TorrentStateMoving
+}
+
+// isStoppedOrErrorState reports inactive states where progress can still be
+// a leftover verification fraction (qbit gates the checking short-circuit on
+// the raw libtorrent state, which leaks under these state strings, e.g. a
+// force-recheck on a stopped torrent). Completion detection may accept
+// positive evidence here but must ignore negative evidence.
+func isStoppedOrErrorState(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStatePausedDl ||
 		state == qbt.TorrentStatePausedUp ||
 		state == qbt.TorrentStateStoppedDl ||
 		state == qbt.TorrentStateStoppedUp ||

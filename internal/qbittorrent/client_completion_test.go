@@ -300,6 +300,58 @@ func TestHandleCompletionUpdatesIgnoresWestOfUTCSentinel(t *testing.T) {
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
+// A completion can land directly in a stopped state (e.g. share-ratio limit 0
+// stops the torrent the instant it finishes). That must fire exactly once,
+// and stop/resume cycles or stale verification progress in stopped states
+// must never re-arm or re-fire.
+func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 5}
+
+	seen := make(chan qbt.Torrent, 2)
+	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+		seen <- torrent
+	})
+
+	update := func(torrent qbt.Torrent) {
+		client.handleCompletionUpdates(&qbt.MainData{
+			Torrents: map[string]qbt.Torrent{"mno": torrent},
+		})
+	}
+
+	// Init baseline with an unrelated torrent so "mno" arrives mid-run.
+	client.handleCompletionUpdates(&qbt.MainData{
+		Torrents: map[string]qbt.Torrent{
+			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
+		},
+	})
+
+	// Downloading, incomplete.
+	update(qbt.Torrent{Hash: "mno", CompletionOn: -1, Progress: 0.9, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Finishes straight into stoppedUP (ratio limit 0): must fire.
+	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected completion event for completion landing in stopped state")
+	}
+
+	// Stale verification fraction while stopped must not un-mark it.
+	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 0.4, State: qbt.TorrentStateStoppedUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Resume: complete and already handled, no re-fire.
+	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Stop again: still handled, no re-fire.
+	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+}
+
 func requireNoTorrentEvent(t *testing.T, ch <-chan qbt.Torrent, d time.Duration) {
 	t.Helper()
 
