@@ -11,7 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-func TestIsTorrentCompleteRequiresCompletionOnAndProgress(t *testing.T) {
+func TestIsTorrentCompleteRequiresStampAndZeroBytesLeft(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -35,9 +35,33 @@ func TestIsTorrentCompleteRequiresCompletionOnAndProgress(t *testing.T) {
 			torrent: &qbt.Torrent{
 				CompletionOn: 1700000123,
 				Progress:     0.12,
+				AmountLeft:   880,
 				State:        qbt.TorrentStateDownloading,
 			},
 			want: false,
+		},
+		{
+			// One day past the epoch is still sentinel space; real
+			// completion timestamps sit far above it.
+			name: "boundary timestamp at 86400",
+			torrent: &qbt.Torrent{
+				CompletionOn: 86400,
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+			},
+			want: false,
+		},
+		{
+			// qbit can transiently serialize a negative amount_left when
+			// total_wanted_done overshoots total_wanted; still complete.
+			name: "negative amount_left overshoot",
+			torrent: &qbt.Torrent{
+				CompletionOn: 1700000123,
+				Progress:     1.0,
+				AmountLeft:   -100,
+				State:        qbt.TorrentStateUploading,
+			},
+			want: true,
 		},
 		{
 			name: "downloading without completion_on",
@@ -104,14 +128,18 @@ func TestHandleCompletionUpdatesDoesNotSpamOnStartupStateFlap(t *testing.T) {
 		seen <- torrent
 	})
 
-	// Startup snapshot: completion set, but state in a transient phase.
+	// Startup snapshot: a completed torrent caught mid-recheck. Progress and
+	// amount_left carry verification fractions here, so the init baseline
+	// must key on the stamp alone or the end of the recheck looks like a
+	// fresh completion.
 	client.handleCompletionUpdates(&qbt.MainData{
 		Torrents: map[string]qbt.Torrent{
 			"abc": {
 				Hash:         "abc",
 				Name:         "Done",
 				CompletionOn: 1700000123,
-				Progress:     1.0,
+				Progress:     0.3,
+				AmountLeft:   700,
 				State:        qbt.TorrentStateCheckingResumeData,
 			},
 		},
@@ -225,7 +253,7 @@ func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
 	}
 
 	// Baseline: torrent still downloading.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: -1, Progress: 0.9, State: qbt.TorrentStateDownloading})
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: -1, Progress: 0.9, AmountLeft: 100, State: qbt.TorrentStateDownloading})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 
 	// Finishes: completion event fires.
@@ -237,15 +265,17 @@ func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
 	}
 
 	// Recheck-on-completion runs; verification progress must not touch state.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.3, State: qbt.TorrentStateCheckingUp})
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.3, AmountLeft: 700, State: qbt.TorrentStateCheckingUp})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 
-	// Recheck failed: qbit re-downloads. completion_on stays set. Re-arms.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.5, State: qbt.TorrentStateDownloading})
+	// Recheck failed: qbit re-downloads. completion_on stays set (libtorrent
+	// never clears it on the recheck path), so amount_left is what re-arms.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 0.5, AmountLeft: 500, State: qbt.TorrentStateDownloading})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 
-	// Real completion: must fire again.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700001000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	// Real completion: must fire again. The stamp does not change; finished()
+	// only re-stamps a zeroed completed_time.
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateUploading})
 	select {
 	case <-seen:
 	case <-time.After(200 * time.Millisecond):
@@ -253,7 +283,7 @@ func TestHandleCompletionUpdatesRearmsAfterFailedRecheck(t *testing.T) {
 	}
 
 	// Steady seeding: no re-fire.
-	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700001000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+	update(qbt.Torrent{Hash: "ghi", CompletionOn: 1700000999, Progress: 1.0, State: qbt.TorrentStateStalledUp})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 
@@ -285,7 +315,7 @@ func TestHandleCompletionUpdatesIgnoresWestOfUTCSentinel(t *testing.T) {
 	})
 
 	// Fresh add: positive sentinel, barely any data. Must not fire.
-	update(qbt.Torrent{Hash: "jkl", CompletionOn: 28800, Progress: 0.04, State: qbt.TorrentStateDownloading})
+	update(qbt.Torrent{Hash: "jkl", CompletionOn: 28800, Progress: 0.04, AmountLeft: 960, State: qbt.TorrentStateDownloading})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 
 	// Real completion: fires once.
@@ -328,7 +358,7 @@ func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
 	})
 
 	// Downloading, incomplete.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: -1, Progress: 0.9, State: qbt.TorrentStateDownloading})
+	update(qbt.Torrent{Hash: "mno", CompletionOn: -1, Progress: 0.9, AmountLeft: 100, State: qbt.TorrentStateDownloading})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 
 	// Finishes straight into stoppedUP (ratio limit 0): must fire.
@@ -340,7 +370,7 @@ func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
 	}
 
 	// Stale verification fraction while stopped must not un-mark it.
-	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 0.4, State: qbt.TorrentStateStoppedUp})
+	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 0.4, AmountLeft: 600, State: qbt.TorrentStateStoppedUp})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 
 	// Resume: complete and already handled, no re-fire.
@@ -349,6 +379,98 @@ func TestHandleCompletionUpdatesStoppedStatesAreOneWay(t *testing.T) {
 
 	// Stop again: still handled, no re-fire.
 	update(qbt.Torrent{Hash: "mno", CompletionOn: 1700003000, Progress: 1.0, State: qbt.TorrentStateStoppedUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+}
+
+// A recheck of a completed torrent reports verification fractions in both
+// progress and amount_left. The checking-state gate must keep the last known
+// state; otherwise the recheck window un-marks the torrent and the return to
+// seeding fires a duplicate completion.
+func TestHandleCompletionUpdatesCheckingStatesKeepPriorState(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 6}
+
+	seen := make(chan qbt.Torrent, 2)
+	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+		seen <- torrent
+	})
+
+	update := func(torrent qbt.Torrent) {
+		client.handleCompletionUpdates(&qbt.MainData{
+			Torrents: map[string]qbt.Torrent{"pqr": torrent},
+		})
+	}
+
+	// Init baseline with an unrelated torrent so "pqr" arrives mid-run.
+	client.handleCompletionUpdates(&qbt.MainData{
+		Torrents: map[string]qbt.Torrent{
+			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
+		},
+	})
+
+	// Downloads and completes: fires once.
+	update(qbt.Torrent{Hash: "pqr", CompletionOn: -1, Progress: 0.8, AmountLeft: 200, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+	update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected completion event")
+	}
+
+	// Mid-recheck snapshot: verification fraction in amount_left.
+	update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 0.3, AmountLeft: 700, State: qbt.TorrentStateCheckingUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Recheck passes, back to seeding: must NOT re-fire.
+	update(qbt.Torrent{Hash: "pqr", CompletionOn: 1700004000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+}
+
+// Deselecting every file makes qbit finish the torrent at zero bytes: it
+// stamps completion_on and serializes progress 0 (total_wanted == 0) with
+// amount_left 0. Firing here matches qbit's own finished semantics, and
+// cross-seed rejects the search downstream via the completion-wait poller
+// (applyCompletionPollResultsLocked's Progress < 1 gate), so only the
+// notification observes it. Deliberate: fire exactly once.
+func TestHandleCompletionUpdatesZeroWantedFinishFiresOnce(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 8}
+
+	seen := make(chan qbt.Torrent, 2)
+	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+		seen <- torrent
+	})
+
+	update := func(torrent qbt.Torrent) {
+		client.handleCompletionUpdates(&qbt.MainData{
+			Torrents: map[string]qbt.Torrent{"stu": torrent},
+		})
+	}
+
+	// Init baseline with an unrelated torrent so "stu" arrives mid-run.
+	client.handleCompletionUpdates(&qbt.MainData{
+		Torrents: map[string]qbt.Torrent{
+			"zzz": {Hash: "zzz", CompletionOn: 1700000000, Progress: 1.0, State: qbt.TorrentStateStalledUp},
+		},
+	})
+
+	// Fresh add, downloading normally.
+	update(qbt.Torrent{Hash: "stu", CompletionOn: -1, Progress: 0.05, AmountLeft: 950, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// User deselects every file: qbit finishes it at zero bytes.
+	update(qbt.Torrent{Hash: "stu", CompletionOn: 1700005000, Progress: 0.0, AmountLeft: 0, State: qbt.TorrentStateStalledUp})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected completion event for zero-wanted finish")
+	}
+
+	// Steady state: no re-fire.
+	update(qbt.Torrent{Hash: "stu", CompletionOn: 1700005000, Progress: 0.0, AmountLeft: 0, State: qbt.TorrentStateStalledUp})
 	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
 }
 

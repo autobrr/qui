@@ -804,13 +804,21 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 	}
 }
 
-// hasCompletionStamp reports whether completion_on holds a real completion
-// timestamp. Never-completed torrents don't serialize a clean sentinel on
-// every qbit version: 5.x emits -1, but 4.2-4.6 emit minus the host's 1970
-// UTC offset, which is POSITIVE west of UTC (+28800 on US Pacific), and 4.1
-// emits uint32(-1). Real timestamps all sit far above a day.
+// NormalizeCompletionTimestamp returns ts when it holds a real completion
+// timestamp (completion_on / seen_complete) and 0 when it holds a
+// never-completed sentinel. The sentinel differs per qbit version: 5.x emits
+// -1, 4.2-4.6 emit minus the host's 1970 UTC offset, which is POSITIVE west
+// of UTC (+28800 on US Pacific, worst real case +43200), and 4.1 emits
+// uint32(-1). Real timestamps all sit far above a day.
+func NormalizeCompletionTimestamp(ts int64) int64 {
+	if ts > 86400 && ts != math.MaxUint32 {
+		return ts
+	}
+	return 0
+}
+
 func hasCompletionStamp(t *qbt.Torrent) bool {
-	return t.CompletionOn > 86400 && t.CompletionOn != math.MaxUint32
+	return NormalizeCompletionTimestamp(t.CompletionOn) > 0
 }
 
 func isTorrentComplete(t *qbt.Torrent) bool {
@@ -818,9 +826,15 @@ func isTorrentComplete(t *qbt.Torrent) bool {
 		return false
 	}
 
-	// completion_on survives a failed post-completion recheck, so it alone
-	// can't mean "data is complete"; require progress too.
-	return hasCompletionStamp(t) && t.Progress >= 1
+	// completion_on survives a failed post-completion recheck (libtorrent
+	// clears completed_time only on priority-change knock-backs, never on the
+	// recheck path, and finished() re-stamps only a zeroed stamp), so the
+	// stamp alone can't mean "data is complete"; require zero bytes left.
+	// amount_left, unlike progress, ignores verification fractions and the
+	// progress==0 short-circuit when all files are deselected. <= because
+	// qbit can transiently serialize a negative amount_left on wanted-size
+	// overshoot.
+	return hasCompletionStamp(t) && t.AmountLeft <= 0
 }
 
 // isCheckingState reports states where progress is verification progress
