@@ -438,11 +438,11 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAddedOn:
 		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOn:
-		return compareAgeIfSet(torrent.CompletionOn, cond, ctx)
+		return compareAgeIfSet(qbittorrent.NormalizeCompletionTimestamp(torrent.CompletionOn), cond, ctx)
 	case FieldLastActivity:
 		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 	case FieldSeenComplete:
-		return compareAgeIfSet(torrent.SeenComplete, cond, ctx)
+		return compareAgeIfSet(qbittorrent.NormalizeCompletionTimestamp(torrent.SeenComplete), cond, ctx)
 	case FieldETA:
 		return compareInt64(torrent.ETA, cond)
 	case FieldReannounce:
@@ -464,7 +464,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAddedOnAge:
 		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOnAge:
-		return compareAgeIfSet(torrent.CompletionOn, cond, ctx)
+		return compareAgeIfSet(qbittorrent.NormalizeCompletionTimestamp(torrent.CompletionOn), cond, ctx)
 	case FieldLastActivityAge:
 		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 
