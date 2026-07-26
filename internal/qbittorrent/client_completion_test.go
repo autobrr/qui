@@ -498,3 +498,41 @@ func requireNoIntEvent(t *testing.T, ch <-chan int) {
 	default:
 	}
 }
+
+// A failed recheck can happen while qui is down: at startup the torrent is
+// actively re-downloading with its stamp intact (libtorrent never clears it
+// on the recheck path) and bytes missing. The baseline must record it as
+// incomplete or the real completion never fires. Checking/stopped snapshots
+// keep the stamp-only baseline; their byte counts are unreliable.
+func TestHandleCompletionUpdatesStartupAfterFailedRecheckFires(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{instanceID: 10}
+
+	seen := make(chan qbt.Torrent, 2)
+	client.SetTorrentCompletionHandler(func(_ context.Context, _ int, torrent qbt.Torrent) {
+		seen <- torrent
+	})
+
+	update := func(torrent qbt.Torrent) {
+		client.handleCompletionUpdates(&qbt.MainData{
+			Torrents: map[string]qbt.Torrent{"vwx": torrent},
+		})
+	}
+
+	// Startup snapshot: re-downloading after a failed recheck, stamp intact.
+	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 0.5, AmountLeft: 500, State: qbt.TorrentStateDownloading})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+
+	// Finishes for real: must fire.
+	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateUploading})
+	select {
+	case <-seen:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected completion event after startup mid-redownload baseline")
+	}
+
+	// Steady seeding: no re-fire.
+	update(qbt.Torrent{Hash: "vwx", CompletionOn: 1700006000, Progress: 1.0, State: qbt.TorrentStateStalledUp})
+	requireNoTorrentEvent(t, seen, 200*time.Millisecond)
+}

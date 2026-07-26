@@ -696,10 +696,18 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		}
 		for hash, torrent := range data.Torrents {
 			normalized := normalizeHashForCompletion(hash)
-			// Baseline on the stamp alone: a completed torrent observed
-			// mid-recheck at startup reports fractional progress and must not
-			// look like a fresh completion once the recheck finishes.
-			c.completionState[normalized] = hasCompletionStamp(&torrent)
+			// Mirror the steady-state trust model: while checking/moving or
+			// stopped, byte counts can be verification fractions, so a
+			// completed torrent observed there must baseline on the stamp
+			// alone or the end of a recheck looks like a fresh completion.
+			// In active states the bytes are trustworthy; a torrent
+			// re-downloading after a failed recheck keeps its stamp but must
+			// not baseline as complete, or its real completion never fires.
+			if isCheckingState(torrent.State) || isStoppedOrErrorState(torrent.State) {
+				c.completionState[normalized] = hasCompletionStamp(&torrent)
+			} else {
+				c.completionState[normalized] = isTorrentComplete(&torrent)
+			}
 		}
 		c.completionInit = true
 		c.completionMu.Unlock()
