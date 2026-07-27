@@ -1628,11 +1628,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	if sort == "completion_on" {
-		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.CompletionOn })
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return NormalizeCompletionTimestamp(t.CompletionOn) })
 	}
 
 	if sort == "seen_complete" {
-		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.SeenComplete })
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return NormalizeCompletionTimestamp(t.SeenComplete) })
 	}
 
 	// Calculate stats from filtered torrents
@@ -4850,6 +4850,10 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 			log.Debug().Str("expr", filters.Expr).Msg("Using cached expression")
 			program = p
 		} else {
+			// User expressions see raw qbt.Torrent fields, including the
+			// never-completed sentinels in CompletionOn/SeenComplete
+			// (NormalizeCompletionTimestamp); guarding here would silently
+			// rewrite user-authored comparisons, so they are excluded.
 			program, compileErr = expr.Compile(filters.Expr, expr.Env(qbt.Torrent{}), expr.AsBool())
 			if compileErr != nil {
 				log.Error().Err(compileErr).Msg("Failed to compile expression")
@@ -5645,9 +5649,9 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 		case "added_on":
 			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.AddedOn })
 		case "completion_on":
-			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.CompletionOn })
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return NormalizeCompletionTimestamp(t.CompletionOn) })
 		case "seen_complete":
-			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.SeenComplete })
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return NormalizeCompletionTimestamp(t.SeenComplete) })
 		case "last_activity":
 			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.LastActivity / 60 })
 		case "instance":
