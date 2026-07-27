@@ -96,6 +96,7 @@
     "requiresTorznabIndexer": "RSS 자동화 실행에는 Torznab 인덱서가 하나 이상 필요합니다.",
     "items": "항목 {{count}}개",
     "failedCount": "실패 {{count}}개",
+    "runError": "오류: {{message}}",
     "runSummary": "실행 {{runs}}회 • +{{added}}",
     "runSummaryWithFailures": "실행 {{runs}}회 • +{{added}} • 실패 {{failed}}개"
   },
@@ -156,7 +157,8 @@
     "searchNeedsTorznabUnlessGazelle": "시드 중인 토렌트 검색에는 Torznab 인덱서가 필요합니다(Gazelle을 통해 OPS/RED만 스캔하는 경우 제외).",
     "scannedProgress": "{{processed}}/{{total}} 스캔됨",
     "torrentsCount": "토렌트 {{count}}개",
-    "failedCount": "실패 {{count}}개"
+    "failedCount": "실패 {{count}}개",
+    "runError": "오류: {{message}}"
   },
   "rules": {
     "title": "Cross-Seed 규칙",

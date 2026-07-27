@@ -1940,6 +1940,35 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: true,
 		},
+		{
+			// qBittorrent 4.2-4.6 serialize never-completed as minus the
+			// host's 1970 UTC offset, POSITIVE west of UTC. Without the
+			// sentinel guard this computes a ~56-year age and matches
+			// every never-completed torrent (delete actions reachable).
+			name: "completion_on_age west-of-UTC sentinel - does not match",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "2592000", // 30 days
+			},
+			torrent:  qbt.Torrent{CompletionOn: 28800}, // qbit 4.x sentinel on US Pacific
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			// qBittorrent 4.1 serializes never-completed as uint32(-1).
+			// Age clamps to 0, so without the guard this false-matches
+			// any "completed less than X ago" condition.
+			name: "completion_on_age uint32 sentinel - does not match",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorLessThan,
+				Value:    "3600", // 1 hour
+			},
+			torrent:  qbt.Torrent{CompletionOn: 4294967295}, // qbit 4.1 sentinel
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
 
 		// LAST_ACTIVITY_AGE tests
 		{
@@ -2878,6 +2907,15 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 			name:     "seen complete unset does not match",
 			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorGreaterThan, Value: "0"},
 			torrent:  qbt.Torrent{SeenComplete: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			// last_seen_complete has the same never-completed sentinel defect
+			// as completion_on (qbit 4.2-4.6, positive west of UTC).
+			name:     "seen complete west-of-UTC sentinel does not match",
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorGreaterThan, Value: "2592000"},
+			torrent:  qbt.Torrent{SeenComplete: 28800},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},

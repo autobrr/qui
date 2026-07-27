@@ -95,6 +95,7 @@
     "requiresTorznabIndexer": "Запуски RSS автоматизації потребують принаймні одного Torznab індексатора.",
     "items": "{{count}} елементів",
     "failedCount": "{{count}} невдалих",
+    "runError": "Помилка: {{message}}",
     "runSummary": "{{runs}} запусків • +{{added}}",
     "runSummaryWithFailures": "{{runs}} запусків • +{{added}} • {{failed}} невдалих",
     "scheduledUpper": "ЗА РОЗКЛАДОМ"
@@ -156,7 +157,8 @@
     "searchNeedsTorznabUnlessGazelle": "Пошук серед торентів, що роздаються, потребує Torznab індексаторів (якщо тільки ви не скануєте OPS/RED через Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} відскановано",
     "torrentsCount": "{{count}} торентів",
-    "failedCount": "{{count}} невдалих"
+    "failedCount": "{{count}} невдалих",
+    "runError": "Помилка: {{message}}"
   },
   "rules": {
     "title": "Правила Cross-Seed",
