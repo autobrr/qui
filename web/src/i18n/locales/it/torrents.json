@@ -678,7 +678,7 @@
     "cached": "Memorizzato in cache {{time}}",
     "expires": "Scade {{time}}",
     "refreshFromIndexers": "Aggiorna dagli indexer",
-    "partialResults": "Risultati parziali — alcuni indexer non hanno risposto",
+    "partialResults": "Risultati parziali - alcuni indexer non hanno risposto",
     "searchScope": "Ambito di ricerca",
     "noIndexers": "Nessun indexer Torznab disponibile",
     "noIndexersHelp": "Aggiungi o abilita indexer Torznab in Impostazioni per cercare cross-seed.",

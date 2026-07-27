@@ -678,7 +678,7 @@
     "cached": "Armazenado em cache {{time}}",
     "expires": "Expira {{time}}",
     "refreshFromIndexers": "Atualizar dos indexadores",
-    "partialResults": "Resultados parciais — alguns indexadores não responderam",
+    "partialResults": "Resultados parciais - alguns indexadores não responderam",
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
     "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",

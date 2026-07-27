@@ -678,7 +678,7 @@
     "cached": "Cached {{time}}",
     "expires": "Expires {{time}}",
     "refreshFromIndexers": "Refresh from indexers",
-    "partialResults": "Partial results — some indexers did not respond",
+    "partialResults": "Partial results - some indexers did not respond",
     "searchScope": "Search Scope",
     "noIndexers": "No Torznab indexers available",
     "noIndexersHelp": "Add or enable Torznab indexers in Settings to search for cross-seeds.",

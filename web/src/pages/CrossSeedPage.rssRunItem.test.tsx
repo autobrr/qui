@@ -56,6 +56,8 @@ describe("RSSRunItem", () => {
       <RSSRunItem run={makeRun({ status: "success" })} formatDateValue={() => "just now"} />
     )
 
-    expect(container.querySelector("span[title]")).toBeNull()
+    // React drops title={undefined}, so a span[title] query cannot see the
+    // guard; assert on the rendered text instead.
+    expect(container.textContent).not.toContain("automation.runError")
   })
 })
