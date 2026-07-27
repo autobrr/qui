@@ -151,14 +151,13 @@ func (p *cachedSearchPortion) metadata(source string) *SearchCacheMetadata {
 
 // searchContext carries additional metadata about the current Torznab search.
 type searchContext struct {
-	categories     []int
-	contentType    contentType
-	searchMode     string
-	rateLimit      *RateLimitOptions
-	requireSuccess bool
-	releaseName    string // Original full release name for debugging/history
-	skipHistory    bool   // Skip recording this search in history buffer
-	originalQuery  string // Original query for fallback when ID params are pruned per-indexer
+	categories    []int
+	contentType   contentType
+	searchMode    string
+	rateLimit     *RateLimitOptions
+	releaseName   string // Original full release name for debugging/history
+	skipHistory   bool   // Skip recording this search in history buffer
+	originalQuery string // Original query for fallback when ID params are pruned per-indexer
 }
 
 type searchPriorityKey struct{}
@@ -674,13 +673,12 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
 	meta := finalizeSearchContext(ctx, &searchContext{
-		categories:     append([]int(nil), req.Categories...),
-		contentType:    detectedType,
-		searchMode:     searchMode,
-		requireSuccess: len(req.IndexerIDs) > 0,
-		releaseName:    req.ReleaseName,
-		skipHistory:    req.SkipHistory,
-		originalQuery:  req.Query,
+		categories:    append([]int(nil), req.Categories...),
+		contentType:   detectedType,
+		searchMode:    searchMode,
+		releaseName:   req.ReleaseName,
+		skipHistory:   req.SkipHistory,
+		originalQuery: req.Query,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -749,7 +747,11 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 				Msg("Torznab search deadline exceeded")
 		}
 		if err != nil && !deadlineErr {
-			if len(cachedResults) > 0 && cachedPortion != nil {
+			// Cached coverage counts even when it holds zero results: the covered
+			// indexers already answered this query, so a failure from the remaining
+			// live indexers degrades to a partial response instead of failing the
+			// whole multi-indexer search.
+			if cachedPortion != nil {
 				log.Warn().
 					Err(err).
 					Int("indexers_requested", len(indexersToSearch)).
