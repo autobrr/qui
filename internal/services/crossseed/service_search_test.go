@@ -51,7 +51,12 @@ type failingEnabledIndexerStore struct {
 	indexers []*models.TorznabIndexer
 }
 
-func (s *failingEnabledIndexerStore) Get(context.Context, int) (*models.TorznabIndexer, error) {
+func (s *failingEnabledIndexerStore) Get(_ context.Context, id int) (*models.TorznabIndexer, error) {
+	for _, indexer := range s.indexers {
+		if indexer != nil && indexer.ID == id {
+			return indexer, nil
+		}
+	}
 	return nil, nil
 }
 
