@@ -297,6 +297,7 @@ describe("isNeverCompletedTimestamp", () => {
     expect(isNeverCompletedTimestamp(86400)).toBe(true) // boundary
     expect(isNeverCompletedTimestamp(4294967295)).toBe(true) // qbit 4.1 uint32(-1)
     expect(isNeverCompletedTimestamp(undefined)).toBe(true)
+    expect(isNeverCompletedTimestamp(null)).toBe(true)
   })
 
   it("accepts real completion timestamps", () => {
