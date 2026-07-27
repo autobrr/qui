@@ -2460,6 +2460,7 @@ func TestCheckSeasonPackWebhook_KeepsAliasesWhenSeasonTotalUnavailable(t *testin
 	require.True(t, resp.Ready, "aliases must survive a zero-episode season lookup")
 	require.NotEmpty(t, resp.Matches)
 	require.Equal(t, 4, resp.Matches[0].MatchedEpisodes)
+	require.Equal(t, 4, resp.Matches[0].TotalEpisodes, "total must fall back to the pack file count, not stay zero")
 }
 
 // TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles extends the alias
@@ -2538,6 +2539,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 	})
 	require.NoError(t, err)
 	require.True(t, checkResp.Ready, "check must accept via ARR alternate titles")
+	require.Equal(t, 1, spy.seasonCalls, "check must make exactly one season lookup")
 
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
@@ -2545,6 +2547,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 	require.NoError(t, err)
 	require.True(t, applyResp.Applied, "apply must agree with check via the same aliases")
 	require.Equal(t, 4, applyResp.MatchedEpisodes)
+	require.Equal(t, 2, spy.seasonCalls, "apply must make exactly one more season lookup")
 }
 
 // TestPackEpisodeRejectReason pins the two reject-reason strings the troubleshooting
