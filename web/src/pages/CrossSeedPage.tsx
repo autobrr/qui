@@ -271,7 +271,7 @@ interface RSSRunItemProps {
 }
 
 /** Single RSS run item - used for scheduled, manual, and other run lists */
-function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
+export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   const { t } = useTranslation("crossseed")
   const hasResults = run.results && run.results.length > 0
   const successResults = run.results?.filter(r => r.success) ?? []
@@ -288,6 +288,11 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             {run.status === "partial" && <AlertTriangle className="h-3 w-3 text-yellow-500 shrink-0" />}
             {run.status === "pending" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
             <span className="text-xs text-muted-foreground">{t("automation.items", { count: run.totalFeedItems })}</span>
+            {run.errorMessage && (
+              <span className="min-w-0 truncate text-xs text-muted-foreground" title={run.errorMessage}>
+                {t("automation.runError", { message: run.errorMessage })}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
@@ -2670,6 +2675,11 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                       <span className="text-xs text-muted-foreground">
                                         {t("scan.torrentsCount", { count: run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents })}
                                       </span>
+                                      {run.errorMessage && (
+                                        <span className="min-w-0 truncate text-xs text-muted-foreground" title={run.errorMessage}>
+                                          {t("scan.runError", { message: run.errorMessage })}
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                       <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>

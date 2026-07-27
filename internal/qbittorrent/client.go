@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"sync"
@@ -695,7 +696,18 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 		}
 		for hash, torrent := range data.Torrents {
 			normalized := normalizeHashForCompletion(hash)
-			c.completionState[normalized] = isTorrentComplete(&torrent)
+			// Mirror the steady-state trust model: while checking/moving or
+			// stopped, byte counts can be verification fractions, so a
+			// completed torrent observed there must baseline on the stamp
+			// alone or the end of a recheck looks like a fresh completion.
+			// In active states the bytes are trustworthy; a torrent
+			// re-downloading after a failed recheck keeps its stamp but must
+			// not baseline as complete, or its real completion never fires.
+			if isCheckingState(torrent.State) || isStoppedOrErrorState(torrent.State) {
+				c.completionState[normalized] = hasCompletionStamp(&torrent)
+			} else {
+				c.completionState[normalized] = isTorrentComplete(&torrent)
+			}
 		}
 		c.completionInit = true
 		c.completionMu.Unlock()
@@ -704,18 +716,27 @@ func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 
 	ready := make([]qbt.Torrent, 0)
 	for hash, torrent := range data.Torrents {
-		normalized := normalizeHashForCompletion(hash)
-		alreadyHandled := c.completionState[normalized]
-		isComplete := isTorrentComplete(&torrent)
-
-		if !alreadyHandled && isComplete {
-			c.completionState[normalized] = true
-			ready = append(ready, torrent)
+		if isCheckingState(torrent.State) {
+			// Progress is verification progress while checking/moving; keep
+			// the last known state instead of misreading it.
 			continue
 		}
+		isComplete := isTorrentComplete(&torrent)
+		if !isComplete && isStoppedOrErrorState(torrent.State) {
+			// One-way door for stopped/error states: qbit can serialize a
+			// stale verification fraction as progress there, so completeness
+			// may mark a torrent handled but never un-mark one.
+			continue
+		}
+		normalized := normalizeHashForCompletion(hash)
+		alreadyHandled := c.completionState[normalized]
+		// Track current completeness rather than latching: if qbit knocks a
+		// completed torrent back to downloading (failed recheck-on-completion),
+		// this re-arms so the eventual real completion fires again.
+		c.completionState[normalized] = isComplete
 
-		if !isComplete && !alreadyHandled {
-			c.completionState[normalized] = false
+		if !alreadyHandled && isComplete {
+			ready = append(ready, torrent)
 		}
 	}
 	c.completionMu.Unlock()
@@ -791,12 +812,60 @@ func (c *Client) handleAddedUpdates(data *qbt.MainData) {
 	}
 }
 
+// NormalizeCompletionTimestamp returns ts when it holds a real completion
+// timestamp (completion_on / seen_complete) and 0 when it holds a
+// never-completed sentinel. The sentinel differs per qbit version: 5.x emits
+// -1, 4.2-4.6 emit minus the host's 1970 UTC offset, which is POSITIVE west
+// of UTC (+28800 on US Pacific, worst real case +43200), and 4.1 emits
+// uint32(-1). Real timestamps all sit far above a day.
+func NormalizeCompletionTimestamp(ts int64) int64 {
+	if ts > 86400 && ts != math.MaxUint32 {
+		return ts
+	}
+	return 0
+}
+
+func hasCompletionStamp(t *qbt.Torrent) bool {
+	return NormalizeCompletionTimestamp(t.CompletionOn) > 0
+}
+
 func isTorrentComplete(t *qbt.Torrent) bool {
 	if t == nil {
 		return false
 	}
 
-	return t.CompletionOn > 0
+	// completion_on survives a failed post-completion recheck (libtorrent
+	// clears completed_time only on priority-change knock-backs, never on the
+	// recheck path, and finished() re-stamps only a zeroed stamp), so the
+	// stamp alone can't mean "data is complete"; require zero bytes left.
+	// amount_left, unlike progress, ignores verification fractions and the
+	// progress==0 short-circuit when all files are deselected. <= because
+	// qbit can transiently serialize a negative amount_left on wanted-size
+	// overshoot.
+	return hasCompletionStamp(t) && t.AmountLeft <= 0
+}
+
+// isCheckingState reports states where progress is verification progress
+// rather than download progress, so completion detection must not read it.
+func isCheckingState(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStateCheckingDl ||
+		state == qbt.TorrentStateCheckingUp ||
+		state == qbt.TorrentStateCheckingResumeData ||
+		state == qbt.TorrentStateMoving
+}
+
+// isStoppedOrErrorState reports inactive states where progress can still be
+// a leftover verification fraction (qbit gates the checking short-circuit on
+// the raw libtorrent state, which leaks under these state strings, e.g. a
+// force-recheck on a stopped torrent). Completion detection may accept
+// positive evidence here but must ignore negative evidence.
+func isStoppedOrErrorState(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStatePausedDl ||
+		state == qbt.TorrentStatePausedUp ||
+		state == qbt.TorrentStateStoppedDl ||
+		state == qbt.TorrentStateStoppedUp ||
+		state == qbt.TorrentStateMissingFiles ||
+		state == qbt.TorrentStateError
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent

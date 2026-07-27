@@ -630,6 +630,7 @@
     "cached": "캐시됨 {{time}}",
     "expires": "만료 {{time}}",
     "refreshFromIndexers": "인덱서에서 새로 고침",
+    "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",

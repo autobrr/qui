@@ -424,6 +424,85 @@ func TestSearchScheduler_RSSDeduplication(t *testing.T) {
 	assert.Equal(t, int32(1), executions.Load())
 }
 
+func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
+	rl := NewRateLimiter(1 * time.Millisecond)
+	s := newSearchScheduler(rl, 1) // Single worker
+	defer s.Stop()
+
+	var executions atomic.Int32
+	var startOnce sync.Once
+	firstExecStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		executions.Add(1)
+		startOnce.Do(func() { close(firstExecStarted) })
+		<-releaseFirst
+		return []Result{{Title: "test"}}, []int{1}, nil
+	}
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
+
+	// First RSS search occupies pendingRSS[1] until released.
+	firstDone := make(chan struct{})
+	_, err1 := s.Submit(context.Background(), SubmitRequest{
+		Indexers:  []*models.TorznabIndexer{indexer},
+		Meta:      rssMeta,
+		ExecFn:    exec,
+		Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(firstDone) }},
+	})
+	require.NoError(t, err1)
+	<-firstExecStarted
+
+	// Second RSS search to the same indexer is fully deduplicated. The deduped
+	// indexer must still report an OnComplete so WaitGroup-based callers finish.
+	type completion struct {
+		jobID     uint64
+		indexerID int
+		results   []Result
+		coverage  []int
+		err       error
+	}
+	completeCh := make(chan completion, 1)
+	secondJobDone := make(chan struct{})
+	jobID2, err2 := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		Meta:     rssMeta,
+		ExecFn:   exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+				id := 0
+				if idx != nil {
+					id = idx.ID
+				}
+				completeCh <- completion{jobID: jobID, indexerID: id, results: results, coverage: coverage, err: err}
+			},
+			OnJobDone: func(uint64) { close(secondJobDone) },
+		},
+	})
+	require.NoError(t, err2)
+
+	select {
+	case got := <-completeCh:
+		assert.Equal(t, jobID2, got.jobID)
+		assert.Equal(t, 1, got.indexerID)
+		assert.Nil(t, got.results)
+		assert.Nil(t, got.coverage)
+		require.ErrorIs(t, got.err, errRSSDeduplicated)
+	case <-time.After(2 * time.Second):
+		t.Fatal("deduplicated indexer never reported OnComplete")
+	}
+	<-secondJobDone
+
+	// Release the first search and let it finish.
+	close(releaseFirst)
+	<-firstDone
+
+	// Only the first search should have executed.
+	assert.Equal(t, int32(1), executions.Load())
+}
+
 func TestSearchScheduler_EmptySubmission(t *testing.T) {
 	s := newSearchScheduler(nil, 10)
 	defer s.Stop()

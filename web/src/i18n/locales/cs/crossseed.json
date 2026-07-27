@@ -95,6 +95,7 @@
     "requiresTorznabIndexer": "RSS automatizace vyžaduje alespoň jeden Torznab indexer.",
     "items": "{{count}} položek",
     "failedCount": "{{count}} selhalo",
+    "runError": "Chyba: {{message}}",
     "runSummary": "{{runs}} spuštění • +{{added}}",
     "runSummaryWithFailures": "{{runs}} spuštění • +{{added}} • {{failed}} selhalo",
     "scheduledUpper": "NAPLÁNOVÁNO"
@@ -156,7 +157,8 @@
     "searchNeedsTorznabUnlessGazelle": "Hledání seedovaných torrentů vyžaduje Torznab indexery (kromě případu, kdy skenujete pouze OPS/RED přes Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} hledáno",
     "torrentsCount": "{{count}} torrentů",
-    "failedCount": "{{count}} selhalo"
+    "failedCount": "{{count}} selhalo",
+    "runError": "Chyba: {{message}}"
   },
   "rules": {
     "title": "Pravidla křížového sdílení",
