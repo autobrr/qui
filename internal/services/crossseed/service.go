@@ -1194,6 +1194,9 @@ type searchRunState struct {
 	recentResults    []models.CrossSeedSearchResult
 	nextWake         time.Time
 	lastError        error
+	// lastCandidateErr remembers the most recent candidate-scoped failure so a
+	// run where every candidate failed can still finalize as failed.
+	lastCandidateErr error
 
 	resolvedTorznabIndexerIDs []int
 	resolvedTorznabIndexerErr error
@@ -8720,9 +8723,12 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 		// plus a failed result entry); they must not mark the whole run failed.
 		// Only run-scoped errors abort and fail the run.
 		delayAfterCandidate, err := s.processSearchCandidate(ctx, state, candidate)
-		if err != nil && !errors.Is(err, context.Canceled) && isSearchRunScopedError(state, err) {
-			state.lastError = err
-			return
+		if err != nil && !errors.Is(err, context.Canceled) {
+			if isSearchRunScopedError(state, err) {
+				state.lastError = err
+				return
+			}
+			state.lastCandidateErr = err
 		}
 
 		if interval > 0 && delayAfterCandidate {
@@ -8754,6 +8760,12 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	} else if state.lastError != nil {
 		state.run.Status = models.CrossSeedSearchRunStatusFailed
 		errMsg := state.lastError.Error()
+		state.run.ErrorMessage = &errMsg
+	} else if state.lastCandidateErr != nil && state.run.Processed > 0 && state.run.TorrentsFailed >= state.run.Processed {
+		// One failed candidate must not fail the run, but a run where every
+		// candidate failed is not a success either.
+		state.run.Status = models.CrossSeedSearchRunStatusFailed
+		errMsg := fmt.Sprintf("all %d searched candidates failed; last error: %v", state.run.Processed, state.lastCandidateErr)
 		state.run.ErrorMessage = &errMsg
 	} else {
 		state.run.Status = models.CrossSeedSearchRunStatusSuccess
