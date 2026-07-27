@@ -102,9 +102,13 @@ func (a AlternateTitle) seasonScoped() bool {
 }
 
 // matchesSeason reports whether a season-scoped alternate title names the given season.
+// Only SeasonNumber (Sonarr's numbering) counts: SceneSeasonNumber lives in the
+// release-label domain, where a "Show 2nd Season" alias typically carries
+// sceneSeasonNumber 1, so scene equality would bridge wrong-season aliases onto the
+// pack (a season-2 alias kept for a season-1 lookup). An alias scoped only by scene
+// season therefore matches no season, since its Sonarr season is unknown.
 func (a AlternateTitle) matchesSeason(season int) bool {
-	return (a.SeasonNumber != nil && *a.SeasonNumber == season) ||
-		(a.SceneSeasonNumber != nil && *a.SceneSeasonNumber == season)
+	return a.SeasonNumber != nil && *a.SeasonNumber == season
 }
 
 // ExternalIDsLookupResult contains ARR IDs plus ARR-provided titles for the same content.
@@ -294,25 +298,26 @@ func titlesForSeason(series *SonarrSeries, season int) []string {
 // and expanding to the canonical title would bridge wrong-season canonical locals onto
 // it, so alias expansion is suppressed and matching falls back to literal titles.
 //
-// Only SeasonNumber (Sonarr's numbering) counts as alignment here, deliberately NOT
-// matchesSeason: SceneSeasonNumber lives in the release-label domain, where a "2nd
-// Season" alias typically carries sceneSeasonNumber 1, so scene equality with the pack
-// label is the mismatch case, not proof of safety. An alias scoped only by scene season
-// is likewise suppressed, since its Sonarr season is unknown.
+// An alias that normalizes to the series title itself (XEM scene mappings often carry
+// the bare canonical title per season, and normalization strips the "♪♪"/"∬"-style
+// punctuation distinguishing sequel titles) carries no season signal: every pack of the
+// show is prefixed by it, so treating it as an alias-titled pack would suppress alias
+// matching for all canonically-titled packs.
 func seasonLookupTitles(series *SonarrSeries, lookupTitle string, season int) []string {
 	if series == nil {
 		return nil
 	}
 	normalized := normalizeTitleWords(lookupTitle)
+	seriesTitle := normalizeTitleWords(series.Title)
 	for _, alternate := range series.AlternateTitles {
-		if !alternate.seasonScoped() {
-			continue
-		}
-		if alternate.SeasonNumber != nil && *alternate.SeasonNumber == season {
+		if !alternate.seasonScoped() || alternate.matchesSeason(season) {
 			continue
 		}
 		alias := normalizeTitleWords(alternate.Title)
-		if alias != "" && (normalized == alias || strings.HasPrefix(normalized, alias+" ")) {
+		if alias == "" || alias == seriesTitle {
+			continue
+		}
+		if normalized == alias || strings.HasPrefix(normalized, alias+" ") {
 			return nil
 		}
 	}

@@ -321,7 +321,11 @@ func (s *Service) clientForInstance(instance *models.ArrInstance) *Client {
 	return NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 }
 
-// LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific season.
+// LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific
+// season, plus the show's alternate titles usable for that season. When the series
+// resolves but the season's episode rows are unavailable (anime is often stored as one
+// absolute-numbered season), it returns a partial result with TotalEpisodes 0 and the
+// titles intact, so callers must check TotalEpisodes before trusting the count.
 func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*SeasonEpisodeTotalResult, error) {
 	if title == "" {
 		return nil, errors.New("title cannot be empty")

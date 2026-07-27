@@ -423,6 +423,10 @@ func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testi
 			{Title: "Oshi no Ko Romaji"},
 			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
 			{Title: "Oshi no Ko Kai", SceneSeasonNumber: season(2)},
+			// XEM scene mappings often carry the bare canonical title per season. It
+			// prefixes every pack of the show, so treating it as an alias-titled pack
+			// would suppress alias expansion for all canonically-titled packs.
+			{Title: "Oshi no Ko", SceneSeasonNumber: season(1)},
 		},
 	}
 
@@ -455,23 +459,34 @@ func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 			{Title: "Oshi no Ko Romaji"},                                 // series-wide (season absent)
 			{Title: "Oshi no Ko Wide", SeasonNumber: season(-1)},         // series-wide (-1)
 			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2)},    // scoped to season 2
-			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)}, // scoped to season 3
+			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)}, // scene-scoped only: Sonarr season unknown
+			// The real Sonarr scene-mapping shape: SeasonNumber is the Sonarr season,
+			// SceneSeasonNumber the release-label season. Scene equality must NOT count
+			// as season alignment, or this season-2 alias bridges season-2 episodes
+			// onto every season-1 pack.
+			{Title: "Oshi no Ko Scene Mapped", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
 		},
 	}
 
-	// Season 2: keep series-wide + the season-2 alias, drop the season-3 alias.
+	// Season 2: keep series-wide + the season-2 aliases, drop the rest.
 	s2 := titlesForSeason(series, 2)
 	require.Contains(t, s2, "Oshi no Ko")
 	require.Contains(t, s2, "Oshi no Ko Romaji")
 	require.Contains(t, s2, "Oshi no Ko Wide")
 	require.Contains(t, s2, "Oshi no Ko 2nd Season", "same-season alias must be kept (bridges 2nd-season locals)")
+	require.Contains(t, s2, "Oshi no Ko Scene Mapped", "Sonarr-season-2 alias must be kept for season 2")
 	require.NotContains(t, s2, "Oshi no Ko Scene S3", "a different season's alias must be dropped")
 
-	// Season 1: neither season-scoped alias applies.
+	// Season 1: no season-scoped alias applies. In particular the scene-mapped alias
+	// (sceneSeasonNumber 1) must not leak in via scene equality.
 	s1 := titlesForSeason(series, 1)
 	require.Contains(t, s1, "Oshi no Ko Romaji")
 	require.NotContains(t, s1, "Oshi no Ko 2nd Season", "season-2 alias must not bridge into a season-1 pack")
+	require.NotContains(t, s1, "Oshi no Ko Scene Mapped", "sceneSeasonNumber must not count as season alignment")
 	require.NotContains(t, s1, "Oshi no Ko Scene S3")
+
+	// A scene-only-scoped alias attaches to no season, its own scene season included.
+	require.NotContains(t, titlesForSeason(series, 3), "Oshi no Ko Scene S3")
 
 	// titlesFromSeries stays season-blind (search path unchanged): all titles present.
 	all := titlesFromSeries(series)
