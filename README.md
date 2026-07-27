@@ -34,6 +34,19 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
+### macOS Container
+First, install Container from the official source: https://github.com/apple/container/releases
+Second, create the /config and /downloads folders where you would like them.
+Third, run the command below:
+
+```bash
+container run -d \
+  -p 7476:7476 \
+  -v $(pwd)/config:/config \
+  -v $(pwd)/downloads:/downloads \
+  ghcr.io/autobrr/qui:latest
+```
+
 ## Features
 
 - **Single Binary**: No dependencies, just download and run
@@ -43,7 +56,7 @@ docker run -d \
 - **Automations**: Rule-based torrent management with conditions and actions
 - **Backups & Restore**: Scheduled snapshots with multiple restore modes
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps
-- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, and Simplified Chinese, with automatic browser-language detection
+- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, and Simplified Chinese, with automatic browser-language detection
 
 ## Community
 

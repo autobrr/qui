@@ -3089,3 +3089,295 @@ func TestApplyCapabilitySpecificParams(t *testing.T) {
 		})
 	}
 }
+
+// TestSearchIndexersWithSchedulerRSSDeduplicatedIndexerStillCompletes reproduces
+// the RSS scheduler hang: when an RSS search overlaps an indexer whose previous
+// RSS task is still pending, the scheduler used to skip it without a completion,
+// leaving searchIndexersWithScheduler's WaitGroup unbalanced so OnJobDone (and
+// thus the result callback) blocked forever.
+func TestSearchIndexersWithSchedulerRSSDeduplicatedIndexerStillCompletes(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	// Swap in a fast rate limiter so the first job's exec starts promptly.
+	service.searchScheduler.Stop()
+	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 1)
+	defer service.searchScheduler.Stop()
+
+	var startOnce sync.Once
+	firstExecStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	service.searchExecutor = func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		startOnce.Do(func() { close(firstExecStarted) })
+		<-releaseFirst
+		coverage := make([]int, 0, len(idxs))
+		for _, idx := range idxs {
+			coverage = append(coverage, idx.ID)
+		}
+		return []Result{{Title: "held"}}, coverage, nil
+	}
+
+	indexers := []*models.TorznabIndexer{{ID: 1, Name: "IndexerOne", Enabled: true}}
+	rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
+
+	// First RSS search holds pendingRSS[1] and the worker until released.
+	firstDone := make(chan struct{})
+	if err := service.searchIndexersWithScheduler(context.Background(), indexers, url.Values{}, rssMeta, nil, func(uint64, []Result, []int, error) {
+		close(firstDone)
+	}); err != nil {
+		t.Fatalf("first searchIndexersWithScheduler returned error: %v", err)
+	}
+
+	select {
+	case <-firstExecStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first RSS search never started")
+	}
+
+	// Second RSS search to the same indexer is fully deduplicated. Its result
+	// callback must still fire instead of hanging.
+	secondDone := make(chan error, 1)
+	if err := service.searchIndexersWithScheduler(context.Background(), indexers, url.Values{}, rssMeta, nil, func(_ uint64, results []Result, _ []int, err error) {
+		if err == nil && len(results) != 0 {
+			secondDone <- errors.New("expected empty results for deduplicated search")
+			return
+		}
+		secondDone <- err
+	}); err != nil {
+		t.Fatalf("second searchIndexersWithScheduler returned error: %v", err)
+	}
+
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("deduplicated RSS search reported error: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("deduplicated RSS search never completed (scheduler hang)")
+	}
+
+	// Release the first search and let it finish cleanly.
+	close(releaseFirst)
+	select {
+	case <-firstDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first RSS search never completed after release")
+	}
+}
+
+// TestSearchIndexersWithSchedulerMixedFailureAndWaitSkipSurfacesError verifies
+// that when every effective indexer either fails or is rate-limit skipped (a
+// mix of both), the aggregation surfaces an error instead of a silent empty
+// success. Neither "all failed" nor "all wait-skipped" holds on its own here.
+func TestSearchIndexersWithSchedulerMixedFailureAndWaitSkipSurfacesError(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+			{ID: 2, Name: "IndexerTwo", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	service.searchScheduler.Stop()
+	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 2)
+	defer service.searchScheduler.Stop()
+
+	failErr := errors.New("indexer two unreachable")
+	service.searchExecutor = func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		// Indexer 1 is rate-limit skipped, indexer 2 fails outright.
+		if idxs[0].ID == 1 {
+			return nil, nil, &RateLimitWaitError{IndexerID: 1, IndexerName: "IndexerOne", Wait: time.Minute, MaxWait: time.Second}
+		}
+		return nil, nil, failErr
+	}
+
+	indexers := []*models.TorznabIndexer{
+		{ID: 1, Name: "IndexerOne", Enabled: true},
+		{ID: 2, Name: "IndexerTwo", Enabled: true},
+	}
+
+	resultCh := make(chan error, 1)
+	if err := service.searchIndexersWithScheduler(context.Background(), indexers, url.Values{}, &searchContext{}, nil, func(_ uint64, results []Result, _ []int, err error) {
+		if err == nil && len(results) == 0 {
+			resultCh <- errors.New("expected an error, got empty success")
+			return
+		}
+		resultCh <- err
+	}); err != nil {
+		t.Fatalf("searchIndexersWithScheduler returned error: %v", err)
+	}
+
+	select {
+	case err := <-resultCh:
+		if err == nil {
+			t.Fatal("expected a surfaced error for mixed failure/wait-skip, got success")
+		}
+		if !errors.Is(err, failErr) {
+			t.Fatalf("expected the real failure error to be preferred, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("aggregation never invoked the result callback")
+	}
+}
+
+// TestRecentSurfacesTotalIndexerFailure verifies Recent propagates an aggregated
+// failure to its callback instead of reporting an empty success.
+func TestRecentSurfacesTotalIndexerFailure(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+			{ID: 2, Name: "IndexerTwo", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	searchErr := errors.New("all indexers unreachable")
+	service.searchExecutor = func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+		return nil, nil, searchErr
+	}
+
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	if err := service.Recent(context.Background(), 0, nil, func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}); err != nil {
+		t.Fatalf("Recent returned error: %v", err)
+	}
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, searchErr) {
+			t.Fatalf("expected the aggregated search error, got %v", err)
+		}
+	case resp := <-respCh:
+		t.Fatalf("expected Recent to surface the failure, got success response %+v", resp)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Recent never invoked its callback")
+	}
+}
+
+// TestRecentPartialCoverageMarksPartial verifies Recent flags incomplete indexer
+// coverage as partial even when no error is returned.
+func TestRecentPartialCoverageMarksPartial(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+			{ID: 2, Name: "IndexerTwo", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	service.searchExecutor = func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		// Only the second indexer returned data; coverage is incomplete.
+		return []Result{{
+			IndexerID: 2,
+			Tracker:   "IndexerTwo",
+			Title:     "Example",
+			GUID:      "guid-2",
+			Link:      "http://example/2",
+		}}, []int{2}, nil
+	}
+
+	respCh := make(chan *SearchResponse, 1)
+	errCh := make(chan error, 1)
+	if err := service.Recent(context.Background(), 0, nil, func(resp *SearchResponse, err error) {
+		if err != nil {
+			errCh <- err
+		} else {
+			respCh <- resp
+		}
+	}); err != nil {
+		t.Fatalf("Recent returned error: %v", err)
+	}
+
+	select {
+	case resp := <-respCh:
+		if !resp.Partial {
+			t.Fatal("expected Recent to mark incomplete coverage as partial")
+		}
+		if resp.Total != 1 {
+			t.Fatalf("expected 1 result, got %d", resp.Total)
+		}
+	case err := <-errCh:
+		t.Fatalf("expected partial success, got error %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Recent never invoked its callback")
+	}
+}
+
+// TestSearchIndexersWithSchedulerDedupExcludedFromFailureThreshold pins the
+// dedupSkips subtraction in the failure threshold: with one indexer
+// RSS-deduplicated and the other failing outright, the failure must surface
+// instead of resolving as a silent empty success.
+func TestSearchIndexersWithSchedulerDedupExcludedFromFailureThreshold(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "IndexerOne", Enabled: true},
+			{ID: 2, Name: "IndexerTwo", Enabled: true},
+		},
+	}
+	service := NewService(store)
+	service.searchScheduler.Stop()
+	service.searchScheduler = newSearchScheduler(NewRateLimiter(1*time.Millisecond), 2)
+	defer service.searchScheduler.Stop()
+
+	failErr := errors.New("indexer two unreachable")
+	firstExecStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	service.searchExecutor = func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		if idxs[0].ID == 1 {
+			close(firstExecStarted)
+			<-releaseFirst
+			return []Result{{Title: "held"}}, []int{1}, nil
+		}
+		return nil, nil, failErr
+	}
+
+	rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
+
+	// First RSS search holds pendingRSS[1] until released.
+	firstDone := make(chan struct{})
+	if err := service.searchIndexersWithScheduler(context.Background(), []*models.TorznabIndexer{
+		{ID: 1, Name: "IndexerOne", Enabled: true},
+	}, url.Values{}, rssMeta, nil, func(uint64, []Result, []int, error) {
+		close(firstDone)
+	}); err != nil {
+		t.Fatalf("first searchIndexersWithScheduler returned error: %v", err)
+	}
+	select {
+	case <-firstExecStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first RSS search never started")
+	}
+
+	// Second RSS search: indexer 1 is deduplicated, indexer 2 fails outright.
+	resultCh := make(chan error, 1)
+	if err := service.searchIndexersWithScheduler(context.Background(), []*models.TorznabIndexer{
+		{ID: 1, Name: "IndexerOne", Enabled: true},
+		{ID: 2, Name: "IndexerTwo", Enabled: true},
+	}, url.Values{}, rssMeta, nil, func(_ uint64, _ []Result, _ []int, err error) {
+		resultCh <- err
+	}); err != nil {
+		t.Fatalf("second searchIndexersWithScheduler returned error: %v", err)
+	}
+
+	select {
+	case err := <-resultCh:
+		if !errors.Is(err, failErr) {
+			t.Fatalf("expected the failure to surface past the dedup skip, got %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("aggregation never invoked the result callback")
+	}
+
+	close(releaseFirst)
+	select {
+	case <-firstDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first RSS search never completed after release")
+	}
+}

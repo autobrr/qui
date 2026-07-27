@@ -2318,3 +2318,19 @@ func TestHasActions_ExternalProgram(t *testing.T) {
 		require.True(t, hasActions(state))
 	})
 }
+
+// Never-completed sentinels (qbit 4.x, see NormalizeCompletionTimestamp) must
+// read as unset in scoring and delete-ordering, not as 1970-era completions.
+func TestFieldValuesRejectCompletionSentinels(t *testing.T) {
+	evalCtx := &EvalContext{NowUnix: 1700000000}
+
+	for _, sentinel := range []int64{28800, 4294967295, -1, 0} {
+		torrent := qbt.Torrent{CompletionOn: sentinel}
+		require.Zero(t, getNumericFieldValue(torrent, models.FieldCompletionOn, evalCtx), "numeric, sentinel %d", sentinel)
+		require.Zero(t, getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, torrent), "age, sentinel %d", sentinel)
+	}
+
+	completed := qbt.Torrent{CompletionOn: 1699990000}
+	require.InDelta(t, float64(1699990000), getNumericFieldValue(completed, models.FieldCompletionOn, evalCtx), 0)
+	require.InDelta(t, float64(10000), getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, completed), 0)
+}

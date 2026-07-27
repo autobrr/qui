@@ -95,6 +95,7 @@
     "requiresTorznabIndexer": "RSS 自动化运行需要至少一个 Torznab 索引器。",
     "items": "{{count}} 个项目",
     "failedCount": "{{count}} 个失败",
+    "runError": "错误：{{message}}",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
     "scheduledUpper": "定时"
@@ -156,7 +157,8 @@
     "searchNeedsTorznabUnlessGazelle": "做种搜索需要 Torznab 索引器（除非你仅通过 Gazelle 扫描 OPS/RED）。",
     "scannedProgress": "已扫描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 个种子",
-    "failedCount": "{{count}} 个失败"
+    "failedCount": "{{count}} 个失败",
+    "runError": "错误：{{message}}"
   },
   "rules": {
     "title": "辅种规则",

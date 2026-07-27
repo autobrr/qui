@@ -95,6 +95,7 @@
     "requiresTorznabIndexer": "L'automatisation RSS nécessite au moins un indexeur Torznab.",
     "items": "{{count}} éléments",
     "failedCount": "{{count}} échec(s)",
+    "runError": "Erreur : {{message}}",
     "runSummary": "{{runs}} exécutions • +{{added}}",
     "runSummaryWithFailures": "{{runs}} exécutions • +{{added}} • {{failed}} échec(s)",
     "scheduledUpper": "PLANIFIÉ"
@@ -156,7 +157,8 @@
     "searchNeedsTorznabUnlessGazelle": "La recherche de torrents en seed nécessite des indexeurs Torznab (sauf si vous analysez uniquement OPS/RED via Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} analysé(s)",
     "torrentsCount": "{{count}} torrents",
-    "failedCount": "{{count}} échec(s)"
+    "failedCount": "{{count}} échec(s)",
+    "runError": "Erreur : {{message}}"
   },
   "rules": {
     "title": "Règles de Cross-Seed",
