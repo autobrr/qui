@@ -895,18 +895,15 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 
 	resultCallback := func(jobID uint64, results []Result, coverage []int, err error) {
 		if err != nil {
-			// Only a deadline that still produced results is salvageable as a
-			// partial success; every other error (total failure, all indexers
-			// rate-limit skipped) must reach the caller so an automation run is
-			// recorded as failed instead of a silent empty success.
-			if !errors.Is(err, context.DeadlineExceeded) || len(results) == 0 {
-				log.Warn().
-					Err(err).
-					Int("indexers_requested", len(indexersToSearch)).
-					Msg("Recent search failed")
-				callback(nil, err)
-				return
-			}
+			// The aggregation only surfaces an error when it produced zero
+			// results, so the run fetched nothing and must reach the caller
+			// as a failure instead of a silent empty success.
+			log.Warn().
+				Err(err).
+				Int("indexers_requested", len(indexersToSearch)).
+				Msg("Recent search failed")
+			callback(nil, err)
+			return
 		}
 
 		partial := len(coverage) < len(indexersToSearch)
