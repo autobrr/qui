@@ -389,6 +389,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		lastErr     error
 		waitSkips   int
 		lastWaitErr error
+		dedupSkips  int
 	)
 	var completionWG sync.WaitGroup
 	completionWG.Add(len(indexers))
@@ -414,6 +415,12 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				defer mu.Unlock()
 
 				if err != nil {
+					// RSS-deduplicated indexers were served by an already-pending
+					// fetch; they contribute no results and are not failures.
+					if errors.Is(err, errRSSDeduplicated) {
+						dedupSkips++
+						return
+					}
 					// Rate limit wait errors are treated as skips
 					if _, isWait := asRateLimitWaitError(err); isWait {
 						waitSkips++
@@ -445,21 +452,30 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				finalResults := allResults
 				finalCoverage := coverageSetToSlice(coverage)
 				finalErr := lastErr
-				totalIndexers := len(indexers)
 				totalFailures := failures
 				totalWaitSkips := waitSkips
 				finalWaitErr := lastWaitErr
+				totalDedupSkips := dedupSkips
 				mu.Unlock()
 
-				// If all indexers were skipped due to rate-limit waiting, surface that as error.
-				if totalWaitSkips == totalIndexers && finalWaitErr != nil && len(finalResults) == 0 {
-					resultCallback(jobID, nil, finalCoverage, finalWaitErr)
-					return
-				}
+				// Deduplicated indexers were served by an already-pending fetch,
+				// so exclude them from the "everything failed/skipped" thresholds.
+				// If every remaining indexer was deduplicated, fall through to an
+				// empty success rather than surfacing an error.
+				effectiveIndexers := len(indexers) - totalDedupSkips
 
-				// If all indexers failed, return the last error
-				if totalFailures == totalIndexers && finalErr != nil && len(finalResults) == 0 {
-					resultCallback(jobID, nil, finalCoverage, finalErr)
+				// If every effective indexer either failed or was rate-limit
+				// skipped and produced no results, surface an error rather than a
+				// silent empty success — including a mix of the two. A real failure
+				// is more actionable than a rate-limit wait, so prefer finalErr and
+				// fall back to finalWaitErr (one of them is always set here, since a
+				// nonzero failure/skip count records its error).
+				if effectiveIndexers > 0 && totalFailures+totalWaitSkips == effectiveIndexers && len(finalResults) == 0 {
+					finalErrToReturn := finalErr
+					if finalErrToReturn == nil {
+						finalErrToReturn = finalWaitErr
+					}
+					resultCallback(jobID, nil, finalCoverage, finalErrToReturn)
 					return
 				}
 
@@ -878,11 +894,19 @@ func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callb
 	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
 	resultCallback := func(jobID uint64, results []Result, coverage []int, err error) {
-		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
-		partial := (deadlineErr && len(results) > 0) || (err != nil && !deadlineErr)
-		if partial && len(coverage) == len(indexersToSearch) {
-			partial = false
+		if err != nil {
+			// The aggregation only surfaces an error when it produced zero
+			// results, so the run fetched nothing and must reach the caller
+			// as a failure instead of a silent empty success.
+			log.Warn().
+				Err(err).
+				Int("indexers_requested", len(indexersToSearch)).
+				Msg("Recent search failed")
+			callback(nil, err)
+			return
 		}
+
+		partial := len(coverage) < len(indexersToSearch)
 		searchResults := s.convertResults(results)
 
 		resp := &SearchResponse{
