@@ -120,8 +120,9 @@ type seasonPackPrep struct {
 	eligible      []*models.Instance
 	threshold     float64
 	// aliasTitles carries the show's alternate titles (romaji/english/etc.) as
-	// reported by Sonarr/Radarr, so a pack and a local episode that use different
-	// title languages can still match. Empty when no ARR resolves the show.
+	// reported by Sonarr (season packs are TV-only), so a pack and a local episode
+	// that use different title languages can still match. Empty when Sonarr does
+	// not resolve the show.
 	aliasTitles []string
 }
 
@@ -727,6 +728,15 @@ func parseSeasonPackEpisodePayload(
 	return enriched, seasonlessOrigin, true
 }
 
+// packEpisodeRejectReason names why a local episode failed the pack-episode gate.
+// Both strings are documented grep targets in the cross-seed troubleshooting docs.
+func packEpisodeRejectReason(inPack bool) string {
+	if inPack {
+		return "episode numbering mismatch"
+	}
+	return "episode not in pack"
+}
+
 // packEpisodeOrigin records which numbering scheme a pack episode identity came from.
 // A pack file that parsed seasonless (absolute-numbered) sets absolute; an SxxExx file
 // sets seasoned. Only a local using the same scheme may satisfy it: equating a raw
@@ -740,14 +750,24 @@ type packEpisodeOrigin struct {
 // extractPackEpisodes returns the unique episode identities from the torrent's file
 // list (playable video files only), each tagged with the numbering scheme(s) it was
 // derived from so local candidates can be required to use the same scheme.
+//
+// A seasonless file name usually means absolute numbering, but not always: a season-N
+// pack (N >= 2) whose seasonless files include episode 1 must be numbered per-season
+// (absolute episode 1 exists only in season 1), so those files are really S<N>E<ep>
+// and tagging them absolute would let another season's absolute-numbered locals
+// satisfy them by raw number (S02 pack files 01..12 vs season-1 locals "Show - 01..12").
 func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[episodeIdentity]packEpisodeOrigin {
 	episodes := make(map[episodeIdentity]packEpisodeOrigin)
 	normalizer := seasonPackNormalizer(nil)
 
+	minSeasonlessEpisode := -1
 	for _, f := range files {
 		parsed, seasonlessOrigin, ok := parseSeasonPackEpisodePayload(f.Name, packRelease, normalizer)
 		if !ok {
 			continue
+		}
+		if seasonlessOrigin && (minSeasonlessEpisode < 0 || parsed.Episode < minSeasonlessEpisode) {
+			minSeasonlessEpisode = parsed.Episode
 		}
 
 		id := episodeIdentity{series: parsed.Series, episode: parsed.Episode}
@@ -758,6 +778,14 @@ func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[e
 			origin.seasoned = true
 		}
 		episodes[id] = origin
+	}
+
+	if packRelease != nil && packRelease.Series >= 2 && minSeasonlessEpisode >= 0 && minSeasonlessEpisode <= 1 {
+		for id, origin := range episodes {
+			if origin.absolute {
+				episodes[id] = packEpisodeOrigin{seasoned: true}
+			}
+		}
 	}
 
 	return episodes
@@ -797,7 +825,7 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 // match under the season-pack settings, returning the field-level reject reason (empty
 // on a match) so callers can log why a candidate episode was filtered. sourceAliasTitles
 // are the pack show's alternate titles
-// (from Sonarr/Radarr) and are only added to the source (pack) side, matching the
+// (from Sonarr) and are only added to the source (pack) side, matching the
 // search path: expanding the candidate side would let an unrelated show whose title
 // happens to equal one of the pack's aliases match by accident.
 func (s *Service) seasonPackReleasesMatchWithReason(
@@ -1090,11 +1118,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 			origin, inPack := packEpisodes[targetID]
 			schemeOK := (localSeasonless && origin.absolute) || (!localSeasonless && origin.seasoned)
 			if !inPack || !schemeOK {
-				reason := "episode not in pack"
-				if inPack {
-					reason = "episode numbering mismatch"
-				}
-				logFiltered(torrent.Name, reason)
+				logFiltered(torrent.Name, packEpisodeRejectReason(inPack))
 				continue
 			}
 			id = targetID

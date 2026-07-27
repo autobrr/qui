@@ -79,6 +79,8 @@ type trackerCustomizationProvider interface {
 
 type arrLookupService interface {
 	LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error)
+	// LookupSeasonEpisodeTotal may return a partial result (TotalEpisodes 0, alias
+	// Titles populated) when the season's episode rows are unavailable.
 	LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*arr.SeasonEpisodeTotalResult, error)
 }
 
