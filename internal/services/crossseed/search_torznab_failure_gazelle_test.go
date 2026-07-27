@@ -144,9 +144,13 @@ func TestSearchTorrentMatches_TorznabFailureKeepsGazelleMatches(t *testing.T) {
 	require.Contains(t, resp.Results[0].DownloadURL, "4242", "download URL should reference the gazelle torrent")
 }
 
-// Regression (PR #2156 review): caller cancellation must propagate as an
-// error, not be degraded into a Gazelle-only partial success.
-func TestSearchTorrentMatches_CancellationIsNotPartialSuccess(t *testing.T) {
+// Regression (PR #2156 review): a caller-imposed deadline is a form of
+// cancellation and must propagate as an error, not be degraded into a
+// Gazelle-only partial success. The expired caller deadline surfaces through
+// torznabFailed's "search timed out" call site with Gazelle matches already
+// in hand, so this pins the closure's ctx.Err() guard, which distinguishes
+// the caller's context from the internal wait timeout.
+func TestSearchTorrentMatches_CallerDeadlineIsNotPartialSuccess(t *testing.T) {
 	blockingTracker := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 	}))
@@ -154,18 +158,14 @@ func TestSearchTorrentMatches_CancellationIsNotPartialSuccess(t *testing.T) {
 
 	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-torznab-cancel-gazelle", blockingTracker.URL)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	timer := time.AfterFunc(250*time.Millisecond, cancel)
-	t.Cleanup(func() {
-		timer.Stop()
-		cancel()
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	t.Cleanup(cancel)
 
 	resp, _, _, err := svc.searchTorrentMatches(ctx, instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
 		IndexerIDs: []int{1},
 	}, clients)
 
-	require.Error(t, err, "canceled search must not be reported as partial success")
-	require.ErrorIs(t, err, context.Canceled)
+	require.Error(t, err, "caller deadline expiry must not be reported as partial success")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, resp)
 }
