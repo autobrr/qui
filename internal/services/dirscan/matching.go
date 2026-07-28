@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -392,31 +393,31 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
 		root := name
-		effectivePaths := make(map[string]int, len(info.Files))
 		for i := range info.Files {
 			f := &info.Files[i]
 			rawPathParts := f.BestPath()
 			// Sanitize the parts before the root-dedup comparison below; root is already
 			// sanitized, so comparing it against a raw part would double-prefix.
-			for j, part := range rawPathParts {
-				rawPathParts[j] = stringutils.SanitizeUTF8(part)
+			pathParts := make([]string, 0, len(rawPathParts))
+			for _, part := range rawPathParts {
+				pathParts = append(pathParts, stringutils.SanitizeUTF8(part))
 			}
 			// For multi-file torrents, qBittorrent's "Original" layout places files under the
 			// top-level folder named by the torrent's info.name.
 			//
 			// The torrent file list itself typically does NOT include that folder in each file path,
 			// so we include it here to reflect the on-disk paths qBittorrent will expect.
-			if root == "" || len(rawPathParts) == 0 || rawPathParts[0] != root {
-				rawPathParts = append([]string{root}, rawPathParts...)
+			//
+			// The comparison runs before the empty-component mapping below, or a torrent named
+			// "_" whose paths start with an empty component would lose one level.
+			if root == "" || len(pathParts) == 0 || pathParts[0] != root {
+				pathParts = append([]string{root}, pathParts...)
 			}
-			pathParts := normalizeTorrentPathParts(rawPathParts)
-			effectivePath := path.Join(pathParts...)
-			if previous, exists := effectivePaths[effectivePath]; exists {
-				return nil, fmt.Errorf("torrent files %d and %d resolve to the same path %q", previous, i, effectivePath)
+			for j, part := range pathParts {
+				pathParts[j] = pathutil.TorrentPathComponent(part)
 			}
-			effectivePaths[effectivePath] = i
 			tf := TorrentFile{
-				Path:   effectivePath,
+				Path:   path.Join(pathParts...),
 				Size:   f.Length,
 				Offset: offset,
 			}
@@ -427,18 +428,4 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	}
 
 	return parsed, nil
-}
-
-// normalizeTorrentPathParts replaces empty components as libtorrent and qBittorrent do.
-// It returns a copy so metadata-owned path slices are never modified.
-func normalizeTorrentPathParts(parts []string) []string {
-	normalized := make([]string, len(parts))
-	for i, part := range parts {
-		if part == "" {
-			normalized[i] = "_"
-			continue
-		}
-		normalized[i] = part
-	}
-	return normalized
 }

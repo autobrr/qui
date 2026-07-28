@@ -73,10 +73,7 @@ func pieceHash(t *testing.T, pieces []byte, idx int) []byte {
 }
 
 func fileDisplayPath(info *metainfo.Info, file metainfo.FileInfo) string {
-	if len(info.Files) == 0 {
-		return info.Name
-	}
-	return file.DisplayPath(info)
+	return torrentDisplayPath(info, &file)
 }
 
 func TestPieceBoundaryOverlapCanCauseMainPieceHashMismatch(t *testing.T) {

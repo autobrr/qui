@@ -15,6 +15,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 
+	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -524,7 +525,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath := stringutils.SanitizeUTF8(f.DisplayPath(&info))
+		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(&info, &f))
 		name := rootName
 		if info.IsDir() && displayPath != "" {
 			name = rootName + "/" + displayPath
@@ -566,6 +567,22 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	}
 
 	return files
+}
+
+// torrentDisplayPath is metainfo.FileInfo.DisplayPath with libtorrent's empty-component
+// rule applied, so the path lines up with the one qBittorrent stores for the file.
+// The non-directory branch is kept so this stays a drop-in for DisplayPath.
+func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) string {
+	if !info.IsDir() {
+		return info.BestName()
+	}
+
+	parts := f.BestPath()
+	components := make([]string, len(parts))
+	for i, part := range parts {
+		components[i] = pathutil.TorrentPathComponent(part)
+	}
+	return strings.Join(components, "/")
 }
 
 // ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.

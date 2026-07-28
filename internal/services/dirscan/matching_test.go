@@ -129,19 +129,27 @@ func TestParseTorrentBytes_MultiFileNormalizesEmptyPathComponents(t *testing.T) 
 	}
 }
 
-func TestParseTorrentBytes_MultiFileRejectsNormalizedPathCollision(t *testing.T) {
+func TestParseTorrentBytes_MultiFileKeepsDuplicatePadFiles(t *testing.T) {
+	// libtorrent 2.0 names canonical pad files after their size, so equally sized payload
+	// files produce two identical ".pad/<size>" entries. libtorrent allows that collision
+	// (torrent_info.cpp: "pad files are allowed to collide with each-other, as long as they
+	// have the same size"), so parsing must not reject the torrent either.
 	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
-		Name:        "root",
+		Name:        "Pack",
 		PieceLength: 262144,
 		Files: []metainfo.FileInfo{
-			{Path: []string{"", "file"}, Length: 1},
-			{Path: []string{"_", "file"}, Length: 1},
+			{Path: []string{"part.r00"}, Length: 100000},
+			{Path: []string{".pad", "162144"}, Length: 162144},
+			{Path: []string{"part.r01"}, Length: 100000},
+			{Path: []string{".pad", "162144"}, Length: 162144},
 		},
 	})
 
-	_, err := ParseTorrentBytes(torrentBytes)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "resolve to the same path \"root/_/file\"")
+	parsed, err := ParseTorrentBytes(torrentBytes)
+	require.NoError(t, err)
+	require.Len(t, parsed.Files, 4)
+	require.Equal(t, "Pack/.pad/162144", parsed.Files[1].Path)
+	require.Equal(t, "Pack/.pad/162144", parsed.Files[3].Path)
 }
 
 func TestMatcher_Strict_NormalizesFilenames(t *testing.T) {

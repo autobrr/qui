@@ -168,7 +168,7 @@ func BuildFilesForBoundaryCheck(
 	// - Otherwise: displayPath
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
 	for i := range info.Files {
-		displayPath := info.Files[i].DisplayPath(info)
+		displayPath := torrentDisplayPath(info, &info.Files[i])
 		var path string
 		switch {
 		case info.IsDir() && displayPath != "":
