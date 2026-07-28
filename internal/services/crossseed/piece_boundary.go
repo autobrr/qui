@@ -8,6 +8,8 @@ import (
 
 	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // PieceBoundarySafetyResult contains the outcome of a piece-boundary safety check.
@@ -153,11 +155,12 @@ func BuildFilesForBoundaryCheck(
 
 	// Single-file torrent
 	if len(info.Files) == 0 {
+		name := stringutils.SanitizeUTF8(info.Name)
 		return []TorrentFileForBoundaryCheck{
 			{
-				Path:      info.Name,
+				Path:      name,
 				Size:      info.Length,
-				IsContent: isContentFile(info.Name),
+				IsContent: isContentFile(name),
 			},
 		}
 	}
@@ -167,16 +170,17 @@ func BuildFilesForBoundaryCheck(
 	// - When info.IsDir(): rootName + "/" + displayPath
 	// - Otherwise: displayPath
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
+	rootName := stringutils.SanitizeUTF8(info.Name)
 	for i := range info.Files {
-		displayPath := torrentDisplayPath(info, &info.Files[i])
+		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(info, &info.Files[i]))
 		var path string
 		switch {
 		case info.IsDir() && displayPath != "":
-			path = info.Name + "/" + displayPath
+			path = rootName + "/" + displayPath
 		case displayPath != "":
 			path = displayPath
 		default:
-			path = info.Name
+			path = rootName
 		}
 		files = append(files, TorrentFileForBoundaryCheck{
 			Path:      path,

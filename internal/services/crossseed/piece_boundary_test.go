@@ -13,6 +13,8 @@ import (
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metainfo.Info) {
@@ -550,4 +552,28 @@ func TestPathFormatMatchesSourceFiles(t *testing.T) {
 	require.Len(t, files, 2)
 	require.Equal(t, "test-root/a-main.mkv", files[0].Path, "path should include root folder")
 	require.Equal(t, "test-root/b-extra.nfo", files[1].Path, "path should include root folder")
+}
+
+func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
+	// The boundary-check paths are looked up in maps keyed by qbt.TorrentFiles.Name,
+	// so the two builders must format paths identically. Malformed UTF-8 in the
+	// metadata used to break that: only BuildTorrentFilesFromInfo sanitized it.
+	info := metainfo.Info{
+		Name:        "Movie.\xe1.2024",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"sub\xe1", "file.mkv"}, Length: 1},
+			{Path: []string{"", "extra.nfo"}, Length: 1},
+		},
+	}
+
+	qbtFiles := BuildTorrentFilesFromInfo(stringutils.SanitizeUTF8(info.Name), info)
+	boundaryFiles := BuildFilesForBoundaryCheck(&info, func(string) bool { return true })
+
+	require.Len(t, boundaryFiles, len(qbtFiles))
+	for i := range qbtFiles {
+		require.Equal(t, qbtFiles[i].Name, boundaryFiles[i].Path)
+	}
+	require.Equal(t, "Movie.�.2024/sub�/file.mkv", boundaryFiles[0].Path)
+	require.Equal(t, "Movie.�.2024/_/extra.nfo", boundaryFiles[1].Path)
 }
