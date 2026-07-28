@@ -1,0 +1,159 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+//go:build windows
+
+package sharedextents
+
+import (
+	"crypto/rand"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"unsafe"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/reflinktree"
+)
+
+func TestWindowsFileInfoLayouts(t *testing.T) {
+	require.Equal(t, uintptr(24), unsafe.Sizeof(fileIDInfo{}))
+	require.Equal(t, uintptr(8), unsafe.Offsetof(fileIDInfo{}.Identifier))
+	require.Equal(t, uintptr(24), unsafe.Sizeof(fileStandardInfo{}))
+	require.Equal(t, uintptr(16), unsafe.Offsetof(fileStandardInfo{}.NumberOfLinks))
+	require.Equal(t, uintptr(20), unsafe.Offsetof(fileStandardInfo{}.DeletePending))
+	require.Equal(t, uintptr(21), unsafe.Offsetof(fileStandardInfo{}.Directory))
+}
+
+func TestMetadataMayShareAllocation(t *testing.T) {
+	tests := []struct {
+		name      string
+		source    fileMetadata
+		candidate fileMetadata
+		want      bool
+	}{
+		{
+			name:      "same volume non-empty files",
+			source:    fileMetadata{volumeSerialNumber: 1, size: 1},
+			candidate: fileMetadata{volumeSerialNumber: 1, size: 1},
+			want:      true,
+		},
+		{
+			name:      "different volumes",
+			source:    fileMetadata{volumeSerialNumber: 1, size: 1},
+			candidate: fileMetadata{volumeSerialNumber: 2, size: 1},
+		},
+		{
+			name:      "empty source",
+			source:    fileMetadata{volumeSerialNumber: 1},
+			candidate: fileMetadata{volumeSerialNumber: 1, size: 1},
+		},
+		{
+			name:      "empty candidate",
+			source:    fileMetadata{volumeSerialNumber: 1, size: 1},
+			candidate: fileMetadata{volumeSerialNumber: 1},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, metadataMayShareAllocation(tt.source, tt.candidate))
+		})
+	}
+}
+
+func TestFilesShareAllocationUnsupportedFilesystem(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source")
+	candidate := filepath.Join(dir, "candidate")
+	require.NoError(t, os.WriteFile(source, []byte("source"), 0o600))
+	require.NoError(t, os.WriteFile(candidate, []byte("source"), 0o600))
+
+	shared, err := FilesShareAllocation(source, candidate)
+	require.False(t, shared)
+	if err == nil {
+		t.Skip("temporary directory is on a supported ReFS volume")
+	}
+	require.ErrorIs(t, err, ErrUnsupported)
+}
+
+func TestFilesShareAllocationReFS(t *testing.T) {
+	root := os.Getenv("QUI_REFS_TEST_DIR")
+	if root == "" {
+		t.Skip("QUI_REFS_TEST_DIR is not set")
+	}
+
+	cleanRoot, err := filepath.Abs(root)
+	require.NoError(t, err)
+	dir, err := os.MkdirTemp(cleanRoot, "qui-sharedextents-") //nolint:gosec // Opt-in test root; containment is verified below.
+	require.NoError(t, err)
+	dir, err = filepath.Abs(dir)
+	require.NoError(t, err)
+	relativeDir, err := filepath.Rel(cleanRoot, dir)
+	require.NoError(t, err)
+	require.NotEqual(t, "..", relativeDir)
+	require.False(t, strings.HasPrefix(relativeDir, ".."+string(filepath.Separator)))
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(dir)) //nolint:gosec // Verified test temp directory under cleanRoot.
+	})
+
+	source := filepath.Join(dir, "source.bin")
+	clone := filepath.Join(dir, "clone.bin")
+	copyPath := filepath.Join(dir, "copy.bin")
+	data := make([]byte, 3*64*1024)
+	_, err = rand.Read(data)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(source, data, 0o600))   //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, os.WriteFile(copyPath, data, 0o600)) //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, reflinktree.Create(&hardlinktree.TreePlan{
+		RootDir: dir,
+		Files: []hardlinktree.FilePlan{{
+			SourcePath: source,
+			TargetPath: clone,
+		}},
+	}))
+
+	shared, err := FilesShareAllocation(source, clone)
+	require.NoError(t, err)
+	require.True(t, shared)
+
+	shared, err = FilesShareAllocation(source, copyPath)
+	require.NoError(t, err)
+	require.False(t, shared)
+
+	cloneFile, err := os.OpenFile(clone, os.O_WRONLY, 0) //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, err)
+	_, err = cloneFile.WriteAt([]byte{0xff}, 0)
+	require.NoError(t, err)
+	require.NoError(t, cloneFile.Sync())
+	require.NoError(t, cloneFile.Close())
+	shared, err = FilesShareAllocation(source, clone)
+	require.NoError(t, err)
+	require.True(t, shared)
+
+	replacement := make([]byte, len(data))
+	_, err = rand.Read(replacement)
+	require.NoError(t, err)
+	cloneFile, err = os.OpenFile(clone, os.O_WRONLY, 0) //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, err)
+	_, err = cloneFile.WriteAt(replacement, 0)
+	require.NoError(t, err)
+	require.NoError(t, cloneFile.Sync())
+	require.NoError(t, cloneFile.Close())
+	shared, err = FilesShareAllocation(source, clone)
+	require.NoError(t, err)
+	require.False(t, shared)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty-a"), nil, 0o600)) //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty-b"), nil, 0o600)) //nolint:gosec // Path is under verified test temp directory.
+	shared, err = FilesShareAllocation(filepath.Join(dir, "empty-a"), filepath.Join(dir, "empty-b"))
+	require.NoError(t, err)
+	require.False(t, shared)
+
+	_, err = FilesShareAllocation(source, filepath.Join(dir, "missing"))
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrUnsupported)
+}
