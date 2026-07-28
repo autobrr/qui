@@ -57,6 +57,7 @@ If the source torrent is the bad hash, the hash in `debug` logging `[CROSSSEED-A
 
 :::tip
 Use [piece boundary protection](./rules.md#matching) to protect content against bad hash torrents.
+:::
 
 ## Why did my season-pack check return 404?
 

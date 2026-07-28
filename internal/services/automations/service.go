@@ -834,7 +834,7 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 		Availability:   torrent.Availability,
 		TimeActive:     torrent.TimeActive,
 		LastActivity:   torrent.LastActivity,
-		CompletionOn:   torrent.CompletionOn,
+		CompletionOn:   qbittorrent.NormalizeCompletionTimestamp(torrent.CompletionOn),
 		TotalSize:      torrent.TotalSize,
 		Score:          score,
 	}

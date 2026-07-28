@@ -12,7 +12,8 @@ import {
   formatRelativeTime,
   formatTimeHMS,
   formatTimeOnly,
-  formatTimestamp
+  formatTimestamp,
+  isNeverCompletedTimestamp
 } from "@/lib/dateTimeUtils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -285,6 +286,23 @@ describe("formatTimeHMS", () => {
     expect(formatTimeHMS(new Date(2024, 0, 15, 14, 30, 45))).toBe("14:30:45")
     expect(formatTimeHMS(new Date(2024, 0, 15, 0, 0, 0))).toBe("00:00:00")
     expect(formatTimeHMS(new Date(2024, 0, 15, 23, 59, 59))).toBe("23:59:59")
+  })
+})
+
+describe("isNeverCompletedTimestamp", () => {
+  it("rejects qBittorrent never-completed sentinels", () => {
+    expect(isNeverCompletedTimestamp(0)).toBe(true)
+    expect(isNeverCompletedTimestamp(-1)).toBe(true)
+    expect(isNeverCompletedTimestamp(28800)).toBe(true) // qbit 4.x west of UTC
+    expect(isNeverCompletedTimestamp(86400)).toBe(true) // boundary
+    expect(isNeverCompletedTimestamp(4294967295)).toBe(true) // qbit 4.1 uint32(-1)
+    expect(isNeverCompletedTimestamp(undefined)).toBe(true)
+    expect(isNeverCompletedTimestamp(null)).toBe(true)
+  })
+
+  it("accepts real completion timestamps", () => {
+    expect(isNeverCompletedTimestamp(1700000123)).toBe(false)
+    expect(isNeverCompletedTimestamp(86401)).toBe(false)
   })
 })
 

@@ -355,3 +355,13 @@ export function formatTimeHMS(date: Date): string {
   const seconds = date.getSeconds().toString().padStart(2, "0")
   return `${hours}:${minutes}:${seconds}`
 }
+
+/**
+ * qBittorrent serializes completion_on / seen_complete for a never-completed
+ * torrent as a version-dependent sentinel: -1 on 5.x, minus the host's 1970
+ * UTC offset on 4.2-4.6 (positive west of UTC, e.g. 28800 on US Pacific),
+ * uint32(-1) on 4.1. Real timestamps sit far above one day past the epoch.
+ */
+export function isNeverCompletedTimestamp(ts: number | undefined | null): boolean {
+  return !ts || ts <= 86400 || ts === 4294967295
+}
