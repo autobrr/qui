@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CrossSeedSearchState } from "@/hooks/useCrossSeedWarning"
-import type { CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { getLocalMatchTypeInfo, hasBreakableLocalMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { getLinuxIsoName, useIncognitoMode } from "@/lib/incognito"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
@@ -159,12 +159,13 @@ export function CrossSeedWarning({
   )
 
   const instanceCount = Object.keys(byInstance).length
-  const hardlinkCount = affectedTorrents.filter((t) => t.matchType === "hardlink").length
-  // Hardlinked copies keep their own links to the data, so deleting the source's
-  // files neither breaks them nor frees disk space - only shared-path matches break.
-  const hasSharedPathMatches = hardlinkCount < affectedTorrents.length
-  // Only rendered when affectedTorrents is non-empty, so no shared-path matches means all are hardlinks
-  const hardlinkOnly = !hasSharedPathMatches
+  const linkedCopyCount = affectedTorrents.filter(
+    torrent => getLocalMatchTypeInfo(torrent.matchType).independentlyUsable
+  ).length
+  // Hardlink and ReFS reflink copies remain usable after source deletion.
+  // Only torrents sharing the source content path break.
+  const hasSharedPathMatches = hasBreakableLocalMatches(affectedTorrents)
+  const linkedCopiesOnly = linkedCopyCount === affectedTorrents.length
   // Show destructive styling if deleting files breaks cross-seeds OR if user opted to delete them
   const isDestructive = deleteCrossSeeds || (deleteFiles && hasSharedPathMatches)
 
@@ -195,7 +196,7 @@ export function CrossSeedWarning({
             "text-sm font-medium",
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
-            {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? (hardlinkOnly ? t("crossSeedWarning.hardlinkedCopies") : t("crossSeedWarning.deletingFilesBreaks")): t("crossSeedWarning.dataPreserved")}
+            {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? (linkedCopiesOnly ? t("crossSeedWarning.linkedCopies") : t("crossSeedWarning.deletingFilesBreaks")): t("crossSeedWarning.dataPreserved")}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {affectedTorrents.length === 1? t("crossSeedWarning.torrentShares", { count: affectedTorrents.length }): t("crossSeedWarning.torrentsShare", { count: affectedTorrents.length })}
@@ -205,11 +206,11 @@ export function CrossSeedWarning({
                 {uniqueTrackers.size === 1? t("crossSeedWarning.onTracker", { tracker: Array.from(uniqueTrackers)[0] }): t("crossSeedWarning.onTrackers", { count: uniqueTrackers.size })}
               </span>
             )}
-            {deleteCrossSeeds? ` ${t("crossSeedWarning.willBeRemoved")}`: deleteFiles? (hardlinkOnly ? ` ${t("crossSeedWarning.spaceNotFreed")}` : ` ${t("crossSeedWarning.willNeedRedownload")}`): ` ${t("crossSeedWarning.unaffected")}`}
+            {deleteCrossSeeds? ` ${t("crossSeedWarning.willBeRemoved")}`: deleteFiles? (linkedCopiesOnly ? ` ${t("crossSeedWarning.sharedBlocksMayRemain")}` : ` ${t("crossSeedWarning.willNeedRedownload")}`): ` ${t("crossSeedWarning.unaffected")}`}
           </p>
-          {deleteFiles && !deleteCrossSeeds && hardlinkCount > 0 && hasSharedPathMatches && (
+          {deleteFiles && !deleteCrossSeeds && linkedCopyCount > 0 && hasSharedPathMatches && (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("crossSeedWarning.mixedHardlinkNote")}
+              {t("crossSeedWarning.mixedLinkedNote")}
             </p>
           )}
         </div>
@@ -271,11 +272,9 @@ export function CrossSeedWarning({
                             {trackerDomain}
                           </span>
                         )}
-                        {/* Only badge hardlink rows in mixed lists; hardlink-only lists say it in the header.
-                            Last position keeps the uniform badges in an aligned flush-right rail. */}
-                        {hasSharedPathMatches && torrent.matchType === "hardlink" && (
+                        {getLocalMatchTypeInfo(torrent.matchType).independentlyUsable && (
                           <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
-                            {t("crossSeedTable.matchTypes.hardlink.label")}
+                            {torrent.matchType === "reflink"? t("crossSeedTable.matchTypes.reflink.label"): t("crossSeedTable.matchTypes.hardlink.label")}
                           </span>
                         )}
                       </div>

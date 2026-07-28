@@ -17,6 +17,8 @@ vi.mock("@/lib/api", () => ({
 
 import { api } from "@/lib/api"
 import {
+  getLocalMatchTypeInfo,
+  hasBreakableLocalMatches,
   isHardlinkManaged,
   isInsideBase,
   normalizePath,
@@ -154,6 +156,46 @@ describe("isHardlinkManaged", () => {
         { useHardlinks: true, hasLocalFilesystemAccess: true, hardlinkBaseDir: base }
       )
     ).toBe(false)
+  })
+})
+
+describe("local match type classification", () => {
+  it("classifies content-path matches as delete-relevant and breakable", () => {
+    expect(getLocalMatchTypeInfo("content_path")).toEqual({
+      deleteRelevant: true,
+      independentlyUsable: false,
+      breaksWhenSourceDeleted: true,
+    })
+  })
+
+  it.each(["hardlink", "reflink"] as const)(
+    "classifies %s matches as delete-relevant and independently usable",
+    (matchType) => {
+      expect(getLocalMatchTypeInfo(matchType)).toEqual({
+        deleteRelevant: true,
+        independentlyUsable: true,
+        breaksWhenSourceDeleted: false,
+      })
+    }
+  )
+
+  it.each(["name", "release"] as const)(
+    "excludes %s matches from delete suggestions",
+    (matchType) => {
+      expect(getLocalMatchTypeInfo(matchType).deleteRelevant).toBe(false)
+    }
+  )
+
+  it("makes mixed lists breakable only when a content-path match is present", () => {
+    expect(hasBreakableLocalMatches([
+      { matchType: "hardlink" },
+      { matchType: "reflink" },
+    ])).toBe(false)
+    expect(hasBreakableLocalMatches([
+      { matchType: "hardlink" },
+      { matchType: "reflink" },
+      { matchType: "content_path" },
+    ])).toBe(true)
   })
 })
 

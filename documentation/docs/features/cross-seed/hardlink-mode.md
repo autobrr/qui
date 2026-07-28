@@ -89,7 +89,7 @@ If hardlink/reflink mode falls back to regular mode for a partial or non-perfect
 
 ## Deleting Hardlinked Cross-Seeds
 
-The delete dialog's cross-seed check also detects hardlinked copies: matches whose files are verified (by inode) to be hardlinks of the deleted torrent's files, even when they live in a different save path. Detected copies appear in the affected list with a **Hardlink** badge and can be deleted along with the selection via **Also delete these cross-seeded torrents**.
+The delete dialog's cross-seed check detects hardlinked copies: matches whose files are verified by filesystem identity to be hardlinks of the deleted torrent's files, even when they live in a different save path. Detected copies appear in the affected list with a **Hardlink** badge and can be deleted along with the selection via **Also delete these cross-seeded torrents**.
 
 Because hardlinked copies keep their own links to the data, deleting the original's files does not break them and does not free disk space — the space is only reclaimed once all remaining links are removed. The dialog's warning text reflects this.
 
@@ -99,6 +99,18 @@ Detection requires:
 - The copy's torrent name must match the original by name or release metadata. Copies renamed beyond recognition are not detected.
 
 If a copy cannot be verified (for example its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
+
+On Windows, the same delete check also detects ReFS block-cloned files and displays a **Reflink** badge. This is a bounded verification step, not a disk scan:
+
+- Only torrents already matched by exact name or release metadata are considered.
+- Only files listed by qBittorrent for those torrents are examined. qui does not enumerate the volume, scan unrelated directories, query block reference counts, or calculate reclaimable space.
+- Source and candidate files must be on the same ReFS volume and report block-cloning support.
+- Files are paired by exact case-insensitive normalized relative path and qBittorrent-reported size. When layouts differ, an exact basename-and-size fallback is used only if that key is unique in both torrents.
+- Zero-length, missing, symbolic/reparse-point link, directory, and unsafe traversal paths are skipped.
+
+The ReFS check compares current allocated disk extents. It proves that at least one allocated cluster is shared at the time of the check; it does not prove clone history or imply that every byte is still shared. Copy-on-write can leave only part of a file shared after modification. A clone cannot be detected after all formerly shared clusters have been rewritten.
+
+Files smaller than one ReFS allocation cluster may have no cloned extent because qui's Windows reflink implementation copies the non-cluster-aligned tail. Those files cannot provide ReFS shared-extent evidence.
 
 ## Reflink Mode (Alternative)
 

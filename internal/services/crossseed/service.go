@@ -65,6 +65,7 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/reflinktree"
+	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -420,6 +421,7 @@ type Service struct {
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) error
 	postInjectionHook       func(context.Context, int, string)
+	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
@@ -762,8 +764,8 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Normalize content path for comparison (case-insensitive, cleaned)
 	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
 
-	// Create match context with lazy file loading - files are only fetched
-	// when an ambiguous content_path match is encountered
+	// Create match context with lazy file loading. Files are fetched only when
+	// content-path overlap or linked-copy verification needs them.
 	matchCtx := &localMatchContext{
 		ctx:               ctx,
 		svc:               s,
@@ -775,23 +777,26 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
 
-	// Check for any errors during file overlap verification
+	// Check for any errors during local file relationship verification.
 	overlapErr := matchCtx.sourceFilesErr
 	if overlapErr == nil {
 		overlapErr = matchCtx.candidateFilesErr
+	}
+	if overlapErr == nil {
+		overlapErr = matchCtx.verificationErr
 	}
 
 	if overlapErr != nil {
 		if strict {
 			// In strict mode (delete dialogs), fail so UI shows "failed to check"
 			// instead of a false "no cross-seeds found".
-			return nil, fmt.Errorf("failed to verify file overlap for cross-seed detection: %w", overlapErr)
+			return nil, fmt.Errorf("failed to verify local file relationship for cross-seed detection: %w", overlapErr)
 		}
 		// In best-effort mode, log the error and return partial results
 		log.Warn().Err(overlapErr).
 			Int("instanceID", sourceInstanceID).
 			Str("hash", normalizeHash(sourceHash)).
-			Msg("File overlap check failed during local match search (best-effort mode, continuing with partial results)")
+			Msg("Local file relationship check failed during local match search (best-effort mode, continuing with partial results)")
 	}
 
 	return &LocalMatchesResponse{Matches: matches}, nil
@@ -863,13 +868,15 @@ func (s *Service) matchTorrentsInInstance(
 		}
 
 		matchType := s.determineLocalMatchType(sourceTorrent, sourceRelease, cached, normalizedContentPath, matchCtx)
-		if (matchType == matchTypeName || matchType == matchTypeRelease) &&
-			sourceTorrent.ContentPath != "" && s.isHardlinkedCopy(matchCtx, instance, cached) {
-			// Upgrade name/release matches whose files are hardlinks of the source's
-			// files: deleting the source's files from disk affects them too.
+		if (matchType == matchTypeName || matchType == matchTypeRelease) && sourceTorrent.ContentPath != "" {
+			linkedMatchType := s.localLinkedMatchType(matchCtx, instance, cached)
+			// Upgrade name/release matches whose files are hardlinks of or share
+			// allocated ReFS extents with the source torrent's files.
 			// An empty source content path (metadata-less magnet) has no files on disk,
 			// so skip the check instead of tripping strict mode on its empty file list.
-			matchType = matchTypeHardlink
+			if linkedMatchType != "" {
+				matchType = linkedMatchType
+			}
 		}
 		if matchType != "" {
 			matches = append(matches, newLocalMatch(instance, cached, matchType))
@@ -921,8 +928,9 @@ type localMatchContext struct {
 	fileIDsFetched bool
 	sourceFileIDs  map[hardlink.FileID]struct{}
 
-	// Candidate file errors (first error only, for strict mode)
+	// Local verification errors (first error per category, for strict mode).
 	candidateFilesErr error
+	verificationErr   error
 }
 
 // getSourceFiles lazily fetches and caches source file keys.
@@ -997,28 +1005,23 @@ func (s *Service) isHardlinkedCopy(matchCtx *localMatchContext, candidateInstanc
 		return false
 	}
 
+	if _, _, err := matchCtx.getSourceFiles(); err != nil {
+		return false
+	}
+	candFiles, ok := s.getLocalMatchCandidateFiles(matchCtx, candidate)
+	if !ok {
+		return false
+	}
+	return candidateSharesSourceFileID(matchCtx, candidate.SavePath, candFiles)
+}
+
+func candidateSharesSourceFileID(matchCtx *localMatchContext, candidateSavePath string, candidateFiles qbt.TorrentFiles) bool {
 	sourceIDs := matchCtx.getSourceFileIDs()
 	if len(sourceIDs) == 0 {
 		return false
 	}
-
-	candFiles, err := s.getTorrentFilesCached(matchCtx.ctx, candidate.InstanceID, candidate.Hash)
-	if err == nil && len(candFiles) == 0 {
-		// Same fail-safe as candidateSharesSourceFiles: an empty file list means a
-		// stale torrent or API issue, not evidence that no hardlinks exist.
-		err = fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candidate.Hash))
-	}
-	if err != nil {
-		// Record for strict mode (first error wins): an unverifiable candidate must
-		// not silently produce "no cross-seeds" in delete dialogs.
-		if matchCtx.candidateFilesErr == nil {
-			matchCtx.candidateFilesErr = err
-		}
-		return false
-	}
-
 	shared := false
-	forEachLocalFileID(candidate.SavePath, candFiles, func(id hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
 		if _, ok := sourceIDs[id]; ok {
 			shared = true
 			return false
@@ -1028,33 +1031,248 @@ func (s *Service) isHardlinkedCopy(matchCtx *localMatchContext, candidateInstanc
 	return shared
 }
 
+func (s *Service) localLinkedMatchType(
+	matchCtx *localMatchContext,
+	candidateInstance *models.Instance,
+	candidate *qbittorrent.CrossInstanceTorrentView,
+) string {
+	if matchCtx == nil || !matchCtx.sourceHasFSAccess ||
+		candidateInstance == nil || !candidateInstance.HasLocalFilesystemAccess ||
+		candidate == nil || candidate.ContentPath == "" {
+		return ""
+	}
+
+	if _, _, err := matchCtx.getSourceFiles(); err != nil {
+		return ""
+	}
+	candidateFiles, ok := s.getLocalMatchCandidateFiles(matchCtx, candidate)
+	if !ok {
+		return ""
+	}
+
+	if candidateSharesSourceFileID(matchCtx, candidate.SavePath, candidateFiles) {
+		return matchTypeHardlink
+	}
+
+	pairs := pairLocalTorrentFiles(
+		matchCtx.sourceSavePath,
+		matchCtx.sourceFiles,
+		candidate.SavePath,
+		candidateFiles,
+	)
+	filesShareAllocation := s.filesShareAllocation
+	if filesShareAllocation == nil {
+		filesShareAllocation = sharedextents.FilesShareAllocation
+	}
+	for _, pair := range pairs {
+		shared, err := filesShareAllocation(pair.sourcePath, pair.candidatePath)
+		if errors.Is(err, sharedextents.ErrUnsupported) {
+			continue
+		}
+		if err != nil {
+			if matchCtx.verificationErr == nil {
+				matchCtx.verificationErr = err
+			}
+			return ""
+		}
+		if shared {
+			return matchTypeReflink
+		}
+	}
+	return ""
+}
+
+func (s *Service) getLocalMatchCandidateFiles(
+	matchCtx *localMatchContext,
+	candidate *qbittorrent.CrossInstanceTorrentView,
+) (qbt.TorrentFiles, bool) {
+	candidateFiles, err := s.getTorrentFilesCached(matchCtx.ctx, candidate.InstanceID, candidate.Hash)
+	if err == nil && len(candidateFiles) == 0 {
+		// Same fail-safe as candidateSharesSourceFiles: an empty file list means a
+		// stale torrent or API issue, not evidence that no linked files exist.
+		err = fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candidate.Hash))
+	}
+	if err != nil {
+		if matchCtx.candidateFilesErr == nil {
+			matchCtx.candidateFilesErr = err
+		}
+		return nil, false
+	}
+	return candidateFiles, true
+}
+
 // forEachLocalFileID stats each torrent file under savePath on the local filesystem
 // and invokes fn with its FileID and link count until fn returns false. The save path
 // must be absolute; file names that escape it and files that cannot be statted are
 // skipped so malicious torrent metadata cannot probe arbitrary filesystem locations.
 func forEachLocalFileID(savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
+	forEachLocalTorrentFile(savePath, files, func(_ qbt.TorrentFile, fullPath string, fi os.FileInfo) bool {
+		id, nlink, err := hardlink.GetFileID(fi, fullPath)
+		if err != nil {
+			return true
+		}
+		return fn(id, nlink)
+	})
+}
+
+type localFilePair struct {
+	sourcePath    string
+	candidatePath string
+}
+
+type localTorrentFile struct {
+	file           qbt.TorrentFile
+	fullPath       string
+	normalizedPath string
+	basename       string
+}
+
+func pairLocalTorrentFiles(
+	sourceSavePath string,
+	sourceFiles qbt.TorrentFiles,
+	candidateSavePath string,
+	candidateFiles qbt.TorrentFiles,
+) []localFilePair {
+	source := collectLocalTorrentFiles(sourceSavePath, sourceFiles)
+	candidate := collectLocalTorrentFiles(candidateSavePath, candidateFiles)
+
+	sourceByPath := indexLocalFiles(source, func(file localTorrentFile) string {
+		return localFileSizeKey(file.normalizedPath, file.file.Size)
+	})
+	candidateByPath := indexLocalFiles(candidate, func(file localTorrentFile) string {
+		return localFileSizeKey(file.normalizedPath, file.file.Size)
+	})
+	sourceByBasename := indexLocalFiles(source, func(file localTorrentFile) string {
+		return localFileSizeKey(file.basename, file.file.Size)
+	})
+	candidateByBasename := indexLocalFiles(candidate, func(file localTorrentFile) string {
+		return localFileSizeKey(file.basename, file.file.Size)
+	})
+
+	var pairs []localFilePair
+	pairedSource := make(map[int]struct{})
+	pairedCandidate := make(map[int]struct{})
+	for key, sourceIndexes := range sourceByPath {
+		candidateIndexes := candidateByPath[key]
+		if len(sourceIndexes) != 1 || len(candidateIndexes) != 1 {
+			continue
+		}
+		sourceIndex := sourceIndexes[0]
+		candidateIndex := candidateIndexes[0]
+		pairs = append(pairs, localFilePair{
+			sourcePath:    source[sourceIndex].fullPath,
+			candidatePath: candidate[candidateIndex].fullPath,
+		})
+		pairedSource[sourceIndex] = struct{}{}
+		pairedCandidate[candidateIndex] = struct{}{}
+	}
+
+	for key, sourceIndexes := range sourceByBasename {
+		candidateIndexes := candidateByBasename[key]
+		if len(sourceIndexes) != 1 || len(candidateIndexes) != 1 {
+			continue
+		}
+		sourceIndex := sourceIndexes[0]
+		candidateIndex := candidateIndexes[0]
+		if _, ok := pairedSource[sourceIndex]; ok {
+			continue
+		}
+		if _, ok := pairedCandidate[candidateIndex]; ok {
+			continue
+		}
+		pairs = append(pairs, localFilePair{
+			sourcePath:    source[sourceIndex].fullPath,
+			candidatePath: candidate[candidateIndex].fullPath,
+		})
+	}
+	return pairs
+}
+
+func collectLocalTorrentFiles(savePath string, files qbt.TorrentFiles) []localTorrentFile {
+	localFiles := make([]localTorrentFile, 0, len(files))
+	forEachLocalTorrentFile(savePath, files, func(file qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
+		if file.Size == 0 {
+			return true
+		}
+		normalizedPath := normalizeTorrentRelativePath(file.Name)
+		localFiles = append(localFiles, localTorrentFile{
+			file:           file,
+			fullPath:       fullPath,
+			normalizedPath: normalizedPath,
+			basename:       path.Base(normalizedPath),
+		})
+		return true
+	})
+	return localFiles
+}
+
+func indexLocalFiles(files []localTorrentFile, keyFn func(localTorrentFile) string) map[string][]int {
+	index := make(map[string][]int, len(files))
+	for i, file := range files {
+		key := keyFn(file)
+		index[key] = append(index[key], i)
+	}
+	return index
+}
+
+func localFileSizeKey(name string, size int64) string {
+	return name + "|" + strconv.FormatInt(size, 10)
+}
+
+func normalizeTorrentRelativePath(name string) string {
+	return strings.ToLower(path.Clean(strings.ReplaceAll(name, `\`, "/")))
+}
+
+func forEachLocalTorrentFile(
+	savePath string,
+	files qbt.TorrentFiles,
+	fn func(file qbt.TorrentFile, fullPath string, fi os.FileInfo) bool,
+) {
 	base := filepath.Clean(filepath.FromSlash(savePath))
 	if !filepath.IsAbs(base) {
 		return
 	}
 
-	for _, f := range files {
-		fullPath := filepath.Join(base, filepath.FromSlash(f.Name))
-		if rel, err := filepath.Rel(base, fullPath); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	for _, file := range files {
+		fullPath, ok := resolveLocalTorrentFile(base, file.Name)
+		if !ok {
 			continue
 		}
 		fi, err := os.Lstat(fullPath)
-		if err != nil || !fi.Mode().IsRegular() {
+		if err != nil || !fi.Mode().IsRegular() || isLinkedLocalFile(fi) {
 			continue
 		}
-		id, nlink, err := hardlink.GetFileID(fi, fullPath)
-		if err != nil {
-			continue
-		}
-		if !fn(id, nlink) {
+		if !fn(file, fullPath, fi) {
 			return
 		}
 	}
+}
+
+func resolveLocalTorrentFile(base, name string) (string, bool) {
+	slashName := strings.ReplaceAll(name, `\`, "/")
+	if slashName == "" ||
+		strings.HasPrefix(slashName, "/") ||
+		hasWindowsDrivePrefix(slashName) {
+		return "", false
+	}
+
+	cleanName := path.Clean(slashName)
+	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") {
+		return "", false
+	}
+
+	fullPath := filepath.Join(base, filepath.FromSlash(cleanName))
+	rel, err := filepath.Rel(base, fullPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return fullPath, true
+}
+
+func hasWindowsDrivePrefix(name string) bool {
+	return len(name) >= 2 &&
+		((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z')) &&
+		name[1] == ':'
 }
 
 // instanceHasLocalFSAccess reports whether the instance with the given ID has

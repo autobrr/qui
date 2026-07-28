@@ -1823,9 +1823,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           }
 
                           // Match type display
-                          const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "hardlink" | "release" | "name"
-                          const matchLabel = matchType === "infohash"? t("detailsPanel.crossSeed.infoHashMatch"): matchType === "content_path"? t("crossSeedTable.matchTypes.contentPath.label"): matchType === "save_path"? t("detailsPanel.crossSeed.savePathMatch"): matchType === "hardlink"? t("crossSeedTable.matchTypes.hardlink.label"): matchType === "release"? t("crossSeedTable.matchTypes.release.label"): t("crossSeedTable.matchTypes.name.label")
-                          const matchDescription = matchType === "infohash"? t("detailsPanel.crossSeed.infoHashDescription"): matchType === "content_path"? t("crossSeedTable.matchTypes.contentPath.description"): matchType === "save_path"? t("detailsPanel.crossSeed.savePathDescription"): matchType === "hardlink"? t("crossSeedTable.matchTypes.hardlink.description"): matchType === "release"? t("crossSeedTable.matchTypes.release.description"): t("crossSeedTable.matchTypes.name.description")
+                          const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "hardlink" | "reflink" | "release" | "name"
+                          const matchLabel = matchType === "infohash"? t("detailsPanel.crossSeed.infoHashMatch"): matchType === "content_path"? t("crossSeedTable.matchTypes.contentPath.label"): matchType === "save_path"? t("detailsPanel.crossSeed.savePathMatch"): matchType === "hardlink"? t("crossSeedTable.matchTypes.hardlink.label"): matchType === "reflink"? t("crossSeedTable.matchTypes.reflink.label"): matchType === "release"? t("crossSeedTable.matchTypes.release.label"): t("crossSeedTable.matchTypes.name.label")
+                          const matchDescription = matchType === "infohash"? t("detailsPanel.crossSeed.infoHashDescription"): matchType === "content_path"? t("crossSeedTable.matchTypes.contentPath.description"): matchType === "save_path"? t("detailsPanel.crossSeed.savePathDescription"): matchType === "hardlink"? t("crossSeedTable.matchTypes.hardlink.description"): matchType === "reflink"? t("crossSeedTable.matchTypes.reflink.description"): matchType === "release"? t("crossSeedTable.matchTypes.release.description"): t("crossSeedTable.matchTypes.name.description")
 
                           return (
                             <div
