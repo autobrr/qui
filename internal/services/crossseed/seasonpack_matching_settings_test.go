@@ -235,3 +235,22 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 		})
 	}
 }
+
+// TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag proves a pack that labels the
+// original audio language still matches episodes published without a language tag. Trackers
+// like Aither tag JAPANESE on anime that every other tracker leaves untagged, which used to
+// reject the whole season as a language mismatch.
+func TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag(t *testing.T) {
+	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	pack := parseSeasonPackTestRelease(t, "Reborn as a Vending Machine, I Now Wander the Dungeon S03 JAPANESE 1080p CR WEB-DL AAC 2.0 H.264-SubsPlease")
+	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou S3 - 02 (1080p) [7ECCC53C]")
+	aliases := []string{
+		"Reborn as a Vending Machine, I Now Wander the Dungeon",
+		"Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou",
+	}
+
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, aliases)
+	require.True(t, ok, "expected match, got reason %q", reason)
+	require.Empty(t, reason)
+}
