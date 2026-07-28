@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 )
 
 type recordingHash struct {
@@ -123,6 +124,64 @@ func TestGetFileIDWindowsOpenFailure(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, id.IsZero())
 	require.Zero(t, links)
+}
+
+// TestLegacyFileIDWindows covers the fallback taken on volumes that reject the
+// FileIdInfo query (FAT/exFAT, some SMB redirectors). It cannot be reached
+// through GetFileID on NTFS, so it is exercised directly.
+func TestLegacyFileIDWindows(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "source")
+	hardlinkPath := filepath.Join(dir, "hardlink")
+	copyPath := filepath.Join(dir, "copy")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("source"), 0o600))
+	require.NoError(t, os.Link(sourcePath, hardlinkPath))
+	require.NoError(t, os.WriteFile(copyPath, []byte("source"), 0o600))
+
+	sourceID, sourceLinks := legacyFileIDForTest(t, sourcePath)
+	hardlinkID, hardlinkLinks := legacyFileIDForTest(t, hardlinkPath)
+	copyID, copyLinks := legacyFileIDForTest(t, copyPath)
+
+	require.Equal(t, sourceID, hardlinkID)
+	require.NotEqual(t, sourceID, copyID)
+	require.Equal(t, uint64(2), sourceLinks)
+	require.Equal(t, uint64(2), hardlinkLinks)
+	require.Equal(t, uint64(1), copyLinks)
+	require.False(t, sourceID.IsZero())
+
+	// The legacy index occupies the low 8 bytes; the rest stays zeroed.
+	require.Equal(t, [8]byte{}, [8]byte(sourceID.Identifier[8:16]))
+}
+
+func TestLegacyFileIDWindowsPropagatesOriginalError(t *testing.T) {
+	id, links, err := legacyFileID(windows.InvalidHandle, windows.ERROR_INVALID_PARAMETER)
+	require.ErrorIs(t, err, windows.ERROR_INVALID_PARAMETER)
+	require.True(t, id.IsZero())
+	require.Zero(t, links)
+}
+
+func legacyFileIDForTest(t *testing.T, path string) (FileID, uint64) {
+	t.Helper()
+
+	pathp, err := windows.UTF16PtrFromString(path)
+	require.NoError(t, err)
+	h, err := windows.CreateFile(
+		pathp,
+		fileReadAttributes,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_BACKUP_SEMANTICS,
+		0,
+	)
+	require.NoError(t, err)
+	defer func() {
+		_ = windows.CloseHandle(h)
+	}()
+
+	id, links, err := legacyFileID(h, windows.ERROR_INVALID_PARAMETER)
+	require.NoError(t, err)
+	return id, links
 }
 
 func getFileIDForTest(t *testing.T, path string) (FileID, uint64) {
