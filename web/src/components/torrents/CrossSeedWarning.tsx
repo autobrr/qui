@@ -266,14 +266,16 @@ export function CrossSeedWarning({
                         <span className="truncate min-w-0 flex-1">
                           {incognitoMode? getLinuxIsoName(torrent.hash): torrent.name}
                         </span>
-                        {torrent.matchType === "hardlink" && (
-                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
-                            {t("crossSeedTable.matchTypes.hardlink.label")}
-                          </span>
-                        )}
                         {trackerDomain && (
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                             {trackerDomain}
+                          </span>
+                        )}
+                        {/* Only badge hardlink rows in mixed lists; hardlink-only lists say it in the header.
+                            Last position keeps the uniform badges in an aligned flush-right rail. */}
+                        {hasSharedPathMatches && torrent.matchType === "hardlink" && (
+                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                            {t("crossSeedTable.matchTypes.hardlink.label")}
                           </span>
                         )}
                       </div>
