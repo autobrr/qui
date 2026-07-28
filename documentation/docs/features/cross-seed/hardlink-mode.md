@@ -87,6 +87,19 @@ If hardlink/reflink mode falls back to regular mode for a partial or non-perfect
 - Hardlink mode supports extra files when piece-boundary safe. If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
 - Partial matches (e.g., season packs where only some episodes are on disk) require the **Download missing files** setting to be enabled in [Dir Scan settings](./dir-scan.md#settings-global). Without it, partial link tree injections are rejected.
 
+## Deleting Hardlinked Cross-Seeds
+
+The delete dialog's cross-seed check also detects hardlinked copies: matches whose files are verified (by inode) to be hardlinks of the deleted torrent's files, even when they live in a different save path. Detected copies appear in the affected list with a **Hardlink** badge and can be deleted along with the selection via **Also delete these cross-seeded torrents**.
+
+Because hardlinked copies keep their own links to the data, deleting the original's files does not break them and does not free disk space — the space is only reclaimed once all remaining links are removed. The dialog's warning text reflects this.
+
+Detection requires:
+
+- **Local filesystem access** enabled on the instance(s) — qui must run where qBittorrent's save paths are valid, same as the requirements above. Without it, only same-path cross-seeds are detected.
+- The copy's torrent name must match the original by name or release metadata. Copies renamed beyond recognition are not detected.
+
+If a copy cannot be verified (for example its file list is temporarily unavailable), the check fails visibly instead of reporting "no cross-seeds found".
+
 ## Reflink Mode (Alternative)
 
 Reflink mode creates copy-on-write clones of the matched files. Unlike hardlinks, reflinks allow qBittorrent to safely modify the cloned files (download missing pieces, repair corrupted data) without affecting the original seeded files.

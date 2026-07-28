@@ -128,6 +128,9 @@
     "deleteCrossSeeds": "Diese Cross-Seeds werden ebenfalls gelöscht",
     "deletingFilesBreaks": "Das Löschen von Dateien zerstört diese Cross-Seeds",
     "dataPreserved": "Cross-Seeds erkannt: Daten bleiben erhalten",
+    "hardlinkedCopies": "Diese Cross-Seeds sind Hardlink-Kopien derselben Daten",
+    "spaceNotFreed": "- das Löschen der Dateien gibt keinen Speicherplatz frei, solange andere Hardlinks bestehen",
+    "mixedHardlinkNote": "Als Hardlink markierte Kopien halten die Daten auch nach dem Löschen der Dateien auf der Festplatte",
     "torrentShares": "{{count}} Torrent teilt sich diese Dateien",
     "torrentsShare": "{{count}} Torrents teilen sich diese Dateien",
     "acrossInstances": "über {{count}} Instanzen",
@@ -1254,6 +1257,10 @@
       "release": {
         "label": "Release",
         "description": "Gleiches Release (über Metadaten abgeglichen)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "Dateien sind Hardlinks derselben Daten auf der Festplatte"
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",

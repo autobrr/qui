@@ -128,6 +128,9 @@
     "deleteCrossSeeds": "Tyto křížová sdílení budou také smazány",
     "deletingFilesBreaks": "Smazání souborů rozbije tyto křížová sdílení",
     "dataPreserved": "Křížová sdílení detekována: data budou zachována",
+    "hardlinkedCopies": "Tato křížová sdílení jsou hardlink kopie stejných dat",
+    "spaceNotFreed": "- smazání souborů neuvolní místo na disku, dokud existují další hardlinky",
+    "mixedHardlinkNote": "Kopie označené jako hardlink drží data na disku i po smazání souborů",
     "torrentShares": "{{count}} torrent sdílí tyto soubory",
     "torrentsShare": "{{count}} torrenty sdílí tyto soubory",
     "acrossInstances": "přes {{count}} instancí",
@@ -1246,6 +1249,10 @@
       "release": {
         "label": "Release",
         "description": "Stejný release (shoda podle metadat)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "Soubory jsou pevné odkazy na stejná data na disku"
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",
