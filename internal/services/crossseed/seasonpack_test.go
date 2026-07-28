@@ -643,6 +643,30 @@ func TestLightCheck_CountsAbsoluteNumberedLocalsForKnownSeasonPack(t *testing.T)
 	require.True(t, ok, "absolute-numbered local must count without the pack file list")
 }
 
+// TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes pins that an episode that
+// matches the pack in every respect but has not finished downloading does not count
+// as a candidate (the announce raced the episode's download).
+func TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	parsedPack := rls.ParseString(packName)
+	packRelease := &parsedPack
+
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	locals := []qbt.Torrent{
+		{Hash: "s03e01", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "s03e02", Name: "Cool.Show.S03E02.1080p.WEB.x264-GRP", Progress: 0.9},
+	}
+	cached := buildCrossInstanceViews(inst, locals)
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, nil, settings, nil)
+	require.Len(t, got, 1, "incomplete episode must not count as a candidate")
+	_, ok := got[episodeIdentity{series: 3, episode: 1}]
+	require.True(t, ok, "complete episode must count")
+}
+
 func TestCheckSeasonPackWebhook_ReturnsNotFoundBelowThreshold(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}

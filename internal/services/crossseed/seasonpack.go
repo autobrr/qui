@@ -1086,9 +1086,6 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		if !matchesWebhookSourceFilters(torrent, settings) {
 			continue
 		}
-		if torrent.Progress < 1.0 {
-			continue
-		}
 
 		parsed := s.releaseCache.Parse(torrent.Name)
 		if !isTVEpisode(parsed) {
@@ -1135,6 +1132,20 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 
 		if ok, reason := matcher.seasonPackReleasesMatchWithReason(packRelease, resolved, true, settings, aliasTitles); !ok {
 			logFiltered(torrent.Name, reason)
+			continue
+		}
+
+		// Checked last so it only fires for episodes that would otherwise satisfy
+		// the pack (announce raced the episode's download), and at DEBUG because
+		// that near-miss is the one rejection users ask about without trace on.
+		if torrent.Progress < 1.0 {
+			log.Debug().
+				Str("pack", packRelease.Title).
+				Int("season", packRelease.Series).
+				Str("candidate", torrent.Name).
+				Str("reason", "incomplete download").
+				Float64("progress", torrent.Progress).
+				Msg("[CROSSSEED-MATCH] Release filtered")
 			continue
 		}
 
