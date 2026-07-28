@@ -68,6 +68,22 @@ func SanitizePathSegment(name string) string {
 	return result
 }
 
+// TorrentPathComponent maps one component of a torrent's file path to the name
+// libtorrent, and therefore qBittorrent, puts on disk for it.
+//
+// libtorrent's sanitize_append_path_element replaces an empty component with "_"
+// instead of dropping it, on every release line qBittorrent ships (1.1, 1.2, 2.0).
+// Go's path.Join drops it, which would place a link tree one directory above where
+// qBittorrent looks for the data. Only this rule is mirrored: libtorrent's handling
+// of "." and ".." differs between 1.x and 2.0, so copying it would produce wrong
+// paths for whichever version we did not target.
+func TorrentPathComponent(component string) string {
+	if component == "" {
+		return "_"
+	}
+	return component
+}
+
 // IsolationFolderName generates a human-readable isolation folder name for
 // hardlink cross-seeding. Format: <sanitized-name>--<shortHash>
 //

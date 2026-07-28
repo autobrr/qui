@@ -6,6 +6,7 @@ package jackett
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"sync"
@@ -99,6 +100,12 @@ func (e *RateLimitWaitError) Is(target error) bool {
 	_, ok := target.(*RateLimitWaitError)
 	return ok
 }
+
+// errRSSDeduplicated marks an indexer skipped because an identical RSS fetch is
+// already pending. It is delivered via OnComplete so callers waiting on a
+// per-indexer completion (e.g. searchIndexersWithScheduler's WaitGroup) still
+// see the indexer finish instead of blocking forever.
+var errRSSDeduplicated = errors.New("rss search deduplicated: identical fetch already pending")
 
 type indexerRateState struct {
 	lastStarted     time.Duration
@@ -564,6 +571,7 @@ func (s *searchScheduler) Submit(ctx context.Context, req SubmitRequest) (uint64
 
 	jobID := s.nextJobID()
 	tasks := make([]workerTask, 0, len(req.Indexers))
+	var dedupSkipped []*models.TorznabIndexer
 
 	for _, idx := range req.Indexers {
 		if idx == nil {
@@ -575,6 +583,7 @@ func (s *searchScheduler) Submit(ctx context.Context, req SubmitRequest) (uint64
 			s.mu.Lock()
 			if _, exists := s.pendingRSS[idx.ID]; exists {
 				s.mu.Unlock()
+				dedupSkipped = append(dedupSkipped, idx)
 				continue
 			}
 			s.pendingRSS[idx.ID] = struct{}{}
@@ -594,8 +603,22 @@ func (s *searchScheduler) Submit(ctx context.Context, req SubmitRequest) (uint64
 		})
 	}
 
+	// Deliver a completion for every RSS-deduplicated indexer so callers that
+	// track per-indexer completion (via OnComplete) do not wait on it forever.
+	// The skipped indexer's pendingRSS entry belongs to the earlier in-flight
+	// job, so it is intentionally left untouched here.
+	notifyDedupSkipped := func() {
+		if req.Callbacks.OnComplete == nil {
+			return
+		}
+		for _, idx := range dedupSkipped {
+			go req.Callbacks.OnComplete(jobID, idx, nil, nil, errRSSDeduplicated)
+		}
+	}
+
 	if len(tasks) == 0 {
 		// All indexers filtered out - call OnJobDone immediately
+		notifyDedupSkipped()
 		if req.Callbacks.OnJobDone != nil {
 			go req.Callbacks.OnJobDone(jobID)
 		}
@@ -621,6 +644,8 @@ func (s *searchScheduler) Submit(ctx context.Context, req SubmitRequest) (uint64
 		s.mu.Unlock()
 		return 0, ctx.Err()
 	}
+
+	notifyDedupSkipped()
 
 	return jobID, nil
 }

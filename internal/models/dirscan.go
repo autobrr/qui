@@ -143,7 +143,7 @@ type DirScanFile struct {
 	FilePath           string            `json:"filePath"`
 	FileSize           int64             `json:"fileSize"`
 	FileModTime        time.Time         `json:"fileModTime"`
-	FileID             []byte            `json:"-"` // Platform-neutral FileID (dev+ino on Unix, vol+idx on Windows)
+	FileID             []byte            `json:"-"` // Platform-neutral FileID (dev+ino on Unix, volume serial+128-bit ID on Windows)
 	Status             DirScanFileStatus `json:"status"`
 	MatchedTorrentHash string            `json:"matchedTorrentHash,omitempty"`
 	MatchedIndexerID   *int              `json:"matchedIndexerId,omitempty"`

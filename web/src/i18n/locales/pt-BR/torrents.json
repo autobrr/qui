@@ -128,6 +128,9 @@
     "deleteCrossSeeds": "Estes cross-seeds também serão excluídos",
     "deletingFilesBreaks": "Excluir os arquivos vai quebrar estes cross-seeds",
     "dataPreserved": "Cross-seeds detectados: os dados serão preservados",
+    "hardlinkedCopies": "Estes cross-seeds são cópias em hardlink dos mesmos dados",
+    "spaceNotFreed": "- excluir os arquivos não liberará espaço em disco enquanto outros hardlinks existirem",
+    "mixedHardlinkNote": "Cópias marcadas como hardlink mantêm os dados no disco mesmo após excluir os arquivos",
     "torrentShares": "{{count}} torrent compartilha estes arquivos",
     "torrentsShare": "{{count}} torrents compartilham estes arquivos",
     "acrossInstances": "em {{count}} instâncias",
@@ -678,6 +681,7 @@
     "cached": "Armazenado em cache {{time}}",
     "expires": "Expira {{time}}",
     "refreshFromIndexers": "Atualizar dos indexadores",
+    "partialResults": "Resultados parciais - alguns indexadores não responderam",
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
     "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",
@@ -1253,6 +1257,10 @@
       "release": {
         "label": "Lançamento",
         "description": "Mesmo lançamento (combinado por metadados)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "Os arquivos são hardlinks dos mesmos dados no disco"
       }
     },
     "noMatches": "Nenhum torrent correspondente encontrado em outras instâncias",

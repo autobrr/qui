@@ -20,6 +20,7 @@ import {
   getLinuxTags,
   getLinuxTracker
 } from "@/lib/incognito"
+import { isNeverCompletedTimestamp } from "@/lib/dateTimeUtils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import {
@@ -857,7 +858,7 @@ export const createColumns = (
       header: t?.("tableColumns.completedOn") ?? "Completed On",
       cell: ({ row }) => {
         const completionOn = row.original.completion_on
-        if (!completionOn || completionOn === -1) {
+        if (isNeverCompletedTimestamp(completionOn)) {
           return "-"
         }
 
@@ -1106,7 +1107,7 @@ export const createColumns = (
       header: t?.("tableColumns.seenComplete") ?? "Last Seen Complete",
       cell: ({ row }) => {
         const lastSeenComplete = row.original.seen_complete
-        if (!lastSeenComplete || lastSeenComplete === 0) {
+        if (isNeverCompletedTimestamp(lastSeenComplete)) {
           return "-"
         }
 

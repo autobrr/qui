@@ -6,8 +6,10 @@ package crossseed
 import (
 	"testing"
 
+	"github.com/anacrolix/torrent/metainfo"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestDetermineContentType tests the unified content type detection including
@@ -339,4 +341,24 @@ func TestGameSceneGroupDetection(t *testing.T) {
 			assert.Equal(t, tt.wantCats, result.Categories, "categories mismatch for %s", tt.release)
 		})
 	}
+}
+
+func TestBuildTorrentFilesFromInfo_EmptyPathComponents(t *testing.T) {
+	// libtorrent maps an empty path component to "_" instead of dropping it, so the
+	// hardlink/reflink tree has to be built at that same path or qBittorrent reports
+	// the injected torrent as missing data.
+	info := metainfo.Info{
+		Name:        "Release",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"", "file.mkv"}, Length: 1},
+			{Path: []string{"sub", "", "other.mkv"}, Length: 1},
+		},
+	}
+
+	files := BuildTorrentFilesFromInfo("Release", info)
+
+	require.Len(t, files, 2)
+	assert.Equal(t, "Release/_/file.mkv", files[0].Name)
+	assert.Equal(t, "Release/sub/_/other.mkv", files[1].Name)
 }

@@ -19,6 +19,7 @@ const (
 	matchTypeContentPath = "content_path"
 	matchTypeName        = "name"
 	matchTypeRelease     = "release"
+	matchTypeHardlink    = "hardlink"
 )
 
 // CrossSeedRequest represents a request to cross-seed a torrent
@@ -73,6 +74,20 @@ type CrossSeedRequest struct {
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	// Internal-only, not exposed via JSON API.
 	SourceFilterExcludeTags []string `json:"-"`
+	// SearchDecisionClass records the private search classification that admitted
+	// this torrent. Only cached search results may set it; exact-size provenance
+	// bypasses only the duplicate apply-stage release prefilter.
+	SearchDecisionClass searchCandidateClass `json:"-"`
+	// SearchSourceInstanceID and SearchSourceHash identify the torrent whose size
+	// was compared with the selected search result.
+	SearchSourceInstanceID int    `json:"-"`
+	SearchSourceHash       string `json:"-"`
+	// SearchStrictMismatchReason and SearchRelaxedDifferences preserve the exact
+	// metadata relaxation admitted during search.
+	SearchStrictMismatchReason string   `json:"-"`
+	SearchRelaxedDifferences   []string `json:"-"`
+	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
+	SearchSourceTitles []string `json:"-"`
 }
 
 func (r *CrossSeedRequest) UnmarshalJSON(data []byte) error {
@@ -184,6 +199,17 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeCategories []string `json:"-"`
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	SourceFilterExcludeTags []string `json:"-"`
+	// SearchDecisionClass and source identity bind an exact-size search decision
+	// to the one existing torrent that supplied the size evidence.
+	SearchDecisionClass    searchCandidateClass `json:"-"`
+	SearchSourceInstanceID int                  `json:"-"`
+	SearchSourceHash       string               `json:"-"`
+	// SearchStrictMismatchReason and SearchRelaxedDifferences limit the apply-stage
+	// bypass to metadata differences explicitly admitted during search.
+	SearchStrictMismatchReason string   `json:"-"`
+	SearchRelaxedDifferences   []string `json:"-"`
+	// SearchSourceTitles are ARR aliases for the existing torrent that originated the search.
+	SearchSourceTitles []string `json:"-"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates
@@ -296,6 +322,14 @@ type TorrentSearchResult struct {
 	TVDbID               string  `json:"tvdb_id,omitempty"`
 	MatchReason          string  `json:"match_reason,omitempty"`
 	MatchScore           float64 `json:"match_score"`
+	// SearchDecisionClass is retained only in the in-memory search result cache.
+	SearchDecisionClass searchCandidateClass `json:"-"`
+	// SearchStrictMismatchReason and SearchRelaxedDifferences retain the exact
+	// release-metadata relaxation admitted for this cached result.
+	SearchStrictMismatchReason string   `json:"-"`
+	SearchRelaxedDifferences   []string `json:"-"`
+	// SearchSourceTitles retains ARR aliases used to admit this cached result.
+	SearchSourceTitles []string `json:"-"`
 }
 
 // TorrentSearchResponse bundles the seeded torrent information with potential cross-seed matches.
@@ -363,7 +397,7 @@ type LocalMatch struct {
 	State         string  `json:"state"`
 	Tracker       string  `json:"tracker"`
 	TrackerHealth string  `json:"tracker_health,omitempty"`
-	MatchType     string  `json:"match_type"` // "content_path", "name", "release"
+	MatchType     string  `json:"match_type"` // "content_path", "hardlink", "name", "release"
 }
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations

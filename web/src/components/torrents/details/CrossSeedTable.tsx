@@ -97,6 +97,11 @@ function getMatchTypeLabel(matchType: string, t: (key: string, options?: Record<
         label: t("crossSeedTable.matchTypes.release.label"),
         description: t("crossSeedTable.matchTypes.release.description"),
       }
+    case "hardlink":
+      return {
+        label: t("crossSeedTable.matchTypes.hardlink.label"),
+        description: t("crossSeedTable.matchTypes.hardlink.description"),
+      }
     default:
       return { label: matchType, description: matchType }
   }
@@ -343,9 +348,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">
-            {selectedTorrents.size > 0
-              ? t("crossSeedTable.selectedCount", { selected: selectedTorrents.size, total: matches.length })
-              : t("crossSeedTable.matchCount", { count: matches.length })}
+            {selectedTorrents.size > 0? t("crossSeedTable.selectedCount", { selected: selectedTorrents.size, total: matches.length }): t("crossSeedTable.matchCount", { count: matches.length })}
           </span>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
         </div>
