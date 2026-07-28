@@ -1274,8 +1274,9 @@ func TestGetTorrentFilesBatch_SanitizesInvalidUTF8(t *testing.T) {
 
 	ctx := context.Background()
 
-	// "á" as Latin-1 (0xe1) is invalid UTF-8. qBittorrent can return such bytes;
-	// GetTorrentFilesBatch must sanitize them before caching/returning.
+	// "á" as Latin-1 (0xe1) is invalid UTF-8. The stub client bypasses JSON decoding
+	// (which would coerce to U+FFFD itself), exercising the defense-in-depth sanitize
+	// in GetTorrentFilesBatch directly.
 	client := &stubTorrentFilesClient{
 		torrents: []qbt.Torrent{{Hash: "abc123", Progress: 1.0}},
 		filesByHash: map[string]qbt.TorrentFiles{

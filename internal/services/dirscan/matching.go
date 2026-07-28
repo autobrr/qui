@@ -369,8 +369,6 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
-	// Torrent fields must be UTF-8 per the BitTorrent spec; drop any malformed bytes so
-	// downstream code (matching, path handling, storage) can assume valid UTF-8.
 	name := stringutils.SanitizeUTF8(info.BestName())
 
 	parsed := &ParsedTorrent{
@@ -397,6 +395,11 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		for i := range info.Files {
 			f := &info.Files[i]
 			pathParts := f.BestPath()
+			// Sanitize the parts before the root-dedup comparison below; root is already
+			// sanitized, so comparing it against a raw part would double-prefix.
+			for j, part := range pathParts {
+				pathParts[j] = stringutils.SanitizeUTF8(part)
+			}
 			// For multi-file torrents, qBittorrent's "Original" layout places files under the
 			// top-level folder named by the torrent's info.name.
 			//
@@ -406,7 +409,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 				pathParts = append([]string{root}, pathParts...)
 			}
 			tf := TorrentFile{
-				Path:   stringutils.SanitizeUTF8(path.Join(pathParts...)),
+				Path:   path.Join(pathParts...),
 				Size:   f.Length,
 				Offset: offset,
 			}

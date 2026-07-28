@@ -460,8 +460,6 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	// Torrent fields must be UTF-8 per the BitTorrent spec, drop any malformed bytes so
-	// downstream code (release parsing, matching, storage) can assume valid UTF-8.
 	name := stringutils.SanitizeUTF8(infoVal.Name)
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string

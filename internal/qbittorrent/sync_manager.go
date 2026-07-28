@@ -2980,9 +2980,8 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			callerCopy := make(qbt.TorrentFiles, len(*files))
 			copy(callerCopy, *files)
 
-			// Torrent fields must be UTF-8 per the BitTorrent spec. qBittorrent can still
-			// hand back malformed bytes (e.g. "á" as Latin-1 0xe1), drop them here so the
-			// cached file list is valid UTF-8 for every downstream consumer.
+			// Defense-in-depth: encoding/json already coerces invalid UTF-8 to U+FFFD on
+			// decode, so this only matters if the client library's decoding ever changes.
 			for i := range callerCopy {
 				callerCopy[i].Name = stringutils.SanitizeUTF8(callerCopy[i].Name)
 			}
