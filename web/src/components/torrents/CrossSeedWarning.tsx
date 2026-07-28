@@ -159,8 +159,14 @@ export function CrossSeedWarning({
   )
 
   const instanceCount = Object.keys(byInstance).length
-  // Show destructive styling if deleting files OR if user opted to delete cross-seeds
-  const isDestructive = deleteFiles || deleteCrossSeeds
+  const hardlinkCount = affectedTorrents.filter((t) => t.matchType === "hardlink").length
+  // Hardlinked copies keep their own links to the data, so deleting the source's
+  // files neither breaks them nor frees disk space - only shared-path matches break.
+  const hasSharedPathMatches = hardlinkCount < affectedTorrents.length
+  // Only rendered when affectedTorrents is non-empty, so no shared-path matches means all are hardlinks
+  const hardlinkOnly = !hasSharedPathMatches
+  // Show destructive styling if deleting files breaks cross-seeds OR if user opted to delete them
+  const isDestructive = deleteCrossSeeds || (deleteFiles && hasSharedPathMatches)
 
   // Collect unique trackers for summary
   const uniqueTrackers = new Set<string>()
@@ -189,7 +195,7 @@ export function CrossSeedWarning({
             "text-sm font-medium",
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
-            {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? t("crossSeedWarning.deletingFilesBreaks"): t("crossSeedWarning.dataPreserved")}
+            {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? (hardlinkOnly ? t("crossSeedWarning.hardlinkedCopies") : t("crossSeedWarning.deletingFilesBreaks")): t("crossSeedWarning.dataPreserved")}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {affectedTorrents.length === 1? t("crossSeedWarning.torrentShares", { count: affectedTorrents.length }): t("crossSeedWarning.torrentsShare", { count: affectedTorrents.length })}
@@ -199,8 +205,13 @@ export function CrossSeedWarning({
                 {uniqueTrackers.size === 1? t("crossSeedWarning.onTracker", { tracker: Array.from(uniqueTrackers)[0] }): t("crossSeedWarning.onTrackers", { count: uniqueTrackers.size })}
               </span>
             )}
-            {deleteCrossSeeds? ` ${t("crossSeedWarning.willBeRemoved")}`: deleteFiles? ` ${t("crossSeedWarning.willNeedRedownload")}`: ` ${t("crossSeedWarning.unaffected")}`}
+            {deleteCrossSeeds? ` ${t("crossSeedWarning.willBeRemoved")}`: deleteFiles? (hardlinkOnly ? ` ${t("crossSeedWarning.spaceNotFreed")}` : ` ${t("crossSeedWarning.willNeedRedownload")}`): ` ${t("crossSeedWarning.unaffected")}`}
           </p>
+          {deleteFiles && !deleteCrossSeeds && hardlinkCount > 0 && hasSharedPathMatches && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {t("crossSeedWarning.mixedHardlinkNote")}
+            </p>
+          )}
         </div>
       </div>
 
@@ -255,6 +266,11 @@ export function CrossSeedWarning({
                         <span className="truncate min-w-0 flex-1">
                           {incognitoMode? getLinuxIsoName(torrent.hash): torrent.name}
                         </span>
+                        {torrent.matchType === "hardlink" && (
+                          <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
+                            {t("crossSeedTable.hardlink")}
+                          </span>
+                        )}
                         {trackerDomain && (
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                             {trackerDomain}
