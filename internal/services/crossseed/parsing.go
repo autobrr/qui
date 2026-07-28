@@ -14,6 +14,9 @@ import (
 	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+
+	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // ContentTypeInfo contains all information about a torrent's detected content type
@@ -458,7 +461,7 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name := infoVal.Name
+	name := stringutils.SanitizeUTF8(infoVal.Name)
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
@@ -522,7 +525,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath := f.DisplayPath(&info)
+		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(&info, &f))
 		name := rootName
 		if info.IsDir() && displayPath != "" {
 			name = rootName + "/" + displayPath
@@ -564,6 +567,22 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	}
 
 	return files
+}
+
+// torrentDisplayPath is metainfo.FileInfo.DisplayPath with libtorrent's empty-component
+// rule applied, so the path lines up with the one qBittorrent stores for the file.
+// The non-directory branch is kept so this stays a drop-in for DisplayPath.
+func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) string {
+	if !info.IsDir() {
+		return info.BestName()
+	}
+
+	parts := f.BestPath()
+	components := make([]string, len(parts))
+	for i, part := range parts {
+		components[i] = pathutil.TorrentPathComponent(part)
+	}
+	return strings.Join(components, "/")
 }
 
 // ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.

@@ -128,6 +128,9 @@
     "deleteCrossSeeds": "이 cross-seed도 함께 삭제됩니다",
     "deletingFilesBreaks": "파일을 삭제하면 이 cross-seed가 손상됩니다",
     "dataPreserved": "cross-seed 감지됨: 데이터가 보존됩니다",
+    "hardlinkedCopies": "이 cross-seed는 동일한 데이터의 하드링크 복사본입니다",
+    "spaceNotFreed": "- 다른 하드링크가 남아 있는 동안에는 파일을 삭제해도 디스크 공간이 확보되지 않습니다",
+    "mixedHardlinkNote": "하드링크로 표시된 복사본은 파일을 삭제해도 데이터가 디스크에 남아 있습니다",
     "torrentShares": "토렌트 {{count}}개가 이 파일을 공유합니다",
     "torrentsShare": "토렌트 {{count}}개가 이 파일을 공유합니다",
     "acrossInstances": "{{count}}개 인스턴스에 걸쳐",
@@ -1194,6 +1197,10 @@
       "release": {
         "label": "릴리스",
         "description": "동일한 릴리스(메타데이터로 일치)"
+      },
+      "hardlink": {
+        "label": "하드링크",
+        "description": "파일이 디스크의 동일한 데이터에 대한 하드링크입니다"
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",

@@ -128,6 +128,9 @@
     "deleteCrossSeeds": "这些辅种也将被删除",
     "deletingFilesBreaks": "删除文件将破坏这些辅种",
     "dataPreserved": "检测到辅种——数据将被保留",
+    "hardlinkedCopies": "这些辅种是相同数据的硬链接副本",
+    "spaceNotFreed": "——只要还存在其他硬链接，删除文件就不会释放磁盘空间",
+    "mixedHardlinkNote": "标记为硬链接的副本在删除文件后仍会保留磁盘上的数据",
     "torrentShares": "{{count}} 个种子共享这些文件",
     "torrentsShare": "{{count}} 个种子共享这些文件",
     "acrossInstances": "跨 {{count}} 个实例",
@@ -1194,6 +1197,10 @@
       "release": {
         "label": "发布",
         "description": "相同的发布（通过元数据匹配）"
+      },
+      "hardlink": {
+        "label": "硬链接",
+        "description": "文件是磁盘上相同数据的硬链接"
       }
     },
     "noMatches": "未在其他实例上找到匹配的种子",

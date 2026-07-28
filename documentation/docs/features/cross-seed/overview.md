@@ -89,3 +89,5 @@ Use the per-instance blocklist to prevent specific infohashes from being injecte
 
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (only shown for torrents tagged `cross-seed`)
+
+The delete dialog can also detect cross-seeds that would be affected by the deletion, including [hardlinked copies](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.

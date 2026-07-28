@@ -7531,7 +7531,7 @@ components:
           description: Tracker health status (only present if unhealthy)
         matchType:
           type: string
-          enum: [content_path, name, release]
+          enum: [content_path, hardlink, name, release]
           description: How this torrent was matched
 
     CrossInstanceFilterOptions:
