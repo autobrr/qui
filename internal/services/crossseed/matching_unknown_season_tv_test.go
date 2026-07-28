@@ -156,6 +156,27 @@ func TestReleasesMatch_UnknownSeasonTV(t *testing.T) {
 			wantReason: "collection mismatch",
 		},
 		{
+			name: "known-season site-tagged scene candidate without collection still rejected",
+			source: rls.Release{
+				Type:       rls.Series,
+				Title:      "Classic Stars",
+				Series:     3,
+				Resolution: "1080p",
+				Collection: "NF",
+				Group:      "GROUP",
+			},
+			candidate: rls.Release{
+				Type:       rls.Series,
+				Title:      "Classic Stars",
+				Series:     3,
+				Resolution: "1080p",
+				Site:       "TGx",
+				Group:      "GROUP",
+			},
+			wantMatch:  false,
+			wantReason: "collection mismatch",
+		},
+		{
 			name: "bracket anime candidate with conflicting collection still rejected",
 			source: rls.Release{
 				Type:       rls.Series,

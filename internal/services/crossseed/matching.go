@@ -453,10 +453,15 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bo
 		unknownSeasonTV := isTV && (source.Series == 0 || candidate.Series == 0)
 		// Bracket-group anime names ([SubsPlease] Show S3 - 02) never carry the
 		// streaming-service tag even when the season is known, so a missing
-		// collection on that side says nothing about the source.
+		// collection on that side says nothing about the source. rls parses the
+		// fansub group into Site with Group left empty; site-tagged scene names
+		// ([TGx]Show...-GROUP) set both, and those keep the strict check.
+		bracketAnimeStyle := func(r *rls.Release) bool {
+			return r.Site != "" && r.Group == ""
+		}
 		animeStyleMissingCollection := isTV &&
-			((sourceMissingCollection && source.Site != "") ||
-				(candidateMissingCollection && candidate.Site != ""))
+			((sourceMissingCollection && bracketAnimeStyle(source)) ||
+				(candidateMissingCollection && bracketAnimeStyle(candidate)))
 		missingCollectionAllowed := (unknownSeasonTV || animeStyleMissingCollection) &&
 			(sourceMissingCollection || candidateMissingCollection)
 		if !missingCollectionAllowed {
