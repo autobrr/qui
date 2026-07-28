@@ -268,7 +268,7 @@ export function CrossSeedWarning({
                         </span>
                         {torrent.matchType === "hardlink" && (
                           <span className="shrink-0 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-500">
-                            {t("crossSeedTable.hardlink")}
+                            {t("crossSeedTable.matchTypes.hardlink.label")}
                           </span>
                         )}
                         {trackerDomain && (
