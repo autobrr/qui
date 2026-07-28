@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -1266,6 +1267,33 @@ func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
 	require.Equal(t, cacheCall{hash: "def456", progress: 0.0}, fm.cacheCalls[0])
 
 	require.Equal(t, []string{"Def456"}, client.fileRequests)
+}
+
+func TestGetTorrentFilesBatch_SanitizesInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	// "á" as Latin-1 (0xe1) is invalid UTF-8. The stub client bypasses JSON decoding
+	// (which would coerce to U+FFFD itself), exercising the defense-in-depth sanitize
+	// in GetTorrentFilesBatch directly.
+	client := &stubTorrentFilesClient{
+		torrents: []qbt.Torrent{{Hash: "abc123", Progress: 1.0}},
+		filesByHash: map[string]qbt.TorrentFiles{
+			"abc123": {{Name: "Movie.\xe1.2024.1080p-GROUP.mkv", Size: 1}},
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"abc123"})
+	require.NoError(t, err)
+	require.Len(t, filesByHash["abc123"], 1)
+	require.True(t, utf8.ValidString(filesByHash["abc123"][0].Name), "file name should be valid UTF-8")
 }
 
 func TestHasTorrentByAnyHash(t *testing.T) {
