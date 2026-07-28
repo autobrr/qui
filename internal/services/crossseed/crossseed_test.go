@@ -77,6 +77,31 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 	return buf.Bytes()
 }
 
+// TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8 verifies that non-UTF-8 bytes in
+// torrent name/file fields (e.g. "á" as Latin-1 0xe1) are replaced with U+FFFD at the
+// parse boundary, so downstream release parsing never feeds invalid UTF-8 into regexp.Compile.
+func TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8(t *testing.T) {
+	info := metainfo.Info{
+		Name:        "Movie.\xe1.2024.1080p-GROUP",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"Movie.\xe1.2024.1080p-GROUP.mkv"}, Length: 1},
+		},
+	}
+	infoBytes, err := bencode.Marshal(info)
+	require.NoError(t, err)
+
+	mi := metainfo.MetaInfo{InfoBytes: infoBytes}
+	var buf bytes.Buffer
+	require.NoError(t, mi.Write(&buf))
+
+	meta, err := ParseTorrentMetadataWithInfo(buf.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP", meta.Name)
+	require.Len(t, meta.Files, 1)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP.mkv", meta.Files[0].Name)
+}
+
 // TestDecodeTorrentData tests base64 decoding with various formats
 func TestDecodeTorrentData(t *testing.T) {
 	s := &Service{}

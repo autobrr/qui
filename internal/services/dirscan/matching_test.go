@@ -61,6 +61,41 @@ func TestParseTorrentBytes_MultiFileDoesNotDoublePrefixRootFolder(t *testing.T) 
 	require.Equal(t, "Example.Show.S02.1080p.WEB-DL.x264-GROUP/Example.Show.S02E01.mkv", parsed.Files[0].Path)
 }
 
+func TestParseTorrentBytes_SanitizesInvalidUTF8(t *testing.T) {
+	// "á" encoded as Latin-1 (0xe1) rather than UTF-8 is malformed. Torrent fields must
+	// be UTF-8 per spec, so the bad byte is replaced with U+FFFD rather than passed downstream.
+	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
+		Name:        "Movie.\xe1.2024.1080p-GROUP",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"Movie.\xe1.2024.1080p-GROUP.mkv"}, Length: 1},
+		},
+	})
+
+	parsed, err := ParseTorrentBytes(torrentBytes)
+	require.NoError(t, err)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP", parsed.Name)
+	require.Len(t, parsed.Files, 1)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP.mkv", parsed.Files[0].Path)
+}
+
+func TestParseTorrentBytes_InvalidUTF8RootPrefixNotDoubled(t *testing.T) {
+	// Root folder repeated in the file path AND invalid UTF-8 in the name: the root-dedup
+	// comparison must see both sides sanitized, or the root gets prefixed twice.
+	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
+		Name:        "Movie.\xe1.2024.1080p-GROUP",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"Movie.\xe1.2024.1080p-GROUP", "file.mkv"}, Length: 1},
+		},
+	})
+
+	parsed, err := ParseTorrentBytes(torrentBytes)
+	require.NoError(t, err)
+	require.Len(t, parsed.Files, 1)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/file.mkv", parsed.Files[0].Path)
+}
+
 func TestMatcher_Strict_NormalizesFilenames(t *testing.T) {
 	matcher := NewMatcher(MatchModeStrict, 0)
 

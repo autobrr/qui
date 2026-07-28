@@ -31,6 +31,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // FilesManager interface for caching torrent files.
@@ -2978,6 +2979,12 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			// result map and the cache. Callers must treat returned slices as read-only.
 			callerCopy := make(qbt.TorrentFiles, len(*files))
 			copy(callerCopy, *files)
+
+			// Defense-in-depth: encoding/json already coerces invalid UTF-8 to U+FFFD on
+			// decode, so this only matters if the client library's decoding ever changes.
+			for i := range callerCopy {
+				callerCopy[i].Name = stringutils.SanitizeUTF8(callerCopy[i].Name)
+			}
 
 			mu.Lock()
 			filesByHash[ch] = callerCopy

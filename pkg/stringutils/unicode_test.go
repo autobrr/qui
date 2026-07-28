@@ -9,6 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSanitizeUTF8(t *testing.T) {
+	require.Equal(t, "Movie.\uFFFD.2024", SanitizeUTF8("Movie.\xe1.2024"))
+	require.Equal(t, "Amélie.2001", SanitizeUTF8("Amélie.2001"), "valid input is untouched")
+
+	// U+FFFD (not dropping) keeps sanitized strings equal to the forms produced by the
+	// other lossy decoders in the pipeline: encoding/json (qBittorrent API data) and the
+	// NFKD normalizer both coerce invalid bytes to U+FFFD.
+	require.Equal(t,
+		NormalizeForMatching("Movie.\xe1.2024"),
+		NormalizeForMatching(SanitizeUTF8("Movie.\xe1.2024")))
+}
+
 func TestNormalizeUnicode(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -369,8 +369,10 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
+	name := stringutils.SanitizeUTF8(info.BestName())
+
 	parsed := &ParsedTorrent{
-		Name:        info.BestName(),
+		Name:        name,
 		InfoHash:    mi.HashInfoBytes().HexString(),
 		PieceLength: info.PieceLength,
 		PieceCount:  info.NumPieces(),
@@ -381,7 +383,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	if len(info.Files) == 0 {
 		// Single-file torrent
 		parsed.Files = []TorrentFile{{
-			Path:   info.BestName(),
+			Path:   name,
 			Size:   info.Length,
 			Offset: 0,
 		}}
@@ -389,10 +391,15 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
-		root := info.BestName()
+		root := name
 		for i := range info.Files {
 			f := &info.Files[i]
 			pathParts := f.BestPath()
+			// Sanitize the parts before the root-dedup comparison below; root is already
+			// sanitized, so comparing it against a raw part would double-prefix.
+			for j, part := range pathParts {
+				pathParts[j] = stringutils.SanitizeUTF8(part)
+			}
 			// For multi-file torrents, qBittorrent's "Original" layout places files under the
 			// top-level folder named by the torrent's info.name.
 			//
