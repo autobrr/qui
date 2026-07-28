@@ -40,7 +40,7 @@ export const isHardlinkManaged = (
 export interface CrossSeedTorrent extends Torrent {
   instanceId: number
   instanceName: string
-  matchType: "content_path" | "name" | "release"
+  matchType: "content_path" | "hardlink" | "name" | "release"
 }
 
 /**

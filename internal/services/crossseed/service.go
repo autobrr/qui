@@ -59,6 +59,7 @@ import (
 	"github.com/autobrr/qui/internal/services/metadata"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/fsutil"
+	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -764,10 +765,12 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	// Create match context with lazy file loading - files are only fetched
 	// when an ambiguous content_path match is encountered
 	matchCtx := &localMatchContext{
-		ctx:              ctx,
-		svc:              s,
-		sourceInstanceID: sourceInstanceID,
-		sourceHash:       sourceTorrent.Hash,
+		ctx:               ctx,
+		svc:               s,
+		sourceInstanceID:  sourceInstanceID,
+		sourceHash:        sourceTorrent.Hash,
+		sourceSavePath:    sourceTorrent.SavePath,
+		sourceHasFSAccess: instanceHasLocalFSAccess(instances, sourceInstanceID),
 	}
 
 	matches := s.collectLocalMatches(ctx, instances, sourceInstanceID, &sourceTorrent, sourceRelease, normalizedContentPath, matchCtx)
@@ -860,6 +863,14 @@ func (s *Service) matchTorrentsInInstance(
 		}
 
 		matchType := s.determineLocalMatchType(sourceTorrent, sourceRelease, cached, normalizedContentPath, matchCtx)
+		if (matchType == matchTypeName || matchType == matchTypeRelease) &&
+			sourceTorrent.ContentPath != "" && s.isHardlinkedCopy(matchCtx, instance, cached) {
+			// Upgrade name/release matches whose files are hardlinks of the source's
+			// files: deleting the source's files from disk affects them too.
+			// An empty source content path (metadata-less magnet) has no files on disk,
+			// so skip the check instead of tripping strict mode on its empty file list.
+			matchType = matchTypeHardlink
+		}
 		if matchType != "" {
 			matches = append(matches, newLocalMatch(instance, cached, matchType))
 		}
@@ -891,16 +902,24 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx              context.Context
-	svc              *Service
-	sourceInstanceID int
-	sourceHash       string
+	ctx               context.Context //nolint:containedctx // pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	svc               *Service
+	sourceInstanceID  int
+	sourceHash        string
+	sourceSavePath    string
+	sourceHasFSAccess bool
 
 	// Lazy-loaded source file data
 	fetched          bool
 	sourceFilesErr   error // Error from fetching/parsing source files
+	sourceFiles      qbt.TorrentFiles
 	sourceFileKeys   map[string]int64
 	sourceTotalBytes int64
+
+	// Lazy-loaded FileIDs of the source's hard-linked files (nlink > 1),
+	// used to detect hardlinked cross-seed copies.
+	fileIDsFetched bool
+	sourceFileIDs  map[hardlink.FileID]struct{}
 
 	// Candidate file errors (first error only, for strict mode)
 	candidateFilesErr error
@@ -928,6 +947,7 @@ func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBy
 		return nil, 0, m.sourceFilesErr
 	}
 
+	m.sourceFiles = srcFiles
 	m.sourceFileKeys = make(map[string]int64, len(srcFiles))
 	for _, f := range srcFiles {
 		key := normalizePathForComparison(f.Name) + "|" + strconv.FormatInt(f.Size, 10)
@@ -936,6 +956,116 @@ func (m *localMatchContext) getSourceFiles() (fileKeys map[string]int64, totalBy
 	}
 
 	return m.sourceFileKeys, m.sourceTotalBytes, nil
+}
+
+// getSourceFileIDs lazily stats the source torrent's files on the local filesystem
+// and caches the FileIDs of its hard-linked files (nlink > 1). Only files with
+// extra links can be shared with another torrent, so nlink == 1 files are skipped.
+// Fetch errors are recorded by getSourceFiles for strict mode; stat failures are
+// best-effort skips since a missing file carries no hardlink evidence.
+func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
+	if m.fileIDsFetched {
+		return m.sourceFileIDs
+	}
+	m.fileIDsFetched = true
+
+	if _, _, err := m.getSourceFiles(); err != nil {
+		return nil
+	}
+
+	ids := make(map[hardlink.FileID]struct{})
+	forEachLocalFileID(m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
+		if nlink > 1 {
+			ids[id] = struct{}{}
+		}
+		return true
+	})
+	m.sourceFileIDs = ids
+	return m.sourceFileIDs
+}
+
+// isHardlinkedCopy reports whether the candidate torrent's files are hardlinks of the
+// source torrent's files. Both instances must have local filesystem access so their
+// qBittorrent paths can be statted directly on the qui host.
+func (s *Service) isHardlinkedCopy(matchCtx *localMatchContext, candidateInstance *models.Instance, candidate *qbittorrent.CrossInstanceTorrentView) bool {
+	if matchCtx == nil || !matchCtx.sourceHasFSAccess || candidateInstance == nil || !candidateInstance.HasLocalFilesystemAccess {
+		return false
+	}
+
+	// A candidate without a content path (metadata-less magnet) has no files on disk.
+	if candidate.ContentPath == "" {
+		return false
+	}
+
+	sourceIDs := matchCtx.getSourceFileIDs()
+	if len(sourceIDs) == 0 {
+		return false
+	}
+
+	candFiles, err := s.getTorrentFilesCached(matchCtx.ctx, candidate.InstanceID, candidate.Hash)
+	if err == nil && len(candFiles) == 0 {
+		// Same fail-safe as candidateSharesSourceFiles: an empty file list means a
+		// stale torrent or API issue, not evidence that no hardlinks exist.
+		err = fmt.Errorf("candidate torrent %s returned empty file list", normalizeHash(candidate.Hash))
+	}
+	if err != nil {
+		// Record for strict mode (first error wins): an unverifiable candidate must
+		// not silently produce "no cross-seeds" in delete dialogs.
+		if matchCtx.candidateFilesErr == nil {
+			matchCtx.candidateFilesErr = err
+		}
+		return false
+	}
+
+	shared := false
+	forEachLocalFileID(candidate.SavePath, candFiles, func(id hardlink.FileID, _ uint64) bool {
+		if _, ok := sourceIDs[id]; ok {
+			shared = true
+			return false
+		}
+		return true
+	})
+	return shared
+}
+
+// forEachLocalFileID stats each torrent file under savePath on the local filesystem
+// and invokes fn with its FileID and link count until fn returns false. The save path
+// must be absolute; file names that escape it and files that cannot be statted are
+// skipped so malicious torrent metadata cannot probe arbitrary filesystem locations.
+func forEachLocalFileID(savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
+	base := filepath.Clean(filepath.FromSlash(savePath))
+	if !filepath.IsAbs(base) {
+		return
+	}
+
+	for _, f := range files {
+		fullPath := filepath.Join(base, filepath.FromSlash(f.Name))
+		if rel, err := filepath.Rel(base, fullPath); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		fi, err := os.Lstat(fullPath)
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		id, nlink, err := hardlink.GetFileID(fi, fullPath)
+		if err != nil {
+			continue
+		}
+		if !fn(id, nlink) {
+			return
+		}
+	}
+}
+
+// instanceHasLocalFSAccess reports whether the instance with the given ID has
+// local filesystem access enabled.
+func instanceHasLocalFSAccess(instances []*models.Instance, instanceID int) bool {
+	for _, instance := range instances {
+		if instance.ID == instanceID {
+			return instance.HasLocalFilesystemAccess
+		}
+	}
+	return false
 }
 
 // determineLocalMatchType checks if a candidate torrent matches the source.

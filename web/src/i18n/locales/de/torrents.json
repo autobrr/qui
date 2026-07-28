@@ -1254,6 +1254,10 @@
       "release": {
         "label": "Release",
         "description": "Gleiches Release (über Metadaten abgeglichen)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "Dateien sind Hardlinks derselben Daten auf der Festplatte"
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",

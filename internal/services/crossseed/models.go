@@ -19,6 +19,7 @@ const (
 	matchTypeContentPath = "content_path"
 	matchTypeName        = "name"
 	matchTypeRelease     = "release"
+	matchTypeHardlink    = "hardlink"
 )
 
 // CrossSeedRequest represents a request to cross-seed a torrent
@@ -396,7 +397,7 @@ type LocalMatch struct {
 	State         string  `json:"state"`
 	Tracker       string  `json:"tracker"`
 	TrackerHealth string  `json:"tracker_health,omitempty"`
-	MatchType     string  `json:"match_type"` // "content_path", "name", "release"
+	MatchType     string  `json:"match_type"` // "content_path", "hardlink", "name", "release"
 }
 
 // AsyncIndexerFilteringState represents the state of async indexer filtering operations

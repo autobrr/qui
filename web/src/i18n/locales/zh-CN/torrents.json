@@ -1194,6 +1194,10 @@
       "release": {
         "label": "发布",
         "description": "相同的发布（通过元数据匹配）"
+      },
+      "hardlink": {
+        "label": "硬链接",
+        "description": "文件是磁盘上相同数据的硬链接"
       }
     },
     "noMatches": "未在其他实例上找到匹配的种子",

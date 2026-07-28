@@ -1246,6 +1246,10 @@
       "release": {
         "label": "Release",
         "description": "Stejný release (shoda podle metadat)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "Soubory jsou pevné odkazy na stejná data na disku"
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",

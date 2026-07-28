@@ -1254,6 +1254,10 @@
       "release": {
         "label": "Release",
         "description": "Stessa release (corrispondenza tramite metadati)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "I file sono hardlink degli stessi dati su disco"
       }
     },
     "noMatches": "Nessun torrent corrispondente trovato su altre istanze",
