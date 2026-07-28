@@ -451,7 +451,14 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bo
 		sourceMissingCollection := sourceCollection == ""
 		candidateMissingCollection := candidateCollection == ""
 		unknownSeasonTV := isTV && (source.Series == 0 || candidate.Series == 0)
-		missingCollectionAllowed := unknownSeasonTV && (sourceMissingCollection || candidateMissingCollection)
+		// Bracket-group anime names ([SubsPlease] Show S3 - 02) never carry the
+		// streaming-service tag even when the season is known, so a missing
+		// collection on that side says nothing about the source.
+		animeStyleMissingCollection := isTV &&
+			((sourceMissingCollection && source.Site != "") ||
+				(candidateMissingCollection && candidate.Site != ""))
+		missingCollectionAllowed := (unknownSeasonTV || animeStyleMissingCollection) &&
+			(sourceMissingCollection || candidateMissingCollection)
 		if !missingCollectionAllowed {
 			return false, "collection mismatch"
 		}
