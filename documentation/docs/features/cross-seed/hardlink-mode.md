@@ -91,7 +91,7 @@ If hardlink/reflink mode falls back to regular mode for a partial or non-perfect
 
 The delete dialog's cross-seed check also detects hardlinked copies: matches whose files are verified (by inode) to be hardlinks of the deleted torrent's files, even when they live in a different save path. Detected copies appear in the affected list with a **Hardlink** badge and can be deleted along with the selection via **Also delete these cross-seeded torrents**.
 
-Because hardlinked copies keep their own links to the data, deleting the original's files does not break them and does not free disk space — the space is only reclaimed once the hardlinked copies are deleted too. The dialog's warning text reflects this.
+Because hardlinked copies keep their own links to the data, deleting the original's files does not break them and does not free disk space — the space is only reclaimed once all remaining links are removed. The dialog's warning text reflects this.
 
 Detection requires:
 
