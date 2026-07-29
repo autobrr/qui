@@ -11,6 +11,10 @@ import (
 )
 
 func TestFilesShareAllocationUnsupportedPlatform(t *testing.T) {
+	if Supported {
+		t.Fatal("unsupported platform reported shared-extent support")
+	}
+
 	shared, err := FilesShareAllocation("source", "candidate")
 	if shared {
 		t.Fatal("unexpected shared allocation match")

@@ -14,6 +14,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// Supported reports whether the current platform can inspect shared allocation.
+const Supported = true
+
 const (
 	fsctlGetRetrievalPointers    = 0x00090073
 	fileSupportsBlockRefcounting = 0x08000000

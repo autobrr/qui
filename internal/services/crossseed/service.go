@@ -1031,16 +1031,19 @@ func (s *Service) localLinkedMatchType(
 		return matchTypeHardlink
 	}
 
+	filesShareAllocation := s.filesShareAllocation
+	if filesShareAllocation == nil {
+		if !sharedextents.Supported {
+			return ""
+		}
+		filesShareAllocation = sharedextents.FilesShareAllocation
+	}
 	pairs := pairLocalTorrentFiles(
 		matchCtx.sourceSavePath,
 		matchCtx.sourceFiles,
 		candidate.SavePath,
 		candidateFiles,
 	)
-	filesShareAllocation := s.filesShareAllocation
-	if filesShareAllocation == nil {
-		filesShareAllocation = sharedextents.FilesShareAllocation
-	}
 	for _, pair := range pairs {
 		shared, err := filesShareAllocation(pair.sourcePath, pair.candidatePath)
 		if errors.Is(err, sharedextents.ErrUnsupported) {

@@ -21,6 +21,8 @@ import (
 )
 
 func TestWindowsFileInfoLayouts(t *testing.T) {
+	require.True(t, Supported)
+
 	require.Equal(t, uintptr(24), unsafe.Sizeof(fileIDInfo{}))
 	require.Equal(t, uintptr(8), unsafe.Offsetof(fileIDInfo{}.Identifier))
 	require.Equal(t, uintptr(24), unsafe.Sizeof(fileStandardInfo{}))
