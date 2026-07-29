@@ -347,12 +347,22 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 	})
 
 	t.Run("unsupported filesystem", func(t *testing.T) {
+		files := qbt.TorrentFiles{
+			{Name: "first.mkv", Size: 4},
+			{Name: "second.mkv", Size: 4},
+		}
+		sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
 		service := hardlinkTestService(map[string]qbt.TorrentFiles{
 			normalizeHash(hlSourceHash):    files,
 			normalizeHash(hlCandidateHash): files,
 		})
+		var queries int
 		service.filesShareAllocation = func(string, string) (bool, error) {
-			return false, sharedextents.ErrUnsupported
+			queries++
+			if queries == 1 {
+				return false, sharedextents.ErrUnsupported
+			}
+			return true, nil
 		}
 		matchCtx := hardlinkTestMatchCtx(service, sourceDir)
 		matchType := service.localLinkedMatchType(
@@ -360,7 +370,8 @@ func TestLocalLinkedMatchType_GatesAndErrors(t *testing.T) {
 			&models.Instance{ID: 1, HasLocalFilesystemAccess: true},
 			hardlinkTestCandidate(candidateDir),
 		)
-		require.Empty(t, matchType)
+		require.Equal(t, matchTypeReflink, matchType)
+		require.Equal(t, 2, queries)
 		require.NoError(t, matchCtx.verificationErr)
 	})
 

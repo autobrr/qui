@@ -78,7 +78,7 @@ func parseRetrievalPointers(data []byte) ([]clusterRange, int64, error) {
 	}
 
 	ranges := make([]clusterRange, 0, extentCount)
-	for i := uint32(0); i < extentCount; i++ {
+	for i := range extentCount {
 		offset := retrievalPointersHeaderSize + int(i)*retrievalPointerExtentSize
 		nextVCN := int64(binary.LittleEndian.Uint64(data[offset : offset+8]))
 		lcn := int64(binary.LittleEndian.Uint64(data[offset+8 : offset+16]))

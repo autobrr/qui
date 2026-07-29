@@ -44,23 +44,23 @@ type fileMetadata struct {
 func FilesShareAllocation(sourcePath, candidatePath string) (bool, error) {
 	sourceHandle, err := openFile(sourcePath)
 	if err != nil {
-		return false, fmt.Errorf("open source file: %w", err)
+		return false, unsupportedVerificationError("open source file", err)
 	}
 	defer closeHandle(sourceHandle)
 
 	candidateHandle, err := openFile(candidatePath)
 	if err != nil {
-		return false, fmt.Errorf("open candidate file: %w", err)
+		return false, unsupportedVerificationError("open candidate file", err)
 	}
 	defer closeHandle(candidateHandle)
 
 	sourceMetadata, err := getFileMetadata(sourceHandle)
 	if err != nil {
-		return false, fmt.Errorf("query source file metadata: %w", err)
+		return false, unsupportedVerificationError("query source file metadata", err)
 	}
 	candidateMetadata, err := getFileMetadata(candidateHandle)
 	if err != nil {
-		return false, fmt.Errorf("query candidate file metadata: %w", err)
+		return false, unsupportedVerificationError("query candidate file metadata", err)
 	}
 	if !metadataMayShareAllocation(sourceMetadata, candidateMetadata) {
 		return false, nil
@@ -75,14 +75,25 @@ func FilesShareAllocation(sourcePath, candidatePath string) (bool, error) {
 
 	sourceRanges, err := allocationRangesForHandle(sourceHandle)
 	if err != nil {
-		return false, fmt.Errorf("query source retrieval pointers: %w", err)
+		return false, retrievalPointerVerificationError("query source retrieval pointers", err)
 	}
 	candidateRanges, err := allocationRangesForHandle(candidateHandle)
 	if err != nil {
-		return false, fmt.Errorf("query candidate retrieval pointers: %w", err)
+		return false, retrievalPointerVerificationError("query candidate retrieval pointers", err)
 	}
 
 	return clusterRangesIntersect(sourceRanges, candidateRanges), nil
+}
+
+func unsupportedVerificationError(operation string, err error) error {
+	return fmt.Errorf("%w: %s: %w", ErrUnsupported, operation, err)
+}
+
+func retrievalPointerVerificationError(operation string, err error) error {
+	if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
+		return unsupportedVerificationError(operation, err)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func metadataMayShareAllocation(source, candidate fileMetadata) bool {
@@ -157,7 +168,7 @@ func requireRefsBlockCloning(handle windows.Handle) error {
 		&filesystemName[0],
 		uint32(len(filesystemName)),
 	); err != nil {
-		return fmt.Errorf("query volume information: %w", err)
+		return unsupportedVerificationError("query volume information", err)
 	}
 
 	if !strings.EqualFold(windows.UTF16ToString(filesystemName[:]), "ReFS") ||

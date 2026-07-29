@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/windows"
 
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
@@ -63,6 +64,37 @@ func TestMetadataMayShareAllocation(t *testing.T) {
 			require.Equal(t, tt.want, metadataMayShareAllocation(tt.source, tt.candidate))
 		})
 	}
+}
+
+func TestRetrievalPointerVerificationError(t *testing.T) {
+	t.Run("lock violation is unsupported", func(t *testing.T) {
+		err := retrievalPointerVerificationError("query retrieval pointers", windows.ERROR_LOCK_VIOLATION)
+		require.ErrorIs(t, err, ErrUnsupported)
+		require.ErrorIs(t, err, windows.ERROR_LOCK_VIOLATION)
+	})
+
+	t.Run("other failures remain actionable", func(t *testing.T) {
+		err := retrievalPointerVerificationError("query retrieval pointers", windows.ERROR_INVALID_DATA)
+		require.NotErrorIs(t, err, ErrUnsupported)
+		require.ErrorIs(t, err, windows.ERROR_INVALID_DATA)
+	})
+}
+
+func TestFilesShareAllocationOpenFailuresAreUnsupported(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source")
+	missing := filepath.Join(dir, "missing")
+	require.NoError(t, os.WriteFile(source, []byte("source"), 0o600))
+
+	t.Run("source", func(t *testing.T) {
+		_, err := FilesShareAllocation(missing, source)
+		require.ErrorIs(t, err, ErrUnsupported)
+	})
+
+	t.Run("candidate", func(t *testing.T) {
+		_, err := FilesShareAllocation(source, missing)
+		require.ErrorIs(t, err, ErrUnsupported)
+	})
 }
 
 func TestFilesShareAllocationUnsupportedFilesystem(t *testing.T) {
@@ -152,8 +184,4 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	shared, err = FilesShareAllocation(filepath.Join(dir, "empty-a"), filepath.Join(dir, "empty-b"))
 	require.NoError(t, err)
 	require.False(t, shared)
-
-	_, err = FilesShareAllocation(source, filepath.Join(dir, "missing"))
-	require.Error(t, err)
-	require.NotErrorIs(t, err, ErrUnsupported)
 }
