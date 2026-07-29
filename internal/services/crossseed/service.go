@@ -992,29 +992,6 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 	return m.sourceFileIDs
 }
 
-// isHardlinkedCopy reports whether the candidate torrent's files are hardlinks of the
-// source torrent's files. Both instances must have local filesystem access so their
-// qBittorrent paths can be statted directly on the qui host.
-func (s *Service) isHardlinkedCopy(matchCtx *localMatchContext, candidateInstance *models.Instance, candidate *qbittorrent.CrossInstanceTorrentView) bool {
-	if matchCtx == nil || !matchCtx.sourceHasFSAccess || candidateInstance == nil || !candidateInstance.HasLocalFilesystemAccess {
-		return false
-	}
-
-	// A candidate without a content path (metadata-less magnet) has no files on disk.
-	if candidate.ContentPath == "" {
-		return false
-	}
-
-	if _, _, err := matchCtx.getSourceFiles(); err != nil {
-		return false
-	}
-	candFiles, ok := s.getLocalMatchCandidateFiles(matchCtx, candidate)
-	if !ok {
-		return false
-	}
-	return candidateSharesSourceFileID(matchCtx, candidate.SavePath, candFiles)
-}
-
 func candidateSharesSourceFileID(matchCtx *localMatchContext, candidateSavePath string, candidateFiles qbt.TorrentFiles) bool {
 	sourceIDs := matchCtx.getSourceFileIDs()
 	if len(sourceIDs) == 0 {
