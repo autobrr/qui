@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Odemknout premium motivy",
-        "unlockDescription": "Zaplatíte kolik chcete (min $4.99) • Životní licence • Všechny motivy",
+        "unlockDescription": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
         "activeTitle": "Premium přístup aktivní",
         "activeDescription": "Máte přístup ke všem aktuálním a budoucím premium motivům",
         "activationRequiredTitle": "Vyžaduje se aktivace licence",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Získat premium licenci",
-        "description": "Zaplatíte kolik chcete (min $4.99) • Životní licence • Všechny motivy",
+        "description": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
         "steps": {
           "choosePaymentMethod": {
             "title": "Vyberte způsob platby",

@@ -189,5 +189,14 @@
       "year_one": "{{count}} year",
       "year_other": "{{count}} years"
     }
+  },
+  "support": {
+    "title": "Support qui",
+    "description": "Already got themes and want to help further? Everything in qui is already yours. A subscription doesn't unlock features, it funds the time that goes into building them.",
+    "perkPrefix": "Patrons get the",
+    "perkSuffix": "role in Discord and our eternal gratitude.",
+    "yearly": "{{price}} / year",
+    "monthly": "{{price}} / month",
+    "notLicense": "Premium themes are a separate one-time purchase."
   }
 }

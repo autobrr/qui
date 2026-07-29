@@ -189,5 +189,14 @@
       "year_one": "{{count}} anno",
       "year_other": "{{count}} anni"
     }
+  },
+  "support": {
+    "title": "Sostieni qui",
+    "description": "Hai già i temi e vuoi dare una mano in più? Tutto in qui è già tuo. Un abbonamento non sblocca funzionalità, finanzia il tempo dedicato a svilupparle.",
+    "perkPrefix": "I sostenitori ottengono il ruolo",
+    "perkSuffix": "su Discord e la nostra eterna gratitudine.",
+    "yearly": "{{price}} / anno",
+    "monthly": "{{price}} / mese",
+    "notLicense": "I temi premium sono un acquisto unico separato."
   }
 }
