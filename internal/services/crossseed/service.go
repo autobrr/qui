@@ -1254,7 +1254,7 @@ func forEachLocalTorrentFile(
 			continue
 		}
 		fi, err := os.Lstat(fullPath)
-		if err != nil || !fi.Mode().IsRegular() || isLinkedLocalFile(fi) {
+		if err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
 		if !fn(file, fullPath, fi) {
