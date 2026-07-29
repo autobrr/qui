@@ -28,11 +28,13 @@ import (
 )
 
 type spyARRLookupService struct {
-	title       string
-	contentType arr.ContentType
-	result      *arr.ExternalIDsResult
-	err         error
-	called      bool
+	title        string
+	contentType  arr.ContentType
+	result       *arr.ExternalIDsResult
+	seasonResult *arr.SeasonEpisodeTotalResult
+	err          error
+	called       bool
+	seasonCalls  int
 }
 
 func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
@@ -43,7 +45,8 @@ func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string,
 }
 
 func (s *spyARRLookupService) LookupSeasonEpisodeTotal(context.Context, string, int) (*arr.SeasonEpisodeTotalResult, error) {
-	return nil, nil
+	s.seasonCalls++
+	return s.seasonResult, s.err
 }
 
 type failingEnabledIndexerStore struct {

@@ -76,6 +76,18 @@ Defaults are chosen to match common seasonpackarr expectations.
 | Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
 | Ignore year differences | Off | Allow matches when release dates differ or one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
 
+### Alternate titles
+
+When Sonarr resolves the show, qui pulls its series-wide alternate titles and uses them during season-pack matching. This lets a pack and a local episode match when they use different title forms, such as a romaji pack against English-titled episodes, or an abbreviated title against the full one. Season-scoped alternate titles only apply to their own season, so they cannot bridge one season's episodes onto another season's pack. If the pack itself is titled by an alias that Sonarr maps to a different season than the pack labels (for example a `Show 2nd Season` pack labeled `S01`), alias expansion is skipped for that pack, since its numbering follows the alias rather than the canonical series. Without Sonarr knowing the show, only the literal parsed titles are compared.
+
+### Anime absolute numbering
+
+Absolute-numbered anime episodes (for example `Show - 1140`, with no season number) are matched against a seasoned pack when both sides use the same absolute numbering. qui keys the local episode to the pack's season and relies on the absolute episode number to identify it.
+
+This does not translate between numbering schemes. A pack that uses `SxxExx` numbering will not match local episodes numbered by absolute number (or the reverse), since resolving one to the other needs authoritative per-episode data from a metadata provider. In practice releases that cross-seed cleanly already share a numbering convention.
+
+One caveat: a `/check` call without torrent data has no file list to learn the pack's numbering scheme from, so it stays optimistic and can report ready against locals that use the other scheme. `/apply` verifies against the pack's real file list and is the authority; a false ready from the light check costs one wasted `.torrent` download, nothing is injected.
+
 ## Apply Model
 
 Passing the threshold does **not** require 100% local coverage.
