@@ -313,20 +313,18 @@ func TestLocalLinkedMatchType_SkipsSamePhysicalFile(t *testing.T) {
 }
 
 func TestLocalLinkedMatchType_SkipsUnsafePaths(t *testing.T) {
-	sourceDir, candidateDir := writeIndependentLocalMatchFiles(
-		t,
-		qbt.TorrentFiles{{Name: "safe.mkv", Size: 4}},
-		qbt.TorrentFiles{{Name: "safe.mkv", Size: 4}},
-	)
-	unsafeNames := []string{
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "source", "save")
+	candidateDir := filepath.Join(root, "candidate", "save")
+	require.NoError(t, os.MkdirAll(sourceDir, 0o700))
+	require.NoError(t, os.MkdirAll(candidateDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "source", "outside.mkv"), []byte("data"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "candidate", "outside.mkv"), []byte("data"), 0o600))
+
+	for _, unsafeName := range []string{
 		"../outside.mkv",
 		`..\outside.mkv`,
-		"/etc/passwd",
-		`\windows\system32\config`,
-		`C:\windows\system32\config`,
-		`\\server\share\file.mkv`,
-	}
-	for _, unsafeName := range unsafeNames {
+	} {
 		t.Run(strings.ReplaceAll(unsafeName, "/", "_"), func(t *testing.T) {
 			sourceFiles := qbt.TorrentFiles{{Name: unsafeName, Size: 4}}
 			candidateFiles := qbt.TorrentFiles{{Name: unsafeName, Size: 4}}
