@@ -166,6 +166,10 @@ export function CrossSeedWarning({
   // Only torrents sharing the source content path break.
   const hasSharedPathMatches = hasBreakableLocalMatches(affectedTorrents)
   const linkedCopiesOnly = linkedCopyCount === affectedTorrents.length
+  const hardlinkCopiesOnly = linkedCopiesOnly && affectedTorrents.every(
+    torrent => torrent.matchType === "hardlink"
+  )
+  const hasReflinkCopies = affectedTorrents.some(torrent => torrent.matchType === "reflink")
   // Show destructive styling if deleting files breaks cross-seeds OR if user opted to delete them
   const isDestructive = deleteCrossSeeds || (deleteFiles && hasSharedPathMatches)
 
@@ -196,7 +200,7 @@ export function CrossSeedWarning({
             "text-sm font-medium",
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
-            {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? (linkedCopiesOnly ? t("crossSeedWarning.linkedCopies") : t("crossSeedWarning.deletingFilesBreaks")): t("crossSeedWarning.dataPreserved")}
+            {deleteCrossSeeds? t("crossSeedWarning.deleteCrossSeeds"): deleteFiles? (linkedCopiesOnly ? t(hardlinkCopiesOnly ? "crossSeedWarning.hardlinkedCopies" : "crossSeedWarning.linkedCopies") : t("crossSeedWarning.deletingFilesBreaks")): t("crossSeedWarning.dataPreserved")}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {affectedTorrents.length === 1? t("crossSeedWarning.torrentShares", { count: affectedTorrents.length }): t("crossSeedWarning.torrentsShare", { count: affectedTorrents.length })}
@@ -206,11 +210,11 @@ export function CrossSeedWarning({
                 {uniqueTrackers.size === 1? t("crossSeedWarning.onTracker", { tracker: Array.from(uniqueTrackers)[0] }): t("crossSeedWarning.onTrackers", { count: uniqueTrackers.size })}
               </span>
             )}
-            {deleteCrossSeeds? ` ${t("crossSeedWarning.willBeRemoved")}`: deleteFiles? (linkedCopiesOnly ? ` ${t("crossSeedWarning.sharedBlocksMayRemain")}` : ` ${t("crossSeedWarning.willNeedRedownload")}`): ` ${t("crossSeedWarning.unaffected")}`}
+            {deleteCrossSeeds? ` ${t("crossSeedWarning.willBeRemoved")}`: deleteFiles? (linkedCopiesOnly ? ` ${t(hardlinkCopiesOnly ? "crossSeedWarning.spaceNotFreed" : "crossSeedWarning.sharedBlocksMayRemain")}` : ` ${t("crossSeedWarning.willNeedRedownload")}`): ` ${t("crossSeedWarning.unaffected")}`}
           </p>
           {deleteFiles && !deleteCrossSeeds && linkedCopyCount > 0 && hasSharedPathMatches && (
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("crossSeedWarning.mixedLinkedNote")}
+              {t(hasReflinkCopies ? "crossSeedWarning.mixedLinkedNote" : "crossSeedWarning.mixedHardlinkNote")}
             </p>
           )}
         </div>
