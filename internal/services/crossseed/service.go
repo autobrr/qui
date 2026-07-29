@@ -992,11 +992,11 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 	return m.sourceFileIDs
 }
 
-func candidateSharesSourceFileID(matchCtx *localMatchContext, candidateSavePath string, candidateFiles qbt.TorrentFiles) bool {
-	sourceIDs := matchCtx.getSourceFileIDs()
-	if len(sourceIDs) == 0 {
-		return false
-	}
+func candidateSharesSourceFileID(
+	sourceIDs map[hardlink.FileID]struct{},
+	candidateSavePath string,
+	candidateFiles qbt.TorrentFiles,
+) bool {
 	shared := false
 	forEachLocalFileID(candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
 		if _, ok := sourceIDs[id]; ok {
@@ -1022,21 +1022,26 @@ func (s *Service) localLinkedMatchType(
 	if _, _, err := matchCtx.getSourceFiles(); err != nil {
 		return ""
 	}
+	sourceIDs := matchCtx.getSourceFileIDs()
+	filesShareAllocation := s.filesShareAllocation
+	if filesShareAllocation == nil && sharedextents.Supported {
+		filesShareAllocation = sharedextents.FilesShareAllocation
+	}
+	if len(sourceIDs) == 0 && filesShareAllocation == nil {
+		return ""
+	}
+
 	candidateFiles, ok := s.getLocalMatchCandidateFiles(matchCtx, candidate)
 	if !ok {
 		return ""
 	}
 
-	if candidateSharesSourceFileID(matchCtx, candidate.SavePath, candidateFiles) {
+	if candidateSharesSourceFileID(sourceIDs, candidate.SavePath, candidateFiles) {
 		return matchTypeHardlink
 	}
 
-	filesShareAllocation := s.filesShareAllocation
 	if filesShareAllocation == nil {
-		if !sharedextents.Supported {
-			return ""
-		}
-		filesShareAllocation = sharedextents.FilesShareAllocation
+		return ""
 	}
 	pairs := pairLocalTorrentFiles(
 		matchCtx.sourceSavePath,
