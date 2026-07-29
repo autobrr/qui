@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -281,6 +282,34 @@ func TestLocalLinkedMatchType_ConservativePairing(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLocalLinkedMatchType_SkipsSamePhysicalFile(t *testing.T) {
+	root := t.TempDir()
+	releaseDir := filepath.Join(root, "Release")
+	require.NoError(t, os.Mkdir(releaseDir, 0o700))
+	fileName := "Release.mkv"
+	require.NoError(t, os.WriteFile(filepath.Join(releaseDir, fileName), []byte("data"), 0o600))
+
+	sourceFiles := qbt.TorrentFiles{{Name: path.Join("Release", fileName), Size: 4}}
+	candidateFiles := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	service := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    sourceFiles,
+		normalizeHash(hlCandidateHash): candidateFiles,
+	})
+	var queries int
+	service.filesShareAllocation = func(string, string) (bool, error) {
+		queries++
+		return true, nil
+	}
+
+	matchType := service.localLinkedMatchType(
+		hardlinkTestMatchCtx(service, root),
+		&models.Instance{ID: 1, HasLocalFilesystemAccess: true},
+		hardlinkTestCandidate(releaseDir),
+	)
+	require.Empty(t, matchType)
+	require.Zero(t, queries)
 }
 
 func TestLocalLinkedMatchType_SkipsUnsafePaths(t *testing.T) {

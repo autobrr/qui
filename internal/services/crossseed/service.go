@@ -1123,6 +1123,8 @@ type localFilePair struct {
 type localTorrentFile struct {
 	file           qbt.TorrentFile
 	fullPath       string
+	fileID         hardlink.FileID
+	hasFileID      bool
 	normalizedPath string
 	basename       string
 }
@@ -1159,6 +1161,9 @@ func pairLocalTorrentFiles(
 		}
 		sourceIndex := sourceIndexes[0]
 		candidateIndex := candidateIndexes[0]
+		if sameLocalFile(source[sourceIndex], candidate[candidateIndex]) {
+			continue
+		}
 		pairs = append(pairs, localFilePair{
 			sourcePath:    source[sourceIndex].fullPath,
 			candidatePath: candidate[candidateIndex].fullPath,
@@ -1180,6 +1185,9 @@ func pairLocalTorrentFiles(
 		if _, ok := pairedCandidate[candidateIndex]; ok {
 			continue
 		}
+		if sameLocalFile(source[sourceIndex], candidate[candidateIndex]) {
+			continue
+		}
 		pairs = append(pairs, localFilePair{
 			sourcePath:    source[sourceIndex].fullPath,
 			candidatePath: candidate[candidateIndex].fullPath,
@@ -1190,20 +1198,27 @@ func pairLocalTorrentFiles(
 
 func collectLocalTorrentFiles(savePath string, files qbt.TorrentFiles) []localTorrentFile {
 	localFiles := make([]localTorrentFile, 0, len(files))
-	forEachLocalTorrentFile(savePath, files, func(file qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
+	forEachLocalTorrentFile(savePath, files, func(file qbt.TorrentFile, fullPath string, fi os.FileInfo) bool {
 		if file.Size == 0 {
 			return true
 		}
+		fileID, _, fileIDErr := hardlink.GetFileID(fi, fullPath)
 		normalizedPath := normalizeTorrentRelativePath(file.Name)
 		localFiles = append(localFiles, localTorrentFile{
 			file:           file,
 			fullPath:       fullPath,
+			fileID:         fileID,
+			hasFileID:      fileIDErr == nil,
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})
 		return true
 	})
 	return localFiles
+}
+
+func sameLocalFile(source, candidate localTorrentFile) bool {
+	return source.hasFileID && candidate.hasFileID && source.fileID == candidate.fileID
 }
 
 func indexLocalFiles(files []localTorrentFile, keyFn func(localTorrentFile) string) map[string][]int {
