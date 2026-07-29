@@ -451,7 +451,7 @@
       },
       "status": {
         "unlockTitle": "解锁高级主题",
-        "unlockDescription": "随心付费（最低 $4.99）· 终身许可证 · 所有主题",
+        "unlockDescription": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
         "activeTitle": "高级访问已激活",
         "activeDescription": "您可以访问所有当前和未来的高级主题",
         "activationRequiredTitle": "需要激活许可证",
@@ -515,7 +515,7 @@
       },
       "paymentDialog": {
         "title": "获取高级许可证",
-        "description": "随心付费（最低 $4.99）· 终身许可证 · 所有主题",
+        "description": "随心付费（最低 $9.99）· 终身许可证 · 所有主题",
         "steps": {
           "choosePaymentMethod": {
             "title": "选择支付方式",
