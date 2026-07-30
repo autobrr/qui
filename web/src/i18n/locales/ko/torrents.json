@@ -759,6 +759,29 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "뷰",
+      "empty": "저장된 뷰가 없습니다. 필터를 선택한 뒤 여기에 저장하세요.",
+      "saveCurrent": "현재 필터 저장",
+      "actions": "뷰 작업",
+      "rename": "이름 변경",
+      "delete": "삭제",
+      "cancel": "취소",
+      "save": "저장",
+      "saveTitle": "뷰 저장",
+      "saveDescription": "현재 필터 선택을 이름이 있는 뷰로 저장합니다. 검색, 정렬, 열 필터는 포함되지 않습니다.",
+      "renameTitle": "뷰 이름 변경",
+      "renameDescription": "이 저장된 뷰의 새 이름을 입력하세요.",
+      "nameLabel": "이름",
+      "namePlaceholder": "예: 멈춘 시드",
+      "deleteTitle": "뷰 삭제",
+      "deleteDescription": "\"{{name}}\"을(를) 삭제할까요? 되돌릴 수 없습니다.",
+      "toasts": {
+        "createFailed": "뷰를 저장하지 못했습니다",
+        "updateFailed": "뷰 이름을 변경하지 못했습니다",
+        "deleteFailed": "뷰를 삭제하지 못했습니다"
+      }
+    },
     "title": "필터",
     "clearAll": "모두 지우기",
     "loading": "불러오는 중...",

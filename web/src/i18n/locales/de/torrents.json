@@ -807,6 +807,29 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Ansichten",
+      "empty": "Noch keine gespeicherten Ansichten. Wähle Filter aus und speichere sie hier.",
+      "saveCurrent": "Aktuelle Filter speichern",
+      "actions": "Ansichtsaktionen",
+      "rename": "Umbenennen",
+      "delete": "Löschen",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "saveTitle": "Ansicht speichern",
+      "saveDescription": "Speichert die aktuelle Filterauswahl als benannte Ansicht. Suche, Sortierung und Spaltenfilter sind nicht enthalten.",
+      "renameTitle": "Ansicht umbenennen",
+      "renameDescription": "Gib dieser gespeicherten Ansicht einen neuen Namen.",
+      "nameLabel": "Name",
+      "namePlaceholder": "z. B. Hängende Seeds",
+      "deleteTitle": "Ansicht löschen",
+      "deleteDescription": "„{{name}}“ löschen? Das kann nicht rückgängig gemacht werden.",
+      "toasts": {
+        "createFailed": "Ansicht konnte nicht gespeichert werden",
+        "updateFailed": "Ansicht konnte nicht umbenannt werden",
+        "deleteFailed": "Ansicht konnte nicht gelöscht werden"
+      }
+    },
     "title": "Filter",
     "clearAll": "Alle löschen",
     "loading": "Wird geladen...",

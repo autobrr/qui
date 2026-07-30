@@ -807,6 +807,29 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Views",
+      "empty": "No saved views yet. Choose some filters, then save them here.",
+      "saveCurrent": "Save current filters",
+      "actions": "View actions",
+      "rename": "Rename",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saveTitle": "Save view",
+      "saveDescription": "Save the current filter selection as a named view. Search, sorting and column filters are not included.",
+      "renameTitle": "Rename view",
+      "renameDescription": "Give this saved view a new name.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Stalled seeds",
+      "deleteTitle": "Delete view",
+      "deleteDescription": "Delete \"{{name}}\"? This cannot be undone.",
+      "toasts": {
+        "createFailed": "Failed to save view",
+        "updateFailed": "Failed to rename view",
+        "deleteFailed": "Failed to delete view"
+      }
+    },
     "title": "Filters",
     "clearAll": "Clear all",
     "loading": "Loading...",

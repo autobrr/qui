@@ -807,6 +807,29 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Visualizações",
+      "empty": "Nenhuma visualização salva. Escolha alguns filtros e salve-os aqui.",
+      "saveCurrent": "Salvar filtros atuais",
+      "actions": "Ações da visualização",
+      "rename": "Renomear",
+      "delete": "Excluir",
+      "cancel": "Cancelar",
+      "save": "Salvar",
+      "saveTitle": "Salvar visualização",
+      "saveDescription": "Salva a seleção de filtros atual como uma visualização nomeada. Busca, ordenação e filtros de coluna não são incluídos.",
+      "renameTitle": "Renomear visualização",
+      "renameDescription": "Dê um novo nome a esta visualização salva.",
+      "nameLabel": "Nome",
+      "namePlaceholder": "ex. Seeds travados",
+      "deleteTitle": "Excluir visualização",
+      "deleteDescription": "Excluir \"{{name}}\"? Isso não pode ser desfeito.",
+      "toasts": {
+        "createFailed": "Falha ao salvar a visualização",
+        "updateFailed": "Falha ao renomear a visualização",
+        "deleteFailed": "Falha ao excluir a visualização"
+      }
+    },
     "title": "Filtros",
     "clearAll": "Limpar tudo",
     "loading": "Carregando...",

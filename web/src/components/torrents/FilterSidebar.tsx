@@ -70,6 +70,7 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { CategoryTree } from "./CategoryTree"
+import { FilterViewsSection } from "./FilterViewsSection"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -1908,6 +1909,16 @@ const FilterSidebarComponent = ({
             onValueChange={setExpandedItems}
             className={viewMode === "dense" ? "space-y-1" : "space-y-2"}
           >
+            {/* Saved Views */}
+            <FilterViewsSection
+              selectedFilters={selectedFilters}
+              onApply={applyFilterChange}
+              hasActiveFilters={hasActiveFilters}
+              triggerClassName={accordionTriggerClass}
+              contentClassName={accordionContentClass}
+              itemClassName={filterItemClass}
+            />
+
             {/* Custom Filter */}
             {selectedFilters.expr && (
               <AccordionItem value="custom" className="border rounded-lg">

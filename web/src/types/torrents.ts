@@ -217,6 +217,22 @@ export interface TorrentFilters {
   expr?: string
 }
 
+/** A named snapshot of TorrentFilters, saved server-side and shared across instances. */
+export interface FilterView {
+  id: number
+  name: string
+  filters: TorrentFilters
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FilterViewInput {
+  name: string
+  filters: TorrentFilters
+  sortOrder?: number
+}
+
 /**
  * Real-time instance auth/decryption and connection metadata emitted on torrent
  * stream snapshots.

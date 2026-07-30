@@ -807,6 +807,29 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Viste",
+      "empty": "Nessuna vista salvata. Scegli dei filtri e salvali qui.",
+      "saveCurrent": "Salva i filtri correnti",
+      "actions": "Azioni vista",
+      "rename": "Rinomina",
+      "delete": "Elimina",
+      "cancel": "Annulla",
+      "save": "Salva",
+      "saveTitle": "Salva vista",
+      "saveDescription": "Salva la selezione di filtri corrente come vista con nome. Ricerca, ordinamento e filtri di colonna non sono inclusi.",
+      "renameTitle": "Rinomina vista",
+      "renameDescription": "Assegna un nuovo nome a questa vista salvata.",
+      "nameLabel": "Nome",
+      "namePlaceholder": "es. Seed in stallo",
+      "deleteTitle": "Elimina vista",
+      "deleteDescription": "Eliminare «{{name}}»? L'operazione non può essere annullata.",
+      "toasts": {
+        "createFailed": "Salvataggio della vista non riuscito",
+        "updateFailed": "Rinomina della vista non riuscita",
+        "deleteFailed": "Eliminazione della vista non riuscita"
+      }
+    },
     "title": "Filtri",
     "clearAll": "Svuota tutto",
     "loading": "Caricamento...",

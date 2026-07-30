@@ -807,6 +807,29 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Pohledy",
+      "empty": "Zatím žádné uložené pohledy. Vyberte filtry a pak je zde uložte.",
+      "saveCurrent": "Uložit aktuální filtry",
+      "actions": "Akce pohledu",
+      "rename": "Přejmenovat",
+      "delete": "Smazat",
+      "cancel": "Zrušit",
+      "save": "Uložit",
+      "saveTitle": "Uložit pohled",
+      "saveDescription": "Uloží aktuální výběr filtrů jako pojmenovaný pohled. Vyhledávání, řazení ani filtry sloupců nejsou zahrnuty.",
+      "renameTitle": "Přejmenovat pohled",
+      "renameDescription": "Zadejte nový název tohoto uloženého pohledu.",
+      "nameLabel": "Název",
+      "namePlaceholder": "např. Zaseknuté seedy",
+      "deleteTitle": "Smazat pohled",
+      "deleteDescription": "Smazat „{{name}}“? Tuto akci nelze vrátit zpět.",
+      "toasts": {
+        "createFailed": "Uložení pohledu se nezdařilo",
+        "updateFailed": "Přejmenování pohledu se nezdařilo",
+        "deleteFailed": "Smazání pohledu se nezdařilo"
+      }
+    },
     "title": "Filtry",
     "clearAll": "Vymazat vše",
     "loading": "Načítání...",
