@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -65,6 +66,35 @@ func TestSweepStaleBlobTemps(t *testing.T) {
 	_, err = os.Stat(stale)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(staleRoot)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestCopyTorrentFromTempAtomicWrite(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	dataDir := t.TempDir()
+	src := filepath.Join(t.TempDir(), "upload.torrent")
+	payload := []byte("d" + strings.Repeat("x", 63))
+	require.NoError(t, os.WriteFile(src, payload, 0o600))
+
+	rel := filepath.Join("backups", "torrents", "aa", "bb", "cc", "deadbeef.torrent")
+	require.NoError(t, svc.copyTorrentFromTemp(src, dataDir, rel))
+
+	got, err := os.ReadFile(filepath.Join(dataDir, rel))
+	require.NoError(t, err)
+	require.Equal(t, payload, got)
+
+	// No temp files may remain next to the blob.
+	entries, err := os.ReadDir(filepath.Join(dataDir, filepath.Dir(rel)))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	// Invalid payloads are rejected before anything is written.
+	badSrc := filepath.Join(t.TempDir(), "bad.torrent")
+	require.NoError(t, os.WriteFile(badSrc, []byte("not bencoded, but long enough to pass the size check"), 0o600))
+	require.ErrorContains(t, svc.copyTorrentFromTemp(badSrc, dataDir, filepath.Join("backups", "torrents", "bad.torrent")), "not a bencoded dict")
+	_, err = os.Stat(filepath.Join(dataDir, "backups", "torrents", "bad.torrent"))
 	require.ErrorIs(t, err, os.ErrNotExist)
 }
 
