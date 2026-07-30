@@ -262,7 +262,9 @@
     "hardlinkScopes": {
       "none": "Žádné",
       "torrents_only": "Jen ostatní torrenty",
-      "outside_qbittorrent": "Mimo qBittorrent (knihovna/import)"
+      "inside_qbittorrent": "Uvnitř qBittorrentu (i když má odkazy i mimo)",
+      "outside_qbittorrent": "Mimo qBittorrent (knihovna/import)",
+      "both": "Uvnitř + mimo qBittorrent"
     },
     "deleteModes": {
       "delete": "Odstranit z klienta",

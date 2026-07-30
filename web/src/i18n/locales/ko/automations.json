@@ -263,7 +263,9 @@
     "hardlinkScopes": {
       "none": "없음",
       "torrents_only": "다른 토렌트만",
-      "outside_qbittorrent": "qBittorrent 외부 (라이브러리/가져오기)"
+      "inside_qbittorrent": "qBittorrent 내부 (외부 링크가 있어도 포함)",
+      "outside_qbittorrent": "qBittorrent 외부 (라이브러리/가져오기)",
+      "both": "qBittorrent 내부 + 외부"
     },
     "trackerStatuses": {
       "not_contacted": "접속 시도 안 함",

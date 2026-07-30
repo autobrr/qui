@@ -262,7 +262,9 @@
     "hardlinkScopes": {
       "none": "Немає",
       "torrents_only": "Тільки інші торенти",
-      "outside_qbittorrent": "Поза qBittorrent (бібліотека/імпорт)"
+      "inside_qbittorrent": "Всередині qBittorrent (навіть якщо також пов'язано ззовні)",
+      "outside_qbittorrent": "Поза qBittorrent (бібліотека/імпорт)",
+      "both": "Всередині + поза qBittorrent"
     },
     "deleteModes": {
       "delete": "Видалити з клієнта",
