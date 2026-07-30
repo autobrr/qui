@@ -308,6 +308,9 @@ func (s *Service) Start(ctx context.Context) {
 		log.Warn().Err(err).Msg("Failed to recover incomplete backup runs")
 	}
 
+	// Reclaim cache blobs stranded by failed runs before workers start writing.
+	s.cleanupOrphanedBlobs(ctx)
+
 	for i := 0; i < s.cfg.WorkerCount; i++ {
 		s.wg.Add(1)
 		go s.worker(ctx)
@@ -1142,6 +1145,68 @@ func cacheTorrentBlob(rootDir, relBlob string, data []byte) error {
 		return fmt.Errorf("cache torrent blob: %w", err)
 	}
 	return nil
+}
+
+// orphanBlobMinAge shields just-written blobs from the startup orphan sweep.
+const orphanBlobMinAge = 24 * time.Hour
+
+// cleanupOrphanedBlobs removes cache files no backup item references. Blobs
+// are written to the cache during export but only referenced in the database
+// once the whole run succeeds, so every failed run strands its already-written
+// blobs and nothing else ever deletes them. Runs at startup before any backup
+// workers exist; the age guard keeps it clear of files written around the
+// sweep. All access goes through os.Root so paths cannot escape the cache.
+func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
+	if s.cacheDir == "" {
+		return
+	}
+
+	refs, err := s.store.ListTorrentBlobPaths(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to list referenced torrent blobs; skipping cache cleanup")
+		return
+	}
+	// Stored paths are relative to the data dir, with legacy entries relative
+	// to backups/ (see loadCachedTorrent); accept both interpretations.
+	referenced := make(map[string]struct{}, len(refs)*2)
+	for _, rel := range refs {
+		referenced[filepath.Join(s.cfg.DataDir, filepath.FromSlash(rel))] = struct{}{}
+		referenced[filepath.Join(s.cfg.DataDir, "backups", filepath.FromSlash(rel))] = struct{}{}
+	}
+
+	root, err := os.OpenRoot(s.cacheDir)
+	if err != nil {
+		log.Warn().Err(err).Str("cacheDir", s.cacheDir).Msg("Failed to open torrent cache for cleanup")
+		return
+	}
+	defer root.Close()
+
+	cutoff := s.now().Add(-orphanBlobMinAge)
+	removed := 0
+	var freed int64
+	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if walkErr != nil || d.IsDir() {
+			return nil
+		}
+		if _, ok := referenced[filepath.Join(s.cacheDir, filepath.FromSlash(p))]; ok {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			return nil
+		}
+		if root.Remove(filepath.FromSlash(p)) == nil {
+			removed++
+			freed += info.Size()
+		}
+		return nil
+	})
+	if removed > 0 {
+		log.Info().Int("removed", removed).Int64("freedBytes", freed).Str("cacheDir", s.cacheDir).Msg("Removed orphaned torrent cache blobs")
+	}
 }
 
 // adaptiveExportDelay waits between export API calls with back-pressure.

@@ -1175,6 +1175,32 @@ func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int,
 	return &trimmed, nil
 }
 
+// ListTorrentBlobPaths returns every distinct blob path referenced by any
+// backup item across all runs and instances.
+func (s *BackupStore) ListTorrentBlobPaths(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT torrent_blob_path
+		FROM instance_backup_items_view
+		WHERE torrent_blob_path IS NOT NULL
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var path sql.NullString
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		if trimmed := strings.TrimSpace(path.String); path.Valid && trimmed != "" {
+			paths = append(paths, trimmed)
+		}
+	}
+	return paths, rows.Err()
+}
+
 func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `

@@ -1355,6 +1355,60 @@ func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestCleanupOrphanedBlobs(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-gc")
+	store := models.NewBackupStore(db)
+
+	dataDir := t.TempDir()
+	cacheDir := filepath.Join(dataDir, "backups", "torrents", "aa", "bb", "cc")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+
+	referencedRel := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "cc", "referenced.torrent"))
+	referencedAbs := filepath.Join(dataDir, filepath.FromSlash(referencedRel))
+	orphanAbs := filepath.Join(cacheDir, "orphan.torrent")
+	freshOrphanAbs := filepath.Join(cacheDir, "fresh.torrent")
+	for _, p := range []string{referencedAbs, orphanAbs, freshOrphanAbs} {
+		require.NoError(t, os.WriteFile(p, []byte("blob"), 0o600))
+	}
+	// Age the referenced and orphaned blobs past the guard; only the orphan
+	// may be removed. The fresh orphan stays inside the age guard.
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(referencedAbs, old, old))
+	require.NoError(t, os.Chtimes(orphanAbs, old, old))
+
+	now := time.Now().UTC()
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hash-1",
+		Name:            "Referenced",
+		TorrentBlobPath: &referencedRel,
+	}}))
+
+	svc := NewService(store, &stubBackupSyncManager{}, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc.cleanupOrphanedBlobs(ctx)
+
+	_, err := os.Stat(referencedAbs)
+	require.NoError(t, err, "referenced blobs must survive")
+	_, err = os.Stat(orphanAbs)
+	require.ErrorIs(t, err, os.ErrNotExist, "aged orphan blobs must be removed")
+	_, err = os.Stat(freshOrphanAbs)
+	require.NoError(t, err, "fresh files stay inside the age guard")
+}
+
 type stubBackupSyncManager struct {
 	torrents    []qbt.Torrent
 	categories  map[string]qbt.Category
