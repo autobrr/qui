@@ -217,11 +217,15 @@ export interface TorrentFilters {
   expr?: string
 }
 
-/** A named snapshot of TorrentFilters, saved server-side and shared across instances. */
+/**
+ * A named snapshot of TorrentFilters, saved server-side and shared across
+ * instances. The backend stores filters as an opaque blob, so treat them as
+ * partial and normalize with toViewFilters before use.
+ */
 export interface FilterView {
   id: number
   name: string
-  filters: TorrentFilters
+  filters: Partial<TorrentFilters>
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -229,7 +233,7 @@ export interface FilterView {
 
 export interface FilterViewInput {
   name: string
-  filters: TorrentFilters
+  filters: Partial<TorrentFilters>
   sortOrder?: number
 }
 

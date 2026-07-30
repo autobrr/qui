@@ -82,7 +82,7 @@ export function FilterViewsSection({
 
   const submitName = () => {
     const name = nameDraft.trim()
-    if (!name) return
+    if (!name || createView.isPending || updateView.isPending) return
 
     // Close only once the write lands, so a 409 leaves the typed name in place.
     const opts = { onSuccess: () => setNameDialogOpen(false) }

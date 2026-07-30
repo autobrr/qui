@@ -124,7 +124,11 @@ func (s *FilterViewStore) Delete(ctx context.Context, userID, id int) error {
 		return err
 	}
 
-	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
 		return sql.ErrNoRows
 	}
 

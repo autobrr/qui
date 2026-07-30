@@ -16,12 +16,13 @@ export function usePersistedAccordion() {
 
     // Existing users have a stored array predating "views", so the new section
     // would ship collapsed. Expand it once; after that their own toggling wins.
+    // The seed marker is written in the effect below, so this stays pure.
     if (localStorage.getItem(VIEWS_SEEDED_KEY)) return items
-    localStorage.setItem(VIEWS_SEEDED_KEY, "1")
     return items.includes("views") ? items : ["views", ...items]
   })
 
   useEffect(() => {
+    localStorage.setItem(VIEWS_SEEDED_KEY, "1")
     localStorage.setItem("qui-accordion", JSON.stringify(expandedItems))
   }, [expandedItems])
 
