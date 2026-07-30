@@ -337,6 +337,7 @@ func TestExecuteBackupConcurrentStopsOnContextCancel(t *testing.T) {
 	svc, instanceID := newExportTestService(t, stub)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
