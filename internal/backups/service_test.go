@@ -1407,6 +1407,18 @@ func TestCleanupOrphanedBlobs(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist, "aged orphan blobs must be removed")
 	_, err = os.Stat(freshOrphanAbs)
 	require.NoError(t, err, "fresh files stay inside the age guard")
+
+	// A canceled context stops the cleanup before it removes anything.
+	lateOrphanAbs := filepath.Join(cacheDir, "late-orphan.torrent")
+	require.NoError(t, os.WriteFile(lateOrphanAbs, []byte("blob"), 0o600))
+	require.NoError(t, os.Chtimes(lateOrphanAbs, old, old))
+
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	svc.cleanupOrphanedBlobs(canceledCtx)
+
+	_, err = os.Stat(lateOrphanAbs)
+	require.NoError(t, err, "cleanup must not remove files once the context is canceled")
 }
 
 type stubBackupSyncManager struct {

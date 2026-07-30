@@ -1184,11 +1184,11 @@ func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
 	cutoff := s.now().Add(-orphanBlobMinAge)
 	removed := 0
 	var freed int64
-	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, walkErr error) error {
+	walkErr := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, entryErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if walkErr != nil || d.IsDir() {
+		if entryErr != nil || d.IsDir() {
 			return nil
 		}
 		if _, ok := referenced[filepath.Join(s.cacheDir, filepath.FromSlash(p))]; ok {
@@ -1204,6 +1204,9 @@ func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
 		}
 		return nil
 	})
+	if walkErr != nil {
+		log.Warn().Err(walkErr).Str("cacheDir", s.cacheDir).Msg("Torrent cache cleanup stopped early")
+	}
 	if removed > 0 {
 		log.Info().Int("removed", removed).Int64("freedBytes", freed).Str("cacheDir", s.cacheDir).Msg("Removed orphaned torrent cache blobs")
 	}
