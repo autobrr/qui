@@ -89,6 +89,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
 - Keep commits focused; split backend/frontend when practical.
+- Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
 - PRs need clear summary, testing checklist, and screenshots for visual UI changes.
 

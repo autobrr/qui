@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +20,93 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
+
+func TestCacheTorrentBlobAtomicWrite(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	relBlob := filepath.Join("aa", "bb", "cc", "deadbeef.torrent")
+	absBlob := filepath.Join(dir, relBlob)
+
+	require.NoError(t, cacheTorrentBlob(dir, relBlob, []byte("payload")))
+	got, err := os.ReadFile(absBlob)
+	require.NoError(t, err)
+	require.Equal(t, []byte("payload"), got)
+
+	// No temp files may remain next to the blob.
+	entries, err := os.ReadDir(filepath.Dir(absBlob))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	// An existing destination is trusted and never rewritten.
+	require.NoError(t, os.WriteFile(absBlob, []byte("sentinel"), 0o600))
+	require.NoError(t, cacheTorrentBlob(dir, relBlob, []byte("payload")))
+	got, err = os.ReadFile(absBlob)
+	require.NoError(t, err)
+	require.Equal(t, []byte("sentinel"), got)
+}
+
+func TestSweepStaleBlobTemps(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	blobDir := filepath.Join(dir, "aa", "bb", "cc")
+	require.NoError(t, os.MkdirAll(blobDir, 0o755))
+	blob := filepath.Join(blobDir, "deadbeef.torrent")
+	require.NoError(t, os.WriteFile(blob, []byte("payload"), 0o600))
+	stale := filepath.Join(blobDir, "deadbeef.torrent.tmp-123-1")
+	require.NoError(t, os.WriteFile(stale, []byte("partial"), 0o600))
+	staleRoot := filepath.Join(dir, "cafe.torrent.tmp-123-2")
+	require.NoError(t, os.WriteFile(staleRoot, []byte("partial"), 0o600))
+	fresh := filepath.Join(blobDir, "cafebabe.torrent.tmp-123-3")
+	require.NoError(t, os.WriteFile(fresh, []byte("inflight"), 0o600))
+
+	// Age everything but the fresh temp past the guard.
+	old := time.Now().Add(-2 * blobTmpMinAge)
+	for _, p := range []string{blob, stale, staleRoot} {
+		require.NoError(t, os.Chtimes(p, old, old))
+	}
+
+	sweepStaleBlobTemps(dir)
+
+	_, err := os.Stat(blob)
+	require.NoError(t, err, "real blobs must survive the sweep")
+	_, err = os.Stat(fresh)
+	require.NoError(t, err, "temp files inside the age guard must survive")
+	_, err = os.Stat(stale)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(staleRoot)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestCopyTorrentFromTempAtomicWrite(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	dataDir := t.TempDir()
+	src := filepath.Join(t.TempDir(), "upload.torrent")
+	payload := []byte("d" + strings.Repeat("x", 63))
+	require.NoError(t, os.WriteFile(src, payload, 0o600))
+
+	rel := filepath.Join("backups", "torrents", "aa", "bb", "cc", "deadbeef.torrent")
+	require.NoError(t, svc.copyTorrentFromTemp(src, dataDir, rel))
+
+	got, err := os.ReadFile(filepath.Join(dataDir, rel))
+	require.NoError(t, err)
+	require.Equal(t, payload, got)
+
+	// No temp files may remain next to the blob.
+	entries, err := os.ReadDir(filepath.Join(dataDir, filepath.Dir(rel)))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	// Invalid payloads are rejected before anything is written.
+	badSrc := filepath.Join(t.TempDir(), "bad.torrent")
+	require.NoError(t, os.WriteFile(badSrc, []byte("not bencoded, but long enough to pass the size check"), 0o600))
+	require.ErrorContains(t, svc.copyTorrentFromTemp(badSrc, dataDir, filepath.Join("backups", "torrents", "bad.torrent")), "not a bencoded dict")
+	_, err = os.Stat(filepath.Join(dataDir, "backups", "torrents", "bad.torrent"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
 
 func TestIsExportMetadataUnavailable(t *testing.T) {
 	if !isExportMetadataUnavailable(qbt.ErrTorrentMetadataNotDownloadedYet) {
