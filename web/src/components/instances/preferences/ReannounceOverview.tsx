@@ -71,6 +71,22 @@ export function ReannounceOverview({
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
 
+  const translateReason = (reason: string | undefined) => {
+    if (!reason) return ""
+    if (reason === "debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
+    if (reason === "debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
+    if (reason === "service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
+    if (reason === "tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
+    if (reason === "reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
+
+    const startedMatch = reason.match(/^reannounce job started \(max (\d+) retries\)$/)
+    if (startedMatch) {
+      return t("preferences.reannounceOverview.reasons.jobStarted", { count: parseInt(startedMatch[1], 10) })
+    }
+
+    return reason
+  }
+
   // Internal state for standalone usage
   const [internalExpanded, setInternalExpanded] = useState<string[]>([])
 
@@ -152,6 +168,7 @@ export function ReannounceOverview({
     succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     skipped: "bg-muted text-muted-foreground border-border/60",
+    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   }
 
   const getSettingsSummary = (settings: InstanceReannounceSettings | undefined): string => {
@@ -410,72 +427,75 @@ export function ReannounceOverview({
                           ) : (
                             <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
                               <div className="divide-y divide-border">
-                                {filteredEvents.map((event, eventIndex) => (
-                                  <div
-                                    key={`${event.hash}-${eventIndex}-${event.timestamp}`}
-                                    className="p-3 hover:bg-muted/30 transition-colors"
-                                  >
-                                    <div className="flex flex-col gap-2">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
-                                              {event.torrentName || event.hash}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="font-semibold">{event.torrentName || "N/A"}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                        <Badge
-                                          variant="outline"
-                                          className={cn(
-                                            "capitalize text-[10px] px-1.5 py-0 h-5",
-                                            outcomeClasses[event.outcome]
-                                          )}
-                                        >
-                                          {event.outcome}
-                                        </Badge>
-                                      </div>
-
-                                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                                          <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                          <button
-                                            type="button"
-                                            className="hover:text-foreground transition-colors"
-                                            onClick={() => {
-                                              copyTextToClipboard(event.hash)
-                                              toast.success(t("preferences.reannounceOverview.hashCopied"))
-                                            }}
-                                            title={t("preferences.reannounceOverview.copyHash")}
+                                {filteredEvents.map((event, eventIndex) => {
+                                  const reason = translateReason(event.reason)
+                                  return (
+                                    <div
+                                      key={`${event.hash}-${eventIndex}-${event.timestamp}`}
+                                      className="p-3 hover:bg-muted/30 transition-colors"
+                                    >
+                                      <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
+                                                {event.torrentName || event.hash}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                          <Badge
+                                            variant="outline"
+                                            className={cn(
+                                              "capitalize text-[10px] px-1.5 py-0 h-5",
+                                              outcomeClasses[event.outcome]
+                                            )}
                                           >
-                                            <Copy className="h-3 w-3" />
-                                          </button>
+                                            {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
+                                          </Badge>
                                         </div>
-                                        <span className="text-muted-foreground/40">·</span>
-                                        <span>{formatISOTimestamp(event.timestamp)}</span>
-                                      </div>
 
-                                      {event.reason && (
-                                        <div className="text-xs bg-muted/40 p-2 rounded">
-                                          {formatErrorReason(event.reason) !== event.reason ? (
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="cursor-help">{formatErrorReason(event.reason)}</span>
-                                              </TooltipTrigger>
-                                              <TooltipContent className="max-w-md">
-                                                <p className="break-all">{event.reason}</p>
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          ) : (
-                                            <span>{event.reason}</span>
-                                          )}
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                          <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                                            <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                            <button
+                                              type="button"
+                                              className="hover:text-foreground transition-colors"
+                                              onClick={() => {
+                                                copyTextToClipboard(event.hash)
+                                                toast.success(t("preferences.reannounceOverview.hashCopied"))
+                                              }}
+                                              title={t("preferences.reannounceOverview.copyHash")}
+                                            >
+                                              <Copy className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                          <span className="text-muted-foreground/40">·</span>
+                                          <span>{formatISOTimestamp(event.timestamp)}</span>
                                         </div>
-                                      )}
+
+                                        {reason && (
+                                          <div className="text-xs bg-muted/40 p-2 rounded">
+                                            {formatErrorReason(reason) !== reason ? (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="cursor-help">{formatErrorReason(reason)}</span>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="max-w-md">
+                                                  <p className="break-all">{reason}</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            ) : (
+                                              <span>{reason}</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             </div>
                           )}

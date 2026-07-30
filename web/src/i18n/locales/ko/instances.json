@@ -1134,6 +1134,20 @@
       "enableMonitoring": "정체된 토렌트 추적을 시작하려면 모니터링을 활성화하세요.",
       "hashCopied": "해시가 복사되었습니다",
       "copyHash": "해시 복사",
+      "outcomes": {
+        "succeeded": "성공",
+        "failed": "실패",
+        "skipped": "건너뜀",
+        "started": "시작됨"
+      },
+      "reasons": {
+        "debouncedCooldown": "쿨다운 기간 중 디바운스됨",
+        "debouncedRetry": "재시도 간격 기간 중 디바운스됨",
+        "serviceNotStarted": "서비스가 시작되지 않음",
+        "trackerHealthy": "트래커 상태 정상",
+        "jobSucceeded": "재요청 작업 성공",
+        "jobStarted_other": "재요청 작업이 시작됨 (최대 {{count}}회 재시도)"
+      },
       "form": {
         "instanceMissing": "인스턴스 누락",
         "settingsSaved": "설정이 저장되었습니다.",

@@ -1152,6 +1152,21 @@
       "enableMonitoring": "Aktiviere die Überwachung, um stehengebliebene Torrents zu verfolgen.",
       "hashCopied": "Hash kopiert",
       "copyHash": "Hash kopieren",
+      "outcomes": {
+        "succeeded": "Erfolgreich",
+        "failed": "Fehlgeschlagen",
+        "skipped": "Übersprungen",
+        "started": "Gestartet"
+      },
+      "reasons": {
+        "debouncedCooldown": "Entprellt während des Cooldown-Fensters",
+        "debouncedRetry": "Entprellt während des Wiederholungsintervalls",
+        "serviceNotStarted": "Dienst nicht gestartet",
+        "trackerHealthy": "Tracker gesund",
+        "jobSucceeded": "Reannounce-Job erfolgreich",
+        "jobStarted_one": "Reannounce-Job gestartet (max. {{count}} Versuch)",
+        "jobStarted_other": "Reannounce-Job gestartet (max. {{count}} Versuche)"
+      },
       "form": {
         "instanceMissing": "Instanz fehlt",
         "settingsSaved": "Einstellungen erfolgreich gespeichert.",

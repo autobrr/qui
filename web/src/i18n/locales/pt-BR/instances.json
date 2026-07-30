@@ -1207,6 +1207,21 @@
         "monitoringDisabled": "Monitoramento desativado",
         "updateFailed": "Falha na atualização",
         "updateFailedDescription": "Não foi possível atualizar as configurações"
+      },
+      "outcomes": {
+        "succeeded": "Concluído",
+        "failed": "Falhou",
+        "skipped": "Ignorado",
+        "started": "Iniciado"
+      },
+      "reasons": {
+        "debouncedCooldown": "Ignorado durante o período de cooldown",
+        "debouncedRetry": "Ignorado durante o intervalo de nova tentativa",
+        "serviceNotStarted": "Serviço não iniciado",
+        "trackerHealthy": "Tracker saudável",
+        "jobStarted_one": "Trabalho de reanúncio iniciado (máx. {{count}} tentativa)",
+        "jobStarted_other": "Trabalho de reanúncio iniciado (máx. {{count}} tentativas)",
+        "jobSucceeded": "Trabalho de reanúncio concluído"
       }
     },
     "workflowDialog": {

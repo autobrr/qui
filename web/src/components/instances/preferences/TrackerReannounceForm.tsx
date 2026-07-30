@@ -73,6 +73,22 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const { t } = useTranslation("instances")
   const { instances, updateInstance, isUpdating } = useInstances()
   const { formatISOTimestamp } = useDateTimeFormatters()
+
+  const translateReason = (reason: string | undefined) => {
+    if (!reason) return ""
+    if (reason === "debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
+    if (reason === "debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
+    if (reason === "service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
+    if (reason === "tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
+    if (reason === "reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
+
+    const startedMatch = reason.match(/^reannounce job started \(max (\d+) retries\)$/)
+    if (startedMatch) {
+      return t("preferences.reannounceOverview.reasons.jobStarted", { count: parseInt(startedMatch[1], 10) })
+    }
+
+    return reason
+  }
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -337,6 +353,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     skipped: "bg-muted text-muted-foreground border-border/60",
+    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   }
 
   const headerContent = (
@@ -693,76 +710,79 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       ) : (
         <ScrollArea className="h-[400px] rounded-md border bg-muted/20">
           <div className="divide-y divide-border">
-            {activityEvents.map((event, index) => (
-              <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="font-medium text-sm truncate max-w-[300px] sm:max-w-[400px] cursor-help">
-                            {event.torrentName || event.hash}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="font-semibold">{event.torrentName || "N/A"}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
-                        {event.outcome}
-                      </Badge>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                        <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                        <button
-                          type="button"
-                          className="hover:text-foreground transition-colors"
-                          onClick={() => {
-                            copyTextToClipboard(event.hash)
-                            toast.success(t("preferences.reannounceOverview.hashCopied"))
-                          }}
-                          title={t("preferences.reannounceOverview.copyHash")}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </button>
+            {activityEvents.map((event, index) => {
+              const reason = translateReason(event.reason)
+              return (
+                <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium text-sm truncate max-w-[300px] sm:max-w-[400px] cursor-help">
+                              {event.torrentName || event.hash}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
+                          {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
+                        </Badge>
                       </div>
-                      <span className="text-muted-foreground/40">•</span>
-                      <span>{formatISOTimestamp(event.timestamp)}</span>
-                    </div>
 
-                    {(event.trackers || event.reason) && (
-                      <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
-                        {event.trackers && (
-                          <div className="flex items-start gap-2">
-                            <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.trackersLabel")}</span>
-                            <span className="text-foreground break-all">{event.trackers}</span>
-                          </div>
-                        )}
-                        {event.reason && (
-                          <div className="flex items-start gap-2">
-                            <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.reasonLabel")}</span>
-                            {formatErrorReason(event.reason) !== event.reason ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="text-foreground break-all cursor-help">{formatErrorReason(event.reason)}</span>
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-md">
-                                  <p className="break-all">{event.reason}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <span className="text-foreground break-all">{event.reason}</span>
-                            )}
-                          </div>
-                        )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                          <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                          <button
+                            type="button"
+                            className="hover:text-foreground transition-colors"
+                            onClick={() => {
+                              copyTextToClipboard(event.hash)
+                              toast.success(t("preferences.reannounceOverview.hashCopied"))
+                            }}
+                            title={t("preferences.reannounceOverview.copyHash")}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <span className="text-muted-foreground/40">•</span>
+                        <span>{formatISOTimestamp(event.timestamp)}</span>
                       </div>
-                    )}
+
+                      {(event.trackers || event.reason) && (
+                        <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
+                          {event.trackers && (
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.trackersLabel")}</span>
+                              <span className="text-foreground break-all">{event.trackers}</span>
+                            </div>
+                          )}
+                          {reason && (
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.reasonLabel")}</span>
+                              {formatErrorReason(reason) !== reason ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="text-foreground break-all cursor-help">{formatErrorReason(reason)}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-md">
+                                    <p className="break-all">{reason}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <span className="text-foreground break-all">{reason}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </ScrollArea>
       )}
