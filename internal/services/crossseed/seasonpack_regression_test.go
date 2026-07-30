@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type seasonPackRegressionSyncManager struct {
@@ -117,6 +118,45 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 
 	require.ErrorIs(t, err, errLayoutMismatch)
 	require.ErrorContains(t, err, "invalid pack target path")
+}
+
+// TestSeasonPack_PunctuationOnlySequelTitles documents the deliberate tradeoff from
+// stripping !/? in title normalization: sequels distinguished only by punctuation
+// (K-On! vs K-On!!) now title-match, because scene naming drops the punctuation
+// anyway. The apply path still cannot link the wrong show's episodes:
+// buildSeasonPackPlan requires exact per-episode byte sizes.
+func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
+	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	packRelease := rls.ParseString("K-On! S01 1080p BluRay FLAC x264-Fansub")
+	local := rls.ParseString("[Fansub] K-On!! - 05 (1080p) [ABC12345]")
+	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals.
+	local.Series = packRelease.Series
+
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(&packRelease, &local, true, nil, nil)
+	require.True(t, ok, "expected punctuation-only titles to conflate, got reason %q", reason)
+
+	localFiles := map[episodeIdentity]seasonPackLocalFile{
+		{series: 1, episode: 5}: {
+			sourcePath: "/media/[Fansub] K-On!! - 05 (1080p) [ABC12345].mkv",
+			size:       10,
+			release:    &local,
+		},
+	}
+
+	_, err := buildSeasonPackPlan(
+		qbt.TorrentFiles{{Name: "K-On! S01 1080p BluRay/[Fansub] K-On! - 05 (1080p) [DEF67890].mkv", Size: 20}},
+		&packRelease,
+		"K-On! S01 1080p BluRay",
+		t.TempDir(),
+		localFiles,
+		seasonPackNormalizer(nil),
+		nil,
+		nil,
+	)
+
+	require.ErrorIs(t, err, errLayoutMismatch)
+	require.ErrorContains(t, err, "file size mismatch")
 }
 
 func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t *testing.T) {
