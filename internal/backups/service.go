@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -168,6 +169,8 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		cacheDir = filepath.Join(cfg.DataDir, "backups", "torrents")
 		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to prepare torrent cache directory")
+		} else {
+			sweepStaleBlobTemps(cacheDir)
 		}
 	}
 
@@ -1028,18 +1031,8 @@ func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.To
 		if len(hash) >= 6 {
 			subdir = filepath.Join(hash[0:2], hash[2:4], hash[4:6])
 		}
-		// absBlob is derived from hex-encoded sha256 output, so it cannot
-		// escape cacheDir; 0o644 matches the other blob writes in this file.
-		absBlob := filepath.Join(s.cacheDir, subdir, blobName)
-		if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) { //nolint:gosec // content-addressed path, no user input
-			if subdir != "" {
-				if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil { //nolint:gosec // content-addressed path, no user input
-					return exportedTorrent{}, fmt.Errorf("create torrent cache subdir: %w", err)
-				}
-			}
-			if err := os.WriteFile(absBlob, data, 0o644); err != nil && !errors.Is(err, os.ErrExist) { //nolint:gosec // world-readable cache blob, pre-existing mode
-				return exportedTorrent{}, fmt.Errorf("cache torrent blob: %w", err)
-			}
+		if err := cacheTorrentBlob(s.cacheDir, filepath.Join(subdir, blobName), data); err != nil {
+			return exportedTorrent{}, err
 		}
 		rel := filepath.ToSlash(filepath.Join("backups", "torrents", subdir, blobName))
 		blobRelPath = &rel
@@ -1050,6 +1043,89 @@ func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.To
 		filename:    torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash),
 		blobRelPath: blobRelPath,
 	}, nil
+}
+
+// blobTmpSeq distinguishes temp file names when several writers cache the
+// same payload at once.
+var blobTmpSeq atomic.Int64
+
+// sweepStaleBlobTemps removes *.tmp-* files a crashed run may have left in
+// the blob cache. They are never trusted or served; this is litter
+// collection, so every failure is best-effort. Runs once at service creation,
+// before any backup workers exist.
+func sweepStaleBlobTemps(cacheDir string) {
+	root, err := os.OpenRoot(cacheDir)
+	if err != nil {
+		log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to open torrent cache for temp sweep")
+		return
+	}
+	defer root.Close()
+
+	removed := 0
+	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".tmp-") {
+			return nil
+		}
+		if root.Remove(filepath.FromSlash(p)) == nil {
+			removed++
+		}
+		return nil
+	})
+	if removed > 0 {
+		log.Info().Int("removed", removed).Str("cacheDir", cacheDir).Msg("Removed stale torrent cache temp files")
+	}
+}
+
+// cacheTorrentBlob persists data at the content-addressed path relBlob inside
+// cacheDir via a temp file plus rename, so a crash mid-write can never leave a
+// truncated file at a path later runs would trust (#2187). An existing
+// destination is kept as-is: same address means same content. All access goes
+// through os.Root, which guarantees the path cannot escape cacheDir.
+func cacheTorrentBlob(cacheDir, relBlob string, data []byte) error {
+	root, err := os.OpenRoot(cacheDir)
+	if err != nil {
+		return fmt.Errorf("open torrent cache: %w", err)
+	}
+	defer root.Close()
+
+	if _, err := root.Stat(relBlob); !errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if dir := filepath.Dir(relBlob); dir != "." {
+		if err := root.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create torrent cache subdir: %w", err)
+		}
+	}
+
+	// 0o644 matches the manifest and archive writes in this file.
+	tmpName := fmt.Sprintf("%s.tmp-%d-%d", relBlob, os.Getpid(), blobTmpSeq.Add(1))
+	tmp, err := root.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+	// Best-effort cleanup: after a successful rename the temp name is gone
+	// and this remove is a no-op.
+	defer func() { _ = root.Remove(tmpName) }()
+
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Close()
+	} else {
+		tmp.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+
+	if err := root.Rename(tmpName, relBlob); err != nil {
+		// Rename over an existing file fails on Windows; if the blob appeared
+		// in the meantime it holds the identical payload.
+		if _, statErr := root.Stat(relBlob); statErr == nil {
+			return nil
+		}
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+	return nil
 }
 
 // adaptiveExportDelay waits between export API calls with back-pressure.

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -18,6 +19,54 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
+
+func TestCacheTorrentBlobAtomicWrite(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	relBlob := filepath.Join("aa", "bb", "cc", "deadbeef.torrent")
+	absBlob := filepath.Join(dir, relBlob)
+
+	require.NoError(t, cacheTorrentBlob(dir, relBlob, []byte("payload")))
+	got, err := os.ReadFile(absBlob)
+	require.NoError(t, err)
+	require.Equal(t, []byte("payload"), got)
+
+	// No temp files may remain next to the blob.
+	entries, err := os.ReadDir(filepath.Dir(absBlob))
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	// An existing destination is trusted and never rewritten.
+	require.NoError(t, os.WriteFile(absBlob, []byte("sentinel"), 0o600))
+	require.NoError(t, cacheTorrentBlob(dir, relBlob, []byte("payload")))
+	got, err = os.ReadFile(absBlob)
+	require.NoError(t, err)
+	require.Equal(t, []byte("sentinel"), got)
+}
+
+func TestSweepStaleBlobTemps(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	blobDir := filepath.Join(dir, "aa", "bb", "cc")
+	require.NoError(t, os.MkdirAll(blobDir, 0o755))
+	blob := filepath.Join(blobDir, "deadbeef.torrent")
+	require.NoError(t, os.WriteFile(blob, []byte("payload"), 0o600))
+	stale := filepath.Join(blobDir, "deadbeef.torrent.tmp-123-1")
+	require.NoError(t, os.WriteFile(stale, []byte("partial"), 0o600))
+	staleRoot := filepath.Join(dir, "cafe.torrent.tmp-123-2")
+	require.NoError(t, os.WriteFile(staleRoot, []byte("partial"), 0o600))
+
+	sweepStaleBlobTemps(dir)
+
+	_, err := os.Stat(blob)
+	require.NoError(t, err, "real blobs must survive the sweep")
+	_, err = os.Stat(stale)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(staleRoot)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
 
 func TestIsExportMetadataUnavailable(t *testing.T) {
 	if !isExportMetadataUnavailable(qbt.ErrTorrentMetadataNotDownloadedYet) {
