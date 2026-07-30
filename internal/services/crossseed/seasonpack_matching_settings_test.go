@@ -236,6 +236,24 @@ func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
 	}
 }
 
+// TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation proves a scene-style
+// pack name that drops the title's trailing punctuation ("Overtake!" announced as
+// "Overtake.S01...") still matches local fansub episodes that keep it. Reported for
+// BTN's Overtake pack, which failed while BHD's punctuation-keeping name matched.
+func TestSeasonPackReleasesMatchWithReason_SceneNameDropsTitlePunctuation(t *testing.T) {
+	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	pack := parseSeasonPackTestRelease(t, "Overtake.S01.1080p.CR.WEB-DL.AAC2.0.H.264-SubsPlease")
+	episode := parseSeasonPackTestRelease(t, "[SubsPlease] Overtake! - 01 (1080p) [F5A70A05]")
+	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals
+	// before matching; mirror that here.
+	episode.Series = pack.Series
+
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, nil)
+	require.True(t, ok, "expected match, got reason %q", reason)
+	require.Empty(t, reason)
+}
+
 // TestSeasonPackReleasesMatchWithReason_OriginalLanguageTag proves a pack that labels the
 // original audio language still matches episodes published without a language tag. Trackers
 // like Aither tag JAPANESE on anime that every other tracker leaves untagged, which used to

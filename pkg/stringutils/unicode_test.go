@@ -267,6 +267,16 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"Love♪Live",
 			"Love Live",
 		},
+		{
+			"trailing exclamation dropped by scene naming",
+			"Overtake! S01 1080p",
+			"Overtake S01 1080p",
+		},
+		{
+			"question mark dropped by scene naming",
+			"Is the Order a Rabbit? S01",
+			"Is the Order a Rabbit S01",
+		},
 	}
 
 	for _, tt := range pairs {
