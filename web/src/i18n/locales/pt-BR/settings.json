@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Desbloquear Temas Premium",
-        "unlockDescription": "Pague o que quiser (mínimo $4.99) • Licença vitalícia • Todos os temas",
+        "unlockDescription": "Pague o que quiser (mínimo $9.99) • Licença vitalícia • Todos os temas",
         "activeTitle": "Acesso Premium Ativo",
         "activeDescription": "Você tem acesso a todos os temas premium atuais e futuros",
         "activationRequiredTitle": "Ativação de Licença Necessária",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Obter Licença Premium",
-        "description": "Pague o que quiser (mínimo $4.99) • Licença vitalícia • Todos os temas",
+        "description": "Pague o que quiser (mínimo $9.99) • Licença vitalícia • Todos os temas",
         "steps": {
           "choosePaymentMethod": {
             "title": "Escolher método de pagamento",

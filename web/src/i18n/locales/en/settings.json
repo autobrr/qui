@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Unlock Premium Themes",
-        "unlockDescription": "Pay what you want (min $4.99) • Lifetime license • All themes",
+        "unlockDescription": "Pay what you want (min $9.99) • Lifetime license • All themes",
         "activeTitle": "Premium Access Active",
         "activeDescription": "You have access to all current and future premium themes",
         "activationRequiredTitle": "License Activation Required",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Get Premium License",
-        "description": "Pay what you want (min $4.99) • Lifetime license • All themes",
+        "description": "Pay what you want (min $9.99) • Lifetime license • All themes",
         "steps": {
           "choosePaymentMethod": {
             "title": "Choose payment method",

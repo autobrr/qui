@@ -451,7 +451,19 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bo
 		sourceMissingCollection := sourceCollection == ""
 		candidateMissingCollection := candidateCollection == ""
 		unknownSeasonTV := isTV && (source.Series == 0 || candidate.Series == 0)
-		missingCollectionAllowed := unknownSeasonTV && (sourceMissingCollection || candidateMissingCollection)
+		// Bracket-group anime names ([SubsPlease] Show S3 - 02) never carry the
+		// streaming-service tag even when the season is known, so a missing
+		// collection on that side says nothing about the source. rls parses the
+		// fansub group into Site with Group left empty; site-tagged scene names
+		// ([TGx]Show...-GROUP) set both, and those keep the strict check.
+		bracketAnimeStyle := func(r *rls.Release) bool {
+			return r.Site != "" && r.Group == ""
+		}
+		animeStyleMissingCollection := isTV &&
+			((sourceMissingCollection && bracketAnimeStyle(source)) ||
+				(candidateMissingCollection && bracketAnimeStyle(candidate)))
+		missingCollectionAllowed := (unknownSeasonTV || animeStyleMissingCollection) &&
+			(sourceMissingCollection || candidateMissingCollection)
 		if !missingCollectionAllowed {
 			return false, "collection mismatch"
 		}
@@ -513,17 +525,13 @@ func (s *Service) validateMetadataFlags(source, candidate *rls.Release) (bool, s
 		}
 	}
 
-	// Language must match (FRENCH vs ENGLISH are different audio/subs).
-	// Exception: empty language is treated as equivalent to ENGLISH since most
-	// English releases omit the language tag entirely.
-	sourceLanguage := joinNormalizedSlice(source.Language)
-	candidateLanguage := joinNormalizedSlice(candidate.Language)
-	if sourceLanguage != candidateLanguage {
-		// Allow empty-vs-ENGLISH since unlabeled releases are typically English.
-		isEnglishOrEmpty := func(lang string) bool {
-			return lang == "" || lang == "ENGLISH"
-		}
-		if !(isEnglishOrEmpty(sourceLanguage) && isEnglishOrEmpty(candidateLanguage)) {
+	// Language must match if both are present (FRENCH vs ENGLISH are different audio/subs).
+	// A missing tag means unknown, not English: trackers like Aither label the original
+	// audio language (JAPANESE, KOREAN) on releases that other trackers publish untagged,
+	// so assuming ENGLISH rejected every anime cross-seed. Genuine dub mismatches are
+	// caught downstream by the exact per-file size comparison before anything is injected.
+	if len(source.Language) > 0 && len(candidate.Language) > 0 {
+		if joinNormalizedSlice(source.Language) != joinNormalizedSlice(candidate.Language) {
 			return false, "language mismatch"
 		}
 	}

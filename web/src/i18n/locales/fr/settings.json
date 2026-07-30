@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Débloquer les Thèmes Premium",
-        "unlockDescription": "Prix libre (min 4.99$) • Licence à vie • Tous les thèmes",
+        "unlockDescription": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
         "activeTitle": "Accès Premium Actif",
         "activeDescription": "Vous avez accès à tous les thèmes premium actuels et futurs",
         "activationRequiredTitle": "Activation de licence requise",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Obtenir une Licence Premium",
-        "description": "Prix libre (min 4.99$) • Licence à vie • Tous les thèmes",
+        "description": "Prix libre (min 9.99$) • Licence à vie • Tous les thèmes",
         "steps": {
           "choosePaymentMethod": {
             "title": "Choisir le moyen de paiement",

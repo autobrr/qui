@@ -131,6 +131,9 @@
     "hardlinkedCopies": "Tato křížová sdílení jsou hardlink kopie stejných dat",
     "spaceNotFreed": "- smazání souborů neuvolní místo na disku, dokud existují další hardlinky",
     "mixedHardlinkNote": "Kopie označené jako hardlink drží data na disku i po smazání souborů",
+    "linkedCopies": "Tato křížová sdílení jsou samostatně použitelné propojené kopie",
+    "sharedBlocksMayRemain": "- propojené kopie zůstanou použitelné; sdílené bloky mohou zůstat alokované",
+    "mixedLinkedNote": "Kopie označené jako Hardlink nebo Reflink zůstanou po smazání zdrojových souborů použitelné",
     "torrentShares": "{{count}} torrent sdílí tyto soubory",
     "torrentsShare": "{{count}} torrenty sdílí tyto soubory",
     "acrossInstances": "přes {{count}} instancí",
@@ -1253,6 +1256,10 @@
       "hardlink": {
         "label": "Hardlink",
         "description": "Soubory jsou pevné odkazy na stejná data na disku"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "Soubory nyní sdílejí jeden nebo více ReFS extentů; copy-on-write může ponechat sdílenou jen část"
       }
     },
     "noMatches": "Na jiných instancích nebyly nalezeny shodné torrenty",

@@ -182,5 +182,14 @@
       "month_other": "{{count}} 个月",
       "year_other": "{{count}} 年"
     }
+  },
+  "support": {
+    "title": "支持 qui",
+    "description": "已经有主题了，还想再出一份力？qui 的一切已经属于你。订阅不会解锁功能，它资助的是开发这些功能所投入的时间。",
+    "perkPrefix": "赞助者可在 Discord 获得",
+    "perkSuffix": "身份组，以及我们永远的感谢。",
+    "yearly": "{{price}} / 年",
+    "monthly": "{{price}} / 月",
+    "notLicense": "高级主题是单独的一次性购买。"
   }
 }

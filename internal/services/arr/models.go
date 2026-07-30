@@ -5,6 +5,7 @@ package arr
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -83,9 +84,31 @@ type RadarrMovie struct {
 	IMDbID          string           `json:"imdbId"`
 }
 
-// AlternateTitle represents the common title field returned in ARR alternate title resources.
+// AlternateTitle represents an ARR alternate title. SeasonNumber/SceneSeasonNumber scope
+// the title to a specific season when present; Sonarr uses null or -1 for series-wide
+// titles. Radarr movies never set these (movies have no seasons).
 type AlternateTitle struct {
-	Title string `json:"title"`
+	Title             string `json:"title"`
+	SeasonNumber      *int   `json:"seasonNumber"`
+	SceneSeasonNumber *int   `json:"sceneSeasonNumber"`
+}
+
+// seasonScoped reports whether the alternate title names only one season (e.g.
+// "Show 2nd Season") rather than the whole series. Sonarr uses null or -1 for
+// series-wide titles.
+func (a AlternateTitle) seasonScoped() bool {
+	return (a.SeasonNumber != nil && *a.SeasonNumber >= 0) ||
+		(a.SceneSeasonNumber != nil && *a.SceneSeasonNumber >= 0)
+}
+
+// matchesSeason reports whether a season-scoped alternate title names the given season.
+// Only SeasonNumber (Sonarr's numbering) counts: SceneSeasonNumber lives in the
+// release-label domain, where a "Show 2nd Season" alias typically carries
+// sceneSeasonNumber 1, so scene equality would bridge wrong-season aliases onto the
+// pack (a season-2 alias kept for a season-1 lookup). An alias scoped only by scene
+// season therefore matches no season, since its Sonarr season is unknown.
+func (a AlternateTitle) matchesSeason(season int) bool {
+	return a.SeasonNumber != nil && *a.SeasonNumber == season
 }
 
 // ExternalIDsLookupResult contains ARR IDs plus ARR-provided titles for the same content.
@@ -248,6 +271,71 @@ func titlesFromSeries(series *SonarrSeries) []string {
 		addUniqueTitle(&titles, alternate.Title)
 	}
 	return titles
+}
+
+// titlesForSeason returns the series title plus the alternate titles usable for the
+// given season: series-wide aliases (romaji/english/abbreviated) and any alias scoped
+// to that season. Aliases scoped to a DIFFERENT season are dropped so, e.g., a
+// "Show 2nd Season" alias cannot bridge season-2 episodes onto a season-1 pack.
+func titlesForSeason(series *SonarrSeries, season int) []string {
+	if series == nil {
+		return nil
+	}
+	titles := make([]string, 0, 1+len(series.AlternateTitles))
+	addUniqueTitle(&titles, series.Title)
+	for _, alternate := range series.AlternateTitles {
+		if alternate.seasonScoped() && !alternate.matchesSeason(season) {
+			continue
+		}
+		addUniqueTitle(&titles, alternate.Title)
+	}
+	return titles
+}
+
+// seasonLookupTitles returns titlesForSeason, unless the looked-up release title is
+// itself a season-scoped alias whose Sonarr season is not the one the release labels
+// (e.g. a "Show 2nd Season" pack labeled S01). The pack's numbering is then alias-local,
+// and expanding to the canonical title would bridge wrong-season canonical locals onto
+// it, so alias expansion is suppressed and matching falls back to literal titles.
+//
+// An alias that normalizes to the series title itself (XEM scene mappings often carry
+// the bare canonical title per season, and normalization strips the "♪♪"/"∬"-style
+// punctuation distinguishing sequel titles) carries no season signal: every pack of the
+// show is prefixed by it, so treating it as an alias-titled pack would suppress alias
+// matching for all canonically-titled packs.
+func seasonLookupTitles(series *SonarrSeries, lookupTitle string, season int) []string {
+	if series == nil {
+		return nil
+	}
+	normalized := normalizeTitleWords(lookupTitle)
+	seriesTitle := normalizeTitleWords(series.Title)
+	for _, alternate := range series.AlternateTitles {
+		if !alternate.seasonScoped() || alternate.matchesSeason(season) {
+			continue
+		}
+		alias := normalizeTitleWords(alternate.Title)
+		if alias == "" || alias == seriesTitle {
+			continue
+		}
+		if normalized == alias || strings.HasPrefix(normalized, alias+" ") {
+			return nil
+		}
+	}
+	return titlesForSeason(series, season)
+}
+
+// normalizeTitleWords lowercases and reduces a title (or release name) to space-separated
+// alphanumeric words, so "Oshi.no.Ko.2nd.Season.S01..." prefix-matches "Oshi no Ko 2nd Season".
+func normalizeTitleWords(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 func titlesFromMovie(movie *RadarrMovie) []string {

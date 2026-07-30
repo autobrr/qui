@@ -111,7 +111,7 @@ func TestMatchTorrentsInInstance_HardlinkedCandidate_UpgradedToHardlink(t *testi
 	require.Equal(t, matchTypeHardlink, matches[0].MatchType)
 }
 
-func TestIsHardlinkedCopy_SeparateCopy_NoUpgrade(t *testing.T) {
+func TestLocalLinkedMatchType_SeparateCopy_NoUpgrade(t *testing.T) {
 	// Same name and size but an independent copy on disk: no shared inode, no upgrade.
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, false)
@@ -124,10 +124,10 @@ func TestIsHardlinkedCopy_SeparateCopy_NoUpgrade(t *testing.T) {
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 
-	require.False(t, svc.isHardlinkedCopy(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
 }
 
-func TestIsHardlinkedCopy_NoFilesystemAccess(t *testing.T) {
+func TestLocalLinkedMatchType_NoFilesystemAccess(t *testing.T) {
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 
@@ -140,15 +140,15 @@ func TestIsHardlinkedCopy_NoFilesystemAccess(t *testing.T) {
 
 	// Candidate instance lacks filesystem access.
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
-	require.False(t, svc.isHardlinkedCopy(matchCtx, &models.Instance{ID: 1}, candidate))
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, &models.Instance{ID: 1}, candidate))
 
 	// Source instance lacks filesystem access.
 	matchCtx = hardlinkTestMatchCtx(svc, sourceDir)
 	matchCtx.sourceHasFSAccess = false
-	require.False(t, svc.isHardlinkedCopy(matchCtx, &models.Instance{ID: 1, HasLocalFilesystemAccess: true}, candidate))
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, &models.Instance{ID: 1, HasLocalFilesystemAccess: true}, candidate))
 }
 
-func TestIsHardlinkedCopy_CandidateFetchError_RecordedForStrictMode(t *testing.T) {
+func TestLocalLinkedMatchType_CandidateFetchError_RecordedForStrictMode(t *testing.T) {
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
 
@@ -164,11 +164,11 @@ func TestIsHardlinkedCopy_CandidateFetchError_RecordedForStrictMode(t *testing.T
 	fetchErr := errors.New("qbittorrent unavailable")
 	svc.syncManager = &localMatchSyncManager{errorOnFetch: fetchErr}
 
-	require.False(t, svc.isHardlinkedCopy(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
 	require.ErrorIs(t, matchCtx.candidateFilesErr, fetchErr)
 }
 
-func TestIsHardlinkedCopy_EmptyCandidateFileList_RecordedForStrictMode(t *testing.T) {
+func TestLocalLinkedMatchType_EmptyCandidateFileList_RecordedForStrictMode(t *testing.T) {
 	// An empty candidate file list is not evidence of "no hardlinks" - it must trip
 	// the strict-mode fail-safe like candidateSharesSourceFiles does.
 	fileName := "Movie.2023.1080p.WEB.mkv"
@@ -182,7 +182,7 @@ func TestIsHardlinkedCopy_EmptyCandidateFileList_RecordedForStrictMode(t *testin
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
 
-	require.False(t, svc.isHardlinkedCopy(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
 	require.ErrorContains(t, matchCtx.candidateFilesErr, "empty file list")
 }
 
@@ -219,7 +219,7 @@ func TestMatchTorrentsInInstance_MagnetSource_NoStrictError(t *testing.T) {
 	require.NoError(t, matchCtx.candidateFilesErr)
 }
 
-func TestIsHardlinkedCopy_MagnetCandidate_SkippedSilently(t *testing.T) {
+func TestLocalLinkedMatchType_MagnetCandidate_SkippedSilently(t *testing.T) {
 	// A metadata-less magnet candidate (empty content path) has no files on disk:
 	// skip it without recording a strict-mode error for its empty file list.
 	fileName := "Movie.2023.1080p.WEB.mkv"
@@ -239,7 +239,7 @@ func TestIsHardlinkedCopy_MagnetCandidate_SkippedSilently(t *testing.T) {
 		InstanceID: 1,
 	}
 
-	require.False(t, svc.isHardlinkedCopy(matchCtx, instance, candidate))
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, candidate))
 	require.NoError(t, matchCtx.candidateFilesErr)
 }
 

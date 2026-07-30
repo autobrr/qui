@@ -101,7 +101,7 @@ export interface LocalCrossSeedMatch {
   state: string
   tracker: string
   trackerHealth?: string
-  matchType: "content_path" | "hardlink" | "name" | "release"
+  matchType: "content_path" | "hardlink" | "reflink" | "name" | "release"
 }
 
 export interface InstanceReannounceActivity {

@@ -7487,10 +7487,10 @@ components:
       type: object
       description: A torrent that matches another torrent for cross-seeding purposes
       properties:
-        instanceId:
+        instance_id:
           type: integer
           description: The qBittorrent instance ID containing this torrent
-        instanceName:
+        instance_name:
           type: string
           description: The name of the qBittorrent instance
         hash:
@@ -7507,10 +7507,10 @@ components:
           type: number
           format: float
           description: Download progress (0-1)
-        savePath:
+        save_path:
           type: string
           description: Save path on disk
-        contentPath:
+        content_path:
           type: string
           description: Content path on disk
         category:
@@ -7525,13 +7525,13 @@ components:
         tracker:
           type: string
           description: Primary tracker URL
-        trackerHealth:
+        tracker_health:
           type: string
           enum: [unregistered, tracker_down, tracker_error]
           description: Tracker health status (only present if unhealthy)
-        matchType:
+        match_type:
           type: string
-          enum: [content_path, hardlink, name, release]
+          enum: [content_path, hardlink, reflink, name, release]
           description: How this torrent was matched
 
     CrossInstanceFilterOptions:

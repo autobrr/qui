@@ -208,6 +208,17 @@ describe("api instances group — contract", () => {
       ])
     })
 
+    it("preserves the reflink match type", async () => {
+      server.use(
+        http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>
+          HttpResponse.json({ matches: [{ ...rawMatch, match_type: "reflink" }] })
+        )
+      )
+
+      const result = await api.getLocalCrossSeedMatches(7, "abc123")
+      expect(result[0].matchType).toBe("reflink")
+    })
+
     it("returns [] when matches is empty", async () => {
       server.use(
         http.get("*/api/cross-seed/torrents/:instanceId/:hash/local-matches", () =>

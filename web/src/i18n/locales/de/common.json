@@ -189,5 +189,14 @@
       "year_one": "{{count}} Jahr",
       "year_other": "{{count}} Jahre"
     }
+  },
+  "support": {
+    "title": "qui unterstützen",
+    "description": "Hast du schon Designs und möchtest weiter helfen? Alles in qui gehört dir bereits. Ein Abo schaltet keine Funktionen frei, es finanziert die Zeit, die in ihre Entwicklung fließt.",
+    "perkPrefix": "Patrons erhalten die Rolle",
+    "perkSuffix": "in Discord und unsere ewige Dankbarkeit.",
+    "yearly": "{{price}} / Jahr",
+    "monthly": "{{price}} / Monat",
+    "notLicense": "Premium-Designs sind ein separater einmaliger Kauf."
   }
 }

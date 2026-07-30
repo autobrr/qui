@@ -131,6 +131,9 @@
     "hardlinkedCopies": "Estes cross-seeds são cópias em hardlink dos mesmos dados",
     "spaceNotFreed": "- excluir os arquivos não liberará espaço em disco enquanto outros hardlinks existirem",
     "mixedHardlinkNote": "Cópias marcadas como hardlink mantêm os dados no disco mesmo após excluir os arquivos",
+    "linkedCopies": "Estes cross-seeds são cópias vinculadas que podem ser usadas independentemente",
+    "sharedBlocksMayRemain": "- as cópias vinculadas continuam utilizáveis; blocos compartilhados podem permanecer alocados",
+    "mixedLinkedNote": "Cópias marcadas como Hardlink ou Reflink continuam utilizáveis após excluir os arquivos de origem",
     "torrentShares": "{{count}} torrent compartilha estes arquivos",
     "torrentsShare": "{{count}} torrents compartilham estes arquivos",
     "acrossInstances": "em {{count}} instâncias",
@@ -1261,6 +1264,10 @@
       "hardlink": {
         "label": "Hardlink",
         "description": "Os arquivos são hardlinks dos mesmos dados no disco"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "Os arquivos compartilham atualmente uma ou mais extensões ReFS; copy-on-write pode deixar apenas parte compartilhada"
       }
     },
     "noMatches": "Nenhum torrent correspondente encontrado em outras instâncias",

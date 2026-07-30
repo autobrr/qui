@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { SwizzinLogo } from "@/components/ui/SwizzinLogo"
+import { SupportDialog } from "@/components/support/SupportDialog"
 import { ThemeToggle } from "@/components/ui/ThemeToggle"
 import {
   Tooltip,
@@ -61,7 +62,7 @@ import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
-import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
+import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Heart, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useTranslation } from "react-i18next"
@@ -245,6 +246,7 @@ export function Header({
 
   const isGlobSearch = !!searchValue && /[*?[\]]/.test(searchValue)
   const [filterSidebarCollapsed, setFilterSidebarCollapsed] = usePersistedFilterSidebarState(false)
+  const [showSupport, setShowSupport] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastFilterToggleRef = useRef(0)
 
@@ -741,7 +743,21 @@ export function Header({
       )}
 
 
-      <div className={cn("grid grid-cols-[auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
+      <div className={cn("grid grid-cols-[auto_auto_auto] items-center gap-1 transition-all duration-300 ease-out sm:order-4 lg:order-none", smInnerHeight)}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hover:bg-muted transition-colors"
+              aria-label={t("support.title")}
+              onClick={() => setShowSupport(true)}
+            >
+              <Heart className="h-4 w-4 fill-current text-red-500" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("support.title")}</TooltipContent>
+        </Tooltip>
         <ThemeToggle />
         <div className={cn(
           "transition-all duration-300 ease-out overflow-hidden",
@@ -1030,6 +1046,8 @@ export function Header({
           />
         )
       })()}
+
+      <SupportDialog open={showSupport} onOpenChange={setShowSupport} />
     </header>
   )
 }

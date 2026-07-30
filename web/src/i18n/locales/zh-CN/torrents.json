@@ -131,6 +131,9 @@
     "hardlinkedCopies": "这些辅种是相同数据的硬链接副本",
     "spaceNotFreed": "——只要还存在其他硬链接，删除文件就不会释放磁盘空间",
     "mixedHardlinkNote": "标记为硬链接的副本在删除文件后仍会保留磁盘上的数据",
+    "linkedCopies": "这些辅种是可独立使用的链接副本",
+    "sharedBlocksMayRemain": "——链接副本仍可使用；共享数据块可能仍占用空间",
+    "mixedLinkedNote": "标记为 Hardlink 或 Reflink 的副本在删除源文件后仍可使用",
     "torrentShares": "{{count}} 个种子共享这些文件",
     "torrentsShare": "{{count}} 个种子共享这些文件",
     "acrossInstances": "跨 {{count}} 个实例",
@@ -1201,6 +1204,10 @@
       "hardlink": {
         "label": "硬链接",
         "description": "文件是磁盘上相同数据的硬链接"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "文件当前共享一个或多个 ReFS 区段；写时复制后可能只有部分区段仍然共享"
       }
     },
     "noMatches": "未在其他实例上找到匹配的种子",

@@ -102,6 +102,11 @@ function getMatchTypeLabel(matchType: string, t: (key: string, options?: Record<
         label: t("crossSeedTable.matchTypes.hardlink.label"),
         description: t("crossSeedTable.matchTypes.hardlink.description"),
       }
+    case "reflink":
+      return {
+        label: t("crossSeedTable.matchTypes.reflink.label"),
+        description: t("crossSeedTable.matchTypes.reflink.description"),
+      }
     default:
       return { label: matchType, description: matchType }
   }
