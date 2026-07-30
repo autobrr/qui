@@ -574,6 +574,15 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		return
 	}
 
+	// Same for peer instances that failed to answer: a scope computed from an
+	// incomplete scan could match HARDLINK_SCOPE_CROSS conditions on stale evidence.
+	// A nil CrossScopeByHash means those conditions never match (unknown-safe).
+	if stats.skipped > 0 {
+		log.Warn().Int("instanceID", instanceID).Int("skippedInstances", stats.skipped).
+			Msg("automations: cross-instance scope incomplete (peer scans failed), will retry on next run")
+		return
+	}
+
 	// Recompute scope for all torrents using augmented counts.
 	index.CrossScopeByHash = computeScopeMap(state)
 	index.buildState = nil
