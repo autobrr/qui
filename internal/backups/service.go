@@ -1120,8 +1120,11 @@ func cacheTorrentBlob(cacheDir, relBlob string, data []byte) error {
 	}
 
 	if err := root.Rename(tmpName, relBlob); err != nil {
-		// Rename over an existing file fails on Windows; if the blob appeared
-		// in the meantime it holds the identical payload.
+		// The destination can only exist here if a concurrent worker
+		// published the identical payload after the existence check above,
+		// so losing the rename race is success. Rename atomically replaces
+		// existing files on POSIX and Windows alike; the stat covers any
+		// filesystem that refuses the replace regardless.
 		if _, statErr := root.Stat(relBlob); statErr == nil {
 			return nil
 		}
