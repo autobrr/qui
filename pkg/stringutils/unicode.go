@@ -109,6 +109,11 @@ func normalized(s string) string {
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")
 
+	// Remove exclamation and question marks - scene naming drops them,
+	// so "Overtake!" announces as "Overtake.S01..."
+	s = strings.ReplaceAll(s, "!", "")
+	s = strings.ReplaceAll(s, "?", "")
+
 	// Normalize commas to spaces - "show,title" → "show title"
 	s = strings.ReplaceAll(s, ",", " ")
 
@@ -145,7 +150,7 @@ func NormalizeUnicode(s string) string {
 //   - Unicode normalization (removes diacritics, decomposes ligatures)
 //   - Lowercase
 //   - Strip apostrophes (including Unicode variants)
-//   - Strip colons
+//   - Strip colons, exclamation and question marks
 //   - Convert commas to spaces
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces
