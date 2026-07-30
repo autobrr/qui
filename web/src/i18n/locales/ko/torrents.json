@@ -131,6 +131,9 @@
     "hardlinkedCopies": "이 cross-seed는 동일한 데이터의 하드링크 복사본입니다",
     "spaceNotFreed": "- 다른 하드링크가 남아 있는 동안에는 파일을 삭제해도 디스크 공간이 확보되지 않습니다",
     "mixedHardlinkNote": "하드링크로 표시된 복사본은 파일을 삭제해도 데이터가 디스크에 남아 있습니다",
+    "linkedCopies": "이 cross-seed는 독립적으로 사용할 수 있는 링크된 복사본입니다",
+    "sharedBlocksMayRemain": "- 링크된 복사본은 계속 사용할 수 있으며 공유 블록은 할당된 상태로 남을 수 있습니다",
+    "mixedLinkedNote": "Hardlink 또는 Reflink로 표시된 복사본은 원본 파일을 삭제한 후에도 사용할 수 있습니다",
     "torrentShares": "토렌트 {{count}}개가 이 파일을 공유합니다",
     "torrentsShare": "토렌트 {{count}}개가 이 파일을 공유합니다",
     "acrossInstances": "{{count}}개 인스턴스에 걸쳐",
@@ -1201,6 +1204,10 @@
       "hardlink": {
         "label": "하드링크",
         "description": "파일이 디스크의 동일한 데이터에 대한 하드링크입니다"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "파일이 현재 하나 이상의 ReFS 익스텐트를 공유하며, 쓰기 시 복사로 일부만 공유될 수 있습니다"
       }
     },
     "noMatches": "다른 인스턴스에서 일치하는 토렌트를 찾을 수 없습니다",

@@ -131,6 +131,9 @@
     "hardlinkedCopies": "Diese Cross-Seeds sind Hardlink-Kopien derselben Daten",
     "spaceNotFreed": "- das Löschen der Dateien gibt keinen Speicherplatz frei, solange andere Hardlinks bestehen",
     "mixedHardlinkNote": "Als Hardlink markierte Kopien halten die Daten auch nach dem Löschen der Dateien auf der Festplatte",
+    "linkedCopies": "Diese Cross-Seeds sind unabhängig nutzbare verknüpfte Kopien",
+    "sharedBlocksMayRemain": "- verknüpfte Kopien bleiben nutzbar; gemeinsam genutzte Blöcke können belegt bleiben",
+    "mixedLinkedNote": "Als Hardlink oder Reflink markierte Kopien bleiben nach dem Löschen der Quelldateien nutzbar",
     "torrentShares": "{{count}} Torrent teilt sich diese Dateien",
     "torrentsShare": "{{count}} Torrents teilen sich diese Dateien",
     "acrossInstances": "über {{count}} Instanzen",
@@ -1261,6 +1264,10 @@
       "hardlink": {
         "label": "Hardlink",
         "description": "Dateien sind Hardlinks derselben Daten auf der Festplatte"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "Dateien teilen derzeit mindestens einen ReFS-Extent; durch Copy-on-Write kann nur ein Teil gemeinsam bleiben"
       }
     },
     "noMatches": "Keine passenden Torrents auf anderen Instanzen gefunden",
