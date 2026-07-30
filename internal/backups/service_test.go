@@ -1408,18 +1408,26 @@ func TestCleanupOrphanedBlobs(t *testing.T) {
 	_, err = os.Stat(freshOrphanAbs)
 	require.NoError(t, err, "fresh files stay inside the age guard")
 
-	// A canceled context stops the cleanup before it removes anything.
+	// Cancellation observed mid-walk stops the cleanup before it removes
+	// anything. A plain canceled context would already fail the store query,
+	// so walkCanceledCtx lets the query through and only reports the
+	// cancellation to the walk's ctx.Err() polls.
 	lateOrphanAbs := filepath.Join(cacheDir, "late-orphan.torrent")
 	require.NoError(t, os.WriteFile(lateOrphanAbs, []byte("blob"), 0o600))
 	require.NoError(t, os.Chtimes(lateOrphanAbs, old, old))
 
-	canceledCtx, cancel := context.WithCancel(ctx)
-	cancel()
-	svc.cleanupOrphanedBlobs(canceledCtx)
+	svc.cleanupOrphanedBlobs(walkCanceledCtx{})
 
 	_, err = os.Stat(lateOrphanAbs)
 	require.NoError(t, err, "cleanup must not remove files once the context is canceled")
 }
+
+type walkCanceledCtx struct{}
+
+func (walkCanceledCtx) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (walkCanceledCtx) Done() <-chan struct{}       { return nil }
+func (walkCanceledCtx) Err() error                  { return context.Canceled }
+func (walkCanceledCtx) Value(any) any               { return nil }
 
 type stubBackupSyncManager struct {
 	torrents    []qbt.Torrent

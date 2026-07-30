@@ -308,13 +308,18 @@ func (s *Service) Start(ctx context.Context) {
 		log.Warn().Err(err).Msg("Failed to recover incomplete backup runs")
 	}
 
-	// Reclaim cache blobs stranded by failed runs before workers start writing.
-	s.cleanupOrphanedBlobs(ctx)
-
-	for i := 0; i < s.cfg.WorkerCount; i++ {
-		s.wg.Add(1)
-		go s.worker(ctx)
-	}
+	// Reclaim cache blobs stranded by failed runs before workers start
+	// writing, but off the startup path so a large cache cannot hold up the
+	// HTTP listener. Workers only spawn once the sweep finishes; a canceled
+	// ctx stops the sweep mid-walk, and the pre-registered wg count keeps
+	// Stop waiting for the late-spawned workers.
+	s.wg.Add(s.cfg.WorkerCount)
+	go func() {
+		s.cleanupOrphanedBlobs(ctx)
+		for i := 0; i < s.cfg.WorkerCount; i++ {
+			go s.worker(ctx)
+		}
+	}()
 
 	// Check for missed backups and queue exactly one if applicable
 	s.wg.Go(func() {
@@ -1153,9 +1158,10 @@ const orphanBlobMinAge = 24 * time.Hour
 // cleanupOrphanedBlobs removes cache files no backup item references. Blobs
 // are written to the cache during export but only referenced in the database
 // once the whole run succeeds, so every failed run strands its already-written
-// blobs and nothing else ever deletes them. Runs at startup before any backup
-// workers exist; the age guard keeps it clear of files written around the
-// sweep. All access goes through os.Root so paths cannot escape the cache.
+// blobs and nothing else ever deletes them. Runs in the background at startup,
+// before any backup workers spawn; the age guard keeps it clear of files
+// written around the sweep. All access goes through os.Root so paths cannot
+// escape the cache.
 func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
 	if s.cacheDir == "" {
 		return
