@@ -123,8 +123,9 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 // TestSeasonPack_PunctuationOnlySequelTitles documents the deliberate tradeoff from
 // stripping !/? in title normalization: sequels distinguished only by punctuation
 // (K-On! vs K-On!!) now title-match, because scene naming drops the punctuation
-// anyway. The apply path still cannot link the wrong show's episodes:
-// buildSeasonPackPlan requires exact per-episode byte sizes.
+// anyway. buildSeasonPackPlan still requires exact per-episode byte sizes before
+// linking - the same size-identity trust cross-seeding rests on everywhere - so a
+// wrong link needs two different encodes with byte-identical sizes.
 func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
 	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
