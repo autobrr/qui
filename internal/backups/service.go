@@ -1872,7 +1872,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		s.progressMu.Unlock()
 		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
 		s.wg.Go(func() {
-			s.downloadMissingTorrents(run.ID, instanceID, missing)
+			s.downloadMissingTorrents(run.ID, instanceID, dataDir, missing)
 		})
 	} else {
 		// No missing torrents, mark as completed immediately
@@ -1925,8 +1925,10 @@ func (s *Service) copyTorrentFromTemp(srcPath, dataDir, relPath string) error {
 	return cacheTorrentBlob(dataDir, relPath, data)
 }
 
-// downloadMissingTorrents downloads torrent blobs in the background for imported manifests
-func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing []missingTorrent) {
+// downloadMissingTorrents downloads torrent blobs in the background for
+// imported manifests. dataDir is the import's normalized data directory, the
+// same root missingTorrent.absPath was built from.
+func (s *Service) downloadMissingTorrents(runID int64, instanceID int, dataDir string, missing []missingTorrent) {
 	if s.reader == nil {
 		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
 		s.markImportComplete(instanceID, runID)
@@ -1966,7 +1968,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 			ctx = context.Background()
 		}
 		if data, _, _, err := s.reader.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
-			if err := cacheTorrentBlob(s.cfg.DataDir, mt.relPath, data); err == nil {
+			if err := cacheTorrentBlob(dataDir, mt.relPath, data); err == nil {
 				log.Trace().Int("downloaded", successCount+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Successfully cached missing torrent blob")
 				totalTorrentBytes += int64(len(data))
 				successCount++
