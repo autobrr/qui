@@ -58,11 +58,21 @@ func TestSweepStaleBlobTemps(t *testing.T) {
 	require.NoError(t, os.WriteFile(stale, []byte("partial"), 0o600))
 	staleRoot := filepath.Join(dir, "cafe.torrent.tmp-123-2")
 	require.NoError(t, os.WriteFile(staleRoot, []byte("partial"), 0o600))
+	fresh := filepath.Join(blobDir, "cafebabe.torrent.tmp-123-3")
+	require.NoError(t, os.WriteFile(fresh, []byte("inflight"), 0o600))
+
+	// Age everything but the fresh temp past the guard.
+	old := time.Now().Add(-2 * blobTmpMinAge)
+	for _, p := range []string{blob, stale, staleRoot} {
+		require.NoError(t, os.Chtimes(p, old, old))
+	}
 
 	sweepStaleBlobTemps(dir)
 
 	_, err := os.Stat(blob)
 	require.NoError(t, err, "real blobs must survive the sweep")
+	_, err = os.Stat(fresh)
+	require.NoError(t, err, "temp files inside the age guard must survive")
 	_, err = os.Stat(stale)
 	require.ErrorIs(t, err, os.ErrNotExist)
 	_, err = os.Stat(staleRoot)

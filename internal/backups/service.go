@@ -170,7 +170,7 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to prepare torrent cache directory")
 		} else {
-			sweepStaleBlobTemps(cacheDir)
+			go sweepStaleBlobTemps(cacheDir)
 		}
 	}
 
@@ -1049,10 +1049,15 @@ func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.To
 // same payload at once.
 var blobTmpSeq atomic.Int64
 
+// blobTmpMinAge shields temp files a live writer is about to rename into
+// place from the sweep; anything older is crash litter.
+const blobTmpMinAge = time.Hour
+
 // sweepStaleBlobTemps removes *.tmp-* files a crashed run may have left in
 // the blob cache. They are never trusted or served; this is litter
-// collection, so every failure is best-effort. Runs once at service creation,
-// before any backup workers exist.
+// collection, so every failure is best-effort. Runs in the background so a
+// large cache does not stall startup; the age guard keeps it clear of temp
+// files concurrent writers are about to rename into place.
 func sweepStaleBlobTemps(cacheDir string) {
 	root, err := os.OpenRoot(cacheDir)
 	if err != nil {
@@ -1061,9 +1066,13 @@ func sweepStaleBlobTemps(cacheDir string) {
 	}
 	defer root.Close()
 
+	cutoff := time.Now().Add(-blobTmpMinAge)
 	removed := 0
 	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".tmp-") {
+			return nil
+		}
+		if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
 			return nil
 		}
 		if root.Remove(filepath.FromSlash(p)) == nil {
