@@ -20,10 +20,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -681,8 +683,6 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
 	}
 
-	var lastExportElapsed time.Duration
-
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
 		categories, err := s.reader.GetCategories(ctx, j.instanceID)
@@ -751,78 +751,54 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.progressMu.Unlock()
 
-	for idx, torrent := range torrents {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
+	// Exports run concurrently: qBittorrent serves its WebAPI from a single
+	// thread, so a handful of workers lets fast exports drain while one waits
+	// out a stall behind another client's large response. Results land in a
+	// slice indexed by input position; all order-dependent bookkeeping
+	// (usedPaths, categoryCounts, items) happens afterwards in input order so
+	// the output is identical to a serial run.
+	results := make([]exportedTorrent, len(torrents))
+	var exportedCount atomic.Int64
 
-		var (
-			data          []byte
-			suggestedName string
-			trackerDomain string
-			blobRelPath   *string
-		)
-
-		cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
-		if cacheErr != nil {
-			log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
-		}
-		if cachedTorrent != nil {
-			data = cachedTorrent.data
-			suggestedName = torrent.Name
-			trackerDomain = trackerDomainFromTorrent(torrent)
-			rel := cachedTorrent.relPath
-			blobRelPath = &rel
-		}
-
-		if data == nil {
-			if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
-				log.Warn().
-					Str("hash", torrent.Hash).
-					Str("name", torrent.Name).
-					Int("instanceID", j.instanceID).
-					Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
-				s.updateProgress(j.runID, idx+1)
-				continue
+	g, gctx := errgroup.WithContext(ctx)
+	indexes := make(chan int)
+	g.Go(func() error {
+		defer close(indexes)
+		for i := range torrents {
+			select {
+			case indexes <- i:
+			case <-gctx.Done():
+				return gctx.Err()
 			}
-			if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, lastExportElapsed); err != nil {
-				return nil, err
-			}
-			exportStart := time.Now()
-			var tracker string
-			data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
-			lastExportElapsed = time.Since(exportStart)
-			if err != nil {
-				if isExportMetadataUnavailable(err) {
-					log.Warn().
-						Err(err).
-						Str("hash", torrent.Hash).
-						Str("name", torrent.Name).
-						Int("instanceID", j.instanceID).
-						Msg("Skipping torrent export; metadata not downloaded yet")
-					s.updateProgress(j.runID, idx+1)
-					continue
+		}
+		return nil
+	})
+	for range exportWorkers {
+		g.Go(func() error {
+			// Per-worker adaptive delay keeps the aggregate request rate
+			// bounded by exportWorkers regardless of how the pool schedules.
+			var lastExportElapsed time.Duration
+			for idx := range indexes {
+				res, err := s.exportBackupTorrent(gctx, j, torrents[idx], patchTrackers, webAPIVersion, &lastExportElapsed)
+				if err != nil {
+					return err
 				}
-				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+				results[idx] = res
+				s.updateProgress(j.runID, int(exportedCount.Add(1)))
 			}
-			trackerDomain = tracker
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	for idx, torrent := range torrents {
+		res := results[idx]
+		if res.skipped {
+			continue
 		}
 
-		if patchTrackers {
-			trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
-			if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
-				log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
-			} else if changed {
-				data = patched
-				// ensure cached entry is rebuilt with the corrected payload
-				blobRelPath = nil
-				log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Str("webAPIVersion", webAPIVersion).Msg("Injected tracker metadata into exported torrent")
-			}
-		}
-
-		filename := torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash)
 		category := strings.TrimSpace(torrent.Category)
 		var categoryPtr *string
 		if category != "" {
@@ -837,39 +813,15 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			rawTags = strings.TrimSpace(torrent.Tags)
 		}
 
-		archivePath := filename
+		archivePath := res.filename
 		if settings.IncludeCategories && category != "" {
-			archivePath = filepath.ToSlash(filepath.Join(safeSegment(category), filename))
+			archivePath = filepath.ToSlash(filepath.Join(safeSegment(category), res.filename))
 		}
 
 		uniquePath := ensureUniquePath(archivePath, usedPaths)
+		blobRelPath := res.blobRelPath
 
-		if blobRelPath == nil && s.cacheDir != "" {
-			sum := sha256.Sum256(data)
-			hash := hex.EncodeToString(sum[:])
-			blobName := hash + ".torrent"
-			subdir := ""
-			if len(hash) >= 6 {
-				subdir = filepath.Join(hash[0:2], hash[2:4], hash[4:6])
-			}
-			absBlob := filepath.Join(s.cacheDir, subdir, blobName)
-			if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) {
-				if subdir != "" {
-					if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil {
-						return nil, fmt.Errorf("create torrent cache subdir: %w", err)
-					}
-				}
-				if err := os.WriteFile(absBlob, data, 0o644); err != nil && !errors.Is(err, os.ErrExist) {
-					return nil, fmt.Errorf("cache torrent blob: %w", err)
-				}
-			}
-			rel := filepath.ToSlash(filepath.Join("backups", "torrents", subdir, blobName))
-			blobRelPath = &rel
-		}
-
-		// Note: Removed zip header creation for streaming interface
-
-		totalBytes += int64(len(data))
+		totalBytes += int64(res.dataLen)
 
 		infohashV1 := strings.TrimSpace(torrent.InfohashV1)
 		infohashV2 := strings.TrimSpace(torrent.InfohashV2)
@@ -939,9 +891,6 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			manifestItem.SavePath = storeSavePath
 		}
 		manifestItems = append(manifestItems, manifestItem)
-
-		// Update progress after processing each torrent
-		s.updateProgress(j.runID, idx+1)
 	}
 
 	manifest := Manifest{
@@ -977,16 +926,142 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
+// exportWorkers bounds concurrent torrents/export calls during a backup run.
+// Kept small on purpose: enough to overlap stalls on qBittorrent's
+// single-threaded WebAPI without flooding a struggling instance (#1101).
+const exportWorkers = 4
+
+// maxAdaptiveExportDelay caps the adaptive back-pressure delay. A slow export
+// usually means the request queued behind another client's large response, not
+// that qBittorrent is melting down; sleeping the full stall duration again
+// would just double the cost of every stall.
+const maxAdaptiveExportDelay = 500 * time.Millisecond
+
+// exportedTorrent is the order-independent result of exporting one torrent.
+type exportedTorrent struct {
+	skipped     bool
+	dataLen     int
+	filename    string
+	blobRelPath *string
+}
+
+// exportBackupTorrent produces the .torrent payload for one torrent (cached
+// blob or live export), patches trackers if needed, and persists the blob to
+// the cache. It touches no order-dependent backup state, so callers may run it
+// concurrently for distinct torrents. lastExportElapsed carries the adaptive
+// delay state between consecutive calls on the same worker.
+func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.Torrent, patchTrackers bool, webAPIVersion string, lastExportElapsed *time.Duration) (exportedTorrent, error) {
+	select {
+	case <-ctx.Done():
+		return exportedTorrent{}, ctx.Err()
+	default:
+	}
+
+	var (
+		data          []byte
+		suggestedName string
+		trackerDomain string
+		blobRelPath   *string
+	)
+
+	cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
+	if cacheErr != nil {
+		log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
+	}
+	if cachedTorrent != nil {
+		data = cachedTorrent.data
+		suggestedName = torrent.Name
+		trackerDomain = trackerDomainFromTorrent(torrent)
+		rel := cachedTorrent.relPath
+		blobRelPath = &rel
+	}
+
+	if data == nil {
+		if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
+			log.Warn().
+				Str("hash", torrent.Hash).
+				Str("name", torrent.Name).
+				Int("instanceID", j.instanceID).
+				Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
+			return exportedTorrent{skipped: true}, nil
+		}
+		if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, *lastExportElapsed); err != nil {
+			return exportedTorrent{}, err
+		}
+		exportStart := time.Now()
+		var tracker string
+		var err error
+		data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+		*lastExportElapsed = time.Since(exportStart)
+		if err != nil {
+			if isExportMetadataUnavailable(err) {
+				log.Warn().
+					Err(err).
+					Str("hash", torrent.Hash).
+					Str("name", torrent.Name).
+					Int("instanceID", j.instanceID).
+					Msg("Skipping torrent export; metadata not downloaded yet")
+				return exportedTorrent{skipped: true}, nil
+			}
+			return exportedTorrent{}, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+		}
+		trackerDomain = tracker
+	}
+
+	if patchTrackers {
+		trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
+		if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
+			log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
+		} else if changed {
+			data = patched
+			// ensure cached entry is rebuilt with the corrected payload
+			blobRelPath = nil
+			log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Str("webAPIVersion", webAPIVersion).Msg("Injected tracker metadata into exported torrent")
+		}
+	}
+
+	if blobRelPath == nil && s.cacheDir != "" {
+		sum := sha256.Sum256(data)
+		hash := hex.EncodeToString(sum[:])
+		blobName := hash + ".torrent"
+		subdir := ""
+		if len(hash) >= 6 {
+			subdir = filepath.Join(hash[0:2], hash[2:4], hash[4:6])
+		}
+		// absBlob is derived from hex-encoded sha256 output, so it cannot
+		// escape cacheDir; 0o644 matches the other blob writes in this file.
+		absBlob := filepath.Join(s.cacheDir, subdir, blobName)
+		if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) { //nolint:gosec // content-addressed path, no user input
+			if subdir != "" {
+				if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil { //nolint:gosec // content-addressed path, no user input
+					return exportedTorrent{}, fmt.Errorf("create torrent cache subdir: %w", err)
+				}
+			}
+			if err := os.WriteFile(absBlob, data, 0o644); err != nil && !errors.Is(err, os.ErrExist) { //nolint:gosec // world-readable cache blob, pre-existing mode
+				return exportedTorrent{}, fmt.Errorf("cache torrent blob: %w", err)
+			}
+		}
+		rel := filepath.ToSlash(filepath.Join("backups", "torrents", subdir, blobName))
+		blobRelPath = &rel
+	}
+
+	return exportedTorrent{
+		dataLen:     len(data),
+		filename:    torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash),
+		blobRelPath: blobRelPath,
+	}, nil
+}
+
 // adaptiveExportDelay waits between export API calls with back-pressure.
-// The delay is at least minDelay, but extends to match the previous export's
-// response time when qBittorrent is under load. This prevents overwhelming
-// qBittorrent during large backup operations.
+// The delay is at least minDelay and extends to match the previous export's
+// response time when qBittorrent is under load, capped at
+// maxAdaptiveExportDelay so a stalled request is not double-charged.
 func adaptiveExportDelay(ctx context.Context, minDelay, lastExportDuration time.Duration) error {
 	if minDelay <= 0 {
 		return nil
 	}
 
-	delay := max(minDelay, lastExportDuration)
+	delay := max(minDelay, min(lastExportDuration, maxAdaptiveExportDelay))
 	t := time.NewTimer(delay)
 	defer t.Stop()
 
@@ -1101,11 +1176,12 @@ func (s *Service) clearInstance(instanceID int, runID int64) {
 	s.progressMu.Unlock()
 }
 
-// updateProgress updates the progress for a run
+// updateProgress updates the progress for a run. Progress only moves forward:
+// concurrent export workers may report completion counts out of order.
 func (s *Service) updateProgress(runID int64, current int) {
 	s.progressMu.Lock()
 	defer s.progressMu.Unlock()
-	if p := s.progress[runID]; p != nil {
+	if p := s.progress[runID]; p != nil && current > p.Current {
 		p.Current = current
 		p.Percentage = float64(current) / float64(p.Total) * 100
 	}
