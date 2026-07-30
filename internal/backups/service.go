@@ -1088,8 +1088,10 @@ func cacheTorrentBlob(cacheDir, relBlob string, data []byte) error {
 	}
 	defer root.Close()
 
-	if _, err := root.Stat(relBlob); !errors.Is(err, os.ErrNotExist) {
+	if _, err := root.Stat(relBlob); err == nil {
 		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cache torrent blob: %w", err)
 	}
 	if dir := filepath.Dir(relBlob); dir != "." {
 		if err := root.MkdirAll(dir, 0o755); err != nil {
