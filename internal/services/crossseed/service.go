@@ -6957,6 +6957,47 @@ func gazelleTargetsForSource(sourceSiteHost string, isGazelleSource bool) []stri
 	return []string{"redacted.sh", "orpheus.network"}
 }
 
+// gazellePlausibleExtensions covers content RED/OPS host: audio (music,
+// audiobooks, comedy) and e-books/comics. Applications and e-learning videos
+// are deliberately excluded; admitting video or archive extensions would
+// re-admit every movie/TV/game torrent the gate exists to keep out.
+var gazellePlausibleExtensions = map[string]bool{
+	// audio
+	".flac": true,
+	".mp3":  true,
+	".m4a":  true,
+	".m4b":  true,
+	".aac":  true,
+	".ac3":  true,
+	".dts":  true,
+	".ogg":  true,
+	".opus": true,
+	".wav":  true,
+	".aiff": true,
+	".dsf":  true,
+	".dff":  true,
+	// e-books / comics
+	".epub": true,
+	".mobi": true,
+	".azw3": true,
+	".pdf":  true,
+	".cbr":  true,
+	".cbz":  true,
+	".djvu": true,
+}
+
+// gazellePlausibleContent reports whether a torrent's largest usable file looks
+// like content RED/OPS could host. Extension-based on purpose: release names
+// for music/audiobooks/books often defeat rls parsing, but file extensions
+// don't lie.
+func gazellePlausibleContent(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) bool {
+	largest := contentPrefilterLargestUsableFileName(files, normalizer)
+	if largest == "" {
+		return false
+	}
+	return gazellePlausibleExtensions[strings.ToLower(path.Ext(largest))]
+}
+
 func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSettings, clients *gazelleClientSet, sourceSiteHost string) bool {
 	if settings == nil || !settings.GazelleEnabled {
 		return false
@@ -7029,6 +7070,13 @@ func (s *Service) searchGazelleMatches(
 	}
 	if len(configuredTargetHosts) == 0 {
 		return []TorrentSearchResult{}, false, false
+	}
+
+	// Torrents already on RED/OPS bypass the content gate: the tracker itself is
+	// proof the content is Gazelle-hostable. Everything else must look like
+	// content those sites carry before we spend rate-limited API calls on it.
+	if !isGazelleSource && !gazellePlausibleContent(sourceFiles, normalizerForService(s)) {
+		return []TorrentSearchResult{}, true, false
 	}
 
 	results := make([]TorrentSearchResult, 0, len(configuredTargetHosts))
