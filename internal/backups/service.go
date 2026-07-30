@@ -311,15 +311,15 @@ func (s *Service) Start(ctx context.Context) {
 	// Reclaim cache blobs stranded by failed runs before workers start
 	// writing, but off the startup path so a large cache cannot hold up the
 	// HTTP listener. Workers only spawn once the sweep finishes; a canceled
-	// ctx stops the sweep mid-walk, and the pre-registered wg count keeps
-	// Stop waiting for the late-spawned workers.
+	// ctx stops the sweep mid-walk, and the pre-registered wg count plus the
+	// tracked sweep goroutine keep Stop waiting for both.
 	s.wg.Add(s.cfg.WorkerCount)
-	go func() {
+	s.wg.Go(func() {
 		s.cleanupOrphanedBlobs(ctx)
 		for i := 0; i < s.cfg.WorkerCount; i++ {
 			go s.worker(ctx)
 		}
-	}()
+	})
 
 	// Check for missed backups and queue exactly one if applicable
 	s.wg.Go(func() {
