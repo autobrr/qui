@@ -434,66 +434,66 @@ export function ReannounceOverview({
                                       key={`${event.hash}-${eventIndex}-${event.timestamp}`}
                                       className="p-3 hover:bg-muted/30 transition-colors"
                                     >
-                                    <div className="flex flex-col gap-2">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
-                                              {event.torrentName || event.hash}
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p className="font-semibold">{event.torrentName || "N/A"}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                        <Badge
-                                          variant="outline"
-                                          className={cn(
-                                            "capitalize text-[10px] px-1.5 py-0 h-5",
-                                            outcomeClasses[event.outcome]
-                                          )}
-                                        >
-                                          {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
-                                        </Badge>
-                                      </div>
-
-                                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                                          <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                          <button
-                                            type="button"
-                                            className="hover:text-foreground transition-colors"
-                                            onClick={() => {
-                                              copyTextToClipboard(event.hash)
-                                              toast.success(t("preferences.reannounceOverview.hashCopied"))
-                                            }}
-                                            title={t("preferences.reannounceOverview.copyHash")}
+                                      <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
+                                                {event.torrentName || event.hash}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                          <Badge
+                                            variant="outline"
+                                            className={cn(
+                                              "capitalize text-[10px] px-1.5 py-0 h-5",
+                                              outcomeClasses[event.outcome]
+                                            )}
                                           >
-                                            <Copy className="h-3 w-3" />
-                                          </button>
+                                            {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
+                                          </Badge>
                                         </div>
-                                        <span className="text-muted-foreground/40">·</span>
-                                        <span>{formatISOTimestamp(event.timestamp)}</span>
-                                      </div>
 
-                                      {reason && (
-                                        <div className="text-xs bg-muted/40 p-2 rounded">
-                                          {formatErrorReason(reason) !== reason ? (
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span className="cursor-help">{formatErrorReason(reason)}</span>
-                                              </TooltipTrigger>
-                                              <TooltipContent className="max-w-md">
-                                                <p className="break-all">{reason}</p>
-                                              </TooltipContent>
-                                            </Tooltip>
-                                          ) : (
-                                            <span>{reason}</span>
-                                          )}
+                                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                          <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                                            <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                            <button
+                                              type="button"
+                                              className="hover:text-foreground transition-colors"
+                                              onClick={() => {
+                                                copyTextToClipboard(event.hash)
+                                                toast.success(t("preferences.reannounceOverview.hashCopied"))
+                                              }}
+                                              title={t("preferences.reannounceOverview.copyHash")}
+                                            >
+                                              <Copy className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                          <span className="text-muted-foreground/40">·</span>
+                                          <span>{formatISOTimestamp(event.timestamp)}</span>
                                         </div>
-                                      )}
+
+                                        {reason && (
+                                          <div className="text-xs bg-muted/40 p-2 rounded">
+                                            {formatErrorReason(reason) !== reason ? (
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <span className="cursor-help">{formatErrorReason(reason)}</span>
+                                                </TooltipTrigger>
+                                                <TooltipContent className="max-w-md">
+                                                  <p className="break-all">{reason}</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            ) : (
+                                              <span>{reason}</span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
                                   )
                                 })}
                               </div>
