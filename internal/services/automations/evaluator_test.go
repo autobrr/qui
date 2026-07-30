@@ -2117,6 +2117,97 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "scope is both - outside_qbittorrent condition still matches (historical semantics)",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+			},
+			expected: true,
+		},
+		{
+			name: "scope is both - inside_qbittorrent condition matches",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeInsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+			},
+			expected: true,
+		},
+		{
+			name: "scope is torrents_only - inside_qbittorrent condition matches",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeInsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "scope is outside_qbittorrent - inside_qbittorrent condition does not match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeInsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+			},
+			expected: false,
+		},
+		{
+			name: "scope is none - inside_qbittorrent condition does not match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeInsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeNone},
+			},
+			expected: false,
+		},
+		{
+			name: "scope is both - not outside_qbittorrent condition does not match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorNotEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+			},
+			expected: false,
+		},
+		{
+			name: "scope is both - equal both matches",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScope,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeBoth,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess: true,
+				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeBoth},
+			},
+			expected: true,
+		},
+		{
 			name: "scope is not outside_qbittorrent - match (none)",
 			cond: &RuleCondition{
 				Field:    FieldHardlinkScope,

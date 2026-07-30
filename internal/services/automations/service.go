@@ -803,8 +803,8 @@ type PreviewTorrent struct {
 	LastActivity       int64    `json:"lastActivity"`                 // Last activity timestamp
 	CompletionOn       int64    `json:"completionOn"`                 // Completion timestamp
 	TotalSize          int64    `json:"totalSize"`                    // Total torrent size
-	HardlinkScope      string   `json:"hardlinkScope,omitempty"`      // none, torrents_only, outside_qbittorrent
-	HardlinkCrossScope string   `json:"hardlinkCrossScope,omitempty"` // cross-instance scope: none, torrents_only, outside_qbittorrent
+	HardlinkScope      string   `json:"hardlinkScope,omitempty"`      // none, torrents_only, outside_qbittorrent, both
+	HardlinkCrossScope string   `json:"hardlinkCrossScope,omitempty"` // cross-instance scope: none, torrents_only, outside_qbittorrent, both
 	Score              *float64 `json:"score,omitempty"`              // Sorting score
 }
 
