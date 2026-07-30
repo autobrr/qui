@@ -26,6 +26,13 @@ describe("usePersistedAccordion", () => {
     expect(localStorage.getItem("qui-accordion")).toBe(JSON.stringify(DEFAULT_ITEMS))
   })
 
+  it("falls back to defaults on valid JSON of the wrong shape, even when seeded", () => {
+    localStorage.setItem("qui-accordion", "5")
+    localStorage.setItem("qui-accordion-views-seeded", "1")
+    const { result } = renderHook(() => usePersistedAccordion())
+    expect(result.current[0]).toEqual(DEFAULT_ITEMS)
+  })
+
   it("seeds views into a pre-views stored array exactly once", () => {
     localStorage.setItem("qui-accordion", JSON.stringify(["status", "tags"]))
     const { result } = renderHook(() => usePersistedAccordion())

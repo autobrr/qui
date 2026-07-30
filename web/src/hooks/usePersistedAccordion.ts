@@ -13,7 +13,11 @@ export function usePersistedAccordion() {
     try {
       const stored = localStorage.getItem("qui-accordion")
       if (!stored) return DEFAULT_ITEMS
-      const items: string[] = JSON.parse(stored)
+      const parsed: unknown = JSON.parse(stored)
+      if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+        return DEFAULT_ITEMS
+      }
+      const items: string[] = parsed
 
       // Existing users have a stored array predating "views", so the new section
       // would ship collapsed. Expand it once; after that their own toggling wins.
