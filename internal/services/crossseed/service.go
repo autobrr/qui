@@ -6957,10 +6957,10 @@ func gazelleTargetsForSource(sourceSiteHost string, isGazelleSource bool) []stri
 	return []string{"redacted.sh", "orpheus.network"}
 }
 
-// gazellePlausibleExtensions covers content RED/OPS host: audio (music,
-// audiobooks, comedy) and e-books/comics. Applications and e-learning videos
-// are deliberately excluded; admitting video or archive extensions would
-// re-admit every movie/TV/game torrent the gate exists to keep out.
+// gazellePlausibleExtensions lists the extensions of content that RED/OPS host:
+// audio (music, audiobooks, comedy) and e-books or comics. The list excludes
+// applications and e-learning videos on purpose. Video and archive extensions
+// re-admit every movie, TV, and game torrent that the gate excludes.
 var gazellePlausibleExtensions = map[string]bool{
 	// audio
 	".flac": true,
@@ -6976,7 +6976,7 @@ var gazellePlausibleExtensions = map[string]bool{
 	".aiff": true,
 	".dsf":  true,
 	".dff":  true,
-	// e-books / comics
+	// e-books or comics
 	".epub": true,
 	".mobi": true,
 	".azw3": true,
@@ -6986,16 +6986,25 @@ var gazellePlausibleExtensions = map[string]bool{
 	".djvu": true,
 }
 
-// gazellePlausibleContent reports whether a torrent's largest usable file looks
-// like content RED/OPS could host. Extension-based on purpose: release names
-// for music/audiobooks/books often defeat rls parsing, but file extensions
-// don't lie.
-func gazellePlausibleContent(files qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) bool {
-	largest := contentPrefilterLargestUsableFileName(files, normalizer)
-	if largest == "" {
-		return false
+// gazellePlausibleContent reports whether the bulk of a torrent is content that
+// RED/OPS can host. The gate reads file extensions on purpose. Release names for
+// music, audiobooks, and books often defeat the rls parser, but file extensions
+// are reliable.
+//
+// The gate weighs bytes instead of picking the single largest file, because
+// booklet scans and cover art outweigh individual tracks in many music releases.
+// It also skips the cross-seed ignore lists on purpose: those match on the whole
+// path, so a release directory named "[Bonus Tracks]" hides every file below it.
+func gazellePlausibleContent(files qbt.TorrentFiles) bool {
+	var plausibleBytes, otherBytes int64
+	for _, file := range files {
+		if gazellePlausibleExtensions[strings.ToLower(path.Ext(file.Name))] {
+			plausibleBytes += file.Size
+			continue
+		}
+		otherBytes += file.Size
 	}
-	return gazellePlausibleExtensions[strings.ToLower(path.Ext(largest))]
+	return plausibleBytes > 0 && plausibleBytes >= otherBytes
 }
 
 func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSettings, clients *gazelleClientSet, sourceSiteHost string) bool {
@@ -7072,10 +7081,11 @@ func (s *Service) searchGazelleMatches(
 		return []TorrentSearchResult{}, false, false
 	}
 
-	// Torrents already on RED/OPS bypass the content gate: the tracker itself is
-	// proof the content is Gazelle-hostable. Everything else must look like
-	// content those sites carry before we spend rate-limited API calls on it.
-	if !isGazelleSource && !gazellePlausibleContent(sourceFiles, normalizerForService(s)) {
+	// Torrents that are already on RED/OPS skip the content gate, because the
+	// tracker proves that RED/OPS can host the content. Every other torrent must
+	// look like content that these sites carry before we spend rate-limited API
+	// calls on it.
+	if !isGazelleSource && !gazellePlausibleContent(sourceFiles) {
 		return []TorrentSearchResult{}, true, false
 	}
 

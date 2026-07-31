@@ -15,8 +15,6 @@ import (
 )
 
 func TestGazellePlausibleContent(t *testing.T) {
-	normalizer := stringutils.NewDefaultNormalizer()
-
 	tests := []struct {
 		name  string
 		files qbt.TorrentFiles
@@ -74,11 +72,47 @@ func TestGazellePlausibleContent(t *testing.T) {
 			files: qbt.TorrentFiles{},
 			want:  false,
 		},
+		{
+			// The cross-seed ignore keywords match on the whole path, so a
+			// release directory named "[Bonus Tracks]" hides every file below it.
+			name: "flac album under a bonus tracks directory",
+			files: qbt.TorrentFiles{
+				{Name: "Artist - Album (Deluxe) [Bonus Tracks]/01 - Track.flac", Size: 40_000_000},
+				{Name: "Artist - Album (Deluxe) [Bonus Tracks]/cover.jpg", Size: 900_000},
+			},
+			want: true,
+		},
+		{
+			// Booklet scans outweigh individual tracks in many lossy releases.
+			name: "mp3 album with booklet scans larger than any track",
+			files: qbt.TorrentFiles{
+				{Name: "Artist - Album [MP3 V0]/01.mp3", Size: 9_000_000},
+				{Name: "Artist - Album [MP3 V0]/02.mp3", Size: 8_000_000},
+				{Name: "Artist - Album [MP3 V0]/03.mp3", Size: 9_000_000},
+				{Name: "Artist - Album [MP3 V0]/04.mp3", Size: 8_000_000},
+				{Name: "Artist - Album [MP3 V0]/Scans/booklet-01.tif", Size: 24_000_000},
+				{Name: "Artist - Album [MP3 V0]/Scans/booklet-02.tif", Size: 8_000_000},
+			},
+			want: true,
+		},
+		{
+			name: "concert video with a separate flac audio track",
+			files: qbt.TorrentFiles{
+				{Name: "Live/show.mkv", Size: 20_000_000_000},
+				{Name: "Live/audio.flac", Size: 800_000_000},
+			},
+			want: false,
+		},
+		{
+			name:  "uppercase extension",
+			files: qbt.TorrentFiles{{Name: "Artist - Album/01 - Track.FLAC", Size: 40_000_000}},
+			want:  true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, gazellePlausibleContent(tt.files, normalizer))
+			require.Equal(t, tt.want, gazellePlausibleContent(tt.files))
 		})
 	}
 }
@@ -126,10 +160,34 @@ func TestSearchGazelleMatches_NonGazelleVideoSourceSkipsRemoteLookup(t *testing.
 	require.NoError(t, err)
 
 	results, gazelleConfigured, lookupAttempted := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
-	require.True(t, gazelleConfigured, "gazelle stays configured so gazelle-only runs do not error")
+	require.True(t, gazelleConfigured, "Gazelle stays configured, so Gazelle-only runs do not fail")
 	require.False(t, lookupAttempted)
 	require.Empty(t, results)
-	require.Equal(t, 0, *callCount, "video torrent from non-Gazelle source must not hit RED/OPS")
+	require.Equal(t, 0, *callCount, "qui must not query RED/OPS for a video torrent from a source that is not Gazelle")
+}
+
+func TestSearchGazelleMatches_BonusDirectoryStillSearches(t *testing.T) {
+	// The cross-seed ignore keywords match on the whole path. A release
+	// directory named "[Bonus Tracks]" must not hide the album from Gazelle.
+	sourceTorrent := qbt.Torrent{
+		Hash:     "223759985c562a644428312c8cd3585d04686847",
+		Name:     "Artist - Album (Deluxe) [Bonus Tracks]",
+		Progress: 1.0,
+		Size:     40_000_000,
+		Tracker:  "https://tracker.example.org/announce",
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Artist - Album (Deluxe) [Bonus Tracks]/01 - Track.flac", Size: 40_000_000},
+	}
+
+	svc, callCount := newGazelleGateService(t, sourceTorrent, sourceFiles)
+	clients, err := gazelleClientsForTest()
+	require.NoError(t, err)
+
+	_, gazelleConfigured, lookupAttempted := svc.searchGazelleMatches(context.Background(), 1, &sourceTorrent, sourceFiles, "", false, clients)
+	require.True(t, gazelleConfigured)
+	require.True(t, lookupAttempted)
+	require.Equal(t, 1, *callCount)
 }
 
 func TestSearchGazelleMatches_NonGazelleMusicSourceStillSearches(t *testing.T) {
@@ -155,8 +213,8 @@ func TestSearchGazelleMatches_NonGazelleMusicSourceStillSearches(t *testing.T) {
 }
 
 func TestSearchGazelleMatches_GazelleSourceBypassesContentGate(t *testing.T) {
-	// E-learning videos exist on RED; a RED-sourced torrent must be searched on
-	// the sibling site regardless of file extensions.
+	// E-learning videos exist on RED. Therefore qui must search the sibling site
+	// for a torrent from RED, and the file extensions do not matter.
 	sourceTorrent := qbt.Torrent{
 		Hash:     "223759985c562a644428312c8cd3585d04686847",
 		Name:     "Some Course (2019)",
