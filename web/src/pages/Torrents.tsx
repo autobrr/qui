@@ -544,7 +544,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                       }
                     }}
                   >
-                    <div className="h-full border-t bg-background">
+                    {/* Marker so the table's arrow-key navigation leaves focus inside the panel alone. */}
+                    <div className="h-full border-t bg-background" data-torrent-details-panel>
                       <TorrentDetailsPanel
                         instanceId={selectedTorrentInstanceId}
                         torrent={selectedTorrent}
