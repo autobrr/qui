@@ -510,6 +510,8 @@
     "resetScanProgressTitle": "重置扫描进度？",
     "resetScanProgressDescription": "这将删除此目录的已跟踪目录扫描进度。下次扫描将重新检查目录并重试所有项目，包括已完成的项目。",
     "resetFilesSuccess": "文件已重置。下次扫描将重新评估。",
+    "requeueNoMatch": "重试未匹配",
+    "requeueNoMatchSuccess_other": "下次扫描将重试 {{count}} 个未匹配的文件。",
     "toast": {
       "scannerEnabled": "目录扫描器已启用",
       "scannerDisabled": "目录扫描器已禁用",
@@ -526,6 +528,7 @@
       "directoryDeleteFailed": "删除目录失败：{{error}}",
       "settingsSaved": "设置已保存",
       "settingsSaveFailed": "保存设置失败：{{error}}",
+      "requeueFailed": "重试未匹配文件失败：{{error}}",
       "resetFailed": "重置文件失败：{{error}}"
     },
     "statusLabels": {

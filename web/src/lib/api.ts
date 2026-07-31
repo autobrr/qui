@@ -45,6 +45,7 @@ import type {
   DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
+  DirScanRequeueResponse,
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
@@ -2553,6 +2554,12 @@ class ApiClient {
 
   async resetDirScanFiles(directoryId: number): Promise<void> {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
+  async requeueDirScanNoMatch(directoryId: number): Promise<DirScanRequeueResponse> {
+    return this.request<DirScanRequeueResponse>(`/dir-scan/directories/${directoryId}/requeue-no-match`, {
+      method: "POST",
+    })
   }
 
   async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {
