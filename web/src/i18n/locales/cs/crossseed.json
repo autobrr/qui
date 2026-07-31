@@ -519,6 +519,8 @@
     "resetFilesSuccess": "Soubory resetovány. Další skenování je znovu vyhodnotí.",
     "requeueNoMatch": "Zopakovat soubory bez shody",
     "requeueNoMatchSuccess_one": "Příští skenování zopakuje {{count}} soubor bez shody.",
+    "requeueNoMatchSuccess_few": "Příští skenování zopakuje {{count}} soubory bez shody.",
+    "requeueNoMatchSuccess_many": "Příští skenování zopakuje {{count}} souboru bez shody.",
     "requeueNoMatchSuccess_other": "Příští skenování zopakuje {{count}} souborů bez shody.",
     "toast": {
       "scannerEnabled": "Skenovač adresářů povolen",

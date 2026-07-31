@@ -145,11 +145,22 @@ function checkMissingKeys(enFlat, csFlat, namespace) {
   return errors
 }
 
+// Czech CLDR plural categories that English does not have. A cs key with one of
+// these suffixes is a valid extra key when English has the same plural base.
+const csOnlyPluralSuffixes = ["_few", "_many"]
+
 function checkExtraKeys(enFlat, csFlat, namespace) {
   const errors = []
 
   for (const key of csFlat.keys()) {
     if (!enFlat.has(key)) {
+      const suffix = getPluralSuffix(key)
+      if (suffix && csOnlyPluralSuffixes.includes(suffix)) {
+        const base = key.slice(0, -suffix.length)
+        if (enFlat.has(`${base}_other`) || enFlat.has(`${base}_one`)) {
+          continue
+        }
+      }
       errors.push(`${namespace}.${key}`)
     }
   }
