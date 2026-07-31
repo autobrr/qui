@@ -6957,6 +6957,56 @@ func gazelleTargetsForSource(sourceSiteHost string, isGazelleSource bool) []stri
 	return []string{"redacted.sh", "orpheus.network"}
 }
 
+// gazellePlausibleExtensions lists the extensions of content that RED/OPS host:
+// audio (music, audiobooks, comedy) and e-books or comics. The list excludes
+// applications and e-learning videos on purpose. Video and archive extensions
+// re-admit every movie, TV, and game torrent that the gate excludes.
+var gazellePlausibleExtensions = map[string]bool{
+	// audio
+	".flac": true,
+	".mp3":  true,
+	".m4a":  true,
+	".m4b":  true,
+	".aac":  true,
+	".ac3":  true,
+	".dts":  true,
+	".ogg":  true,
+	".opus": true,
+	".wav":  true,
+	".aiff": true,
+	".dsf":  true,
+	".dff":  true,
+	// e-books or comics
+	".epub": true,
+	".mobi": true,
+	".azw3": true,
+	".pdf":  true,
+	".cbr":  true,
+	".cbz":  true,
+	".djvu": true,
+}
+
+// gazellePlausibleContent reports whether the bulk of a torrent is content that
+// RED/OPS can host. The gate reads file extensions on purpose. Release names for
+// music, audiobooks, and books often defeat the rls parser, but file extensions
+// are reliable.
+//
+// The gate weighs bytes instead of picking the single largest file, because
+// booklet scans and cover art outweigh individual tracks in many music releases.
+// It also skips the cross-seed ignore lists on purpose: those match on the whole
+// path, so a release directory named "[Bonus Tracks]" hides every file below it.
+func gazellePlausibleContent(files qbt.TorrentFiles) bool {
+	var plausibleBytes, otherBytes int64
+	for _, file := range files {
+		if gazellePlausibleExtensions[strings.ToLower(path.Ext(file.Name))] {
+			plausibleBytes += file.Size
+			continue
+		}
+		otherBytes += file.Size
+	}
+	return plausibleBytes > 0 && plausibleBytes >= otherBytes
+}
+
 func shouldUseGazelleOnlyForCompletion(settings *models.CrossSeedAutomationSettings, clients *gazelleClientSet, sourceSiteHost string) bool {
 	if settings == nil || !settings.GazelleEnabled {
 		return false
@@ -7029,6 +7079,14 @@ func (s *Service) searchGazelleMatches(
 	}
 	if len(configuredTargetHosts) == 0 {
 		return []TorrentSearchResult{}, false, false
+	}
+
+	// Torrents that are already on RED/OPS skip the content gate, because the
+	// tracker proves that RED/OPS can host the content. Every other torrent must
+	// look like content that these sites carry before we spend rate-limited API
+	// calls on it.
+	if !isGazelleSource && !gazellePlausibleContent(sourceFiles) {
+		return []TorrentSearchResult{}, true, false
 	}
 
 	results := make([]TorrentSearchResult, 0, len(configuredTargetHosts))

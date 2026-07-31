@@ -145,6 +145,14 @@ jobs:
           chmod 600 "$key_file"
           echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
 
+      - name: Prepare ephemeral release signing key
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: |
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
+          chmod 600 "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+
       - name: Verify release signing key matches embedded updater cert
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -165,11 +173,20 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean --config .goreleaser.release.yml' || 'release --skip=publish,sign --snapshot --clean --config .goreleaser.release.yml' }}
+          args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean --config .goreleaser.release.yml' || 'release --skip=publish --snapshot --clean --config .goreleaser.release.yml' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDER: ${{ github.actor }}@github-actions
           RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
+
+      - name: Verify signed checksum signature
+        run: |
+          public_key_file="$RUNNER_TEMP/release-signing-key.pub.pem"
+          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -out "$public_key_file"
+          openssl dgst -sha256 \
+            -verify "$public_key_file" \
+            -signature dist/checksums.txt.sig \
+            dist/checksums.txt
 
       - name: Upload assets
         uses: actions/upload-artifact@v7
@@ -181,69 +198,6 @@ jobs:
             dist/*.deb
             dist/*.rpm
           if-no-files-found: error
-
-  goreleasersignedsmoke:
-    name: PR signed release smoke test (ephemeral key)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    needs: [web]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Download web production build
-        uses: actions/download-artifact@v8
-        with:
-          name: web-dist
-          path: web/dist
-
-      - name: Create web dist tarball
-        run: tar -czf web-dist.tar.gz -C . web/dist
-
-      - name: Set up Go
-        uses: actions/setup-go@v7.0.0
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Cache Go build artifacts
-        uses: actions/cache@v6.1.0
-        with:
-          path: ~/.cache/go-build
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-build-
-
-      - name: Prepare ephemeral release signing key
-        run: |
-          key_file="$RUNNER_TEMP/release-signing-key.pem"
-          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
-          chmod 600 "$key_file"
-          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
-          echo "POLAR_ORG_ID=00000000-0000-0000-0000-000000000000" >> "$GITHUB_ENV"
-
-      - name: Run signed GoReleaser smoke build
-        uses: goreleaser/goreleaser-action@v7.2.3
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --snapshot --clean --config .goreleaser.release.yml --parallelism 5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDER: ${{ github.actor }}@github-actions
-          POLAR_ORG_ID: ${{ env.POLAR_ORG_ID }}
-          RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
-
-      - name: Verify signed checksum signature
-        run: |
-          public_key_file="$RUNNER_TEMP/release-signing-key.pub.pem"
-          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -out "$public_key_file"
-          openssl dgst -sha256 \
-            -verify "$public_key_file" \
-            -signature dist/checksums.txt.sig \
-            dist/checksums.txt
 
   docker-matrix:
     name: Determine Docker platforms
