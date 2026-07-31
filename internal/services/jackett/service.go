@@ -693,7 +693,12 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			if portion, complete := s.loadCachedSearchPortion(ctx, cacheSig, cacheScope, req, requestedIndexerIDs, true); portion != nil {
 				if complete {
 					results, total := responseSearchResults(portion.results, req.Offset, req.Limit, req.ReturnAllResults)
-					response := &SearchResponse{Results: results, Total: total}
+					response := &SearchResponse{
+						Results:             results,
+						Total:               total,
+						RequestedIndexerIDs: requestedIndexerIDs,
+						CoveredIndexerIDs:   requestedIndexerIDs,
+					}
 					response.Cache = portion.metadata(searchCacheSourceCache)
 					if req.OnAllComplete != nil {
 						req.OnAllComplete(response, nil)
@@ -713,7 +718,12 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 	if len(indexersToSearch) == 0 {
 		if len(cachedResults) > 0 && cachedPortion != nil {
 			results, total := responseSearchResults(cachedResults, req.Offset, req.Limit, req.ReturnAllResults)
-			resp := &SearchResponse{Results: results, Total: total}
+			resp := &SearchResponse{
+				Results:             results,
+				Total:               total,
+				RequestedIndexerIDs: requestedIndexerIDs,
+				CoveredIndexerIDs:   cachedIndexerCoverage,
+			}
 			resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
 			if req.OnAllComplete != nil {
 				req.OnAllComplete(resp, nil)
@@ -721,7 +731,11 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			return nil
 		}
 		if req.OnAllComplete != nil {
-			req.OnAllComplete(&SearchResponse{Results: []SearchResult{}, Total: 0}, nil)
+			req.OnAllComplete(&SearchResponse{
+				Results:             []SearchResult{},
+				Total:               0,
+				RequestedIndexerIDs: requestedIndexerIDs,
+			}, nil)
 		}
 		return nil
 	}
@@ -759,10 +773,12 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 					Msg("Returning cached torznab search results after search failure")
 				results, total := responseSearchResults(cachedResults, req.Offset, req.Limit, req.ReturnAllResults)
 				resp := &SearchResponse{
-					Results: results,
-					Total:   total,
-					Partial: true,
-					JobID:   jobID,
+					Results:             results,
+					Total:               total,
+					Partial:             true,
+					JobID:               jobID,
+					RequestedIndexerIDs: requestedIndexerIDs,
+					CoveredIndexerIDs:   cachedIndexerCoverage,
 				}
 				resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
 				if req.OnAllComplete != nil {
@@ -792,10 +808,12 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		pageResults, total := responseSearchResults(combined, req.Offset, req.Limit, req.ReturnAllResults)
 
 		response := &SearchResponse{
-			Results: pageResults,
-			Total:   total,
-			Partial: partial,
-			JobID:   jobID,
+			Results:             pageResults,
+			Total:               total,
+			Partial:             partial,
+			JobID:               jobID,
+			RequestedIndexerIDs: requestedIndexerIDs,
+			CoveredIndexerIDs:   effectiveCoverage,
 		}
 		if cachedPortion != nil && len(cachedResults) > 0 {
 			response.Cache = cachedPortion.metadata(searchCacheSourceHybrid)
@@ -3740,10 +3758,14 @@ func (s *Service) FilterIndexersForCapabilities(ctx context.Context, requested [
 	requiredCaps = normalizeCaps(requiredCaps)
 	result := make([]int, 0, len(indexers))
 	for _, indexer := range indexers {
-		if len(requiredCaps) > 0 && !indexerHasCapabilities(indexer.Capabilities, requiredCaps) {
+		// Mirror the execution-time gate (applyIndexerRestrictions): keep an indexer
+		// whose caps or categories are not stored yet, because the executor fetches
+		// that metadata and applies its own check. A stricter pre-filter here would
+		// hide the indexer from the search and the metadata could never heal.
+		if len(requiredCaps) > 0 && len(indexer.Capabilities) > 0 && !supportsAnyCapability(indexer.Capabilities, requiredCaps) {
 			continue
 		}
-		if len(categories) > 0 && !indexerSupportsCategories(indexer.Categories, categories) {
+		if len(categories) > 0 && len(indexer.Categories) > 0 && !indexerSupportsCategories(indexer.Categories, categories) {
 			continue
 		}
 		result = append(result, indexer.ID)
@@ -3766,22 +3788,6 @@ func normalizeCaps(caps []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
-}
-
-func indexerHasCapabilities(current []string, required []string) bool {
-	if len(required) == 0 {
-		return true
-	}
-	available := make(map[string]struct{}, len(current))
-	for _, cap := range current {
-		available[strings.TrimSpace(strings.ToLower(cap))] = struct{}{}
-	}
-	for _, need := range required {
-		if _, ok := available[strings.ToLower(need)]; !ok {
-			return false
-		}
-	}
-	return true
 }
 
 func indexerSupportsCategories(indexerCategories []models.TorznabIndexerCategory, requested []int) bool {
