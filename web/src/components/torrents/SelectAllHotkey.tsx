@@ -40,6 +40,11 @@ export function SelectAllHotkey({
         return
       }
 
+      // Shift/Alt combos are browser shortcuts (e.g. Cmd+Shift+A tab search), not select-all
+      if (event.shiftKey || event.altKey) {
+        return
+      }
+
       const target = event.target
       const elementTarget = target instanceof Element ? target : null
 
