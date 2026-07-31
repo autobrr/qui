@@ -511,6 +511,7 @@
     "resetScanProgressDescription": "이 작업은 이 디렉터리에 대해 추적된 디렉터리 스캔 진행률을 삭제합니다. 다음 스캔에서 디렉터리를 다시 확인하고 이미 완료된 항목을 포함한 모든 항목을 다시 시도합니다.",
     "resetFilesSuccess": "파일이 재설정되었습니다. 다음 스캔에서 다시 평가합니다.",
     "requeueNoMatch": "미일치 항목 재시도",
+    "requeueNoMatchTooltip": "\"미일치\" 파일만 대기 상태로 재설정합니다. 다음 스캔에서 다시 검색합니다. 일치된 파일은 상태를 유지합니다.",
     "requeueNoMatchSuccess_other": "다음 스캔에서 미일치 파일 {{count}}개를 재시도합니다.",
     "toast": {
       "scannerEnabled": "디렉터리 스캐너가 활성화되었습니다",

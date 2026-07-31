@@ -706,19 +706,26 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
           <CardDescription>{t("dirScan.recentScanRunsDescription")}</CardDescription>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRequeueNoMatch}
-            disabled={requeueNoMatch.isPending}
-          >
-            {requeueNoMatch.isPending ? (
-              <Loader2 className="size-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4 mr-2" />
-            )}
-            {t("dirScan.requeueNoMatch")}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRequeueNoMatch}
+                disabled={requeueNoMatch.isPending}
+              >
+                {requeueNoMatch.isPending ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4 mr-2" />
+                )}
+                {t("dirScan.requeueNoMatch")}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              {t("dirScan.requeueNoMatchTooltip")}
+            </TooltipContent>
+          </Tooltip>
           <Button
             variant="outline"
             size="sm"

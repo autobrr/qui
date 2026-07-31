@@ -518,6 +518,7 @@
     "resetScanProgressDescription": "Dadurch wird der erfasste Dir-Scan-Fortschritt für dieses Verzeichnis gelöscht. Der nächste Scan prüft das Verzeichnis erneut und versucht alle Einträge erneut, auch bereits abgeschlossene.",
     "resetFilesSuccess": "Dateien zurückgesetzt. Der nächste Scan wertet sie erneut aus.",
     "requeueNoMatch": "Ohne Treffer erneut versuchen",
+    "requeueNoMatchTooltip": "Setzt nur Dateien ohne Treffer auf ausstehend zurück. Der nächste Scan sucht sie erneut. Zugeordnete Dateien behalten ihren Status.",
     "requeueNoMatchSuccess_one": "Der nächste Scan versucht {{count}} Datei ohne Treffer erneut.",
     "requeueNoMatchSuccess_other": "Der nächste Scan versucht {{count}} Dateien ohne Treffer erneut.",
     "toast": {

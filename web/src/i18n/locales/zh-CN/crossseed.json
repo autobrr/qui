@@ -511,6 +511,7 @@
     "resetScanProgressDescription": "这将删除此目录的已跟踪目录扫描进度。下次扫描将重新检查目录并重试所有项目，包括已完成的项目。",
     "resetFilesSuccess": "文件已重置。下次扫描将重新评估。",
     "requeueNoMatch": "重试未匹配",
+    "requeueNoMatchTooltip": "仅将“未匹配”的文件重置为待处理。下次扫描将重新搜索它们。已匹配的文件保持原状态。",
     "requeueNoMatchSuccess_other": "下次扫描将重试 {{count}} 个未匹配的文件。",
     "toast": {
       "scannerEnabled": "目录扫描器已启用",

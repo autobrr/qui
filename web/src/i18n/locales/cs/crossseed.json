@@ -518,6 +518,7 @@
     "resetScanProgressDescription": "Toto odstraní sledovaný průběh skenování pro tento adresář. Další skenování je znovu vyhodnotí. Existující křížová sdílení zůstávají; duplicity jsou automaticky přeskočeny.",
     "resetFilesSuccess": "Soubory resetovány. Další skenování je znovu vyhodnotí.",
     "requeueNoMatch": "Zopakovat soubory bez shody",
+    "requeueNoMatchTooltip": "Resetuje pouze soubory bez shody na čekající. Příští skenování je znovu vyhledá. Spárované soubory si zachovají svůj stav.",
     "requeueNoMatchSuccess_one": "Příští skenování zopakuje {{count}} soubor bez shody.",
     "requeueNoMatchSuccess_few": "Příští skenování zopakuje {{count}} soubory bez shody.",
     "requeueNoMatchSuccess_many": "Příští skenování zopakuje {{count}} souboru bez shody.",
