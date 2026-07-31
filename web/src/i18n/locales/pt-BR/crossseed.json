@@ -518,7 +518,7 @@
     "resetScanProgressDescription": "Isso exclui o progresso rastreado de dir-scan para este diretório. A próxima busca reavaliará o diretório e tentará novamente todos os itens, incluindo aqueles que já haviam sido concluídos.",
     "resetFilesSuccess": "Arquivos redefinidos. A próxima busca os reavaliará.",
     "requeueNoMatch": "Repetir sem correspondência",
-    "requeueNoMatchTooltip": "Redefine apenas os arquivos sem correspondência como pendentes. A próxima varredura os buscará novamente. Arquivos correspondidos mantêm seu estado.",
+    "requeueNoMatchTooltip": "A próxima varredura buscará novamente os arquivos sem correspondência. Use após adicionar um novo indexador. Arquivos já correspondidos não são alterados.",
     "requeueNoMatchSuccess_one": "A próxima varredura repetirá {{count}} arquivo sem correspondência.",
     "requeueNoMatchSuccess_other": "A próxima varredura repetirá {{count}} arquivos sem correspondência.",
     "toast": {
