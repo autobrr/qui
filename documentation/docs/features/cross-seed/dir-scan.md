@@ -250,9 +250,9 @@ From a user perspective, this behaves like **restart with preserved progress**, 
 
 ### New indexers reopen "no match" files
 
-Each "no match" file records which indexers were enabled when the search ran. When you add or re-enable an indexer, the next scan searches those files again. You do not need to reset anything.
+Each "no match" file records which indexers were enabled when the search ran. When you enable an indexer that is not in that record, the next scan searches the file again. You do not need to reset anything. An indexer that was already in the record does not trigger a retry, because the file was searched against it before.
 
-A search only marks a file as "no match" when every indexer answered. If some indexers were down or rate-limited, the file stays pending and the next scan retries it.
+A search only marks a file as "no match" when every indexer it asked answered. If some indexers were down or rate-limited, the file stays pending and the next scan retries it.
 
 Files marked "no match" on older qui versions have no recorded indexer set. They stay skipped until you requeue them (see below).
 
