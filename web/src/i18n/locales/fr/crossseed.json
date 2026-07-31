@@ -518,7 +518,7 @@
     "resetScanProgressDescription": "La prochaine analyse vérifiera le répertoire et réessaiera tous les éléments.",
     "resetFilesSuccess": "Fichiers réinitialisés.",
     "requeueNoMatch": "Réessayer sans correspondance",
-    "requeueNoMatchTooltip": "La prochaine analyse recherchera à nouveau les fichiers sans correspondance. Utilisez ceci après avoir ajouté un nouvel indexeur. Les fichiers déjà correspondus ne sont pas touchés.",
+    "requeueNoMatchTooltip": "Marque les fichiers sans correspondance pour que la prochaine analyse les recherche à nouveau. Les fichiers correspondus ne sont pas touchés. Utilisez ceci après avoir ajouté un indexeur, ou quand un tracker peut maintenant avoir le contenu.",
     "requeueNoMatchSuccess_one": "La prochaine analyse réessaiera {{count}} fichier sans correspondance.",
     "requeueNoMatchSuccess_other": "La prochaine analyse réessaiera {{count}} fichiers sans correspondance.",
     "toast": {

@@ -518,7 +518,7 @@
     "resetScanProgressDescription": "This deletes tracked dir-scan progress for this directory. The next scan will recheck the directory and retry all items, including ones that were already finished.",
     "resetFilesSuccess": "Files reset. Next scan will re-evaluate.",
     "requeueNoMatch": "Retry Unmatched",
-    "requeueNoMatchTooltip": "The next scan searches unmatched files again. Use this after you add a new indexer. Files that already matched are not touched.",
+    "requeueNoMatchTooltip": "Marks unmatched files so the next scan searches them again. Matched files are not touched. Use this after you add an indexer, or when a tracker may have the content now.",
     "requeueNoMatchSuccess_one": "The next scan will retry {{count}} unmatched file.",
     "requeueNoMatchSuccess_other": "The next scan will retry {{count}} unmatched files.",
     "toast": {
