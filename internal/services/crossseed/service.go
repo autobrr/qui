@@ -1500,6 +1500,10 @@ type SearchRunOptions struct {
 	SkipAutoResume                  bool
 	SkipRecheck                     bool
 	SkipPieceBoundarySafetyCheck    bool
+	// EnsembleSeasonSearch adds virtual season-pack searches for groups of
+	// seeded loose episodes. Derived from SeasonPackAutomationEnabled at run
+	// start; never set by callers.
+	EnsembleSeasonSearch bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -3247,6 +3251,10 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			opts.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
 			opts.SizeMismatchTolerancePercentSet = true
 		}
+		// Targeted re-searches of specific torrents stay episode-scoped, and
+		// Gazelle-only runs have no TV indexers to ask for packs.
+		opts.EnsembleSeasonSearch = settings.SeasonPackAutomationEnabled &&
+			len(opts.SpecificHashes) == 0 && !opts.DisableTorznab
 	}
 	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
 
@@ -9875,13 +9883,23 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	}
 
 	state.queue = deduplicated
+	if state.opts.EnsembleSeasonSearch {
+		if virtual := s.buildEnsembleSeasonCandidates(deduplicated); len(virtual) > 0 {
+			// deduplicated can be cache-backed; never append to it in place.
+			// Virtual entries go last so real torrents search first.
+			queue := make([]qbt.Torrent, 0, len(deduplicated)+len(virtual))
+			queue = append(queue, deduplicated...)
+			queue = append(queue, virtual...)
+			state.queue = queue
+		}
+	}
 	state.index = 0
-	state.skipCache = make(map[string]bool, len(deduplicated))
+	state.skipCache = make(map[string]bool, len(state.queue))
 	state.duplicateHashes = duplicates
 
 	totalEligible := 0
-	for i := range deduplicated {
-		torrent := &deduplicated[i]
+	for i := range state.queue {
+		torrent := &state.queue[i]
 		skip, err := s.shouldSkipCandidate(ctx, state, torrent)
 		if err != nil {
 			return fmt.Errorf("evaluate search candidate %s: %w", torrent.Hash, err)
@@ -10013,6 +10031,12 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	state.run.Processed++
 	s.searchMu.Unlock()
 	processedAt := time.Now().UTC()
+
+	// Virtual ensemble entries have no real torrent behind their pseudo-hash,
+	// so they cannot go through per-torrent content analysis below.
+	if isEnsembleSeasonCandidate(torrent.Hash) {
+		return s.processEnsembleSeasonCandidate(ctx, state, torrent, processedAt)
+	}
 
 	// Hybrid behavior:
 	// - Gazelle matching is attempted inside SearchTorrentMatches for every source torrent.
