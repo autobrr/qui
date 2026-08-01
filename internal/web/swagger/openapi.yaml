@@ -6714,6 +6714,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -6847,6 +6850,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:

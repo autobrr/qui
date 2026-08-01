@@ -128,12 +128,16 @@ type seasonPackPrep struct {
 
 // prepareSeasonPack runs the shared validation pipeline for check and apply.
 // Returns (nil, reason, message, nil) on expected early exit, or (nil, "", "", err) on internal error.
-func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int) (*seasonPackPrep, string, string, error) {
+func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int, autonomous bool) (*seasonPackPrep, string, string, error) {
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("load automation settings: %w", err)
 	}
-	if !settings.SeasonPackEnabled {
+	if autonomous {
+		if !settings.SeasonPackAutomationEnabled {
+			return nil, "disabled", "", nil
+		}
+	} else if !settings.SeasonPackEnabled {
 		return nil, "disabled", "", nil
 	}
 	if torrentName == "" || torrentData == "" {
@@ -198,7 +202,7 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torrentData string, instanceIDs []int) (*seasonPackPrep, string, string, error) {
 	// When torrentData is provided, use the full pipeline.
 	if torrentData != "" {
-		return s.prepareSeasonPack(ctx, torrentName, torrentData, instanceIDs)
+		return s.prepareSeasonPack(ctx, torrentName, torrentData, instanceIDs, false)
 	}
 
 	settings, err := s.GetAutomationSettings(ctx)
@@ -337,7 +341,7 @@ func (s *Service) checkSeasonPackNoThreshold(ctx context.Context, torrentName st
 // ApplySeasonPackWebhook attempts to apply a season pack by selecting the best
 // instance, assembling a link tree from local episode files, and adding the torrent.
 func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
-	prep, reason, message, prepErr := s.prepareSeasonPack(ctx, req.TorrentName, req.TorrentData, req.InstanceIDs)
+	prep, reason, message, prepErr := s.prepareSeasonPack(ctx, req.TorrentName, req.TorrentData, req.InstanceIDs, req.autonomous)
 	if prep == nil {
 		if prepErr != nil {
 			return nil, prepErr

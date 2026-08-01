@@ -419,6 +419,7 @@ type Service struct {
 
 	// test hooks
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) error
@@ -3766,7 +3767,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	}
 
 	candidateCount := len(candidatesResp.Candidates)
-	if candidateCount == 0 {
+	// Season packs with same-title episodes in the library have no direct
+	// candidates but can still be assembled by the diversion inside CrossSeed,
+	// so they must proceed to download instead of skipping.
+	seasonPackDivertible := candidatesResp.seasonPackEpisodeCandidates && settings.SeasonPackAutomationEnabled
+	if candidateCount == 0 && !seasonPackDivertible {
 		run.TorrentsSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
@@ -4347,6 +4352,15 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
 
+			// A same-title episode excluded from direct matching still marks the
+			// pack as assemblable from local episodes; the season-pack pipeline
+			// verifies coverage properly (including alt titles) before applying.
+			if isTVSeasonPack(targetRelease) && isTVEpisode(candidateRelease) &&
+				candidateRelease.Series == targetRelease.Series &&
+				s.stringNormalizer.Normalize(candidateRelease.Title) == s.stringNormalizer.Normalize(targetRelease.Title) {
+				response.seasonPackEpisodeCandidates = true
+			}
+
 			// Reject forbidden pairing: season pack (new) vs single episode (existing).
 			if reject, _ := rejectSeasonPackFromEpisode(targetRelease, candidateRelease, req.FindIndividualEpisodes); reject {
 				continue
@@ -4616,7 +4630,67 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		}
 	}
 
+	// A season pack that couldn't cross-seed directly but has same-title episodes
+	// in the library can still be assembled by the season-pack pipeline.
+	if !response.Success && candidatesResp.seasonPackEpisodeCandidates {
+		s.maybeDivertSeasonPack(ctx, req, meta.Name, response)
+	}
+
 	return response, nil
+}
+
+// maybeDivertSeasonPack hands a season pack that found no direct cross-seed match
+// to the season-pack assembly pipeline, which hardlinks local episodes and lets
+// qBittorrent download the rest. Gated by SeasonPackAutomationEnabled.
+func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedRequest, torrentName string, response *CrossSeedResponse) {
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil || settings == nil || !settings.SeasonPackAutomationEnabled {
+		return
+	}
+
+	resp, err := s.invokeSeasonPackApply(ctx, &SeasonPackApplyRequest{
+		TorrentName: torrentName,
+		TorrentData: req.TorrentData,
+		InstanceIDs: req.TargetInstanceIDs,
+		Indexer:     req.IndexerName,
+		autonomous:  true,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("torrentName", torrentName).Msg("Season pack diversion failed")
+		return
+	}
+	if resp == nil || !resp.Applied {
+		if resp != nil {
+			log.Debug().
+				Str("torrentName", torrentName).
+				Str("reason", resp.Reason).
+				Msg("Season pack diversion did not apply")
+		}
+		return
+	}
+
+	response.Success = true
+	added := InstanceCrossSeedResult{
+		InstanceID: resp.InstanceID,
+		Success:    true,
+		Status:     "added",
+		Message:    fmt.Sprintf("Season pack assembled from local episodes (%d/%d matched)", resp.MatchedEpisodes, resp.TotalEpisodes),
+	}
+	for i := range response.Results {
+		if response.Results[i].InstanceID == resp.InstanceID {
+			added.InstanceName = response.Results[i].InstanceName
+			response.Results[i] = added
+			return
+		}
+	}
+	response.Results = append(response.Results, added)
+}
+
+func (s *Service) invokeSeasonPackApply(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
+	if s.seasonPackApplier != nil {
+		return s.seasonPackApplier(ctx, req)
+	}
+	return s.ApplySeasonPackWebhook(ctx, req)
 }
 
 // AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.

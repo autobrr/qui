@@ -223,6 +223,10 @@ type FindCandidatesRequest struct {
 type FindCandidatesResponse struct {
 	SourceTorrent *TorrentInfo         `json:"source_torrent"`
 	Candidates    []CrossSeedCandidate `json:"candidates"`
+	// seasonPackEpisodeCandidates reports that the target is a season pack and the
+	// library holds same-title episodes that were excluded as direct candidates.
+	// Trigger signal for the season-pack assembly diversion; internal only.
+	seasonPackEpisodeCandidates bool
 }
 
 // FindCandidatesResponseV2 represents potential cross-seed candidates (simplified format)
@@ -548,6 +552,10 @@ type SeasonPackApplyRequest struct {
 	TorrentData string `json:"torrentData"`
 	InstanceIDs []int  `json:"instanceIds,omitempty"`
 	Indexer     string `json:"indexer,omitempty"`
+	// autonomous marks internal requests originating from qui itself (RSS/automation
+	// diversion) rather than the webhook. Gated by SeasonPackAutomationEnabled
+	// instead of SeasonPackEnabled. Not settable via JSON by design.
+	autonomous bool
 }
 
 // SeasonPackApplyResponse is the result of a season-pack apply attempt.
