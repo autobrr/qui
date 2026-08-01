@@ -52,6 +52,7 @@ type automationSettingsRequest struct {
 	RunExternalProgramID         *int                            `json:"runExternalProgramId"`
 	SkipRecheck                  bool                            `json:"skipRecheck"`
 	SeasonPackEnabled            bool                            `json:"seasonPackEnabled"`
+	SeasonPackAutomationEnabled  bool                            `json:"seasonPackAutomationEnabled"`
 	SeasonPackSkipRepackCompare  bool                            `json:"seasonPackSkipRepackCompare"`
 	SeasonPackSimplifyHDRCompare bool                            `json:"seasonPackSimplifyHdrCompare"`
 	SeasonPackSimplifyWEBCompare bool                            `json:"seasonPackSimplifyWebCompare"`
@@ -111,6 +112,7 @@ type automationSettingsPatchRequest struct {
 	// Gazelle (OPS/RED) cross-seed settings.
 	// Season pack settings
 	SeasonPackEnabled            *bool                            `json:"seasonPackEnabled,omitempty"`
+	SeasonPackAutomationEnabled  *bool                            `json:"seasonPackAutomationEnabled,omitempty"`
 	SeasonPackSkipRepackCompare  *bool                            `json:"seasonPackSkipRepackCompare,omitempty"`
 	SeasonPackSimplifyHDRCompare *bool                            `json:"seasonPackSimplifyHdrCompare,omitempty"`
 	SeasonPackSimplifyWEBCompare *bool                            `json:"seasonPackSimplifyWebCompare,omitempty"`
@@ -219,6 +221,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipRecheck == nil &&
 		r.SkipPieceBoundarySafetyCheck == nil &&
 		r.SeasonPackEnabled == nil &&
+		r.SeasonPackAutomationEnabled == nil &&
 		r.SeasonPackSkipRepackCompare == nil &&
 		r.SeasonPackSimplifyHDRCompare == nil &&
 		r.SeasonPackSimplifyWEBCompare == nil &&
@@ -356,6 +359,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	// Season pack settings
 	if patch.SeasonPackEnabled != nil {
 		settings.SeasonPackEnabled = *patch.SeasonPackEnabled
+	}
+	if patch.SeasonPackAutomationEnabled != nil {
+		settings.SeasonPackAutomationEnabled = *patch.SeasonPackAutomationEnabled
 	}
 	if patch.SeasonPackSkipRepackCompare != nil {
 		settings.SeasonPackSkipRepackCompare = *patch.SeasonPackSkipRepackCompare
@@ -975,6 +981,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
 		SeasonPackEnabled:            req.SeasonPackEnabled,
+		SeasonPackAutomationEnabled:  req.SeasonPackAutomationEnabled,
 		SeasonPackSkipRepackCompare:  req.SeasonPackSkipRepackCompare,
 		SeasonPackSimplifyHDRCompare: req.SeasonPackSimplifyHDRCompare,
 		SeasonPackSimplifyWEBCompare: req.SeasonPackSimplifyWEBCompare,

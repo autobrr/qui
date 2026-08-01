@@ -197,6 +197,7 @@ export interface CrossSeedAutomationSettings {
   orpheusApiKey: string
   // Season pack settings
   seasonPackEnabled: boolean
+  seasonPackAutomationEnabled: boolean
   seasonPackSkipRepackCompare: boolean
   seasonPackSimplifyHdrCompare: boolean
   seasonPackSimplifyWebCompare: boolean
@@ -260,6 +261,7 @@ export interface CrossSeedAutomationSettingsPatch {
   orpheusApiKey?: string
   // Season pack settings
   seasonPackEnabled?: boolean
+  seasonPackAutomationEnabled?: boolean
   seasonPackSkipRepackCompare?: boolean
   seasonPackSimplifyHdrCompare?: boolean
   seasonPackSimplifyWebCompare?: boolean
