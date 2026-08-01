@@ -217,15 +217,17 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 		automationEnabled bool
 		dryRun            bool
 		wantInvoked       bool
+		wantDownloads     int
 		wantLastMessage   string
 	}{
-		{name: "downloads and invokes CrossSeed when toggle on", automationEnabled: true, wantInvoked: true},
-		{name: "skips without download when toggle off", automationEnabled: false, wantInvoked: false},
+		{name: "downloads and invokes CrossSeed when toggle on", automationEnabled: true, wantInvoked: true, wantDownloads: 1},
+		{name: "skips without download when toggle off", automationEnabled: false, wantInvoked: false, wantDownloads: 0},
 		{
 			name:              "dry run reports divertible pack without invoking",
 			automationEnabled: true,
 			dryRun:            true,
 			wantInvoked:       false,
+			wantDownloads:     0,
 			wantLastMessage:   "Dry run: season pack could be assembled from local episodes",
 		},
 	}
@@ -246,16 +248,20 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 			}
 
 			var invoked bool
+			var downloads int
 			service := &Service{
 				instanceStore: &episodeInstanceStore{
 					instances: map[int]*models.Instance{
 						instanceID: {ID: instanceID, Name: "Test"},
 					},
 				},
-				syncManager:         sync,
-				releaseCache:        NewReleaseCache(),
-				stringNormalizer:    stringutils.NewDefaultNormalizer(),
-				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
+				syncManager:      sync,
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+					downloads++
+					return []byte("torrent"), nil
+				},
 			}
 			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
 				invoked = true
@@ -281,6 +287,7 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 			_, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{DryRun: tt.dryRun}, map[int]jackett.EnabledIndexerInfo{})
 			require.NoError(t, err)
 			require.Equal(t, tt.wantInvoked, invoked, "CrossSeed invocation mismatch")
+			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
 			if tt.wantLastMessage != "" {
 				require.NotEmpty(t, run.Results)
 				require.Equal(t, tt.wantLastMessage, run.Results[len(run.Results)-1].Message)
