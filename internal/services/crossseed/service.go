@@ -7504,6 +7504,18 @@ func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) 
 	return missing
 }
 
+// searchSourceSize returns the source-side size for the search size band.
+// Torznab advertises the full release size, so the comparison must use the
+// torrent's full size: Size only counts wanted files, which misreports every
+// torrent with deselected files while its Progress still reads 1.0. TotalSize
+// can be zero when a client predates the field, so fall back to Size.
+func searchSourceSize(t *qbt.Torrent) int64 {
+	if t.TotalSize > 0 {
+		return t.TotalSize
+	}
+	return t.Size
+}
+
 // searchResultUsable reports whether the shared search classifier accepts a
 // primary-pass result. Keeping this a boolean projection prevents alternate-query
 // scheduling from drifting from the main result loop.
@@ -8283,7 +8295,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ID-based searches, which do not rely on title text.
 	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
-			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchRelease, sourceTorrent.Name, sourceTorrent.Size, arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchRelease, sourceTorrent.Name, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altIndexerIDs) > 0 {
 				altReq := *searchReq
 				altReq.Query = altQuery
@@ -8333,9 +8345,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	exactSizeFallbackAccepted := 0
 	exactSizeHardRejected := 0
 
+	sourceSizeForSearch := searchSourceSize(sourceTorrent)
 	for _, res := range searchResults {
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		// Search has only qBittorrent's wanted source size and Torznab's advertised
+		// Search has only the source torrent's full size and Torznab's advertised
 		// candidate size. Positive exact equality may replace soft release metadata;
 		// the downloaded torrent is inspected later by the normal apply pipeline.
 		decision := s.classifySearchCandidate(searchCandidateInput{
@@ -8344,7 +8357,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			SourceName:             sourceTorrent.Name,
 			CandidateName:          res.Title,
 			SourceTitles:           arrTitles,
-			SourceSize:             sourceTorrent.Size,
+			SourceSize:             sourceSizeForSearch,
 			CandidateSize:          res.Size,
 			TolerancePercent:       tolerancePercent,
 			FindIndividualEpisodes: opts.FindIndividualEpisodes,
@@ -8380,9 +8393,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				Str("indexer", res.Indexer).
 				Str("sourceTitle", sourceTorrent.Name).
 				Str("candidateTitle", res.Title).
-				Int64("sourceSize", sourceTorrent.Size).
+				Int64("sourceSize", sourceSizeForSearch).
 				Int64("candidateSize", res.Size).
-				Int64("sizeDeltaBytes", res.Size-sourceTorrent.Size).
+				Int64("sizeDeltaBytes", res.Size-sourceSizeForSearch).
 				Str("sizeEvidence", string(decision.SizeEvidence)).
 				Str("decisionClass", string(decision.Class)).
 				Str("strictMismatchReason", decision.StrictMismatchReason).
@@ -8399,9 +8412,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Str("indexer", res.Indexer).
 			Str("sourceTitle", sourceTorrent.Name).
 			Str("candidateTitle", res.Title).
-			Int64("sourceSize", sourceTorrent.Size).
+			Int64("sourceSize", sourceSizeForSearch).
 			Int64("candidateSize", res.Size).
-			Int64("sizeDeltaBytes", res.Size-sourceTorrent.Size).
+			Int64("sizeDeltaBytes", res.Size-sourceSizeForSearch).
 			Str("sizeEvidence", string(decision.SizeEvidence)).
 			Str("decisionClass", string(decision.Class)).
 			Str("strictMismatchReason", decision.StrictMismatchReason).
