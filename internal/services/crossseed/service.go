@@ -3573,7 +3573,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		return run, ErrNoIndexersConfigured
 	}
 
-	err := s.jackettService.Recent(searchCtx, 0, resolvedIndexerIDs, func(resp *jackett.SearchResponse, err error) {
+	err := s.jackettService.Recent(searchCtx, rssFeedPageSize, 0, resolvedIndexerIDs, func(resp *jackett.SearchResponse, err error) {
 		if err != nil {
 			errCh <- err
 		} else {
@@ -3631,6 +3631,16 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 		runErr = ctx.Err()
 		return run, ctx.Err()
 	}
+
+	// One page misses announces that scrolled past the feed head between
+	// runs, so walk deeper pages per indexer until a page is fully known.
+	// The very first run has no handled boundary to walk back to, so it
+	// stays on one page instead of paging blindly into history.
+	feedPageCap := rssFeedMaxPages
+	if runs, listErr := s.automationStore.ListRuns(ctx, 2, 0); listErr != nil || len(runs) <= 1 {
+		feedPageCap = 1
+	}
+	s.pageAutomationFeed(searchCtx, searchResp, feedPageCap)
 
 	// Pre-fetch all indexer info (names and domains) for performance
 	indexerInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
