@@ -7435,6 +7435,35 @@ func alternateConnectorQuery(query string) (string, bool) {
 	return "", false
 }
 
+// alternateTitleQuery returns the first alternate title under which the same
+// content can be indexed: *arr alternate titles first (scene, localized, and
+// renamed forms), then the release's own parsed Alt title, then "AKA" segments
+// of the release name. A candidate counts only when its normalized form
+// differs from the primary query, so the retry never repeats the query that
+// already returned nothing. Returns ("", false) when no distinct alternate
+// title exists.
+func alternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
+	primary := stringutils.NormalizeForMatching(primaryQuery)
+	candidates := make([]string, 0, len(arrTitles)+3)
+	candidates = append(candidates, arrTitles...)
+	candidates = append(candidates, releaseAlt(release))
+	for _, part := range rawAKATitleParts(releaseName) {
+		parsed := rls.ParseString(part)
+		candidates = append(candidates, parsed.Title, parsed.Alt)
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		if normalized := stringutils.NormalizeForMatching(candidate); normalized == "" || normalized == primary {
+			continue
+		}
+		return candidate, true
+	}
+	return "", false
+}
+
 // effectiveSearchYear returns the year actually used by the latest search pass: 0
 // once the yearless retry has run, otherwise the originally requested year. The
 // alternate connector pass uses this so it does not re-apply a year the primary
@@ -8165,8 +8194,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	yearlessRetryRan := false
 
-	// Retry without year for single-indexer searches when the first pass returned zero.
-	if len(searchResults) == 0 && searchReq.Year > 0 && len(filteredIndexerIDs) <= 1 {
+	// Retry without year when the first pass returned zero results. The year is
+	// the narrowest primary-query constraint, so it is the first fallback to
+	// drop. Together with the alternate-title retry below this caps the
+	// zero-result fallback chain at two extra queries per search.
+	if len(searchResults) == 0 && searchReq.Year > 0 {
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Int("year", searchReq.Year).
@@ -8208,6 +8240,39 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(waitCtx.Err())
 		}
 		yearlessRetryRan = true
+	}
+
+	// Alternate-title retry: a tracker can index the same content under a
+	// different title (localized, romanized, or an *arr scene alias). When the
+	// primary query (and the yearless retry, when it ran) returned nothing,
+	// re-query once with the first distinct alternate title. A failed extra
+	// pass is not fatal: the primary search already completed with zero
+	// results, so log and continue. Skipped for ID-based searches, which do
+	// not rely on title text.
+	if len(searchResults) == 0 && !searchReq.OmitQueryForIDs {
+		if altTitle, ok := alternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name); ok {
+			log.Debug().
+				Str("torrentName", sourceTorrent.Name).
+				Str("query", searchReq.Query).
+				Str("altTitleQuery", altTitle).
+				Msg("[CROSSSEED-SEARCH] Zero results for primary title; retrying with alternate title")
+
+			altTitleReq := *searchReq
+			altTitleReq.Query = altTitle
+			altTitleReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
+			// Internal continuation of the primary search: skip history recording
+			// like the alternate connector-spelling pass below.
+			altTitleReq.SkipHistory = true
+			if altResp, altErr := s.searchOnce(waitCtx, &altTitleReq); altErr != nil {
+				log.Debug().
+					Err(altErr).
+					Str("altTitleQuery", altTitle).
+					Msg("[CROSSSEED-SEARCH] Alternate-title retry failed; continuing with primary results")
+			} else if altResp != nil {
+				searchResp = altResp
+				searchResults = altResp.Results
+			}
+		}
 	}
 
 	// Cross-tracker title-variant coverage: some trackers index a show with "&"
