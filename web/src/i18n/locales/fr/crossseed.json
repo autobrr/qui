@@ -196,6 +196,8 @@
       "description": "Lorsqu'autobrr saisit un pack de saison, qui vérifie si vous avez suffisamment de données locales pour l'injecter, puis laisse qBittorrent télécharger ce qui manque.",
       "enable": "Activer la correspondance des packs de saison",
       "enableDescription": "Autoriser autobrr à appeler qui pour vérifier et appliquer un pack de saison.",
+      "enableAutomation": "Assembler les packs de saison automatiquement",
+      "enableAutomationDescription": "Quand l'automatisation RSS ou une application cross-seed trouve un pack de saison dont vous n'avez que des épisodes, qui l'assemble à partir des épisodes locaux et laisse qBittorrent télécharger le reste.",
       "coverageThreshold": "Seuil de couverture (%)",
       "coverageThresholdDescription": "Couverture locale minimale avant que qui n'injecte un pack de saison. Si Sonarr résout la série, qui utilise le total de la saison ; sinon, il se rabat sur les fichiers jouables dans le pack. Les packs incomplets sont ajoutés en pause, revérifiés, puis repris automatiquement.",
       "matchingTitle": "Paramètres de correspondance",

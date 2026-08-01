@@ -196,6 +196,8 @@
       "description": "Quando autobrr preleva un pacchetto stagionale, qui verifica se hai già abbastanza dati locali per iniettarlo, poi lascia che qBittorrent scarichi quanto ancora manca.",
       "enable": "Abilita la corrispondenza dei pacchetti stagionali",
       "enableDescription": "Consenti ad autobrr di chiamare qui per la verifica e l'applicazione dei pacchetti stagionali.",
+      "enableAutomation": "Assembla automaticamente i pacchetti stagionali",
+      "enableAutomationDescription": "Quando l'automazione RSS o un'applicazione cross-seed trova un pacchetto stagionale di cui possiedi solo alcuni episodi, qui lo assembla dagli episodi locali e lascia che qBittorrent scarichi il resto.",
       "coverageThreshold": "Soglia di copertura (%)",
       "coverageThresholdDescription": "Copertura locale minima prima che qui inietti un pacchetto stagionale. Se Sonarr risolve la serie, qui usa il totale della stagione più grande; altrimenti ripiega sui file riproducibili nel pacchetto. I pacchetti incompleti vengono aggiunti in pausa, riverificati, poi ripresi automaticamente.",
       "matchingTitle": "Impostazioni di corrispondenza",

@@ -196,6 +196,8 @@
       "description": "当 autobrr 抓取季度包时，qui 会检查你是否已有足够的本地数据来注入它，然后让 qBittorrent 下载仍然缺失的内容。",
       "enable": "启用季度包匹配",
       "enableDescription": "允许 autobrr 调用 qui 进行季度包检查和应用。",
+      "enableAutomation": "自动组装季度包",
+      "enableAutomationDescription": "当 RSS 自动化或交叉做种应用发现你只有部分单集的季度包时，qui 会用本地单集组装该季度包，其余部分交由 qBittorrent 下载。",
       "coverageThreshold": "覆盖率阈值（%）",
       "coverageThresholdDescription": "qui 注入季度包前所需的最低本地覆盖率。如果 Sonarr 解析到该剧集，qui 会使用较大的季度总数；否则会回退到包中可播放的文件。不完整的包会以暂停状态添加，重新校验后自动恢复。",
       "matchingTitle": "匹配设置",

@@ -196,6 +196,8 @@
       "description": "When autobrr grabs a season pack, qui checks whether you already have enough local data to inject it, then lets qBittorrent download anything still missing.",
       "enable": "Enable season pack matching",
       "enableDescription": "Allow autobrr to call qui for season pack check and apply.",
+      "enableAutomation": "Assemble season packs automatically",
+      "enableAutomationDescription": "When RSS automation or a cross-seed apply finds a season pack you only have episodes of, qui assembles it from local episodes and lets qBittorrent download the rest.",
       "coverageThreshold": "Coverage threshold (%)",
       "coverageThresholdDescription": "Minimum local coverage before qui injects a season pack. If Sonarr resolves the show, qui uses the larger season total; otherwise it falls back to playable files in the pack. Incomplete packs are added paused, rechecked, then resumed automatically.",
       "matchingTitle": "Matching settings",

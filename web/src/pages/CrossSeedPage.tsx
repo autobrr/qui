@@ -123,6 +123,7 @@ interface GlobalCrossSeedSettings {
   webhookSourceExcludeTags: string[]
   // Season packs
   seasonPackEnabled: boolean
+  seasonPackAutomationEnabled: boolean
   seasonPackSkipRepackCompare: boolean
   seasonPackSimplifyHdrCompare: boolean
   seasonPackSimplifyWebCompare: boolean
@@ -186,6 +187,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipPieceBoundarySafetyCheck: true,
   // Season packs
   seasonPackEnabled: false,
+  seasonPackAutomationEnabled: false,
   seasonPackSkipRepackCompare: true,
   seasonPackSimplifyHdrCompare: false,
   seasonPackSimplifyWebCompare: false,
@@ -1130,6 +1132,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
         // Season packs
         seasonPackEnabled: settings.seasonPackEnabled ?? false,
+        seasonPackAutomationEnabled: settings.seasonPackAutomationEnabled ?? false,
         seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
         seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
         seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
@@ -1229,6 +1232,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       // Season packs
       seasonPackEnabled: settings.seasonPackEnabled ?? false,
+      seasonPackAutomationEnabled: settings.seasonPackAutomationEnabled ?? false,
       seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
       seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
       seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
@@ -1275,6 +1279,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
       // Season packs
       seasonPackEnabled: globalSource.seasonPackEnabled,
+      seasonPackAutomationEnabled: globalSource.seasonPackAutomationEnabled,
       seasonPackSkipRepackCompare: globalSource.seasonPackSkipRepackCompare,
       seasonPackSimplifyHdrCompare: globalSource.seasonPackSimplifyHdrCompare,
       seasonPackSimplifyWebCompare: globalSource.seasonPackSimplifyWebCompare,
@@ -2917,6 +2922,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackEnabled: !!value }))}
                   />
                 </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="season-pack-automation-enabled" className="font-medium">{t("rules.seasonPack.enableAutomation")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("rules.seasonPack.enableAutomationDescription")}</p>
+                  </div>
+                  <Switch
+                    id="season-pack-automation-enabled"
+                    checked={globalSettings.seasonPackAutomationEnabled}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackAutomationEnabled: !!value }))}
+                  />
+                </div>
                 <div className="space-y-2 pt-3 border-t border-border/50">
                   <Label htmlFor="season-pack-threshold">{t("rules.seasonPack.coverageThreshold")}</Label>
                   <Input
@@ -2955,7 +2971,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-skip-repack-compare"
                       checked={globalSettings.seasonPackSkipRepackCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipRepackCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2967,7 +2983,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-simplify-hdr-compare"
                       checked={globalSettings.seasonPackSimplifyHdrCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyHdrCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2979,7 +2995,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-simplify-web-compare"
                       checked={globalSettings.seasonPackSimplifyWebCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyWebCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2991,7 +3007,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-skip-year-compare"
                       checked={globalSettings.seasonPackSkipYearCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipYearCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                 </div>
@@ -3006,7 +3022,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
                       placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
                   </div>
@@ -3020,7 +3036,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
                       placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
                   </div>
@@ -3033,7 +3049,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.seasonPackCategoryRules}
                     onChange={rules => setGlobalSettings(prev => ({ ...prev, seasonPackCategoryRules: rules }))}
                     categoryMetadata={webhookSourceMetadata?.categories ?? {}}
-                    disabled={!globalSettings.seasonPackEnabled}
+                    disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                   />
                   <div className="space-y-2">
                     <Label htmlFor="season-pack-category">{t("rules.seasonPack.categoryRouting.fallbackLabel")}</Label>
@@ -3045,7 +3061,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       placeholder={globalSettings.seasonPackEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
                       className="max-w-sm"
                       creatable
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                     <p className="text-xs text-muted-foreground">
                       {t("rules.seasonPack.categoryRouting.fallbackDescriptionBefore")}<code>tv-hd</code>{t("rules.seasonPack.categoryRouting.fallbackDescriptionAfter")}
