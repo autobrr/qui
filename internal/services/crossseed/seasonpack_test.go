@@ -474,11 +474,10 @@ func TestCheckSeasonPackWebhook_RejectsSxxExxLocalsAgainstAbsolutePack(t *testin
 	require.Equal(t, "no_matches", resp.Reason)
 }
 
-// TestFixC_CRCollection_CheckAndApplyBothReject pins fix C: the pack season is
-// stamped onto a seasonless local BEFORE the release match, so the seasonless-only
-// collection tolerance (unknownSeasonTV) can no longer pass at check while apply
-// (which matches stamped file releases) rejects. Pack carries CR, locals do not:
-// both stages must reject. Reverting the stamp-before-match ordering turns this red.
+// TestFixC_CRCollection_CheckAndApplyBothReject pins the check/apply agreement
+// from fix C: a collection conflict must reject at BOTH stages, never pass at
+// check and fail at apply. Pack carries CR, locals carry AMZN: both stages must
+// reject the conflicting service tags.
 func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 	packName := "Cool.Show.S03.1080p.CR.WEB-DL.x264-GRP"
 	packFiles := []string{
@@ -495,12 +494,12 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 		UseHardlinks:             true,
 		HardlinkBaseDir:          t.TempDir(),
 	}
-	// Locals lack the CR collection tag.
+	// Locals carry a conflicting AMZN collection tag.
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e25", Name: "Cool.Show.-.25.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e26", Name: "Cool.Show.-.26.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e27", Name: "Cool.Show.-.27.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e28", Name: "Cool.Show.-.28.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e25", Name: "Cool.Show.-.25.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e26", Name: "Cool.Show.-.26.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e27", Name: "Cool.Show.-.27.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e28", Name: "Cool.Show.-.28.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -520,7 +519,7 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})
 	require.NoError(t, err)
-	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals do not")
+	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals have AMZN")
 
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
