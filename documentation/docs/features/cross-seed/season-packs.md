@@ -1,12 +1,14 @@
 ---
 sidebar_position: 7
 title: Season Packs
-description: Assemble season packs from individual episodes using autobrr webhooks.
+description: Assemble season packs from individual episodes, through autobrr webhooks or automatic cross-seed assembly.
 ---
 
 # Season Packs
 
 qui can assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for completed, release-compatible episodes and, if enough local data is present, builds a linked directory tree, adds the torrent, and lets qBittorrent download anything still missing.
+
+The webhook flow below is one of two triggers. The other is [Automatic Assembly](#automatic-assembly), which needs no autobrr filter.
 
 ## How It Works
 
@@ -25,6 +27,24 @@ qui can assemble season-pack torrents from individual episodes you already seed.
 7. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent
 9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After recheck, qui resumes the torrent when qBittorrent reports progress at or above your configured season-pack coverage threshold. If recheck finishes below that threshold, qui leaves the torrent paused for manual review. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
+
+## Automatic Assembly
+
+qui can also assemble season packs without autobrr webhooks. To turn this on, enable **Assemble season packs automatically** in **Cross-Seed > Rules > Season packs**. The switch is off by default and is independent of the webhook feature.
+
+When the switch is on, qui diverts a season pack into the assembly pipeline when all of these conditions are true:
+
+- RSS automation, an autobrr cross-seed action, or a manual apply sends the season pack to cross-seed
+- You seed episodes of the same show and season
+- No direct cross-seed match applies
+
+The diverted pack then goes through the same steps as a webhook apply: qui computes coverage, links the matched episodes, and lets qBittorrent download the rest.
+
+Automatic assembly uses the same settings as the webhook flow: the coverage threshold, the matching settings, category routing, tags, and metadata providers. Each attempt is recorded in the [Activity](#activity) panel.
+
+:::note
+Automatic assembly reacts to season packs that arrive through cross-seed. Library searches do not find season packs for your seeded episodes.
+:::
 
 ## Coverage Model
 
@@ -268,7 +288,7 @@ When `instanceIds` is omitted or contains multiple instances:
 
 ## Activity
 
-Each check and apply request records a season-pack run. qui keeps the most recent 200 runs. Recent runs are shown in **Cross-Seed > Rules > Season packs**. The panel shows the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
+Each check request, apply request, and automatic assembly attempt records a season-pack run. qui keeps the most recent 200 runs. Recent runs are shown in **Cross-Seed > Rules > Season packs**. The panel shows the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
 
 You can also query recent runs directly:
 
