@@ -1153,7 +1153,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantMatchType:      "metadata",
 		},
 		{
-			name: "tv webhook missing collection stays strict for non-hdb even when group matches",
+			name: "tv webhook tolerates missing incoming collection when group matches",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-NTb",
@@ -1166,12 +1166,13 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					Progress: 1.0,
 				},
 			},
-			wantCanCrossSeed:   false,
-			wantMatchCount:     0,
-			wantRecommendation: "skip",
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
 		},
 		{
-			name: "tv webhook missing collection still requires matching group or site",
+			name: "tv webhook tolerates missing incoming collection without a group anchor",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264",
@@ -1184,9 +1185,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					Progress: 1.0,
 				},
 			},
-			wantCanCrossSeed:   false,
-			wantMatchCount:     0,
-			wantRecommendation: "skip",
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
 		},
 		{
 			name: "movie webhook tolerates missing incoming collection for hdb when group matches",
@@ -1208,7 +1210,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantMatchType:      "metadata",
 		},
 		{
-			name: "movie webhook missing collection still requires matching group or site",
+			name: "movie webhook tolerates missing incoming collection without a group anchor",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "Sample Movie 2024 1080p WEB-DL DD+5.1 H.264",
@@ -1221,9 +1223,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					Progress: 1.0,
 				},
 			},
-			wantCanCrossSeed:   false,
-			wantMatchCount:     0,
-			wantRecommendation: "skip",
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
 		},
 		{
 			name: "pending match when torrent still downloading",

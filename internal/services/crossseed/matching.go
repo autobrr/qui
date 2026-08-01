@@ -152,7 +152,7 @@ func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rl
 	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateFormatAndCodec(source, candidate, isTV); !ok {
+	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
 		return false, reason
 	}
 	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
@@ -408,7 +408,7 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (
 // rather than an inline literal.
 const sourceMismatchReason = "source mismatch"
 
-func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bool) (bool, string) {
+func (s *Service) validateFormatAndCodec(source, candidate *rls.Release) (bool, string) {
 	normalizer := normalizerForService(s)
 
 	// Source must be compatible if both are present.
@@ -443,30 +443,15 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bo
 		}
 	}
 
-	// Collection must match if either is present (NF vs AMZN vs Criterion are different sources)
-	// If one release has a collection/service tag and the other doesn't, they cannot match
-	sourceCollection := normalizer.Normalize((source.Collection))
-	candidateCollection := normalizer.Normalize((candidate.Collection))
-	if sourceCollection != candidateCollection {
-		sourceMissingCollection := sourceCollection == ""
-		candidateMissingCollection := candidateCollection == ""
-		unknownSeasonTV := isTV && (source.Series == 0 || candidate.Series == 0)
-		// Bracket-group anime names ([SubsPlease] Show S3 - 02) never carry the
-		// streaming-service tag even when the season is known, so a missing
-		// collection on that side says nothing about the source. rls parses the
-		// fansub group into Site with Group left empty; site-tagged scene names
-		// ([TGx]Show...-GROUP) set both, and those keep the strict check.
-		bracketAnimeStyle := func(r *rls.Release) bool {
-			return r.Site != "" && r.Group == ""
-		}
-		animeStyleMissingCollection := isTV &&
-			((sourceMissingCollection && bracketAnimeStyle(source)) ||
-				(candidateMissingCollection && bracketAnimeStyle(candidate)))
-		missingCollectionAllowed := (unknownSeasonTV || animeStyleMissingCollection) &&
-			(sourceMissingCollection || candidateMissingCollection)
-		if !missingCollectionAllowed {
-			return false, "collection mismatch"
-		}
+	// Collection must match when both names carry a collection/service tag
+	// (NF vs AMZN vs Criterion are different masters). Trackers routinely drop
+	// the service tag from otherwise identical names, so a tag on only one
+	// side is not evidence of a different master; the per-file size comparison
+	// downstream catches real mismatches before anything is injected.
+	sourceCollection := normalizer.Normalize(source.Collection)
+	candidateCollection := normalizer.Normalize(candidate.Collection)
+	if sourceCollection != "" && candidateCollection != "" && sourceCollection != candidateCollection {
+		return false, "collection mismatch"
 	}
 
 	// Codec must match if both are present (AVC vs HEVC produce different files).
@@ -479,11 +464,14 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bo
 		}
 	}
 
-	// HDR must match if either is present (HDR vs SDR are different encodes)
-	// If one release has HDR metadata and the other doesn't, they cannot match
+	// HDR must match when both names carry HDR metadata (HDR vs SDR are
+	// different encodes). Trackers routinely drop HDR tags from otherwise
+	// identical names, so a tag on only one side is not evidence of a
+	// different encode; the per-file size comparison downstream catches real
+	// mismatches before anything is injected.
 	sourceHDR := joinNormalizedHDRSlice(source.HDR)
 	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
-	if sourceHDR != candidateHDR {
+	if sourceHDR != "" && candidateHDR != "" && sourceHDR != candidateHDR {
 		return false, "hdr mismatch"
 	}
 
@@ -580,82 +568,6 @@ func validateReleaseVariants(source, candidate *rls.Release) (bool, string) {
 	}
 
 	return true, ""
-}
-
-const hdbitsAutobrrIndexer = "hdb"
-
-func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool, indexer string) bool {
-	if s.releasesMatch(source, candidate, findIndividualEpisodes) {
-		return true
-	}
-
-	if !canUseWebhookCollectionFallback(source, candidate, indexer, s.stringNormalizer) {
-		return false
-	}
-
-	sourceWithCollection := *source
-	sourceWithCollection.Collection = candidate.Collection
-
-	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
-}
-
-func canUseWebhookCollectionFallback(
-	source, candidate *rls.Release,
-	indexer string,
-	normalizer *stringutils.Normalizer[string, string],
-) bool {
-	if !supportsWebhookCollectionFallback(indexer) {
-		return false
-	}
-
-	if source == nil || candidate == nil {
-		return false
-	}
-
-	// Some indexers can announce generic WEB-DL titles without the collection/
-	// service tag while the existing torrent keeps the canonical source service
-	// (for example "DSNP"). Only retry when the incoming title is missing
-	// Collection and the group or site already anchors the release identity.
-	if source.Collection != "" || candidate.Collection == "" {
-		return false
-	}
-
-	if !supportsWebhookCollectionFallbackContent(source, candidate) {
-		return false
-	}
-
-	return hasNonEmptyNormalizedMatch(normalizer, source.Group, candidate.Group) ||
-		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
-}
-
-func supportsWebhookCollectionFallback(indexer string) bool {
-	switch indexer {
-	case hdbitsAutobrrIndexer:
-		return true
-	default:
-		return false
-	}
-}
-
-func supportsWebhookCollectionFallbackContent(source, candidate *rls.Release) bool {
-	if source == nil || candidate == nil {
-		return false
-	}
-
-	if source.Series > 0 && candidate.Series > 0 {
-		return true
-	}
-
-	return isWebSource(normalizeSource(source.Source)) && isWebSource(normalizeSource(candidate.Source))
-}
-
-func hasNonEmptyNormalizedMatch(normalizer *stringutils.Normalizer[string, string], left, right string) bool {
-	if normalizer == nil {
-		normalizer = stringutils.DefaultNormalizer
-	}
-
-	left = normalizer.Normalize(left)
-	return left != "" && left == normalizer.Normalize(right)
 }
 
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
