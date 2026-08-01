@@ -596,6 +596,8 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	})
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, "hdr mismatch", decision.StrictMismatchReason)
+	require.ElementsMatch(t, []string{"collection", "hdr"}, decision.RelaxedDifferences)
 
 	fallbackRequest := func() *FindCandidatesRequest {
 		return &FindCandidatesRequest{
