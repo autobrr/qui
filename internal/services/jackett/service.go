@@ -866,12 +866,18 @@ func (s *Service) GetIndexers(ctx context.Context) (*IndexersResponse, error) {
 	}, nil
 }
 
-// Recent fetches the latest releases across selected indexers without a search query.
-func (s *Service) Recent(ctx context.Context, limit int, indexerIDs []int, callback func(*SearchResponse, error)) error {
+// Recent fetches the latest releases across selected indexers without a search
+// query. A positive offset requests a deeper feed page; every selected indexer
+// receives the same offset, so callers that page indexers with different
+// positions must group them per offset.
+func (s *Service) Recent(ctx context.Context, limit, offset int, indexerIDs []int, callback func(*SearchResponse, error)) error {
 	params := url.Values{}
 	params.Set("t", "search")
 	if limit > 0 {
 		params.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		params.Set("offset", strconv.Itoa(offset))
 	}
 
 	indexersToSearch, err := s.resolveIndexerSelection(ctx, indexerIDs)

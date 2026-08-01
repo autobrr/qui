@@ -3239,7 +3239,7 @@ func TestRecentSurfacesTotalIndexerFailure(t *testing.T) {
 
 	respCh := make(chan *SearchResponse, 1)
 	errCh := make(chan error, 1)
-	if err := service.Recent(context.Background(), 0, nil, func(resp *SearchResponse, err error) {
+	if err := service.Recent(context.Background(), 0, 0, nil, func(resp *SearchResponse, err error) {
 		if err != nil {
 			errCh <- err
 		} else {
@@ -3284,7 +3284,7 @@ func TestRecentPartialCoverageMarksPartial(t *testing.T) {
 
 	respCh := make(chan *SearchResponse, 1)
 	errCh := make(chan error, 1)
-	if err := service.Recent(context.Background(), 0, nil, func(resp *SearchResponse, err error) {
+	if err := service.Recent(context.Background(), 0, 0, nil, func(resp *SearchResponse, err error) {
 		if err != nil {
 			errCh <- err
 		} else {
