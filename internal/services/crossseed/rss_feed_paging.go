@@ -95,6 +95,11 @@ func (s *Service) pageAutomationFeed(ctx context.Context, firstPage *jackett.Sea
 		seen, _, err := s.automationStore.HasProcessedFeedItem(ctx, guid, indexerID)
 		if err != nil {
 			// Unknown store state must not extend paging.
+			log.Debug().
+				Err(err).
+				Str("guid", guid).
+				Int("indexerID", indexerID).
+				Msg("[RSS] Feed-item store check failed; not extending paging")
 			return true
 		}
 		return seen
@@ -130,6 +135,7 @@ func (s *Service) pageAutomationFeed(ctx context.Context, firstPage *jackett.Sea
 
 			fresh, cont := feedPageContinuation(resp.Results, collected, handled)
 			firstPage.Results = append(firstPage.Results, fresh...)
+			firstPage.Total = len(firstPage.Results)
 
 			pageCounts := make(map[int]int)
 			for _, result := range resp.Results {
