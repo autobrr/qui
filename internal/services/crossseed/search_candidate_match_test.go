@@ -624,7 +624,9 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.NotEmpty(t, fallbackResponse.Candidates[0].MatchType)
 
 	unrecordedDifferenceRequest := fallbackRequest()
-	unrecordedDifferenceRequest.SearchRelaxedDifferences = []string{"hdr"}
+	// The live strict mismatch for this pair is "hdr"; recording only an
+	// unrelated relaxation must keep the apply stage strict.
+	unrecordedDifferenceRequest.SearchRelaxedDifferences = []string{"collection"}
 	unrecordedDifferenceResponse, err := service.FindCandidates(context.Background(), unrecordedDifferenceRequest)
 	require.NoError(t, err)
 	require.Empty(t, unrecordedDifferenceResponse.Candidates, "fallback must retain the search-recorded relaxation")

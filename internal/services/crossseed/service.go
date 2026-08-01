@@ -12543,9 +12543,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				continue
 			}
 
-			// Webhook matching is strict by default, with one narrow retry for
-			// anchored releases whose incoming title omits the collection/service tag.
-			if !s.releasesMatchWebhook(incomingRelease, existingRelease, findIndividualEpisodes, req.Indexer) {
+			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
 				continue
 			}
 
