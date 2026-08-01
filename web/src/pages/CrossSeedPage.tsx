@@ -3021,7 +3021,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       value={globalSettings.seasonPackTvdbApiKey}
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
                       disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
@@ -3035,7 +3035,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       value={globalSettings.seasonPackTvdbPin}
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
                       disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
@@ -3058,7 +3058,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       selected={globalSettings.seasonPackCategory ? [globalSettings.seasonPackCategory] : []}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: values[0] ?? "" }))}
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
                       className="max-w-sm"
                       creatable
                       disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}

@@ -3787,12 +3787,16 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	if opts.DryRun {
 		run.TorrentsSkipped++
+		dryRunMessage := fmt.Sprintf("Dry run: %d viable candidates", candidateCount)
+		if candidateCount == 0 && seasonPackDivertible {
+			dryRunMessage = "Dry run: season pack could be assembled from local episodes"
+		}
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
 			Success:      true,
 			Status:       "dry-run",
-			Message:      fmt.Sprintf("Dry run: %d viable candidates", candidateCount),
+			Message:      dryRunMessage,
 		})
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
@@ -4682,6 +4686,9 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 			response.Results[i] = added
 			return
 		}
+	}
+	if inst, instErr := s.instanceStore.Get(ctx, resp.InstanceID); instErr == nil && inst != nil {
+		added.InstanceName = inst.Name
 	}
 	response.Results = append(response.Results, added)
 }

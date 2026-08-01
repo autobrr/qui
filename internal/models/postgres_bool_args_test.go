@@ -439,10 +439,13 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 	settings := DefaultCrossSeedAutomationSettings()
 	settings.RedactedAPIKey = "redacted-key"
 	settings.OrpheusAPIKey = "orpheus-key"
+	settings.SeasonPackAutomationEnabled = true
 
-	_, err = store.UpsertSettings(context.Background(), settings)
+	stored, err := store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
 	require.Len(t, insertArgs, 51)
+	require.Equal(t, 1, insertArgs[41], "season_pack_automation_enabled should round-trip as int 1")
+	require.True(t, stored.SeasonPackAutomationEnabled, "season_pack_automation_enabled should survive the round trip")
 
 	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 48}
 	for _, idx := range boolIndexes {

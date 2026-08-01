@@ -169,6 +169,42 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 	}
 }
 
+// TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend covers the mixed-instance
+// case: the diverted instance has no prior entry in response.Results (direct
+// candidates existed on another instance), so the appended result must resolve
+// the instance name via the store instead of staying blank.
+func TestMaybeDivertSeasonPack_ResolvesInstanceNameOnAppend(t *testing.T) {
+	t.Parallel()
+
+	settings := models.DefaultCrossSeedAutomationSettings()
+	settings.SeasonPackAutomationEnabled = true
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{
+			1: {ID: 1, Name: "main"},
+		}},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return settings, nil
+		},
+		seasonPackApplier: func(context.Context, *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
+			return &SeasonPackApplyResponse{Applied: true, InstanceID: 1, MatchedEpisodes: 2, TotalEpisodes: 3}, nil
+		},
+	}
+
+	response := &CrossSeedResponse{
+		Results: []InstanceCrossSeedResult{
+			{InstanceID: 2, InstanceName: "other", Success: false, Status: "no_match"},
+		},
+	}
+	svc.maybeDivertSeasonPack(context.Background(), &CrossSeedRequest{}, "Show.Title.S01.1080p.WEB.H264-GRP", response)
+
+	require.True(t, response.Success)
+	require.Len(t, response.Results, 2)
+	require.Equal(t, 1, response.Results[1].InstanceID)
+	require.Equal(t, "main", response.Results[1].InstanceName)
+	require.Equal(t, "added", response.Results[1].Status)
+}
+
 // TestProcessAutomationCandidate_DownloadsPackForDiversion covers the RSS flow:
 // zero direct candidates normally skip before downloading the torrent, but when
 // the library holds same-title episodes and the automation toggle is on, the item
@@ -179,10 +215,19 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 	tests := []struct {
 		name              string
 		automationEnabled bool
+		dryRun            bool
 		wantInvoked       bool
+		wantLastMessage   string
 	}{
-		{"downloads and invokes CrossSeed when toggle on", true, true},
-		{"skips without download when toggle off", false, false},
+		{name: "downloads and invokes CrossSeed when toggle on", automationEnabled: true, wantInvoked: true},
+		{name: "skips without download when toggle off", automationEnabled: false, wantInvoked: false},
+		{
+			name:              "dry run reports divertible pack without invoking",
+			automationEnabled: true,
+			dryRun:            true,
+			wantInvoked:       false,
+			wantLastMessage:   "Dry run: season pack could be assembled from local episodes",
+		},
 	}
 
 	for _, tt := range tests {
@@ -233,9 +278,13 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 				Size:        3 << 30,
 			}
 
-			_, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+			_, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{DryRun: tt.dryRun}, map[int]jackett.EnabledIndexerInfo{})
 			require.NoError(t, err)
 			require.Equal(t, tt.wantInvoked, invoked, "CrossSeed invocation mismatch")
+			if tt.wantLastMessage != "" {
+				require.NotEmpty(t, run.Results)
+				require.Equal(t, tt.wantLastMessage, run.Results[len(run.Results)-1].Message)
+			}
 		})
 	}
 }
