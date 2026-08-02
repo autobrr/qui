@@ -3868,6 +3868,9 @@ paths:
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
+                skipIndividualEpisodes:
+                  type: boolean
+                  description: When true, the run does not search single TV episodes. Groups of episodes still start season pack searches when season pack automation is on.
       responses:
         '202':
           description: Search run started

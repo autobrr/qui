@@ -43,7 +43,7 @@ The diverted pack then goes through the same steps as a webhook apply: qui compu
 Automatic assembly uses the same settings as the webhook flow: the coverage threshold, the matching settings, category routing, tags, and metadata providers. Each attempt is recorded in the [Activity](#activity) panel.
 
 :::note
-Automatic assembly also extends library search runs. When a show has three or more seeded episodes of one season and no seeded pack, the run searches your indexers for the season pack and assembles a match through the same pipeline.
+Automatic assembly also extends library search runs. When a show has three or more seeded episodes of one season and no seeded pack, the run searches your indexers for the season pack and assembles a match through the same pipeline. To search for season packs without single-episode searches, enable **Skip individual episodes** in the Library Scan form.
 :::
 
 ## Coverage Model
