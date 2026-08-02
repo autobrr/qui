@@ -2620,6 +2620,29 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 	}
 
 	currentQuery := strings.TrimSpace(params["q"])
+	if prowlarrStructuredTVSupported(idx.Capabilities, params) {
+		// The indexer's caps advertise native season/ep params, so let Prowlarr
+		// translate them per-indexer. Folding an SxxEyy token into q returns zero
+		// results on API-based indexers (e.g. BTN) whose free-text search matches
+		// release names (discussion #2036).
+		if currentQuery == "" && !hasTorznabIDParams(params) && meta != nil {
+			restored := strings.TrimSpace(meta.originalQuery)
+			if restored == "" {
+				restored = strings.TrimSpace(meta.releaseName)
+			}
+			if restored != "" {
+				params["q"] = restored
+			}
+		}
+
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer_name", idx.Name).
+			Str("tv_token", token).
+			Msg("Keeping structured TV season/episode parameters supported by indexer caps")
+		return
+	}
+
 	if hasTorznabIDParams(params) {
 		// IDs identify the series; q only needs the season/episode token. Never append a
 		// resolution token here: indexers whose free-text search matches the series name
@@ -2666,6 +2689,19 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 
 func hasTorznabIDParams(params map[string]string) bool {
 	return params["imdbid"] != "" || params["tvdbid"] != "" || params["tmdbid"] != "" || params["tvmazeid"] != ""
+}
+
+// prowlarrStructuredTVSupported reports whether the indexer's advertised caps cover
+// every structured TV param present in the request. Empty caps (never fetched) fail
+// the check, keeping the token workaround as the fallback.
+func prowlarrStructuredTVSupported(capabilities []string, params map[string]string) bool {
+	if strings.TrimSpace(params["season"]) != "" && !supportsAnyCapability(capabilities, []string{"tv-search-season"}) {
+		return false
+	}
+	if strings.TrimSpace(params["ep"]) != "" && !supportsAnyCapability(capabilities, []string{"tv-search-ep"}) {
+		return false
+	}
+	return true
 }
 
 func prowlarrTVToken(seasonStr, episodeStr string) string {
