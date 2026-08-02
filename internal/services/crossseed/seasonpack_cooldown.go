@@ -29,7 +29,12 @@ var releaseNameKeyRe = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 // ("Show.Title.S01...DDP5.1...") key identically: cooldowns are recorded
 // under the latter but checked against the former, and indexers restyle
 // separators inside tokens too (BeyondHD's "DDP 5.1"), so separators are
-// removed rather than collapsed.
+// removed rather than collapsed. That mapping is many-to-one by design:
+// distinct releases with the same letter-digit sequence under different
+// boundaries would share a key, which at worst skips one attempt for one
+// cooldown window. Real variants differ by tokens (group, codec, REPACK),
+// while same-release respacing recurs hourly in feeds, so the collapse is
+// the cheaper side of the trade.
 func canonicalReleaseNameKey(name string) string {
 	return releaseNameKeyRe.ReplaceAllString(strings.ToLower(name), "")
 }

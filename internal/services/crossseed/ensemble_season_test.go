@@ -505,6 +505,10 @@ func TestCanonicalReleaseNameKey(t *testing.T) {
 	require.NotEqual(t,
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-GRP"),
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-OTHER"))
+	// Documented tradeoff, not a bug: the mapping is many-to-one, so names
+	// differing only in token boundaries collide. Accepted because real
+	// variants differ by tokens and a collision costs one cooldown window.
+	require.Equal(t, canonicalReleaseNameKey("ab-c"), canonicalReleaseNameKey("a-bc"))
 	require.Equal(t, "packfail:showtitles011080pwebh264grp", seasonPackFailKey("Show.Title.S01.1080p.WEB.H264-GRP"))
 
 	// Names with no ASCII alphanumerics must not all collapse onto one key.
