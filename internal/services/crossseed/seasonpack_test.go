@@ -97,24 +97,43 @@ type seasonPackTestFixture struct {
 	torrentData string
 }
 
+const seasonPackFixtureName = "Cool.Show.S01.1080p.WEB.x264-GRP"
+
+var seasonPackFixtureFiles = []string{
+	"Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv",
+	"Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv",
+	"Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv",
+	"Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv",
+}
+
 func newSeasonPackFixture(t *testing.T) seasonPackTestFixture {
 	t.Helper()
 
-	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
-	packFiles := []string{
-		"Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv",
-		"Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv",
-		"Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv",
-		"Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv",
-	}
-
-	torrentBytes := createTestTorrent(t, packName, packFiles, 262144)
-	torrentData := base64.StdEncoding.EncodeToString(torrentBytes)
+	torrentBytes := createTestTorrent(t, seasonPackFixtureName, seasonPackFixtureFiles, 262144)
 
 	return seasonPackTestFixture{
-		packName:    packName,
-		packFiles:   packFiles,
-		torrentData: torrentData,
+		packName:    seasonPackFixtureName,
+		packFiles:   seasonPackFixtureFiles,
+		torrentData: base64.StdEncoding.EncodeToString(torrentBytes),
+	}
+}
+
+// alignedSeasonPackFixture builds a pack whose files are exactly one piece each,
+// so a demoted (pending) episode shares no pieces with linked neighbors and the
+// hardlink piece-boundary safety check passes.
+func alignedSeasonPackFixture(t *testing.T) seasonPackTestFixture {
+	t.Helper()
+
+	const pieceLen = 64
+	contents := make(map[string][]byte, len(seasonPackFixtureFiles))
+	for _, name := range seasonPackFixtureFiles {
+		contents[name] = bytes.Repeat([]byte("x"), pieceLen)
+	}
+
+	return seasonPackTestFixture{
+		packName:    seasonPackFixtureName,
+		packFiles:   seasonPackFixtureFiles,
+		torrentData: base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, seasonPackFixtureName, pieceLen, contents)),
 	}
 }
 
@@ -1633,8 +1652,76 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 	}
 }
 
-func TestApplySeasonPackWebhook_RejectsSizeMismatchedEpisodeFiles(t *testing.T) {
-	fix := newSeasonPackFixture(t)
+// A size-mismatched episode file is demoted to missing instead of failing the
+// whole pack (the Hotellet 18/20 case): the pack applies paused with the bad
+// episode left pending for download, and the mismatched file is never linked.
+func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing.T) {
+	fix := alignedSeasonPackFixture(t)
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+	sm.files[normalizeHash("e03")][0].Size++
+
+	var capturedPlan *hardlinktree.TreePlan
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+			capturedPlan = plan
+			return nil
+		},
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Applied)
+	require.Equal(t, 3, resp.MatchedEpisodes)
+	require.InDelta(t, 0.75, resp.Coverage, 0.001)
+
+	require.NotNil(t, capturedPlan)
+	require.Len(t, capturedPlan.Files, 3)
+	for _, file := range capturedPlan.Files {
+		require.NotContains(t, file.TargetPath, "S01E03")
+	}
+
+	require.Len(t, sm.addCalls, 1)
+	require.Equal(t, "true", sm.addCalls[0].options["paused"])
+	require.Len(t, sm.bulkCalls, 1)
+	require.Equal(t, "recheck", sm.bulkCalls[0].action)
+}
+
+// On an unaligned pack (files share pieces) in hardlink mode, the piece-boundary
+// safety check vetoes a demotion: downloading the pending file would write into
+// pieces shared with linked (hardlinked) neighbors and corrupt seeded data.
+func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *testing.T) {
+	fix := newSeasonPackFixture(t) // files share the single 256 KiB piece
 	baseDir := t.TempDir()
 
 	inst := &models.Instance{
@@ -1677,6 +1764,57 @@ func TestApplySeasonPackWebhook_RejectsSizeMismatchedEpisodeFiles(t *testing.T) 
 	require.NoError(t, err)
 	require.False(t, resp.Applied)
 	require.Equal(t, "layout_mismatch", resp.Reason)
+	require.Contains(t, resp.Message, "unsafe piece boundary")
+	require.Empty(t, sm.addCalls)
+}
+
+// When demotions push resolved coverage below the threshold, the apply drifts
+// instead of linking a pack the instance can no longer cover.
+func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t *testing.T) {
+	fix := alignedSeasonPackFixture(t)
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+	sm.files[normalizeHash("e03")][0].Size++
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 1.0),
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Applied)
+	require.Equal(t, "drifted", resp.Reason)
+	require.Contains(t, resp.Message, "3/4")
 	require.Empty(t, sm.addCalls)
 }
 
@@ -1850,7 +1988,8 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 	require.Len(t, sm.bulkCalls, 1)
 	require.Equal(t, "recheck", sm.bulkCalls[0].action)
 	req := <-svc.recheckResumeChan
-	require.InDelta(t, 0.75, req.threshold, 0.0001)
+	// Resume gate = linked byte fraction (53-byte episode of a 64-byte pack), with slack.
+	require.InDelta(t, 53.0/64.0*seasonPackResumeSlack, req.threshold, 0.0001)
 }
 
 func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
@@ -1973,7 +2112,8 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.InDelta(t, 0.75, pending.threshold, 0.001)
+		// Resume gate = linked byte fraction (3 of 4 equal episodes), with slack.
+		require.InDelta(t, 0.75*seasonPackResumeSlack, pending.threshold, 0.001)
 	default:
 		t.Fatal("expected season pack apply to queue recheck resume")
 	}
@@ -2037,7 +2177,8 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.InDelta(t, 0.75, pending.threshold, 0.0001)
+		// Resume gate = linked byte fraction (64-byte episode of a 75-byte pack), with slack.
+		require.InDelta(t, 64.0/75.0*seasonPackResumeSlack, pending.threshold, 0.0001)
 	default:
 		t.Fatal("expected safe extras flow to queue recheck resume")
 	}
