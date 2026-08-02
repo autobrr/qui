@@ -25,7 +25,7 @@ The webhook flow below is one of two triggers. The other is [Automatic Assembly]
    - `200 OK` - coverage meets the threshold, ready to apply
    - `404 Not Found` - local coverage is too low, the release is not a season pack, or the feature is disabled
 7. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`
-8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. A local episode file that does not byte-match its pack file is never linked; it is treated as missing and downloaded instead, as long as coverage still meets the threshold
+8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. qui never links a local episode file whose size or release details differ from its pack file. qui treats that episode as missing and downloads it instead. If these demotions drop coverage below the threshold, the apply fails as `drifted`
 9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After recheck, qui resumes the torrent when qBittorrent reports progress at or above your configured season-pack coverage threshold. If recheck finishes below that threshold, qui leaves the torrent paused for manual review. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
 ## Automatic Assembly

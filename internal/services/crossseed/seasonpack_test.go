@@ -1717,6 +1717,57 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 	require.Equal(t, "recheck", sm.bulkCalls[0].action)
 }
 
+// On an unaligned pack (files share pieces) in hardlink mode, the piece-boundary
+// safety check vetoes a demotion: downloading the pending file would write into
+// pieces shared with linked (hardlinked) neighbors and corrupt seeded data.
+func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *testing.T) {
+	fix := newSeasonPackFixture(t) // files share the single 256 KiB piece
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+	sm.files[normalizeHash("e03")][0].Size++
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Applied)
+	require.Equal(t, "layout_mismatch", resp.Reason)
+	require.Contains(t, resp.Message, "unsafe piece boundary")
+	require.Empty(t, sm.addCalls)
+}
+
 // When demotions push resolved coverage below the threshold, the apply drifts
 // instead of linking a pack the instance can no longer cover.
 func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t *testing.T) {
