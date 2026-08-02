@@ -67,6 +67,7 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 	tests := []struct {
 		name       string
 		torrents   []qbt.Torrent
+		packSource []qbt.Torrent // defaults to torrents when nil
 		wantHashes []string
 		wantNames  []string
 	}{
@@ -118,6 +119,34 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 			wantNames:  []string{"Show Title S02"},
 		},
 		{
+			name: "seeded pack outside the run scope suppresses its group",
+			torrents: []qbt.Torrent{
+				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E03.1080p.WEB.H264-GRP"),
+			},
+			packSource: []qbt.Torrent{
+				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E03.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01.1080p.WEB.H264-GRP"),
+			},
+		},
+		{
+			name: "downloading pack still suppresses its group",
+			torrents: []qbt.Torrent{
+				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E03.1080p.WEB.H264-GRP"),
+			},
+			packSource: []qbt.Torrent{
+				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E02.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E03.1080p.WEB.H264-GRP"),
+				{Hash: "pack", Name: "Show.Title.S01.1080p.WEB.H264-GRP", Progress: 0.3},
+			},
+		},
+		{
 			name: "absolute numbered episodes group without a season",
 			torrents: []qbt.Torrent{
 				episode("[SubsPlease] Overtake! - 01 (1080p) [F5A70A05]"),
@@ -149,7 +178,11 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			virtual := service.buildEnsembleSeasonCandidates(tt.torrents)
+			packSource := tt.packSource
+			if packSource == nil {
+				packSource = tt.torrents
+			}
+			virtual := service.buildEnsembleSeasonCandidates(tt.torrents, packSource)
 			var gotHashes, gotNames []string
 			for _, v := range virtual {
 				require.InDelta(t, 1.0, v.Progress, 0, "virtual entries must pass the completeness skip")
@@ -276,6 +309,18 @@ func TestProcessEnsembleSeasonCandidate_NoIndexers(t *testing.T) {
 	require.Equal(t, "no eligible indexers", state.run.Results[len(state.run.Results)-1].Message)
 }
 
+// packSearchResult builds a torznab search result for a season pack candidate.
+func packSearchResult(title, guid string) jackett.SearchResult {
+	return jackett.SearchResult{
+		Indexer:     "Example",
+		IndexerID:   10,
+		Title:       title,
+		DownloadURL: "https://example.invalid/" + guid + ".torrent",
+		GUID:        guid,
+		Size:        3 << 30,
+	}
+}
+
 // existingHashSyncManager reports one infohash as already present in the client.
 type existingHashSyncManager struct {
 	*episodeSyncManager
@@ -297,14 +342,7 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 	key := ensembleGroupKey{normalizedTitle: stringutils.NewDefaultNormalizer().Normalize("Show Title"), season: 1}
 	torrent := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(key), Name: "Show Title S01", Progress: 1.0}
 	packResult := func(guid string) jackett.SearchResult {
-		return jackett.SearchResult{
-			Indexer:     "Example",
-			IndexerID:   10,
-			Title:       "Show.Title.S01.1080p.WEB.H264-GRP",
-			DownloadURL: "https://example.invalid/" + guid + ".torrent",
-			GUID:        guid,
-			Size:        3 << 30,
-		}
+		return packSearchResult("Show.Title.S01.1080p.WEB.H264-GRP", guid)
 	}
 
 	tests := []struct {
@@ -333,9 +371,12 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			wantAdded:     1,
 		},
 		{
-			name:          "stops after first successful add",
-			key:           key,
-			results:       []jackett.SearchResult{packResult("first"), packResult("second")},
+			name: "stops after first successful add",
+			key:  key,
+			results: []jackett.SearchResult{
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-GRP", "first"),
+				packSearchResult("Show.Title.S01.720p.WEB.H264-OTHER", "second"),
+			},
 			applySuccess:  true,
 			wantDownloads: []string{"first"},
 			wantAdded:     1,
@@ -344,11 +385,41 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			name: "caps apply attempts per group",
 			key:  key,
 			results: []jackett.SearchResult{
-				packResult("a"), packResult("b"), packResult("c"), packResult("d"), packResult("e"),
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-A", "a"),
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-B", "b"),
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-C", "c"),
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-D", "d"),
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-E", "e"),
 			},
 			applySuccess:  false,
 			wantDownloads: []string{"a", "b", "c"},
 			wantFailed:    1,
+		},
+		{
+			// Gachiakuta case: the same pack carries a distinct GUID per
+			// indexer; duplicates must not consume cap slots and starve
+			// later variants.
+			name: "duplicate names across indexers share one cap slot",
+			key:  key,
+			results: []jackett.SearchResult{
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-GRP", "n1-indexer1"),
+				packSearchResult("Show Title S01 1080p WEB H264-GRP", "n1-indexer2"),
+				packSearchResult("Show.Title.S01.720p.WEB.H264-OTHER", "n2-indexer1"),
+				packSearchResult("Show.Title.S01.1080p.WEB.H264-GRP", "n1-indexer3"),
+				packSearchResult("Show.Title.S01.2160p.WEB.H265-THIRD", "n3-indexer1"),
+			},
+			applySuccess:  false,
+			wantDownloads: []string{"n1-indexer1", "n2-indexer1", "n3-indexer1"},
+			wantFailed:    1,
+		},
+		{
+			name: "multi-season range packs are rejected",
+			key:  key,
+			results: []jackett.SearchResult{
+				packSearchResult("Show.Title.S01-S05.1080p.WEB.H264-GRP", "range"),
+			},
+			wantSkipped: 1,
+			wantMessage: "no season pack candidates",
 		},
 		{
 			name:          "seasonless group admits any season pack",
@@ -415,6 +486,106 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 				require.NotEmpty(t, state.run.Results)
 				require.Equal(t, tt.wantMessage, state.run.Results[len(state.run.Results)-1].Message)
 			}
+		})
+	}
+}
+
+func TestCanonicalReleaseNameKey(t *testing.T) {
+	t.Parallel()
+
+	// Cooldowns are recorded under the torrent's internal (dotted) name but
+	// checked against feed/indexer titles, which may use spaces.
+	require.Equal(t,
+		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-GRP"),
+		canonicalReleaseNameKey("Show Title S01 1080p WEB H264-GRP"))
+	require.NotEqual(t,
+		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-GRP"),
+		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-OTHER"))
+	require.Equal(t, "packfail:show title s01 1080p web h264 grp", seasonPackFailKey("Show.Title.S01.1080p.WEB.H264-GRP"))
+
+	// Names with no ASCII alphanumerics must not all collapse onto one key.
+	require.NotEqual(t, canonicalReleaseNameKey("進撃の巨人"), canonicalReleaseNameKey("鬼滅の刃"))
+}
+
+func TestIsSeasonRangePack(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"Hotellet.DANiSH.S01-S05.720p.WEB-DL.H.264", true},
+		{"Show.Name.S01-05.1080p.WEB-DL", true},
+		{"Show.Name.Season.1-5.1080p.WEB-DL", true},
+		{"Show Name Season 1-5 1080p WEB-DL", true},
+		{"Show.Title.S01.1080p.WEB.H264-GRP", false},
+		{"Show.Title.S01E01.1080p.WEB.H264-GRP", false},
+		{"Show.Title.S01E01-E10.1080p.WEB.H264-GRP", false},
+		{"Show.Title.S02-S01.1080p.WEB.H264-GRP", false},
+		{"Top.5-1.Countdown.S01.1080p.WEB.H264-GRP", false},
+	}
+	for _, tt := range tests {
+		require.Equal(t, tt.want, isSeasonRangePack(tt.name), "name: %s", tt.name)
+	}
+}
+
+// TestApplyEnsembleSearchResults_PackFailCooldown covers the ensemble side of
+// the failed-diversion cooldown: a cooling release name is skipped before its
+// .torrent download and does not consume a cap slot; an expired stamp retries.
+func TestApplyEnsembleSearchResults_PackFailCooldown(t *testing.T) {
+	t.Parallel()
+
+	key := ensembleGroupKey{normalizedTitle: stringutils.NewDefaultNormalizer().Normalize("Show Title"), season: 1}
+	cooledTitle := "Show.Title.S01.1080p.WEB.H264-GRP"
+
+	tests := []struct {
+		name          string
+		stampAge      time.Duration
+		wantDownloads []string
+	}{
+		{
+			// Cooled name skipped pre-download; the three fresh variants all
+			// get cap slots, proving the skip does not consume one.
+			name:          "cooling name is skipped without consuming a cap slot",
+			stampAge:      time.Hour,
+			wantDownloads: []string{"fresh-a", "fresh-b", "fresh-c"},
+		},
+		{
+			// All four names admissible again; the cap trims to three.
+			name:          "expired stamp retries the name",
+			stampAge:      13 * time.Hour,
+			wantDownloads: []string{"cooled", "fresh-a", "fresh-b"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			service, state, instanceID := newEnsembleSearchState(t, "crossseed-ensemble-packfail", nil, true)
+
+			require.NoError(t, service.automationStore.UpsertSearchHistory(
+				ctx, instanceID, seasonPackFailKey(cooledTitle), time.Now().UTC().Add(-tt.stampAge)))
+
+			var downloads []string
+			service.torrentDownloadFunc = func(_ context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
+				downloads = append(downloads, req.GUID)
+				return []byte("torrent"), nil
+			}
+			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+				return &CrossSeedResponse{Success: false}, nil
+			}
+
+			results := []jackett.SearchResult{
+				packSearchResult(cooledTitle, "cooled"),
+				packSearchResult("Show.Title.S01.720p.WEB.H264-A", "fresh-a"),
+				packSearchResult("Show.Title.S01.2160p.WEB.H265-B", "fresh-b"),
+				packSearchResult("Show.Title.S01.1080p.BluRay.x264-C", "fresh-c"),
+			}
+			torrent := &qbt.Torrent{Hash: ensembleSeasonPseudoHash(key), Name: "Show Title S01", Progress: 1.0}
+			service.applyEnsembleSearchResults(ctx, state, torrent, key, "query", &jackett.SearchResponse{Results: results}, time.Now().UTC())
+
+			require.Equal(t, tt.wantDownloads, downloads)
 		})
 	}
 }

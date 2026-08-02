@@ -1585,6 +1585,30 @@ func (s *CrossSeedStore) GetSearchHistory(ctx context.Context, instanceID int, t
 	return last, true, nil
 }
 
+// GetLatestSearchHistory returns the most recent search timestamp for a key
+// across all instances. Used for pseudo-keys whose verdict is global, like
+// season-pack diversion failures.
+func (s *CrossSeedStore) GetLatestSearchHistory(ctx context.Context, torrentHash string) (time.Time, bool, error) {
+	const query = `
+		SELECT last_searched_at
+		FROM cross_seed_search_history
+		WHERE torrent_hash = ?
+		ORDER BY last_searched_at DESC
+		LIMIT 1
+	`
+
+	var last time.Time
+	err := s.db.QueryRowContext(ctx, query, torrentHash).Scan(&last)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, fmt.Errorf("get latest search history: %w", err)
+	}
+
+	return last, true, nil
+}
+
 // HasProcessedFeedItem reports whether a GUID/indexer pair has been handled.
 func (s *CrossSeedStore) HasProcessedFeedItem(ctx context.Context, guid string, indexerID int) (bool, CrossSeedFeedItemStatus, error) {
 	query := `
