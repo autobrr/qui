@@ -248,7 +248,22 @@ This is **not** an exact checkpoint resume. When you start a new run after cance
 
 From a user perspective, this behaves like **restart with preserved progress**, not “continue from the exact file where it stopped.”
 
-If you want to force a directory to be re-processed from scratch, use **Reset Scan Progress** for that directory in the UI. This clears the tracked file state for that directory.
+### New indexers reopen "no match" files
+
+Each "no match" file records which indexers were enabled when the search ran. When you enable an indexer that is not in that record, the next scan searches the file again. You do not need to reset anything. An indexer that was already in the record does not trigger a retry, because the file was searched against it before.
+
+A search only marks a file as "no match" when every indexer it asked answered. If some indexers were down or rate-limited, the file stays pending and the next scan retries it.
+
+Files marked "no match" on older qui versions have no recorded indexer set. They stay skipped until you requeue them (see below).
+
+### Retry Unmatched vs Reset Scan Progress
+
+Both buttons sit on the directory details card, next to the run history.
+
+- **Retry Unmatched** resets only "no match" files to pending. Matched and already-seeding files keep their state. Use this after you add an indexer and want old "no match" files searched again.
+- **Reset Scan Progress** deletes all tracked file state for the directory. The next scan re-processes everything, including files that already matched. Use this only when you want a full redo.
+
+Neither button starts a scan. Trigger a scan with **Scan Now**, or wait for the next scheduled run.
 
 ### Scheduled vs manual scans
 

@@ -522,6 +522,10 @@
     "resetScanProgressTitle": "Réinitialiser la progression ?",
     "resetScanProgressDescription": "La prochaine analyse vérifiera le répertoire et réessaiera tous les éléments.",
     "resetFilesSuccess": "Fichiers réinitialisés.",
+    "requeueNoMatch": "Réessayer sans correspondance",
+    "requeueNoMatchTooltip": "Marque les fichiers sans correspondance pour que la prochaine analyse les recherche à nouveau. Les fichiers correspondus ne sont pas touchés. Utilisez ceci après avoir ajouté un indexeur, ou quand un tracker peut maintenant avoir le contenu.",
+    "requeueNoMatchSuccess_one": "La prochaine analyse réessaiera {{count}} fichier sans correspondance.",
+    "requeueNoMatchSuccess_other": "La prochaine analyse réessaiera {{count}} fichiers sans correspondance.",
     "toast": {
       "scannerEnabled": "Analyse de répertoires activée",
       "scannerDisabled": "Analyse de répertoires désactivée",
@@ -538,6 +542,7 @@
       "directoryDeleteFailed": "Échec de la suppression : {{error}}",
       "settingsSaved": "Paramètres sauvegardés",
       "settingsSaveFailed": "Échec de la sauvegarde : {{error}}",
+      "requeueFailed": "Échec de la relance des fichiers sans correspondance : {{error}}",
       "resetFailed": "Échec de la réinitialisation : {{error}}"
     },
     "statusLabels": {

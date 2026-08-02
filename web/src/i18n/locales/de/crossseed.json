@@ -522,6 +522,10 @@
     "resetScanProgressTitle": "Scan-Fortschritt zurücksetzen?",
     "resetScanProgressDescription": "Dadurch wird der erfasste Dir-Scan-Fortschritt für dieses Verzeichnis gelöscht. Der nächste Scan prüft das Verzeichnis erneut und versucht alle Einträge erneut, auch bereits abgeschlossene.",
     "resetFilesSuccess": "Dateien zurückgesetzt. Der nächste Scan wertet sie erneut aus.",
+    "requeueNoMatch": "Ohne Treffer erneut versuchen",
+    "requeueNoMatchTooltip": "Markiert Dateien ohne Treffer, damit der nächste Scan sie erneut sucht. Zugeordnete Dateien bleiben unberührt. Nutze dies nach dem Hinzufügen eines Indexers, oder wenn ein Tracker den Inhalt jetzt haben könnte.",
+    "requeueNoMatchSuccess_one": "Der nächste Scan versucht {{count}} Datei ohne Treffer erneut.",
+    "requeueNoMatchSuccess_other": "Der nächste Scan versucht {{count}} Dateien ohne Treffer erneut.",
     "toast": {
       "scannerEnabled": "Verzeichnis-Scanner aktiviert",
       "scannerDisabled": "Verzeichnis-Scanner deaktiviert",
@@ -538,6 +542,7 @@
       "directoryDeleteFailed": "Verzeichnis konnte nicht gelöscht werden: {{error}}",
       "settingsSaved": "Einstellungen gespeichert",
       "settingsSaveFailed": "Einstellungen konnten nicht gespeichert werden: {{error}}",
+      "requeueFailed": "Erneuter Versuch für Dateien ohne Treffer fehlgeschlagen: {{error}}",
       "resetFailed": "Dateien konnten nicht zurückgesetzt werden: {{error}}"
     },
     "statusLabels": {

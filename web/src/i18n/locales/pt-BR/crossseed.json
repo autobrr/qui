@@ -522,6 +522,10 @@
     "resetScanProgressTitle": "Redefinir progresso da busca?",
     "resetScanProgressDescription": "Isso exclui o progresso rastreado de dir-scan para este diretório. A próxima busca reavaliará o diretório e tentará novamente todos os itens, incluindo aqueles que já haviam sido concluídos.",
     "resetFilesSuccess": "Arquivos redefinidos. A próxima busca os reavaliará.",
+    "requeueNoMatch": "Repetir sem correspondência",
+    "requeueNoMatchTooltip": "Marca os arquivos sem correspondência para que a próxima varredura os busque novamente. Arquivos correspondidos não são alterados. Use após adicionar um indexador, ou quando um tracker pode ter o conteúdo agora.",
+    "requeueNoMatchSuccess_one": "A próxima varredura repetirá {{count}} arquivo sem correspondência.",
+    "requeueNoMatchSuccess_other": "A próxima varredura repetirá {{count}} arquivos sem correspondência.",
     "toast": {
       "scannerEnabled": "Scanner de Diretório ativado",
       "scannerDisabled": "Scanner de Diretório desativado",
@@ -538,6 +542,7 @@
       "directoryDeleteFailed": "Falha ao excluir diretório: {{error}}",
       "settingsSaved": "Configurações salvas",
       "settingsSaveFailed": "Falha ao salvar configurações: {{error}}",
+      "requeueFailed": "Falha ao repetir arquivos sem correspondência: {{error}}",
       "resetFailed": "Falha ao redefinir arquivos: {{error}}"
     },
     "statusLabels": {

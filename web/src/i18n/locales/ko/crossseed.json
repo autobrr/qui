@@ -515,6 +515,9 @@
     "resetScanProgressTitle": "스캔 진행률을 재설정하시겠습니까?",
     "resetScanProgressDescription": "이 작업은 이 디렉터리에 대해 추적된 디렉터리 스캔 진행률을 삭제합니다. 다음 스캔에서 디렉터리를 다시 확인하고 이미 완료된 항목을 포함한 모든 항목을 다시 시도합니다.",
     "resetFilesSuccess": "파일이 재설정되었습니다. 다음 스캔에서 다시 평가합니다.",
+    "requeueNoMatch": "미일치 항목 재시도",
+    "requeueNoMatchTooltip": "미일치 파일을 표시하여 다음 스캔에서 다시 검색합니다. 일치된 파일은 영향을 받지 않습니다. 인덱서를 추가한 후, 또는 트래커에 콘텐츠가 있을 것 같을 때 사용하세요.",
+    "requeueNoMatchSuccess_other": "다음 스캔에서 미일치 파일 {{count}}개를 재시도합니다.",
     "toast": {
       "scannerEnabled": "디렉터리 스캐너가 활성화되었습니다",
       "scannerDisabled": "디렉터리 스캐너가 비활성화되었습니다",
@@ -531,6 +534,7 @@
       "directoryDeleteFailed": "디렉터리를 삭제하지 못했습니다: {{error}}",
       "settingsSaved": "설정이 저장되었습니다",
       "settingsSaveFailed": "설정을 저장하지 못했습니다: {{error}}",
+      "requeueFailed": "미일치 파일 재시도 실패: {{error}}",
       "resetFailed": "파일을 재설정하지 못했습니다: {{error}}"
     },
     "statusLabels": {
