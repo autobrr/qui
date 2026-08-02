@@ -197,7 +197,7 @@
       "enable": "시즌 팩 일치 활성화",
       "enableDescription": "autobrr가 시즌 팩 확인 및 적용을 위해 qui를 호출하도록 허용합니다.",
       "enableAutomation": "시즌 팩 자동 조립",
-      "enableAutomationDescription": "RSS 자동화나 크로스 시드 적용에서 일부 에피소드만 보유한 시즌 팩을 발견하면 qui가 로컬 에피소드로 시즌 팩을 조립하고 나머지는 qBittorrent이 다운로드합니다.",
+      "enableAutomationDescription": "RSS 자동화나 크로스 시드 적용에서 일부 에피소드만 보유한 시즌 팩을 발견하면 qui가 로컬 에피소드로 시즌 팩을 조립하고 나머지는 qBittorrent이 다운로드합니다. 라이브러리 검색 실행 시 인덱서에서 이러한 시즌 팩도 함께 검색합니다.",
       "coverageThreshold": "커버리지 임계값(%)",
       "coverageThresholdDescription": "qui가 시즌 팩을 주입하기 전의 최소 로컬 커버리지입니다. Sonarr가 프로그램을 확인하면 qui는 더 큰 시즌 합계를 사용하고, 그렇지 않으면 팩 내 재생 가능한 파일로 대체합니다. 불완전한 팩은 일시 정지된 상태로 추가되어 재확인된 후 자동으로 재개됩니다.",
       "matchingTitle": "일치 설정",

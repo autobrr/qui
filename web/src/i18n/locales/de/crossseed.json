@@ -197,7 +197,7 @@
       "enable": "Season-Pack-Matching aktivieren",
       "enableDescription": "Erlaube autobrr, qui für die Season-Pack-Prüfung und -Anwendung aufzurufen.",
       "enableAutomation": "Season Packs automatisch zusammenstellen",
-      "enableAutomationDescription": "Findet die RSS-Automatisierung oder ein Cross-Seed-Apply ein Season Pack, von dem nur Einzelepisoden vorhanden sind, stellt qui es aus den lokalen Episoden zusammen und lässt qBittorrent den Rest herunterladen.",
+      "enableAutomationDescription": "Findet die RSS-Automatisierung oder ein Cross-Seed-Apply ein Season Pack, von dem nur Einzelepisoden vorhanden sind, stellt qui es aus den lokalen Episoden zusammen und lässt qBittorrent den Rest herunterladen. Bibliotheks-Suchläufe suchen zusätzlich auf den Indexern nach solchen Season Packs.",
       "coverageThreshold": "Abdeckungs-Schwellenwert (%)",
       "coverageThresholdDescription": "Minimale lokale Abdeckung, bevor qui ein Season Pack injiziert. Wenn Sonarr die Serie auflöst, verwendet qui die größere Staffel-Gesamtzahl; andernfalls greift qui auf die abspielbaren Dateien im Pack zurück. Unvollständige Packs werden pausiert hinzugefügt, neu geprüft und dann automatisch fortgesetzt.",
       "matchingTitle": "Matching-Einstellungen",

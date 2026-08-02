@@ -197,7 +197,7 @@
       "enable": "Ativar correspondência de pacote de temporada",
       "enableDescription": "Permitir que o autobrr chame o qui para verificação e aplicação de pacotes de temporada.",
       "enableAutomation": "Montar pacotes de temporada automaticamente",
-      "enableAutomationDescription": "Quando a automação de RSS ou uma aplicação de cross-seed encontra um pacote de temporada do qual você só tem episódios avulsos, o qui o monta a partir dos episódios locais e deixa o qBittorrent baixar o resto.",
+      "enableAutomationDescription": "Quando a automação de RSS ou uma aplicação de cross-seed encontra um pacote de temporada do qual você só tem episódios avulsos, o qui o monta a partir dos episódios locais e deixa o qBittorrent baixar o resto. As buscas na biblioteca também procuram esses pacotes nos seus indexadores.",
       "coverageThreshold": "Limite de cobertura (%)",
       "coverageThresholdDescription": "Cobertura local mínima antes que o qui injete um pacote de temporada. Se o Sonarr resolver o show, o qui usa o total de temporada maior; caso contrário, recai para os arquivos reproduzíveis no pacote. Pacotes incompletos são adicionados pausados, reverificados e depois retomados automaticamente.",
       "matchingTitle": "Configurações de correspondência",

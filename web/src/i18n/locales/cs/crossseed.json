@@ -197,7 +197,7 @@
       "enable": "Povolit shodování celých sezón",
       "enableDescription": "Povolit autobrr volat qui pro kontrolu a aplikaci celé sezóny.",
       "enableAutomation": "Sestavovat celé sezóny automaticky",
-      "enableAutomationDescription": "Když RSS automatizace nebo cross-seed najde balík celé sezóny, ze kterého máte jen jednotlivé epizody, qui jej sestaví z místních epizod a zbytek nechá stáhnout qBittorrent.",
+      "enableAutomationDescription": "Když RSS automatizace nebo cross-seed najde balík celé sezóny, ze kterého máte jen jednotlivé epizody, qui jej sestaví z místních epizod a zbytek nechá stáhnout qBittorrent. Vyhledávání knihovny také aktivně hledá takové balíky na vašich indexerech.",
       "coverageThreshold": "Prahová hodnota pokrytí (%)",
       "coverageThresholdDescription": "Minimální pokrytí předtím, než qui vloží celou sezónu. Pokud Sonarr rozhodne o show, qui použije větší celkový počet epizod; jinak se vrátí k přehrávatelným souborům v balíku. Neúplné balíky jsou přidány pauznuté, znovu zkontrolovány a pak automaticky obnoveny.",
       "matchingTitle": "Nastavení shody",
