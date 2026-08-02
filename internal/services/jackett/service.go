@@ -2333,11 +2333,11 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	needCategories := len(requested) > 0 && len(idx.Categories) == 0
 	if needCaps || needCategories {
 		err := s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
-		if _, rateLimited := detectRateLimit(err); rateLimited {
+		if cooldown, rateLimited := detectRateLimit(err); rateLimited {
 			// A rate-limited caps fetch means the search itself would 429 too;
 			// searching anyway doubles the load on an indexer already telling
 			// us to back off, and keeps the metadata from ever healing.
-			s.handleRateLimit(ctx, idx, 0, err)
+			s.handleRateLimit(ctx, idx, cooldown, err)
 			return true
 		}
 	}
