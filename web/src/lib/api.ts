@@ -1537,6 +1537,7 @@ class ApiClient {
     indexerIds: number[]
     disableTorznab?: boolean
     cooldownMinutes: number
+    skipIndividualEpisodes?: boolean
   }): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
       method: "POST",
