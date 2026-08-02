@@ -461,6 +461,9 @@ type searchRunRequest struct {
 	IndexerIDs      []int    `json:"indexerIds"`
 	DisableTorznab  bool     `json:"disableTorznab"`
 	CooldownMinutes int      `json:"cooldownMinutes"`
+	// SkipIndividualEpisodes stops the run from searching loose TV episodes
+	// one by one. Episodes still count toward ensemble season-pack searches.
+	SkipIndividualEpisodes bool `json:"skipIndividualEpisodes"`
 
 	// TODO: Surface remaining crossseed.SearchRunOptions fields (e.g. FindIndividualEpisodes,
 	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
@@ -1478,14 +1481,15 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 	}
 
 	run, err := h.service.StartSearchRun(context.WithoutCancel(r.Context()), crossseed.SearchRunOptions{
-		InstanceID:      req.InstanceID,
-		Categories:      req.Categories,
-		Tags:            req.Tags,
-		IntervalSeconds: req.IntervalSeconds,
-		IndexerIDs:      req.IndexerIDs,
-		DisableTorznab:  req.DisableTorznab,
-		CooldownMinutes: req.CooldownMinutes,
-		RequestedBy:     "api",
+		InstanceID:             req.InstanceID,
+		Categories:             req.Categories,
+		Tags:                   req.Tags,
+		IntervalSeconds:        req.IntervalSeconds,
+		IndexerIDs:             req.IndexerIDs,
+		DisableTorznab:         req.DisableTorznab,
+		CooldownMinutes:        req.CooldownMinutes,
+		SkipIndividualEpisodes: req.SkipIndividualEpisodes,
+		RequestedBy:            "api",
 	})
 	if err != nil {
 		if errors.Is(err, crossseed.ErrSearchRunActive) {

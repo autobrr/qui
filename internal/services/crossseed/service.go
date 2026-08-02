@@ -1504,6 +1504,9 @@ type SearchRunOptions struct {
 	// seeded loose episodes. Derived from SeasonPackAutomationEnabled at run
 	// start; never set by callers.
 	EnsembleSeasonSearch bool
+	// SkipIndividualEpisodes excludes loose TV episodes from the searchable
+	// queue. Episodes still feed ensemble season grouping.
+	SkipIndividualEpisodes bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -9901,7 +9904,18 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 		deduplicated = specific
 	}
 
-	state.queue = deduplicated
+	searchable := deduplicated
+	if state.opts.SkipIndividualEpisodes {
+		searchable = slices.DeleteFunc(slices.Clone(deduplicated), func(t qbt.Torrent) bool {
+			return isTVEpisode(s.releaseCache.Parse(t.Name))
+		})
+		log.Info().
+			Int("instanceID", state.opts.InstanceID).
+			Int("excludedEpisodes", len(deduplicated)-len(searchable)).
+			Msg("[CROSSSEED-SEARCH] Skipping individual episode searches for this run")
+	}
+
+	state.queue = searchable
 	if state.opts.EnsembleSeasonSearch {
 		// Pack suppression needs the instance's full torrent list: when the
 		// fetch above was server-side filtered by category/tag, a seeded pack
@@ -9915,11 +9929,13 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 				log.Warn().Err(allErr).Int("instanceID", state.opts.InstanceID).Msg("Failed to list all torrents for ensemble pack suppression; using run-scoped list")
 			}
 		}
+		// Grouping input is deduplicated, not searchable: episodes excluded
+		// from the queue must still form ensemble season groups.
 		if virtual := s.buildEnsembleSeasonCandidates(deduplicated, packSource); len(virtual) > 0 {
-			// deduplicated can be cache-backed; never append to it in place.
-			// Virtual entries go last so real torrents search first.
-			queue := make([]qbt.Torrent, 0, len(deduplicated)+len(virtual))
-			queue = append(queue, deduplicated...)
+			// searchable can alias cache-backed deduplicated; never append to
+			// it in place. Virtual entries go last so real torrents search first.
+			queue := make([]qbt.Torrent, 0, len(searchable)+len(virtual))
+			queue = append(queue, searchable...)
 			queue = append(queue, virtual...)
 			state.queue = queue
 		}

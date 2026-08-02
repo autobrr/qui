@@ -876,6 +876,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(true)
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+  const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(false)
   const [searchSettingsInitialized, setSearchSettingsInitialized] = useState(false)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
@@ -1821,6 +1822,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
       disableTorznab: !seededSearchTorznabEffectiveEnabled,
       cooldownMinutes: searchCooldownMinutes,
+      skipIndividualEpisodes,
     })
   }
 
@@ -2595,6 +2597,23 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       {seededSearchGazelleStatus}
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("scan.skipIndividualEpisodesDescription")}
+                      {skipIndividualEpisodes && settings?.seasonPackAutomationEnabled === false && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
+                    </p>
+                  </div>
+                  <Switch
+                    id="skip-individual-episodes"
+                    checked={skipIndividualEpisodes}
+                    onCheckedChange={value => setSkipIndividualEpisodes(!!value)}
+                  />
                 </div>
               </div>
 

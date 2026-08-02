@@ -294,6 +294,49 @@ func TestRefreshSearchQueue_EnsembleInjection(t *testing.T) {
 	})
 }
 
+func TestRefreshSearchQueue_SkipIndividualEpisodes(t *testing.T) {
+	t.Parallel()
+
+	mixed := []qbt.Torrent{
+		{Hash: "ep1", Name: "Show.Title.S01E01.1080p.WEB.H264-GRP", Progress: 1.0},
+		{Hash: "ep2", Name: "Show.Title.S01E02.1080p.WEB.H264-GRP", Progress: 1.0},
+		{Hash: "ep3", Name: "Show.Title.S01E03.1080p.WEB.H264-GRP", Progress: 1.0},
+		{Hash: "anime1", Name: "[Grp] Anime Show - 042 (1080p) [ABCD1234]", Progress: 1.0},
+		{Hash: "movie1", Name: "Some.Movie.2020.1080p.BluRay.x264-GRP", Progress: 1.0},
+	}
+	pseudoHash := "season:" + stringutils.NewDefaultNormalizer().Normalize("Show Title") + ":s01"
+
+	queueHashes := func(state *searchRunState) []string {
+		hashes := make([]string, 0, len(state.queue))
+		for i := range state.queue {
+			hashes = append(hashes, state.queue[i].Hash)
+		}
+		return hashes
+	}
+
+	t.Run("flag on excludes episodes but still forms ensemble groups", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		service, state, _ := newEnsembleSearchState(t, "crossseed-skipep-ensemble", mixed, true)
+		state.opts.SkipIndividualEpisodes = true
+
+		require.NoError(t, service.refreshSearchQueue(ctx, state))
+
+		require.Equal(t, []string{"movie1", pseudoHash}, queueHashes(state))
+	})
+
+	t.Run("flag on without ensemble leaves only non-episode torrents", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		service, state, _ := newEnsembleSearchState(t, "crossseed-skipep-noensemble", mixed, false)
+		state.opts.SkipIndividualEpisodes = true
+
+		require.NoError(t, service.refreshSearchQueue(ctx, state))
+
+		require.Equal(t, []string{"movie1"}, queueHashes(state))
+	})
+}
+
 func TestProcessEnsembleSeasonCandidate_NoIndexers(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
