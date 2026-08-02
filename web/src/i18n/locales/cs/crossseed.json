@@ -522,6 +522,12 @@
     "resetScanProgressTitle": "Resetovat průběh skenování?",
     "resetScanProgressDescription": "Toto odstraní sledovaný průběh skenování pro tento adresář. Další skenování je znovu vyhodnotí. Existující křížová sdílení zůstávají; duplicity jsou automaticky přeskočeny.",
     "resetFilesSuccess": "Soubory resetovány. Další skenování je znovu vyhodnotí.",
+    "requeueNoMatch": "Zopakovat soubory bez shody",
+    "requeueNoMatchTooltip": "Označí soubory bez shody, aby je příští skenování znovu vyhledalo. Spárované soubory zůstanou beze změny. Použijte po přidání indexeru, nebo když tracker může obsah nyní mít.",
+    "requeueNoMatchSuccess_one": "Příští skenování zopakuje {{count}} soubor bez shody.",
+    "requeueNoMatchSuccess_few": "Příští skenování zopakuje {{count}} soubory bez shody.",
+    "requeueNoMatchSuccess_many": "Příští skenování zopakuje {{count}} souboru bez shody.",
+    "requeueNoMatchSuccess_other": "Příští skenování zopakuje {{count}} souborů bez shody.",
     "toast": {
       "scannerEnabled": "Skenovač adresářů povolen",
       "scannerDisabled": "Skenovač adresářů vypnut",
@@ -538,6 +544,7 @@
       "directoryDeleteFailed": "Selhalo odstranění adresáře: {{error}}",
       "settingsSaved": "Nastavení uložena",
       "settingsSaveFailed": "Selhalo uložení nastavení: {{error}}",
+      "requeueFailed": "Nepodařilo se zopakovat soubory bez shody: {{error}}",
       "resetFailed": "Selhalo resetování souborů: {{error}}"
     },
     "statusLabels": {

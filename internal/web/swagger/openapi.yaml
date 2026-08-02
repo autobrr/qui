@@ -3332,6 +3332,28 @@ paths:
         '500':
           description: Failed to reset scan progress
 
+  /api/dir-scan/directories/{directoryID}/requeue-no-match:
+    post:
+      tags:
+        - Dir Scan
+      summary: Requeue unmatched files
+      description: Resets no_match files for the directory to pending so the next scan searches them again. Matched and already-seeding files are kept.
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '200':
+          description: Number of files requeued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanRequeueResponse'
+        '404':
+          description: Directory not found
+        '409':
+          description: A scan is running
+        '500':
+          description: Failed to requeue files
+
   /api/dir-scan/directories/{directoryID}/scan:
     post:
       tags:
@@ -8384,6 +8406,12 @@ components:
         matchedIndexerId:
           type: integer
           nullable: true
+        searchedIndexerIds:
+          type: array
+          items:
+            type: integer
+          nullable: true
+          description: Indexer IDs that the search covered when the file was stamped no_match
         lastProcessedAt:
           type: string
           format: date-time
@@ -8395,6 +8423,16 @@ components:
         - fileSize
         - fileModTime
         - status
+
+    DirScanRequeueResponse:
+      type: object
+      properties:
+        requeued:
+          type: integer
+          format: int64
+          description: Number of files reset to pending
+      required:
+        - requeued
 
     DirScanTriggerResponse:
       type: object

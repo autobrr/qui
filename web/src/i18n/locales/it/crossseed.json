@@ -522,6 +522,10 @@
     "resetScanProgressTitle": "Reimpostare l'avanzamento dell'analisi?",
     "resetScanProgressDescription": "Questa azione elimina l'avanzamento dell'analisi tracciato per questa directory. La prossima analisi ricontrollerà la directory e riproverà tutti gli elementi, compresi quelli già completati.",
     "resetFilesSuccess": "File reimpostati. La prossima analisi li rivaluterà.",
+    "requeueNoMatch": "Riprova senza corrispondenza",
+    "requeueNoMatchTooltip": "Contrassegna i file senza corrispondenza perché la prossima scansione li cerchi di nuovo. I file corrisposti non vengono toccati. Usalo dopo aver aggiunto un indexer, o quando un tracker potrebbe avere ora il contenuto.",
+    "requeueNoMatchSuccess_one": "La prossima scansione riproverà {{count}} file senza corrispondenza.",
+    "requeueNoMatchSuccess_other": "La prossima scansione riproverà {{count}} file senza corrispondenza.",
     "toast": {
       "scannerEnabled": "Scanner di directory abilitato",
       "scannerDisabled": "Scanner di directory disabilitato",
@@ -538,6 +542,7 @@
       "directoryDeleteFailed": "Eliminazione della directory non riuscita: {{error}}",
       "settingsSaved": "Impostazioni salvate",
       "settingsSaveFailed": "Salvataggio delle impostazioni non riuscito: {{error}}",
+      "requeueFailed": "Impossibile riprovare i file senza corrispondenza: {{error}}",
       "resetFailed": "Reimpostazione dei file non riuscita: {{error}}"
     },
     "statusLabels": {

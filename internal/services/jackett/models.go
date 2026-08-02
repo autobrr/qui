@@ -4,6 +4,7 @@
 package jackett
 
 import (
+	"slices"
 	"time"
 )
 
@@ -66,6 +67,26 @@ type SearchResponse struct {
 	Partial bool                 `json:"partial,omitempty"`
 	// JobID identifies this search for outcome tracking (cross-seed)
 	JobID uint64 `json:"jobId,omitempty"`
+	// RequestedIndexerIDs is the resolved indexer set for this search.
+	RequestedIndexerIDs []int `json:"-"`
+	// CoveredIndexerIDs lists the indexers that answered this search, or that the
+	// executor excluded on purpose. Failed, timed-out, and rate-limited indexers
+	// are not in this list. Callers can compare it against RequestedIndexerIDs to
+	// see whether the search covered the full requested set.
+	CoveredIndexerIDs []int `json:"-"`
+}
+
+// FullyCovered reports whether every requested indexer is in the covered set.
+func (r *SearchResponse) FullyCovered() bool {
+	if r == nil {
+		return false
+	}
+	for _, id := range r.RequestedIndexerIDs {
+		if !slices.Contains(r.CoveredIndexerIDs, id) {
+			return false
+		}
+	}
+	return true
 }
 
 // SearchCacheMetadata describes how the response was sourced.
