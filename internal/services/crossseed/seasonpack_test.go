@@ -1281,6 +1281,11 @@ func TestApplySeasonPackWebhook_HardFailsWhenCoverageDrifts(t *testing.T) {
 	require.Equal(t, "apply", store.runs[0].Phase)
 	require.Equal(t, "failed", store.runs[0].Status)
 	require.Equal(t, "drifted", store.runs[0].Reason)
+	// The run row must carry the real partial coverage, not a flat 0/N.
+	require.Equal(t, 1, store.runs[0].MatchedEpisodes)
+	require.InDelta(t, 0.25, store.runs[0].Coverage, 0.001)
+	require.NotNil(t, store.runs[0].InstanceID)
+	require.Equal(t, inst.ID, *store.runs[0].InstanceID)
 }
 
 func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {

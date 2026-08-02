@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,6 +51,21 @@ func isEnsembleSeasonCandidate(hash string) bool {
 	return strings.HasPrefix(hash, ensembleSeasonHashPrefix)
 }
 
+// seasonRangeRe matches multi-season range markers: S01-S05, S01-05,
+// Season 1-5. rls only surfaces the range for the S01-S05 form (as a second
+// series tag), so detection works on the raw name instead.
+var seasonRangeRe = regexp.MustCompile(`(?i)\bS(?:eason[ ._-]?)?(\d{1,2})[ ._-]?-[ ._-]?S?(\d{1,2})\b`)
+
+func isSeasonRangePack(name string) bool {
+	m := seasonRangeRe.FindStringSubmatch(name)
+	if m == nil {
+		return false
+	}
+	start, _ := strconv.Atoi(m[1])
+	end, _ := strconv.Atoi(m[2])
+	return end > start
+}
+
 func ensembleSeasonPseudoHash(key ensembleGroupKey) string {
 	return fmt.Sprintf("%s%s:s%02d", ensembleSeasonHashPrefix, key.normalizedTitle, key.season)
 }
@@ -77,8 +93,10 @@ func parseEnsembleSeasonPseudoHash(hash string) (ensembleGroupKey, bool) {
 // show title + season and returns one virtual queue entry per group with at
 // least ensembleMinEpisodes distinct episodes and no seeded pack for the same
 // key. Input torrents have already passed the run's category/tag filters and
-// content dedup, so groups inherit the run scoping.
-func (s *Service) buildEnsembleSeasonCandidates(torrents []qbt.Torrent) []qbt.Torrent {
+// content dedup, so groups inherit the run scoping. packSource is the
+// instance's full torrent list: a seeded pack outside the run scope must still
+// suppress its group, or the search re-downloads a pack the user already has.
+func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torrent) []qbt.Torrent {
 	type groupInfo struct {
 		displayTitle string
 		episodes     map[int]struct{}
@@ -86,12 +104,31 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents []qbt.Torrent) []qbt.To
 	groups := make(map[ensembleGroupKey]*groupInfo)
 	packs := make(map[ensembleGroupKey]struct{})
 
+	// Any seeded or downloading pack suppresses its group; progress does not
+	// matter because the pack's presence already makes a search pointless.
+	for i := range packSource {
+		release := s.releaseCache.Parse(packSource[i].Name)
+		if !isTVSeasonPack(release) {
+			continue
+		}
+		key := ensembleGroupKey{
+			normalizedTitle: s.stringNormalizer.Normalize(release.Title),
+			season:          release.Series,
+		}
+		if key.normalizedTitle != "" {
+			packs[key] = struct{}{}
+		}
+	}
+
 	for i := range torrents {
 		torrent := &torrents[i]
 		if torrent.Progress < 1.0 {
 			continue
 		}
 		release := s.releaseCache.Parse(torrent.Name)
+		if !isTVEpisode(release) {
+			continue
+		}
 		key := ensembleGroupKey{
 			normalizedTitle: s.stringNormalizer.Normalize(release.Title),
 			season:          release.Series,
@@ -99,20 +136,15 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents []qbt.Torrent) []qbt.To
 		if key.normalizedTitle == "" {
 			continue
 		}
-		switch {
-		case isTVSeasonPack(release):
-			packs[key] = struct{}{}
-		case isTVEpisode(release):
-			group := groups[key]
-			if group == nil {
-				group = &groupInfo{episodes: make(map[int]struct{})}
-				groups[key] = group
-			}
-			if group.displayTitle == "" {
-				group.displayTitle = release.Title
-			}
-			group.episodes[release.Episode] = struct{}{}
+		group := groups[key]
+		if group == nil {
+			group = &groupInfo{episodes: make(map[int]struct{})}
+			groups[key] = group
 		}
+		if group.displayTitle == "" {
+			group.displayTitle = release.Title
+		}
+		group.episodes[release.Episode] = struct{}{}
 	}
 
 	virtual := make([]qbt.Torrent, 0, len(groups))
@@ -214,10 +246,16 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 	failedAttempt := false
 	indexerAdds := make(map[int]int)
 	indexerFails := make(map[int]int)
+	attemptedNames := make(map[string]struct{})
 
 	for _, res := range resp.Results {
 		candidate := s.releaseCache.Parse(res.Title)
 		if !isTVSeasonPack(candidate) {
+			continue
+		}
+		// A multi-season range pack can never assemble from one season's
+		// episodes; admitting one is a guaranteed wasted download.
+		if isSeasonRangePack(res.Title) {
 			continue
 		}
 		if s.stringNormalizer.Normalize(candidate.Title) != key.normalizedTitle {
@@ -226,11 +264,22 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		if key.season > 0 && candidate.Series != key.season {
 			continue
 		}
+		// The same pack circulates under one name with a distinct GUID per
+		// indexer; retrying an identical name from another indexer fails the
+		// same way and must not consume another cap slot.
+		normName := canonicalReleaseNameKey(res.Title)
+		if _, dup := attemptedNames[normName]; dup {
+			continue
+		}
+		attemptedNames[normName] = struct{}{}
 		hashes := torrentSearchResultInfoHashes(res.InfoHashV1, res.InfoHashV2)
 		if len(hashes) > 0 && s.syncManager != nil {
 			if _, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, state.opts.InstanceID, hashes); hashErr == nil && exists {
 				continue
 			}
+		}
+		if s.seasonPackFailCooldownActive(ctx, res.Title, time.Duration(state.opts.CooldownMinutes)*time.Minute) {
+			continue
 		}
 
 		admitted++

@@ -3779,6 +3779,21 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	// candidates but can still be assembled by the diversion inside CrossSeed,
 	// so they must proceed to download instead of skipping.
 	seasonPackDivertible := candidatesResp.seasonPackEpisodeCandidates && settings.SeasonPackAutomationEnabled
+	// When diversion is the only reason to download, a recent diversion failure
+	// for the same release name makes the download a guaranteed waste until the
+	// cooldown lapses. Feed items marked skipped are re-evaluated every run, so
+	// the item retries once the cooldown expires.
+	if candidateCount == 0 && seasonPackDivertible && s.seasonPackFailCooldownActive(ctx, result.Title, minSearchCooldownMinutes*time.Minute) {
+		run.TorrentsSkipped++
+		run.Results = append(run.Results, models.CrossSeedRunResult{
+			InstanceName: result.Indexer,
+			IndexerName:  result.Indexer,
+			Success:      false,
+			Status:       "skipped",
+			Message:      "Season pack diversion recently failed for " + result.Title + "; waiting out cooldown",
+		})
+		return models.CrossSeedFeedItemStatusSkipped, nil, nil
+	}
 	if candidateCount == 0 && !seasonPackDivertible {
 		run.TorrentsSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
@@ -4677,6 +4692,10 @@ func (s *Service) maybeDivertSeasonPack(ctx context.Context, req *CrossSeedReque
 				Str("torrentName", torrentName).
 				Str("reason", resp.Reason).
 				Msg("Season pack diversion did not apply")
+			switch resp.Reason {
+			case "drifted", "layout_mismatch", "already_exists":
+				s.recordSeasonPackFailCooldown(ctx, torrentName, response)
+			}
 		}
 		return
 	}
@@ -9884,7 +9903,19 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 
 	state.queue = deduplicated
 	if state.opts.EnsembleSeasonSearch {
-		if virtual := s.buildEnsembleSeasonCandidates(deduplicated); len(virtual) > 0 {
+		// Pack suppression needs the instance's full torrent list: when the
+		// fetch above was server-side filtered by category/tag, a seeded pack
+		// outside the run scope is missing from it. The sync manager serves
+		// this from memory.
+		packSource := torrents
+		if filterOpts.Category != "" || filterOpts.Tag != "" {
+			if all, allErr := s.syncManager.GetTorrents(ctx, state.opts.InstanceID, qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}); allErr == nil {
+				packSource = all
+			} else {
+				log.Warn().Err(allErr).Int("instanceID", state.opts.InstanceID).Msg("Failed to list all torrents for ensemble pack suppression; using run-scoped list")
+			}
+		}
+		if virtual := s.buildEnsembleSeasonCandidates(deduplicated, packSource); len(virtual) > 0 {
 			// deduplicated can be cache-backed; never append to it in place.
 			// Virtual entries go last so real torrents search first.
 			queue := make([]qbt.Torrent, 0, len(deduplicated)+len(virtual))

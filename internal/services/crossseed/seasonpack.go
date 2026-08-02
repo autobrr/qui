@@ -381,7 +381,14 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 
 	winner := selectWinner(matches, prep.threshold)
 	if winner == nil {
-		s.recordApplyRun(ctx, req.TorrentName, "drifted", "no instance meets coverage threshold at apply time", 0, 0, prep.totalEpisodes, 0, "")
+		// Record the best real partial coverage instead of a flat 0/N, so run
+		// rows distinguish "3 of 21 episodes seeded" from "nothing matched".
+		best := selectWinner(matches, 0)
+		bestInstance, bestMatched, bestCoverage := 0, 0, 0.0
+		if best != nil {
+			bestInstance, bestMatched, bestCoverage = best.InstanceID, best.MatchedEpisodes, best.Coverage
+		}
+		s.recordApplyRun(ctx, req.TorrentName, "drifted", "no instance meets coverage threshold at apply time", bestInstance, bestMatched, prep.totalEpisodes, bestCoverage, "")
 		return &SeasonPackApplyResponse{
 			Reason:  "drifted",
 			Message: "coverage no longer meets threshold",

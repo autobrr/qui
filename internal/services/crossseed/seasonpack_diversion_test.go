@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"testing"
+	"time"
 
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
@@ -291,6 +292,135 @@ func TestProcessAutomationCandidate_DownloadsPackForDiversion(t *testing.T) {
 			if tt.wantLastMessage != "" {
 				require.NotEmpty(t, run.Results)
 				require.Equal(t, tt.wantLastMessage, run.Results[len(run.Results)-1].Message)
+			}
+		})
+	}
+}
+
+// TestMaybeDivertSeasonPack_RecordsFailCooldown verifies which diversion
+// outcomes stamp the packfail cooldown: verdict-style failures cool, while
+// invalid_torrent (another indexer may serve a valid payload) and success
+// leave no stamp.
+func TestMaybeDivertSeasonPack_RecordsFailCooldown(t *testing.T) {
+	t.Parallel()
+
+	packName := "Show.Title.S01.1080p.WEB.H264-GRP"
+
+	tests := []struct {
+		name         string
+		reason       string
+		applied      bool
+		wantCooldown bool
+	}{
+		{"drifted cools", "drifted", false, true},
+		{"layout_mismatch cools", "layout_mismatch", false, true},
+		{"already_exists cools", "already_exists", false, true},
+		{"invalid_torrent does not cool", "invalid_torrent", false, false},
+		{"applied does not cool", "applied", true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			service, _, instanceID := newEnsembleSearchState(t, "crossseed-divert-cooldown", nil, true)
+
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SeasonPackAutomationEnabled = true
+			service.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return settings, nil
+			}
+			service.seasonPackApplier = func(context.Context, *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error) {
+				return &SeasonPackApplyResponse{Applied: tt.applied, Reason: tt.reason, InstanceID: instanceID}, nil
+			}
+
+			response := &CrossSeedResponse{
+				Results: []InstanceCrossSeedResult{
+					{InstanceID: instanceID, InstanceName: "Test", Success: false, Status: "no_match"},
+				},
+			}
+			service.maybeDivertSeasonPack(ctx, &CrossSeedRequest{}, packName, response)
+
+			_, found, err := service.automationStore.GetLatestSearchHistory(ctx, seasonPackFailKey(packName))
+			require.NoError(t, err)
+			require.Equal(t, tt.wantCooldown, found, "cooldown stamp presence mismatch")
+		})
+	}
+}
+
+// TestProcessAutomationCandidate_PackFailCooldownSkipsDownload covers the RSS
+// chokepoint: when diversion is the only reason to download and the release
+// name recently failed diversion, the item is skipped before the .torrent
+// download; an expired stamp downloads again.
+func TestProcessAutomationCandidate_PackFailCooldownSkipsDownload(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		stampAge      time.Duration
+		wantDownloads int
+		wantInvoked   bool
+	}{
+		{name: "cooling name skips before download", stampAge: time.Hour, wantDownloads: 0, wantInvoked: false},
+		{name: "expired stamp downloads again", stampAge: 13 * time.Hour, wantDownloads: 1, wantInvoked: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+
+			service, _, instanceID := newEnsembleSearchState(t, "crossseed-rss-packfail", []qbt.Torrent{
+				{Hash: "ep1", Name: "Show.Title.S01E01.1080p.WEB.H264-GRP", Progress: 1.0},
+			}, true)
+			sync := service.syncManager.(*episodeSyncManager)
+			sync.files[instanceID] = map[string]qbt.TorrentFiles{
+				"ep1": {{Name: "Show.Title.S01E01.1080p.WEB.H264-GRP.mkv", Size: 1 << 30}},
+			}
+			service.instanceStore = &episodeInstanceStore{
+				instances: map[int]*models.Instance{
+					instanceID: {ID: instanceID, Name: "Test"},
+				},
+			}
+
+			packTitle := "Show.Title.S01.1080p.WEB.H264-GRP"
+			require.NoError(t, service.automationStore.UpsertSearchHistory(
+				ctx, instanceID, seasonPackFailKey(packTitle), time.Now().UTC().Add(-tt.stampAge)))
+
+			var invoked bool
+			var downloads int
+			service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+				downloads++
+				return []byte("torrent"), nil
+			}
+			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+				invoked = true
+				return &CrossSeedResponse{Success: false}, nil
+			}
+
+			settings := &models.CrossSeedAutomationSettings{
+				TargetInstanceIDs:           []int{instanceID},
+				FindIndividualEpisodes:      true,
+				SeasonPackAutomationEnabled: true,
+			}
+			run := &models.CrossSeedRun{}
+			result := jackett.SearchResult{
+				Indexer:     "Example",
+				IndexerID:   10,
+				Title:       packTitle,
+				DownloadURL: "https://example.invalid/pack.torrent",
+				GUID:        "guid-pack",
+				Size:        3 << 30,
+			}
+
+			status, _, err := service.processAutomationCandidate(ctx, run, settings, nil, result, AutomationRunOptions{}, map[int]jackett.EnabledIndexerInfo{})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantDownloads, downloads, "torrent download count mismatch")
+			require.Equal(t, tt.wantInvoked, invoked, "CrossSeed invocation mismatch")
+			if !tt.wantInvoked {
+				require.Equal(t, models.CrossSeedFeedItemStatusSkipped, status)
+				require.NotEmpty(t, run.Results)
+				require.Contains(t, run.Results[len(run.Results)-1].Message, "cooldown")
 			}
 		})
 	}
