@@ -210,6 +210,10 @@ func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
 	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01")
 	require.True(t, build.hasPendingFiles())
 	require.Len(t, build.materializedPaths, 1)
+	// Demoted files count toward totalBytes but not linkedBytes — the resume
+	// gate derives from this split.
+	require.Equal(t, int64(10), build.linkedBytes)
+	require.Equal(t, int64(30), build.totalBytes)
 }
 
 func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t *testing.T) {

@@ -52,6 +52,11 @@ var errSkippedRecheck = errors.New("skipped_recheck")
 // coverage below the threshold during apply.
 var errCoverageDrifted = errors.New("coverage_drifted")
 
+// seasonPackResumeSlack absorbs the gap between the linked byte fraction and
+// what a recheck reports for it: piece-granularity loss at file boundaries and
+// pad-file accounting differences.
+const seasonPackResumeSlack = 0.98
+
 // episodeIdentity uniquely identifies an episode within a show by season and episode number.
 type episodeIdentity struct {
 	series  int
@@ -426,6 +431,13 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 
 	message = ""
 	if planBuild.hasPendingFiles() {
+		// Resume gate = the byte fraction the plan linked, not the episode-count
+		// coverage threshold: the two diverge when episode sizes are uneven
+		// (Hotellet: 14/20 episodes = 0.70 count but 0.63 bytes → stuck paused
+		// forever). A recheck materially below the linked fraction means links
+		// failed, and resuming would download over hardlinked files — those
+		// stay paused.
+		resumeThreshold := float64(planBuild.linkedBytes) / float64(planBuild.totalBytes) * seasonPackResumeSlack
 		recheckHashes := collectHashes(prep.meta)
 		switch {
 		case len(recheckHashes) == 0:
@@ -438,7 +450,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 				message = "torrent added paused; automatic resume could not be queued"
 			} else if s.recheckResumeChan == nil {
 				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(ctx, inst.ID, activeHash, prep.threshold); err != nil {
+			} else if err := s.queueRecheckResumeWithThreshold(ctx, inst.ID, activeHash, resumeThreshold); err != nil {
 				message = "torrent added paused; automatic resume queue is full"
 			} else {
 				message = "torrent added paused; recheck queued"

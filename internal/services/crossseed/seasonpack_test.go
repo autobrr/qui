@@ -1988,7 +1988,8 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 	require.Len(t, sm.bulkCalls, 1)
 	require.Equal(t, "recheck", sm.bulkCalls[0].action)
 	req := <-svc.recheckResumeChan
-	require.InDelta(t, 0.75, req.threshold, 0.0001)
+	// Resume gate = linked byte fraction (53-byte episode of a 64-byte pack), with slack.
+	require.InDelta(t, 53.0/64.0*seasonPackResumeSlack, req.threshold, 0.0001)
 }
 
 func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
@@ -2111,7 +2112,8 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.InDelta(t, 0.75, pending.threshold, 0.001)
+		// Resume gate = linked byte fraction (3 of 4 equal episodes), with slack.
+		require.InDelta(t, 0.75*seasonPackResumeSlack, pending.threshold, 0.001)
 	default:
 		t.Fatal("expected season pack apply to queue recheck resume")
 	}
@@ -2175,7 +2177,8 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.InDelta(t, 0.75, pending.threshold, 0.0001)
+		// Resume gate = linked byte fraction (64-byte episode of a 75-byte pack), with slack.
+		require.InDelta(t, 64.0/75.0*seasonPackResumeSlack, pending.threshold, 0.0001)
 	default:
 		t.Fatal("expected safe extras flow to queue recheck resume")
 	}

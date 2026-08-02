@@ -26,7 +26,7 @@ The webhook flow below is one of two triggers. The other is [Automatic Assembly]
    - `404 Not Found` - local coverage is too low, the release is not a season pack, or the feature is disabled
 7. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. qui never links a local episode file whose size or release details differ from its pack file. qui treats that episode as missing and downloads it instead. If these demotions drop coverage below the threshold, the apply fails as `drifted`
-9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After recheck, qui resumes the torrent when qBittorrent reports progress at or above your configured season-pack coverage threshold. If recheck finishes below that threshold, qui leaves the torrent paused for manual review. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
+9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After the recheck, qui resumes the torrent when qBittorrent confirms the bytes that qui linked. Then qBittorrent downloads the missing files. If the recheck reports much less than the linked bytes, some links are bad, and qui leaves the torrent paused for manual review. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
 ## Automatic Assembly
 
@@ -118,7 +118,7 @@ When `/apply` runs, qui:
 - Leaves unmatched episodes and extras for qBittorrent to download
 - Adds the torrent paused when anything is still missing
 - Attempts an automatic recheck so qBittorrent can discover the linked bytes
-- Queues automatic resume after recheck. qui resumes the torrent when qBittorrent reports progress at or above the configured season-pack coverage threshold, so qBittorrent can download the remaining files or pieces. If recheck finishes below that threshold, qui leaves the torrent paused for manual review.
+- Queues automatic resume after recheck. qui resumes the torrent when qBittorrent confirms the bytes that qui linked, so qBittorrent can download the remaining files or pieces. If the recheck reports much less than the linked bytes, some links are bad, and qui leaves the torrent paused for manual review.
 
 If automatic recheck or resume queueing cannot be started, qui reports `automatic recheck failed`, `automatic resume is unavailable`, or `automatic resume queue is full`.
 
@@ -270,7 +270,7 @@ When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` pointing at the linked tree
 - Applies the tags configured in **Cross-Seed > Rules > Season packs**
-- Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After recheck, qui resumes at or above the configured season-pack coverage threshold; below that threshold, the torrent stays paused for manual review.
+- Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After the recheck, qui resumes when qBittorrent confirms the linked bytes. If the recheck reports much less, the torrent stays paused for manual review.
 - Resolves the category in this order:
   - The category from the matching **Category routing** rule under **Cross-Seed > Rules > Season packs**, choosing the most specific rule when several apply (an explicit-source rule beats an Any-source rule at the same resolution). Recommended for Sonarr integration so the pack lands in Sonarr's download-client category and inherits hardlink-aware imports
   - Otherwise the **Anything else** fallback category, if set
@@ -323,6 +323,6 @@ Look for messages containing the torrent name and these clues:
 - `load cached torrents for instance` - qBittorrent cache lookup failed, so the check/apply is an operational failure
 - `unsafe piece boundary with pending files` - hardlink mode blocked an incomplete pack for safety
 - `torrent added paused; recheck queued` - qui added the pack and queued automatic resume
-- `Recheck completed below threshold, torrent left paused for manual review` - qBittorrent rechecked below the configured season-pack coverage threshold
+- `Recheck completed below threshold, torrent left paused for manual review` - the recheck reported less than the bytes that qui linked, so some links are bad
 
 Use `TRACE` when you need field-level matching details. Then look for `[CROSSSEED-MATCH] Release filtered` entries to see which release field caused an episode to be rejected.
