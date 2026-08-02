@@ -2600,19 +2600,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-0.5">
-                  <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
-                  <p className="text-xs text-muted-foreground">
-                    {t("scan.skipIndividualEpisodesDescription")}
-                    {skipIndividualEpisodes && settings?.seasonPackAutomationEnabled === false && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
-                  </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("scan.skipIndividualEpisodesDescription")}
+                      {skipIndividualEpisodes && settings?.seasonPackAutomationEnabled === false && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
+                    </p>
+                  </div>
+                  <Switch
+                    id="skip-individual-episodes"
+                    checked={skipIndividualEpisodes}
+                    onCheckedChange={value => setSkipIndividualEpisodes(!!value)}
+                  />
                 </div>
-                <Switch
-                  id="skip-individual-episodes"
-                  checked={skipIndividualEpisodes}
-                  onCheckedChange={value => setSkipIndividualEpisodes(!!value)}
-                />
               </div>
 
               <Separator />
