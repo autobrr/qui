@@ -2350,7 +2350,14 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	needCaps := len(requiredCaps) > 0 && len(idx.Capabilities) == 0
 	needCategories := len(requested) > 0 && len(idx.Categories) == 0
 	if needCaps || needCategories {
-		s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
+		err := s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
+		if cooldown, rateLimited := detectRateLimit(err); rateLimited {
+			// A rate-limited caps fetch means the search itself would 429 too;
+			// searching anyway doubles the load on an indexer already telling
+			// us to back off, and keeps the metadata from ever healing.
+			s.handleRateLimit(ctx, idx, cooldown, err)
+			return true
+		}
 	}
 
 	// Check capabilities first - use enhanced capability checking if we have search parameters
@@ -2773,9 +2780,9 @@ func splitTrailingResolutionToken(query string) (before, resolution string, ok b
 	return strings.Join(fields[:len(fields)-1], " "), last, true
 }
 
-func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, ensureCaps bool, ensureCategories bool) {
+func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, ensureCaps bool, ensureCategories bool) error {
 	if !ensureCaps && !ensureCategories {
-		return
+		return nil
 	}
 
 	caps, err := client.FetchCaps(ctx, identifier)
@@ -2785,7 +2792,7 @@ func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Msg("Failed to fetch caps for torznab indexer")
-		return
+		return err
 	}
 
 	if ensureCaps && len(caps.Capabilities) > 0 {
@@ -2835,6 +2842,8 @@ func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx
 				Msg("Successfully stored indexer limits from caps")
 		}
 	}
+
+	return nil
 }
 
 func requestedCategories(meta *searchContext, params map[string]string) []int {
