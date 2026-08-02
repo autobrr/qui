@@ -48,6 +48,10 @@ var errLayoutMismatch = errors.New("layout_mismatch")
 // errSkippedRecheck signals a partial season pack that requires recheck, but recheck is disabled.
 var errSkippedRecheck = errors.New("skipped_recheck")
 
+// errCoverageDrifted signals that demoting unusable local episode files pushed
+// coverage below the threshold during apply.
+var errCoverageDrifted = errors.New("coverage_drifted")
+
 // episodeIdentity uniquely identifies an episode within a show by season and episode number.
 type episodeIdentity struct {
 	series  int
@@ -442,15 +446,19 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		}
 	}
 
-	s.recordApplyRun(ctx, req.TorrentName, "applied", message, winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, linkMode)
+	// Record what actually resolved: file validation may have demoted episodes
+	// below the name-level winner counts.
+	matched := len(episodes)
+	coverage := float64(matched) / float64(prep.totalEpisodes)
+	s.recordApplyRun(ctx, req.TorrentName, "applied", message, winner.InstanceID, matched, prep.totalEpisodes, coverage, linkMode)
 
 	return &SeasonPackApplyResponse{
 		Applied:         true,
 		Message:         message,
 		InstanceID:      winner.InstanceID,
-		MatchedEpisodes: winner.MatchedEpisodes,
+		MatchedEpisodes: matched,
 		TotalEpisodes:   prep.totalEpisodes,
-		Coverage:        winner.Coverage,
+		Coverage:        coverage,
 		LinkMode:        linkMode,
 	}, nil
 }
@@ -485,8 +493,10 @@ func (s *Service) assembleSeasonPack(
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if len(episodes) < winner.MatchedEpisodes {
-		return nil, nil, nil, fmt.Errorf("%w: episode file validation drifted during apply", errLayoutMismatch)
+	// File validation may have demoted episodes to missing; re-check coverage
+	// with what actually resolved. Below the floor, drift as usual.
+	if float64(len(episodes)) < float64(prep.totalEpisodes)*prep.threshold {
+		return nil, nil, nil, fmt.Errorf("%w: local files cover %d/%d episodes, below coverage threshold", errCoverageDrifted, len(episodes), prep.totalEpisodes)
 	}
 
 	selectedBaseDir, err := selectSeasonPackBaseDir(inst.HardlinkBaseDir, localFiles)
@@ -655,6 +665,8 @@ func (s *Service) failApply(
 		reason = "layout_mismatch"
 	} else if errors.Is(err, errSkippedRecheck) {
 		reason = "skipped_recheck"
+	} else if errors.Is(err, errCoverageDrifted) {
+		reason = "drifted"
 	}
 	s.recordApplyRun(ctx, torrentName, reason, err.Error(), winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, "")
 	return &SeasonPackApplyResponse{Reason: reason, Message: err.Error()}, nil
@@ -1241,11 +1253,15 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 			break
 		}
 
+		// No candidate validated: the episode is missing, its pack file stays
+		// unmaterialized and is downloaded like any other missing episode. The
+		// caller re-checks coverage against the threshold after demotions.
 		if _, ok := selected[id]; !ok {
-			if lastErr != nil {
-				return nil, nil, lastErr
-			}
-			return nil, nil, fmt.Errorf("%w: no valid episode file in matched candidates", errLayoutMismatch)
+			log.Debug().
+				Err(lastErr).
+				Int("season", id.series).
+				Int("episode", id.episode).
+				Msg("[SEASONPACK] no local file validated; episode demoted to missing")
 		}
 	}
 
@@ -1427,11 +1443,13 @@ func buildSeasonPackPlan(
 			continue
 		}
 
+		// A size- or release-mismatched file is never linked; it is left pending
+		// and downloaded via recheck.
 		if localFile.size != pf.Size {
-			return nil, fmt.Errorf("%w: file size mismatch for %s", errLayoutMismatch, pf.Name)
+			continue
 		}
-		if ok, reason := matcher.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !ok {
-			return nil, fmt.Errorf("%w: release mismatch for %s: %s", errLayoutMismatch, pf.Name, reason)
+		if ok, _ := matcher.seasonPackReleasesMatchWithReason(packFileRelease, localFile.release, false, settings, aliasTitles); !ok {
+			continue
 		}
 
 		targetPath, ok := safeSeasonPackJoin(plan.RootDir, pf.Name)
