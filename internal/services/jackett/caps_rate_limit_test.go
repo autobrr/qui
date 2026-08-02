@@ -1,0 +1,115 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package jackett
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+const bookOnlyCapsXML = `<?xml version="1.0" encoding="UTF-8"?>
+<caps>
+  <searching>
+    <search available="yes" supportedParams="q"/>
+    <book-search available="yes" supportedParams="q"/>
+  </searching>
+  <categories>
+    <category id="7000" name="Books"/>
+  </categories>
+</caps>`
+
+// A rate-limited caps fetch must skip the indexer and engage the backoff
+// ladder instead of failing open (rationale at the skip site in service.go).
+func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
+	tests := []struct {
+		name             string
+		capsStatus       int
+		capsBody         string
+		storedCaps       []string
+		storedCategories []models.TorznabIndexerCategory
+		wantSkip         bool
+		wantCooldown     bool
+		wantCapsCalls    int32
+	}{
+		{
+			name:          "caps 429 skips indexer and applies cooldown",
+			capsStatus:    http.StatusTooManyRequests,
+			wantSkip:      true,
+			wantCooldown:  true,
+			wantCapsCalls: 1,
+		},
+		{
+			name:          "caps 500 keeps fail-open",
+			capsStatus:    http.StatusInternalServerError,
+			wantSkip:      false,
+			wantCooldown:  false,
+			wantCapsCalls: 1,
+		},
+		{
+			name:          "healed caps without tv-search skip via caps gate without cooldown",
+			capsStatus:    http.StatusOK,
+			capsBody:      bookOnlyCapsXML,
+			wantSkip:      true,
+			wantCooldown:  false,
+			wantCapsCalls: 1,
+		},
+		{
+			name:             "stored caps skip the heal entirely",
+			storedCaps:       []string{"search", "tv-search", "tv-search-season"},
+			storedCategories: []models.TorznabIndexerCategory{{CategoryID: 5000, CategoryName: "TV"}},
+			wantSkip:         false,
+			wantCooldown:     false,
+			wantCapsCalls:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var capsCalls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				capsCalls.Add(1)
+				w.WriteHeader(tt.capsStatus)
+				if tt.capsBody != "" {
+					_, _ = w.Write([]byte(tt.capsBody))
+				}
+			}))
+			defer server.Close()
+
+			idx := &models.TorznabIndexer{
+				ID:           92,
+				Name:         "MyAnonamouse",
+				BaseURL:      server.URL,
+				Backend:      models.TorznabBackendProwlarr,
+				Enabled:      true,
+				Capabilities: tt.storedCaps,
+				Categories:   tt.storedCategories,
+			}
+			store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{idx}}
+			service := NewService(store)
+			t.Cleanup(service.searchScheduler.Stop)
+
+			client := NewClient(server.URL, "key", nil, nil, models.TorznabBackendProwlarr, 5)
+			meta := &searchContext{searchMode: "tvsearch", categories: []int{5000}}
+			params := map[string]string{"q": "some show", "season": "1"}
+
+			skipped := service.applyIndexerRestrictions(context.Background(), client, idx, "42", meta, params)
+
+			if skipped != tt.wantSkip {
+				t.Fatalf("applyIndexerRestrictions skip = %v, want %v", skipped, tt.wantSkip)
+			}
+			inCooldown, _ := service.rateLimiter.IsInCooldown(idx.ID)
+			if inCooldown != tt.wantCooldown {
+				t.Fatalf("IsInCooldown = %v, want %v", inCooldown, tt.wantCooldown)
+			}
+			if got := capsCalls.Load(); got != tt.wantCapsCalls {
+				t.Fatalf("caps fetches = %d, want %d", got, tt.wantCapsCalls)
+			}
+		})
+	}
+}
