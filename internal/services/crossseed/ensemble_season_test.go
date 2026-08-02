@@ -513,6 +513,11 @@ func TestCanonicalReleaseNameKey(t *testing.T) {
 
 	// Names with no ASCII alphanumerics must not all collapse onto one key.
 	require.NotEqual(t, canonicalReleaseNameKey("進撃の巨人"), canonicalReleaseNameKey("鬼滅の刃"))
+
+	// Punctuation-only names carry no identity: no key, no cooldown
+	// bookkeeping, so "!!!" can never suppress "???".
+	require.Empty(t, seasonPackFailKey("!!!"))
+	require.Empty(t, seasonPackFailKey("???"))
 }
 
 func TestIsSeasonRangePack(t *testing.T) {

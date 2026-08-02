@@ -39,18 +39,26 @@ func canonicalReleaseNameKey(name string) string {
 	return releaseNameKeyRe.ReplaceAllString(strings.ToLower(name), "")
 }
 
+// seasonPackFailKey returns "" for names with no letters or digits at all:
+// they carry no identity, and a shared bare key would let one such name
+// suppress another. Callers skip cooldown bookkeeping on "".
 func seasonPackFailKey(torrentName string) string {
-	return seasonPackFailHashPrefix + canonicalReleaseNameKey(torrentName)
+	key := canonicalReleaseNameKey(torrentName)
+	if key == "" {
+		return ""
+	}
+	return seasonPackFailHashPrefix + key
 }
 
 // seasonPackFailCooldownActive reports whether a season pack release name
 // failed diversion within the cooldown window. Callers check this before
 // downloading a .torrent whose only purpose is another diversion attempt.
 func (s *Service) seasonPackFailCooldownActive(ctx context.Context, torrentName string, cooldown time.Duration) bool {
-	if s.automationStore == nil || cooldown <= 0 {
+	key := seasonPackFailKey(torrentName)
+	if s.automationStore == nil || cooldown <= 0 || key == "" {
 		return false
 	}
-	last, found, err := s.automationStore.GetLatestSearchHistory(ctx, seasonPackFailKey(torrentName))
+	last, found, err := s.automationStore.GetLatestSearchHistory(ctx, key)
 	if err != nil {
 		log.Debug().Err(err).Str("torrentName", torrentName).Msg("failed to read season pack failure cooldown")
 		return false
@@ -63,14 +71,15 @@ func (s *Service) seasonPackFailCooldownActive(ctx context.Context, torrentName 
 // not tied to one instance). invalid_torrent deliberately never lands here:
 // the same name from another indexer can serve a valid payload.
 func (s *Service) recordSeasonPackFailCooldown(ctx context.Context, torrentName string, response *CrossSeedResponse) {
-	if s.automationStore == nil {
+	key := seasonPackFailKey(torrentName)
+	if s.automationStore == nil || key == "" {
 		return
 	}
 	for i := range response.Results {
 		if response.Results[i].InstanceID <= 0 {
 			continue
 		}
-		if err := s.automationStore.UpsertSearchHistory(ctx, response.Results[i].InstanceID, seasonPackFailKey(torrentName), time.Now().UTC()); err != nil {
+		if err := s.automationStore.UpsertSearchHistory(ctx, response.Results[i].InstanceID, key, time.Now().UTC()); err != nil {
 			log.Debug().Err(err).Str("torrentName", torrentName).Msg("failed to record season pack failure cooldown")
 		}
 		return
