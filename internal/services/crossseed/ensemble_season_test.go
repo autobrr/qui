@@ -494,14 +494,18 @@ func TestCanonicalReleaseNameKey(t *testing.T) {
 	t.Parallel()
 
 	// Cooldowns are recorded under the torrent's internal (dotted) name but
-	// checked against feed/indexer titles, which may use spaces.
+	// checked against feed/indexer titles, which restyle separators between
+	// AND inside tokens (field case: BeyondHD's "DDP 5.1" vs "DDP5.1").
+	require.Equal(t,
+		canonicalReleaseNameKey("Stranger.Things.S05.2160p.NF.WEB-DL.DDP5.1.Atmos.H.265-Draken02"),
+		canonicalReleaseNameKey("Stranger Things S05 2160p NF WEB-DL DDP 5.1 Atmos H.265-Draken02"))
 	require.Equal(t,
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-GRP"),
 		canonicalReleaseNameKey("Show Title S01 1080p WEB H264-GRP"))
 	require.NotEqual(t,
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-GRP"),
 		canonicalReleaseNameKey("Show.Title.S01.1080p.WEB.H264-OTHER"))
-	require.Equal(t, "packfail:show title s01 1080p web h264 grp", seasonPackFailKey("Show.Title.S01.1080p.WEB.H264-GRP"))
+	require.Equal(t, "packfail:showtitles011080pwebh264grp", seasonPackFailKey("Show.Title.S01.1080p.WEB.H264-GRP"))
 
 	// Names with no ASCII alphanumerics must not all collapse onto one key.
 	require.NotEqual(t, canonicalReleaseNameKey("進撃の巨人"), canonicalReleaseNameKey("鬼滅の刃"))

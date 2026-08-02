@@ -24,12 +24,14 @@ const seasonPackFailHashPrefix = "packfail:"
 
 var releaseNameKeyRe = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 
-// canonicalReleaseNameKey collapses case and separator differences so a feed
-// title ("Show Title S01 ...") and the torrent's internal name
-// ("Show.Title.S01...") key identically: cooldowns are recorded under the
-// latter but checked against the former.
+// canonicalReleaseNameKey strips case and separator differences so a feed
+// title ("Show Title S01 ... DDP 5.1 ...") and the torrent's internal name
+// ("Show.Title.S01...DDP5.1...") key identically: cooldowns are recorded
+// under the latter but checked against the former, and indexers restyle
+// separators inside tokens too (BeyondHD's "DDP 5.1"), so separators are
+// removed rather than collapsed.
 func canonicalReleaseNameKey(name string) string {
-	return strings.TrimSpace(releaseNameKeyRe.ReplaceAllString(strings.ToLower(name), " "))
+	return releaseNameKeyRe.ReplaceAllString(strings.ToLower(name), "")
 }
 
 func seasonPackFailKey(torrentName string) string {
