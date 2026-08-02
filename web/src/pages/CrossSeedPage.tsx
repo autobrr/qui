@@ -2605,7 +2605,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
                   <p className="text-xs text-muted-foreground">
                     {t("scan.skipIndividualEpisodesDescription")}
-                    {skipIndividualEpisodes && !globalSettings.seasonPackAutomationEnabled && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
+                    {skipIndividualEpisodes && settings?.seasonPackAutomationEnabled === false && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
                   </p>
                 </div>
                 <Switch
