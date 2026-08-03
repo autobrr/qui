@@ -3896,7 +3896,7 @@ paths:
                 maxAddedAgeDays:
                   type: integer
                   minimum: 0
-                  description: Skip torrents added more than this many days ago. 0 disables the cutoff. Indexers that have never searched a torrent bypass it.
+                  description: An indexer that already searched a torrent does not search it again after this many days. An indexer that never searched a torrent searches it at any age, if its capabilities match the torrent. 0 disables this rule.
       responses:
         '202':
           description: Search run started
