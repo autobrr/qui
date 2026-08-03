@@ -787,6 +787,17 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 
 	}
 
+	// Renamed-file fallback: the torrent-level release gate already matched this
+	// candidate, but its files parse no episode-level keys (renamed files only
+	// inherit the pack's series through enrichment, never an episode). Pass the
+	// candidate through; the file-level matcher decides by size containment at
+	// apply. Candidates with parseable episode keys skip this, so a well-named
+	// pack that simply lacks the target episode still rejects here.
+	if targetRelease.Series > 0 && candidateRelease.Series == targetRelease.Series &&
+		!hasEpisodeLevelKeys(candidateReleases) {
+		return "release-match"
+	}
+
 	// Fallback: rls couldn't derive usable release keys from the files, but the titles match and
 	// the episode number encoded in the raw torrent names also matches (e.g. anime releases where
 	// rls fails to parse " - 1150 " as an episode).
@@ -839,9 +850,18 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 	return ""
 }
 
+func hasEpisodeLevelKeys(keys map[releaseKey]int64) bool {
+	for key := range keys {
+		if key.episode > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // MatchResult holds both the match type and a human-readable reason when there's no match.
 type MatchResult struct {
-	MatchType string // "exact", "partial-in-pack", "partial-contains", "size", or ""
+	MatchType string // "exact", "partial-in-pack", "partial-contains", "size", "size-partial-in-pack", "size-partial-contains", or ""
 	Reason    string // Human-readable reason when MatchType is "" (no match)
 }
 
@@ -944,6 +964,23 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		}
 	}
 
+	// Size-only containment: one side's files all pair 1:1 by exact size into
+	// the other side. Rescues subset-of-pack matches whose file names rls cannot
+	// parse (music albums in packs, renamed season packs). It runs before the
+	// tolerant total-size tier because with unequal file counts a strict per-file
+	// pairing is better evidence than totals landing inside the tolerance, and
+	// the containment type engages the episode-in-pack layout at apply. Equal
+	// counts cannot strictly contain (a full both-side pairing means equal
+	// totals), so they stay with the size tier below.
+	if len(filteredSourceFiles) != len(filteredCandidateFiles) {
+		if containment := sizeContainmentMatchType(filteredSourceFiles, filteredCandidateFiles); containment != "" {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypeSizeMatch.Inc()
+			}
+			return MatchResult{MatchType: containment, Reason: ""}
+		}
+	}
+
 	// Size match with tolerance
 	if totalSourceSize > 0 && len(filteredSourceFiles) > 0 {
 		if s.isSizeWithinTolerance(totalSourceSize, totalCandidateSize, tolerancePercent) {
@@ -1039,6 +1076,42 @@ func buildNoMatchReason(
 	}
 
 	return "Files don't match (structure or naming differs)"
+}
+
+// sizeContainmentMatchType reports a size-only containment between the usable
+// file lists: "size-partial-in-pack" when every source file pairs 1:1 by exact
+// size into the candidate files, "size-partial-contains" for the reverse.
+// Runs only after every name-aware tier failed. Ambiguous same-size pairs stay
+// unmatched (the pairing takes a size-only pair only when it is the sole
+// candidate), so size collisions reject instead of guessing; the recheck on
+// apply is the final safety net.
+func sizeContainmentMatchType(sourceFiles, candidateFiles []TorrentFile) string {
+	if len(sourceFiles) == 0 || len(candidateFiles) == 0 {
+		return ""
+	}
+	if sizeContainmentPairsAll(sourceFiles, candidateFiles) {
+		return "size-partial-in-pack"
+	}
+	if sizeContainmentPairsAll(candidateFiles, sourceFiles) {
+		return "size-partial-contains"
+	}
+	return ""
+}
+
+func sizeContainmentPairsAll(contained, container []TorrentFile) bool {
+	if len(contained) > len(container) {
+		return false
+	}
+	_, unmatched := matchSourceFilesToCandidates(toQbtTorrentFiles(contained), toQbtTorrentFiles(container))
+	return len(unmatched) == 0
+}
+
+func toQbtTorrentFiles(files []TorrentFile) qbt.TorrentFiles {
+	converted := make(qbt.TorrentFiles, 0, len(files))
+	for _, f := range files {
+		converted = append(converted, qbt.TorrentFile{Name: f.Name, Size: f.Size})
+	}
+	return converted
 }
 
 // getMatchType determines if files match for cross-seeding.

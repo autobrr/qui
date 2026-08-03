@@ -5209,7 +5209,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Detect episode matched to season pack - these need special handling
 	// to use the season pack's content path instead of category save path
 	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
-	isEpisodeInPack := matchType == "partial-in-pack" &&
+	isEpisodeInPack := (matchType == "partial-in-pack" || matchType == "size-partial-in-pack") &&
 		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0
 	rootlessContentDir := ""
@@ -6399,14 +6399,18 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
-		return 4
+		return 6
 	case "partial-in-pack":
-		return 3
+		return 5
 	case "partial-contains":
 		// Allows cross-seeding when folder structures differ but content matches
 		// (e.g., /movie1/movie1.mkv vs /movie1.mkv)
-		return 2
+		return 4
 	case "size":
+		return 3
+	case "size-partial-in-pack":
+		return 2
+	case "size-partial-contains":
 		return 1
 	default:
 		// Unknown/unsupported match types (e.g. "release-match")
@@ -6521,6 +6525,10 @@ func (s *Service) selectBestCandidateAddPlan(
 			actualMatchType = "partial-contains"
 		case "partial-contains":
 			actualMatchType = "partial-in-pack"
+		case "size-partial-in-pack":
+			actualMatchType = "size-partial-contains"
+		case "size-partial-contains":
+			actualMatchType = "size-partial-in-pack"
 		}
 
 		score := matchTypePriority(actualMatchType)
