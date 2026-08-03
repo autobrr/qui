@@ -119,6 +119,8 @@
     "skipIndividualEpisodesLabel": "跳过单集",
     "skipIndividualEpisodesDescription": "本次运行不搜索单集剧集。成组的单集仍会触发季度包搜索。",
     "skipIndividualEpisodesAutomationOff": "季度包自动组装已关闭。本次运行不会搜索季度包。",
+    "maxAddedAgeLabel": "种子最长添加时间（天）",
+    "maxAddedAgeDescription": "跳过添加时间超过该天数的种子。0 表示不限制。从未搜索过某个种子的索引器始终包含在内。",
     "categories": "分类",
     "tags": "标签",
     "allCategoriesAll": "所有分类（留空表示全部）",

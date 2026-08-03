@@ -119,6 +119,8 @@
     "skipIndividualEpisodesLabel": "Přeskočit jednotlivé epizody",
     "skipIndividualEpisodesDescription": "Běh nevyhledává jednotlivé TV epizody. Skupiny epizod stále spouštějí hledání balíků sezón.",
     "skipIndividualEpisodesAutomationOff": "Automatické sestavování balíků sezón je vypnuté. Tento běh balíky sezón nevyhledává.",
+    "maxAddedAgeLabel": "Maximální stáří torrentu (dny)",
+    "maxAddedAgeDescription": "Přeskočí torrenty přidané před více než tímto počtem dní. 0 limit vypne. Indexery, které torrent nikdy nehledaly, jsou vždy zahrnuty.",
     "categories": "Kategorie",
     "tags": "Štítky",
     "allCategoriesAll": "Všechny kategorie (nechat prázdné pro všechny)",

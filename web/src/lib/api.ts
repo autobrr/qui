@@ -1539,6 +1539,7 @@ class ApiClient {
     disableTorznab?: boolean
     cooldownMinutes: number
     skipIndividualEpisodes?: boolean
+    maxAddedAgeDays?: number
   }): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
       method: "POST",
