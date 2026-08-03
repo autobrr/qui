@@ -4411,17 +4411,27 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			}
 
 			// Check if releases are related (quick filter). Search-origin ARR aliases
-			// belong to the existing torrent, which is the candidate in this reversed
-			// apply-stage comparison. Exact-size provenance may relax only the recorded
-			// soft differences for the specific torrent whose qBittorrent size supplied
-			// the search evidence. File matching and later safety checks still run.
+			// describe ONE existing torrent: the search source whose lookup produced
+			// them. Handing them to every candidate would let the new torrent's own
+			// alias set satisfy the title overlap for unrelated torrents, so the
+			// aliases ride along only for the search-source torrent itself, mirroring
+			// the exact-size relaxation below. Exact-size provenance may relax only
+			// the recorded soft differences for the specific torrent whose
+			// qBittorrent size supplied the search evidence. File matching and later
+			// safety checks still run.
+			var candidateAliasTitles []string
+			if len(req.SearchSourceTitles) > 0 && req.SearchSourceInstanceID == instanceID {
+				if sourceHash := normalizeHash(req.SearchSourceHash); sourceHash != "" && normalizeHash(torrent.Hash) == sourceHash {
+					candidateAliasTitles = req.SearchSourceTitles
+				}
+			}
 			releasesMatch, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(
 				targetRelease,
 				candidateRelease,
 				req.TorrentName,
 				torrent.Name,
 				nil,
-				req.SearchSourceTitles,
+				candidateAliasTitles,
 				req.FindIndividualEpisodes,
 			)
 			if !releasesMatch {
