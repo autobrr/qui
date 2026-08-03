@@ -3895,6 +3895,7 @@ paths:
                   description: When true, the run does not search single TV episodes. Groups of episodes still start season pack searches when season pack automation is on.
                 maxAddedAgeDays:
                   type: integer
+                  minimum: 0
                   description: Skip torrents added more than this many days ago. 0 disables the cutoff. Indexers that have never searched a torrent bypass it.
       responses:
         '202':

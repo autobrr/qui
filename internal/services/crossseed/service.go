@@ -10279,16 +10279,28 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	staleCacheKey := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
 	staleWork, hasStaleWork := state.staleWork[staleCacheKey]
 	skipGazelle := hasStaleWork && !staleWork.gazelle
-	if hasStaleWork && !searchDisableTorznab {
-		allowedIndexerIDs = intersectInts(allowedIndexerIDs, staleWork.indexerIDs)
-		if len(allowedIndexerIDs) == 0 {
-			searchDisableTorznab = true
-			skipReasonForNoIndexers = "all eligible indexers within cooldown"
+	// Stale indexers the per-torrent filter ruled out count as covered: they
+	// were considered and deliberately excluded, and leaving them unstamped
+	// would keep the candidate nominally eligible on every run.
+	var staleExcludedIndexerIDs []int
+	if hasStaleWork {
+		staleExcludedIndexerIDs = subtractInts(staleWork.indexerIDs, allowedIndexerIDs)
+		if !searchDisableTorznab {
+			allowedIndexerIDs = intersectInts(allowedIndexerIDs, staleWork.indexerIDs)
+			if len(allowedIndexerIDs) == 0 {
+				searchDisableTorznab = true
+				skipReasonForNoIndexers = "all eligible indexers within cooldown"
+			}
 		}
 	}
 
 	hasGazelle := state.gazelleClients != nil && len(state.gazelleClients.byHost) > 0
 	if searchDisableTorznab && (!hasGazelle || skipGazelle) {
+		if s.automationStore != nil {
+			if histErr := s.automationStore.UpsertIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, staleExcludedIndexerIDs, processedAt); histErr != nil {
+				log.Debug().Err(histErr).Msg("failed to update indexer search history")
+			}
+		}
 		if skipReasonForNoIndexers == "" {
 			skipReasonForNoIndexers = "no eligible indexers"
 		}
@@ -10335,9 +10347,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		}
 		// Torznab stamps per indexer, and only the covered ones: an indexer
 		// that was rate limited or failed a pass stays eligible next run.
-		var coveredIndexerIDs []int
+		// Filter-excluded stale indexers ride along (the store deduplicates).
+		coveredIndexerIDs := staleExcludedIndexerIDs
 		if searchResp != nil {
-			coveredIndexerIDs = searchResp.CoveredIndexerIDs
+			coveredIndexerIDs = append(coveredIndexerIDs, searchResp.CoveredIndexerIDs...)
 		}
 		if histErr := s.automationStore.UpsertIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, coveredIndexerIDs, processedAt); histErr != nil {
 			log.Debug().Err(histErr).Msg("failed to update indexer search history")

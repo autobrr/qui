@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -1617,6 +1618,9 @@ func (s *CrossSeedStore) UpsertIndexerSearchHistory(ctx context.Context, instanc
 	if len(indexerIDs) == 0 {
 		return nil
 	}
+	// Postgres rejects a multi-row ON CONFLICT DO UPDATE that hits the same
+	// conflict target twice ("cannot affect row a second time").
+	indexerIDs = slices.Compact(slices.Sorted(slices.Values(indexerIDs)))
 
 	var query strings.Builder
 	query.WriteString(`

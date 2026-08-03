@@ -119,7 +119,7 @@
     "skipIndividualEpisodesLabel": "개별 에피소드 건너뛰기",
     "skipIndividualEpisodesDescription": "이 실행에서는 개별 TV 에피소드를 검색하지 않습니다. 묶인 에피소드는 여전히 시즌 팩 검색을 시작합니다.",
     "skipIndividualEpisodesAutomationOff": "시즌 팩 자동 조립이 꺼져 있습니다. 이 실행에서는 시즌 팩을 검색하지 않습니다.",
-    "maxAddedAgeLabel": "최대 토렌트 경과일 (일)",
+    "maxAddedAgeLabel": "토렌트 최대 추가 경과 기간(일)",
     "maxAddedAgeDescription": "이 일수보다 오래전에 추가된 토렌트는 건너뜁니다. 0은 제한을 비활성화합니다. 토렌트를 한 번도 검색하지 않은 인덱서는 항상 포함됩니다.",
     "categories": "카테고리",
     "tags": "태그",

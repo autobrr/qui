@@ -2624,7 +2624,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     type="number"
                     min={0}
                     value={maxAddedAgeDays}
-                    onChange={event => setMaxAddedAgeDays(Math.max(0, Number(event.target.value) || 0))}
+                    onChange={event => setMaxAddedAgeDays(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
                   />
                   <p className="text-xs text-muted-foreground">{t("scan.maxAddedAgeDescription")}</p>
                 </div>
