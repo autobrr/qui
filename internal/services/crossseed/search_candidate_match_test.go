@@ -668,6 +668,56 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
 }
 
+func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
+	const (
+		instanceID    = 1
+		targetName    = "Money.Heist.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		sourceName    = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		unrelatedName = "The.Bear.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		sourceHash    = "source"
+		unrelatedHash = "unrelated"
+		fileSize      = int64(1_500_000_000)
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	source := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: fileSize, Progress: 1}
+	unrelated := qbt.Torrent{Hash: unrelatedHash, Name: unrelatedName, Size: fileSize, Progress: 1}
+	files := map[string]qbt.TorrentFiles{
+		sourceHash:    {{Name: "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb.mkv", Size: fileSize}},
+		unrelatedHash: {{Name: "The.Bear.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb.mkv", Size: fileSize}},
+	}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source, unrelated}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	request := func(hash string) *FindCandidatesRequest {
+		return &FindCandidatesRequest{
+			TorrentName:            targetName,
+			TargetInstanceIDs:      []int{instanceID},
+			SearchSourceInstanceID: instanceID,
+			SearchSourceHash:       hash,
+			SearchSourceTitles:     []string{"Money Heist"},
+		}
+	}
+
+	// The aliases admit exactly the torrent the search resolved them for. The
+	// unrelated same-season torrent must not inherit them: with the aliases on
+	// every candidate, the target's own alias satisfies the title overlap and
+	// the whole library passes discovery.
+	response, err := service.FindCandidates(context.Background(), request(sourceHash))
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1)
+	require.Len(t, response.Candidates[0].Torrents, 1)
+	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+
+	// Without a matching source hash the aliases attach to nothing.
+	response, err = service.FindCandidates(context.Background(), request("different-hash"))
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates)
+}
+
 func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	const (
 		instanceID   = 1
@@ -699,10 +749,12 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 
 	apply := func(sourceTitles []string) *CrossSeedResponse {
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
-			TorrentData:         base64.StdEncoding.EncodeToString(torrentData),
-			TargetInstanceIDs:   []int{instanceID},
-			SearchDecisionClass: searchCandidateClassStrict,
-			SearchSourceTitles:  sourceTitles,
+			TorrentData:            base64.StdEncoding.EncodeToString(torrentData),
+			TargetInstanceIDs:      []int{instanceID},
+			SearchDecisionClass:    searchCandidateClassStrict,
+			SearchSourceInstanceID: instanceID,
+			SearchSourceHash:       existingHash,
+			SearchSourceTitles:     sourceTitles,
 		})
 		require.NoError(t, applyErr)
 		require.Len(t, response.Results, 1)
