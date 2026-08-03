@@ -119,6 +119,8 @@
     "skipIndividualEpisodesLabel": "Ignorer les épisodes individuels",
     "skipIndividualEpisodesDescription": "L'exécution ne recherche pas les épisodes TV individuels. Les groupes d'épisodes déclenchent toujours des recherches de packs de saison.",
     "skipIndividualEpisodesAutomationOff": "L'assemblage automatique des packs de saison est désactivé. Cette exécution ne recherche pas de packs de saison.",
+    "maxAddedAgeLabel": "Âge maximal du torrent (jours)",
+    "maxAddedAgeDescription": "Ignore les torrents ajoutés il y a plus de ce nombre de jours. 0 désactive la limite. Les indexeurs qui n'ont jamais recherché un torrent sont toujours inclus.",
     "categories": "Catégories",
     "tags": "Tags",
     "allCategoriesAll": "Toutes les catégories (laisser vide pour toutes)",

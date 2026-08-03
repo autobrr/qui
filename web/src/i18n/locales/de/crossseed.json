@@ -119,6 +119,8 @@
     "skipIndividualEpisodesLabel": "Einzelepisoden überspringen",
     "skipIndividualEpisodesDescription": "Der Lauf durchsucht keine einzelnen TV-Episoden. Gruppen von Episoden starten weiterhin Season-Pack-Suchen.",
     "skipIndividualEpisodesAutomationOff": "Die automatische Season-Pack-Zusammenstellung ist aus. Dieser Lauf sucht nicht nach Season Packs.",
+    "maxAddedAgeLabel": "Maximales Torrent-Alter (Tage)",
+    "maxAddedAgeDescription": "Überspringt Torrents, die vor mehr als dieser Anzahl an Tagen hinzugefügt wurden. 0 deaktiviert das Limit. Indexer, die einen Torrent noch nie durchsucht haben, werden immer einbezogen.",
     "categories": "Kategorien",
     "tags": "Tags",
     "allCategoriesAll": "Alle Kategorien (leer lassen für alle)",

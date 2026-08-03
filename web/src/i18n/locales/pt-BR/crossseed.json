@@ -119,6 +119,8 @@
     "skipIndividualEpisodesLabel": "Ignorar episódios avulsos",
     "skipIndividualEpisodesDescription": "A execução não busca episódios de TV avulsos. Grupos de episódios ainda iniciam buscas por pacotes de temporada.",
     "skipIndividualEpisodesAutomationOff": "A montagem automática de pacotes de temporada está desativada. Esta execução não busca pacotes de temporada.",
+    "maxAddedAgeLabel": "Idade máxima do torrent (dias)",
+    "maxAddedAgeDescription": "Ignora torrents adicionados há mais dias do que este valor. 0 desativa o limite. Indexadores que nunca pesquisaram um torrent são sempre incluídos.",
     "categories": "Categorias",
     "tags": "Tags",
     "allCategoriesAll": "Todas as categorias (deixe vazio para todas)",

@@ -242,6 +242,7 @@ func newEnsembleSearchState(t *testing.T, dbName string, torrents []qbt.Torrent,
 			CooldownMinutes:      720,
 			EnsembleSeasonSearch: ensemble,
 		},
+		resolvedTorznabIndexerIDs: []int{10},
 	}
 	return service, state, instance.ID
 }

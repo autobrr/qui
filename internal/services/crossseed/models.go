@@ -345,6 +345,11 @@ type TorrentSearchResponse struct {
 	Partial       bool                         `json:"partial,omitempty"`
 	// JobID identifies this search for outcome tracking (cross-seed)
 	JobID uint64 `json:"jobId,omitempty"`
+	// CoveredIndexerIDs lists the Torznab indexers that answered every search
+	// pass of this request (primary plus any zero-result retries). Used to
+	// stamp per-indexer search history; an indexer missing here was rate
+	// limited or failed a pass and stays eligible for the next run.
+	CoveredIndexerIDs []int `json:"-"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.
