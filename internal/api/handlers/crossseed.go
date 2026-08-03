@@ -464,6 +464,10 @@ type searchRunRequest struct {
 	// SkipIndividualEpisodes stops the run from searching loose TV episodes
 	// one by one. Episodes still count toward ensemble season-pack searches.
 	SkipIndividualEpisodes bool `json:"skipIndividualEpisodes"`
+	// MaxAddedAgeDays retires torrents added more than this many days ago from
+	// re-searching. 0 disables the cutoff. An indexer that has never searched a
+	// torrent bypasses it, so newly added indexers still backfill everything.
+	MaxAddedAgeDays int `json:"maxAddedAgeDays"`
 
 	// TODO: Surface remaining crossseed.SearchRunOptions fields (e.g. FindIndividualEpisodes,
 	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
@@ -1489,6 +1493,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		DisableTorznab:         req.DisableTorznab,
 		CooldownMinutes:        req.CooldownMinutes,
 		SkipIndividualEpisodes: req.SkipIndividualEpisodes,
+		MaxAddedAgeDays:        req.MaxAddedAgeDays,
 		RequestedBy:            "api",
 	})
 	if err != nil {

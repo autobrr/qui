@@ -1507,6 +1507,16 @@ type SearchRunOptions struct {
 	// SkipIndividualEpisodes excludes loose TV episodes from the searchable
 	// queue. Episodes still feed ensemble season grouping.
 	SkipIndividualEpisodes bool
+	// MaxAddedAgeDays retires torrents added more than this many days ago from
+	// re-searching. 0 disables the cutoff. Indexers that have never searched a
+	// torrent bypass it, so a newly added indexer still backfills everything.
+	MaxAddedAgeDays int
+}
+
+// candidateStaleWork lists what still needs a remote search for one candidate.
+type candidateStaleWork struct {
+	indexerIDs []int
+	gazelle    bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -1546,6 +1556,10 @@ type searchRunState struct {
 	// skipCache stores cooldown evaluation results keyed by torrent hash so we
 	// don't hammer the database twice when calculating totals and iterating.
 	skipCache map[string]bool
+	// staleWork stores, for candidates that are not skipped, which indexers
+	// still need a search and whether the Gazelle lookup is due. Keyed like
+	// skipCache; a missing entry means unrestricted.
+	staleWork map[string]candidateStaleWork
 	// duplicateHashes keeps track of deduplicated torrent hash sets keyed by the
 	// representative hash so cooldowns can be propagated to other copies.
 	duplicateHashes map[string][]string
@@ -8325,6 +8339,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	var lateFilterSnapshot *AsyncIndexerFilteringState
 	var lateExcludedCount int
 
+	// An indexer only counts as covered when it answered every pass of this
+	// search: a pass it missed is exactly the query that might have matched,
+	// so it must stay eligible for the next run.
+	coveredIndexerIDs := searchResp.CoveredIndexerIDs
+
 	yearlessRetryRan := false
 
 	// Retry without year when the first pass returned zero results. The year is
@@ -8364,6 +8383,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		case retryResp := <-retryRespCh:
 			searchResp = retryResp
 			searchResults = retryResp.Results
+			coveredIndexerIDs = intersectInts(coveredIndexerIDs, retryResp.CoveredIndexerIDs)
 		case retryErr := <-retryErrCh:
 			return torznabFailed(retryErr)
 		case <-waitCtx.Done():
@@ -8401,9 +8421,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					Err(altErr).
 					Str("altTitleQuery", altTitle).
 					Msg("[CROSSSEED-SEARCH] Alternate-title retry failed; continuing with primary results")
+				coveredIndexerIDs = nil
 			} else if altResp != nil {
 				searchResp = altResp
 				searchResults = altResp.Results
+				coveredIndexerIDs = intersectInts(coveredIndexerIDs, altResp.CoveredIndexerIDs)
 			}
 		}
 	}
@@ -8436,14 +8458,20 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 						Str("altQuery", altQuery).
 						Ints("altIndexerIDs", altIndexerIDs).
 						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass failed; continuing with primary results")
-				} else if altResp != nil && len(altResp.Results) > 0 {
-					log.Debug().
-						Str("query", searchReq.Query).
-						Str("altQuery", altQuery).
-						Int("altResults", len(altResp.Results)).
-						Ints("altIndexerIDs", altIndexerIDs).
-						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
-					searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, altIndexerIDs)
+				} else if altResp != nil {
+					// This pass only targeted altIndexerIDs; un-cover the targeted
+					// indexers that missed it, leave the rest untouched.
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, subtractInts(altIndexerIDs, altResp.CoveredIndexerIDs))
+					if len(altResp.Results) > 0 {
+						log.Debug().
+							Str("query", searchReq.Query).
+							Str("altQuery", altQuery).
+							Int("altResults", len(altResp.Results)).
+							Ints("altIndexerIDs", altIndexerIDs).
+							Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
+						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
+					}
 				}
 			}
 		}
@@ -8588,11 +8616,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
 		return &TorrentSearchResponse{
-			SourceTorrent: sourceInfo,
-			Results:       combined,
-			Cache:         searchResp.Cache,
-			Partial:       searchResp.Partial,
-			JobID:         searchResp.JobID,
+			SourceTorrent:     sourceInfo,
+			Results:           combined,
+			Cache:             searchResp.Cache,
+			Partial:           searchResp.Partial,
+			JobID:             searchResp.JobID,
+			CoveredIndexerIDs: coveredIndexerIDs,
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
@@ -8616,11 +8645,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
 
 	return &TorrentSearchResponse{
-		SourceTorrent: sourceInfo,
-		Results:       combined,
-		Cache:         searchResp.Cache,
-		Partial:       searchResp.Partial,
-		JobID:         searchResp.JobID,
+		SourceTorrent:     sourceInfo,
+		Results:           combined,
+		Cache:             searchResp.Cache,
+		Partial:           searchResp.Partial,
+		JobID:             searchResp.JobID,
+		CoveredIndexerIDs: coveredIndexerIDs,
 	}, gazelleLookupAttempted, remoteRequestsMade, nil
 }
 
@@ -9818,7 +9848,7 @@ func (s *Service) torrentHasTopLevelFolderCached(hash string, cache map[string]b
 	return cache[normHash] // Cache is pre-populated, so this should always exist
 }
 
-func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time) {
+func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time, coveredIndexerIDs []int, gazelleStamped bool) {
 	if s.automationStore == nil || state == nil {
 		return
 	}
@@ -9835,15 +9865,19 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 		if strings.TrimSpace(dupHash) == "" {
 			continue
 		}
-		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, dupHash, processedAt); err != nil {
+		if gazelleStamped {
+			if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, dupHash, processedAt); err != nil {
+				log.Debug().
+					Err(err).
+					Str("hash", dupHash).
+					Msg("failed to propagate search history to duplicate torrent")
+			}
+		}
+		if err := s.automationStore.UpsertIndexerSearchHistory(ctx, state.opts.InstanceID, dupHash, coveredIndexerIDs, processedAt); err != nil {
 			log.Debug().
 				Err(err).
 				Str("hash", dupHash).
-				Msg("failed to propagate search history to duplicate torrent")
-			continue
-		}
-		if state.skipCache != nil {
-			state.skipCache[stringutils.DefaultNormalizer.Normalize(dupHash)] = true
+				Msg("failed to propagate indexer search history to duplicate torrent")
 		}
 	}
 }
@@ -9942,6 +9976,7 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	}
 	state.index = 0
 	state.skipCache = make(map[string]bool, len(state.queue))
+	state.staleWork = make(map[string]candidateStaleWork, len(state.queue))
 	state.duplicateHashes = duplicates
 
 	totalEligible := 0
@@ -10047,30 +10082,92 @@ func (s *Service) shouldSkipCandidate(ctx context.Context, state *searchRunState
 		return false, nil
 	}
 
-	last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+	// A failed indexer resolution leaves the requested set empty; never skip on
+	// that, or the failure would be silently swallowed instead of surfacing on
+	// the first processed candidate.
+	if state.resolvedTorznabIndexerErr != nil && !state.opts.DisableTorznab {
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = false
+		}
+		return false, nil
+	}
+
+	// Pseudo-keys (season: ensemble entries) have no per-indexer dimension;
+	// they keep the whole-entry cooldown gate on the per-torrent history table.
+	if strings.Contains(torrent.Hash, ":") {
+		last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+		if err != nil {
+			return false, err
+		}
+		cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
+		skip := found && cooldown > 0 && time.Since(last) < cooldown
+		if cacheKey != "" && state.skipCache != nil {
+			state.skipCache[cacheKey] = skip
+		}
+		return skip, nil
+	}
+
+	work, err := s.staleSearchWork(ctx, state, torrent)
 	if err != nil {
 		return false, err
 	}
-	if !found {
-		if cacheKey != "" && state.skipCache != nil {
-			state.skipCache[cacheKey] = false
-		}
-		return false, nil
+	skip := len(work.indexerIDs) == 0 && !work.gazelle
+	if !skip && cacheKey != "" && state.staleWork != nil {
+		state.staleWork[cacheKey] = work
 	}
-
-	cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
-	if cooldown <= 0 {
-		if cacheKey != "" && state.skipCache != nil {
-			state.skipCache[cacheKey] = false
-		}
-		return false, nil
-	}
-
-	skip := time.Since(last) < cooldown
 	if cacheKey != "" && state.skipCache != nil {
 		state.skipCache[cacheKey] = skip
 	}
 	return skip, nil
+}
+
+// staleSearchWork returns what still needs a remote search for one candidate:
+// the Torznab indexers whose per-indexer cooldown lapsed (or that never
+// searched this torrent) and whether the Gazelle lookup is due again.
+func (s *Service) staleSearchWork(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) (candidateStaleWork, error) {
+	cooldown := time.Duration(state.opts.CooldownMinutes) * time.Minute
+	tooOld := false
+	if state.opts.MaxAddedAgeDays > 0 && torrent.AddedOn > 0 {
+		tooOld = time.Since(time.Unix(torrent.AddedOn, 0)) > time.Duration(state.opts.MaxAddedAgeDays)*24*time.Hour
+	}
+	// Previously searched work is due again once its stamp outlives the cooldown
+	// (always, when the cooldown is disabled) unless the age cutoff retired the
+	// torrent. Never-searched work is always due: that is what backfills a newly
+	// added indexer, and it keeps the age cutoff from hiding a torrent an
+	// indexer has never seen.
+	due := func(last time.Time, found bool) bool {
+		if !found {
+			return true
+		}
+		if tooOld {
+			return false
+		}
+		return cooldown <= 0 || time.Since(last) >= cooldown
+	}
+
+	var work candidateStaleWork
+	requested := state.resolvedTorznabIndexerIDs
+	if !state.opts.DisableTorznab && len(requested) > 0 {
+		history, err := s.automationStore.GetIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+		if err != nil {
+			return candidateStaleWork{}, err
+		}
+		for _, id := range requested {
+			last, found := history[id]
+			if due(last, found) {
+				work.indexerIDs = append(work.indexerIDs, id)
+			}
+		}
+	}
+
+	if state.gazelleClients != nil && len(state.gazelleClients.byHost) > 0 {
+		last, found, err := s.automationStore.GetSearchHistory(ctx, state.opts.InstanceID, torrent.Hash)
+		if err != nil {
+			return candidateStaleWork{}, err
+		}
+		work.gazelle = due(last, found)
+	}
+	return work, nil
 }
 
 func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunState, torrent *qbt.Torrent) (bool, error) {
@@ -10177,8 +10274,21 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		skipReasonForNoIndexers = "no eligible indexers after filtering"
 	}
 
+	// Restrict this search to the indexers whose per-indexer cooldown is due,
+	// and skip the Gazelle lookup when its per-torrent stamp is still fresh.
+	staleCacheKey := stringutils.DefaultNormalizer.Normalize(torrent.Hash)
+	staleWork, hasStaleWork := state.staleWork[staleCacheKey]
+	skipGazelle := hasStaleWork && !staleWork.gazelle
+	if hasStaleWork && !searchDisableTorznab {
+		allowedIndexerIDs = intersectInts(allowedIndexerIDs, staleWork.indexerIDs)
+		if len(allowedIndexerIDs) == 0 {
+			searchDisableTorznab = true
+			skipReasonForNoIndexers = "all eligible indexers within cooldown"
+		}
+	}
+
 	hasGazelle := state.gazelleClients != nil && len(state.gazelleClients.byHost) > 0
-	if searchDisableTorznab && !hasGazelle {
+	if searchDisableTorznab && (!hasGazelle || skipGazelle) {
 		if skipReasonForNoIndexers == "" {
 			skipReasonForNoIndexers = "no eligible indexers"
 		}
@@ -10203,19 +10313,36 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		defer searchCancel()
 	}
 
-	searchResp, _, remoteRequestsMade, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
+	searchResp, gazelleLookupAttempted, remoteRequestsMade, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		DisableTorznab:                  searchDisableTorznab,
 		IndexerIDs:                      allowedIndexerIDs,
 		FindIndividualEpisodes:          state.opts.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent:    state.opts.SizeMismatchTolerancePercent,
 		SizeMismatchTolerancePercentSet: state.opts.SizeMismatchTolerancePercentSet,
+		SkipGazelle:                     skipGazelle,
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
-	if remoteRequestsMade && s.automationStore != nil {
-		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); err != nil {
-			log.Debug().Err(err).Msg("failed to update search history")
+	if s.automationStore != nil {
+		// Gazelle stamps per torrent: either a lookup actually fired, or the
+		// search completed with Gazelle due but nothing to look up for this
+		// torrent. Both cool the gazelle side so the candidate stops
+		// re-qualifying for a lookup that will never happen.
+		gazelleStamped := gazelleLookupAttempted || (err == nil && hasGazelle && !skipGazelle)
+		if gazelleStamped {
+			if histErr := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); histErr != nil {
+				log.Debug().Err(histErr).Msg("failed to update search history")
+			}
 		}
-		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt)
+		// Torznab stamps per indexer, and only the covered ones: an indexer
+		// that was rate limited or failed a pass stays eligible next run.
+		var coveredIndexerIDs []int
+		if searchResp != nil {
+			coveredIndexerIDs = searchResp.CoveredIndexerIDs
+		}
+		if histErr := s.automationStore.UpsertIndexerSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, coveredIndexerIDs, processedAt); histErr != nil {
+			log.Debug().Err(histErr).Msg("failed to update indexer search history")
+		}
+		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt, coveredIndexerIDs, gazelleStamped)
 	}
 	if err != nil {
 		if ctx.Err() != nil {
@@ -12018,6 +12145,16 @@ func normalizeStringSlice(values []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
+}
+
+// intersectInts returns the elements of a that are also in b, preserving a's order.
+func intersectInts(a, b []int) []int {
+	return slices.DeleteFunc(slices.Clone(a), func(v int) bool { return !slices.Contains(b, v) })
+}
+
+// subtractInts returns the elements of a that are not in b, preserving a's order.
+func subtractInts(a, b []int) []int {
+	return slices.DeleteFunc(slices.Clone(a), func(v int) bool { return slices.Contains(b, v) })
 }
 
 func uniquePositiveInts(values []int) []int {

@@ -1609,6 +1609,68 @@ func (s *CrossSeedStore) GetLatestSearchHistory(ctx context.Context, torrentHash
 	return last, true, nil
 }
 
+// UpsertIndexerSearchHistory stamps a search on each covered indexer for a torrent.
+func (s *CrossSeedStore) UpsertIndexerSearchHistory(ctx context.Context, instanceID int, torrentHash string, indexerIDs []int, searchedAt time.Time) error {
+	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
+		return errors.New("invalid search history parameters")
+	}
+	if len(indexerIDs) == 0 {
+		return nil
+	}
+
+	var query strings.Builder
+	query.WriteString(`
+		INSERT INTO cross_seed_search_history_indexers (instance_id, torrent_hash, indexer_id, last_searched_at)
+		VALUES `)
+	args := make([]any, 0, len(indexerIDs)*4)
+	for i, indexerID := range indexerIDs {
+		if i > 0 {
+			query.WriteString(", ")
+		}
+		query.WriteString("(?, ?, ?, ?)")
+		args = append(args, instanceID, torrentHash, indexerID, searchedAt)
+	}
+	query.WriteString(`
+		ON CONFLICT(instance_id, torrent_hash, indexer_id) DO UPDATE SET
+			last_searched_at = excluded.last_searched_at
+	`)
+
+	if _, err := s.db.ExecContext(ctx, query.String(), args...); err != nil {
+		return fmt.Errorf("upsert indexer search history: %w", err)
+	}
+	return nil
+}
+
+// GetIndexerSearchHistory returns the last search time per indexer for a torrent.
+// Indexers with no row have never searched this torrent.
+func (s *CrossSeedStore) GetIndexerSearchHistory(ctx context.Context, instanceID int, torrentHash string) (map[int]time.Time, error) {
+	const query = `
+		SELECT indexer_id, last_searched_at
+		FROM cross_seed_search_history_indexers
+		WHERE instance_id = ? AND torrent_hash = ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, instanceID, torrentHash)
+	if err != nil {
+		return nil, fmt.Errorf("get indexer search history: %w", err)
+	}
+	defer rows.Close()
+
+	history := make(map[int]time.Time)
+	for rows.Next() {
+		var indexerID int
+		var last time.Time
+		if err := rows.Scan(&indexerID, &last); err != nil {
+			return nil, fmt.Errorf("scan indexer search history: %w", err)
+		}
+		history[indexerID] = last
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate indexer search history: %w", err)
+	}
+	return history, nil
+}
+
 // HasProcessedFeedItem reports whether a GUID/indexer pair has been handled.
 func (s *CrossSeedStore) HasProcessedFeedItem(ctx context.Context, guid string, indexerID int) (bool, CrossSeedFeedItemStatus, error) {
 	query := `
