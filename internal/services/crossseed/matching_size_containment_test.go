@@ -98,6 +98,20 @@ func TestGetMatchTypeWithReason_SizeContainment(t *testing.T) {
 			want: "size-partial-in-pack",
 		},
 		{
+			// The extra file keeps the totals inside the 5% tolerance, so the
+			// total-size tier would claim this pair. Containment must win when the
+			// file counts differ, or apply misses the episode-in-pack layout.
+			name:             "containment beats tolerant total-size when counts differ",
+			sourceRelease:    &episodeRelease,
+			candidateRelease: &packRelease,
+			sourceFiles:      episodeFiles,
+			candidateFiles: qbt.TorrentFiles{
+				{Name: "pack/ep1_renamed.mkv", Size: 1 << 30},
+				{Name: "pack/short_film.mkv", Size: 40 << 20},
+			},
+			want: "size-partial-in-pack",
+		},
+		{
 			name:             "full both-side pairing stays a size match",
 			sourceRelease:    &episodeRelease,
 			candidateRelease: &packRelease,

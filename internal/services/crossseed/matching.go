@@ -964,6 +964,23 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		}
 	}
 
+	// Size-only containment: one side's files all pair 1:1 by exact size into
+	// the other side. Rescues subset-of-pack matches whose file names rls cannot
+	// parse (music albums in packs, renamed season packs). It runs before the
+	// tolerant total-size tier because with unequal file counts a strict per-file
+	// pairing is better evidence than totals landing inside the tolerance, and
+	// the containment type engages the episode-in-pack layout at apply. Equal
+	// counts cannot strictly contain (a full both-side pairing means equal
+	// totals), so they stay with the size tier below.
+	if len(filteredSourceFiles) != len(filteredCandidateFiles) {
+		if containment := sizeContainmentMatchType(filteredSourceFiles, filteredCandidateFiles); containment != "" {
+			if s.metrics != nil {
+				s.metrics.GetMatchTypeSizeMatch.Inc()
+			}
+			return MatchResult{MatchType: containment, Reason: ""}
+		}
+	}
+
 	// Size match with tolerance
 	if totalSourceSize > 0 && len(filteredSourceFiles) > 0 {
 		if s.isSizeWithinTolerance(totalSourceSize, totalCandidateSize, tolerancePercent) {
@@ -983,16 +1000,6 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 			}
 			return MatchResult{MatchType: "size", Reason: ""}
 		}
-	}
-
-	// Size-only containment: one side's files all pair 1:1 by exact size into
-	// the other side. Rescues subset-of-pack matches whose file names rls cannot
-	// parse (music albums in packs, renamed season packs).
-	if containment := sizeContainmentMatchType(filteredSourceFiles, filteredCandidateFiles); containment != "" {
-		if s.metrics != nil {
-			s.metrics.GetMatchTypeSizeMatch.Inc()
-		}
-		return MatchResult{MatchType: containment, Reason: ""}
 	}
 
 	// Build detailed reason for no match
