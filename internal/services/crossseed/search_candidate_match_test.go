@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -712,8 +713,22 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	require.Len(t, response.Candidates[0].Torrents, 1)
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
 
+	// Hash comparison is normalized, so casing differences still bind the
+	// aliases to the source torrent.
+	response, err = service.FindCandidates(context.Background(), request(strings.ToUpper(sourceHash)))
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1)
+	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+
 	// Without a matching source hash the aliases attach to nothing.
 	response, err = service.FindCandidates(context.Background(), request("different-hash"))
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates)
+
+	// A matching hash on the wrong instance attaches nothing either.
+	wrongInstance := request(sourceHash)
+	wrongInstance.SearchSourceInstanceID = instanceID + 1
+	response, err = service.FindCandidates(context.Background(), wrongInstance)
 	require.NoError(t, err)
 	require.Empty(t, response.Candidates)
 }
