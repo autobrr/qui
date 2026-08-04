@@ -250,8 +250,12 @@ func (s *Service) validateArtistAndDates(source, candidate *rls.Release, isTV bo
 // releasesMatchExceptTitleWithReason keeps every normal release rule except title.
 // Retitled listings are usually bare-file re-uploads that also drop the -GROUP
 // and [CRC] tags, so absent candidate tags are tolerated here; conflicting tags
-// still reject. The rescue lane's exact-size gate plus the paused-add full
-// recheck remain the authority on whether the data actually matches.
+// still reject. Every caller must pair this with an exact-size gate, because
+// with the title ignored a sparsely parsed name can leave nothing else to
+// reject on. Callers that add data (search rescue) additionally get the
+// paused-add full recheck as the final authority; callers that only report
+// existing pairings (local match detection) do not, so their false positives
+// must stay confined to display.
 func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := s.validateArtistAndDates(source, candidate, isTV); !ok {

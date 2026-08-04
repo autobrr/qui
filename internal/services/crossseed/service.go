@@ -1382,8 +1382,20 @@ func (s *Service) determineLocalMatchType(
 
 	// Strategy 3: Release metadata match using rls library
 	candidateRelease := s.releaseCache.Parse(candidate.Name)
-	if s.releasesMatch(sourceRelease, candidateRelease, false) {
+	matched, mismatchReason := s.releasesMatchWithReason(sourceRelease, candidateRelease, false)
+	if matched {
 		return matchTypeRelease
+	}
+
+	// Strategy 4: Retitled upload of the same data. A rescued cross-seed keeps
+	// its own name and its own hardlink directory, so it fails every strategy
+	// above. Pair it on the evidence the search rescue already requires: a
+	// byte-identical size and every release field but the title.
+	if mismatchReason == titleMismatchReason &&
+		classifySearchSizeEvidence(searchSourceSize(source), searchSourceSize(candidate.Torrent)).matches() {
+		if ok, _ := s.releasesMatchExceptTitleWithReason(sourceRelease, candidateRelease, false); ok {
+			return matchTypeRelease
+		}
 	}
 
 	return ""
