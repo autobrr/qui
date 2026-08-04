@@ -418,7 +418,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
                       >
                         <span className="truncate font-medium">{connection.baseUrl}</span>
                         <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                          {connection.backend} • {t("indexers.autodiscovery.savedConnections.indexerCount", { count: connection.indexerCount })}
+                          {t(`indexers.dialog.backends.${connection.backend}`)} • {t("indexers.autodiscovery.savedConnections.indexerCount", { count: connection.indexerCount })}
                         </span>
                       </button>
                     ))}
