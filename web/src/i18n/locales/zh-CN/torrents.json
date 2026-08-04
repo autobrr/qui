@@ -764,8 +764,10 @@
       "empty": "尚未保存任何视图。先选择筛选条件，然后在此保存。",
       "saveCurrent": "保存当前筛选",
       "actions": "视图操作",
+      "updateFilters": "更新筛选条件",
       "rename": "重命名",
       "delete": "删除",
+      "undo": "撤销",
       "cancel": "取消",
       "save": "保存",
       "saveTitle": "保存视图",
@@ -778,8 +780,9 @@
       "deleteDescription": "确定删除“{{name}}”吗？此操作无法撤销。",
       "toasts": {
         "createFailed": "保存视图失败",
-        "updateFailed": "重命名视图失败",
-        "deleteFailed": "删除视图失败"
+        "updateFailed": "更新视图失败",
+        "deleteFailed": "删除视图失败",
+        "updated": "已更新“{{name}}”"
       }
     },
     "title": "筛选器",

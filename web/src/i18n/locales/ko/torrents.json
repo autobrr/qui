@@ -764,8 +764,10 @@
       "empty": "저장된 뷰가 없습니다. 필터를 선택한 뒤 여기에 저장하세요.",
       "saveCurrent": "현재 필터 저장",
       "actions": "뷰 작업",
+      "updateFilters": "필터 업데이트",
       "rename": "이름 변경",
       "delete": "삭제",
+      "undo": "실행 취소",
       "cancel": "취소",
       "save": "저장",
       "saveTitle": "뷰 저장",
@@ -778,8 +780,9 @@
       "deleteDescription": "\"{{name}}\"을(를) 삭제할까요? 되돌릴 수 없습니다.",
       "toasts": {
         "createFailed": "뷰를 저장하지 못했습니다",
-        "updateFailed": "뷰 이름을 변경하지 못했습니다",
-        "deleteFailed": "뷰를 삭제하지 못했습니다"
+        "updateFailed": "뷰를 업데이트하지 못했습니다",
+        "deleteFailed": "뷰를 삭제하지 못했습니다",
+        "updated": "\"{{name}}\" 업데이트됨"
       }
     },
     "title": "필터",

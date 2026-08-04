@@ -812,8 +812,10 @@
       "empty": "Aucune vue enregistrée. Choisissez des filtres, puis enregistrez-les ici.",
       "saveCurrent": "Enregistrer les filtres actuels",
       "actions": "Actions de la vue",
+      "updateFilters": "Mettre à jour les filtres",
       "rename": "Renommer",
       "delete": "Supprimer",
+      "undo": "Annuler",
       "cancel": "Annuler",
       "save": "Enregistrer",
       "saveTitle": "Enregistrer la vue",
@@ -826,8 +828,9 @@
       "deleteDescription": "Supprimer « {{name}} » ? Cette action est irréversible.",
       "toasts": {
         "createFailed": "Échec de l'enregistrement de la vue",
-        "updateFailed": "Échec du renommage de la vue",
-        "deleteFailed": "Échec de la suppression de la vue"
+        "updateFailed": "Échec de la mise à jour de la vue",
+        "deleteFailed": "Échec de la suppression de la vue",
+        "updated": "« {{name}} » mis à jour"
       }
     },
     "title": "Filtres",

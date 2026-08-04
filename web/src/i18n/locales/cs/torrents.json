@@ -812,8 +812,10 @@
       "empty": "Zatím žádné uložené pohledy. Vyberte filtry a pak je zde uložte.",
       "saveCurrent": "Uložit aktuální filtry",
       "actions": "Akce pohledu",
+      "updateFilters": "Aktualizovat filtry",
       "rename": "Přejmenovat",
       "delete": "Smazat",
+      "undo": "Zpět",
       "cancel": "Zrušit",
       "save": "Uložit",
       "saveTitle": "Uložit pohled",
@@ -826,8 +828,9 @@
       "deleteDescription": "Smazat „{{name}}“? Tuto akci nelze vrátit zpět.",
       "toasts": {
         "createFailed": "Uložení pohledu se nezdařilo",
-        "updateFailed": "Přejmenování pohledu se nezdařilo",
-        "deleteFailed": "Smazání pohledu se nezdařilo"
+        "updateFailed": "Nepodařilo se aktualizovat pohled",
+        "deleteFailed": "Smazání pohledu se nezdařilo",
+        "updated": "Pohled „{{name}}“ aktualizován"
       }
     },
     "title": "Filtry",

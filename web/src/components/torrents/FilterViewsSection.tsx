@@ -35,9 +35,10 @@ import {
 import { filterViewsEqual, toViewFilters } from "@/lib/filter-views"
 import { cn } from "@/lib/utils"
 import type { FilterView, TorrentFilters } from "@/types"
-import { Bookmark, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react"
+import { Bookmark, MoreVertical, Pencil, Plus, Save, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 interface FilterViewsSectionProps {
   selectedFilters: TorrentFilters
@@ -78,6 +79,24 @@ export function FilterViewsSection({
     setRenameTarget(view)
     setNameDraft(view.name)
     setNameDialogOpen(true)
+  }
+
+  // The toast holds the replaced filters so Undo can write them back.
+  const updateViewFilters = (view: FilterView) => {
+    const replaced = view.filters
+    updateView.mutate({
+      id: view.id,
+      data: { name: view.name, filters: toViewFilters(selectedFilters) },
+    }, {
+      onSuccess: () => {
+        toast.success(t("filterSidebar.views.toasts.updated", { name: view.name }), {
+          action: {
+            label: t("filterSidebar.views.undo"),
+            onClick: () => updateView.mutate({ id: view.id, data: { name: view.name, filters: replaced } }),
+          },
+        })
+      },
+    })
   }
 
   const submitName = () => {
@@ -138,6 +157,10 @@ export function FilterViewsSection({
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem disabled={!hasActiveFilters} onSelect={() => updateViewFilters(view)}>
+                        <Save className="h-4 w-4" />
+                        {t("filterSidebar.views.updateFilters")}
+                      </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => openRenameDialog(view)}>
                         <Pencil className="h-4 w-4" />
                         {t("filterSidebar.views.rename")}

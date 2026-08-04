@@ -812,8 +812,10 @@
       "empty": "Nessuna vista salvata. Scegli dei filtri e salvali qui.",
       "saveCurrent": "Salva i filtri correnti",
       "actions": "Azioni vista",
+      "updateFilters": "Aggiorna filtri",
       "rename": "Rinomina",
       "delete": "Elimina",
+      "undo": "Annulla",
       "cancel": "Annulla",
       "save": "Salva",
       "saveTitle": "Salva vista",
@@ -826,8 +828,9 @@
       "deleteDescription": "Eliminare «{{name}}»? L'operazione non può essere annullata.",
       "toasts": {
         "createFailed": "Salvataggio della vista non riuscito",
-        "updateFailed": "Rinomina della vista non riuscita",
-        "deleteFailed": "Eliminazione della vista non riuscita"
+        "updateFailed": "Aggiornamento della vista non riuscito",
+        "deleteFailed": "Eliminazione della vista non riuscita",
+        "updated": "«{{name}}» aggiornata"
       }
     },
     "title": "Filtri",

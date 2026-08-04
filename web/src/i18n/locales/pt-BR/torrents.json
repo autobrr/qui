@@ -812,8 +812,10 @@
       "empty": "Nenhuma visualização salva. Escolha alguns filtros e salve-os aqui.",
       "saveCurrent": "Salvar filtros atuais",
       "actions": "Ações da visualização",
+      "updateFilters": "Atualizar filtros",
       "rename": "Renomear",
       "delete": "Excluir",
+      "undo": "Desfazer",
       "cancel": "Cancelar",
       "save": "Salvar",
       "saveTitle": "Salvar visualização",
@@ -826,8 +828,9 @@
       "deleteDescription": "Excluir \"{{name}}\"? Isso não pode ser desfeito.",
       "toasts": {
         "createFailed": "Falha ao salvar a visualização",
-        "updateFailed": "Falha ao renomear a visualização",
-        "deleteFailed": "Falha ao excluir a visualização"
+        "updateFailed": "Falha ao atualizar a visualização",
+        "deleteFailed": "Falha ao excluir a visualização",
+        "updated": "\"{{name}}\" atualizada"
       }
     },
     "title": "Filtros",

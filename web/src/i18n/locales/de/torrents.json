@@ -812,8 +812,10 @@
       "empty": "Noch keine gespeicherten Ansichten. Wähle Filter aus und speichere sie hier.",
       "saveCurrent": "Aktuelle Filter speichern",
       "actions": "Ansichtsaktionen",
+      "updateFilters": "Filter aktualisieren",
       "rename": "Umbenennen",
       "delete": "Löschen",
+      "undo": "Rückgängig",
       "cancel": "Abbrechen",
       "save": "Speichern",
       "saveTitle": "Ansicht speichern",
@@ -826,8 +828,9 @@
       "deleteDescription": "„{{name}}“ löschen? Das kann nicht rückgängig gemacht werden.",
       "toasts": {
         "createFailed": "Ansicht konnte nicht gespeichert werden",
-        "updateFailed": "Ansicht konnte nicht umbenannt werden",
-        "deleteFailed": "Ansicht konnte nicht gelöscht werden"
+        "updateFailed": "Ansicht konnte nicht aktualisiert werden",
+        "deleteFailed": "Ansicht konnte nicht gelöscht werden",
+        "updated": "„{{name}}“ aktualisiert"
       }
     },
     "title": "Filter",

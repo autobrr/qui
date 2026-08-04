@@ -812,8 +812,10 @@
       "empty": "No saved views yet. Choose some filters, then save them here.",
       "saveCurrent": "Save current filters",
       "actions": "View actions",
+      "updateFilters": "Update filters",
       "rename": "Rename",
       "delete": "Delete",
+      "undo": "Undo",
       "cancel": "Cancel",
       "save": "Save",
       "saveTitle": "Save view",
@@ -826,8 +828,9 @@
       "deleteDescription": "Delete \"{{name}}\"? This cannot be undone.",
       "toasts": {
         "createFailed": "Failed to save view",
-        "updateFailed": "Failed to rename view",
-        "deleteFailed": "Failed to delete view"
+        "updateFailed": "Failed to update view",
+        "deleteFailed": "Failed to delete view",
+        "updated": "\"{{name}}\" updated"
       }
     },
     "title": "Filters",
