@@ -126,10 +126,11 @@ For partial-in-pack, size-based, renamed, or otherwise non-perfect matches, qui 
 
 ### Auto-resume behavior
 
-- Default tolerance 5% → auto-resumes at ≥95% completion
-- Torrents below threshold stay paused for manual investigation
+- After the recheck, qui auto-resumes only when the missing data is at or below **Max auto-start download** (default: 50 MiB)
+- When only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes anyway, up to 200 MiB
+- Torrents that miss more data stay paused for manual investigation
 - Filesystem fallback and disc-layout torrents require 100% completion before auto-resume
-- Configure via **Size mismatch tolerance** in Rules
+- Configure via **Max auto-start download** in Rules
 
 ## Hardlink mode failed
 
@@ -206,8 +207,8 @@ The incoming torrent has files not present in your matched torrent, and those fi
 ## Cross-seed stuck at low percentage after recheck
 
 - Check if the source torrent has extra files (NFO, samples) not present on disk
-- Verify the "Size mismatch tolerance" setting in Rules
-- Torrents below the auto-resume threshold stay paused for manual review
+- Check the "Max auto-start download" setting in Rules
+- Torrents that miss more data than the limit stay paused for manual review
 
 ## Blu-ray or DVD cross-seed left paused
 
