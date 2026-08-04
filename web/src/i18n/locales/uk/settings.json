@@ -816,6 +816,16 @@
         "created": "{{count}} створено",
         "updated": "{{count}} оновлено",
         "failed": "{{count}} не вдалося"
+      },
+      "savedConnections": {
+        "title": "Збережені підключення",
+        "description": "Використайте сервер, з якого ви вже імпортували. Ключ API залишається на сервері.",
+        "manual": "Ввести вручну",
+        "storedKey": "Використовується збережений ключ API для цього сервера.",
+        "indexerCount_one": "{{count}} індексатор",
+        "indexerCount_few": "{{count}} індексатори",
+        "indexerCount_many": "{{count}} індексаторів",
+        "indexerCount_other": "{{count}} індексатора"
       }
     },
     "table": {

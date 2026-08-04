@@ -45,6 +45,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
@@ -91,7 +92,7 @@ interface AutomationFormState {
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
-  sizeMismatchTolerancePercent: number
+  autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -115,6 +116,7 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  rescueTitleMismatches: boolean
   skipPieceBoundarySafetyCheck: boolean
   // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
@@ -123,6 +125,7 @@ interface GlobalCrossSeedSettings {
   webhookSourceExcludeTags: string[]
   // Season packs
   seasonPackEnabled: boolean
+  seasonPackAutomationEnabled: boolean
   seasonPackSkipRepackCompare: boolean
   seasonPackSimplifyHdrCompare: boolean
   seasonPackSimplifyWebCompare: boolean
@@ -158,9 +161,11 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   rssSourceExcludeTags: [],
 }
 
+const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
+
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
-  sizeMismatchTolerancePercent: 5.0,
+  autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -183,9 +188,11 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeCompletion: false,
   skipAutoResumeWebhook: false,
   skipRecheck: false,
+  rescueTitleMismatches: false,
   skipPieceBoundarySafetyCheck: true,
   // Season packs
   seasonPackEnabled: false,
+  seasonPackAutomationEnabled: false,
   seasonPackSkipRepackCompare: true,
   seasonPackSimplifyHdrCompare: false,
   seasonPackSimplifyWebCompare: false,
@@ -850,6 +857,20 @@ function HardlinkModeSettings() {
   )
 }
 
+export function TitleRescueSetting({ checked, disabled = false, onCheckedChange }: { checked: boolean, disabled?: boolean, onCheckedChange: (checked: boolean) => void }) {
+  const { t } = useTranslation("crossseed")
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="space-y-0.5">
+        <Label htmlFor="rescue-title-mismatches" className="font-medium">{t("rules.safety.rescueTitleMismatches")}</Label>
+        <p className="text-xs text-muted-foreground">{t("rules.safety.rescueTitleMismatchesDescription")}</p>
+      </div>
+      <Switch id="rescue-title-mismatches" checked={checked} disabled={disabled} onCheckedChange={value => onCheckedChange(!!value)} />
+    </div>
+  )
+}
+
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -874,6 +895,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(true)
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+  const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(false)
+  const [maxAddedAgeDays, setMaxAddedAgeDays] = useState(0)
   const [searchSettingsInitialized, setSearchSettingsInitialized] = useState(false)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
@@ -1099,7 +1122,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
+        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1122,6 +1145,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
+        rescueTitleMismatches: settings.rescueTitleMismatches ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
         // Webhook source filtering
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
@@ -1130,6 +1154,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
         // Season packs
         seasonPackEnabled: settings.seasonPackEnabled ?? false,
+        seasonPackAutomationEnabled: settings.seasonPackAutomationEnabled ?? false,
         seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
         seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
         seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
@@ -1201,7 +1226,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1222,6 +1247,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
       skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
       skipRecheck: settings.skipRecheck ?? false,
+      rescueTitleMismatches: settings.rescueTitleMismatches ?? false,
       skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
       webhookSourceCategories: settings.webhookSourceCategories ?? [],
       webhookSourceTags: settings.webhookSourceTags ?? [],
@@ -1229,6 +1255,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       // Season packs
       seasonPackEnabled: settings.seasonPackEnabled ?? false,
+      seasonPackAutomationEnabled: settings.seasonPackAutomationEnabled ?? false,
       seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
       seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
       seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
@@ -1244,7 +1271,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
       categoryAffixMode: globalSource.categoryAffixMode,
@@ -1267,6 +1294,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
       skipRecheck: globalSource.skipRecheck,
+      rescueTitleMismatches: globalSource.rescueTitleMismatches,
       skipPieceBoundarySafetyCheck: globalSource.skipPieceBoundarySafetyCheck,
       // Webhook source filtering
       webhookSourceCategories: globalSource.webhookSourceCategories,
@@ -1275,6 +1303,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
       // Season packs
       seasonPackEnabled: globalSource.seasonPackEnabled,
+      seasonPackAutomationEnabled: globalSource.seasonPackAutomationEnabled,
       seasonPackSkipRepackCompare: globalSource.seasonPackSkipRepackCompare,
       seasonPackSimplifyHdrCompare: globalSource.seasonPackSimplifyHdrCompare,
       seasonPackSimplifyWebCompare: globalSource.seasonPackSimplifyWebCompare,
@@ -1816,6 +1845,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
       disableTorznab: !seededSearchTorznabEffectiveEnabled,
       cooldownMinutes: searchCooldownMinutes,
+      skipIndividualEpisodes,
+      maxAddedAgeDays,
     })
   }
 
@@ -2593,6 +2624,34 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("scan.skipIndividualEpisodesDescription")}
+                      {skipIndividualEpisodes && settings?.seasonPackAutomationEnabled === false && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
+                    </p>
+                  </div>
+                  <Switch
+                    id="skip-individual-episodes"
+                    checked={skipIndividualEpisodes}
+                    onCheckedChange={value => setSkipIndividualEpisodes(!!value)}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <Label htmlFor="max-added-age-days">{t("scan.maxAddedAgeLabel")}</Label>
+                  <Input
+                    id="max-added-age-days"
+                    type="number"
+                    min={0}
+                    value={maxAddedAgeDays}
+                    onChange={event => setMaxAddedAgeDays(parseNonNegativeInt(event.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">{t("scan.maxAddedAgeDescription")}</p>
+                </div>
+              </div>
+
               <Separator />
 
               {activeSearchRun && (
@@ -2869,25 +2928,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="global-size-tolerance">{t("rules.matching.sizeTolerance")}</Label>
-                  <Input
-                    id="global-size-tolerance"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={globalSettings.sizeMismatchTolerancePercent}
-                    onChange={event => setGlobalSettings(prev => ({
-                      ...prev,
-                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
-                    }))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("rules.matching.sizeToleranceDescription")}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.matching.crossSeedEpisodesDescription")}</p>
@@ -2915,6 +2956,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     id="season-pack-enabled"
                     checked={globalSettings.seasonPackEnabled}
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackEnabled: !!value }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="season-pack-automation-enabled" className="font-medium">{t("rules.seasonPack.enableAutomation")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("rules.seasonPack.enableAutomationDescription")}</p>
+                  </div>
+                  <Switch
+                    id="season-pack-automation-enabled"
+                    checked={globalSettings.seasonPackAutomationEnabled}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackAutomationEnabled: !!value }))}
                   />
                 </div>
                 <div className="space-y-2 pt-3 border-t border-border/50">
@@ -2955,7 +3007,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-skip-repack-compare"
                       checked={globalSettings.seasonPackSkipRepackCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipRepackCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2967,7 +3019,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-simplify-hdr-compare"
                       checked={globalSettings.seasonPackSimplifyHdrCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyHdrCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2979,7 +3031,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-simplify-web-compare"
                       checked={globalSettings.seasonPackSimplifyWebCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyWebCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2991,7 +3043,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-skip-year-compare"
                       checked={globalSettings.seasonPackSkipYearCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipYearCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                 </div>
@@ -3005,8 +3057,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       value={globalSettings.seasonPackTvdbApiKey}
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
                   </div>
@@ -3019,8 +3071,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       value={globalSettings.seasonPackTvdbPin}
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
                   </div>
@@ -3033,7 +3085,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.seasonPackCategoryRules}
                     onChange={rules => setGlobalSettings(prev => ({ ...prev, seasonPackCategoryRules: rules }))}
                     categoryMetadata={webhookSourceMetadata?.categories ?? {}}
-                    disabled={!globalSettings.seasonPackEnabled}
+                    disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                   />
                   <div className="space-y-2">
                     <Label htmlFor="season-pack-category">{t("rules.seasonPack.categoryRouting.fallbackLabel")}</Label>
@@ -3042,10 +3094,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       selected={globalSettings.seasonPackCategory ? [globalSettings.seasonPackCategory] : []}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: values[0] ?? "" }))}
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
                       className="max-w-sm"
                       creatable
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                     <p className="text-xs text-muted-foreground">
                       {t("rules.seasonPack.categoryRouting.fallbackDescriptionBefore")}<code>tv-hd</code>{t("rules.seasonPack.categoryRouting.fallbackDescriptionAfter")}
@@ -3068,7 +3120,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.safety.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.safety.description")}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
+                <TitleRescueSetting
+                  checked={globalSettings.rescueTitleMismatches && !globalSettings.skipRecheck}
+                  disabled={globalSettings.skipRecheck}
+                  onCheckedChange={rescueTitleMismatches => setGlobalSettings(prev => ({ ...prev, rescueTitleMismatches }))}
+                />
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">{t("rules.safety.skipRecheck")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.safety.skipRecheckDescription")}</p>
@@ -3409,6 +3466,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+                  <Input
+                    id="global-auto-resume-max-download"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={globalSettings.autoResumeMaxDownloadMb}
+                    onChange={event => setGlobalSettings(prev => ({
+                      ...prev,
+                      autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value),
+                    }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("rules.postInjection.maxAutoResumeDownloadDescription")}
+                  </p>
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-border/50">

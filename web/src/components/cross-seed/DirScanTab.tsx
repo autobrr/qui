@@ -18,6 +18,7 @@ import {
   Pause,
   Play,
   Plus,
+  RefreshCw,
   RotateCcw,
   Settings2,
   Trash2,
@@ -88,6 +89,7 @@ import {
   useDirScanRuns,
   useDirScanSettings,
   useDirScanStatus,
+  useRequeueDirScanNoMatch,
   useResetDirScanFiles,
   useTriggerDirScan,
   useUpdateDirScanDirectory,
@@ -659,6 +661,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
   const { t } = useTranslation("crossseed")
   const { data: runs = [], isLoading } = useDirScanRuns(directoryId, { limit: 10 })
   const resetFiles = useResetDirScanFiles(directoryId)
+  const requeueNoMatch = useRequeueDirScanNoMatch(directoryId)
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null)
   const [showResetDialog, setShowResetDialog] = useState(false)
 
@@ -673,6 +676,17 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
       },
     })
   }, [t, resetFiles])
+
+  const handleRequeueNoMatch = useCallback(() => {
+    requeueNoMatch.mutate(undefined, {
+      onSuccess: (response) => {
+        toast.success(t("dirScan.requeueNoMatchSuccess", { count: response.requeued }))
+      },
+      onError: (error) => {
+        toast.error(t("dirScan.toast.requeueFailed", { error: error.message }))
+      },
+    })
+  }, [t, requeueNoMatch])
 
   if (isLoading) {
     return (
@@ -691,19 +705,41 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
           <CardTitle>{t("dirScan.recentScanRuns")}</CardTitle>
           <CardDescription>{t("dirScan.recentScanRunsDescription")}</CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setShowResetDialog(true)}
-          disabled={resetFiles.isPending}
-        >
-          {resetFiles.isPending ? (
-            <Loader2 className="size-4 mr-2 animate-spin" />
-          ) : (
-            <RotateCcw className="size-4 mr-2" />
-          )}
-          {t("dirScan.resetScanProgress")}
-        </Button>
+        <div className="flex gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRequeueNoMatch}
+                disabled={requeueNoMatch.isPending}
+              >
+                {requeueNoMatch.isPending ? (
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4 mr-2" />
+                )}
+                {t("dirScan.requeueNoMatch")}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              {t("dirScan.requeueNoMatchTooltip")}
+            </TooltipContent>
+          </Tooltip>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowResetDialog(true)}
+            disabled={resetFiles.isPending}
+          >
+            {resetFiles.isPending ? (
+              <Loader2 className="size-4 mr-2 animate-spin" />
+            ) : (
+              <RotateCcw className="size-4 mr-2" />
+            )}
+            {t("dirScan.resetScanProgress")}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {runs.length === 0 ? (

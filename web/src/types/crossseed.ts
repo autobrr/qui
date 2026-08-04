@@ -166,7 +166,7 @@ export interface CrossSeedAutomationSettings {
   webhookSourceExcludeCategories: string[]
   webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
-  sizeMismatchTolerancePercent: number
+  autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -186,6 +186,7 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  rescueTitleMismatches: boolean
   skipPieceBoundarySafetyCheck: boolean
   // Hardlink mode settings
   useHardlinks: boolean
@@ -197,6 +198,7 @@ export interface CrossSeedAutomationSettings {
   orpheusApiKey: string
   // Season pack settings
   seasonPackEnabled: boolean
+  seasonPackAutomationEnabled: boolean
   seasonPackSkipRepackCompare: boolean
   seasonPackSimplifyHdrCompare: boolean
   seasonPackSimplifyWebCompare: boolean
@@ -229,7 +231,7 @@ export interface CrossSeedAutomationSettingsPatch {
   webhookSourceExcludeCategories?: string[]
   webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
-  sizeMismatchTolerancePercent?: number
+  autoResumeMaxDownloadMb?: number
   useCategoryFromIndexer?: boolean
   useCrossCategoryAffix?: boolean
   categoryAffixMode?: "prefix" | "suffix"
@@ -249,6 +251,7 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeCompletion?: boolean
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
+  rescueTitleMismatches?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   // Hardlink mode settings
   useHardlinks?: boolean
@@ -260,6 +263,7 @@ export interface CrossSeedAutomationSettingsPatch {
   orpheusApiKey?: string
   // Season pack settings
   seasonPackEnabled?: boolean
+  seasonPackAutomationEnabled?: boolean
   seasonPackSkipRepackCompare?: boolean
   seasonPackSimplifyHdrCompare?: boolean
   seasonPackSimplifyWebCompare?: boolean

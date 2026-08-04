@@ -37,7 +37,7 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 | `blocked` | Skipped | The candidate infohash is on the cross-seed blocklist. | Remove it from **Cross-Seed > Blocklist** if you want qui to try it again. See [Blocklist](./overview.md#blocklist). |
 | `skipped_recheck` | Skipped | The match would require a recheck, but **Skip recheck** is enabled. | See [When Rechecks Are Required](#when-rechecks-are-required-reuse-mode) and [Rules](./rules.md#matching). |
 | `skipped_unsafe_pieces` | Skipped | The incoming torrent has missing or extra files whose pieces overlap existing content, or a link-mode fallback would leave unsafe unmaterialized pieces. qui skips before adding to avoid modifying existing data. | See [Cross-seed skipped: "extra files share pieces with content"](#cross-seed-skipped-extra-files-share-pieces-with-content) and [Reflink Mode](./hardlink-mode.md#reflink-mode-alternative). |
-| `below_threshold` | Skipped | The matched files do not meet the configured completion threshold after materialization or recheck. | Check **Size mismatch tolerance** in [Rules](./rules.md#matching), then see [Cross-seed stuck at low percentage after recheck](#cross-seed-stuck-at-low-percentage-after-recheck). |
+| `below_threshold` | Skipped | The matched local files cover less than 95% of the release in hardlink or reflink mode. qui skips the match before it adds the torrent. | See [release matching](#release-didnt-match) and [Hardlink Mode](./hardlink-mode.md). This limit is fixed and is not a setting. |
 | `requires_hardlink_reflink` | Skipped | The torrent layout would scatter rootless or extra files in regular reuse mode. | Enable [Hardlink Mode](./hardlink-mode.md) or [Reflink Mode](./hardlink-mode.md#reflink-mode-alternative), or download the torrent normally. |
 | `size_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it because the torrent file list did not match the source sizes. | Compare the torrent files on the trackers. This protects you from treating different content as a valid cross-seed. See [release matching](#release-didnt-match). |
 | `content_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it for a non-size file-level reason. | Review the row message and enable trace logging if needed. See [How do I see why a release was filtered?](#how-do-i-see-why-a-release-was-filtered). |
@@ -126,10 +126,11 @@ For partial-in-pack, size-based, renamed, or otherwise non-perfect matches, qui 
 
 ### Auto-resume behavior
 
-- Default tolerance 5% → auto-resumes at ≥95% completion
-- Torrents below threshold stay paused for manual investigation
+- After the recheck, qui auto-resumes only when the missing data is at or below **Max auto-start download** (default: 50 MiB)
+- When only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes anyway, up to 200 MiB
+- Torrents that miss more data stay paused for manual investigation
 - Filesystem fallback and disc-layout torrents require 100% completion before auto-resume
-- Configure via **Size mismatch tolerance** in Rules
+- Configure via **Max auto-start download** in Rules
 
 ## Hardlink mode failed
 
@@ -206,8 +207,8 @@ The incoming torrent has files not present in your matched torrent, and those fi
 ## Cross-seed stuck at low percentage after recheck
 
 - Check if the source torrent has extra files (NFO, samples) not present on disk
-- Verify the "Size mismatch tolerance" setting in Rules
-- Torrents below the auto-resume threshold stay paused for manual review
+- Check the "Max auto-start download" setting in Rules
+- Torrents that miss more data than the limit stay paused for manual review
 
 ## Blu-ray or DVD cross-seed left paused
 

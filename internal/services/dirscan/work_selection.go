@@ -5,6 +5,7 @@ package dirscan
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -33,6 +34,7 @@ func selectEligibleRootWork(
 	parser *Parser,
 	maxSearcheeAgeDays int,
 	now time.Time,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) scanWorkSelection {
 	selection := scanWorkSelection{}
@@ -70,7 +72,7 @@ func selectEligibleRootWork(
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "stale", selection.cutoff, trackedFiles))
 				continue
 			}
-			if !workItemHasPendingFiles(item, trackedFiles) {
+			if !workItemHasPendingFiles(item, trackedFiles, enabledIndexerIDs) {
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "all_final", selection.cutoff, trackedFiles))
 				continue
 			}
@@ -110,7 +112,7 @@ type workItemDropDecision struct {
 	statuses         string
 }
 
-func workItemHasPendingFiles(item searcheeWorkItem, trackedFiles *trackedFilesIndex) bool {
+func workItemHasPendingFiles(item searcheeWorkItem, trackedFiles *trackedFilesIndex, enabledIndexerIDs map[int]struct{}) bool {
 	if item.searchee == nil {
 		return false
 	}
@@ -121,12 +123,35 @@ func workItemHasPendingFiles(item searcheeWorkItem, trackedFiles *trackedFilesIn
 		}
 
 		tracked := trackedFileForScannedFile(f, trackedFiles)
-		if tracked == nil || !isFinalFileStatus(tracked.Status) {
+		if !isFinalTrackedFile(tracked, enabledIndexerIDs) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// isFinalTrackedFile reports whether a tracked file needs no more search work.
+// A no_match row stays final only while every enabled indexer was part of the
+// search that stamped it. When a new indexer appears, the row is pending again.
+// Rows without a recorded search set (legacy rows, or an unknown enabled set)
+// keep the old behavior and stay final.
+func isFinalTrackedFile(tracked *models.DirScanFile, enabledIndexerIDs map[int]struct{}) bool {
+	if tracked == nil || !isFinalFileStatus(tracked.Status) {
+		return false
+	}
+	if tracked.Status != models.DirScanFileStatusNoMatch {
+		return true
+	}
+	if tracked.SearchedIndexerIDs == nil || len(enabledIndexerIDs) == 0 {
+		return true
+	}
+	for id := range enabledIndexerIDs {
+		if !slices.Contains(tracked.SearchedIndexerIDs, id) {
+			return false
+		}
+	}
+	return true
 }
 
 func trackedFileForScannedFile(f *ScannedFile, trackedFiles *trackedFilesIndex) *models.DirScanFile {

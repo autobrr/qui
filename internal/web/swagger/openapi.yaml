@@ -3418,6 +3418,28 @@ paths:
         '500':
           description: Failed to reset scan progress
 
+  /api/dir-scan/directories/{directoryID}/requeue-no-match:
+    post:
+      tags:
+        - Dir Scan
+      summary: Requeue unmatched files
+      description: Resets no_match files for the directory to pending so the next scan searches them again. Matched and already-seeding files are kept.
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '200':
+          description: Number of files requeued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanRequeueResponse'
+        '404':
+          description: Directory not found
+        '409':
+          description: A scan is running
+        '500':
+          description: Failed to requeue files
+
   /api/dir-scan/directories/{directoryID}/scan:
     post:
       tags:
@@ -3954,6 +3976,13 @@ paths:
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
+                skipIndividualEpisodes:
+                  type: boolean
+                  description: When true, the run does not search single TV episodes. Groups of episodes still start season pack searches when season pack automation is on.
+                maxAddedAgeDays:
+                  type: integer
+                  minimum: 0
+                  description: An indexer that already searched a torrent does not search it again after this many days. An indexer that never searched a torrent searches it at any age, if its capabilities match the torrent. 0 disables this rule.
       responses:
         '202':
           description: Search run started
@@ -6794,9 +6823,10 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          minimum: 0
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6841,6 +6871,9 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6854,6 +6887,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -6927,9 +6963,10 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          minimum: 0
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6974,6 +7011,10 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          default: false
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6987,6 +7028,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -8515,6 +8559,12 @@ components:
         matchedIndexerId:
           type: integer
           nullable: true
+        searchedIndexerIds:
+          type: array
+          items:
+            type: integer
+          nullable: true
+          description: Indexer IDs that the search covered when the file was stamped no_match
         lastProcessedAt:
           type: string
           format: date-time
@@ -8526,6 +8576,16 @@ components:
         - fileSize
         - fileModTime
         - status
+
+    DirScanRequeueResponse:
+      type: object
+      properties:
+        requeued:
+          type: integer
+          format: int64
+          description: Number of files reset to pending
+      required:
+        - requeued
 
     DirScanTriggerResponse:
       type: object

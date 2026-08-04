@@ -204,49 +204,6 @@ func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 	}
 }
 
-func TestSearchTolerancePercentUsesRunOverride(t *testing.T) {
-	svc := &Service{
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5
-			return settings, nil
-		},
-	}
-
-	tests := []struct {
-		name string
-		opts TorrentSearchOptions
-		want float64
-	}{
-		{
-			name: "explicit zero",
-			opts: TorrentSearchOptions{
-				SizeMismatchTolerancePercent:    0,
-				SizeMismatchTolerancePercentSet: true,
-			},
-			want: 0,
-		},
-		{
-			name: "positive override without set flag",
-			opts: TorrentSearchOptions{
-				SizeMismatchTolerancePercent: 20,
-			},
-			want: 20,
-		},
-		{
-			name: "fallback settings",
-			opts: TorrentSearchOptions{},
-			want: 5,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.InDelta(t, tt.want, svc.searchTolerancePercent(context.Background(), tt.opts), 0.0001)
-		})
-	}
-}
-
 func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 	ids := &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}
 	tests := []struct {
@@ -596,9 +553,14 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	indexerStore, err := models.NewTorznabIndexerStore(db, key)
+	require.NoError(t, err)
+	indexer, err := indexerStore.Create(ctx, "Indexer", "http://indexer/a", "api-key", nil, nil, true, 0, 30)
+	require.NoError(t, err)
+
 	now := time.Now().UTC()
-	require.NoError(t, store.UpsertSearchHistory(ctx, instance.ID, "recent-hash", now.Add(-1*time.Hour)))
-	require.NoError(t, store.UpsertSearchHistory(ctx, instance.ID, "stale-hash", now.Add(-13*time.Hour)))
+	require.NoError(t, store.UpsertIndexerSearchHistory(ctx, instance.ID, "recent-hash", []int{indexer.ID}, now.Add(-1*time.Hour)))
+	require.NoError(t, store.UpsertIndexerSearchHistory(ctx, instance.ID, "stale-hash", []int{indexer.ID}, now.Add(-13*time.Hour)))
 
 	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
 		InstanceID:      instance.ID,
@@ -618,6 +580,7 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 			InstanceID:      instance.ID,
 			CooldownMinutes: 720,
 		},
+		resolvedTorznabIndexerIDs: []int{indexer.ID},
 	}
 
 	require.NoError(t, service.refreshSearchQueue(ctx, state))
@@ -676,6 +639,7 @@ func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 			InstanceID:     instance.ID,
 			DisableTorznab: true,
 		},
+		gazelleClients: &gazelleClientSet{byHost: map[string]*gazellemusic.Client{"redacted.sh": nil}},
 	}
 
 	require.NoError(t, service.refreshSearchQueue(ctx, state))
@@ -805,14 +769,13 @@ func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	service.propagateDuplicateSearchHistory(ctx, state, "rep-hash", now)
+	service.propagateDuplicateSearchHistory(ctx, state, "rep-hash", now, nil, true)
 
 	for _, hash := range []string{"dup-hash-a", "dup-hash-b"} {
 		last, found, err := store.GetSearchHistory(ctx, instance.ID, hash)
 		require.NoError(t, err)
 		require.True(t, found, "expected duplicate hash %s to be recorded", hash)
 		require.WithinDuration(t, now, last, time.Second)
-		require.True(t, state.skipCache[strings.ToLower(hash)])
 	}
 }
 

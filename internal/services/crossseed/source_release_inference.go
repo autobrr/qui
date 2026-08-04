@@ -4,6 +4,8 @@
 package crossseed
 
 import (
+	"context"
+
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 
@@ -73,6 +75,35 @@ func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release)
 	merged.Series = inferredRelease.Series
 	merged.Episode = 0
 	return &merged
+}
+
+// deriveSearchSourceTVRelease recovers TV structure from a torrent's files the
+// same way search does, for names that parse as non-TV (bracket-anime packs
+// carry season/episode markers only in file names). Returns nil when the files
+// don't establish a TV release, so callers keep the raw parse.
+func (s *Service) deriveSearchSourceTVRelease(ctx context.Context, instanceID int, hash, name string, parsed *rls.Release) *rls.Release {
+	files, err := s.getTorrentFilesCached(ctx, instanceID, hash)
+	if err != nil {
+		return nil
+	}
+	return s.deriveTVReleaseFromFiles(name, parsed, files)
+}
+
+// deriveTVReleaseFromFiles is the file-list core of deriveSearchSourceTVRelease
+// for callers that already hold the files (e.g. apply, which has the incoming
+// torrent's metainfo). Returns nil when the files don't establish a TV release.
+func (s *Service) deriveTVReleaseFromFiles(name string, parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
+	if len(files) == 0 {
+		return nil
+	}
+
+	contentDetectionRelease, _ := s.selectContentDetectionRelease(name, parsed, files)
+	contentInfo := DetermineContentType(contentDetectionRelease)
+	derived := s.selectSourceReleaseForSearch(parsed, contentDetectionRelease, files, contentInfo)
+	if !isTVRelease(derived) {
+		return nil
+	}
+	return derived
 }
 
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
