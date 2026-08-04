@@ -37,30 +37,9 @@ type filterViewPayload struct {
 	Filters json.RawMessage `json:"filters"`
 }
 
-// parse validates the payload and returns the trimmed name plus the raw filters
-// blob. The blob is only checked for being a JSON object; its shape belongs to
-// the frontend. A non-empty third return value is the client-facing rejection
-// reason.
-func (p *filterViewPayload) parse() (string, json.RawMessage, string) {
-	name := strings.TrimSpace(p.Name)
-	if name == "" {
-		return "", nil, "Name is required"
-	}
-	if len([]rune(name)) > maxFilterViewNameLength {
-		return "", nil, "Name is too long"
-	}
-
-	// json.Decoder already validated the syntax and leaves no surrounding
-	// whitespace, so a leading '{' is enough to prove this is an object.
-	if len(p.Filters) == 0 || p.Filters[0] != '{' {
-		return "", nil, "Filters must be a JSON object"
-	}
-
-	return name, p.Filters, ""
-}
-
-// decodeFilterViewPayload decodes and validates a create/update body. It
-// responds to the client and returns false when either step fails.
+// decodeFilterViewPayload decodes and validates a create/update body, returning
+// the trimmed name and the raw filters blob. It responds to the client and
+// returns false when the body is unusable.
 func decodeFilterViewPayload(w http.ResponseWriter, r *http.Request) (string, json.RawMessage, bool) {
 	var payload filterViewPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -69,13 +48,22 @@ func decodeFilterViewPayload(w http.ResponseWriter, r *http.Request) (string, js
 		return "", nil, false
 	}
 
-	name, filters, invalid := payload.parse()
-	if invalid != "" {
-		RespondError(w, http.StatusBadRequest, invalid)
+	name := strings.TrimSpace(payload.Name)
+	switch {
+	case name == "":
+		RespondError(w, http.StatusBadRequest, "Name is required")
+		return "", nil, false
+	case len([]rune(name)) > maxFilterViewNameLength:
+		RespondError(w, http.StatusBadRequest, "Name is too long")
+		return "", nil, false
+	// json.Decoder already validated the syntax and leaves no surrounding
+	// whitespace, so a leading '{' is enough to prove this is an object.
+	case len(payload.Filters) == 0 || payload.Filters[0] != '{':
+		RespondError(w, http.StatusBadRequest, "Filters must be a JSON object")
 		return "", nil, false
 	}
 
-	return name, filters, true
+	return name, payload.Filters, true
 }
 
 func (h *FilterViewHandler) List(w http.ResponseWriter, r *http.Request) {
