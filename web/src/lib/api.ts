@@ -2249,12 +2249,15 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string): Promise<DiscoverJackettResponse> {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string, sourceIndexerId?: number): Promise<DiscoverJackettResponse> {
     const user = basicUsername?.trim() ?? ""
     const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
     if (user) {
       payload.basic_username = user
       payload.basic_password = basicPassword ?? ""
+    }
+    if (sourceIndexerId !== undefined) {
+      payload.source_indexer_id = sourceIndexerId
     }
     return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
