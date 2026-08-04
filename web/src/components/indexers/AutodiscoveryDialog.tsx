@@ -18,17 +18,20 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import type { JackettIndexer, TorznabIndexer, TorznabIndexerFormData, TorznabIndexerUpdate } from "@/types"
 import { api } from "@/lib/api"
+import { deriveSavedConnections, type SavedDiscoveryConnection } from "@/lib/discovery-connections"
 
 interface AutodiscoveryDialogProps {
   open: boolean
   onClose: () => void
+  indexers: TorznabIndexer[]
 }
 
-export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
+export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDialogProps) {
   const { t } = useTranslation("settings")
   const [step, setStep] = useState<"input" | "select">("input")
   const [loading, setLoading] = useState(false)
@@ -41,6 +44,32 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
   const [existingIndexersMap, setExistingIndexersMap] = useState<Map<string, TorznabIndexer>>(new Map())
+  const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null)
+  const [manualOpen, setManualOpen] = useState(false)
+
+  const savedConnections = deriveSavedConnections(indexers)
+
+  // Selecting a connection wipes the manual credentials, so the plain apiKey /
+  // showBasicAuth reads below stay correct in both modes.
+  const selectConnection = (connection: SavedDiscoveryConnection) => {
+    setSelectedSourceId(connection.sourceIndexerId)
+    setManualOpen(false)
+    setBaseUrl(connection.baseUrl)
+    setBaseUrlError(null)
+    setApiKey("")
+    setShowBasicAuth(false)
+    setBasicUsername("")
+    setBasicPassword("")
+  }
+
+  const handleManualToggle = (nextOpen: boolean) => {
+    setManualOpen(nextOpen)
+    if (nextOpen) {
+      setSelectedSourceId(null)
+      setBaseUrl("http://localhost:9696")
+      setBaseUrlError(null)
+    }
+  }
 
   const normalizeBaseUrl = (value: string) => {
     const trimmed = value.trim()
@@ -73,7 +102,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           normalizedBaseUrl,
           apiKey,
           showBasicAuth ? trimmedBasicUser : undefined,
-          showBasicAuth ? trimmedBasicPass : undefined
+          showBasicAuth ? trimmedBasicPass : undefined,
+          selectedSourceId ?? undefined
         ),
         api.listTorznabIndexers(),
       ])
@@ -158,7 +188,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           // Omit enabled to preserve the user's current enabled state
           const updateData: TorznabIndexerUpdate = {
             base_url: normalizedBaseUrl,
-            api_key: apiKey,
+            api_key: apiKey, // empty + source copies the saved connection's credentials
+            source_indexer_id: selectedSourceId ?? undefined,
             backend,
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
@@ -179,6 +210,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             name: indexer.name,
             base_url: normalizedBaseUrl,
             api_key: apiKey,
+            source_indexer_id: selectedSourceId ?? undefined,
             backend,
             enabled: true,
             indexer_id: normalizedIndexerId,
@@ -253,6 +285,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setBaseUrl("http://localhost:9696")
     setBaseUrlError(null)
     setApiKey("")
+    setSelectedSourceId(null)
+    setManualOpen(false)
     setShowBasicAuth(false)
     setBasicUsername("")
     setBasicPassword("")
@@ -260,6 +294,100 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setSelectedIndexers(new Set())
     onClose()
   }
+
+  const manualFields = (
+    <>
+      <div className="grid gap-2">
+        <Label htmlFor="torznabUrl">{t("indexers.autodiscovery.labels.indexerUrl")}</Label>
+        <Input
+          id="torznabUrl"
+          type="url"
+          value={baseUrl}
+          onChange={(e) => {
+            setBaseUrl(e.target.value)
+            if (baseUrlError) {
+              setBaseUrlError(null)
+            }
+          }}
+          placeholder={t("indexers.autodiscovery.placeholders.indexerUrl")}
+          className={baseUrlError ? "border-destructive focus-visible:ring-destructive" : undefined}
+          aria-invalid={baseUrlError ? "true" : "false"}
+          autoComplete="off"
+          data-1p-ignore
+          required
+        />
+        {baseUrlError && (
+          <p className="text-xs text-destructive">
+            {baseUrlError}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t("indexers.autodiscovery.hints.indexerUrl")}
+        </p>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="torznabApiKey">{t("indexers.autodiscovery.labels.apiKey")}</Label>
+        <Input
+          id="torznabApiKey"
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={t("indexers.autodiscovery.placeholders.apiKey")}
+          autoComplete="off"
+          data-1p-ignore
+          required
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4">
+        <div className="space-y-1">
+          <Label htmlFor="torznab-basic-auth">{t("indexers.autodiscovery.labels.basicAuth")}</Label>
+          <p className="text-sm text-muted-foreground max-w-prose">
+            {t("indexers.autodiscovery.labels.basicAuthDescription")}
+          </p>
+        </div>
+        <Switch
+          id="torznab-basic-auth"
+          checked={showBasicAuth}
+          onCheckedChange={(checked) => {
+            setShowBasicAuth(checked)
+            if (!checked) {
+              setBasicUsername("")
+              setBasicPassword("")
+            }
+          }}
+        />
+      </div>
+      {showBasicAuth && (
+        <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
+          <div className="grid gap-2">
+            <Label htmlFor="torznab-basic-username">{t("indexers.autodiscovery.labels.basicUsername")}</Label>
+            <Input
+              id="torznab-basic-username"
+              value={basicUsername}
+              onChange={(e) => setBasicUsername(e.target.value)}
+              placeholder={t("indexers.autodiscovery.placeholders.username")}
+              autoComplete="off"
+              data-1p-ignore
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="torznab-basic-password">{t("indexers.autodiscovery.labels.basicPassword")}</Label>
+            <Input
+              id="torznab-basic-password"
+              type="password"
+              value={basicPassword}
+              onChange={(e) => setBasicPassword(e.target.value)}
+              placeholder={t("indexers.autodiscovery.placeholders.password")}
+              autoComplete="off"
+              data-1p-ignore
+              required
+            />
+          </div>
+        </div>
+      )}
+    </>
+  )
 
   return (
     <Dialog open={open} onOpenChange={(open) => { if (!open) handleClose(); }}>
@@ -274,101 +402,54 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         {step === "input" ? (
           <form onSubmit={handleDiscover} autoComplete="off" data-1p-ignore className="flex-1 flex flex-col min-h-0">
             <div className="grid gap-4 py-4 flex-1 overflow-y-auto">
-              <div className="grid gap-2">
-                <Label htmlFor="torznabUrl">{t("indexers.autodiscovery.labels.indexerUrl")}</Label>
-                <Input
-                  id="torznabUrl"
-                  type="url"
-                  value={baseUrl}
-                  onChange={(e) => {
-                    setBaseUrl(e.target.value)
-                    if (baseUrlError) {
-                      setBaseUrlError(null)
-                    }
-                  }}
-                  placeholder={t("indexers.autodiscovery.placeholders.indexerUrl")}
-                  className={baseUrlError ? "border-destructive focus-visible:ring-destructive" : undefined}
-                  aria-invalid={baseUrlError ? "true" : "false"}
-                  autoComplete="off"
-                  data-1p-ignore
-                  required
-                />
-                {baseUrlError && (
-                  <p className="text-xs text-destructive">
-                    {baseUrlError}
+              {savedConnections.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>{t("indexers.autodiscovery.savedConnections.title")}</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("indexers.autodiscovery.savedConnections.description")}
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  {t("indexers.autodiscovery.hints.indexerUrl")}
-                </p>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="torznabApiKey">{t("indexers.autodiscovery.labels.apiKey")}</Label>
-                <Input
-                  id="torznabApiKey"
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={t("indexers.autodiscovery.placeholders.apiKey")}
-                  autoComplete="off"
-                  data-1p-ignore
-                  required
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4">
-                <div className="space-y-1">
-                  <Label htmlFor="torznab-basic-auth">{t("indexers.autodiscovery.labels.basicAuth")}</Label>
-                  <p className="text-sm text-muted-foreground max-w-prose">
-                    {t("indexers.autodiscovery.labels.basicAuthDescription")}
-                  </p>
-                </div>
-                <Switch
-                  id="torznab-basic-auth"
-                  checked={showBasicAuth}
-                  onCheckedChange={(checked) => {
-                    setShowBasicAuth(checked)
-                    if (!checked) {
-                      setBasicUsername("")
-                      setBasicPassword("")
-                    }
-                  }}
-                />
-              </div>
-              {showBasicAuth && (
-                <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="torznab-basic-username">{t("indexers.autodiscovery.labels.basicUsername")}</Label>
-                    <Input
-                      id="torznab-basic-username"
-                      value={basicUsername}
-                      onChange={(e) => setBasicUsername(e.target.value)}
-                      placeholder={t("indexers.autodiscovery.placeholders.username")}
-                      autoComplete="off"
-                      data-1p-ignore
-                      required
-                    />
+                    {savedConnections.map((connection) => (
+                      <button
+                        key={`${connection.backend}|${connection.baseUrl}`}
+                        type="button"
+                        onClick={() => selectConnection(connection)}
+                        className={`flex items-center justify-between rounded-lg border p-3 text-left text-sm hover:bg-accent ${selectedSourceId === connection.sourceIndexerId ? "border-primary bg-accent" : ""}`}
+                      >
+                        <span className="truncate font-medium">{connection.baseUrl}</span>
+                        <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                          {t(`indexers.dialog.backends.${connection.backend}`)} • {t("indexers.autodiscovery.savedConnections.indexerCount", { count: connection.indexerCount })}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="torznab-basic-password">{t("indexers.autodiscovery.labels.basicPassword")}</Label>
-                    <Input
-                      id="torznab-basic-password"
-                      type="password"
-                      value={basicPassword}
-                      onChange={(e) => setBasicPassword(e.target.value)}
-                      placeholder={t("indexers.autodiscovery.placeholders.password")}
-                      autoComplete="off"
-                      data-1p-ignore
-                      required
-                    />
-                  </div>
+                  {selectedSourceId !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("indexers.autodiscovery.savedConnections.storedKey")}
+                    </p>
+                  )}
                 </div>
+              )}
+              {savedConnections.length > 0 ? (
+                <Collapsible open={manualOpen} onOpenChange={handleManualToggle}>
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="outline" size="sm" className="w-full">
+                      {t("indexers.autodiscovery.savedConnections.manual")}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="grid gap-4 pt-4">
+                    {manualFields}
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                manualFields
               )}
             </div>
             <DialogFooter className="flex-shrink-0">
               <Button type="button" variant="outline" onClick={handleClose}>
                 {t("indexers.autodiscovery.buttons.cancel")}
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading || (savedConnections.length > 0 && selectedSourceId === null && !manualOpen)}>
                 {loading ? t("indexers.autodiscovery.buttons.discovering") : t("indexers.autodiscovery.buttons.discover")}
               </Button>
             </DialogFooter>
