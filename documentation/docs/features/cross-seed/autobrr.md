@@ -124,7 +124,7 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `skipIfExists` (optional) - Skip adding if the torrent already exists
 - `findIndividualEpisodes` (optional) - Override the global episode matching setting
 
-Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes when the missing data fits the **Max auto-start download** limit. If the torrent misses more data, it remains paused for manual review.
+Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes when the missing data fits the **Max auto-start download** limit, with a 200 MiB exception when only ignorable files are missing (see [Rules](./rules.md#max-auto-start-download)). If the torrent misses more data, it remains paused for manual review.
 
 ### Troubleshooting: autobrr matches, but nothing gets added to qBittorrent
 

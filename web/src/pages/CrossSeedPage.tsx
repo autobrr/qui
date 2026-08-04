@@ -160,10 +160,12 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   rssSourceExcludeTags: [],
 }
 
+const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
+
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
-  autoResumeMaxDownloadMb: 50,
+  autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -1106,7 +1108,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
-        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? 50,
+        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1210,7 +1212,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
       sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
-      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? 50,
+      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
