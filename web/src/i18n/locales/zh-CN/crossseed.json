@@ -258,7 +258,7 @@
       "title": "匹配行为",
       "description": "控制种子的匹配方式以及允许的文件差异。",
       "sizeTolerance": "大小不匹配容差（%）",
-      "sizeToleranceDescription": "匹配时允许的最大大小差异。同时设置自动恢复阈值（例如 5% = 在 >=95% 时恢复）。",
+      "sizeToleranceDescription": "匹配时允许的最大大小差异。",
       "crossSeedEpisodes": "从合集包辅种单集",
       "crossSeedEpisodesDescription": "你的本地季度合集包可以匹配索引器上的单集种子，让你同时做种两种格式。"
     },

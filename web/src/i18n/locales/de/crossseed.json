@@ -258,7 +258,7 @@
       "title": "Matching-Verhalten",
       "description": "Steuere, wie Torrents abgeglichen werden und welche Dateiunterschiede erlaubt sind.",
       "sizeTolerance": "Toleranz für Größenabweichung (%)",
-      "sizeToleranceDescription": "Maximale Größendifferenz für ein Match. Legt zugleich den Schwellenwert für die automatische Fortsetzung fest (z. B. 5 % = Fortsetzen ab >=95 %).",
+      "sizeToleranceDescription": "Maximale Größendifferenz für ein Match.",
       "crossSeedEpisodes": "Episoden aus Packs cross-seeden",
       "crossSeedEpisodesDescription": "Deine lokalen Season Packs können einzelne Episoden-Torrents auf Indexern matchen, sodass du beide Formate seeden kannst."
     },

@@ -258,7 +258,7 @@
       "title": "Shodovací mechanismus",
       "description": "Kontrolujte, jak jsou torrenty shodovány a které souborové rozdíly jsou povoleny.",
       "sizeTolerance": "Tolerance pro velikostní nesrovnalost (%)",
-      "sizeToleranceDescription": "Maximální velikostní rozdíl pro shodování. Také nastavuje prahovou hodnotu automatického obnovení (např. 5% = obnovit při >=95%).",
+      "sizeToleranceDescription": "Maximální velikostní rozdíl pro shodování.",
       "crossSeedEpisodes": "Křížové sdílení epizod z balíků",
       "crossSeedEpisodesDescription": "Vaše místní balíky celých sezón mohou shodovat individualní epizodové torrenty na indexerech, což vám umožní seedovat oba formáty."
     },
