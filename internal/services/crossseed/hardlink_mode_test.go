@@ -847,57 +847,51 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "Skip recheck")
 }
 
-func TestCoverageAndResumeThresholdsFromTolerance(t *testing.T) {
+func TestCoverageThresholdFromTolerance(t *testing.T) {
 	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(0), 0.001)
 	assert.InDelta(t, 0.95, coverageThresholdFromTolerance(5), 0.001)
 	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(-1), 0.001)
 	assert.InDelta(t, 0.8, coverageThresholdFromTolerance(20), 0.001)
 	assert.InDelta(t, 0.0, coverageThresholdFromTolerance(150), 0.001)
-
-	assert.InDelta(t, 1.0, clampedResumeThresholdFromTolerance(0), 0.001)
-	assert.InDelta(t, 0.95, clampedResumeThresholdFromTolerance(5), 0.001)
-	assert.InDelta(t, 1.0, clampedResumeThresholdFromTolerance(-1), 0.001)
-	assert.InDelta(t, 0.9, clampedResumeThresholdFromTolerance(20), 0.001)
-	assert.InDelta(t, 0.9, clampedResumeThresholdFromTolerance(150), 0.001)
 }
 
-func TestRequestResumeThresholdPreservesStrictRequestZero(t *testing.T) {
-	s := &Service{
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5.0
-			return settings, nil
-		},
+func TestResumeBudgetBytes(t *testing.T) {
+	tests := []struct {
+		name       string
+		settingsMB int
+		loaderErr  error
+		want       int64
+	}{
+		{name: "default 50 MiB", settingsMB: models.DefaultAutoResumeMaxDownloadMB, want: 50 << 20},
+		{name: "custom value", settingsMB: 200, want: 200 << 20},
+		{name: "zero means only complete torrents", settingsMB: 0, want: 0},
+		{name: "negative clamps to zero", settingsMB: -5, want: 0},
+		{name: "loader error falls back to default", loaderErr: errors.New("db down"), want: int64(models.DefaultAutoResumeMaxDownloadMB) << 20},
 	}
 
-	threshold := s.requestResumeThreshold(context.Background(), &CrossSeedRequest{
-		SizeMismatchTolerancePercent:    0,
-		SizeMismatchTolerancePercentSet: true,
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					if tt.loaderErr != nil {
+						return nil, tt.loaderErr
+					}
+					settings := models.DefaultCrossSeedAutomationSettings()
+					settings.AutoResumeMaxDownloadMB = tt.settingsMB
+					return settings, nil
+				},
+			}
 
-	assert.InDelta(t, 1.0, threshold, 0.001)
-}
-
-func TestRequestResumeThresholdFallsBackWhenRequestZeroUnset(t *testing.T) {
-	s := &Service{
-		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5.0
-			return settings, nil
-		},
+			assert.Equal(t, tt.want, s.resumeBudgetBytes(context.Background()))
+		})
 	}
-
-	threshold := s.requestResumeThreshold(context.Background(), &CrossSeedRequest{})
-
-	assert.InDelta(t, 0.95, threshold, 0.001)
 }
 
-func TestRequestCoverageThresholdAllowsLargerToleranceThanResumeThreshold(t *testing.T) {
+func TestRequestCoverageThresholdFromTolerance(t *testing.T) {
 	s := &Service{}
 	req := &CrossSeedRequest{SizeMismatchTolerancePercent: 20}
 
 	assert.InDelta(t, 0.8, s.requestCoverageThreshold(context.Background(), req), 0.001)
-	assert.InDelta(t, 0.9, s.requestResumeThreshold(context.Background(), req), 0.001)
 }
 
 func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {

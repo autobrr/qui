@@ -18,14 +18,27 @@ import (
 type recheckResumeSyncManager struct {
 	bulkActions             []string
 	resumeFailuresRemaining int
+	filesByHash             map[string]qbt.TorrentFiles
+	filesErr                error
+	filesCalls              int
 }
 
 func (m *recheckResumeSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
 	return nil, nil
 }
 
-func (m *recheckResumeSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-	return nil, nil
+func (m *recheckResumeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	m.filesCalls++
+	if m.filesErr != nil {
+		return nil, m.filesErr
+	}
+	out := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		if files, ok := m.filesByHash[normalizeHash(hash)]; ok {
+			out[normalizeHash(hash)] = files
+		}
+	}
+	return out, nil
 }
 
 func (m *recheckResumeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
@@ -466,20 +479,21 @@ func TestRekeyPendingRecheckResumeUsesCanonicalTorrentHash(t *testing.T) {
 	require.Same(t, req, pending[recheckResumeKey(1, "v2hash")])
 }
 
-func TestQueueRecheckResumeWithMissingFilesRecoverySetsPendingFlag(t *testing.T) {
+func TestQueueRecheckResumeWithBudgetSetsPendingFields(t *testing.T) {
 	t.Parallel()
 
 	service := &Service{
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	err := service.queueRecheckResumeWithMissingFilesRecovery(context.Background(), 1, "hash1", 0.95)
+	err := service.queueRecheckResumeWithBudget(context.Background(), 1, "hash1", 50<<20, true)
 	require.NoError(t, err)
 
 	pending := <-service.recheckResumeChan
 	require.Equal(t, 1, pending.instanceID)
 	require.Equal(t, "hash1", pending.hash)
-	require.InDelta(t, 0.95, pending.threshold, 0.001)
+	require.NotNil(t, pending.budgetBytes)
+	require.Equal(t, int64(50<<20), *pending.budgetBytes)
 	require.True(t, pending.recoverMissingFilesWithResume)
 }
 
@@ -495,6 +509,318 @@ func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.
 
 	pending := <-service.recheckResumeChan
 	require.False(t, pending.recoverMissingFilesWithResume)
+}
+
+func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
+	t.Parallel()
+
+	// The mkv reports slightly under 1: qbit file progress is piece-based, so the
+	// piece spanning the mkv/sample boundary fails hashing when the sample is
+	// absent. Its few missing MiB must count against the budget, not veto forgiveness.
+	sampleOnlyMissing := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Progress: 0.999, Priority: 1, Size: 4 << 30},
+		{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
+		{Name: "Show.S01E01.nfo", Progress: 0, Priority: 1, Size: 4 << 10},
+	}
+	episodeMissing := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Progress: 0.98, Priority: 1, Size: 4 << 30},
+		{Name: "Show.S01E01.nfo", Progress: 1, Priority: 1, Size: 4 << 10},
+	}
+	unwantedRelevantMissing := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
+		{Name: "Show.S01E02.mkv", Progress: 0, Priority: 0, Size: 4 << 30},
+		{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
+	}
+	// A real title containing an ignore keyword must stay relevant: substring
+	// matching would classify this episode as a "trailer" sidecar and resume.
+	keywordTitleMissing := qbt.TorrentFiles{
+		{Name: "Trailer.Park.Boys.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1500 << 20},
+	}
+
+	tests := []struct {
+		name        string
+		budget      int64
+		amountLeft  int64
+		progress    float64 // 0 means the 0.9 default
+		files       qbt.TorrentFiles
+		filesErr    error
+		wantResume  bool
+		wantKeep    bool
+		wantFetches int
+	}{
+		{
+			name:        "missing bytes within budget resume without file fetch",
+			budget:      50 << 20,
+			amountLeft:  30 << 20,
+			wantResume:  true,
+			wantKeep:    true,
+			wantFetches: 0,
+		},
+		{
+			name:        "missing bytes at exact budget resume",
+			budget:      50 << 20,
+			amountLeft:  50 << 20,
+			wantResume:  true,
+			wantKeep:    true,
+			wantFetches: 0,
+		},
+		{
+			name:        "over budget with relevant file missing stays paused",
+			budget:      50 << 20,
+			amountLeft:  80 << 20,
+			files:       episodeMissing,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 1,
+		},
+		{
+			name:        "over budget but only irrelevant files missing resumes",
+			budget:      50 << 20,
+			amountLeft:  70 << 20,
+			files:       sampleOnlyMissing,
+			wantResume:  true,
+			wantKeep:    true,
+			wantFetches: 1,
+		},
+		{
+			name:        "irrelevant files above forgiveness cap stay paused",
+			budget:      50 << 20,
+			amountLeft:  300 << 20,
+			files:       sampleOnlyMissing,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 0,
+		},
+		{
+			name:        "unwanted relevant file does not block forgiveness",
+			budget:      50 << 20,
+			amountLeft:  70 << 20,
+			files:       unwantedRelevantMissing,
+			wantResume:  true,
+			wantKeep:    true,
+			wantFetches: 1,
+		},
+		{
+			name:        "title containing ignore keyword stays relevant",
+			budget:      50 << 20,
+			amountLeft:  150 << 20,
+			files:       keywordTitleMissing,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 1,
+		},
+		{
+			name:        "file fetch error keeps entry for retry",
+			budget:      50 << 20,
+			amountLeft:  70 << 20,
+			filesErr:    errors.New("qbit unavailable"),
+			wantResume:  false,
+			wantKeep:    true,
+			wantFetches: 1,
+		},
+		{
+			name:        "budget zero requires complete torrent",
+			budget:      0,
+			amountLeft:  0,
+			progress:    1,
+			wantResume:  true,
+			wantKeep:    true,
+			wantFetches: 0,
+		},
+		{
+			name:        "budget zero disables forgiveness",
+			budget:      0,
+			amountLeft:  4 << 10,
+			files:       sampleOnlyMissing,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sync := &recheckResumeSyncManager{
+				filesByHash: map[string]qbt.TorrentFiles{"hash1": tt.files},
+				filesErr:    tt.filesErr,
+			}
+			service := &Service{
+				syncManager:      sync,
+				recheckResumeCtx: context.Background(),
+			}
+			pending := &pendingResume{
+				instanceID:  1,
+				hash:        "hash1",
+				budgetBytes: new(tt.budget),
+				addedAt:     time.Now(),
+				sawChecking: true,
+			}
+			progress := tt.progress
+			if progress == 0 {
+				progress = 0.9
+			}
+			torrent := qbt.Torrent{
+				Hash:       "hash1",
+				Progress:   progress,
+				AmountLeft: tt.amountLeft,
+				State:      qbt.TorrentStatePausedDl,
+			}
+
+			keep := service.processPendingRecheckResume(1, "hash1", pending, torrent)
+
+			require.Equal(t, tt.wantKeep, keep)
+			require.Equal(t, tt.wantFetches, sync.filesCalls)
+			if tt.wantResume {
+				require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+			} else {
+				require.Empty(t, sync.bulkActions)
+			}
+		})
+	}
+}
+
+func TestProcessPendingRecheckResumeForgivenessRetriesAfterNegativeVerdict(t *testing.T) {
+	t.Parallel()
+
+	// Before the recheck settles, the video file still reports incomplete, so
+	// forgiveness must say no - but that verdict must not stick once a later
+	// poll shows only the sample missing.
+	sync := &recheckResumeSyncManager{
+		filesByHash: map[string]qbt.TorrentFiles{"hash1": {
+			{Name: "Show.S01E01.mkv", Progress: 0.2, Priority: 1, Size: 4 << 30},
+			{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
+		}},
+	}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:  1,
+		hash:        "hash1",
+		budgetBytes: new(int64(50 << 20)),
+		addedAt:     time.Now(),
+	}
+	// Queued pre-recheck: paused at 0% progress keeps the entry alive.
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.True(t, keep)
+	require.Empty(t, sync.bulkActions)
+	require.False(t, pending.forgivenessGranted)
+
+	// Recheck runs.
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.5,
+		AmountLeft: 2 << 30,
+		State:      qbt.TorrentStateCheckingDl,
+	})
+	require.True(t, keep)
+
+	// Recheck finished: only the sample is missing now.
+	sync.filesByHash["hash1"] = qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
+		{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
+	}
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.98,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.True(t, keep)
+	require.True(t, pending.forgivenessGranted)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+}
+
+func TestProcessPendingRecheckResumeForgivenessRetriesAfterFetchError(t *testing.T) {
+	t.Parallel()
+
+	// A transient file-list error right after the recheck must keep the entry in
+	// the queue, then resume once the file list loads.
+	sync := &recheckResumeSyncManager{
+		filesByHash: map[string]qbt.TorrentFiles{"hash1": {
+			{Name: "Show.S01E01.mkv", Progress: 0.999, Priority: 1, Size: 4 << 30},
+			{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 70 << 20},
+		}},
+		filesErr: errors.New("qbit timeout"),
+	}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:  1,
+		hash:        "hash1",
+		budgetBytes: new(int64(50 << 20)),
+		addedAt:     time.Now(),
+		sawChecking: true,
+	}
+	torrent := qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.98,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, torrent)
+	require.True(t, keep, "fetch error must not drop the entry")
+	require.Empty(t, sync.bulkActions)
+
+	sync.filesErr = nil
+	keep = service.processPendingRecheckResume(1, "hash1", pending, torrent)
+	require.True(t, keep)
+	require.True(t, pending.forgivenessGranted)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+}
+
+func TestProcessPendingRecheckResumePausesOverBudgetRecoveryDownload(t *testing.T) {
+	t.Parallel()
+
+	// A missingFiles recovery nudge starts the torrent; when it lands in
+	// downloading with far more left than the budget allows, the worker must
+	// pause it instead of letting it download to completion.
+	sync := &recheckResumeSyncManager{
+		filesByHash: map[string]qbt.TorrentFiles{"hash1": {
+			{Name: "Show.S01E01.mkv", Progress: 0.05, Priority: 1, Size: 2 << 30},
+		}},
+	}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:                    1,
+		hash:                          "hash1",
+		budgetBytes:                   new(int64(50 << 20)),
+		addedAt:                       time.Now(),
+		recoverMissingFilesWithResume: true,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.05,
+		AmountLeft: 2 << 30,
+		State:      qbt.TorrentStateMissingFiles,
+	})
+	require.True(t, keep)
+	require.True(t, pending.missingFilesResumeSucceeded)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.05,
+		AmountLeft: 2 << 30,
+		State:      qbt.TorrentStateDownloading,
+	})
+	require.True(t, keep)
+	require.Equal(t, []string{"resume:hash1", "pause:hash1"}, sync.bulkActions)
 }
 
 func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {

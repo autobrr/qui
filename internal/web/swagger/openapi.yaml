@@ -6686,6 +6686,9 @@ components:
         sizeMismatchTolerancePercent:
           type: number
           format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6822,6 +6825,9 @@ components:
         sizeMismatchTolerancePercent:
           type: number
           format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:

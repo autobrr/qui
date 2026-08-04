@@ -200,3 +200,88 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 		})
 	}
 }
+
+func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
+	putBody := func(extra string) string {
+		if extra == "" {
+			return `{"seasonPackCoverageThreshold": 0.75}`
+		}
+		return `{"seasonPackCoverageThreshold": 0.75, ` + extra + `}`
+	}
+
+	tests := []struct {
+		name   string
+		method string
+		body   string
+		setup  string // optional PUT body applied first
+		want   int
+	}{
+		{
+			name:   "put without the field keeps the default",
+			method: http.MethodPut,
+			body:   putBody(""),
+			want:   models.DefaultAutoResumeMaxDownloadMB,
+		},
+		{
+			name:   "put with explicit zero stores zero",
+			method: http.MethodPut,
+			body:   putBody(`"autoResumeMaxDownloadMb": 0`),
+			want:   0,
+		},
+		{
+			name:   "put with custom value stores it",
+			method: http.MethodPut,
+			body:   putBody(`"autoResumeMaxDownloadMb": 200`),
+			want:   200,
+		},
+		{
+			name:   "put with negative value clamps to zero",
+			method: http.MethodPut,
+			body:   putBody(`"autoResumeMaxDownloadMb": -5`),
+			want:   0,
+		},
+		{
+			name:   "patch without the field preserves the stored value",
+			method: http.MethodPatch,
+			body:   `{"sizeMismatchTolerancePercent": 7}`,
+			setup:  putBody(`"autoResumeMaxDownloadMb": 200`),
+			want:   200,
+		},
+		{
+			name:   "patch with explicit zero stores zero",
+			method: http.MethodPatch,
+			body:   `{"autoResumeMaxDownloadMb": 0}`,
+			setup:  putBody(`"autoResumeMaxDownloadMb": 200`),
+			want:   0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, store := newTestCrossSeedHandler(t)
+
+			if tt.setup != "" {
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(tt.setup))
+				req.Header.Set("Content-Type", "application/json")
+				resp := httptest.NewRecorder()
+				handler.UpdateAutomationSettings(resp, req)
+				require.Equal(t, http.StatusOK, resp.Code)
+			}
+
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, "/api/cross-seed/settings", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+			switch tt.method {
+			case http.MethodPatch:
+				handler.PatchAutomationSettings(resp, req)
+			default:
+				handler.UpdateAutomationSettings(resp, req)
+			}
+			require.Equal(t, http.StatusOK, resp.Code)
+
+			stored, err := store.GetSettings(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, tt.want, stored.AutoResumeMaxDownloadMB)
+		})
+	}
+}

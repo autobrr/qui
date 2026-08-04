@@ -274,6 +274,9 @@ const (
 	maxRecheckResumeAttempts              = 3
 	recheckResumeStablePolls              = 2
 	maxMissingFilesResumeAttempts         = 3
+	// Forgiveness ceiling for byte-budget auto-resume: even when every missing
+	// file is an irrelevant sidecar, never auto-resume above this much missing data.
+	irrelevantResumeForgivenessCapBytes   = int64(200) << 20
 	minSearchIntervalSecondsTorznab       = 60
 	minSearchIntervalSecondsGazelleOnly   = 5
 	minSearchCooldownMinutes              = 720
@@ -448,9 +451,20 @@ type Service struct {
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
 type pendingResume struct {
-	instanceID                    int
-	hash                          string
-	threshold                     float64
+	instanceID int
+	hash       string
+	// threshold is the verified-progress fraction required to resume.
+	// Used by the season-pack flow, whose gate is "linked bytes verified".
+	threshold float64
+	// budgetBytes switches the entry to byte-budget mode (new cross-seed
+	// additions): resume when missing data fits the budget, or when only
+	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
+	budgetBytes        *int64
+	forgivenessGranted bool
+	// forgivenessEvalFailed marks that the LAST forgiveness evaluation could not
+	// load the file list; terminal branches keep the entry and retry instead of
+	// dropping it on a transient qBittorrent error.
+	forgivenessEvalFailed         bool
 	addedAt                       time.Time
 	recoverMissingFilesWithResume bool
 	missingFilesResumeAttempts    int
@@ -1707,6 +1721,9 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	}
 	if settings.SizeMismatchTolerancePercent < 0 {
 		settings.SizeMismatchTolerancePercent = 5.0 // Default to 5% if negative
+	}
+	if settings.AutoResumeMaxDownloadMB < 0 {
+		settings.AutoResumeMaxDownloadMB = 0
 	}
 	// Cap at 100% to prevent unreasonable tolerances
 	if settings.SizeMismatchTolerancePercent > 100.0 {
@@ -5748,12 +5765,11 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Bool("forceRecheck", forceRecheck).
 				Msg("Queuing torrent for recheck resume")
-			resumeThreshold := s.requestResumeThreshold(ctx, req)
 			queueErr := error(nil)
 			if addPolicy.DiscLayout || linkFallbackRequiresFullRecheck {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, 1.0)
+				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, activeHash, 0, false)
 			} else {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, resumeThreshold)
+				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false)
 			}
 			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
@@ -5854,46 +5870,176 @@ func recheckResumeKey(instanceID int, hash string) string {
 	return fmt.Sprintf("%d:%s", instanceID, normalizeHash(hash))
 }
 
-// queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit threshold.
-// Use threshold=1.0 to require a full (100%) recheck before resuming.
+// queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit
+// verified-progress threshold. Used by the season-pack flow, which resumes once its linked bytes verify.
 func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID int, hash string, threshold float64) error {
-	return s.queueRecheckResumeWithOptions(instanceID, hash, threshold, false)
+	return s.queuePendingResume(&pendingResume{
+		instanceID: instanceID,
+		hash:       hash,
+		threshold:  threshold,
+	})
 }
 
-func (s *Service) queueRecheckResumeWithMissingFilesRecovery(_ context.Context, instanceID int, hash string, threshold float64) error {
-	return s.queueRecheckResumeWithOptions(instanceID, hash, threshold, true)
-}
-
-func (s *Service) queueRecheckResumeWithOptions(instanceID int, hash string, threshold float64, recoverMissingFilesWithResume bool) error {
-	// Send to worker (non-blocking with buffer)
-	select {
-	case s.recheckResumeChan <- &pendingResume{
+// queueRecheckResumeWithBudget adds a torrent that may auto-resume only when the missing data
+// fits budgetBytes. Budget 0 requires a fully complete recheck and disables forgiveness.
+func (s *Service) queueRecheckResumeWithBudget(_ context.Context, instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool) error {
+	return s.queuePendingResume(&pendingResume{
 		instanceID:                    instanceID,
 		hash:                          hash,
-		threshold:                     threshold,
-		addedAt:                       time.Now(),
+		budgetBytes:                   &budgetBytes,
 		recoverMissingFilesWithResume: recoverMissingFilesWithResume,
-	}:
+	})
+}
+
+func (s *Service) queuePendingResume(req *pendingResume) error {
+	req.addedAt = time.Now()
+	// Send to worker (non-blocking with buffer)
+	select {
+	case s.recheckResumeChan <- req:
 		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Float64("threshold", threshold).
-			Bool("recoverMissingFilesWithResume", recoverMissingFilesWithResume).
+			Int("instanceID", req.instanceID).
+			Str("hash", req.hash).
+			Float64("threshold", req.threshold).
+			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
+			Bool("recoverMissingFilesWithResume", req.recoverMissingFilesWithResume).
 			Int("pendingCount", len(s.recheckResumeChan)+1).
 			Msg("Added torrent to recheck resume queue")
 		return nil
 	default:
 		log.Warn().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
+			Int("instanceID", req.instanceID).
+			Str("hash", req.hash).
 			Msg("Recheck resume channel full, skipping queue")
 		return errors.New("recheck resume queue full")
 	}
 }
 
+// pendingResumeBudgetForLog returns the budget for logging, -1 in threshold mode.
+func pendingResumeBudgetForLog(req *pendingResume) int64 {
+	if req.budgetBytes == nil {
+		return -1
+	}
+	return *req.budgetBytes
+}
+
+// pendingResumeSatisfied reports whether the torrent's recheck outcome allows auto-resume.
+// Threshold mode compares verified progress. Budget mode compares missing bytes against the
+// budget, with a forgiveness pass when the shortfall beyond the budget sits in irrelevant
+// sidecar files.
+func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
+	if req.budgetBytes == nil {
+		return torrent.Progress >= req.threshold
+	}
+
+	budget := *req.budgetBytes
+	req.forgivenessEvalFailed = false
+	if torrent.AmountLeft <= budget {
+		return true
+	}
+	// Budget 0 means only fully complete torrents resume - no forgiveness.
+	if budget <= 0 || torrent.AmountLeft > irrelevantResumeForgivenessCapBytes {
+		return false
+	}
+	// Cache only positive verdicts: a negative one taken before the recheck
+	// finished would otherwise pin the torrent paused forever.
+	if req.forgivenessGranted {
+		return true
+	}
+	granted, evalOK := s.missingRelevantBytesWithinBudget(instanceID, req.hash, budget)
+	if !evalOK {
+		req.forgivenessEvalFailed = true
+		return false
+	}
+	if granted {
+		req.forgivenessGranted = true
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", req.hash).
+			Int64("amountLeft", torrent.AmountLeft).
+			Int64("budgetBytes", budget).
+			Msg("Auto-resume budget exceeded but the shortfall beyond it is only irrelevant files, allowing resume")
+	}
+	return granted
+}
+
+// missingRelevantBytesWithinBudget reports whether the missing bytes inside relevant wanted
+// files fit the budget. Irrelevant sidecars (sample, nfo, subtitle, ...) are excluded from the
+// sum: per-file progress is piece-based, so a fully present file next to a missing sidecar
+// reports slightly under 1 and only its boundary-piece bytes count against the budget.
+// The second return value is false when the file list could not be loaded; the caller keeps
+// the queue entry and retries on the next poll instead of treating the error as a verdict.
+func (s *Service) missingRelevantBytesWithinBudget(instanceID int, hash string, budget int64) (bool, bool) {
+	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	defer cancel()
+
+	// The files cache can hold a pre-recheck snapshot (alignment warms it);
+	// the verdict must come from post-recheck per-file progress.
+	ctx = qbittorrent.WithForceFilesRefresh(ctx)
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+	if err != nil {
+		return false, false
+	}
+	files := filesByHash[normalizeHash(hash)]
+	if len(files) == 0 {
+		return false, false
+	}
+
+	normalizer := normalizerForService(s)
+	var relevantMissingBytes int64
+	for _, f := range files {
+		if f.Progress >= 1 || f.Priority == 0 {
+			continue
+		}
+		if forgivableSidecarFile(f.Name, normalizer) {
+			continue
+		}
+		relevantMissingBytes += int64((1 - float64(f.Progress)) * float64(f.Size))
+		if relevantMissingBytes > budget {
+			return false, true
+		}
+	}
+	return true, true
+}
+
+// forgivableSidecarFile reports whether a file is a sidecar that forgiveness may
+// auto-download. Stricter than shouldIgnoreFile: an ignore keyword must be the file's
+// stem, a "-"-delimited stem prefix/suffix, or a full directory segment, so real
+// titles that merely contain a keyword ("Trailer.Park.Boys...") stay relevant.
+func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[string, string]) bool {
+	lower := normalizer.Normalize(name)
+	for _, ext := range DefaultIgnoredExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+
+	base := path.Base(lower)
+	stem := strings.TrimSuffix(base, path.Ext(base))
+	for _, keyword := range DefaultIgnoredPathKeywords {
+		if stem == keyword ||
+			strings.HasPrefix(stem, keyword+"-") ||
+			strings.HasSuffix(stem, "-"+keyword) ||
+			strings.Contains(lower, keyword+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) bool {
 	progress := torrent.Progress
 	state := torrent.State
+
+	// Lazy so the file-list fetch behind forgiveness only happens at a decision point.
+	var satisfiedResult *bool
+	satisfied := func() bool {
+		if satisfiedResult == nil {
+			v := s.pendingResumeSatisfied(instanceID, req, torrent)
+			satisfiedResult = &v
+		}
+		return *satisfiedResult
+	}
 
 	isChecking := state == qbt.TorrentStateCheckingUp ||
 		state == qbt.TorrentStateCheckingDl ||
@@ -5968,18 +6114,25 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			return true
 		}
 
-		if isPausedOrStopped(state) && progress < req.threshold {
+		if isPausedOrStopped(state) && !satisfied() {
+			if req.forgivenessEvalFailed {
+				// Could not load the file list - retry on the next poll instead
+				// of dropping the entry on a transient qBittorrent error.
+				return true
+			}
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
 				Float64("progress", progress).
 				Float64("threshold", req.threshold).
+				Int64("amountLeft", torrent.AmountLeft).
+				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
 				Str("state", string(state)).
 				Msg("Recheck resume stopped below threshold, torrent left paused for manual review")
 			return false
 		}
 
-		if progress >= req.threshold && isPausedOrStopped(state) {
+		if isPausedOrStopped(state) && satisfied() {
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
@@ -5994,13 +6147,32 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return true
 	}
 
-	// Resume if threshold reached and not checking
-	if progress >= req.threshold && !isChecking {
+	// Resume if the recheck outcome allows it and the torrent is not checking
+	if !isChecking && satisfied() {
 		req.readyPolls++
 		if !req.sawChecking && req.readyPolls < recheckResumeStablePolls {
 			return true
 		}
 		return s.resumePendingRecheck(instanceID, hash, req, progress, state)
+	}
+
+	// A missingFiles recovery nudge can leave an over-budget torrent downloading.
+	// Pause it; the paused flow then decides between forgiveness and manual review.
+	if req.budgetBytes != nil && req.missingFilesResumeSucceeded &&
+		isDownloadingOrQueued(state) && !satisfied() && !req.forgivenessEvalFailed {
+		pauseCtx, pauseCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+		err := s.syncManager.BulkAction(pauseCtx, instanceID, []string{hash}, "pause")
+		pauseCancel()
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Int64("amountLeft", torrent.AmountLeft).
+				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
+				Msg("Failed to pause over-budget torrent after missingFiles recovery")
+		}
+		return true
 	}
 
 	// Below-threshold torrents that are still queued/downloading can improve.
@@ -6009,16 +6181,23 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return true
 	}
 
-	// If recheck completed (not checking) with some progress but below threshold,
-	// the torrent won't improve - remove it from queue.
+	// If recheck completed (not checking) with some progress but the outcome does not
+	// allow resuming, the torrent won't improve - remove it from queue.
 	// Note: We can't do this for 0% progress since we can't distinguish
 	// "queued for recheck" from "recheck completed with 0 matches".
-	if !isChecking && progress > 0 && progress < req.threshold {
+	if !isChecking && progress > 0 && !satisfied() {
+		if req.forgivenessEvalFailed {
+			// Could not load the file list - retry on the next poll instead of
+			// dropping the entry on a transient qBittorrent error.
+			return true
+		}
 		log.Warn().
 			Int("instanceID", instanceID).
 			Str("hash", hash).
 			Float64("progress", progress).
 			Float64("threshold", req.threshold).
+			Int64("amountLeft", torrent.AmountLeft).
+			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
 			Msg("Recheck completed below threshold, torrent left paused for manual review")
 		return false
 	}
@@ -6131,6 +6310,7 @@ func (s *Service) recheckResumeWorker() {
 				Int("instanceID", req.instanceID).
 				Str("hash", req.hash).
 				Float64("threshold", req.threshold).
+				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
 				Bool("recoverMissingFilesWithResume", req.recoverMissingFilesWithResume).
 				Int("pendingCount", len(pending)).
 				Msg("Added torrent to recheck resume queue")
@@ -13579,15 +13759,6 @@ func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 	return 1.0 - (tolerancePercent / 100.0)
 }
 
-func clampedResumeThresholdFromTolerance(tolerancePercent float64) float64 {
-	// coverageThresholdFromTolerance normalizes tolerance before converting it.
-	threshold := coverageThresholdFromTolerance(tolerancePercent)
-	if threshold < 0.9 {
-		return 0.9
-	}
-	return threshold
-}
-
 func (s *Service) searchTolerancePercent(ctx context.Context, opts TorrentSearchOptions) float64 {
 	if opts.SizeMismatchTolerancePercentSet && opts.SizeMismatchTolerancePercent >= 0 {
 		return opts.SizeMismatchTolerancePercent
@@ -13629,8 +13800,20 @@ func (s *Service) requestCoverageThreshold(ctx context.Context, req *CrossSeedRe
 	return coverageThresholdFromTolerance(s.requestTolerancePercent(ctx, req))
 }
 
-func (s *Service) requestResumeThreshold(ctx context.Context, req *CrossSeedRequest) float64 {
-	return clampedResumeThresholdFromTolerance(s.requestTolerancePercent(ctx, req))
+// resumeBudgetBytes returns the auto-resume download budget for new cross-seed additions:
+// the most missing data a torrent may still auto-resume with after its recheck.
+func (s *Service) resumeBudgetBytes(ctx context.Context) int64 {
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil || settings == nil {
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to load cross-seed settings for auto-resume budget, using default")
+		}
+		return int64(models.DefaultAutoResumeMaxDownloadMB) << 20
+	}
+	if settings.AutoResumeMaxDownloadMB <= 0 {
+		return 0
+	}
+	return int64(settings.AutoResumeMaxDownloadMB) << 20
 }
 
 func belowThresholdMessage(mode string, coverage, threshold float64, materializedBytes, totalBytes int64, materializedFiles, totalFiles int) string {
@@ -13796,7 +13979,7 @@ func (s *Service) processHardlinkMode(
 			},
 		}
 	}
-	resumeThreshold := s.requestResumeThreshold(ctx, req)
+	resumeBudget := s.resumeBudgetBytes(ctx)
 
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the hardlink base directory.
@@ -14038,7 +14221,7 @@ func (s *Service) processHardlinkMode(
 				Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per user settings")
 			statusMsg += " - auto-resume skipped per settings"
 		} else {
-			// Queue for background resume - worker will resume when recheck completes at threshold
+			// Queue for background resume - worker will resume when recheck completes within budget
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
@@ -14046,9 +14229,9 @@ func (s *Service) processHardlinkMode(
 				Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, 0, false)
 			} else {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, resumeThreshold)
+				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, resumeBudget, false)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
@@ -14473,7 +14656,7 @@ func (s *Service) processReflinkMode(
 			},
 		}
 	}
-	resumeThreshold := s.requestResumeThreshold(ctx, req)
+	resumeBudget := s.resumeBudgetBytes(ctx)
 
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the reflink base directory.
@@ -14728,7 +14911,7 @@ func (s *Service) processReflinkMode(
 				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per user settings")
 			statusMsg += " - auto-resume skipped per settings"
 		} else {
-			// Queue for background resume - worker will resume when recheck completes at threshold
+			// Queue for background resume - worker will resume when recheck completes within budget
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
@@ -14736,9 +14919,9 @@ func (s *Service) processReflinkMode(
 				Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
+				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, 0, false)
 			} else {
-				queueErr = s.queueRecheckResumeWithMissingFilesRecovery(ctx, candidate.InstanceID, torrentHash, resumeThreshold)
+				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, resumeBudget, true)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
