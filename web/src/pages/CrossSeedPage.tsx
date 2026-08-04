@@ -45,6 +45,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
@@ -1105,7 +1106,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
-        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
+        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1208,7 +1209,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
-      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
+      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -2626,7 +2627,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     type="number"
                     min={0}
                     value={maxAddedAgeDays}
-                    onChange={event => setMaxAddedAgeDays(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+                    onChange={event => setMaxAddedAgeDays(parseNonNegativeInt(event.target.value))}
                   />
                   <p className="text-xs text-muted-foreground">{t("scan.maxAddedAgeDescription")}</p>
                 </div>
@@ -3453,7 +3454,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.autoResumeMaxDownloadMb}
                     onChange={event => setGlobalSettings(prev => ({
                       ...prev,
-                      autoResumeMaxDownloadMb: Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                      autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value),
                     }))}
                   />
                   <p className="text-xs text-muted-foreground">

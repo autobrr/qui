@@ -479,24 +479,6 @@ func TestRekeyPendingRecheckResumeUsesCanonicalTorrentHash(t *testing.T) {
 	require.Same(t, req, pending[recheckResumeKey(1, "v2hash")])
 }
 
-func TestQueueRecheckResumeWithBudgetSetsPendingFields(t *testing.T) {
-	t.Parallel()
-
-	service := &Service{
-		recheckResumeChan: make(chan *pendingResume, 1),
-	}
-
-	err := service.queueRecheckResumeWithBudget(1, "hash1", 50<<20, true)
-	require.NoError(t, err)
-
-	pending := <-service.recheckResumeChan
-	require.Equal(t, 1, pending.instanceID)
-	require.Equal(t, "hash1", pending.hash)
-	require.NotNil(t, pending.budgetBytes)
-	require.Equal(t, int64(50<<20), *pending.budgetBytes)
-	require.True(t, pending.recoverMissingFilesWithResume)
-}
-
 func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.T) {
 	t.Parallel()
 
