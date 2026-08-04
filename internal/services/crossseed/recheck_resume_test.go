@@ -486,7 +486,7 @@ func TestQueueRecheckResumeWithBudgetSetsPendingFields(t *testing.T) {
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	err := service.queueRecheckResumeWithBudget(context.Background(), 1, "hash1", 50<<20, true)
+	err := service.queueRecheckResumeWithBudget(1, "hash1", 50<<20, true)
 	require.NoError(t, err)
 
 	pending := <-service.recheckResumeChan
@@ -504,7 +504,7 @@ func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	err := service.queueRecheckResumeWithThreshold(context.Background(), 1, "hash1", 0.95)
+	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95)
 	require.NoError(t, err)
 
 	pending := <-service.recheckResumeChan
@@ -961,6 +961,56 @@ func TestProcessPendingRecheckResumeCheckingClearsForgivenessVerdict(t *testing.
 	require.False(t, keep)
 	require.Empty(t, sync.bulkActions, "denied verdict must not resume")
 	require.Equal(t, 1, sync.filesCalls)
+}
+
+func TestProcessPendingRecheckResumeDoesNotCacheForgivenessBeforeChecking(t *testing.T) {
+	t.Parallel()
+
+	// A recheck can start and finish entirely between polls. A forgiveness
+	// verdict earned before any checking state was observed must not be cached,
+	// so the next poll re-evaluates against the post-recheck file list.
+	sync := &recheckResumeSyncManager{
+		filesByHash: map[string]qbt.TorrentFiles{"hash1": {
+			{Name: "Show.S01E01.mkv", Progress: 0.999, Priority: 1, Size: 4 << 30},
+			{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 65 << 20},
+		}},
+	}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:  1,
+		hash:        "hash1",
+		budgetBytes: new(int64(50 << 20)),
+		addedAt:     time.Now(),
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.98,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.True(t, keep)
+	require.False(t, pending.forgivenessGranted, "pre-check verdict must not be cached")
+	require.Equal(t, 1, sync.filesCalls)
+	require.Empty(t, sync.bulkActions, "stable-poll wait holds the resume")
+
+	// The invisible recheck revealed relevant missing data over budget; the
+	// fresh evaluation must deny instead of reusing the pre-check verdict.
+	sync.filesByHash["hash1"] = qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Progress: 0.96, Priority: 1, Size: 4 << 30},
+	}
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.96,
+		AmountLeft: 160 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.False(t, keep, "over-budget shortfall is left for manual review")
+	require.Empty(t, sync.bulkActions)
+	require.Equal(t, 2, sync.filesCalls, "second poll re-evaluates instead of using a cached verdict")
 }
 
 func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {

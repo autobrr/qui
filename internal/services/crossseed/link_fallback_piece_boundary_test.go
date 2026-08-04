@@ -86,11 +86,7 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 	}
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
 
-	req := &CrossSeedRequest{
-		SkipPieceBoundarySafetyCheck:    true,
-		SizeMismatchTolerancePercent:    50,
-		SizeMismatchTolerancePercentSet: true,
-	}
+	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
 	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
@@ -145,11 +141,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 	}
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
 
-	req := &CrossSeedRequest{
-		SkipPieceBoundarySafetyCheck:    true,
-		SizeMismatchTolerancePercent:    50,
-		SizeMismatchTolerancePercentSet: true,
-	}
+	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
 	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",

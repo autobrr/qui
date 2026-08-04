@@ -975,6 +975,10 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 	if req.AutoResumeMaxDownloadMB != nil {
 		autoResumeMaxDownloadMB = *req.AutoResumeMaxDownloadMB
 	}
+	if autoResumeMaxDownloadMB < 0 {
+		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
+		return
+	}
 
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
@@ -1076,6 +1080,10 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 			RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
 			return
 		}
+	}
+	if req.AutoResumeMaxDownloadMB != nil && *req.AutoResumeMaxDownloadMB < 0 {
+		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
+		return
 	}
 
 	current, err := h.service.GetAutomationSettings(r.Context())

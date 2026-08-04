@@ -139,7 +139,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		SearchRelaxedDifferences:   []string{"collection"},
 		SearchSourceTitles:         []string{"ARR Alias"},
 	}
-	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached}, 20)
+	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
 
 	var captured *CrossSeedRequest
 	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -175,8 +175,6 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
-	require.InDelta(t, 20, captured.SizeMismatchTolerancePercent, 0.001, "apply must reuse the search tolerance cached with the selected result")
-	require.True(t, captured.SizeMismatchTolerancePercentSet)
 	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
 	require.Equal(t, instanceID, captured.SearchSourceInstanceID)
 	require.Equal(t, sourceTorrent.Hash, captured.SearchSourceHash)
@@ -203,13 +201,12 @@ func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
 			Title:       "Previous.Result",
 			DownloadURL: "https://example.invalid/previous.torrent",
 		},
-	}, 20)
-	service.cacheSearchResults(instanceID, hash, nil, 7)
+	})
+	service.cacheSearchResults(instanceID, hash, nil)
 
 	cached := service.getCachedSearchResults(instanceID, hash)
 	require.NotNil(t, cached)
 	require.Empty(t, cached.results)
-	require.InDelta(t, 7, cached.sizeMismatchTolerancePercent, 0.001)
 }
 
 type episodeInstanceStore struct {

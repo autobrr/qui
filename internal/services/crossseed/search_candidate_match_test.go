@@ -157,7 +157,7 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Equal(t, []string{"Money Heist"}, results[0].SearchSourceTitles)
 	results[0].SearchRelaxedDifferences = []string{"collection"}
 
-	service.cacheSearchResults(1, "source", results, 5)
+	service.cacheSearchResults(1, "source", results)
 	results[0].SearchSourceTitles[0] = "mutated after cache write"
 	results[0].SearchRelaxedDifferences[0] = "mutated after cache write"
 	cached := service.getCachedSearchResults(1, "source")
@@ -869,10 +869,8 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 			instanceID,
 			sourceHash,
 			TorrentSearchOptions{
-				IndexerIDs:                      []int{1},
-				SkipGazelle:                     true,
-				SizeMismatchTolerancePercent:    5,
-				SizeMismatchTolerancePercentSet: true,
+				IndexerIDs:  []int{1},
+				SkipGazelle: true,
 			},
 			nil,
 		)

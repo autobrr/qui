@@ -479,8 +479,7 @@ type pendingResume struct {
 }
 
 type cachedTorrentSearchResults struct {
-	results                      []TorrentSearchResult
-	sizeMismatchTolerancePercent float64
+	results []TorrentSearchResult
 }
 
 type completionLane struct {
@@ -1493,27 +1492,25 @@ type AutomationRunOptions struct {
 
 // SearchRunOptions configures how the library search automation operates.
 type SearchRunOptions struct {
-	InstanceID                      int
-	Categories                      []string
-	Tags                            []string
-	ExcludeCategories               []string // Categories to exclude from source filtering
-	ExcludeTags                     []string // Tags to exclude from source filtering
-	IntervalSeconds                 int
-	IndexerIDs                      []int
-	DisableTorznab                  bool
-	CooldownMinutes                 int
-	FindIndividualEpisodes          bool
-	RequestedBy                     string
-	StartPaused                     bool
-	CategoryOverride                *string
-	TagsOverride                    []string
-	InheritSourceTags               bool
-	SpecificHashes                  []string
-	SizeMismatchTolerancePercent    float64
-	SizeMismatchTolerancePercentSet bool
-	SkipAutoResume                  bool
-	SkipRecheck                     bool
-	SkipPieceBoundarySafetyCheck    bool
+	InstanceID                   int
+	Categories                   []string
+	Tags                         []string
+	ExcludeCategories            []string // Categories to exclude from source filtering
+	ExcludeTags                  []string // Tags to exclude from source filtering
+	IntervalSeconds              int
+	IndexerIDs                   []int
+	DisableTorznab               bool
+	CooldownMinutes              int
+	FindIndividualEpisodes       bool
+	RequestedBy                  string
+	StartPaused                  bool
+	CategoryOverride             *string
+	TagsOverride                 []string
+	InheritSourceTags            bool
+	SpecificHashes               []string
+	SkipAutoResume               bool
+	SkipRecheck                  bool
+	SkipPieceBoundarySafetyCheck bool
 	// EnsembleSeasonSearch adds virtual season-pack searches for groups of
 	// seeded loose episodes. Derived from SeasonPackAutomationEnabled at run
 	// start; never set by callers.
@@ -1718,9 +1715,6 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	// RSS Automation: maximum number of RSS results to process per run
 	if settings.MaxResultsPerRun <= 0 {
 		settings.MaxResultsPerRun = 50
-	}
-	if settings.AutoResumeMaxDownloadMB < 0 {
-		settings.AutoResumeMaxDownloadMB = 0
 	}
 }
 
@@ -3269,14 +3263,6 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 			opts.FindIndividualEpisodes = false
 		} else if !opts.FindIndividualEpisodes {
 			opts.FindIndividualEpisodes = settings.FindIndividualEpisodes
-		}
-		switch {
-		case opts.SizeMismatchTolerancePercentSet:
-		case opts.SizeMismatchTolerancePercent > 0:
-			opts.SizeMismatchTolerancePercentSet = true
-		default:
-			opts.SizeMismatchTolerancePercent = defaultSizeMismatchTolerancePercent
-			opts.SizeMismatchTolerancePercentSet = true
 		}
 		// Targeted re-searches of specific torrents stay episode-scoped, and
 		// Gazelle-only runs have no TV indexers to ask for packs.
@@ -4983,7 +4969,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
-	tolerancePercent := s.requestTolerancePercent(req)
+	tolerancePercent := defaultSizeMismatchTolerancePercent
 	addPlan, rejectReason := s.selectBestCandidateAddPlan(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
 	if addPlan == nil {
 		result.Status = "no_match"
@@ -5754,9 +5740,9 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout || linkFallbackRequiresFullRecheck {
-				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, activeHash, 0, false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false)
 			} else {
-				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false)
 			}
 			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
@@ -5859,7 +5845,7 @@ func recheckResumeKey(instanceID int, hash string) string {
 
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit
 // verified-progress threshold. Used by the season-pack flow, which resumes once its linked bytes verify.
-func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID int, hash string, threshold float64) error {
+func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID: instanceID,
 		hash:       hash,
@@ -5869,7 +5855,7 @@ func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID 
 
 // queueRecheckResumeWithBudget adds a torrent that may auto-resume only when the missing data
 // fits budgetBytes. Budget 0 requires a fully complete recheck and disables forgiveness.
-func (s *Service) queueRecheckResumeWithBudget(_ context.Context, instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool) error {
+func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID:                    instanceID,
 		hash:                          hash,
@@ -5938,7 +5924,11 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 		return false
 	}
 	if granted {
-		req.forgivenessGranted = true
+		// Cache only post-check verdicts: a recheck can start and finish between
+		// polls, so a grant earned before one was observed must not pin later polls.
+		if req.sawChecking {
+			req.forgivenessGranted = true
+		}
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("hash", req.hash).
@@ -8071,7 +8061,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	gazelleConfigured := false
 	gazelleLookupAttempted := false
 	remoteRequestsMade := false
-	tolerancePercent := s.searchTolerancePercent(opts)
+	tolerancePercent := defaultSizeMismatchTolerancePercent
 	if !opts.SkipGazelle {
 		gazelleResults, gazelleConfigured, gazelleLookupAttempted = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
 		remoteRequestsMade = gazelleLookupAttempted
@@ -8081,7 +8071,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		if !gazelleConfigured {
 			return nil, false, false, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
 		}
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       gazelleResults,
@@ -8093,7 +8083,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	if s.jackettService == nil {
 		// No Torznab backend. Only succeed when Gazelle was usable for this source.
 		if isGazelleSource || gazelleConfigured {
-			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
+			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,
 				Results:       gazelleResults,
@@ -8114,7 +8104,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Msg("[CROSSSEED-SEARCH] No eligible Torznab indexers after OPS/RED exclusion")
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       gazelleResults,
@@ -8283,7 +8273,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] All indexers filtered out - no suitable indexers remain")
 
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       combined,
@@ -8303,7 +8293,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				Msg("[CROSSSEED-SEARCH] Requested indexers removed after filtering, skipping search")
 
 			combined := mergeTorrentSearchResults(gazelleResults, nil)
-			s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
+			s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,
 				Results:       combined,
@@ -8488,7 +8478,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Str("torrentName", sourceTorrent.Name).
 			Int("gazelleMatches", len(gazelleResults)).
 			Msg("[CROSSSEED-SEARCH] Torznab search failed; returning Gazelle matches only")
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       gazelleResults,
@@ -8809,7 +8799,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	if len(scored) == 0 {
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 		return &TorrentSearchResponse{
 			SourceTorrent:     sourceInfo,
 			Results:           combined,
@@ -8837,7 +8827,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	combined := mergeTorrentSearchResults(gazelleResults, results)
-	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
+	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
 
 	return &TorrentSearchResponse{
 		SourceTorrent:     sourceInfo,
@@ -9382,8 +9372,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SearchRelaxedDifferences:     slices.Clone(cachedResult.SearchRelaxedDifferences),
 				SearchSourceTitles:           slices.Clone(cachedResult.SearchSourceTitles),
 			}
-			payload.SizeMismatchTolerancePercent = cachedSearchResults.sizeMismatchTolerancePercent
-			payload.SizeMismatchTolerancePercentSet = true
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
 			if err != nil {
@@ -9573,7 +9561,7 @@ func (s *Service) instanceNameForResult(ctx context.Context, instanceID int) str
 	return instance.Name
 }
 
-func (s *Service) cacheSearchResults(instanceID int, hash string, results []TorrentSearchResult, tolerancePercent float64) {
+func (s *Service) cacheSearchResults(instanceID int, hash string, results []TorrentSearchResult) {
 	if s.searchResultCache == nil {
 		return
 	}
@@ -9582,10 +9570,7 @@ func (s *Service) cacheSearchResults(instanceID int, hash string, results []Torr
 
 	cloned := cloneTorrentSearchResults(results)
 
-	s.searchResultCache.Set(key, cachedTorrentSearchResults{
-		results:                      cloned,
-		sizeMismatchTolerancePercent: tolerancePercent,
-	}, ttlcache.DefaultTTL)
+	s.searchResultCache.Set(key, cachedTorrentSearchResults{results: cloned}, ttlcache.DefaultTTL)
 }
 
 func (s *Service) getCachedSearchResults(instanceID int, hash string) *cachedTorrentSearchResults {
@@ -9596,10 +9581,7 @@ func (s *Service) getCachedSearchResults(instanceID int, hash string) *cachedTor
 	key := searchResultCacheKey(instanceID, hash)
 	if cached, found := s.searchResultCache.Get(key); found {
 		cloned := cloneTorrentSearchResults(cached.results)
-		return &cachedTorrentSearchResults{
-			results:                      cloned,
-			sizeMismatchTolerancePercent: cached.sizeMismatchTolerancePercent,
-		}
+		return &cachedTorrentSearchResults{results: cloned}
 	}
 
 	return nil
@@ -10521,12 +10503,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	searchResp, gazelleLookupAttempted, remoteRequestsMade, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
-		DisableTorznab:                  searchDisableTorznab,
-		IndexerIDs:                      allowedIndexerIDs,
-		FindIndividualEpisodes:          state.opts.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent:    state.opts.SizeMismatchTolerancePercent,
-		SizeMismatchTolerancePercentSet: state.opts.SizeMismatchTolerancePercentSet,
-		SkipGazelle:                     skipGazelle,
+		DisableTorznab:         searchDisableTorznab,
+		IndexerIDs:             allowedIndexerIDs,
+		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+		SkipGazelle:            skipGazelle,
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
 	if s.automationStore != nil {
@@ -10960,10 +10940,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride
 		request.Category = cat
-	}
-	if state.opts.SizeMismatchTolerancePercentSet || state.opts.SizeMismatchTolerancePercent > 0 {
-		request.SizeMismatchTolerancePercent = state.opts.SizeMismatchTolerancePercent
-		request.SizeMismatchTolerancePercentSet = true
 	}
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
@@ -12993,7 +12969,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// Parse the incoming release using rls - this extracts all metadata from the torrent name
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
 
-	// Get automation settings for sizeMismatchTolerancePercent and default matching behavior.
+	// Get automation settings for default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to load automation settings for webhook check, using defaults")
@@ -13741,34 +13717,6 @@ func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 	return 1.0 - (tolerancePercent / 100.0)
 }
 
-func (s *Service) searchTolerancePercent(opts TorrentSearchOptions) float64 {
-	if opts.SizeMismatchTolerancePercentSet && opts.SizeMismatchTolerancePercent >= 0 {
-		return opts.SizeMismatchTolerancePercent
-	}
-	if opts.SizeMismatchTolerancePercent > 0 {
-		return opts.SizeMismatchTolerancePercent
-	}
-
-	return defaultSizeMismatchTolerancePercent
-}
-
-func (s *Service) requestTolerancePercent(req *CrossSeedRequest) float64 {
-	if req != nil {
-		if req.SizeMismatchTolerancePercentSet && req.SizeMismatchTolerancePercent >= 0 {
-			return req.SizeMismatchTolerancePercent
-		}
-		if req.SizeMismatchTolerancePercent > 0 {
-			return req.SizeMismatchTolerancePercent
-		}
-	}
-
-	return defaultSizeMismatchTolerancePercent
-}
-
-func (s *Service) requestCoverageThreshold(req *CrossSeedRequest) float64 {
-	return coverageThresholdFromTolerance(s.requestTolerancePercent(req))
-}
-
 // resumeBudgetBytes returns the auto-resume download budget for new cross-seed additions:
 // the most missing data a torrent may still auto-resume with after its recheck.
 func (s *Service) resumeBudgetBytes(ctx context.Context) int64 {
@@ -13922,7 +13870,7 @@ func (s *Service) processHardlinkMode(
 		return handleError("No linkable files found (all source files are extras)")
 	}
 
-	coverageThreshold := s.requestCoverageThreshold(req)
+	coverageThreshold := coverageThresholdFromTolerance(defaultSizeMismatchTolerancePercent)
 	coverage, linkedBytes, totalBytes := materializedCoverage(sourceFiles, candidateTorrentFilesToLink)
 	if hasExtras && coverage < coverageThreshold {
 		message := belowThresholdMessage("hardlink", coverage, coverageThreshold, linkedBytes, totalBytes, len(candidateTorrentFilesToLink), len(sourceFiles))
@@ -14198,9 +14146,9 @@ func (s *Service) processHardlinkMode(
 				Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
-				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, 0, false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
 			} else {
-				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, resumeBudget, false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, false)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
@@ -14599,7 +14547,7 @@ func (s *Service) processReflinkMode(
 		return handleError("No cloneable files found (all source files would need to be downloaded)")
 	}
 
-	coverageThreshold := s.requestCoverageThreshold(req)
+	coverageThreshold := coverageThresholdFromTolerance(defaultSizeMismatchTolerancePercent)
 	coverage, clonedBytes, totalBytes := materializedCoverage(sourceFiles, candidateTorrentFilesToClone)
 	if hasExtras && coverage < coverageThreshold {
 		message := belowThresholdMessage("reflink", coverage, coverageThreshold, clonedBytes, totalBytes, len(candidateTorrentFilesToClone), len(sourceFiles))
@@ -14888,9 +14836,9 @@ func (s *Service) processReflinkMode(
 				Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
-				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, 0, false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
 			} else {
-				queueErr = s.queueRecheckResumeWithBudget(ctx, candidate.InstanceID, torrentHash, resumeBudget, true)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, true)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"

@@ -210,11 +210,12 @@ func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
-		method string
-		body   string
-		setup  string // optional PUT body applied first
-		want   int
+		name       string
+		method     string
+		body       string
+		setup      string // optional PUT body applied first
+		want       int
+		wantStatus int // 0 means 200 OK
 	}{
 		{
 			name:   "put without the field keeps the default",
@@ -235,10 +236,18 @@ func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
 			want:   200,
 		},
 		{
-			name:   "put with negative value clamps to zero",
-			method: http.MethodPut,
-			body:   putBody(`"autoResumeMaxDownloadMb": -5`),
-			want:   0,
+			name:       "put with negative value is rejected",
+			method:     http.MethodPut,
+			body:       putBody(`"autoResumeMaxDownloadMb": -5`),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "patch with negative value is rejected",
+			method:     http.MethodPatch,
+			body:       `{"autoResumeMaxDownloadMb": -1}`,
+			setup:      putBody(`"autoResumeMaxDownloadMb": 200`),
+			want:       200,
+			wantStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "patch without the field preserves the stored value",
@@ -277,8 +286,15 @@ func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
 			default:
 				handler.UpdateAutomationSettings(resp, req)
 			}
-			require.Equal(t, http.StatusOK, resp.Code)
+			wantStatus := tt.wantStatus
+			if wantStatus == 0 {
+				wantStatus = http.StatusOK
+			}
+			require.Equal(t, wantStatus, resp.Code)
 
+			if tt.wantStatus != 0 && tt.setup == "" {
+				return
+			}
 			stored, err := store.GetSettings(t.Context())
 			require.NoError(t, err)
 			require.Equal(t, tt.want, stored.AutoResumeMaxDownloadMB)

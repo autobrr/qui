@@ -887,13 +887,6 @@ func TestResumeBudgetBytes(t *testing.T) {
 	}
 }
 
-func TestRequestCoverageThresholdFromTolerance(t *testing.T) {
-	s := &Service{}
-	req := &CrossSeedRequest{SizeMismatchTolerancePercent: 20}
-
-	assert.InDelta(t, 0.8, s.requestCoverageThreshold(req), 0.001)
-}
-
 func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {
 	tempDir := t.TempDir()
 	downloadsDir := filepath.Join(tempDir, "downloads")
@@ -923,7 +916,7 @@ func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.
 		"hash123",
 		"",
 		"TorrentName",
-		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
+		&CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
 		"partial-in-pack",
 		qbt.TorrentFiles{
@@ -973,7 +966,7 @@ func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T
 		"hash123",
 		"",
 		"TorrentName",
-		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
+		&CrossSeedRequest{},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
 		"partial-in-pack",
 		qbt.TorrentFiles{

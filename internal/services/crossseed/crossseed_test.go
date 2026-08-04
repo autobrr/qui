@@ -4316,8 +4316,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 		expectTags              []string
 		expectExcludeCategories []string
 		expectExcludeTags       []string
-		expectTolerance         float64
-		expectToleranceSet      bool
 	}{
 		{
 			name: "completion include categories passed through",
@@ -4377,33 +4375,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			expectExcludeCategories: []string{"movies-Race"},
 			expectExcludeTags:       []string{"temporary"},
 		},
-		{
-			name: "strict zero tolerance passed through",
-			opts: SearchRunOptions{
-				InstanceID:                      instanceID,
-				SizeMismatchTolerancePercent:    0,
-				SizeMismatchTolerancePercentSet: true,
-			},
-			expectCategories:        nil,
-			expectTags:              nil,
-			expectExcludeCategories: nil,
-			expectExcludeTags:       nil,
-			expectTolerance:         0,
-			expectToleranceSet:      true,
-		},
-		{
-			name: "nonzero tolerance passed through without set flag",
-			opts: SearchRunOptions{
-				InstanceID:                   instanceID,
-				SizeMismatchTolerancePercent: 20,
-			},
-			expectCategories:        nil,
-			expectTags:              nil,
-			expectExcludeCategories: nil,
-			expectExcludeTags:       nil,
-			expectTolerance:         20,
-			expectToleranceSet:      true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -4454,8 +4425,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
 			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
-			assert.InDelta(t, tt.expectTolerance, captured.SizeMismatchTolerancePercent, 0.001, "SizeMismatchTolerancePercent mismatch")
-			assert.Equal(t, tt.expectToleranceSet, captured.SizeMismatchTolerancePercentSet, "SizeMismatchTolerancePercentSet mismatch")
 		})
 	}
 }
