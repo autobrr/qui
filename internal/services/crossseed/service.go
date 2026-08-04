@@ -6017,10 +6017,13 @@ func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[strin
 	base := path.Base(lower)
 	stem := strings.TrimSuffix(base, path.Ext(base))
 	for _, keyword := range DefaultIgnoredPathKeywords {
+		// The directory segment must be exactly the keyword, anchored at the
+		// path start or a separator - "Movie.Resample/" is not a sample dir.
 		if stem == keyword ||
 			strings.HasPrefix(stem, keyword+"-") ||
 			strings.HasSuffix(stem, "-"+keyword) ||
-			strings.Contains(lower, keyword+"/") {
+			strings.HasPrefix(lower, keyword+"/") ||
+			strings.Contains(lower, "/"+keyword+"/") {
 			return true
 		}
 	}
@@ -6158,8 +6161,10 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 
 	// A missingFiles recovery nudge can leave an over-budget torrent downloading.
 	// Pause it; the paused flow then decides between forgiveness and manual review.
+	// This includes a failed forgiveness evaluation: while the verdict is
+	// unavailable the torrent must not keep downloading past the budget.
 	if req.budgetBytes != nil && req.missingFilesResumeSucceeded &&
-		isDownloadingOrQueued(state) && !satisfied() && !req.forgivenessEvalFailed {
+		isDownloadingOrQueued(state) && !satisfied() {
 		pauseCtx, pauseCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 		err := s.syncManager.BulkAction(pauseCtx, instanceID, []string{hash}, "pause")
 		pauseCancel()

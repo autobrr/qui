@@ -536,6 +536,11 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 	keywordTitleMissing := qbt.TorrentFiles{
 		{Name: "Trailer.Park.Boys.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1500 << 20},
 	}
+	// A directory that merely ends in an ignore keyword is not a sidecar dir:
+	// unanchored "sample/" matching would forgive this missing video.
+	keywordSuffixDirMissing := qbt.TorrentFiles{
+		{Name: "Movie.Resample/video.mkv", Progress: 0.5, Priority: 1, Size: 300 << 20},
+	}
 
 	tests := []struct {
 		name        string
@@ -605,6 +610,15 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 			budget:      50 << 20,
 			amountLeft:  150 << 20,
 			files:       keywordTitleMissing,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 1,
+		},
+		{
+			name:        "directory ending in ignore keyword stays relevant",
+			budget:      50 << 20,
+			amountLeft:  150 << 20,
+			files:       keywordSuffixDirMissing,
 			wantResume:  false,
 			wantKeep:    false,
 			wantFetches: 1,
@@ -821,6 +835,37 @@ func TestProcessPendingRecheckResumePausesOverBudgetRecoveryDownload(t *testing.
 	})
 	require.True(t, keep)
 	require.Equal(t, []string{"resume:hash1", "pause:hash1"}, sync.bulkActions)
+}
+
+func TestProcessPendingRecheckResumePausesRecoveryDownloadWhenFilesUnavailable(t *testing.T) {
+	t.Parallel()
+
+	// While the forgiveness verdict is unavailable (file list fails to load),
+	// a recovery-started download must pause, not keep downloading past the budget.
+	sync := &recheckResumeSyncManager{
+		filesErr: errors.New("qbit timeout"),
+	}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:                    1,
+		hash:                          "hash1",
+		budgetBytes:                   new(int64(50 << 20)),
+		addedAt:                       time.Now(),
+		recoverMissingFilesWithResume: true,
+		missingFilesResumeSucceeded:   true,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.9,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStateDownloading,
+	})
+	require.True(t, keep)
+	require.Equal(t, []string{"pause:hash1"}, sync.bulkActions)
 }
 
 func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {
