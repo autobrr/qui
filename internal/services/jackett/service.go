@@ -432,10 +432,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 					return
 				}
 
-				// Track coverage
-				if indexer != nil {
-					coverage[indexer.ID] = struct{}{}
-				}
+				// Track only the indexers that the executor reports as covered.
 				for _, id := range cov {
 					coverage[id] = struct{}{}
 				}
@@ -1916,10 +1913,10 @@ func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
 }
 
 type indexerExecResult struct {
-	results []Result
-	id      int
-	skipped bool
-	err     error
+	results   []Result
+	id        int
+	uncovered bool
+	err       error
 }
 
 type indexerExecOptions struct {
@@ -1981,8 +1978,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 	var searchFn func() ([]Result, error)
 	switch idx.Backend {
 	case models.TorznabBackendNative:
-		if s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap) {
-			return indexerExecResult{id: idx.ID, skipped: true}
+		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap); skipped {
+			return indexerExecResult{id: idx.ID, uncovered: rateLimited}
 		}
 
 		// Note: the prowlarr workaround only applies to the prowlarr backend.
@@ -2010,8 +2007,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
 		}
 
-		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-			return indexerExecResult{id: idx.ID, skipped: true}
+		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
+			return indexerExecResult{id: idx.ID, uncovered: rateLimited}
 		}
 
 		// Apply the Prowlarr query workaround after capability processing so that
@@ -2044,8 +2041,8 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
 		}
 
-		if s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap) {
-			return indexerExecResult{id: idx.ID, skipped: true}
+		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
+			return indexerExecResult{id: idx.ID, uncovered: rateLimited}
 		}
 
 		if opts.logSearchActivity {
@@ -2251,7 +2248,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 				continue
 			}
 			successes++
-			if result.id != 0 {
+			if result.id != 0 && !result.uncovered {
 				coverage[result.id] = struct{}{}
 			}
 			allResults = append(allResults, result.results...)
@@ -2307,10 +2304,7 @@ func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndex
 	if result.err != nil {
 		return nil, nil, result.err
 	}
-	if result.skipped {
-		return nil, nil, nil
-	}
-	if result.id == 0 {
+	if result.uncovered || result.id == 0 {
 		return result.results, nil, nil
 	}
 	return result.results, []int{result.id}, nil
@@ -2343,7 +2337,7 @@ func mergeIndexerCoverage(groups ...[]int) []int {
 	return slices.Compact(merged)
 }
 
-func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) bool {
+func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) (skip, rateLimited bool) {
 	requiredCaps := requiredCapabilities(meta)
 	requested := requestedCategories(meta, params)
 
@@ -2356,7 +2350,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 			// searching anyway doubles the load on an indexer already telling
 			// us to back off, and keeps the metadata from ever healing.
 			s.handleRateLimit(ctx, idx, cooldown, err)
-			return true
+			return true, true
 		}
 	}
 
@@ -2429,7 +2423,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 				Strs("indexer_caps", idx.Capabilities).
 				Bool("enhanced_checking", usingEnhanced).
 				Msg("Skipping torznab indexer due to missing capabilities")
-			return true
+			return true, false
 		} else if usingEnhanced {
 			log.Debug().
 				Int("indexer_id", idx.ID).
@@ -2443,12 +2437,12 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 
 	// If no categories requested, continue with search
 	if len(requested) == 0 {
-		return false
+		return false, false
 	}
 
 	// If indexer has no categories stored, continue (will use requested categories as-is)
 	if len(idx.Categories) == 0 {
-		return false
+		return false, false
 	}
 
 	// Map requested categories to what this indexer actually supports
@@ -2463,7 +2457,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 			Ints("requested_categories", requested).
 			Ints("mapped_categories", mappedCategories).
 			Msg("Skipping torznab indexer due to unsupported categories")
-		return true
+		return true, false
 	}
 
 	// Update the params with the filtered categories
@@ -2488,7 +2482,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		Interface("final_params", params).
 		Msg("Final search parameters after capability processing")
 
-	return false
+	return false, false
 }
 
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
