@@ -237,6 +237,62 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	require.Equal(t, "group mismatch", rejected.RejectReason)
 }
 
+// Field case: the user's own movie re-uploaded as a bare .mkv, byte-identical,
+// listing retitled with a "cdn-" prefix and the -GROUP tag dropped. The rescue
+// probe must tolerate the absent group; the strict matcher must not.
+func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-CONDITION"
+		candidateName = "cdn-spermageddon.2024.norwegian.1080p.bluray.x264.mkv"
+		size          = int64(5_313_384_582)
+	)
+	source := rls.ParseString(sourceName)
+	candidate := rls.ParseString(candidateName)
+	require.NotEmpty(t, source.Group)
+	require.Empty(t, candidate.Group, "bare-file candidate must parse without a group for this regression to mean anything")
+
+	input := searchCandidateInput{
+		SourceRelease:         &source,
+		CandidateRelease:      &candidate,
+		SourceName:            sourceName,
+		CandidateName:         candidateName,
+		SourceSize:            size,
+		CandidateSize:         size,
+		TolerancePercent:      5,
+		RescueTitleMismatches: true,
+	}
+
+	decision := service.classifySearchCandidate(input)
+	require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
+	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
+	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
+
+	ok, reason := service.validateGroupSiteAndChecksum(&source, &candidate, false)
+	require.False(t, ok, "strict matcher must keep rejecting the missing group")
+	require.Equal(t, "group mismatch", reason)
+}
+
+func TestReleasesMatchExceptTitleChecksumTolerance(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	source := rls.ParseString("[SubsPlease] Original Show - 01 (1080p) [ABCD1234].mkv")
+	bare := rls.ParseString("original show - 01 (1080p).mkv")
+	conflicting := rls.ParseString("[SubsPlease] Original Show - 01 (1080p) [DEADBEEF].mkv")
+	require.NotEmpty(t, source.Sum)
+	require.Empty(t, bare.Sum)
+
+	ok, reason := service.releasesMatchExceptTitleWithReason(&source, &bare, false)
+	require.True(t, ok, "reason: %s", reason)
+
+	ok, reason = service.releasesMatchExceptTitleWithReason(&source, &conflicting, false)
+	require.False(t, ok)
+	require.Equal(t, "checksum mismatch", reason)
+
+	ok, reason = service.validateGroupSiteAndChecksum(&source, &bare, false)
+	require.False(t, ok, "strict matcher must keep rejecting the missing checksum")
+	require.Equal(t, "checksum mismatch", reason)
+}
+
 func TestClassifySearchSizeEvidenceExactOnly(t *testing.T) {
 	const (
 		sourceSize  = int64(94_329_473_840)

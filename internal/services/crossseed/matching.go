@@ -149,7 +149,7 @@ func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rl
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate, false); !ok {
 		return false, reason
 	}
 	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
@@ -248,6 +248,10 @@ func (s *Service) validateArtistAndDates(source, candidate *rls.Release, isTV bo
 }
 
 // releasesMatchExceptTitleWithReason keeps every normal release rule except title.
+// Retitled listings are usually bare-file re-uploads that also drop the -GROUP
+// and [CRC] tags, so absent candidate tags are tolerated here; conflicting tags
+// still reject. The rescue lane's exact-size gate plus the paused-add full
+// recheck remain the authority on whether the data actually matches.
 func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
 	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := s.validateArtistAndDates(source, candidate, isTV); !ok {
@@ -256,7 +260,7 @@ func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Rele
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate, true); !ok {
 		return false, reason
 	}
 	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
@@ -382,7 +386,7 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	return true, ""
 }
 
-func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (bool, string) {
+func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, tolerateMissingCandidateTags bool) (bool, string) {
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
 	normalizer := normalizerForService(s)
@@ -397,8 +401,12 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
 		}
-		// If source has a group, candidate must have the same group
-		if candidateGroupIdentity == "" || sourceGroup != candidateGroupIdentity {
+		switch {
+		case candidateGroupIdentity == "":
+			if !tolerateMissingCandidateTags {
+				return false, "group mismatch"
+			}
+		case sourceGroup != candidateGroupIdentity:
 			return false, "group mismatch"
 		}
 	}
@@ -424,7 +432,12 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (
 	sourceSum := normalizer.Normalize(source.Sum)
 	candidateSum := normalizer.Normalize(candidate.Sum)
 	if sourceSum != "" {
-		if candidateSum == "" || sourceSum != candidateSum {
+		switch {
+		case candidateSum == "":
+			if !tolerateMissingCandidateTags {
+				return false, "checksum mismatch"
+			}
+		case sourceSum != candidateSum:
 			return false, "checksum mismatch"
 		}
 	}
