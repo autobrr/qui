@@ -4299,7 +4299,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 	}
 
 	// Parse the title string to understand what we're looking for
-	targetRelease := s.releaseCache.Parse(req.TorrentName)
+	targetRelease := req.TargetRelease
+	if targetRelease == nil {
+		targetRelease = s.releaseCache.Parse(req.TorrentName)
+	}
 
 	// Build basic info for response
 	sourceTorrentInfo := &TorrentInfo{
@@ -4649,11 +4652,23 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 	sourceRelease := s.releaseCache.Parse(meta.Name)
 
+	// Trackers retitle listings but keep the original info.name, so apply always
+	// sees the bracket-anime pack name that parses as non-TV even when search
+	// matched a retitled listing. Recover the structure from the metainfo file
+	// list the same way search does, so every downstream consumer (release
+	// prefilter, match typing, plan building) sees a season pack, not a movie.
+	if !isTVRelease(sourceRelease) {
+		if derived := s.deriveTVReleaseFromFiles(meta.Name, sourceRelease, meta.Files); derived != nil {
+			sourceRelease = derived
+		}
+	}
+
 	// Carry private search provenance into candidate discovery. Source identity
 	// and recorded soft differences constrain the release-prefilter relaxation;
 	// existing file and apply safety checks still run normally.
 	findReq := &FindCandidatesRequest{
 		TorrentName:                meta.Name,
+		TargetRelease:              sourceRelease,
 		TargetInstanceIDs:          req.TargetInstanceIDs,
 		FindIndividualEpisodes:     req.FindIndividualEpisodes,
 		SearchDecisionClass:        req.SearchDecisionClass,

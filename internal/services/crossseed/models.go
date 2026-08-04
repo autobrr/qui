@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/moistari/rls"
 
 	"github.com/autobrr/qui/internal/services/jackett"
 )
@@ -159,6 +160,11 @@ type TorrentFile struct {
 type FindCandidatesRequest struct {
 	// TorrentName is the title/name of the torrent you want to add (just a string, torrent doesn't exist yet)
 	TorrentName string `json:"torrent_name"`
+	// TargetRelease optionally overrides the release parsed from TorrentName.
+	// Apply file-derives TV structure from the incoming torrent's metainfo
+	// (bracket-anime pack names parse as non-TV, structure lives in file names),
+	// so candidate matching sees the same structure search matched with.
+	TargetRelease *rls.Release `json:"-"`
 	// SourceIndexer optionally records where the request originated (e.g., automation feed indexer)
 	SourceIndexer string `json:"source_indexer,omitempty"`
 	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files

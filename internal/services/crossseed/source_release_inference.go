@@ -83,7 +83,17 @@ func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release)
 // don't establish a TV release, so callers keep the raw parse.
 func (s *Service) deriveSearchSourceTVRelease(ctx context.Context, instanceID int, hash, name string, parsed *rls.Release) *rls.Release {
 	files, err := s.getTorrentFilesCached(ctx, instanceID, hash)
-	if err != nil || len(files) == 0 {
+	if err != nil {
+		return nil
+	}
+	return s.deriveTVReleaseFromFiles(name, parsed, files)
+}
+
+// deriveTVReleaseFromFiles is the file-list core of deriveSearchSourceTVRelease
+// for callers that already hold the files (e.g. apply, which has the incoming
+// torrent's metainfo). Returns nil when the files don't establish a TV release.
+func (s *Service) deriveTVReleaseFromFiles(name string, parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
+	if len(files) == 0 {
 		return nil
 	}
 
