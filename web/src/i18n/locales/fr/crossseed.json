@@ -263,6 +263,8 @@
     "safety": {
       "title": "Sécurité et validation",
       "description": "Contrôlez quelles correspondances sont acceptées et protégez vos données existantes en seed.",
+      "rescueTitleMismatches": "Récupérer les titres différents",
+      "rescueTitleMismatchesDescription": "Essayez au total jusqu’à trois résultats de taille exacte par recherche source, tous indexeurs confondus. qui vérifie toutes les données avant de démarrer le torrent. Ignorer la revérification désactive cette règle.",
       "skipRecheck": "Ignorer les correspondances nécessitant une revérification",
       "skipRecheckDescription": "Ignorer les correspondances nécessitant un alignement de renommage, des fichiers supplémentaires ou des structures de disques (BDMV/VIDEO_TS). Lorsque désactivé, ces correspondances sont forcées à être revérifiées par défaut.",
       "pieceBoundaryDisabled": "Vérification de sécurité des limites de pièces actuellement désactivée",

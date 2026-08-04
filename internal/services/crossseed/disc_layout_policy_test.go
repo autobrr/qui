@@ -135,6 +135,73 @@ type discPolicyInstanceStore struct {
 	instances map[int]*models.Instance
 }
 
+func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID  = 1
+		matchedHash = "matchedhash"
+		newHash     = "newhash"
+		matchedName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
+		newName     = "Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
+	)
+	candidateFiles := qbt.TorrentFiles{{Name: matchedName + "/old-name.mkv", Size: 1_000_000_000}}
+	sourceFiles := qbt.TorrentFiles{{Name: newName + "/new-name.mkv", Size: 1_000_000_000}}
+	matchedTorrent := qbt.Torrent{
+		Hash:        matchedHash,
+		Name:        matchedName,
+		ContentPath: "/downloads/" + matchedName,
+		Progress:    1,
+		Size:        1_000_000_000,
+	}
+	mockSync := &discPolicySyncManager{
+		files: map[string]qbt.TorrentFiles{matchedHash: candidateFiles},
+		props: map[string]*qbt.TorrentProperties{
+			matchedHash: {SavePath: "/downloads"},
+		},
+		matchedTorrent: &matchedTorrent,
+	}
+	service := &Service{
+		syncManager:       mockSync,
+		instanceStore:     &discPolicyInstanceStore{instances: map[int]*models.Instance{instanceID: {ID: instanceID}}},
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		releaseCache:      NewReleaseCache(),
+		recheckResumeChan: make(chan *pendingResume, 1),
+		recheckResumeCtx:  context.Background(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+	startPaused := false
+	result := service.processCrossSeedCandidate(
+		context.Background(),
+		CrossSeedCandidate{
+			InstanceID: instanceID, InstanceName: "main", Torrents: []qbt.Torrent{matchedTorrent}, titleRescue: true,
+		},
+		[]byte("torrent"),
+		newHash,
+		"",
+		newName,
+		&CrossSeedRequest{StartPaused: &startPaused},
+		service.releaseCache.Parse(newName),
+		sourceFiles,
+		nil,
+	)
+
+	require.True(t, result.Success, result.Message)
+	require.Equal(t, "true", mockSync.addedOptions["paused"])
+	require.Equal(t, "true", mockSync.addedOptions["stopped"])
+	require.Contains(t, mockSync.bulkActions, "recheck:"+newHash)
+	require.NotContains(t, mockSync.bulkActions, "resume:"+newHash)
+	select {
+	case pending := <-service.recheckResumeChan:
+		require.NotNil(t, pending.budgetBytes)
+		require.Zero(t, *pending.budgetBytes)
+	default:
+		require.Fail(t, "expected title rescue to wait for a full recheck")
+	}
+}
+
 func (m *discPolicyInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	if inst, ok := m.instances[id]; ok {
 		return inst, nil

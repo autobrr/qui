@@ -263,6 +263,8 @@
     "safety": {
       "title": "Segurança e validação",
       "description": "Controle quais correspondências avançam e proteja seus dados semeados existentes.",
+      "rescueTitleMismatches": "Recuperar títulos divergentes",
+      "rescueTitleMismatchesDescription": "Tente no total até três resultados com tamanho exato por busca de origem, entre todos os indexadores. O qui verifica todos os dados antes de iniciar o torrent. Ignorar reverificação desativa esta regra.",
       "skipRecheck": "Ignorar correspondências que exigem reverificação",
       "skipRecheckDescription": "Ignora correspondências que precisam de alinhamento de renomeação, arquivos extras ou layouts de disco (BDMV/VIDEO_TS). Quando desligado, essas correspondências são forçadas a serem reverificadas por padrão.",
       "pieceBoundaryDisabled": "Verificação de segurança de limite de peça atualmente desativada",

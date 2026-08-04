@@ -179,8 +179,6 @@ func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
 }
 
 func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
-	normalizer := normalizerForService(s)
-
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
@@ -203,6 +201,12 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 		// Title mismatches are expected for most candidates - don't log to avoid noise
 		return false, "title mismatch"
 	}
+
+	return s.validateArtistAndDates(source, candidate, isTV)
+}
+
+func (s *Service) validateArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
+	normalizer := normalizerForService(s)
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -236,6 +240,27 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	}
 
 	return true, ""
+}
+
+// releasesMatchExceptTitleWithReason keeps every normal release rule except title.
+func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+	isTV := isTVRelease(source) || isTVRelease(candidate)
+	if ok, reason := s.validateArtistAndDates(source, candidate, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
+		return false, reason
+	}
+	return validateReleaseVariants(source, candidate)
 }
 
 func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {

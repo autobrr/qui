@@ -40,6 +40,24 @@ func newTestCrossSeedHandler(t *testing.T) (*CrossSeedHandler, *models.CrossSeed
 	return &CrossSeedHandler{service: svc}, store
 }
 
+func TestAutomationSettingsTitleRescuePatch(t *testing.T) {
+	handler, store := newTestCrossSeedHandler(t)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/api/cross-seed/settings", strings.NewReader(`{"rescueTitleMismatches":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	handler.PatchAutomationSettings(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	var updated models.CrossSeedAutomationSettings
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&updated))
+	require.True(t, updated.RescueTitleMismatches)
+
+	stored, err := store.GetSettings(t.Context())
+	require.NoError(t, err)
+	require.True(t, stored.RescueTitleMismatches)
+}
+
 func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 	tests := []struct {
 		name       string

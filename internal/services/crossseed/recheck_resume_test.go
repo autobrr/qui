@@ -655,6 +655,15 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 			wantFetches: 0,
 		},
 		{
+			name:        "budget zero keeps incomplete torrent paused",
+			budget:      0,
+			amountLeft:  0,
+			progress:    0.99,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 0,
+		},
+		{
 			name:        "budget zero disables forgiveness",
 			budget:      0,
 			amountLeft:  4 << 10,
@@ -706,6 +715,35 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProcessPendingTitleRescueMonitorNeverResumes(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	budget := int64(0)
+	pending := &pendingResume{
+		instanceID:  1,
+		hash:        "hash1",
+		monitorOnly: true,
+		budgetBytes: &budget,
+		addedAt:     time.Now(),
+		sawChecking: true,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedDl,
+	})
+
+	require.False(t, keep)
+	require.Empty(t, sync.bulkActions)
 }
 
 func TestProcessPendingRecheckResumeForgivenessRetriesAfterNegativeVerdict(t *testing.T) {

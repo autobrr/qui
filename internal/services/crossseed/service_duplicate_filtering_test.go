@@ -418,6 +418,12 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 	require.Len(t, results, 1)
 	require.Equal(t, existing.Name, results[0].Title)
 	require.Equal(t, duplicateHash, results[0].InfoHashV1)
+
+	scored[0].class = searchCandidateClassTitleRescue
+	results, duplicateFiltered, err = svc.buildTorrentSearchResults(context.Background(), instanceID, sourceHash, scored, 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, duplicateFiltered)
+	require.Empty(t, results)
 }
 
 func TestContentFilteringWaitTimeoutDefault(t *testing.T) {

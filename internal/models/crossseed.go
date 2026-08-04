@@ -92,6 +92,7 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`     // Skip auto-resume for completion-triggered search results
 	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
 	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
+	RescueTitleMismatches        bool `json:"rescueTitleMismatches"`        // This setting tries exact-size results when only the title differs.
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
 	// Season pack settings
@@ -176,6 +177,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeCompletion:     false,
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
+		RescueTitleMismatches:        false,
 		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
 		// Season pack defaults
 		SeasonPackSkipRepackCompare:  true,
@@ -438,7 +440,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       use_custom_category, custom_category,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
-		       skip_recheck, skip_piece_boundary_safety_check,
+		       skip_recheck, rescue_title_mismatches, skip_piece_boundary_safety_check,
 		       season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
 		       season_pack_simplify_web_compare, season_pack_skip_year_compare,
 		       season_pack_enabled, season_pack_automation_enabled, season_pack_coverage_threshold, season_pack_tags, season_pack_category,
@@ -463,7 +465,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var findIndividualEpisodes, useCategoryFromIndexer int
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
-	var skipRecheck, skipPieceBoundarySafetyCheck int
+	var skipRecheck, rescueTitleMismatches, skipPieceBoundarySafetyCheck int
 	var seasonPackSkipRepackCompare, seasonPackSimplifyHDRCompare, seasonPackSimplifyWEBCompare, seasonPackSkipYearCompare int
 	var seasonPackEnabled int
 	var seasonPackAutomationEnabled int
@@ -509,6 +511,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&skipAutoResumeCompletion,
 		&skipAutoResumeWebhook,
 		&skipRecheck,
+		&rescueTitleMismatches,
 		&skipPieceBoundarySafetyCheck,
 		&seasonPackSkipRepackCompare,
 		&seasonPackSimplifyHDRCompare,
@@ -622,6 +625,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.SkipAutoResumeCompletion = SQLiteIntToBool(skipAutoResumeCompletion)
 	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
 	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
+	settings.RescueTitleMismatches = SQLiteIntToBool(rescueTitleMismatches)
 	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
 	settings.SeasonPackSkipRepackCompare = SQLiteIntToBool(seasonPackSkipRepackCompare)
 	settings.SeasonPackSimplifyHDRCompare = SQLiteIntToBool(seasonPackSimplifyHDRCompare)
@@ -923,7 +927,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck, skip_piece_boundary_safety_check,
+			skip_recheck, rescue_title_mismatches, skip_piece_boundary_safety_check,
 			season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
 			season_pack_simplify_web_compare, season_pack_skip_year_compare,
 			season_pack_enabled, season_pack_automation_enabled, season_pack_coverage_threshold, season_pack_tags, season_pack_category,
@@ -931,7 +935,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -968,6 +972,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
+			rescue_title_mismatches = excluded.rescue_title_mismatches,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
 			season_pack_skip_repack_compare = excluded.season_pack_skip_repack_compare,
 			season_pack_simplify_hdr_compare = excluded.season_pack_simplify_hdr_compare,
@@ -1033,6 +1038,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		BoolToSQLite(settings.SkipAutoResumeCompletion),
 		BoolToSQLite(settings.SkipAutoResumeWebhook),
 		BoolToSQLite(settings.SkipRecheck),
+		BoolToSQLite(settings.RescueTitleMismatches),
 		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
 		BoolToSQLite(settings.SeasonPackSkipRepackCompare),
 		BoolToSQLite(settings.SeasonPackSimplifyHDRCompare),
