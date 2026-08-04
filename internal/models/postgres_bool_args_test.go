@@ -440,10 +440,13 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 	settings.RedactedAPIKey = "redacted-key"
 	settings.OrpheusAPIKey = "orpheus-key"
 	settings.SeasonPackAutomationEnabled = true
+	settings.AutoResumeMaxDownloadMB = 200
 
 	stored, err := store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
 	require.Len(t, insertArgs, 51)
+	require.Equal(t, 200, insertArgs[17], "auto_resume_max_download_mb should keep its column position")
+	require.Equal(t, 200, stored.AutoResumeMaxDownloadMB, "auto_resume_max_download_mb should survive the round trip")
 	require.Equal(t, 1, insertArgs[41], "season_pack_automation_enabled should round-trip as int 1")
 	require.True(t, stored.SeasonPackAutomationEnabled, "season_pack_automation_enabled should survive the round trip")
 

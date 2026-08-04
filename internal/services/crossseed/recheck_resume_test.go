@@ -837,13 +837,17 @@ func TestProcessPendingRecheckResumePausesOverBudgetRecoveryDownload(t *testing.
 	require.Equal(t, []string{"resume:hash1", "pause:hash1"}, sync.bulkActions)
 }
 
-func TestProcessPendingRecheckResumePausesRecoveryDownloadWhenFilesUnavailable(t *testing.T) {
+func TestProcessPendingRecheckResumePausesRecoveryDownloadBeforeForgivenessVerdict(t *testing.T) {
 	t.Parallel()
 
-	// While the forgiveness verdict is unavailable (file list fails to load),
-	// a recovery-started download must pause, not keep downloading past the budget.
+	// The file list would grant forgiveness, but fetching it can stall while the
+	// torrent keeps downloading. The worker must pause on cheap arithmetic first
+	// and only evaluate forgiveness from the paused state.
 	sync := &recheckResumeSyncManager{
-		filesErr: errors.New("qbit timeout"),
+		filesByHash: map[string]qbt.TorrentFiles{"hash1": {
+			{Name: "Show.S01E01.mkv", Progress: 0.999, Priority: 1, Size: 4 << 30},
+			{Name: "Sample/sample.mkv", Progress: 0, Priority: 1, Size: 65 << 20},
+		}},
 	}
 	service := &Service{
 		syncManager:      sync,
@@ -854,18 +858,109 @@ func TestProcessPendingRecheckResumePausesRecoveryDownloadWhenFilesUnavailable(t
 		hash:                          "hash1",
 		budgetBytes:                   new(int64(50 << 20)),
 		addedAt:                       time.Now(),
+		sawChecking:                   true,
 		recoverMissingFilesWithResume: true,
 		missingFilesResumeSucceeded:   true,
 	}
 
 	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
 		Hash:       "hash1",
-		Progress:   0.9,
+		Progress:   0.98,
 		AmountLeft: 70 << 20,
 		State:      qbt.TorrentStateDownloading,
 	})
 	require.True(t, keep)
-	require.Equal(t, []string{"pause:hash1"}, sync.bulkActions)
+	require.Equal(t, []string{"pause:hash1"}, sync.bulkActions, "must pause before any forgiveness evaluation")
+	require.Zero(t, sync.filesCalls, "no file fetch while the torrent is downloading")
+	require.False(t, pending.forgivenessGranted)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.98,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.True(t, keep)
+	require.True(t, pending.forgivenessGranted, "paused evaluation grants the sidecar-only shortfall")
+	require.Equal(t, []string{"pause:hash1", "resume:hash1"}, sync.bulkActions)
+	require.Equal(t, 1, sync.filesCalls)
+}
+
+func TestProcessPendingRecheckResumeGrantedRecoveryDownloadNotPaused(t *testing.T) {
+	t.Parallel()
+
+	// A forgiveness verdict earned from the paused state keeps a recovery
+	// download running instead of pausing it again.
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:                    1,
+		hash:                          "hash1",
+		budgetBytes:                   new(int64(50 << 20)),
+		addedAt:                       time.Now(),
+		sawChecking:                   true,
+		recoverMissingFilesWithResume: true,
+		missingFilesResumeSucceeded:   true,
+		forgivenessGranted:            true,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.98,
+		AmountLeft: 70 << 20,
+		State:      qbt.TorrentStateDownloading,
+	})
+	require.True(t, keep)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions, "cached grant takes the resume path, no re-pause")
+	require.Zero(t, sync.filesCalls, "cached verdict needs no file fetch")
+}
+
+func TestProcessPendingRecheckResumeCheckingClearsForgivenessVerdict(t *testing.T) {
+	t.Parallel()
+
+	// A recheck can reveal missing data a pre-check forgiveness pass never saw.
+	// Observing a checking state must drop the cached verdict so the decision
+	// is re-earned from post-check file progress.
+	sync := &recheckResumeSyncManager{
+		filesByHash: map[string]qbt.TorrentFiles{"hash1": {
+			{Name: "Show.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1 << 30},
+		}},
+	}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:         1,
+		hash:               "hash1",
+		budgetBytes:        new(int64(50 << 20)),
+		addedAt:            time.Now(),
+		forgivenessGranted: true,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.5,
+		AmountLeft: 150 << 20,
+		State:      qbt.TorrentStateCheckingDl,
+	})
+	require.True(t, keep)
+	require.False(t, pending.forgivenessGranted, "checking state must clear the cached verdict")
+
+	// Post-check the relevant shortfall is over budget: the stale grant must not
+	// resume it. The fresh evaluation denies and leaves the torrent for review.
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.9,
+		AmountLeft: 103 << 20,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.False(t, keep)
+	require.Empty(t, sync.bulkActions, "denied verdict must not resume")
+	require.Equal(t, 1, sync.filesCalls)
 }
 
 func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {

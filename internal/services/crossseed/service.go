@@ -6038,6 +6038,9 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		req.sawChecking = true
 		req.readyPolls = 0
 		req.resumeConfirmedPolls = 0
+		// A recheck can reveal missing data a pre-check forgiveness pass never
+		// saw; the verdict must be re-earned from post-check file progress.
+		req.forgivenessGranted = false
 	}
 
 	// qBittorrent can leave a newly added reflink-with-extras torrent in
@@ -6137,21 +6140,14 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return true
 	}
 
-	// Resume if the recheck outcome allows it and the torrent is not checking
-	if !isChecking && satisfied() {
-		req.readyPolls++
-		if !req.sawChecking && req.readyPolls < recheckResumeStablePolls {
-			return true
-		}
-		return s.resumePendingRecheck(instanceID, hash, req, progress, state)
-	}
-
 	// A missingFiles recovery nudge can leave an over-budget torrent downloading.
-	// Pause it; the paused flow then decides between forgiveness and manual review.
-	// This includes a failed forgiveness evaluation: while the verdict is
-	// unavailable the torrent must not keep downloading past the budget.
+	// The check is cheap arithmetic on purpose: fetching the file list for a
+	// forgiveness verdict can stall for recheckAPITimeout while the torrent keeps
+	// downloading, so pause first. The paused flow then evaluates forgiveness and
+	// resumes when it passes.
 	if req.budgetBytes != nil && req.missingFilesResumeSucceeded &&
-		isDownloadingOrQueued(state) && !satisfied() {
+		isDownloadingOrQueued(state) &&
+		torrent.AmountLeft > *req.budgetBytes && !req.forgivenessGranted {
 		pauseCtx, pauseCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 		err := s.syncManager.BulkAction(pauseCtx, instanceID, []string{hash}, "pause")
 		pauseCancel()
@@ -6165,6 +6161,15 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Msg("Failed to pause over-budget torrent after missingFiles recovery")
 		}
 		return true
+	}
+
+	// Resume if the recheck outcome allows it and the torrent is not checking
+	if !isChecking && satisfied() {
+		req.readyPolls++
+		if !req.sawChecking && req.readyPolls < recheckResumeStablePolls {
+			return true
+		}
+		return s.resumePendingRecheck(instanceID, hash, req, progress, state)
 	}
 
 	// Below-threshold torrents that are still queued/downloading can improve.
