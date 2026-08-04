@@ -330,6 +330,8 @@
       "completionDescription": "Completion-ausgelöste Torrents automatisch fortsetzen",
       "webhookLabel": "Webhook",
       "webhookDescription": "/apply-Webhook-Torrents automatisch fortsetzen",
+      "maxAutoResumeDownload": "Maximaler Download beim Autostart (MiB)",
+      "maxAutoResumeDownloadDescription": "Startet einen hinzugefügten Torrent nur, wenn die fehlenden Daten höchstens diese Größe haben. 0 startet nur vollständige Torrents. Fehlen nur Dateien wie Samples, .nfo und Untertitel, startet qui den Torrent trotzdem, bis 200 MiB.",
       "externalProgram": "Externes Programm nach der Injektion ausführen",
       "noExternalPrograms": "Keine externen Programme verfügbar",
       "selectExternalProgram": "Externes Programm auswählen (optional)",

@@ -330,6 +330,8 @@
       "completionDescription": "완료 트리거 토렌트를 자동으로 재개",
       "webhookLabel": "웹훅",
       "webhookDescription": "/apply 웹훅 토렌트를 자동으로 재개",
+      "maxAutoResumeDownload": "자동 시작 최대 다운로드(MiB)",
+      "maxAutoResumeDownloadDescription": "누락된 데이터가 이 크기 이하일 때만 추가된 토렌트를 자동으로 시작합니다. 0으로 설정하면 완전한 토렌트만 시작합니다. 샘플, .nfo, 자막 같은 파일만 누락된 경우 qui는 200 MiB까지 토렌트를 시작합니다.",
       "externalProgram": "주입 후 외부 프로그램 실행",
       "noExternalPrograms": "사용 가능한 외부 프로그램 없음",
       "selectExternalProgram": "외부 프로그램 선택(선택 사항)",

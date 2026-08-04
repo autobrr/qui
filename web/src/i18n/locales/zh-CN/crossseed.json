@@ -330,6 +330,8 @@
       "completionDescription": "自动继续完成触发的种子",
       "webhookLabel": "Webhook",
       "webhookDescription": "自动继续 /apply Webhook 种子",
+      "maxAutoResumeDownload": "自动开始的最大下载量（MiB）",
+      "maxAutoResumeDownloadDescription": "仅当缺失数据不超过此大小时才自动开始新添加的种子。设为 0 则仅自动开始完整的种子。当仅缺少样本、.nfo 和字幕等文件时，qui 仍会开始该种子，上限为 200 MiB。",
       "externalProgram": "注入后运行外部程序",
       "noExternalPrograms": "没有可用的外部程序",
       "selectExternalProgram": "选择外部程序（可选）",

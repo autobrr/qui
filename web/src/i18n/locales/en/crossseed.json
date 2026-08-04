@@ -330,6 +330,8 @@
       "completionDescription": "Resume completion-triggered torrents automatically",
       "webhookLabel": "Webhook",
       "webhookDescription": "Resume /apply webhook torrents automatically",
+      "maxAutoResumeDownload": "Max auto-start download (MiB)",
+      "maxAutoResumeDownloadDescription": "Start an added torrent only when its missing data is this size or smaller. Set 0 to start only complete torrents. When only files like samples, .nfo, and subtitles are missing, qui starts the torrent anyway, up to 200 MiB.",
       "externalProgram": "Run external program after injection",
       "noExternalPrograms": "No external programs available",
       "selectExternalProgram": "Select external program (optional)",

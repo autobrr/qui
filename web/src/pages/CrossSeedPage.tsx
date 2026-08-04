@@ -92,6 +92,7 @@ interface AutomationFormState {
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
+  autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -162,6 +163,7 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   sizeMismatchTolerancePercent: 5.0,
+  autoResumeMaxDownloadMb: 50,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -1104,6 +1106,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
         sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
+        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? 50,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1207,6 +1210,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
       sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? 50,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1251,6 +1255,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
       categoryAffixMode: globalSource.categoryAffixMode,
@@ -3457,6 +3462,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+                  <Input
+                    id="global-auto-resume-max-download"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={globalSettings.autoResumeMaxDownloadMb}
+                    onChange={event => setGlobalSettings(prev => ({
+                      ...prev,
+                      autoResumeMaxDownloadMb: Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                    }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("rules.postInjection.maxAutoResumeDownloadDescription")}
+                  </p>
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-border/50">

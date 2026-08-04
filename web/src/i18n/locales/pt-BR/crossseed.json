@@ -330,6 +330,8 @@
       "completionDescription": "Retomar torrents acionados por conclusão automaticamente",
       "webhookLabel": "Webhook",
       "webhookDescription": "Retomar torrents do webhook /apply automaticamente",
+      "maxAutoResumeDownload": "Download máximo para início automático (MiB)",
+      "maxAutoResumeDownloadDescription": "Inicia um torrent adicionado somente quando os dados ausentes têm no máximo este tamanho. Defina 0 para iniciar apenas torrents completos. Quando faltam apenas arquivos como samples, .nfo e legendas, o qui inicia o torrent mesmo assim, até 200 MiB.",
       "externalProgram": "Executar programa externo após injeção",
       "noExternalPrograms": "Nenhum programa externo disponível",
       "selectExternalProgram": "Selecione o programa externo (opcional)",
