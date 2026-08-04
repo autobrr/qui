@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -376,11 +377,12 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+		// The source connection is authoritative: URL, key, and basic auth
+		// move together so the new row cannot mix servers.
+		baseURL = creds.baseURL
 		apiKey = creds.apiKey
-		if req.BasicUsername == nil && req.BasicPassword == nil {
-			req.BasicUsername = creds.basicUsername
-			req.BasicPassword = creds.basicPassword
-		}
+		req.BasicUsername = creds.basicUsername
+		req.BasicPassword = creds.basicPassword
 	}
 	if apiKey == "" {
 		RespondError(w, http.StatusBadRequest, "api_key is required")
@@ -536,18 +538,19 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name           string                          `json:"name"`
-		BaseURL        string                          `json:"base_url"`
-		IndexerID      *string                         `json:"indexer_id"`
-		APIKey         string                          `json:"api_key"`
-		BasicUsername  *string                         `json:"basic_username,omitempty"`
-		BasicPassword  *string                         `json:"basic_password,omitempty"`
-		Backend        *string                         `json:"backend"`
-		Enabled        *bool                           `json:"enabled"`
-		Priority       *int                            `json:"priority"`
-		TimeoutSeconds *int                            `json:"timeout_seconds"`
-		Capabilities   []string                        `json:"capabilities,omitempty"`
-		Categories     []models.TorznabIndexerCategory `json:"categories,omitempty"`
+		Name            string                          `json:"name"`
+		BaseURL         string                          `json:"base_url"`
+		IndexerID       *string                         `json:"indexer_id"`
+		APIKey          string                          `json:"api_key"`
+		BasicUsername   *string                         `json:"basic_username,omitempty"`
+		BasicPassword   *string                         `json:"basic_password,omitempty"`
+		Backend         *string                         `json:"backend"`
+		Enabled         *bool                           `json:"enabled"`
+		Priority        *int                            `json:"priority"`
+		TimeoutSeconds  *int                            `json:"timeout_seconds"`
+		Capabilities    []string                        `json:"capabilities,omitempty"`
+		Categories      []models.TorznabIndexerCategory `json:"categories,omitempty"`
+		SourceIndexerID *int                            `json:"source_indexer_id,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -598,6 +601,21 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForUpdate(req.BasicUsername, req.BasicPassword)
 	params.BasicUsername = req.BasicUsername
 	params.BasicPassword = req.BasicPassword
+
+	// Saved-connection import: an empty key with a source copies the source's
+	// URL, key, and basic auth, so credentials move between servers together.
+	// An empty basic auth pointer pair clears the target's stored basic auth.
+	if params.APIKey == "" && req.SourceIndexerID != nil {
+		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
+		if !ok {
+			return
+		}
+		empty := ""
+		params.BaseURL = creds.baseURL
+		params.APIKey = creds.apiKey
+		params.BasicUsername = cmp.Or(creds.basicUsername, &empty)
+		params.BasicPassword = cmp.Or(creds.basicPassword, &empty)
+	}
 
 	indexer, err := h.indexerStore.Update(r.Context(), id, params)
 	if err != nil {
@@ -945,14 +963,12 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		if !ok {
 			return
 		}
+		// The source connection is authoritative: stored credentials cannot be
+		// re-paired with another server via the request body.
+		req.BaseURL = creds.baseURL
 		req.APIKey = creds.apiKey
-		if req.BaseURL == "" {
-			req.BaseURL = creds.baseURL
-		}
-		if req.BasicUsername == nil && req.BasicPassword == nil {
-			req.BasicUsername = creds.basicUsername
-			req.BasicPassword = creds.basicPassword
-		}
+		req.BasicUsername = creds.basicUsername
+		req.BasicPassword = creds.basicPassword
 	}
 
 	if req.BaseURL == "" {

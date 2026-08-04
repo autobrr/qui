@@ -4,13 +4,16 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -98,6 +101,55 @@ func TestCreateIndexerCopiesKeyFromSource(t *testing.T) {
 	password, err := store.GetDecryptedBasicPassword(stored)
 	require.NoError(t, err)
 	require.Equal(t, "proxypass", password)
+}
+
+// Two servers can expose the same indexer name (e.g. Jackett and Prowlarr side
+// by side). Importing via a saved connection must move the URL, API key, and
+// basic auth together, not keep the old server's credentials.
+func TestUpdateIndexerCopiesCredentialsFromSource(t *testing.T) {
+	ctx := t.Context()
+	store := newTorznabStore(t)
+
+	aUser := "a-user"
+	aPass := "a-pass"
+	target, err := store.CreateWithIndexerID(ctx, "Aither", "http://server-a:9117", "aither", "a-key", &aUser, &aPass, true, 0, 30, models.TorznabBackendJackett)
+	require.NoError(t, err)
+
+	source, err := store.CreateWithIndexerID(ctx, "Blutopia", "http://server-b:9696", "blutopia", "b-key", nil, nil, true, 0, 30, models.TorznabBackendProwlarr)
+	require.NoError(t, err)
+
+	handler := &JackettHandler{indexerStore: store}
+
+	body := fmt.Sprintf(`{
+		"name": "Aither",
+		"base_url": "http://server-b:9696",
+		"indexer_id": "aither",
+		"backend": "prowlarr",
+		"api_key": "",
+		"source_indexer_id": %d,
+		"capabilities": ["search"]
+	}`, source.ID)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPut, fmt.Sprintf("/api/torznab/indexers/%d", target.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("indexerID", strconv.Itoa(target.ID))
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	resp := httptest.NewRecorder()
+	handler.UpdateIndexer(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+
+	stored, err := store.Get(ctx, target.ID)
+	require.NoError(t, err)
+	require.Equal(t, "http://server-b:9696", stored.BaseURL)
+
+	apiKey, err := store.GetDecryptedAPIKey(stored)
+	require.NoError(t, err)
+	require.Equal(t, "b-key", apiKey)
+
+	// The source has no basic auth, so the copied connection must clear it.
+	require.Nil(t, stored.BasicUsername)
+	require.Nil(t, stored.BasicPasswordEncrypted)
 }
 
 func TestCreateIndexerStillRequiresKeyWithoutSource(t *testing.T) {

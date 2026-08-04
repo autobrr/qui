@@ -157,6 +157,7 @@ export interface TorznabIndexerUpdate {
   name?: string
   base_url?: string
   api_key?: string
+  source_indexer_id?: number
   indexer_id?: string
   basic_username?: string
   basic_password?: string

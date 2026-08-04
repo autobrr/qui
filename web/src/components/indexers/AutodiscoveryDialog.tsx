@@ -188,7 +188,8 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
           // Omit enabled to preserve the user's current enabled state
           const updateData: TorznabIndexerUpdate = {
             base_url: normalizedBaseUrl,
-            api_key: apiKey, // empty (saved connection) keeps the stored key
+            api_key: apiKey, // empty + source copies the saved connection's credentials
+            source_indexer_id: selectedSourceId ?? undefined,
             backend,
             indexer_id: normalizedIndexerId,
             capabilities: indexer.caps, // Include capabilities if discovered
