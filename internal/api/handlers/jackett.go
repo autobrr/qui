@@ -334,18 +334,19 @@ func (h *JackettHandler) ListIndexers(w http.ResponseWriter, r *http.Request) {
 // @Router /api/torznab/indexers [post]
 func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name           string                          `json:"name"`
-		BaseURL        string                          `json:"base_url"`
-		IndexerID      string                          `json:"indexer_id"`
-		APIKey         string                          `json:"api_key"`
-		BasicUsername  *string                         `json:"basic_username,omitempty"`
-		BasicPassword  *string                         `json:"basic_password,omitempty"`
-		Backend        string                          `json:"backend"`
-		Enabled        *bool                           `json:"enabled"`
-		Priority       *int                            `json:"priority"`
-		TimeoutSeconds *int                            `json:"timeout_seconds"`
-		Capabilities   []string                        `json:"capabilities,omitempty"`
-		Categories     []models.TorznabIndexerCategory `json:"categories,omitempty"`
+		Name            string                          `json:"name"`
+		BaseURL         string                          `json:"base_url"`
+		IndexerID       string                          `json:"indexer_id"`
+		APIKey          string                          `json:"api_key"`
+		BasicUsername   *string                         `json:"basic_username,omitempty"`
+		BasicPassword   *string                         `json:"basic_password,omitempty"`
+		Backend         string                          `json:"backend"`
+		Enabled         *bool                           `json:"enabled"`
+		Priority        *int                            `json:"priority"`
+		TimeoutSeconds  *int                            `json:"timeout_seconds"`
+		Capabilities    []string                        `json:"capabilities,omitempty"`
+		Categories      []models.TorznabIndexerCategory `json:"categories,omitempty"`
+		SourceIndexerID *int                            `json:"source_indexer_id,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -369,6 +370,17 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	if baseURL == "" {
 		RespondError(w, http.StatusBadRequest, "base_url is required")
 		return
+	}
+	if apiKey == "" && req.SourceIndexerID != nil {
+		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
+		if !ok {
+			return
+		}
+		apiKey = creds.apiKey
+		if req.BasicUsername == nil && req.BasicPassword == nil {
+			req.BasicUsername = creds.basicUsername
+			req.BasicPassword = creds.basicPassword
+		}
 	}
 	if apiKey == "" {
 		RespondError(w, http.StatusBadRequest, "api_key is required")
@@ -851,9 +863,60 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, indexer)
 }
 
+type sourceCredentials struct {
+	baseURL       string
+	apiKey        string
+	basicUsername *string
+	basicPassword *string
+}
+
+// resolveSourceIndexerCredentials loads a stored indexer and returns its
+// decrypted connection credentials for reuse by discovery and create.
+func resolveSourceIndexerCredentials(ctx context.Context, store *models.TorznabIndexerStore, id int) (*sourceCredentials, error) {
+	indexer, err := store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	apiKey, err := store.GetDecryptedAPIKey(indexer)
+	if err != nil {
+		return nil, err
+	}
+
+	creds := &sourceCredentials{
+		baseURL:       indexer.BaseURL,
+		apiKey:        apiKey,
+		basicUsername: indexer.BasicUsername,
+	}
+	if indexer.BasicPasswordEncrypted != nil {
+		password, err := store.GetDecryptedBasicPassword(indexer)
+		if err != nil {
+			return nil, err
+		}
+		creds.basicPassword = &password
+	}
+	return creds, nil
+}
+
+// sourceCredsOrRespond resolves stored credentials for a source indexer id and
+// writes the error response itself when resolution fails.
+func (h *JackettHandler) sourceCredsOrRespond(ctx context.Context, w http.ResponseWriter, id int) (*sourceCredentials, bool) {
+	creds, err := resolveSourceIndexerCredentials(ctx, h.indexerStore, id)
+	if err != nil {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			RespondError(w, http.StatusBadRequest, "source indexer not found")
+			return nil, false
+		}
+		log.Error().Err(err).Int("source_indexer_id", id).Msg("Failed to load source indexer credentials")
+		RespondError(w, http.StatusInternalServerError, "Failed to load source indexer credentials")
+		return nil, false
+	}
+	return creds, true
+}
+
 // DiscoverIndexers godoc
 // @Summary Discover indexers from a Jackett/Prowlarr instance
-// @Description Discovers all configured indexers from a Jackett or Prowlarr instance using its API
+// @Description Discovers all configured indexers from a Jackett or Prowlarr instance using its API. Credentials can be reused from an existing indexer via source_indexer_id.
 // @Tags torznab
 // @Accept json
 // @Produce json
@@ -864,16 +927,32 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 // @Router /api/torznab/indexers/discover [post]
 func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BaseURL       string  `json:"base_url"`
-		APIKey        string  `json:"api_key"`
-		BasicUsername *string `json:"basic_username,omitempty"`
-		BasicPassword *string `json:"basic_password,omitempty"`
+		BaseURL         string  `json:"base_url"`
+		APIKey          string  `json:"api_key"`
+		BasicUsername   *string `json:"basic_username,omitempty"`
+		BasicPassword   *string `json:"basic_password,omitempty"`
+		SourceIndexerID *int    `json:"source_indexer_id,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Error().Err(err).Msg("Failed to decode discover request")
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
+	}
+
+	if req.SourceIndexerID != nil {
+		creds, ok := h.sourceCredsOrRespond(r.Context(), w, *req.SourceIndexerID)
+		if !ok {
+			return
+		}
+		req.APIKey = creds.apiKey
+		if req.BaseURL == "" {
+			req.BaseURL = creds.baseURL
+		}
+		if req.BasicUsername == nil && req.BasicPassword == nil {
+			req.BasicUsername = creds.basicUsername
+			req.BasicPassword = creds.basicPassword
+		}
 	}
 
 	if req.BaseURL == "" {
