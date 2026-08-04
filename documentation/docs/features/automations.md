@@ -739,7 +739,7 @@ If no save path is set but a category is configured, qBittorrent's Automatic Tor
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
 
-- **Detection** - Cross-seed condition fields use the same matching logic as **Filter Cross-Seeds**: content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself.
+- **Detection** - Cross-seed condition fields match on content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload that has the same exact byte size. The condition fields do not, because a rule can delete torrents and a title is weaker evidence than a shared file.
 - **Delete Rules**:
   - Use `deleteWithFilesPreserveCrossSeeds` to keep files if cross-seeds exist
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together
