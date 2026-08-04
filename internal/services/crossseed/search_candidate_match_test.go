@@ -25,6 +25,114 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
+	// Bracket-anime pack names carry no season token, so the raw name parses as
+	// non-TV. Search matched these via file-derived TV structure; the apply
+	// prefilter must re-derive the same structure for the search-source torrent
+	// instead of hard-rejecting on "not recognized as TV".
+	const (
+		instanceID = 1
+		sourceHash = "existing"
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	newService := func(existing qbt.Torrent, files map[string]qbt.TorrentFiles) *Service {
+		return &Service{
+			instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+			syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+			releaseCache:     NewReleaseCache(),
+			stringNormalizer: stringutils.NewDefaultNormalizer(),
+		}
+	}
+
+	t.Run("strict class pack matches after derivation", func(t *testing.T) {
+		const (
+			existingName = "[smol] Sakura Trick (BD 1080p HEVC Opus)"
+			targetName   = "Sakura Trick S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol"
+		)
+		existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: 28_408_496_978, Progress: 1}
+		files := map[string]qbt.TorrentFiles{
+			sourceHash: {
+				{Name: existingName + "/[smol] Sakura Trick - S01E01 (BD 1080p HEVC Opus) [DF06DEC0].mkv", Size: 2_367_374_748},
+				{Name: existingName + "/[smol] Sakura Trick - S01E02 (BD 1080p HEVC Opus) [DF06DEC1].mkv", Size: 2_367_374_748},
+			},
+		}
+		service := newService(existing, files)
+
+		// Without search provenance the raw-name prefilter stays strict.
+		direct, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:       targetName,
+			TargetInstanceIDs: []int{instanceID},
+		})
+		require.NoError(t, err)
+		require.Empty(t, direct.Candidates)
+
+		response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:            targetName,
+			TargetInstanceIDs:      []int{instanceID},
+			SearchDecisionClass:    searchCandidateClassStrict,
+			SearchSourceInstanceID: instanceID,
+			SearchSourceHash:       sourceHash,
+		})
+		require.NoError(t, err)
+		require.Len(t, response.Candidates, 1)
+		require.Len(t, response.Candidates[0].Torrents, 1)
+		require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+	})
+
+	t.Run("exact size fallback pack relaxes recorded differences after derivation", func(t *testing.T) {
+		const (
+			existingName = "[McBalls] Neon Genesis Evangelion (BD 1080p Hi10 FLAC)"
+			targetName   = "Neon Genesis Evangelion AKA Shin Seiki Evangelion S01 1080p BluRay Dual-Audio FLAC 5.1 Hi10P x264-McBalls"
+		)
+		existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: 113_637_402_129, Progress: 1}
+		files := map[string]qbt.TorrentFiles{
+			sourceHash: {
+				{Name: existingName + "/[McBalls] Neon Genesis Evangelion - S01E01 - Angel Attack (BD 1080p Hi10 FLAC) [E1D6774A].mkv", Size: 4_368_361_620},
+				{Name: existingName + "/[McBalls] Neon Genesis Evangelion - S01E21 - The Birth of NERV [DC] (BD 1080p Hi10 FLAC) [E1D6774B].mkv", Size: 4_368_361_620},
+			},
+		}
+		service := newService(existing, files)
+
+		response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:                targetName,
+			TargetInstanceIDs:          []int{instanceID},
+			SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+			SearchSourceInstanceID:     instanceID,
+			SearchSourceHash:           sourceHash,
+			SearchStrictMismatchReason: "hdr mismatch",
+			SearchRelaxedDifferences:   []string{"codec", "hdr"},
+		})
+		require.NoError(t, err)
+		require.Len(t, response.Candidates, 1)
+		require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+	})
+
+	t.Run("derivation keeps hard mismatches strict", func(t *testing.T) {
+		const existingName = "[smol] Sakura Trick (BD 1080p HEVC Opus)"
+		existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: 28_408_496_978, Progress: 1}
+		files := map[string]qbt.TorrentFiles{
+			sourceHash: {
+				{Name: existingName + "/[smol] Sakura Trick - S01E01 (BD 1080p HEVC Opus) [DF06DEC0].mkv", Size: 2_367_374_748},
+				{Name: existingName + "/[smol] Sakura Trick - S01E02 (BD 1080p HEVC Opus) [DF06DEC1].mkv", Size: 2_367_374_748},
+			},
+		}
+		service := newService(existing, files)
+
+		response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+			TorrentName:                "Different Show S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
+			TargetInstanceIDs:          []int{instanceID},
+			SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+			SearchSourceInstanceID:     instanceID,
+			SearchSourceHash:           sourceHash,
+			SearchStrictMismatchReason: "hdr mismatch",
+			SearchRelaxedDifferences:   []string{"codec", "hdr"},
+		})
+		require.NoError(t, err)
+		require.Empty(t, response.Candidates)
+	})
+}
+
 func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
