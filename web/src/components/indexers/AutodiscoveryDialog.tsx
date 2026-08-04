@@ -31,6 +31,29 @@ interface AutodiscoveryDialogProps {
   indexers: TorznabIndexer[]
 }
 
+/**
+ * Build a composite key that uniquely identifies an existing indexer.
+ * The database has no unique constraint on the name column alone, so two
+ * rows can share a name.  Keying on (backend, base_url, name) prevents
+ * the wrong row from being updated during import.
+ */
+function existingMapKey(idx: TorznabIndexer): string {
+  return `${idx.backend}|${idx.base_url}|${idx.name}`
+}
+
+/**
+ * Build a composite key for matching a discovered indexer against the
+ * existing-indexer map.  Uses the connection's backend and base URL
+ * together with the discovered indexer's name.
+ */
+function discoveredMatchKey(
+  backend: string,
+  baseUrl: string,
+  name: string,
+): string {
+  return `${backend}|${baseUrl}|${name}`
+}
+
 export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDialogProps) {
   const { t } = useTranslation("settings")
   const [step, setStep] = useState<"input" | "select">("input")
@@ -110,15 +133,16 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
 
       setDiscoveredIndexers(response.indexers)
 
-      // Build map of existing indexers by name with full indexer data
+      // Build map of existing indexers by composite key (backend + base_url + name)
+      // so that duplicate names in the database do not shadow each other.
       const existingMap = new Map<string, TorznabIndexer>()
       for (const idx of existing) {
-        existingMap.set(idx.name, idx)
+        existingMap.set(existingMapKey(idx), idx)
       }
       setExistingIndexersMap(existingMap)
 
       setStep("select")
-      const existingCount = response.indexers.filter(idx => existingMap.has(idx.name)).length
+      const existingCount = response.indexers.filter(idx => existingMap.has(discoveredMatchKey(idx.backend ?? "jackett", normalizedBaseUrl, idx.name))).length
       if (existingCount > 0) {
         toast.success(t("indexers.autodiscovery.toast.discoveredWithExisting", { total: response.indexers.length, existing: existingCount }))
       } else {
@@ -150,6 +174,20 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
     setSelectedIndexers(newSelected)
   }
 
+  /** Synthetic unique id for each discovered row.  Uses the non-empty id
+   * when available, otherwise falls back to a name-based dedup key so that
+   * rows with non-unique / empty ids still get distinct React keys and
+   * checkbox ids. */
+  const rowKey = (indexer: JackettIndexer, idx: number): string => {
+    return indexer.id?.trim() ? indexer.id : `row-${idx}`
+  }
+
+  /** True when the discovered indexer has no usable id and should be
+   * treated as not ready for import. */
+  const isRowUnusable = (indexer: JackettIndexer): boolean => {
+    return !indexer.id?.trim()
+  }
+
   const handleImport = async () => {
     const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
     if (!normalizedBaseUrl) {
@@ -175,14 +213,22 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
     const warningDetails: string[] = []
 
     for (const indexer of discoveredIndexers) {
-      if (!selectedIndexers.has(indexer.id)) continue
+      if (!selectedIndexers.has(rowKey(indexer, discoveredIndexers.indexOf(indexer)))) continue
+
+      // Skip discovered rows that have no usable indexer id — the server
+      // would reject them anyway.
+      if (isRowUnusable(indexer)) {
+        errorCount++
+        errors.push(`${indexer.name}: ${t("indexers.autodiscovery.toast.missingId")}`)
+        continue
+      }
 
       const backend = indexer.backend ?? "jackett"
       const indexerId = indexer.id?.trim() ?? ""
       const normalizedIndexerId = indexerId !== "" ? indexerId : undefined
 
       try {
-        const existing = existingIndexersMap.get(indexer.name)
+        const existing = existingIndexersMap.get(discoveredMatchKey(backend, normalizedBaseUrl, indexer.name))
         if (existing) {
           // Update existing indexer - keep base URL, API key, and backend aligned
           // Omit enabled to preserve the user's current enabled state
@@ -272,7 +318,11 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   }
 
   const handleSelectAll = () => {
-    const allIds = new Set(discoveredIndexers.map(idx => idx.id))
+    const allIds = new Set(
+      discoveredIndexers
+        .filter(idx => !isRowUnusable(idx))
+        .map((idx, i) => rowKey(idx, i))
+    )
     setSelectedIndexers(allIds)
   }
 
@@ -486,43 +536,59 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
                     {t("indexers.autodiscovery.noIndexersFound")}
                   </p>
                 ) : (
-                  discoveredIndexers.map((indexer) => (
-                    <div
-                      key={indexer.id}
-                      className="flex items-start space-x-3 rounded-lg border p-3 hover:bg-accent"
-                    >
-                      <Checkbox
-                        id={indexer.id}
-                        checked={selectedIndexers.has(indexer.id)}
-                        onCheckedChange={() => toggleIndexer(indexer.id)}
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <label
-                            htmlFor={indexer.id}
-                            className="text-sm font-medium leading-none cursor-pointer"
-                          >
-                            {indexer.name}
-                          </label>
-                          {existingIndexersMap.has(indexer.name) && (
-                            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
-                              {t("indexers.autodiscovery.willUpdate")}
-                            </span>
+                  discoveredIndexers.map((indexer, i) => {
+                    const key = rowKey(indexer, i)
+                    const unusable = isRowUnusable(indexer)
+                    return (
+                      <div
+                        key={key}
+                        className={`flex items-start space-x-3 rounded-lg border p-3 hover:bg-accent ${unusable ? "opacity-50" : ""}`}
+                      >
+                        <Checkbox
+                          id={key}
+                          checked={selectedIndexers.has(key)}
+                          onCheckedChange={() => toggleIndexer(key)}
+                          disabled={unusable}
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <label
+                              htmlFor={key}
+                              className={`text-sm font-medium leading-none cursor-pointer ${unusable ? "line-through text-muted-foreground" : ""}`}
+                            >
+                              {indexer.name}
+                            </label>
+                            {existingIndexersMap.has(
+                              discoveredMatchKey(
+                                indexer.backend ?? "jackett",
+                                normalizeBaseUrl(baseUrl),
+                                indexer.name,
+                              )
+                            ) && (
+                              <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
+                                {t("indexers.autodiscovery.willUpdate")}
+                              </span>
+                            )}
+                            {unusable && (
+                              <span className="text-xs bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 px-2 py-0.5 rounded">
+                                {t("indexers.autodiscovery.missingId")}
+                              </span>
+                            )}
+                          </div>
+                          {indexer.description && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {indexer.description}
+                            </p>
                           )}
-                        </div>
-                        {indexer.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {indexer.description}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {t("indexers.autodiscovery.typeLabel")} {indexer.type}
+                            {indexer.backend && ` • ${t("indexers.autodiscovery.backendLabel")} ${indexer.backend}`}
+                            {!indexer.configured && ` ${t("indexers.autodiscovery.notConfigured")}`}
                           </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {t("indexers.autodiscovery.typeLabel")} {indexer.type}
-                          {indexer.backend && ` • ${t("indexers.autodiscovery.backendLabel")} ${indexer.backend}`}
-                          {!indexer.configured && ` ${t("indexers.autodiscovery.notConfigured")}`}
-                        </p>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </ScrollArea>
