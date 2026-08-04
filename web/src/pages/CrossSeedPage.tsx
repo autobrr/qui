@@ -116,6 +116,7 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  rescueTitleMismatches: boolean
   skipPieceBoundarySafetyCheck: boolean
   // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
@@ -187,6 +188,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeCompletion: false,
   skipAutoResumeWebhook: false,
   skipRecheck: false,
+  rescueTitleMismatches: false,
   skipPieceBoundarySafetyCheck: true,
   // Season packs
   seasonPackEnabled: false,
@@ -855,6 +857,20 @@ function HardlinkModeSettings() {
   )
 }
 
+export function TitleRescueSetting({ checked, disabled = false, onCheckedChange }: { checked: boolean, disabled?: boolean, onCheckedChange: (checked: boolean) => void }) {
+  const { t } = useTranslation("crossseed")
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="space-y-0.5">
+        <Label htmlFor="rescue-title-mismatches" className="font-medium">{t("rules.safety.rescueTitleMismatches")}</Label>
+        <p className="text-xs text-muted-foreground">{t("rules.safety.rescueTitleMismatchesDescription")}</p>
+      </div>
+      <Switch id="rescue-title-mismatches" checked={checked} disabled={disabled} onCheckedChange={value => onCheckedChange(!!value)} />
+    </div>
+  )
+}
+
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -1129,6 +1145,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
+        rescueTitleMismatches: settings.rescueTitleMismatches ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
         // Webhook source filtering
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
@@ -1230,6 +1247,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
       skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
       skipRecheck: settings.skipRecheck ?? false,
+      rescueTitleMismatches: settings.rescueTitleMismatches ?? false,
       skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
       webhookSourceCategories: settings.webhookSourceCategories ?? [],
       webhookSourceTags: settings.webhookSourceTags ?? [],
@@ -1276,6 +1294,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
       skipRecheck: globalSource.skipRecheck,
+      rescueTitleMismatches: globalSource.rescueTitleMismatches,
       skipPieceBoundarySafetyCheck: globalSource.skipPieceBoundarySafetyCheck,
       // Webhook source filtering
       webhookSourceCategories: globalSource.webhookSourceCategories,
@@ -3101,7 +3120,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.safety.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.safety.description")}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
+                <TitleRescueSetting
+                  checked={globalSettings.rescueTitleMismatches && !globalSettings.skipRecheck}
+                  disabled={globalSettings.skipRecheck}
+                  onCheckedChange={rescueTitleMismatches => setGlobalSettings(prev => ({ ...prev, rescueTitleMismatches }))}
+                />
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">{t("rules.safety.skipRecheck")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.safety.skipRecheckDescription")}</p>

@@ -70,6 +70,12 @@ func TestSearchResultUsable(t *testing.T) {
 			want: false,
 		},
 		{
+			name:       "title rescue does not stop safer re-query passes",
+			sourceName: webdlDotted, candidateName: "Different.Title.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb",
+			sourceSize: size, candidateSize: size, tolerance: 5,
+			want: false,
+		},
+		{
 			// findIndividualEpisodes makes a season-pack source match an individual
 			// episode candidate, and ignoreSizeCheck then bypasses the size gate.
 			// The candidate is 2x the source size (well outside tolerance) yet still
@@ -132,4 +138,26 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 
 	// Sanity: the raw helper would have skipped indexer 1 (the P1 bug).
 	require.Equal(t, []int{3}, indexersWithoutResults([]int{1, 2, 3}, results))
+}
+
+func TestShouldRunTitleFallbackForRescueOnly(t *testing.T) {
+	service := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const (
+		sourceName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
+		rescueName = "Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
+		size       = int64(4_000_000_000)
+	)
+	source := rls.ParseString(sourceName)
+	rescue := jackett.SearchResult{Title: rescueName, Size: size}
+	normal := jackett.SearchResult{Title: sourceName, Size: size}
+	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
+
+	require.True(t, service.shouldRunTitleFallback(nil, &source, sourceName, size, nil, 5, false, false))
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, false))
+	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, true))
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, &source, sourceName, size, nil, 5, false, true))
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, &source, sourceName, size, nil, 5, false, true))
 }

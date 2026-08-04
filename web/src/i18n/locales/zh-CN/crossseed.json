@@ -263,6 +263,8 @@
     "safety": {
       "title": "安全与验证",
       "description": "控制哪些匹配可以继续，并保护你已做种的数据。",
+      "rescueTitleMismatches": "挽救标题不匹配的结果",
+      "rescueTitleMismatchesDescription": "每次源搜索会在所有索引器中合计尝试最多三个大小完全相同的结果。qui 会先检查所有数据，再启动种子。启用跳过重新校验会关闭此规则。",
       "skipRecheck": "跳过需要重新校验的匹配",
       "skipRecheckDescription": "跳过需要重命名对齐、额外文件或光盘布局（BDMV/VIDEO_TS）的匹配。关闭此选项时，这些匹配默认会强制重新校验。",
       "pieceBoundaryDisabled": "块边界安全检查当前已禁用",

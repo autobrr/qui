@@ -51,6 +51,7 @@ type automationSettingsRequest struct {
 	CustomCategory               string                          `json:"customCategory"`
 	RunExternalProgramID         *int                            `json:"runExternalProgramId"`
 	SkipRecheck                  bool                            `json:"skipRecheck"`
+	RescueTitleMismatches        bool                            `json:"rescueTitleMismatches"`
 	SeasonPackEnabled            bool                            `json:"seasonPackEnabled"`
 	SeasonPackAutomationEnabled  bool                            `json:"seasonPackAutomationEnabled"`
 	SeasonPackSkipRepackCompare  bool                            `json:"seasonPackSkipRepackCompare"`
@@ -108,6 +109,7 @@ type automationSettingsPatchRequest struct {
 	SkipAutoResumeCompletion     *bool `json:"skipAutoResumeCompletion,omitempty"`
 	SkipAutoResumeWebhook        *bool `json:"skipAutoResumeWebhook,omitempty"`
 	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
+	RescueTitleMismatches        *bool `json:"rescueTitleMismatches,omitempty"`
 	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	// Season pack settings
@@ -219,6 +221,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
 		r.SkipRecheck == nil &&
+		r.RescueTitleMismatches == nil &&
 		r.SkipPieceBoundarySafetyCheck == nil &&
 		r.SeasonPackEnabled == nil &&
 		r.SeasonPackAutomationEnabled == nil &&
@@ -352,6 +355,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.SkipRecheck != nil {
 		settings.SkipRecheck = *patch.SkipRecheck
+	}
+	if patch.RescueTitleMismatches != nil {
+		settings.RescueTitleMismatches = *patch.RescueTitleMismatches
 	}
 	if patch.SkipPieceBoundarySafetyCheck != nil {
 		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
@@ -717,6 +723,7 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 	}
 
 	ctx := jackett.WithSearchPriority(r.Context(), jackett.RateLimitPriorityInteractive)
+	opts.TitleRescueResultLimit = 3
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
 		status := mapCrossSeedErrorStatus(err)
@@ -998,6 +1005,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
+		RescueTitleMismatches:        req.RescueTitleMismatches,
 		SeasonPackEnabled:            req.SeasonPackEnabled,
 		SeasonPackAutomationEnabled:  req.SeasonPackAutomationEnabled,
 		SeasonPackSkipRepackCompare:  req.SeasonPackSkipRepackCompare,

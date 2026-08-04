@@ -263,6 +263,8 @@
     "safety": {
       "title": "Safety & validation",
       "description": "Control which matches proceed and protect your existing seeded data.",
+      "rescueTitleMismatches": "Rescue title mismatches",
+      "rescueTitleMismatchesDescription": "Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. A rescue that fails still counts as a download on your tracker. Skip recheck turns this off.",
       "skipRecheck": "Skip recheck-required matches",
       "skipRecheckDescription": "Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.",
       "pieceBoundaryDisabled": "Piece boundary safety check currently disabled",

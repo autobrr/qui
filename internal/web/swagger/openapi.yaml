@@ -6731,6 +6731,9 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6868,6 +6871,10 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          default: false
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)

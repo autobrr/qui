@@ -94,6 +94,9 @@ type CrossSeedResponse struct {
 	Results []InstanceCrossSeedResult `json:"results"`
 	// TorrentInfo contains information about the torrent being cross-seeded
 	TorrentInfo *TorrentInfo `json:"torrent_info,omitempty"`
+	// titleRescueUsed reports that the internal torrent title still differed.
+	// The search result stays private because clients cannot grant this bypass.
+	titleRescueUsed bool
 }
 
 // InstanceCrossSeedResult represents the result for a single instance
@@ -239,6 +242,8 @@ type CrossSeedCandidate struct {
 	//   "partial-contains" - new torrent is a season pack containing existing episode(s)
 	//   "size" - total size matches but structure differs
 	MatchType string `json:"match_type"`
+	// titleRescue binds the title bypass to the exact local source torrent.
+	titleRescue bool
 }
 
 // TorrentSearchOptions controls how the service searches for cross-seed matches for an existing torrent.
@@ -263,6 +268,11 @@ type TorrentSearchOptions struct {
 	// SkipGazelle disables Gazelle pre-search in mixed search mode.
 	// Internal-only (not exposed in API payloads).
 	SkipGazelle bool `json:"-"`
+	// RescueTitleMismatches admits exact-size results when only the title differs.
+	// The service reads this value from saved settings.
+	RescueTitleMismatches bool `json:"-"`
+	// TitleRescueResultLimit limits rescue results returned to an interactive client.
+	TitleRescueResultLimit int `json:"-"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.

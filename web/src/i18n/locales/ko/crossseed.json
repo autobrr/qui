@@ -263,6 +263,8 @@
     "safety": {
       "title": "안전 및 검증",
       "description": "어떤 일치를 진행할지 제어하고 기존 시드 데이터를 보호합니다.",
+      "rescueTitleMismatches": "제목 불일치 복구",
+      "rescueTitleMismatchesDescription": "소스 검색마다 모든 인덱서에서 크기가 정확히 같은 결과를 총 3개까지 시도합니다. qui는 토렌트를 시작하기 전에 모든 데이터를 검사합니다. 재검사 건너뛰기를 켜면 이 규칙이 꺼집니다.",
       "skipRecheck": "재확인이 필요한 일치 건너뛰기",
       "skipRecheckDescription": "이름 정렬, 추가 파일 또는 디스크 레이아웃(BDMV/VIDEO_TS)이 필요한 일치를 건너뜁니다. 이 옵션이 꺼져 있으면 해당 일치는 기본적으로 강제 재확인됩니다.",
       "pieceBoundaryDisabled": "조각 경계 안전 확인이 현재 비활성화됨",

@@ -186,6 +186,7 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  rescueTitleMismatches: boolean
   skipPieceBoundarySafetyCheck: boolean
   // Hardlink mode settings
   useHardlinks: boolean
@@ -250,6 +251,7 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeCompletion?: boolean
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
+  rescueTitleMismatches?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   // Hardlink mode settings
   useHardlinks?: boolean

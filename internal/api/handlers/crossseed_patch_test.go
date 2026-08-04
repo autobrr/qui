@@ -43,6 +43,7 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		MaxResultsPerRun:       new(25),
 		FindIndividualEpisodes: new(true),
 		UseCategoryFromIndexer: new(true),
+		RescueTitleMismatches:  new(true),
 		RunExternalProgramID:   optionalInt{Set: true, Value: nil},
 		GazelleEnabled:         new(true),
 		RedactedAPIKey:         new("red-key"),
@@ -90,6 +91,9 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	}
 	if !existing.UseCategoryFromIndexer {
 		t.Fatalf("expected useCategoryFromIndexer to be true")
+	}
+	if !existing.RescueTitleMismatches {
+		t.Fatalf("expected rescueTitleMismatches to be true")
 	}
 	if existing.RunExternalProgramID != nil {
 		t.Fatalf("expected runExternalProgramID to be nil")

@@ -149,7 +149,7 @@ func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rl
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
-	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate, false); !ok {
 		return false, reason
 	}
 	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
@@ -178,9 +178,12 @@ func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
 	return stringutils.DefaultNormalizer
 }
 
-func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
-	normalizer := normalizerForService(s)
+// titleMismatchReason is the rejection reason emitted when two releases differ
+// only by title. The title-rescue gates key off this exact value, so it is a
+// named constant rather than an inline literal.
+const titleMismatchReason = "title mismatch"
 
+func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
@@ -201,8 +204,14 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	// title entries, not arbitrary substrings.
 	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
-		return false, "title mismatch"
+		return false, titleMismatchReason
 	}
+
+	return s.validateArtistAndDates(source, candidate, isTV)
+}
+
+func (s *Service) validateArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
+	normalizer := normalizerForService(s)
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -236,6 +245,35 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	}
 
 	return true, ""
+}
+
+// releasesMatchExceptTitleWithReason keeps every normal release rule except title.
+// Retitled listings are usually bare-file re-uploads that also drop the -GROUP
+// and [CRC] tags, so absent candidate tags are tolerated here; conflicting tags
+// still reject. Every caller must pair this with an exact-size gate, because
+// with the title ignored a sparsely parsed name can leave nothing else to
+// reject on. Callers that add data (search rescue) additionally get the
+// paused-add full recheck as the final authority; callers that only report
+// existing pairings (local match detection) do not, so their false positives
+// must stay confined to display.
+func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+	isTV := isTVRelease(source) || isTVRelease(candidate)
+	if ok, reason := s.validateArtistAndDates(source, candidate, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate, true); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateFormatAndCodec(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
+		return false, reason
+	}
+	return validateReleaseVariants(source, candidate)
 }
 
 func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
@@ -352,7 +390,7 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	return true, ""
 }
 
-func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (bool, string) {
+func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, tolerateMissingCandidateTags bool) (bool, string) {
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
 	normalizer := normalizerForService(s)
@@ -367,8 +405,12 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (
 		if candidateGroupIdentity == "" {
 			candidateGroupIdentity = candidateSite
 		}
-		// If source has a group, candidate must have the same group
-		if candidateGroupIdentity == "" || sourceGroup != candidateGroupIdentity {
+		switch {
+		case candidateGroupIdentity == "":
+			if !tolerateMissingCandidateTags {
+				return false, "group mismatch"
+			}
+		case sourceGroup != candidateGroupIdentity:
 			return false, "group mismatch"
 		}
 	}
@@ -394,7 +436,12 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (
 	sourceSum := normalizer.Normalize(source.Sum)
 	candidateSum := normalizer.Normalize(candidate.Sum)
 	if sourceSum != "" {
-		if candidateSum == "" || sourceSum != candidateSum {
+		switch {
+		case candidateSum == "":
+			if !tolerateMissingCandidateTags {
+				return false, "checksum mismatch"
+			}
+		case sourceSum != candidateSum:
 			return false, "checksum mismatch"
 		}
 	}

@@ -646,6 +646,63 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 	require.Equal(t, 1, hookCallCount, "expected successful hardlink injection to run post-injection hooks once")
 }
 
+func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Original"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
+
+	syncManager := &rootlessSavePathSyncManager{}
+	service := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseHardlinks:             true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+				},
+			},
+		},
+		syncManager:       syncManager,
+		recheckResumeChan: make(chan *pendingResume, 1),
+		recheckResumeCtx:  context.Background(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+
+	result := service.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"Renamed",
+		&CrossSeedRequest{SkipAutoResume: true},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+		"size",
+		qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+		qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"",
+		"",
+	)
+
+	require.True(t, result.Success, result.Result.Message)
+	require.Equal(t, "true", syncManager.addedOptions["paused"])
+	require.Equal(t, "true", syncManager.addedOptions["stopped"])
+	select {
+	case pending := <-service.recheckResumeChan:
+		require.NotNil(t, pending.budgetBytes)
+		require.Zero(t, *pending.budgetBytes)
+		require.True(t, pending.monitorOnly)
+	default:
+		require.Fail(t, "expected hardlink title rescue to wait for a full recheck")
+	}
+}
+
 func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{

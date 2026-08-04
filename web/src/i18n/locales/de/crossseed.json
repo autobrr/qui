@@ -263,6 +263,8 @@
     "safety": {
       "title": "Sicherheit & Validierung",
       "description": "Steuere, welche Matches durchgeführt werden, und schütze deine vorhandenen geseedeten Daten.",
+      "rescueTitleMismatches": "Abweichende Titel retten",
+      "rescueTitleMismatchesDescription": "Versuche pro Quellsuche insgesamt bis zu drei Ergebnisse mit exakt gleicher Größe aus allen Indexern. qui prüft alle Daten, bevor der Torrent startet. Recheck überspringen schaltet diese Regel aus.",
       "skipRecheck": "Matches überspringen, die eine Neuprüfung erfordern",
       "skipRecheckDescription": "Matches überspringen, die eine Umbenennungs-Anpassung, zusätzliche Dateien oder Disc-Layouts (BDMV/VIDEO_TS) erfordern. Ist dies AUS, werden solche Matches standardmäßig zwangsweise neu geprüft.",
       "pieceBoundaryDisabled": "Piece-Grenzen-Sicherheitsprüfung derzeit deaktiviert",
