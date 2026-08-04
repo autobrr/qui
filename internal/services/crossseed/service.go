@@ -4458,8 +4458,8 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				isExactSizeSource := req.SearchDecisionClass == searchCandidateClassExactSizeFallback &&
 					isSearchSource
 				isTitleRescueSource := req.SearchDecisionClass == searchCandidateClassTitleRescue &&
-					isSearchSource && req.SearchStrictMismatchReason == "title mismatch" &&
-					mismatchReason == "title mismatch"
+					isSearchSource && req.SearchStrictMismatchReason == titleMismatchReason &&
+					mismatchReason == titleMismatchReason
 				if !isExactSizeSource && !isTitleRescueSource {
 					continue
 				}
@@ -9128,13 +9128,6 @@ func (s *Service) attemptTitleRescueResults(ctx context.Context, instanceID int,
 
 	attempts := 0
 	for _, result := range selectTitleRescueAttempts(eligible, nil, len(eligible)) {
-		exists, err := s.titleRescueResultExists(ctx, instanceID, result)
-		if err != nil {
-			return err
-		}
-		if exists {
-			continue
-		}
 		attempt(result)
 		attempts++
 		if attempts == maxTitleRescueAttemptsPerSearch {

@@ -178,6 +178,11 @@ func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
 	return stringutils.DefaultNormalizer
 }
 
+// titleMismatchReason is the rejection reason emitted when two releases differ
+// only by title. The title-rescue gates key off this exact value, so it is a
+// named constant rather than an inline literal.
+const titleMismatchReason = "title mismatch"
+
 func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
@@ -199,7 +204,7 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	// title entries, not arbitrary substrings.
 	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
-		return false, "title mismatch"
+		return false, titleMismatchReason
 	}
 
 	return s.validateArtistAndDates(source, candidate, isTV)

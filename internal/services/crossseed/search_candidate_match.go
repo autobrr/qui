@@ -121,7 +121,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	):
 		class = searchCandidateClassWebSourceRelabel
 	case input.RescueTitleMismatches &&
-		mismatchReason == "title mismatch" &&
+		mismatchReason == titleMismatchReason &&
 		decision.SizeEvidence.matches():
 		if ok, reason := s.releasesMatchExceptTitleWithReason(
 			input.SourceRelease,
