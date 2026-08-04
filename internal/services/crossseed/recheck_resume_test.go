@@ -523,6 +523,19 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 	keywordSuffixDirMissing := qbt.TorrentFiles{
 		{Name: "Movie.Resample/video.mkv", Progress: 0.5, Priority: 1, Size: 300 << 20},
 	}
+	// A keyword at the end of the stem is a qualifier under any separator, not
+	// just "-": these samples must be forgivable. Each sample alone exceeds the
+	// 50 MiB budget so a mutant dropping either separator fails this row.
+	dottedSampleMissing := qbt.TorrentFiles{
+		{Name: "Show.S01E01.mkv", Progress: 1, Priority: 1, Size: 4 << 30},
+		{Name: "Movie.2024.Sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
+		{Name: "Movie_sample.mkv", Progress: 0, Priority: 1, Size: 60 << 20},
+	}
+	// "Resample" merely ends in "sample": separator-less suffix matching would
+	// forgive this real video.
+	keywordSuffixStemMissing := qbt.TorrentFiles{
+		{Name: "Movie.Resample.mkv", Progress: 0.5, Priority: 1, Size: 300 << 20},
+	}
 
 	tests := []struct {
 		name        string
@@ -592,6 +605,24 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 			budget:      50 << 20,
 			amountLeft:  150 << 20,
 			files:       keywordTitleMissing,
+			wantResume:  false,
+			wantKeep:    false,
+			wantFetches: 1,
+		},
+		{
+			name:        "dot and underscore separated sample names are forgiven",
+			budget:      50 << 20,
+			amountLeft:  120 << 20,
+			files:       dottedSampleMissing,
+			wantResume:  true,
+			wantKeep:    true,
+			wantFetches: 1,
+		},
+		{
+			name:        "stem merely ending in ignore keyword stays relevant",
+			budget:      50 << 20,
+			amountLeft:  150 << 20,
+			files:       keywordSuffixStemMissing,
 			wantResume:  false,
 			wantKeep:    false,
 			wantFetches: 1,

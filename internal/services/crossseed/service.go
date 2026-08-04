@@ -5981,14 +5981,14 @@ func (s *Service) missingRelevantBytesWithinBudget(instanceID int, hash string, 
 
 // forgivableSidecarFile reports whether a file is a sidecar that forgiveness may
 // auto-download. Stricter than shouldIgnoreFile: an ignore keyword must be the file's
-// stem, a "-"-delimited stem prefix/suffix, or a full directory segment, so real
-// titles that merely contain a keyword ("Trailer.Park.Boys...") stay relevant.
+// stem, an end-of-stem qualifier, a "-"-delimited stem prefix, or a full directory
+// segment. Start-of-stem matching stays "-"-only because real titles begin with
+// keywords ("Trailer.Park.Boys...", "Extras.S01E01..."); a keyword at the end of
+// the stem ("Movie.2024.Sample") is a qualifier under any separator.
 func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[string, string]) bool {
 	lower := normalizer.Normalize(name)
-	for _, ext := range DefaultIgnoredExtensions {
-		if strings.HasSuffix(lower, ext) {
-			return true
-		}
+	if slices.Contains(DefaultIgnoredExtensions, path.Ext(lower)) {
+		return true
 	}
 
 	base := path.Base(lower)
@@ -5998,10 +5998,14 @@ func forgivableSidecarFile(name string, normalizer *stringutils.Normalizer[strin
 		// path start or a separator - "Movie.Resample/" is not a sample dir.
 		if stem == keyword ||
 			strings.HasPrefix(stem, keyword+"-") ||
-			strings.HasSuffix(stem, "-"+keyword) ||
 			strings.HasPrefix(lower, keyword+"/") ||
 			strings.Contains(lower, "/"+keyword+"/") {
 			return true
+		}
+		for _, sep := range []string{"-", ".", "_", " "} {
+			if strings.HasSuffix(stem, sep+keyword) {
+				return true
+			}
 		}
 	}
 	return false
