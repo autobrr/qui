@@ -142,6 +142,7 @@ export interface TorznabIndexerFormData {
   base_url: string
   indexer_id?: string
   api_key: string
+  source_indexer_id?: number
   basic_username?: string
   basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
@@ -156,6 +157,7 @@ export interface TorznabIndexerUpdate {
   name?: string
   base_url?: string
   api_key?: string
+  source_indexer_id?: number
   indexer_id?: string
   basic_username?: string
   basic_password?: string

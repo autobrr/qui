@@ -4453,31 +4453,57 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			if !releasesMatch {
 				hashKey := normalizeHash(torrent.Hash)
 				searchSourceHash := normalizeHash(req.SearchSourceHash)
-				isSearchSource := req.SearchSourceInstanceID == instanceID &&
+				isSearchSource := req.SearchDecisionClass != "" &&
+					req.SearchDecisionClass != searchCandidateClassRejected &&
+					req.SearchSourceInstanceID == instanceID &&
 					searchSourceHash != "" && hashKey == searchSourceHash
-				isExactSizeSource := req.SearchDecisionClass == searchCandidateClassExactSizeFallback &&
-					isSearchSource
-				isTitleRescueSource := req.SearchDecisionClass == searchCandidateClassTitleRescue &&
-					isSearchSource && req.SearchStrictMismatchReason == titleMismatchReason &&
-					mismatchReason == titleMismatchReason
-				if !isExactSizeSource && !isTitleRescueSource {
+				if !isSearchSource {
 					continue
 				}
-				if isTitleRescueSource {
-					if ok, _ := s.releasesMatchExceptTitleWithReason(candidateRelease, targetRelease, req.FindIndividualEpisodes); !ok {
-						continue
+
+				// Search matched this pairing against a file-derived source release;
+				// bracket-anime pack names parse as non-TV, so the raw-name re-match
+				// hard-fails on TV structure search already resolved. Re-derive the
+				// same structure before judging the search-source pairing.
+				sourceRelease := candidateRelease
+				if !isTVRelease(candidateRelease) {
+					if derived := s.deriveSearchSourceTVRelease(ctx, instanceID, torrent.Hash, torrent.Name, candidateRelease); derived != nil {
+						sourceRelease = derived
+						releasesMatch, mismatchReason = s.releasesMatchWithReasonAndNamesAndTitles(
+							targetRelease,
+							sourceRelease,
+							req.TorrentName,
+							torrent.Name,
+							nil,
+							candidateAliasTitles,
+							req.FindIndividualEpisodes,
+						)
 					}
-					titleRescueHash = hashKey
-				} else {
-					fallbackInput := searchCandidateInput{
-						SourceRelease:          candidateRelease,
-						CandidateRelease:       targetRelease,
-						SourceName:             torrent.Name,
-						CandidateName:          req.TorrentName,
-						SourceTitles:           req.SearchSourceTitles,
-						FindIndividualEpisodes: req.FindIndividualEpisodes,
-					}
-					if ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, req.SearchRelaxedDifferences); !ok {
+				}
+
+				if !releasesMatch {
+					isTitleRescueSource := req.SearchDecisionClass == searchCandidateClassTitleRescue &&
+						req.SearchStrictMismatchReason == titleMismatchReason &&
+						mismatchReason == titleMismatchReason
+					switch {
+					case isTitleRescueSource:
+						if ok, _ := s.releasesMatchExceptTitleWithReason(sourceRelease, targetRelease, req.FindIndividualEpisodes); !ok {
+							continue
+						}
+						titleRescueHash = hashKey
+					case req.SearchDecisionClass == searchCandidateClassExactSizeFallback:
+						fallbackInput := searchCandidateInput{
+							SourceRelease:          sourceRelease,
+							CandidateRelease:       targetRelease,
+							SourceName:             torrent.Name,
+							CandidateName:          req.TorrentName,
+							SourceTitles:           req.SearchSourceTitles,
+							FindIndividualEpisodes: req.FindIndividualEpisodes,
+						}
+						if ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, req.SearchRelaxedDifferences); !ok {
+							continue
+						}
+					default:
 						continue
 					}
 				}
