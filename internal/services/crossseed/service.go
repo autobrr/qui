@@ -4431,23 +4431,50 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			if !releasesMatch {
 				hashKey := normalizeHash(torrent.Hash)
 				searchSourceHash := normalizeHash(req.SearchSourceHash)
-				isExactSizeSource := req.SearchDecisionClass == searchCandidateClassExactSizeFallback &&
+				isSearchSource := req.SearchDecisionClass != "" &&
+					req.SearchDecisionClass != searchCandidateClassRejected &&
 					req.SearchSourceInstanceID == instanceID &&
 					searchSourceHash != "" && hashKey == searchSourceHash
-				if !isExactSizeSource {
+				if !isSearchSource {
 					continue
 				}
 
-				fallbackInput := searchCandidateInput{
-					SourceRelease:          candidateRelease,
-					CandidateRelease:       targetRelease,
-					SourceName:             torrent.Name,
-					CandidateName:          req.TorrentName,
-					SourceTitles:           req.SearchSourceTitles,
-					FindIndividualEpisodes: req.FindIndividualEpisodes,
+				// Search matched this pairing against a file-derived source release;
+				// bracket-anime pack names parse as non-TV, so the raw-name re-match
+				// hard-fails on TV structure search already resolved. Re-derive the
+				// same structure before judging the search-source pairing.
+				sourceRelease := candidateRelease
+				if !isTVRelease(candidateRelease) {
+					if derived := s.deriveSearchSourceTVRelease(ctx, instanceID, torrent.Hash, torrent.Name, candidateRelease); derived != nil {
+						sourceRelease = derived
+						releasesMatch, mismatchReason = s.releasesMatchWithReasonAndNamesAndTitles(
+							targetRelease,
+							sourceRelease,
+							req.TorrentName,
+							torrent.Name,
+							nil,
+							candidateAliasTitles,
+							req.FindIndividualEpisodes,
+						)
+					}
 				}
-				if ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, req.SearchRelaxedDifferences); !ok {
-					continue
+
+				if !releasesMatch {
+					if req.SearchDecisionClass != searchCandidateClassExactSizeFallback {
+						continue
+					}
+
+					fallbackInput := searchCandidateInput{
+						SourceRelease:          sourceRelease,
+						CandidateRelease:       targetRelease,
+						SourceName:             torrent.Name,
+						CandidateName:          req.TorrentName,
+						SourceTitles:           req.SearchSourceTitles,
+						FindIndividualEpisodes: req.FindIndividualEpisodes,
+					}
+					if ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, req.SearchRelaxedDifferences); !ok {
+						continue
+					}
 				}
 				log.Debug().
 					Str("targetTitle", req.TorrentName).
@@ -4456,7 +4483,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					Str("searchMismatchReason", req.SearchStrictMismatchReason).
 					Str("applyMismatchReason", mismatchReason).
 					Strs("relaxedDifferences", req.SearchRelaxedDifferences).
-					Msg("[CROSSSEED] Search-origin exact-size fallback relaxed release prefilter")
+					Msg("[CROSSSEED] Search-origin decision relaxed release prefilter")
 			}
 
 			hashKey := normalizeHash(torrent.Hash)
