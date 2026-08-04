@@ -11,13 +11,12 @@ import { toast } from "sonner"
 
 const QUERY_KEY = ["filter-views"]
 
-/** Saved filter views, ordered by the backend (sort_order, then name). */
+/** Saved filter views, ordered by name by the backend. */
 export function useFilterViews() {
   return useQuery<FilterView[]>({
     queryKey: QUERY_KEY,
     queryFn: () => api.listFilterViews(),
-    staleTime: 30000,
-    gcTime: 300000,
+    staleTime: 30000, // overrides the 5s global default in App.tsx
   })
 }
 

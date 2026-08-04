@@ -6410,7 +6410,6 @@ components:
         - id
         - name
         - filters
-        - sortOrder
         - createdAt
         - updatedAt
       properties:
@@ -6425,9 +6424,6 @@ components:
           type: object
           additionalProperties: true
           description: Opaque torrent filter selections, stored and returned verbatim
-        sortOrder:
-          type: integer
-          description: Manual ordering position
         createdAt:
           type: string
           format: date-time
@@ -6452,10 +6448,6 @@ components:
           type: object
           additionalProperties: true
           description: Opaque torrent filter selections
-        sortOrder:
-          type: integer
-          default: 0
-          description: Manual ordering position
 
     LatestVersionResponse:
       type: object

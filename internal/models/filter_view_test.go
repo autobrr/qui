@@ -34,23 +34,22 @@ func TestFilterViewStoreCreateAndList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, views)
 
-	// sort_order first, then name: "zeta" outranks "alpha" by sort_order.
+	// Seeded out of order: List must return them by name.
 	seeds := []struct {
-		name      string
-		filters   string
-		sortOrder int
+		name    string
+		filters string
 	}{
-		{name: "alpha", filters: `{"status":["downloading"]}`, sortOrder: 1},
-		{name: "zeta", filters: `{"tags":["x"]}`, sortOrder: 0},
-		{name: "beta", filters: `{}`, sortOrder: 1},
+		{name: "zeta", filters: `{"tags":["x"]}`},
+		{name: "alpha", filters: `{"status":["downloading"]}`},
+		{name: "beta", filters: `{}`},
 	}
 	for _, seed := range seeds {
-		created, err := store.Create(ctx, testFilterViewUserID, seed.name, json.RawMessage(seed.filters), seed.sortOrder)
+		created, err := store.Create(ctx, testFilterViewUserID, seed.name, json.RawMessage(seed.filters))
 		require.NoError(t, err)
 		assert.NotZero(t, created.ID)
 		assert.Equal(t, seed.name, created.Name)
 		assert.JSONEq(t, seed.filters, string(created.Filters))
-		assert.Equal(t, seed.sortOrder, created.SortOrder)
+		assert.NotZero(t, created.CreatedAt)
 	}
 
 	views, err = store.List(ctx, testFilterViewUserID)
@@ -60,23 +59,23 @@ func TestFilterViewStoreCreateAndList(t *testing.T) {
 	for _, v := range views {
 		got = append(got, v.Name)
 	}
-	assert.Equal(t, []string{"zeta", "alpha", "beta"}, got)
+	assert.Equal(t, []string{"alpha", "beta", "zeta"}, got)
 }
 
 func TestFilterViewStoreDuplicateName(t *testing.T) {
 	ctx := context.Background()
 	store := setupFilterViewStore(t)
 
-	_, err := store.Create(ctx, testFilterViewUserID, "dupe", json.RawMessage(`{}`), 0)
+	_, err := store.Create(ctx, testFilterViewUserID, "dupe", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
-	_, err = store.Create(ctx, testFilterViewUserID, "dupe", json.RawMessage(`{"tags":["a"]}`), 0)
+	_, err = store.Create(ctx, testFilterViewUserID, "dupe", json.RawMessage(`{"tags":["a"]}`))
 	require.ErrorIs(t, err, models.ErrDuplicateFilterViewName)
 
-	other, err := store.Create(ctx, testFilterViewUserID, "other", json.RawMessage(`{}`), 0)
+	other, err := store.Create(ctx, testFilterViewUserID, "other", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
-	_, err = store.Update(ctx, testFilterViewUserID, other.ID, "dupe", json.RawMessage(`{}`), 0)
+	_, err = store.Update(ctx, testFilterViewUserID, other.ID, "dupe", json.RawMessage(`{}`))
 	require.ErrorIs(t, err, models.ErrDuplicateFilterViewName)
 }
 
@@ -84,17 +83,16 @@ func TestFilterViewStoreUpdate(t *testing.T) {
 	ctx := context.Background()
 	store := setupFilterViewStore(t)
 
-	created, err := store.Create(ctx, testFilterViewUserID, "before", json.RawMessage(`{"tags":["a"]}`), 0)
+	created, err := store.Create(ctx, testFilterViewUserID, "before", json.RawMessage(`{"tags":["a"]}`))
 	require.NoError(t, err)
 
-	updated, err := store.Update(ctx, testFilterViewUserID, created.ID, "after", json.RawMessage(`{"tags":["b"]}`), 5)
+	updated, err := store.Update(ctx, testFilterViewUserID, created.ID, "after", json.RawMessage(`{"tags":["b"]}`))
 	require.NoError(t, err)
 	assert.Equal(t, created.ID, updated.ID)
 	assert.Equal(t, "after", updated.Name)
 	assert.JSONEq(t, `{"tags":["b"]}`, string(updated.Filters))
-	assert.Equal(t, 5, updated.SortOrder)
 
-	_, err = store.Update(ctx, testFilterViewUserID, created.ID+999, "missing", json.RawMessage(`{}`), 0)
+	_, err = store.Update(ctx, testFilterViewUserID, created.ID+999, "missing", json.RawMessage(`{}`))
 	require.ErrorIs(t, err, sql.ErrNoRows)
 }
 
@@ -102,7 +100,7 @@ func TestFilterViewStoreDelete(t *testing.T) {
 	ctx := context.Background()
 	store := setupFilterViewStore(t)
 
-	created, err := store.Create(ctx, testFilterViewUserID, "gone", json.RawMessage(`{}`), 0)
+	created, err := store.Create(ctx, testFilterViewUserID, "gone", json.RawMessage(`{}`))
 	require.NoError(t, err)
 
 	require.NoError(t, store.Delete(ctx, testFilterViewUserID, created.ID))

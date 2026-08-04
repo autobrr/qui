@@ -226,7 +226,6 @@ export interface FilterView {
   id: number
   name: string
   filters: Partial<TorrentFilters>
-  sortOrder: number
   createdAt: string
   updatedAt: string
 }
@@ -234,7 +233,6 @@ export interface FilterView {
 export interface FilterViewInput {
   name: string
   filters: Partial<TorrentFilters>
-  sortOrder?: number
 }
 
 /**

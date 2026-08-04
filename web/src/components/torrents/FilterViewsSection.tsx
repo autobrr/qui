@@ -89,7 +89,7 @@ export function FilterViewsSection({
     if (renameTarget) {
       updateView.mutate({
         id: renameTarget.id,
-        data: { name, filters: renameTarget.filters, sortOrder: renameTarget.sortOrder },
+        data: { name, filters: renameTarget.filters },
       }, opts)
     } else {
       createView.mutate({ name, filters: toViewFilters(selectedFilters) }, opts)

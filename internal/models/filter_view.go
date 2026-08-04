@@ -22,7 +22,6 @@ type FilterView struct {
 	ID        int             `json:"id"`
 	Name      string          `json:"name"`
 	Filters   json.RawMessage `json:"filters"`
-	SortOrder int             `json:"sortOrder"`
 	CreatedAt time.Time       `json:"createdAt"`
 	UpdatedAt time.Time       `json:"updatedAt"`
 }
@@ -37,10 +36,10 @@ func NewFilterViewStore(db dbinterface.Querier) *FilterViewStore {
 
 func (s *FilterViewStore) List(ctx context.Context, userID int) ([]*FilterView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, filters, sort_order, created_at, updated_at
+		SELECT id, name, filters, created_at, updated_at
 		FROM filter_views
 		WHERE user_id = ?
-		ORDER BY sort_order ASC, name ASC
+		ORDER BY name ASC
 	`, userID)
 	if err != nil {
 		return nil, err
@@ -51,7 +50,7 @@ func (s *FilterViewStore) List(ctx context.Context, userID int) ([]*FilterView, 
 	for rows.Next() {
 		var v FilterView
 		var filters string
-		if err := rows.Scan(&v.ID, &v.Name, &filters, &v.SortOrder, &v.CreatedAt, &v.UpdatedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &filters, &v.CreatedAt, &v.UpdatedAt); err != nil {
 			return nil, err
 		}
 		v.Filters = json.RawMessage(filters)
@@ -65,10 +64,10 @@ func (s *FilterViewStore) get(ctx context.Context, userID, id int) (*FilterView,
 	var v FilterView
 	var filters string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, filters, sort_order, created_at, updated_at
+		SELECT id, name, filters, created_at, updated_at
 		FROM filter_views
 		WHERE user_id = ? AND id = ?
-	`, userID, id).Scan(&v.ID, &v.Name, &filters, &v.SortOrder, &v.CreatedAt, &v.UpdatedAt)
+	`, userID, id).Scan(&v.ID, &v.Name, &filters, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -77,13 +76,14 @@ func (s *FilterViewStore) get(ctx context.Context, userID, id int) (*FilterView,
 	return &v, nil
 }
 
-func (s *FilterViewStore) Create(ctx context.Context, userID int, name string, filters json.RawMessage, sortOrder int) (*FilterView, error) {
-	var id int
+func (s *FilterViewStore) Create(ctx context.Context, userID int, name string, filters json.RawMessage) (*FilterView, error) {
+	var v FilterView
+	var stored string
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO filter_views (user_id, name, filters, sort_order)
-		VALUES (?, ?, ?, ?)
-		RETURNING id
-	`, userID, name, string(filters), sortOrder).Scan(&id)
+		INSERT INTO filter_views (user_id, name, filters)
+		VALUES (?, ?, ?)
+		RETURNING id, name, filters, created_at, updated_at
+	`, userID, name, string(filters)).Scan(&v.ID, &v.Name, &stored, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return nil, ErrDuplicateFilterViewName
@@ -91,15 +91,16 @@ func (s *FilterViewStore) Create(ctx context.Context, userID int, name string, f
 		return nil, err
 	}
 
-	return s.get(ctx, userID, id)
+	v.Filters = json.RawMessage(stored)
+	return &v, nil
 }
 
-func (s *FilterViewStore) Update(ctx context.Context, userID, id int, name string, filters json.RawMessage, sortOrder int) (*FilterView, error) {
+func (s *FilterViewStore) Update(ctx context.Context, userID, id int, name string, filters json.RawMessage) (*FilterView, error) {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE filter_views
-		SET name = ?, filters = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP
+		SET name = ?, filters = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE user_id = ? AND id = ?
-	`, name, string(filters), sortOrder, userID, id)
+	`, name, string(filters), userID, id)
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return nil, ErrDuplicateFilterViewName

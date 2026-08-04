@@ -33,9 +33,8 @@ func NewFilterViewHandler(store *models.FilterViewStore) *FilterViewHandler {
 }
 
 type filterViewPayload struct {
-	Name      string          `json:"name"`
-	Filters   json.RawMessage `json:"filters"`
-	SortOrder int             `json:"sortOrder"`
+	Name    string          `json:"name"`
+	Filters json.RawMessage `json:"filters"`
 }
 
 // parse validates the payload and returns the trimmed name plus the raw filters
@@ -51,14 +50,32 @@ func (p *filterViewPayload) parse() (string, json.RawMessage, string) {
 		return "", nil, "Name is too long"
 	}
 
-	// json.Decoder already validated the syntax, so a leading '{' is enough to
-	// prove this is an object.
-	filters := json.RawMessage(strings.TrimSpace(string(p.Filters)))
-	if len(filters) == 0 || filters[0] != '{' {
+	// json.Decoder already validated the syntax and leaves no surrounding
+	// whitespace, so a leading '{' is enough to prove this is an object.
+	if len(p.Filters) == 0 || p.Filters[0] != '{' {
 		return "", nil, "Filters must be a JSON object"
 	}
 
-	return name, filters, ""
+	return name, p.Filters, ""
+}
+
+// decodeFilterViewPayload decodes and validates a create/update body. It
+// responds to the client and returns false when either step fails.
+func decodeFilterViewPayload(w http.ResponseWriter, r *http.Request) (string, json.RawMessage, bool) {
+	var payload filterViewPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		log.Warn().Err(err).Msg("failed to decode filter view request")
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return "", nil, false
+	}
+
+	name, filters, invalid := payload.parse()
+	if invalid != "" {
+		RespondError(w, http.StatusBadRequest, invalid)
+		return "", nil, false
+	}
+
+	return name, filters, true
 }
 
 func (h *FilterViewHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -73,20 +90,12 @@ func (h *FilterViewHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FilterViewHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var payload filterViewPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Msg("failed to decode filter view request")
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+	name, filters, ok := decodeFilterViewPayload(w, r)
+	if !ok {
 		return
 	}
 
-	name, filters, invalid := payload.parse()
-	if invalid != "" {
-		RespondError(w, http.StatusBadRequest, invalid)
-		return
-	}
-
-	view, err := h.store.Create(r.Context(), filterViewUserID, name, filters, payload.SortOrder)
+	view, err := h.store.Create(r.Context(), filterViewUserID, name, filters)
 	if err != nil {
 		if errors.Is(err, models.ErrDuplicateFilterViewName) {
 			RespondError(w, http.StatusConflict, "A view with this name already exists")
@@ -106,20 +115,12 @@ func (h *FilterViewHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var payload filterViewPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		log.Warn().Err(err).Msg("failed to decode filter view request")
-		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+	name, filters, ok := decodeFilterViewPayload(w, r)
+	if !ok {
 		return
 	}
 
-	name, filters, invalid := payload.parse()
-	if invalid != "" {
-		RespondError(w, http.StatusBadRequest, invalid)
-		return
-	}
-
-	view, err := h.store.Update(r.Context(), filterViewUserID, id, name, filters, payload.SortOrder)
+	view, err := h.store.Update(r.Context(), filterViewUserID, id, name, filters)
 	if err != nil {
 		switch {
 		case errors.Is(err, models.ErrDuplicateFilterViewName):

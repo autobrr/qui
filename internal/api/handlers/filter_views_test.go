@@ -47,14 +47,14 @@ func doFilterViewRequest(t *testing.T, r chi.Router, method, target, body string
 func TestFilterViewHandlerCRUD(t *testing.T) {
 	r := newFilterViewRouter(t)
 
-	rec := doFilterViewRequest(t, r, http.MethodPost, "/filter-views", `{"name":"  Movies  ","filters":{"tags":["hd"]},"sortOrder":2}`)
+	rec := doFilterViewRequest(t, r, http.MethodPost, "/filter-views", `{"name":"  Movies  ","filters":{"tags":["hd"]}}`)
 	require.Equal(t, http.StatusCreated, rec.Code)
 
 	var created models.FilterView
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &created))
 	assert.Equal(t, "Movies", created.Name, "name should be trimmed")
 	assert.JSONEq(t, `{"tags":["hd"]}`, string(created.Filters))
-	assert.Equal(t, 2, created.SortOrder)
+	assert.NotZero(t, created.CreatedAt, "RETURNING must carry the row defaults back")
 
 	rec = doFilterViewRequest(t, r, http.MethodGet, "/filter-views", "")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -63,7 +63,7 @@ func TestFilterViewHandlerCRUD(t *testing.T) {
 	require.Len(t, listed, 1)
 	assert.Equal(t, created.ID, listed[0].ID)
 
-	rec = doFilterViewRequest(t, r, http.MethodPut, fmt.Sprintf("/filter-views/%d", created.ID), `{"name":"Shows","filters":{},"sortOrder":0}`)
+	rec = doFilterViewRequest(t, r, http.MethodPut, fmt.Sprintf("/filter-views/%d", created.ID), `{"name":"Shows","filters":{}}`)
 	require.Equal(t, http.StatusOK, rec.Code)
 	var updated models.FilterView
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &updated))
@@ -92,6 +92,8 @@ func TestFilterViewHandlerCreateValidation(t *testing.T) {
 		{name: "missing filters", body: `{"name":"x"}`, wantCode: http.StatusBadRequest},
 		{name: "filters not an object", body: `{"name":"y","filters":[1,2]}`, wantCode: http.StatusBadRequest},
 		{name: "filters null", body: `{"name":"z","filters":null}`, wantCode: http.StatusBadRequest},
+		// json.Decoder strips surrounding whitespace, so the object sniff needs no trim.
+		{name: "filters padded", body: "{\"name\":\"pad\",\"filters\":  \n{\"tags\":[\"a\"]}  }", wantCode: http.StatusCreated},
 	}
 
 	for _, tt := range tests {
