@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -643,6 +644,69 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 	require.NoError(t, err)
 	require.Len(t, repeated.Results, 1)
 	require.Contains(t, repeated.Results[0].Error, "title rescue attempt limit reached")
+}
+
+func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "source"
+	)
+	settings := models.DefaultCrossSeedAutomationSettings()
+	settings.SkipRecheck = true
+	var downloads atomic.Int32
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	service := &Service{
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{Hash: sourceHash, Name: "Source"},
+		}, nil),
+		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloads.Add(1)
+			return []byte("torrent"), nil
+		},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return settings, nil
+		},
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			return &CrossSeedResponse{Success: true}, nil
+		},
+	}
+	result := TorrentSearchResult{
+		Indexer:                    "Indexer",
+		IndexerID:                  7,
+		Title:                      "candidate",
+		DownloadURL:                "https://example.invalid/candidate.torrent",
+		SearchDecisionClass:        searchCandidateClassTitleRescue,
+		SearchStrictMismatchReason: "title mismatch",
+	}
+	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{result})
+	selection := TorrentSearchSelection{
+		Indexer:     result.Indexer,
+		IndexerID:   result.IndexerID,
+		Title:       result.Title,
+		DownloadURL: result.DownloadURL,
+	}
+
+	blocked, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
+		Selections: []TorrentSearchSelection{selection},
+	})
+	require.NoError(t, err)
+	require.Len(t, blocked.Results, 1)
+	require.False(t, blocked.Results[0].Success)
+	require.Equal(t, skippedRecheckMessage, blocked.Results[0].Error)
+	require.Zero(t, downloads.Load())
+
+	// The block must not consume a rescue slot: with Skip recheck off again,
+	// all three attempts remain available.
+	settings = models.DefaultCrossSeedAutomationSettings()
+	allowed, err := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
+		Selections: []TorrentSearchSelection{selection, selection, selection},
+	})
+	require.NoError(t, err)
+	require.Len(t, allowed.Results, 3)
+	for _, applied := range allowed.Results {
+		require.True(t, applied.Success)
+	}
 }
 
 func TestDeduplicateScoredTorrentSearchResultsKeepsBestClassificationAndKeylessResults(t *testing.T) {

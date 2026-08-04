@@ -655,12 +655,14 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 			wantFetches: 0,
 		},
 		{
-			name:        "budget zero keeps incomplete torrent paused",
+			// Zero missing bytes resumes even when piece-based progress reads
+			// under 1; only the title-rescue monitor also demands full progress.
+			name:        "budget zero trusts zero missing bytes over progress",
 			budget:      0,
 			amountLeft:  0,
 			progress:    0.99,
-			wantResume:  false,
-			wantKeep:    false,
+			wantResume:  true,
+			wantKeep:    true,
 			wantFetches: 0,
 		},
 		{
@@ -743,6 +745,37 @@ func TestProcessPendingTitleRescueMonitorNeverResumes(t *testing.T) {
 	})
 
 	require.False(t, keep)
+	require.Empty(t, sync.bulkActions)
+}
+
+func TestProcessPendingTitleRescueMonitorWaitsForFullProgress(t *testing.T) {
+	t.Parallel()
+
+	// Before the recheck starts, qBittorrent can report zero missing bytes at
+	// zero progress. The monitor's 100% verdict must also require full progress
+	// or it would declare the rescue verified before the recheck ran.
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	budget := int64(0)
+	pending := &pendingResume{
+		instanceID:  1,
+		hash:        "hash1",
+		monitorOnly: true,
+		budgetBytes: &budget,
+		addedAt:     time.Now(),
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedDl,
+	})
+
+	require.True(t, keep)
 	require.Empty(t, sync.bulkActions)
 }
 

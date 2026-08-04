@@ -4528,11 +4528,8 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
 			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
-			if matchType == "" {
-				if hashKey != titleRescueHash {
-					continue
-				}
-				matchType = "size"
+			if matchType == "" && hashKey != titleRescueHash {
+				continue
 			}
 			if hashKey == titleRescueHash {
 				rescue := torrent
@@ -5778,22 +5775,14 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message += " - recheck failed, manual intervention required"
 		} else if addPolicy.ShouldSkipAutoResume() {
-			if candidate.titleRescue {
-				if queueErr := s.queueTitleRescueMonitor(candidate.InstanceID, activeHash); queueErr != nil {
-					result.Message += " - verification monitor queue full, manual review required"
-				}
-			}
+			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("Skipping auto-resume per add policy (recheck triggered)")
 			result.Message += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
-			if candidate.titleRescue {
-				if queueErr := s.queueTitleRescueMonitor(candidate.InstanceID, activeHash); queueErr != nil {
-					result.Message += " - verification monitor queue full, manual review required"
-				}
-			}
+			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
@@ -5944,6 +5933,18 @@ func (s *Service) queueTitleRescueMonitor(instanceID int, hash string) error {
 	})
 }
 
+// titleRescueMonitorSuffix queues the verification monitor for a title-rescue
+// add and returns a status suffix when the monitor queue is full.
+func (s *Service) titleRescueMonitorSuffix(titleRescue bool, instanceID int, hash string) string {
+	if !titleRescue {
+		return ""
+	}
+	if err := s.queueTitleRescueMonitor(instanceID, hash); err != nil {
+		return " - verification monitor queue full, manual review required"
+	}
+	return ""
+}
+
 func (s *Service) queuePendingResume(req *pendingResume) error {
 	req.addedAt = time.Now()
 	// Send to worker (non-blocking with buffer)
@@ -5987,7 +5988,12 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 	budget := *req.budgetBytes
 	req.forgivenessEvalFailed = false
 	if budget <= 0 {
-		return torrent.Progress >= 1 && torrent.AmountLeft <= 0
+		// The rescue monitor's 100% verdict also requires full reported progress;
+		// other zero-budget resumes keep the pre-rescue missing-bytes rule.
+		if req.monitorOnly {
+			return torrent.Progress >= 1 && torrent.AmountLeft <= 0
+		}
+		return torrent.AmountLeft <= 0
 	}
 	if torrent.AmountLeft <= budget {
 		return true
@@ -9593,14 +9599,28 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				resultChan <- selectionResult{idx, duplicateResult, nil}
 				return
 			}
-			if cachedResult.SearchDecisionClass == searchCandidateClassTitleRescue && !cachedSearchResults.reserveTitleRescueAttempt() {
-				resultChan <- selectionResult{idx, TorrentSearchAddResult{
-					Title:   title,
-					Indexer: indexerName,
-					Success: false,
-					Error:   "title rescue attempt limit reached for this search",
-				}, nil}
-				return
+			if cachedResult.SearchDecisionClass == searchCandidateClassTitleRescue {
+				// Skip recheck blocks cached rescue results before a slot is
+				// reserved or the .torrent is downloaded; the guaranteed
+				// skipped_recheck verdict must not cost either.
+				if settings != nil && settings.SkipRecheck {
+					resultChan <- selectionResult{idx, TorrentSearchAddResult{
+						Title:   title,
+						Indexer: indexerName,
+						Success: false,
+						Error:   skippedRecheckMessage,
+					}, nil}
+					return
+				}
+				if !cachedSearchResults.reserveTitleRescueAttempt() {
+					resultChan <- selectionResult{idx, TorrentSearchAddResult{
+						Title:   title,
+						Indexer: indexerName,
+						Success: false,
+						Error:   "title rescue attempt limit reached for this search",
+					}, nil}
+					return
+				}
 			}
 
 			torrentBytes, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
@@ -14469,22 +14489,14 @@ func (s *Service) processHardlinkMode(
 				Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
 			statusMsg += " - recheck failed, manual intervention required"
 		} else if addPolicy.ShouldSkipAutoResume() {
-			if candidate.titleRescue {
-				if queueErr := s.queueTitleRescueMonitor(candidate.InstanceID, torrentHash); queueErr != nil {
-					statusMsg += " - verification monitor queue full, manual review required"
-				}
-			}
+			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per add policy")
 			statusMsg += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
-			if candidate.titleRescue {
-				if queueErr := s.queueTitleRescueMonitor(candidate.InstanceID, torrentHash); queueErr != nil {
-					statusMsg += " - verification monitor queue full, manual review required"
-				}
-			}
+			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
@@ -15170,22 +15182,14 @@ func (s *Service) processReflinkMode(
 				Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
 			statusMsg += " - recheck failed, manual intervention required"
 		} else if addPolicy.ShouldSkipAutoResume() {
-			if candidate.titleRescue {
-				if queueErr := s.queueTitleRescueMonitor(candidate.InstanceID, torrentHash); queueErr != nil {
-					statusMsg += " - verification monitor queue full, manual review required"
-				}
-			}
+			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
 				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per add policy")
 			statusMsg += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
-			if candidate.titleRescue {
-				if queueErr := s.queueTitleRescueMonitor(candidate.InstanceID, torrentHash); queueErr != nil {
-					statusMsg += " - verification monitor queue full, manual review required"
-				}
-			}
+			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 			// User requested to skip auto-resume - leave paused after recheck
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
