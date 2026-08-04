@@ -26,6 +26,16 @@ const bookOnlyCapsXML = `<?xml version="1.0" encoding="UTF-8"?>
   </categories>
 </caps>`
 
+func assertSingleCapsFetch(t *testing.T, requests <-chan string) {
+	t.Helper()
+	if got := len(requests); got != 1 {
+		t.Fatalf("requests = %d, want 1", got)
+	}
+	if got, want := <-requests, "/api/v1/indexer/1/newznab?apikey=mock-api-key&t=caps"; got != want {
+		t.Fatalf("request = %q, want %q", got, want)
+	}
+}
+
 // A rate-limited caps fetch must skip the indexer and engage the backoff
 // ladder instead of failing open (rationale at the skip site in service.go).
 func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
@@ -122,9 +132,9 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 }
 
 func TestSearchMultipleIndexersCapsRateLimitIsNotCovered(t *testing.T) {
-	var capsCalls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		capsCalls.Add(1)
+	requests := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.URL.RequestURI()
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
@@ -162,13 +172,13 @@ func TestSearchMultipleIndexersCapsRateLimitIsNotCovered(t *testing.T) {
 	if len(covered) != 1 || covered[0] != 2 {
 		t.Fatalf("covered indexers = %v, want [2]", covered)
 	}
-	if got := capsCalls.Load(); got != 1 {
-		t.Fatalf("caps fetches = %d, want 1", got)
-	}
+	assertSingleCapsFetch(t, requests)
 }
 
 func TestScheduledSearchCapsRateLimitIsNotCovered(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	requests := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- r.URL.RequestURI()
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer server.Close()
@@ -220,4 +230,5 @@ func TestScheduledSearchCapsRateLimitIsNotCovered(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("scheduled search timed out")
 	}
+	assertSingleCapsFetch(t, requests)
 }
