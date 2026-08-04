@@ -257,8 +257,6 @@
     "matching": {
       "title": "Comportement de correspondance",
       "description": "Contrôlez comment les torrents sont mis en correspondance et quelles différences de fichiers sont autorisées.",
-      "sizeTolerance": "Tolérance de différence de taille (%)",
-      "sizeToleranceDescription": "Différence de taille maximale pour la correspondance. Définit également le seuil de reprise automatique (ex. 5% = reprise à >=95%).",
       "crossSeedEpisodes": "Cross-seed des épisodes depuis les packs",
       "crossSeedEpisodesDescription": "Vos packs de saison locaux peuvent correspondre à des torrents d'épisodes individuels sur les indexeurs, vous permettant de seeder les deux formats."
     },
@@ -330,6 +328,8 @@
       "completionDescription": "Reprendre automatiquement les torrents déclenchés par complétion",
       "webhookLabel": "Webhook",
       "webhookDescription": "Reprendre automatiquement les torrents du webhook /apply",
+      "maxAutoResumeDownload": "Téléchargement maximal au démarrage automatique (MiB)",
+      "maxAutoResumeDownloadDescription": "Démarre un torrent ajouté seulement si les données manquantes ne dépassent pas cette taille. Mettez 0 pour ne démarrer que les torrents complets. Si seuls des fichiers comme les samples, .nfo et sous-titres manquent, qui démarre quand même le torrent, jusqu'à 200 MiB.",
       "externalProgram": "Exécuter un programme externe après injection",
       "noExternalPrograms": "Aucun programme externe disponible",
       "selectExternalProgram": "Sélectionner un programme externe (optionnel)",

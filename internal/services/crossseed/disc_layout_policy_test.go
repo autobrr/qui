@@ -247,7 +247,9 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 		require.NotNil(t, pending)
 		assert.Equal(t, instanceID, pending.instanceID)
 		assert.Equal(t, newHash, pending.hash)
-		assert.Equal(t, 1.0, pending.threshold)
+		if assert.NotNil(t, pending.budgetBytes) {
+			assert.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
+		}
 	default:
 		require.Fail(t, "expected disc-layout torrent to be queued for recheck resume")
 	}
@@ -346,7 +348,9 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		require.NotNil(t, pending)
 		assert.Equal(t, instanceID, pending.instanceID)
 		assert.Equal(t, newHash, pending.hash)
-		assert.Equal(t, 1.0, pending.threshold)
+		if assert.NotNil(t, pending.budgetBytes) {
+			assert.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
+		}
 	default:
 		require.Fail(t, "expected disc-layout torrent to be queued for recheck resume")
 	}
@@ -506,7 +510,6 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5.0
 			return settings, nil
 		},
 	}
@@ -539,7 +542,9 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		require.NotNil(t, pending)
 		assert.Equal(t, instanceID, pending.instanceID)
 		assert.Equal(t, newHash, pending.hash)
-		assert.InDelta(t, 1.0, pending.threshold, 0.001)
+		if assert.NotNil(t, pending.budgetBytes) {
+			assert.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
+		}
 	default:
 		require.Fail(t, "expected filesystem fallback torrent to be queued for full recheck resume")
 	}
@@ -612,7 +617,6 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5.0
 			return settings, nil
 		},
 	}

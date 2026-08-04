@@ -12,6 +12,12 @@ import { useMemo } from "react"
 export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/]+/g, "/").replace(/\/$/, "") || ""
 
 /**
+ * Parse a number-input value to a whole number of 0 or more.
+ * Empty and non-numeric input becomes 0.
+ */
+export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
+
+/**
  * Check if a path is inside a base directory.
  * Returns true if base is non-empty and path equals base or starts with base + "/".
  */

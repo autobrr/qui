@@ -257,8 +257,6 @@
     "matching": {
       "title": "Shodovací mechanismus",
       "description": "Kontrolujte, jak jsou torrenty shodovány a které souborové rozdíly jsou povoleny.",
-      "sizeTolerance": "Tolerance pro velikostní nesrovnalost (%)",
-      "sizeToleranceDescription": "Maximální velikostní rozdíl pro shodování. Také nastavuje prahovou hodnotu automatického obnovení (např. 5% = obnovit při >=95%).",
       "crossSeedEpisodes": "Křížové sdílení epizod z balíků",
       "crossSeedEpisodesDescription": "Vaše místní balíky celých sezón mohou shodovat individualní epizodové torrenty na indexerech, což vám umožní seedovat oba formáty."
     },
@@ -330,6 +328,8 @@
       "completionDescription": "Obnovit torrenty aktivované dokončením automaticky",
       "webhookLabel": "Webhook",
       "webhookDescription": "Obnovit /apply webhook torrentů automaticky",
+      "maxAutoResumeDownload": "Maximální stažení při automatickém spuštění (MiB)",
+      "maxAutoResumeDownloadDescription": "Spustí přidaný torrent, jen když chybějící data nepřesahují tuto velikost. Nastavte 0 pro spuštění pouze kompletních torrentů. Pokud chybí jen soubory jako samply, .nfo a titulky, qui torrent přesto spustí, až do 200 MiB.",
       "externalProgram": "Spustit externí program po vložení",
       "noExternalPrograms": "Žádné externí programy nejsou dostupné",
       "selectExternalProgram": "Vybrat externí program (volitelné)",

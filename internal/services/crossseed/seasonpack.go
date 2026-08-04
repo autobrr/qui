@@ -450,7 +450,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 				message = "torrent added paused; automatic resume could not be queued"
 			} else if s.recheckResumeChan == nil {
 				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(ctx, inst.ID, activeHash, resumeThreshold); err != nil {
+			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold); err != nil {
 				message = "torrent added paused; automatic resume queue is full"
 			} else {
 				message = "torrent added paused; recheck queued"

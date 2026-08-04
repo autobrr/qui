@@ -189,9 +189,7 @@ func TestProcessCrossSeedCandidate_ReflinkFallbackReEnablesSafetyChecks(t *testi
 		Torrents:     []qbt.Torrent{matchedTorrent},
 	}
 
-	req := &CrossSeedRequest{
-		SizeMismatchTolerancePercent: 5.0, // allow the initial "size match" candidate selection
-	}
+	req := &CrossSeedRequest{}
 
 	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", torrentName, req, service.releaseCache.Parse(torrentName), sourceFiles, nil)
 	require.False(t, result.Success)

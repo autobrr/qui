@@ -42,7 +42,7 @@ type automationSettingsRequest struct {
 	TargetIndexerIDs             []int                           `json:"targetIndexerIds"`
 	MaxResultsPerRun             int                             `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
 	FindIndividualEpisodes       bool                            `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64                         `json:"sizeMismatchTolerancePercent"`
+	AutoResumeMaxDownloadMB      *int                            `json:"autoResumeMaxDownloadMb"` // nil keeps the default; 0 = only complete torrents
 	UseCategoryFromIndexer       bool                            `json:"useCategoryFromIndexer"`
 	UseCrossCategoryAffix        bool                            `json:"useCrossCategoryAffix"`
 	CategoryAffixMode            string                          `json:"categoryAffixMode"`
@@ -88,7 +88,7 @@ type automationSettingsPatchRequest struct {
 	WebhookSourceExcludeCategories *[]string   `json:"webhookSourceExcludeCategories,omitempty"`
 	WebhookSourceExcludeTags       *[]string   `json:"webhookSourceExcludeTags,omitempty"`
 	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
+	AutoResumeMaxDownloadMB        *int        `json:"autoResumeMaxDownloadMb,omitempty"`
 	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
 	UseCrossCategoryAffix          *bool       `json:"useCrossCategoryAffix,omitempty"`
 	CategoryAffixMode              *string     `json:"categoryAffixMode,omitempty"`
@@ -201,7 +201,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.WebhookSourceExcludeCategories == nil &&
 		r.WebhookSourceExcludeTags == nil &&
 		r.FindIndividualEpisodes == nil &&
-		r.SizeMismatchTolerancePercent == nil &&
+		r.AutoResumeMaxDownloadMB == nil &&
 		r.UseCategoryFromIndexer == nil &&
 		r.UseCrossCategoryAffix == nil &&
 		r.CategoryAffixMode == nil &&
@@ -297,8 +297,8 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.FindIndividualEpisodes != nil {
 		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
 	}
-	if patch.SizeMismatchTolerancePercent != nil {
-		settings.SizeMismatchTolerancePercent = *patch.SizeMismatchTolerancePercent
+	if patch.AutoResumeMaxDownloadMB != nil {
+		settings.AutoResumeMaxDownloadMB = *patch.AutoResumeMaxDownloadMB
 	}
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
@@ -969,6 +969,17 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// nil keeps the default so PUT clients without the field do not silently
+	// switch to "only complete torrents" (0).
+	autoResumeMaxDownloadMB := models.DefaultAutoResumeMaxDownloadMB
+	if req.AutoResumeMaxDownloadMB != nil {
+		autoResumeMaxDownloadMB = *req.AutoResumeMaxDownloadMB
+	}
+	if autoResumeMaxDownloadMB < 0 {
+		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
+		return
+	}
+
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
 		RunIntervalMinutes:           req.RunIntervalMinutes,
@@ -978,7 +989,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		TargetIndexerIDs:             req.TargetIndexerIDs,
 		MaxResultsPerRun:             req.MaxResultsPerRun,
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
+		AutoResumeMaxDownloadMB:      autoResumeMaxDownloadMB,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategoryAffix:        req.UseCrossCategoryAffix,
 		CategoryAffixMode:            req.CategoryAffixMode,
@@ -1069,6 +1080,10 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 			RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
 			return
 		}
+	}
+	if req.AutoResumeMaxDownloadMB != nil && *req.AutoResumeMaxDownloadMB < 0 {
+		RespondError(w, http.StatusBadRequest, "Max auto-start download must be 0 or more")
+		return
 	}
 
 	current, err := h.service.GetAutomationSettings(r.Context())

@@ -257,8 +257,6 @@
     "matching": {
       "title": "Matching-Verhalten",
       "description": "Steuere, wie Torrents abgeglichen werden und welche Dateiunterschiede erlaubt sind.",
-      "sizeTolerance": "Toleranz für Größenabweichung (%)",
-      "sizeToleranceDescription": "Maximale Größendifferenz für ein Match. Legt zugleich den Schwellenwert für die automatische Fortsetzung fest (z. B. 5 % = Fortsetzen ab >=95 %).",
       "crossSeedEpisodes": "Episoden aus Packs cross-seeden",
       "crossSeedEpisodesDescription": "Deine lokalen Season Packs können einzelne Episoden-Torrents auf Indexern matchen, sodass du beide Formate seeden kannst."
     },
@@ -330,6 +328,8 @@
       "completionDescription": "Completion-ausgelöste Torrents automatisch fortsetzen",
       "webhookLabel": "Webhook",
       "webhookDescription": "/apply-Webhook-Torrents automatisch fortsetzen",
+      "maxAutoResumeDownload": "Maximaler Download beim Autostart (MiB)",
+      "maxAutoResumeDownloadDescription": "Startet einen hinzugefügten Torrent nur, wenn die fehlenden Daten höchstens diese Größe haben. 0 startet nur vollständige Torrents. Fehlen nur Dateien wie Samples, .nfo und Untertitel, startet qui den Torrent trotzdem, bis 200 MiB.",
       "externalProgram": "Externes Programm nach der Injektion ausführen",
       "noExternalPrograms": "Keine externen Programme verfügbar",
       "selectExternalProgram": "Externes Programm auswählen (optional)",

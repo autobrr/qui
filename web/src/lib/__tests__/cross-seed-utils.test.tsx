@@ -22,6 +22,7 @@ import {
   isHardlinkManaged,
   isInsideBase,
   normalizePath,
+  parseNonNegativeInt,
   toCompatibleMatch,
   useLocalCrossSeedMatches
 } from "@/lib/cross-seed-utils"
@@ -75,6 +76,22 @@ describe("normalizePath", () => {
   it("returns '' for empty or undefined input", () => {
     expect(normalizePath("")).toBe("")
     expect(normalizePath(undefined as unknown as string)).toBe("")
+  })
+})
+
+describe("parseNonNegativeInt", () => {
+  it("truncates decimals and passes whole numbers through", () => {
+    expect(parseNonNegativeInt("50")).toBe(50)
+    expect(parseNonNegativeInt("12.7")).toBe(12)
+  })
+
+  it("clamps negative input to 0", () => {
+    expect(parseNonNegativeInt("-5")).toBe(0)
+  })
+
+  it("maps empty and non-numeric input to 0", () => {
+    expect(parseNonNegativeInt("")).toBe(0)
+    expect(parseNonNegativeInt("abc")).toBe(0)
   })
 })
 

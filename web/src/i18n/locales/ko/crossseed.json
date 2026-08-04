@@ -257,8 +257,6 @@
     "matching": {
       "title": "일치 동작",
       "description": "토렌트가 일치하는 방식과 허용되는 파일 차이를 제어합니다.",
-      "sizeTolerance": "크기 불일치 허용 범위(%)",
-      "sizeToleranceDescription": "일치를 위한 최대 크기 차이입니다. 자동 재개 임계값도 설정합니다(예: 5% = 95% 이상에서 재개).",
       "crossSeedEpisodes": "팩의 에피소드 cross-seed",
       "crossSeedEpisodesDescription": "로컬 시즌 팩이 인덱서의 개별 에피소드 토렌트와 일치하여 두 형식을 모두 시드할 수 있습니다."
     },
@@ -330,6 +328,8 @@
       "completionDescription": "완료 트리거 토렌트를 자동으로 재개",
       "webhookLabel": "웹훅",
       "webhookDescription": "/apply 웹훅 토렌트를 자동으로 재개",
+      "maxAutoResumeDownload": "자동 시작 최대 다운로드(MiB)",
+      "maxAutoResumeDownloadDescription": "누락된 데이터가 이 크기 이하일 때만 추가된 토렌트를 자동으로 시작합니다. 0으로 설정하면 완전한 토렌트만 시작합니다. 샘플, .nfo, 자막 같은 파일만 누락된 경우 qui는 200 MiB까지 토렌트를 시작합니다.",
       "externalProgram": "주입 후 외부 프로그램 실행",
       "noExternalPrograms": "사용 가능한 외부 프로그램 없음",
       "selectExternalProgram": "외부 프로그램 선택(선택 사항)",

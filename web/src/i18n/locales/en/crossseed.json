@@ -257,8 +257,6 @@
     "matching": {
       "title": "Matching behavior",
       "description": "Control how torrents are matched and which file differences are allowed.",
-      "sizeTolerance": "Size mismatch tolerance (%)",
-      "sizeToleranceDescription": "Maximum size difference for matching. Also sets auto-resume threshold (e.g., 5% = resume at >=95%).",
       "crossSeedEpisodes": "Cross-seed episodes from packs",
       "crossSeedEpisodesDescription": "Your local season packs can match individual episode torrents on indexers, letting you seed both formats."
     },
@@ -330,6 +328,8 @@
       "completionDescription": "Resume completion-triggered torrents automatically",
       "webhookLabel": "Webhook",
       "webhookDescription": "Resume /apply webhook torrents automatically",
+      "maxAutoResumeDownload": "Max auto-start download (MiB)",
+      "maxAutoResumeDownloadDescription": "Start an added torrent only when its missing data is this size or smaller. Set 0 to start only complete torrents. When only files like samples, .nfo, and subtitles are missing, qui starts the torrent anyway, up to 200 MiB.",
       "externalProgram": "Run external program after injection",
       "noExternalPrograms": "No external programs available",
       "selectExternalProgram": "Select external program (optional)",

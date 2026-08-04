@@ -257,8 +257,6 @@
     "matching": {
       "title": "Comportamento di corrispondenza",
       "description": "Controlla come i torrent vengono messi in corrispondenza e quali differenze tra i file sono consentite.",
-      "sizeTolerance": "Tolleranza di differenza di dimensione (%)",
-      "sizeToleranceDescription": "Differenza di dimensione massima per la corrispondenza. Imposta anche la soglia di ripresa automatica (es. 5% = ripresa a >=95%).",
       "crossSeedEpisodes": "Cross-seed degli episodi dai pacchetti",
       "crossSeedEpisodesDescription": "I tuoi pacchetti stagionali locali possono corrispondere ai torrent dei singoli episodi sugli indexer, permettendoti di distribuire entrambi i formati."
     },
@@ -330,6 +328,8 @@
       "completionDescription": "Riprendi automaticamente i torrent attivati dal completamento",
       "webhookLabel": "Webhook",
       "webhookDescription": "Riprendi automaticamente i torrent del webhook /apply",
+      "maxAutoResumeDownload": "Download massimo per l'avvio automatico (MiB)",
+      "maxAutoResumeDownloadDescription": "Avvia un torrent aggiunto solo se i dati mancanti non superano questa dimensione. Imposta 0 per avviare solo torrent completi. Se mancano solo file come sample, .nfo e sottotitoli, qui avvia comunque il torrent, fino a 200 MiB.",
       "externalProgram": "Esegui un programma esterno dopo l'iniezione",
       "noExternalPrograms": "Nessun programma esterno disponibile",
       "selectExternalProgram": "Seleziona un programma esterno (facoltativo)",

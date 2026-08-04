@@ -4,8 +4,6 @@
 package crossseed
 
 import (
-	"bytes"
-	"encoding/json"
 	"maps"
 	"sync"
 
@@ -49,10 +47,6 @@ type CrossSeedRequest struct {
 	// incomplete "season pack from episode" outcomes.
 	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
-	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
-	// SizeMismatchTolerancePercentSet distinguishes an explicit strict 0 from an omitted value.
-	SizeMismatchTolerancePercent    float64 `json:"size_mismatch_tolerance_percent,omitempty"`
-	SizeMismatchTolerancePercentSet bool    `json:"-"`
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
@@ -89,19 +83,6 @@ type CrossSeedRequest struct {
 	SearchRelaxedDifferences   []string `json:"-"`
 	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
 	SearchSourceTitles []string `json:"-"`
-}
-
-func (r *CrossSeedRequest) UnmarshalJSON(data []byte) error {
-	type crossSeedRequestAlias CrossSeedRequest
-
-	var decoded crossSeedRequestAlias
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	decoded.SizeMismatchTolerancePercentSet = jsonFieldProvided(data, "size_mismatch_tolerance_percent")
-
-	*r = CrossSeedRequest(decoded)
-	return nil
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -271,38 +252,11 @@ type TorrentSearchOptions struct {
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
-	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
-	// SizeMismatchTolerancePercentSet distinguishes an explicit strict 0 from an omitted value.
-	SizeMismatchTolerancePercent    float64 `json:"size_mismatch_tolerance_percent,omitempty"`
-	SizeMismatchTolerancePercentSet bool    `json:"-"`
 	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
 	DisableTorznab bool `json:"disable_torznab,omitempty"`
 	// SkipGazelle disables Gazelle pre-search in mixed search mode.
 	// Internal-only (not exposed in API payloads).
 	SkipGazelle bool `json:"-"`
-}
-
-func (o *TorrentSearchOptions) UnmarshalJSON(data []byte) error {
-	type torrentSearchOptionsAlias TorrentSearchOptions
-
-	var decoded torrentSearchOptionsAlias
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	decoded.SizeMismatchTolerancePercentSet = jsonFieldProvided(data, "size_mismatch_tolerance_percent")
-
-	*o = TorrentSearchOptions(decoded)
-	return nil
-}
-
-func jsonFieldProvided(data []byte, field string) bool {
-	var values map[string]json.RawMessage
-	if err := json.Unmarshal(data, &values); err != nil {
-		return false
-	}
-
-	value, ok := values[field]
-	return ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.

@@ -45,6 +45,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
@@ -91,7 +92,7 @@ interface AutomationFormState {
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
-  sizeMismatchTolerancePercent: number
+  autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -159,9 +160,11 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   rssSourceExcludeTags: [],
 }
 
+const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
+
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
-  sizeMismatchTolerancePercent: 5.0,
+  autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -1103,7 +1106,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
+        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1206,7 +1209,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1250,7 +1253,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
       categoryAffixMode: globalSource.categoryAffixMode,
@@ -2624,7 +2627,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     type="number"
                     min={0}
                     value={maxAddedAgeDays}
-                    onChange={event => setMaxAddedAgeDays(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+                    onChange={event => setMaxAddedAgeDays(parseNonNegativeInt(event.target.value))}
                   />
                   <p className="text-xs text-muted-foreground">{t("scan.maxAddedAgeDescription")}</p>
                 </div>
@@ -2906,25 +2909,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="global-size-tolerance">{t("rules.matching.sizeTolerance")}</Label>
-                  <Input
-                    id="global-size-tolerance"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={globalSettings.sizeMismatchTolerancePercent}
-                    onChange={event => setGlobalSettings(prev => ({
-                      ...prev,
-                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
-                    }))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("rules.matching.sizeToleranceDescription")}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.matching.crossSeedEpisodesDescription")}</p>
@@ -3457,6 +3442,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+                  <Input
+                    id="global-auto-resume-max-download"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={globalSettings.autoResumeMaxDownloadMb}
+                    onChange={event => setGlobalSettings(prev => ({
+                      ...prev,
+                      autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value),
+                    }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("rules.postInjection.maxAutoResumeDownloadDescription")}
+                  </p>
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-border/50">

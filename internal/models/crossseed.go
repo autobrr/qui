@@ -64,10 +64,10 @@ type CrossSeedAutomationSettings struct {
 	WebhookSourceExcludeTags       []string `json:"webhookSourceExcludeTags"`       // Skip torrents with these tags
 
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
-	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
-	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
-	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
-	RunExternalProgramID         *int    `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
+	FindIndividualEpisodes  bool `json:"findIndividualEpisodes"`  // Match season packs with individual episodes
+	AutoResumeMaxDownloadMB int  `json:"autoResumeMaxDownloadMb"` // Max missing data (MiB) to still auto-resume a new cross-seed; 0 = only complete torrents (default: 50)
+	UseCategoryFromIndexer  bool `json:"useCategoryFromIndexer"`  // Use indexer name as category for cross-seeds
+	RunExternalProgramID    *int `json:"runExternalProgramId"`    // Optional external program to run after successful cross-seed injection
 
 	// Source-specific tagging: tags applied based on how the cross-seed was discovered.
 	// Each defaults to ["cross-seed"]. Users can add source-specific tags like "rss", "seeded-search", etc.
@@ -128,6 +128,10 @@ type CompletionFilterProvider interface {
 	GetExcludeTags() []string
 }
 
+// DefaultAutoResumeMaxDownloadMB is the default auto-resume budget for new
+// cross-seed additions: resume only when missing data is 50 MiB or less.
+const DefaultAutoResumeMaxDownloadMB = 50
+
 // DefaultCrossSeedAutomationSettings returns sensible defaults for RSS automation.
 // RSS automation is disabled by default with a 2-hour interval.
 func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
@@ -150,7 +154,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		WebhookSourceExcludeCategories: []string{},
 		WebhookSourceExcludeTags:       []string{},
 		FindIndividualEpisodes:         false, // Default to false - only find season packs when searching with season packs
-		SizeMismatchTolerancePercent:   5.0,   // Allow 5% size difference by default
+		AutoResumeMaxDownloadMB:        DefaultAutoResumeMaxDownloadMB,
 		UseCategoryFromIndexer:         false, // Default to false - don't override categories by default
 		RunExternalProgramID:           nil,   // No external program by default
 		// Source-specific tagging defaults - all sources default to ["cross-seed"]
@@ -425,7 +429,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       rss_source_exclude_categories, rss_source_exclude_tags,
 		       webhook_source_categories, webhook_source_tags,
 		       webhook_source_exclude_categories, webhook_source_exclude_tags,
-		       find_individual_episodes, size_mismatch_tolerance_percent,
+		       find_individual_episodes,
+		       auto_resume_max_download_mb,
 		       use_category_from_indexer, run_external_program_id,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
 		       webhook_tags, inherit_source_tags,
@@ -486,7 +491,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&webhookSourceExcludeCategories,
 		&webhookSourceExcludeTags,
 		&findIndividualEpisodes,
-		&settings.SizeMismatchTolerancePercent,
+		&settings.AutoResumeMaxDownloadMB,
 		&useCategoryFromIndexer,
 		&runExternalProgramID,
 		&rssAutomationTags,
@@ -909,7 +914,8 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			rss_source_exclude_categories, rss_source_exclude_tags,
 			webhook_source_categories, webhook_source_tags,
 			webhook_source_exclude_categories, webhook_source_exclude_tags,
-			find_individual_episodes, size_mismatch_tolerance_percent,
+			find_individual_episodes,
+			auto_resume_max_download_mb,
 			use_category_from_indexer, run_external_program_id,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
 			webhook_tags, inherit_source_tags,
@@ -944,7 +950,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_source_exclude_categories = excluded.webhook_source_exclude_categories,
 			webhook_source_exclude_tags = excluded.webhook_source_exclude_tags,
 			find_individual_episodes = excluded.find_individual_episodes,
-			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
+			auto_resume_max_download_mb = excluded.auto_resume_max_download_mb,
 			use_category_from_indexer = excluded.use_category_from_indexer,
 			run_external_program_id = excluded.run_external_program_id,
 			rss_automation_tags = excluded.rss_automation_tags,
@@ -1009,7 +1015,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		webhookSourceExcludeCategoriesJSON,
 		webhookSourceExcludeTagsJSON,
 		BoolToSQLite(settings.FindIndividualEpisodes),
-		settings.SizeMismatchTolerancePercent,
+		settings.AutoResumeMaxDownloadMB,
 		BoolToSQLite(settings.UseCategoryFromIndexer),
 		runExternalProgramID,
 		rssAutomationTags,
