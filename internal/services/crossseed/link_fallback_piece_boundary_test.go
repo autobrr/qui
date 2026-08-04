@@ -40,7 +40,6 @@ func newLinkFallbackBoundaryService(sync *discPolicySyncManager, instanceStore *
 		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 50
 			settings.SkipPieceBoundarySafetyCheck = true
 			return settings, nil
 		},

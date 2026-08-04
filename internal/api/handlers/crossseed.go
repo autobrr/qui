@@ -42,7 +42,6 @@ type automationSettingsRequest struct {
 	TargetIndexerIDs             []int                           `json:"targetIndexerIds"`
 	MaxResultsPerRun             int                             `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
 	FindIndividualEpisodes       bool                            `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64                         `json:"sizeMismatchTolerancePercent"`
 	AutoResumeMaxDownloadMB      *int                            `json:"autoResumeMaxDownloadMb"` // nil keeps the default; 0 = only complete torrents
 	UseCategoryFromIndexer       bool                            `json:"useCategoryFromIndexer"`
 	UseCrossCategoryAffix        bool                            `json:"useCrossCategoryAffix"`
@@ -89,7 +88,6 @@ type automationSettingsPatchRequest struct {
 	WebhookSourceExcludeCategories *[]string   `json:"webhookSourceExcludeCategories,omitempty"`
 	WebhookSourceExcludeTags       *[]string   `json:"webhookSourceExcludeTags,omitempty"`
 	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
-	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
 	AutoResumeMaxDownloadMB        *int        `json:"autoResumeMaxDownloadMb,omitempty"`
 	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
 	UseCrossCategoryAffix          *bool       `json:"useCrossCategoryAffix,omitempty"`
@@ -203,7 +201,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.WebhookSourceExcludeCategories == nil &&
 		r.WebhookSourceExcludeTags == nil &&
 		r.FindIndividualEpisodes == nil &&
-		r.SizeMismatchTolerancePercent == nil &&
 		r.AutoResumeMaxDownloadMB == nil &&
 		r.UseCategoryFromIndexer == nil &&
 		r.UseCrossCategoryAffix == nil &&
@@ -299,9 +296,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.FindIndividualEpisodes != nil {
 		settings.FindIndividualEpisodes = *patch.FindIndividualEpisodes
-	}
-	if patch.SizeMismatchTolerancePercent != nil {
-		settings.SizeMismatchTolerancePercent = *patch.SizeMismatchTolerancePercent
 	}
 	if patch.AutoResumeMaxDownloadMB != nil {
 		settings.AutoResumeMaxDownloadMB = *patch.AutoResumeMaxDownloadMB
@@ -991,7 +985,6 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		TargetIndexerIDs:             req.TargetIndexerIDs,
 		MaxResultsPerRun:             req.MaxResultsPerRun,
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		AutoResumeMaxDownloadMB:      autoResumeMaxDownloadMB,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
 		UseCrossCategoryAffix:        req.UseCrossCategoryAffix,

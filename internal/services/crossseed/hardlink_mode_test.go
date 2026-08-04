@@ -891,7 +891,7 @@ func TestRequestCoverageThresholdFromTolerance(t *testing.T) {
 	s := &Service{}
 	req := &CrossSeedRequest{SizeMismatchTolerancePercent: 20}
 
-	assert.InDelta(t, 0.8, s.requestCoverageThreshold(context.Background(), req), 0.001)
+	assert.InDelta(t, 0.8, s.requestCoverageThreshold(req), 0.001)
 }
 
 func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {

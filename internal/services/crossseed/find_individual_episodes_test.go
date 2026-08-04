@@ -123,7 +123,6 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5
 			return settings, nil
 		},
 	}

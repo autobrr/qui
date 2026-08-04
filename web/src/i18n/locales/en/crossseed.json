@@ -257,8 +257,6 @@
     "matching": {
       "title": "Matching behavior",
       "description": "Control how torrents are matched and which file differences are allowed.",
-      "sizeTolerance": "Size mismatch tolerance (%)",
-      "sizeToleranceDescription": "Maximum size difference for matching.",
       "crossSeedEpisodes": "Cross-seed episodes from packs",
       "crossSeedEpisodesDescription": "Your local season packs can match individual episode torrents on indexers, letting you seed both formats."
     },

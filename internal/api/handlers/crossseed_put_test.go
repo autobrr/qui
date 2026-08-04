@@ -243,7 +243,7 @@ func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
 		{
 			name:   "patch without the field preserves the stored value",
 			method: http.MethodPatch,
-			body:   `{"sizeMismatchTolerancePercent": 7}`,
+			body:   `{"findIndividualEpisodes": true}`,
 			setup:  putBody(`"autoResumeMaxDownloadMb": 200`),
 			want:   200,
 		},

@@ -1719,15 +1719,8 @@ func (s *Service) validateAndNormalizeSettings(settings *models.CrossSeedAutomat
 	if settings.MaxResultsPerRun <= 0 {
 		settings.MaxResultsPerRun = 50
 	}
-	if settings.SizeMismatchTolerancePercent < 0 {
-		settings.SizeMismatchTolerancePercent = 5.0 // Default to 5% if negative
-	}
 	if settings.AutoResumeMaxDownloadMB < 0 {
 		settings.AutoResumeMaxDownloadMB = 0
-	}
-	// Cap at 100% to prevent unreasonable tolerances
-	if settings.SizeMismatchTolerancePercent > 100.0 {
-		settings.SizeMismatchTolerancePercent = 100.0
 	}
 }
 
@@ -3282,7 +3275,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		case opts.SizeMismatchTolerancePercent > 0:
 			opts.SizeMismatchTolerancePercentSet = true
 		default:
-			opts.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
+			opts.SizeMismatchTolerancePercent = defaultSizeMismatchTolerancePercent
 			opts.SizeMismatchTolerancePercentSet = true
 		}
 		// Targeted re-searches of specific torrents stay episode-scoped, and
@@ -3990,18 +3983,16 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	skipIfExists := true
 	req := &CrossSeedRequest{
-		TorrentData:                     encodedTorrent,
-		TargetInstanceIDs:               append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                            append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:               settings.InheritSourceTags,
-		SkipIfExists:                    &skipIfExists,
-		IndexerName:                     sourceIndexer,
-		FindIndividualEpisodes:          settings.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent:    settings.SizeMismatchTolerancePercent,
-		SizeMismatchTolerancePercentSet: true,
-		SkipAutoResume:                  settings.SkipAutoResumeRSS,
-		SkipRecheck:                     settings.SkipRecheck,
-		SkipPieceBoundarySafetyCheck:    settings.SkipPieceBoundarySafetyCheck,
+		TorrentData:                  encodedTorrent,
+		TargetInstanceIDs:            append([]int(nil), settings.TargetInstanceIDs...),
+		Tags:                         append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags:            settings.InheritSourceTags,
+		SkipIfExists:                 &skipIfExists,
+		IndexerName:                  sourceIndexer,
+		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
+		SkipAutoResume:               settings.SkipAutoResumeRSS,
+		SkipRecheck:                  settings.SkipRecheck,
+		SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
 		// Pass RSS source filters so CrossSeed respects them when finding candidates
 		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
 		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
@@ -4837,10 +4828,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 		IndexerName:                  req.Indexer,
 	}
-	if settings != nil {
-		crossReq.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
-		crossReq.SizeMismatchTolerancePercentSet = true
-	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
 		crossReq.SourceFilterCategories = append([]string(nil), settings.WebhookSourceCategories...)
@@ -4996,7 +4983,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
-	tolerancePercent := s.requestTolerancePercent(ctx, req)
+	tolerancePercent := s.requestTolerancePercent(req)
 	addPlan, rejectReason := s.selectBestCandidateAddPlan(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
 	if addPlan == nil {
 		result.Status = "no_match"
@@ -8079,7 +8066,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	gazelleConfigured := false
 	gazelleLookupAttempted := false
 	remoteRequestsMade := false
-	tolerancePercent := s.searchTolerancePercent(ctx, opts)
+	tolerancePercent := s.searchTolerancePercent(opts)
 	if !opts.SkipGazelle {
 		gazelleResults, gazelleConfigured, gazelleLookupAttempted = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
 		remoteRequestsMade = gazelleLookupAttempted
@@ -13152,7 +13139,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				}
 
 				// Check if size is within tolerance
-				if s.isSizeWithinTolerance(int64(req.Size), torrent.Size, settings.SizeMismatchTolerancePercent) {
+				if s.isSizeWithinTolerance(int64(req.Size), torrent.Size, defaultSizeMismatchTolerancePercent) {
 					if sizeDiff < 0.1 {
 						matchType = "exact"
 					} else {
@@ -13166,7 +13153,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 						Uint64("incomingSize", req.Size).
 						Int64("existingSize", torrent.Size).
 						Float64("sizeDiff", sizeDiff).
-						Float64("tolerance", settings.SizeMismatchTolerancePercent).
+						Float64("tolerance", defaultSizeMismatchTolerancePercent).
 						Msg("Skipping match due to size mismatch")
 					continue
 				}
@@ -13362,22 +13349,7 @@ func (s *Service) recoverErroredTorrents(ctx context.Context, instanceID int, to
 		Int("count", len(erroredTorrents)).
 		Msg("Found errored torrents, attempting batched recovery")
 
-	// Get automation settings once for completion tolerance
-	settingsCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-	settings, err := s.GetAutomationSettings(settingsCtx)
-	cancel()
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load automation settings for recovery, using defaults")
-		settings = &models.CrossSeedAutomationSettings{
-			SizeMismatchTolerancePercent: 5.0,
-		}
-	}
-
-	completionTolerance := settings.SizeMismatchTolerancePercent / 100.0
-	minCompletionProgress := 1.0 - completionTolerance
-	if minCompletionProgress < 0.9 {
-		minCompletionProgress = 0.9
-	}
+	minCompletionProgress := 1.0 - defaultSizeMismatchTolerancePercent/100.0
 
 	// Get qBittorrent app preferences once for disk cache TTL
 	appPrefs, err := s.syncManager.GetAppPreferences(ctx, instanceID)
@@ -13764,7 +13736,7 @@ func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 	return 1.0 - (tolerancePercent / 100.0)
 }
 
-func (s *Service) searchTolerancePercent(ctx context.Context, opts TorrentSearchOptions) float64 {
+func (s *Service) searchTolerancePercent(opts TorrentSearchOptions) float64 {
 	if opts.SizeMismatchTolerancePercentSet && opts.SizeMismatchTolerancePercent >= 0 {
 		return opts.SizeMismatchTolerancePercent
 	}
@@ -13772,18 +13744,10 @@ func (s *Service) searchTolerancePercent(ctx context.Context, opts TorrentSearch
 		return opts.SizeMismatchTolerancePercent
 	}
 
-	settings, err := s.GetAutomationSettings(ctx)
-	if err == nil && settings != nil {
-		return settings.SizeMismatchTolerancePercent
-	}
-
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load cross-seed settings for size validation, using default tolerance")
-	}
 	return defaultSizeMismatchTolerancePercent
 }
 
-func (s *Service) requestTolerancePercent(ctx context.Context, req *CrossSeedRequest) float64 {
+func (s *Service) requestTolerancePercent(req *CrossSeedRequest) float64 {
 	if req != nil {
 		if req.SizeMismatchTolerancePercentSet && req.SizeMismatchTolerancePercent >= 0 {
 			return req.SizeMismatchTolerancePercent
@@ -13793,16 +13757,11 @@ func (s *Service) requestTolerancePercent(ctx context.Context, req *CrossSeedReq
 		}
 	}
 
-	settings, err := s.GetAutomationSettings(ctx)
-	if err == nil && settings != nil {
-		return settings.SizeMismatchTolerancePercent
-	}
-
 	return defaultSizeMismatchTolerancePercent
 }
 
-func (s *Service) requestCoverageThreshold(ctx context.Context, req *CrossSeedRequest) float64 {
-	return coverageThresholdFromTolerance(s.requestTolerancePercent(ctx, req))
+func (s *Service) requestCoverageThreshold(req *CrossSeedRequest) float64 {
+	return coverageThresholdFromTolerance(s.requestTolerancePercent(req))
 }
 
 // resumeBudgetBytes returns the auto-resume download budget for new cross-seed additions:
@@ -13958,7 +13917,7 @@ func (s *Service) processHardlinkMode(
 		return handleError("No linkable files found (all source files are extras)")
 	}
 
-	coverageThreshold := s.requestCoverageThreshold(ctx, req)
+	coverageThreshold := s.requestCoverageThreshold(req)
 	coverage, linkedBytes, totalBytes := materializedCoverage(sourceFiles, candidateTorrentFilesToLink)
 	if hasExtras && coverage < coverageThreshold {
 		message := belowThresholdMessage("hardlink", coverage, coverageThreshold, linkedBytes, totalBytes, len(candidateTorrentFilesToLink), len(sourceFiles))
@@ -14635,7 +14594,7 @@ func (s *Service) processReflinkMode(
 		return handleError("No cloneable files found (all source files would need to be downloaded)")
 	}
 
-	coverageThreshold := s.requestCoverageThreshold(ctx, req)
+	coverageThreshold := s.requestCoverageThreshold(req)
 	coverage, clonedBytes, totalBytes := materializedCoverage(sourceFiles, candidateTorrentFilesToClone)
 	if hasExtras && coverage < coverageThreshold {
 		message := belowThresholdMessage("reflink", coverage, coverageThreshold, clonedBytes, totalBytes, len(candidateTorrentFilesToClone), len(sourceFiles))

@@ -91,7 +91,6 @@ interface AutomationFormState {
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
-  sizeMismatchTolerancePercent: number
   autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
@@ -164,7 +163,6 @@ const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
-  sizeMismatchTolerancePercent: 5.0,
   autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
@@ -1107,7 +1105,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
         autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
@@ -1211,7 +1208,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
       autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb ?? DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
@@ -1256,7 +1252,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
       autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
@@ -2913,25 +2908,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="global-size-tolerance">{t("rules.matching.sizeTolerance")}</Label>
-                  <Input
-                    id="global-size-tolerance"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={globalSettings.sizeMismatchTolerancePercent}
-                    onChange={event => setGlobalSettings(prev => ({
-                      ...prev,
-                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
-                    }))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("rules.matching.sizeToleranceDescription")}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.matching.crossSeedEpisodesDescription")}</p>

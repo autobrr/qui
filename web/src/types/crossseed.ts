@@ -166,7 +166,6 @@ export interface CrossSeedAutomationSettings {
   webhookSourceExcludeCategories: string[]
   webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
-  sizeMismatchTolerancePercent: number
   autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
@@ -231,7 +230,6 @@ export interface CrossSeedAutomationSettingsPatch {
   webhookSourceExcludeCategories?: string[]
   webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
-  sizeMismatchTolerancePercent?: number
   autoResumeMaxDownloadMb?: number
   useCategoryFromIndexer?: boolean
   useCrossCategoryAffix?: boolean

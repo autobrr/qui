@@ -3301,7 +3301,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-				SizeMismatchTolerancePercent:   5.0,
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1, // Only movies category torrent matches
@@ -3318,8 +3317,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				{Hash: "included", Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "cross-seed", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeTags:     []string{"no-cross-seed"},
-				SizeMismatchTolerancePercent: 5.0,
+				WebhookSourceExcludeTags: []string{"no-cross-seed"},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1,
@@ -3337,7 +3335,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-				SizeMismatchTolerancePercent:   5.0,
 			},
 			wantCanCrossSeed:   false,
 			wantMatchCount:     0,
@@ -3354,8 +3351,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				{Hash: "tv", Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories:      []string{"movies"},
-				SizeMismatchTolerancePercent: 5.0,
+				WebhookSourceCategories: []string{"movies"},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1, // Only movies category matches
@@ -3374,7 +3370,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceCategories:        []string{},
 				WebhookSourceExcludeCategories: []string{},
-				SizeMismatchTolerancePercent:   5.0,
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     2, // Both match

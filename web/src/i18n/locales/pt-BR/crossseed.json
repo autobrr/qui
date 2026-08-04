@@ -257,8 +257,6 @@
     "matching": {
       "title": "Comportamento de correspondência",
       "description": "Controle como os torrents são combinados e quais diferenças de arquivo são permitidas.",
-      "sizeTolerance": "Tolerância de incompatibilidade de tamanho (%)",
-      "sizeToleranceDescription": "Diferença máxima de tamanho para correspondência.",
       "crossSeedEpisodes": "Fazer cross-seed de episódios de pacotes",
       "crossSeedEpisodesDescription": "Seus pacotes de temporada locais podem corresponder a torrents de episódios individuais em indexadores, permitindo que você semeie ambos os formatos."
     },

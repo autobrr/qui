@@ -510,7 +510,6 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5.0
 			return settings, nil
 		},
 	}
@@ -618,7 +617,6 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 5.0
 			return settings, nil
 		},
 	}

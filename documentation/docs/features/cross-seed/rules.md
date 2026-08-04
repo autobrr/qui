@@ -10,7 +10,6 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 ## Matching
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
-- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%).
 - **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, filesystem fallback, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
 - **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 

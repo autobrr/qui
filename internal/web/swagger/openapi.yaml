@@ -6683,9 +6683,6 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
@@ -6823,9 +6820,6 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
