@@ -80,15 +80,19 @@ See [Season Packs](./season-packs.md) for the full flow, setup requirements, and
 
 ## How do I see why a release was filtered?
 
-Rejection reasons are logged at debug, which is the default level:
+Rejection reasons are logged at `DEBUG`, which is the default level:
 
 ```toml
 logLevel = 'DEBUG'
 ```
 
-If you upgraded from an older version, open `config.toml` and set `logLevel` to `DEBUG` if it holds another value.
+If you upgraded from an older version, open `config.toml`. If `logLevel` holds another value, set it to `DEBUG`.
 
-For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each carries the `pack`, `season`, and `candidate` it compared plus a `reason` field naming the mismatch (e.g. `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`). Two reasons mean the candidate belongs to something else: `title mismatch` is a different show, and `episode not in pack` is an episode this pack does not contain. Together they are most of your library, so they show only at `TRACE`. All other reasons show at `DEBUG`. For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which names each rejected candidate and the reason it failed; `[CROSSSEED-SEARCH] Release filtering rejection summary` additionally reports per-reason counts.
+For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`).
+
+Two of these reasons show that the candidate belongs to different content. `title mismatch` means a different show. `episode not in pack` means an episode that this pack does not contain. These two reasons apply to most of a library, thus qui logs them at `TRACE`. All other reasons appear at `DEBUG`.
+
+For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected by search classifier`. Each entry names the rejected candidate and the reason it failed. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 

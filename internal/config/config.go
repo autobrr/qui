@@ -490,12 +490,13 @@ sessionSecret = "{{ .sessionSecret }}"
 #logPath = "log/qui.log"
 
 # Log rotation
-# Maximum log file size in megabytes before rotation
+# Size in MB that starts a rotation
 # Default: {{ .logMaxSize }}
 #logMaxSize = {{ .logMaxSize }}
 
-# Number of rotated log files to retain (0 keeps all)
-# Rotated files are gzip-compressed. A 50 MB rotation stores as about 2 to 3 MB.
+# Number of rotated log files that qui keeps (0 keeps all)
+# Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file
+# compresses to 2 to 3 MB.
 # Default: {{ .logMaxBackups }}
 #logMaxBackups = {{ .logMaxBackups }}
 
@@ -545,8 +546,8 @@ sessionSecret = "{{ .sessionSecret }}"
 # Log level
 # Default: "DEBUG"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
-# DEBUG records enough detail to diagnose most reports without a restart.
-# TRACE adds per-request and per-sync-tick detail and grows the file quickly.
+# DEBUG records sufficient detail to diagnose most reports.
+# TRACE adds per-request and per-sync-tick detail and makes the file grow quickly.
 #logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
