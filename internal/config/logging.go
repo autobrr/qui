@@ -110,6 +110,10 @@ func (lm *LogManager) buildWriter(baseWriter io.Writer, logPath string, maxSize,
 		Filename:   logPath,
 		MaxSize:    maxSize,
 		MaxBackups: maxBackups,
+		// Rotated backups gzip to roughly 1/20th of their size, so retention
+		// costs disk in proportion to the compressed set, not the raw set.
+		// The live file stays plain text for tail and grep.
+		Compress: true,
 	}
 	return io.MultiWriter(baseWriter, rotator), rotator, nil
 }

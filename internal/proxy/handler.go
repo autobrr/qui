@@ -142,7 +142,6 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 
 // ServeHTTP handles the reverse proxy request (fallback for non-intercepted routes)
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Debug().Msg("Forwarding to qBittorrent via reverse proxy")
 	h.proxy.ServeHTTP(w, r)
 }
 

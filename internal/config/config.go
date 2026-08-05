@@ -103,10 +103,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
-	c.viper.SetDefault("logLevel", "INFO")
+	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
-	c.viper.SetDefault("logMaxBackups", 3)
+	c.viper.SetDefault("logMaxBackups", 10)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("databaseEngine", "sqlite")
 	c.viper.SetDefault("databaseDsn", "")
@@ -495,6 +495,7 @@ sessionSecret = "{{ .sessionSecret }}"
 #logMaxSize = {{ .logMaxSize }}
 
 # Number of rotated log files to retain (0 keeps all)
+# Rotated files are gzipped, so each one uses about 1/20th of logMaxSize.
 # Default: {{ .logMaxBackups }}
 #logMaxBackups = {{ .logMaxBackups }}
 
@@ -542,8 +543,10 @@ sessionSecret = "{{ .sessionSecret }}"
 #crossSeedRecoverErroredTorrents = false
 
 # Log level
-# Default: "INFO"
+# Default: "DEBUG"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
+# DEBUG records enough detail to diagnose most reports without a restart.
+# TRACE adds per-request and per-sync-tick detail and grows the file quickly.
 logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics

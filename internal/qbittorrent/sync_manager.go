@@ -644,11 +644,6 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		}
 		sm.trackerHealthMu.Unlock()
 		sm.setValidatedTrackerMappingWithMetrics(instanceID, newValidatedTrackerMapping(), 0, started, "empty")
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("torrentCount", 0).
-			Dur("elapsed", time.Since(started)).
-			Msg("Refreshed empty tracker health counts")
 		sm.notifyTrackerHealthUpdated(instanceID)
 		return
 	}
@@ -965,11 +960,6 @@ func (sm *SyncManager) seedValidatedTrackerMappingFromMainData(instanceID int, t
 // authoritative mapping or driving counts and filters.
 func (sm *SyncManager) seedFallbackTrackerMappingFromMainData(instanceID int, torrents []qbt.Torrent, mainData *qbt.MainData, started time.Time) {
 	if sm.hasAuthoritativeTrackerMapping(instanceID) {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("torrentCount", len(torrents)).
-			Dur("elapsed", time.Since(started)).
-			Msg("Preserved authoritative tracker mapping instead of storing fallback seed")
 		return
 	}
 	sm.seedTrackerMappingFromMainData(instanceID, torrents, mainData, started, true)
@@ -1589,11 +1579,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
 
-	log.Trace().
-		Int("instanceID", instanceID).
-		Int("filtered", len(filteredTorrents)).
-		Msg("Applied search filtering")
-
 	if sort == "name" {
 		sm.sortTorrentsByNameCaseInsensitive(filteredTorrents, order == "desc")
 	}
@@ -1653,20 +1638,22 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Check if there are more pages (only meaningful when limit > 0)
 	hasMore := limit > 0 && end < totalTorrents
 
-	// Calculate counts from ALL torrents (not filtered) for sidebar
-	// This uses the same cached data, so it's very fast
-	var allTorrents []qbt.Torrent
-	if useManualFiltering {
-		allTorrents = allTorrentsForCounts
-	} else {
-		allTorrents = getTorrents(qbt.TorrentFilterOptions{})
-	}
-
 	var enrichedAll []qbt.Torrent
 
 	if !includeCachedCounts {
 		counts = nil
 	} else {
+		// Counts come from ALL torrents (not filtered) for the sidebar.
+		// Materialized inside this branch on purpose: stream ticks leave
+		// includeCachedCounts false, so hoisting this above the branch cloned
+		// the full torrent slice on every tick and then discarded it.
+		var allTorrents []qbt.Torrent
+		if useManualFiltering {
+			allTorrents = allTorrentsForCounts
+		} else {
+			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
+		}
+
 		if len(allTorrents) == 0 {
 			log.Trace().
 				Int("instanceID", instanceID).
@@ -1779,14 +1766,16 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// This ensures real-time updates are always reflected
 	// The sync manager is the single source of truth
 
-	log.Trace().
+	freshEvent := log.Trace().
 		Int("instanceID", instanceID).
 		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
-		Interface("filters", filters).
-		Bool("hasMore", hasMore).
-		Msg("Fresh torrent data fetched and cached")
+		Bool("hasMore", hasMore)
+	if !filters.IsEmpty() {
+		freshEvent = freshEvent.Interface("filters", filters)
+	}
+	freshEvent.Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
 }
@@ -3750,11 +3739,6 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	if validatedMapping != nil {
-		log.Trace().
-			Int("domainCount", len(validatedMapping.DomainToHashes)).
-			Time("updatedAt", validatedMapping.UpdatedAt).
-			Msg("Using validated tracker mapping for counting")
-
 		// Count torrents per tracker domain using pre-validated mapping
 		trackerDomainCounts := make(map[string]map[string]bool) // domain -> set of torrent hashes
 		for domain, hashSet := range validatedMapping.DomainToHashes {
@@ -4695,6 +4679,11 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 ) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
+	// A bad expression fails identically for every torrent, so record the first
+	// failure and report once after the loop instead of per torrent.
+	var exprErr error
+	exprFailures := 0
+
 	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
 	for _, h := range filters.Hashes {
 		if h == "" {
@@ -5052,13 +5041,19 @@ torrentsLoop:
 		if len(filters.Expr) > 0 && compileErr == nil {
 			result, err := expr.Run(program, torrent)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to evaluate expression")
+				if exprErr == nil {
+					exprErr = err
+				}
+				exprFailures++
 				continue
 			}
 
 			expResult, ok := result.(bool)
 			if !ok {
-				log.Error().Msg("Expression result is not a boolean")
+				if exprErr == nil {
+					exprErr = errors.New("expression result is not a boolean")
+				}
+				exprFailures++
 				continue
 			}
 
@@ -5069,6 +5064,15 @@ torrentsLoop:
 
 		// If we reach here, torrent passed all active filters
 		filtered = append(filtered, torrent)
+	}
+
+	if exprFailures > 0 {
+		log.Error().
+			Err(exprErr).
+			Int("failedTorrents", exprFailures).
+			Int("totalTorrents", len(torrents)).
+			Str("expr", filters.Expr).
+			Msg("Failed to evaluate expression")
 	}
 
 	log.Trace().

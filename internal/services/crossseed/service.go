@@ -1354,7 +1354,7 @@ func (s *Service) determineLocalMatchType(
 					return matchTypeContentPath
 				case sourceIsAmbiguousDir || candidateIsAmbiguousDir:
 					// Log diagnostics when ambiguous content_path match fails overlap threshold
-					log.Trace().
+					log.Debug().
 						Str("sourceHash", normalizeHash(source.Hash)).
 						Str("candidateHash", normalizeHash(candidate.Hash)).
 						Int("candidateInstanceID", candidate.InstanceID).
@@ -4618,7 +4618,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		}
 	}
 
-	log.Trace().
+	log.Debug().
 		Str("targetTitle", req.TorrentName).
 		Str("sourceIndexer", req.SourceIndexer).
 		Int("instancesSearched", len(searchInstanceIDs)).
@@ -6624,7 +6624,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 
 	if s.torrentFilesCache != nil {
 		if cached, ok := s.torrentFilesCache.Get(key); ok {
-			log.Trace().
+			log.Debug().
 				Int("instanceID", instanceID).
 				Str("hash", normalizeHash(hash)).
 				Msg("Using cached torrent files")
@@ -6646,7 +6646,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 		_ = s.torrentFilesCache.Set(key, cloneTorrentFiles(files), ttlcache.DefaultTTL)
 	}
 
-	log.Trace().
+	log.Debug().
 		Int("instanceID", instanceID).
 		Str("hash", normalizeHash(hash)).
 		Msg("Fetched torrent files from qbittorrent")
@@ -10193,7 +10193,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	cacheKey := dedupCacheKey(instanceID, torrents)
 	if s.dedupCache != nil {
 		if entry, ok := s.dedupCache.Get(cacheKey); ok && entry != nil {
-			log.Trace().
+			log.Debug().
 				Int("instanceID", instanceID).
 				Int("cachedCount", len(entry.deduplicated)).
 				Msg("[CROSSSEED-DEDUP] Using cached deduplication result")
@@ -10369,7 +10369,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		deduplicated = append(deduplicated, rep.torrent)
 		if len(group.duplicates) > 0 {
 			totalDuplicates += len(group.duplicates)
-			log.Trace().
+			log.Debug().
 				Str("representative", rep.torrent.Name).
 				Str("representativeHash", rep.torrent.Hash).
 				Int64("addedOn", rep.torrent.AddedOn).
@@ -10379,7 +10379,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 	}
 
-	log.Trace().
+	log.Debug().
 		Int("originalCount", len(torrents)).
 		Int("deduplicatedCount", len(deduplicated)).
 		Int("duplicatesRemoved", totalDuplicates).
@@ -11427,7 +11427,7 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 		if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
 			existingSnapshot := existing.Clone()
 			if existingSnapshot != nil && existingSnapshot.ContentCompleted {
-				log.Trace().
+				log.Debug().
 					Str("torrentHash", hash).
 					Int("instanceID", instanceID).
 					Str("cacheKey", cacheKey).
@@ -12853,8 +12853,8 @@ func recordReleaseRejection(
 		reason = "release mismatch"
 	}
 	releaseFilterReasons[reason]++
-	if trace := log.Trace(); trace.Enabled() {
-		trace.
+	if evt := log.Debug(); evt.Enabled() {
+		evt.
 			Str("sourceTitle", sourceTitle).
 			Str("candidateTitle", candidateTitle).
 			Str("reason", reason).
@@ -12865,7 +12865,7 @@ func recordReleaseRejection(
 	}
 }
 
-func traceReleaseMatchDecision(
+func logReleaseMatchDecision(
 	sourceTitle string,
 	candidateTitle string,
 	findIndividualEpisodes bool,
@@ -12882,8 +12882,8 @@ func traceReleaseMatchDecision(
 			reason = "release mismatch"
 		}
 	}
-	if trace := log.Trace(); trace.Enabled() {
-		trace.
+	if evt := log.Debug(); evt.Enabled() {
+		evt.
 			Str("sourceTitle", sourceTitle).
 			Str("candidateTitle", candidateTitle).
 			Bool("matched", matched).

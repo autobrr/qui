@@ -171,12 +171,14 @@ func TestMatchAgainstIndex_ReleaseMetadata(t *testing.T) {
 	})
 }
 
-func TestMatchAgainstIndex_ReleaseMetadataTraceLogsRejection(t *testing.T) {
+// Cross-seed rejection reasons log at debug so a user who reports a match
+// problem can capture them without switching the whole server to trace.
+func TestMatchAgainstIndex_ReleaseMetadataDebugLogsRejection(t *testing.T) {
 	previousLogger := log.Logger
 	previousLevel := zerolog.GlobalLevel()
 	var buf bytes.Buffer
-	log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
-	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	t.Cleanup(func() {
 		log.Logger = previousLogger
 		zerolog.SetGlobalLevel(previousLevel)
@@ -200,14 +202,14 @@ func TestMatchAgainstIndex_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 	}
 
 	logOutput := buf.String()
-	if !strings.Contains(logOutput, `"level":"trace"`) {
-		t.Fatalf("expected trace log, got %s", logOutput)
+	if !strings.Contains(logOutput, `"level":"debug"`) {
+		t.Fatalf("expected debug log, got %s", logOutput)
 	}
 	if !strings.Contains(logOutput, `"message":"crossseed: release metadata candidate evaluated"`) {
-		t.Fatalf("expected release metadata trace message, got %s", logOutput)
+		t.Fatalf("expected release metadata debug message, got %s", logOutput)
 	}
 	if !strings.Contains(logOutput, `"reason":"group mismatch"`) {
-		t.Fatalf("expected mismatch reason in trace log, got %s", logOutput)
+		t.Fatalf("expected mismatch reason in debug log, got %s", logOutput)
 	}
 }
 

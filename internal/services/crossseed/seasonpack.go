@@ -1103,7 +1103,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	// grep target the season-pack troubleshooting docs point users at. Only episode
 	// torrents (isTVEpisode) reach it, so it does not fire for every unrelated torrent.
 	logFiltered := func(candidateName, reason string) {
-		log.Trace().
+		log.Debug().
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).
