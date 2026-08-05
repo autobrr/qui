@@ -520,6 +520,92 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/filter-views:
+    get:
+      tags:
+        - Torrents
+      summary: List saved filter views
+      description: Get all saved filter views ordered by sort order, then name
+      responses:
+        '200':
+          description: List of filter views
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FilterView'
+    post:
+      tags:
+        - Torrents
+      summary: Create filter view
+      description: Save the given torrent filters under a name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterViewInput'
+      responses:
+        '201':
+          description: Filter view created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterView'
+        '400':
+          description: Invalid name or filters payload
+        '409':
+          description: A view with this name already exists
+
+  /api/filter-views/{id}:
+    put:
+      tags:
+        - Torrents
+      summary: Update filter view
+      description: Rename a filter view and/or replace its stored filters
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterViewInput'
+      responses:
+        '200':
+          description: Updated filter view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterView'
+        '400':
+          description: Invalid name or filters payload
+        '404':
+          description: Filter view not found
+        '409':
+          description: A view with this name already exists
+    delete:
+      tags:
+        - Torrents
+      summary: Delete filter view
+      description: Delete a saved filter view
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Filter view deleted
+        '404':
+          description: Filter view not found
+
   /api/notifications/events:
     get:
       tags:
@@ -6316,6 +6402,52 @@ components:
           items:
             type: string
           description: List of log message patterns to hide
+
+    FilterView:
+      type: object
+      description: A named snapshot of the torrent filter selections
+      required:
+        - id
+        - name
+        - filters
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          description: View ID
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the view
+        filters:
+          type: object
+          additionalProperties: true
+          description: Opaque torrent filter selections, stored and returned verbatim
+        createdAt:
+          type: string
+          format: date-time
+          description: When the view was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the view was last updated
+
+    FilterViewInput:
+      type: object
+      description: Request to create or update a filter view
+      required:
+        - name
+        - filters
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the view
+        filters:
+          type: object
+          additionalProperties: true
+          description: Opaque torrent filter selections
 
     LatestVersionResponse:
       type: object

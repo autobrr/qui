@@ -218,6 +218,24 @@ export interface TorrentFilters {
 }
 
 /**
+ * A named snapshot of TorrentFilters, saved server-side and shared across
+ * instances. The backend stores filters as an opaque blob, so treat them as
+ * partial and normalize with toViewFilters before use.
+ */
+export interface FilterView {
+  id: number
+  name: string
+  filters: Partial<TorrentFilters>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FilterViewInput {
+  name: string
+  filters: Partial<TorrentFilters>
+}
+
+/**
  * Real-time instance auth/decryption and connection metadata emitted on torrent
  * stream snapshots.
  */

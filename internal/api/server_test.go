@@ -161,6 +161,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		AutomationStore:           models.NewAutomationStore(db),
 		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		FilterViewStore:           models.NewFilterViewStore(db),
 		NotificationTargetStore:   notificationTargetStore,
 		NotificationService:       notificationService,
 		DirScanService:            dirScanService,

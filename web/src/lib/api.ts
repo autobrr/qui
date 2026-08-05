@@ -57,6 +57,8 @@ import type {
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  FilterView,
+  FilterViewInput,
   IndexerActivityStatus,
   IndexerResponse,
   InstanceCapabilities,
@@ -2165,6 +2167,31 @@ class ApiClient {
 
   async deleteTrackerCustomization(id: number): Promise<void> {
     return this.request(`/tracker-customizations/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // Filter Views endpoints
+  async listFilterViews(): Promise<FilterView[]> {
+    return this.request<FilterView[]>("/filter-views")
+  }
+
+  async createFilterView(data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>("/filter-views", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFilterView(id: number, data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>(`/filter-views/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFilterView(id: number): Promise<void> {
+    return this.request(`/filter-views/${id}`, {
       method: "DELETE",
     })
   }

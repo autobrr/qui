@@ -79,6 +79,7 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	filterViewStore                  *models.FilterViewStore
 	logExclusionsStore               *models.LogExclusionsStore
 	notificationTargetStore          *models.NotificationTargetStore
 	notificationService              *notifications.Service
@@ -119,6 +120,7 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	FilterViewStore                  *models.FilterViewStore
 	LogExclusionsStore               *models.LogExclusionsStore
 	NotificationTargetStore          *models.NotificationTargetStore
 	NotificationService              *notifications.Service
@@ -183,6 +185,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		filterViewStore:                  deps.FilterViewStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
 		notificationTargetStore:          deps.NotificationTargetStore,
 		notificationService:              deps.NotificationService,
@@ -365,6 +368,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
 	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
@@ -489,6 +493,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Dashboard settings (per-user layout preferences)
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
+
+			// Saved filter views (named TorrentFilters snapshots)
+			r.Route("/filter-views", func(r chi.Router) {
+				r.Get("/", filterViewHandler.List)
+				r.Post("/", filterViewHandler.Create)
+				r.Put("/{id}", filterViewHandler.Update)
+				r.Delete("/{id}", filterViewHandler.Delete)
+			})
 
 			// Log exclusions (muted log message patterns)
 			r.Get("/log-exclusions", logExclusionsHandler.Get)

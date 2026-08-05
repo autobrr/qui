@@ -759,6 +759,32 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "视图",
+      "empty": "尚未保存任何视图。先选择筛选条件，然后在此保存。",
+      "saveCurrent": "保存当前筛选",
+      "actions": "视图操作",
+      "updateFilters": "更新筛选条件",
+      "rename": "重命名",
+      "delete": "删除",
+      "undo": "撤销",
+      "cancel": "取消",
+      "save": "保存",
+      "saveTitle": "保存视图",
+      "saveDescription": "将当前筛选条件保存为命名视图。搜索、排序和列筛选不会包含在内。",
+      "renameTitle": "重命名视图",
+      "renameDescription": "为该已保存视图设置新名称。",
+      "nameLabel": "名称",
+      "namePlaceholder": "例如：停滞做种",
+      "deleteTitle": "删除视图",
+      "deleteDescription": "确定删除“{{name}}”吗？此操作无法撤销。",
+      "toasts": {
+        "createFailed": "保存视图失败",
+        "updateFailed": "更新视图失败",
+        "deleteFailed": "删除视图失败",
+        "updated": "已更新“{{name}}”"
+      }
+    },
     "title": "筛选器",
     "clearAll": "全部清除",
     "loading": "加载中...",
