@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -2381,4 +2382,11 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		return maindataCalls.Load() >= 2
 	}, time.Second, 5*time.Millisecond,
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+}
+
+// A stalled instance must still be visible now that the per-pass start line is
+// gone.
+func TestTrackerHealthRefreshLevel(t *testing.T) {
+	require.Equal(t, zerolog.DebugLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow-time.Millisecond))
+	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
 }

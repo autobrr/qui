@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,48 @@ func TestLoggerEmitsSingleTimestamp(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(logLine), &decoded))
 	require.Equal(t, "incoming_request", decoded.Message)
 	require.NotEmpty(t, decoded.Time)
+}
+
+// A DEBUG-level logger stays silent for healthy traffic.
+func TestLoggerLevelBySeverity(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    int
+		delay     time.Duration
+		threshold time.Duration
+		wantLine  bool
+	}{
+		{name: "fast success stays at trace", status: http.StatusOK, threshold: time.Second},
+		{name: "server error surfaces", status: http.StatusInternalServerError, threshold: time.Second, wantLine: true},
+		{name: "client error stays at trace", status: http.StatusUnauthorized, threshold: time.Second},
+		{name: "slow request surfaces", status: http.StatusOK, delay: 5 * time.Millisecond, threshold: time.Millisecond, wantLine: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := slowRequestThreshold
+			slowRequestThreshold = tt.threshold
+			t.Cleanup(func() { slowRequestThreshold = original })
+
+			var buf bytes.Buffer
+			logger := zerolog.New(&buf).Level(zerolog.DebugLevel)
+			handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				time.Sleep(tt.delay)
+				w.WriteHeader(tt.status)
+			}))
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/instances", nil)
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+
+			logLine := strings.TrimSpace(buf.String())
+			if !tt.wantLine {
+				require.Empty(t, logLine)
+				return
+			}
+			require.Contains(t, logLine, `"level":"debug"`)
+			require.Contains(t, logLine, `"message":"incoming_request"`)
+		})
+	}
 }
 
 func TestLoggerLogsPathOnly(t *testing.T) {
