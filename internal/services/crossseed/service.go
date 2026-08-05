@@ -12882,7 +12882,10 @@ func logReleaseMatchDecision(
 			reason = "release mismatch"
 		}
 	}
-	if evt := log.Debug(); evt.Enabled() {
+	// TRACE, not DEBUG: the only caller runs this for every source torrent
+	// against every candidate in the same release-key bucket. The key has no
+	// title, so one bucket can hold a full library of episodes.
+	if evt := log.Trace(); evt.Enabled() {
 		evt.
 			Str("sourceTitle", sourceTitle).
 			Str("candidateTitle", candidateTitle).

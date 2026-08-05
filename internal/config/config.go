@@ -547,7 +547,7 @@ sessionSecret = "{{ .sessionSecret }}"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
 # DEBUG records enough detail to diagnose most reports without a restart.
 # TRACE adds per-request and per-sync-tick detail and grows the file quickly.
-logLevel = "{{ .logLevel }}"
+#logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
 # Enable Prometheus metrics on separate port (no authentication required)

@@ -86,7 +86,9 @@ Rejection reasons are logged at debug, which is the default level:
 logLevel = 'DEBUG'
 ```
 
-For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each carries the `pack`, `season`, and `candidate` it compared plus a `reason` field naming the mismatch (e.g. `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`). For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which names each rejected candidate and the reason it failed; `[CROSSSEED-SEARCH] Release filtering rejection summary` additionally reports per-reason counts.
+If you upgraded from an older version, open `config.toml` and set `logLevel` to `DEBUG` if it holds another value.
+
+For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each carries the `pack`, `season`, and `candidate` it compared plus a `reason` field naming the mismatch (e.g. `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`). Two reasons mean the candidate belongs to something else: `title mismatch` is a different show, and `episode not in pack` is an episode this pack does not contain. Together they are most of your library, so they show only at `TRACE`. All other reasons show at `DEBUG`. For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which names each rejected candidate and the reason it failed; `[CROSSSEED-SEARCH] Release filtering rejection summary` additionally reports per-reason counts.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 

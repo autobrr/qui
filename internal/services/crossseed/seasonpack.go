@@ -18,6 +18,7 @@ import (
 	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -763,13 +764,17 @@ func parseSeasonPackEpisodePayload(
 	return enriched, seasonlessOrigin, true
 }
 
+// notInPackReason is the rejection reason for a local episode the pack does not
+// contain. The log-level split keys off this exact value.
+const notInPackReason = "episode not in pack"
+
 // packEpisodeRejectReason names why a local episode failed the pack-episode gate.
 // Both strings are documented grep targets in the cross-seed troubleshooting docs.
 func packEpisodeRejectReason(inPack bool) string {
 	if inPack {
 		return "episode numbering mismatch"
 	}
-	return "episode not in pack"
+	return notInPackReason
 }
 
 // packEpisodeOrigin records which numbering scheme a pack episode identity came from.
@@ -1099,11 +1104,17 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		matcher = &Service{stringNormalizer: stringutils.DefaultNormalizer}
 	}
 
-	// logFiltered emits the field that filtered an episode candidate. It is the
-	// grep target the season-pack troubleshooting docs point users at. Only episode
-	// torrents (isTVEpisode) reach it, so it does not fire for every unrelated torrent.
+	// logFiltered emits the field that filtered an episode candidate. It is the grep
+	// target the season-pack troubleshooting docs point users at. The loop below reads
+	// every cached episode on the instance, so "title mismatch" and "episode not in
+	// pack" fire once per unrelated torrent and stay off the default level. Every other
+	// reason is bounded by the pack size and is what a user debugs, so it logs at Debug.
 	logFiltered := func(candidateName, reason string) {
-		log.Debug().
+		level := zerolog.DebugLevel
+		if reason == titleMismatchReason || reason == notInPackReason {
+			level = zerolog.TraceLevel
+		}
+		log.WithLevel(level).
 			Str("pack", packRelease.Title).
 			Int("season", packRelease.Series).
 			Str("candidate", candidateName).

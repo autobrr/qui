@@ -10,10 +10,13 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -683,6 +686,97 @@ func TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes(t *testing.T) {
 	require.Len(t, got, 1, "incomplete episode must not count as a candidate")
 	_, ok := got[episodeIdentity{series: 3, episode: 1}]
 	require.True(t, ok, "complete episode must count")
+}
+
+// TestMatchEpisodeCandidates_FilterLogLevels pins the level split for filtered episode
+// candidates. The loop reads every cached episode, so a reason that means "belongs to
+// another show or another pack" must stay off the default level.
+func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
+	parsedPack := rls.ParseString("Cool.Show.S03.1080p.WEB.x264-GRP")
+	packRelease := &parsedPack
+
+	type want struct {
+		reason string
+		level  string
+		count  int
+	}
+
+	tests := []struct {
+		name         string
+		packEpisodes map[episodeIdentity]packEpisodeOrigin
+		locals       []qbt.Torrent
+		want         []want
+	}{
+		{
+			// Light check: no torrent data, so the release match is the only gate.
+			name: "no pack episodes",
+			locals: []qbt.Torrent{
+				{Hash: "ok", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "grp", Name: "Cool.Show.S03E02.1080p.WEB.x264-OTHER", Progress: 1.0},
+				{Hash: "other1", Name: "Other.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "other2", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
+			},
+			want: []want{
+				{titleMismatchReason, "trace", 2},
+				{"group mismatch", "debug", 1},
+			},
+		},
+		{
+			// The path every real caller takes: the pack-episode gate runs first. 1140 is
+			// listed as seasoned, so the absolute-numbered local reaches the gate in-pack
+			// and only the scheme guard rejects it. That case is bounded by the pack size.
+			name: "pack episodes set",
+			packEpisodes: map[episodeIdentity]packEpisodeOrigin{
+				{series: 3, episode: 1}:    {seasoned: true},
+				{series: 3, episode: 2}:    {seasoned: true},
+				{series: 3, episode: 1140}: {seasoned: true},
+			},
+			locals: []qbt.Torrent{
+				{Hash: "ok", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "away1", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "away2", Name: "Fourth.Show.S09E11.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "absolute", Name: "Cool Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
+			},
+			want: []want{
+				{notInPackReason, "trace", 2},
+				{"episode numbering mismatch", "debug", 1},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previousLogger := log.Logger
+			previousLevel := zerolog.GlobalLevel()
+			var buf bytes.Buffer
+			log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+			t.Cleanup(func() {
+				log.Logger = previousLogger
+				zerolog.SetGlobalLevel(previousLevel)
+			})
+
+			inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+			cached := buildCrossInstanceViews(inst, tt.locals)
+			svc := &Service{releaseCache: NewReleaseCache()}
+			settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+			got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, tt.packEpisodes, settings, nil)
+			require.Len(t, got, 1, "only the fully matching episode may count")
+
+			for _, w := range tt.want {
+				count := 0
+				for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+					if !strings.Contains(line, `"reason":"`+w.reason+`"`) {
+						continue
+					}
+					require.Contains(t, line, `"level":"`+w.level+`"`, "%q must log at %s", w.reason, w.level)
+					count++
+				}
+				require.Equal(t, w.count, count, "line count for %q", w.reason)
+			}
+		})
+	}
 }
 
 func TestCheckSeasonPackWebhook_ReturnsNotFoundBelowThreshold(t *testing.T) {
