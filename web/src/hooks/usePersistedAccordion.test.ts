@@ -4,7 +4,7 @@
  */
 
 import { renderHook } from "@testing-library/react"
-import { beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { usePersistedAccordion } from "./usePersistedAccordion"
 
 const DEFAULT_ITEMS = ["views", "status", "categories", "tags", "trackers"]
@@ -12,6 +12,10 @@ const DEFAULT_ITEMS = ["views", "status", "categories", "tags", "trackers"]
 describe("usePersistedAccordion", () => {
   beforeEach(() => {
     localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it("returns defaults when nothing is stored", () => {
@@ -45,5 +49,16 @@ describe("usePersistedAccordion", () => {
     localStorage.setItem("qui-accordion-views-seeded", "1")
     const { result } = renderHook(() => usePersistedAccordion())
     expect(result.current[0]).toEqual(["status", "tags"])
+  })
+
+  it("survives blocked storage writes instead of taking the sidebar down", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("QuotaExceededError")
+    })
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { result } = renderHook(() => usePersistedAccordion())
+
+    expect(result.current[0]).toEqual(DEFAULT_ITEMS)
   })
 })

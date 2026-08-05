@@ -30,8 +30,13 @@ export function usePersistedAccordion() {
   })
 
   useEffect(() => {
-    localStorage.setItem("qui-accordion", JSON.stringify(expandedItems))
-    localStorage.setItem(VIEWS_SEEDED_KEY, "1")
+    // A throwing effect unmounts the sidebar to the error boundary; blocked storage must not do that.
+    try {
+      localStorage.setItem("qui-accordion", JSON.stringify(expandedItems))
+      localStorage.setItem(VIEWS_SEEDED_KEY, "1")
+    } catch (error) {
+      console.error("Failed to save accordion state to localStorage:", error)
+    }
   }, [expandedItems])
 
   return [expandedItems, setExpandedItems] as const
