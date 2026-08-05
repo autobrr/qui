@@ -17,8 +17,7 @@ type FilterOptions struct {
 	Expr              string   `json:"expr"`
 }
 
-// IsEmpty reports whether no filter is set. Used to keep an all-null filter
-// block out of hot-path log lines.
+// IsEmpty reports whether no filter is set.
 func (f FilterOptions) IsEmpty() bool {
 	return len(f.Hashes) == 0 &&
 		len(f.Status) == 0 &&

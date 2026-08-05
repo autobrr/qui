@@ -15,9 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The production logger already carries a timestamp in its context, so the
-// middleware must not add its own. A second Timestamp() call emits a duplicate
-// "time" key, which strict JSON consumers reject.
+// The production logger already carries a timestamp in its context, so a
+// Timestamp() call here emits a duplicate "time" key.
 func TestLoggerEmitsSingleTimestamp(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf).With().Timestamp().Logger().Level(zerolog.TraceLevel)
@@ -31,10 +30,13 @@ func TestLoggerEmitsSingleTimestamp(t *testing.T) {
 	logLine := strings.TrimSpace(buf.String())
 	require.Equal(t, 1, strings.Count(logLine, `"time":`), "duplicate time key in %s", logLine)
 
-	var decoded map[string]any
+	var decoded struct {
+		Message string `json:"message"`
+		Time    string `json:"time"`
+	}
 	require.NoError(t, json.Unmarshal([]byte(logLine), &decoded))
-	require.Equal(t, "incoming_request", decoded["message"])
-	require.NotEmpty(t, decoded["time"])
+	require.Equal(t, "incoming_request", decoded.Message)
+	require.NotEmpty(t, decoded.Time)
 }
 
 func TestLoggerLogsPathOnly(t *testing.T) {

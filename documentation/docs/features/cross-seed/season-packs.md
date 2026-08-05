@@ -325,4 +325,4 @@ Look for messages containing the torrent name and these clues:
 - `torrent added paused; recheck queued` - qui added the pack and queued automatic resume
 - `Recheck completed below threshold, torrent left paused for manual review` - the recheck reported less than the bytes that qui linked, so some links are bad
 
-Use `TRACE` when you need field-level matching details. Then look for `[CROSSSEED-MATCH] Release filtered` entries to see which release field caused an episode to be rejected.
+Field-level matching details are logged at `DEBUG`, which is the default level. Look for `[CROSSSEED-MATCH] Release filtered` entries to see which release field caused an episode to be rejected.

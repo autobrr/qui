@@ -689,9 +689,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	})
 
 	// Proxy routes (outside of /api and not requiring authentication).
-	// The access logger gives proxy traffic the same status and latency record
-	// that API traffic has. It is trace level, so per-request proxy detail at
-	// debug still comes from the handler lines.
+	// Wrapped so proxy traffic gets the same status and latency record as /api.
 	proxyHandler.Routes(r.With(middleware.Logger(s.logger)))
 
 	swaggerHandler, err := swagger.NewHandler(s.config.Config.BaseURL)

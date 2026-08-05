@@ -1099,7 +1099,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		matcher = &Service{stringNormalizer: stringutils.DefaultNormalizer}
 	}
 
-	// logFiltered emits the field that filtered an episode candidate at TRACE, the
+	// logFiltered emits the field that filtered an episode candidate. It is the
 	// grep target the season-pack troubleshooting docs point users at. Only episode
 	// torrents (isTVEpisode) reach it, so it does not fire for every unrelated torrent.
 	logFiltered := func(candidateName, reason string) {
@@ -1171,8 +1171,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 
 		// Checked last so it only fires for episodes that would otherwise satisfy
-		// the pack (announce raced the episode's download), and at DEBUG because
-		// that near-miss is the one rejection users ask about without trace on.
+		// the pack (announce raced the episode's download).
 		if torrent.Progress < 1.0 {
 			log.Debug().
 				Str("pack", packRelease.Title).

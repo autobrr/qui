@@ -1645,8 +1645,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	} else {
 		// Counts come from ALL torrents (not filtered) for the sidebar.
 		// Materialized inside this branch on purpose: stream ticks leave
-		// includeCachedCounts false, so hoisting this above the branch cloned
-		// the full torrent slice on every tick and then discarded it.
+		// includeCachedCounts false, so hoisting it above cloned every torrent
+		// on every tick and discarded the result.
 		var allTorrents []qbt.Torrent
 		if useManualFiltering {
 			allTorrents = allTorrentsForCounts

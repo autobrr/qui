@@ -36,8 +36,7 @@ func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 					http.Error(ww, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 
-				// log end request. Guarded so the redaction and header lookups below
-				// are skipped entirely when trace logging is off.
+				// Guarded so the redaction and header lookups are skipped when off.
 				if e := l.Trace(); e.Enabled() {
 					e.Str("type", "access").
 						Str("remote_ip", r.RemoteAddr).

@@ -35,7 +35,7 @@ QUI__SESSION_SECRET=...       # Auto-generated if not set
 ## Logging
 
 ```bash
-QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
+QUI__LOG_LEVEL=DEBUG     # Options: ERROR, DEBUG, INFO, WARN, TRACE (default: DEBUG)
 QUI__LOG_PATH=...        # Optional: log file path
 QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
 QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)

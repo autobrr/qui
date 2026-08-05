@@ -171,8 +171,6 @@ func TestMatchAgainstIndex_ReleaseMetadata(t *testing.T) {
 	})
 }
 
-// Cross-seed rejection reasons log at debug so a user who reports a match
-// problem can capture them without switching the whole server to trace.
 func TestMatchAgainstIndex_ReleaseMetadataDebugLogsRejection(t *testing.T) {
 	previousLogger := log.Logger
 	previousLevel := zerolog.GlobalLevel()
