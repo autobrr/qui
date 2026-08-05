@@ -40,7 +40,6 @@ func newLinkFallbackBoundaryService(sync *discPolicySyncManager, instanceStore *
 		recheckResumeCtx:  context.Background(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.SizeMismatchTolerancePercent = 50
 			settings.SkipPieceBoundarySafetyCheck = true
 			return settings, nil
 		},
@@ -87,11 +86,7 @@ func TestLinkModeFallbackPieceBoundarySkipsUnsafeDespiteRegularToggle(t *testing
 	}
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
 
-	req := &CrossSeedRequest{
-		SkipPieceBoundarySafetyCheck:    true,
-		SizeMismatchTolerancePercent:    50,
-		SizeMismatchTolerancePercentSet: true,
-	}
+	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
 	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
@@ -146,11 +141,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 	}
 	service := newLinkFallbackBoundaryService(sync, instanceStore)
 
-	req := &CrossSeedRequest{
-		SkipPieceBoundarySafetyCheck:    true,
-		SizeMismatchTolerancePercent:    50,
-		SizeMismatchTolerancePercentSet: true,
-	}
+	req := &CrossSeedRequest{SkipPieceBoundarySafetyCheck: true}
 	result := service.processCrossSeedCandidate(ctx, CrossSeedCandidate{
 		InstanceID:   instanceID,
 		InstanceName: "test-instance",
@@ -169,7 +160,8 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 	case pending := <-service.recheckResumeChan:
 		require.Equal(t, instanceID, pending.instanceID)
 		require.Equal(t, newHash, pending.hash)
-		require.InDelta(t, 1.0, pending.threshold, 0.001)
+		require.NotNil(t, pending.budgetBytes)
+		require.Zero(t, *pending.budgetBytes, "full-recheck queue entries must carry a zero byte budget")
 	default:
 		require.Fail(t, "expected safe link-mode fallback to queue full recheck resume")
 	}

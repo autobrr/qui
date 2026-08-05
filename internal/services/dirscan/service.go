@@ -611,12 +611,15 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
+	enabledIndexerIDs := s.enabledIndexerIDSet(ctx, &l)
+
 	workSelection := selectEligibleRootWork(
 		scanResult,
 		trackedFiles,
 		s.parser,
 		effectiveMaxSearcheeAgeDays(settings, run.TriggeredBy),
 		time.Now(),
+		enabledIndexerIDs,
 		&l,
 	)
 
@@ -643,8 +646,29 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, &l)
+	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
 	s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
+}
+
+// enabledIndexerIDSet returns the IDs of all enabled indexers as a set.
+// It returns nil when the lookup fails; callers then keep the old behavior
+// (no_match rows are not reopened and new stamps carry no search set).
+func (s *Service) enabledIndexerIDSet(ctx context.Context, l *zerolog.Logger) map[int]struct{} {
+	if s == nil || s.jackettService == nil {
+		return nil
+	}
+	enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+	if err != nil {
+		if l != nil {
+			l.Warn().Err(err).Msg("dirscan: failed to list enabled indexers")
+		}
+		return nil
+	}
+	ids := make(map[int]struct{}, len(enabledInfo))
+	for id := range enabledInfo {
+		ids[id] = struct{}{}
+	}
+	return ids
 }
 
 func (s *Service) updateDirectoryLastScan(ctx context.Context, directoryID int, l *zerolog.Logger) {
@@ -866,6 +890,7 @@ func (s *Service) runSearchAndInjectPhase(
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) (matchesFound, torrentsAdded int) {
 	if len(workSelection.roots) == 0 {
@@ -922,6 +947,7 @@ func (s *Service) runSearchAndInjectPhase(
 			runID,
 			matchesFound,
 			torrentsAdded,
+			enabledIndexerIDs,
 			l,
 		)
 	}
@@ -933,6 +959,7 @@ type dirScanFileUpdate struct {
 	status             models.DirScanFileStatus
 	matchedTorrentHash string
 	matchedIndexerID   *int
+	searchedIndexerIDs []int
 }
 
 func (s *Service) processRootSearchee(
@@ -948,6 +975,7 @@ func (s *Service) processRootSearchee(
 	runID int64,
 	matchesFoundIn int,
 	torrentsAddedIn int,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) (matchesFoundOut, torrentsAddedOut int) {
 	matchesFoundOut = matchesFoundIn
@@ -961,15 +989,14 @@ func (s *Service) processRootSearchee(
 		if trackedFiles == nil {
 			return false
 		}
-		tracked := trackedFiles.byPath[path]
-		if tracked == nil {
-			return false
-		}
-		return isFinalFileStatus(tracked.Status)
+		return isFinalTrackedFile(trackedFiles.byPath[path], enabledIndexerIDs)
 	}
 
 	fileUpdates := make(map[string]dirScanFileUpdate)
 	attemptedFiles := make(map[string]struct{})
+	// The set of indexers this scan considers; recorded on no_match stamps so a
+	// later scan can reopen the file when new indexers appear.
+	consideredIndexerIDs := sortedIndexerIDs(enabledIndexerIDs)
 	hadSearchSuccess := false
 	hadSearchError := false
 	hasProcessingError := false
@@ -999,6 +1026,8 @@ func (s *Service) processRootSearchee(
 			false,
 			false,
 			false,
+			nil,
+			enabledIndexerIDs,
 			l,
 		); err != nil && l != nil {
 			l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist already-seeding searchee file statuses")
@@ -1035,7 +1064,7 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
+		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, enabledIndexerIDs, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -1176,6 +1205,8 @@ func (s *Service) processRootSearchee(
 		hadSearchSuccess,
 		hadSearchError,
 		hasProcessingError,
+		consideredIndexerIDs,
+		enabledIndexerIDs,
 		l,
 	); err != nil && l != nil {
 		l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist searchee file statuses")
@@ -1203,6 +1234,8 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 	hadSearchSuccess bool,
 	hadSearchError bool,
 	hasProcessingError bool,
+	consideredIndexerIDs []int,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) error {
 	if s == nil || s.store == nil || directoryID <= 0 || root == nil {
@@ -1224,7 +1257,7 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 		if trackedFiles != nil {
 			tracked = trackedFiles.byPath[f.Path]
 		}
-		isFinal := tracked != nil && isFinalFileStatus(tracked.Status)
+		isFinal := isFinalTrackedFile(tracked, enabledIndexerIDs)
 
 		update, ok := updates[f.Path]
 		switch {
@@ -1257,7 +1290,10 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 			if !attempted && isVideo {
 				continue
 			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, dirScanFileUpdate{status: models.DirScanFileStatusNoMatch}); err != nil {
+			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, dirScanFileUpdate{
+				status:             models.DirScanFileStatusNoMatch,
+				searchedIndexerIDs: consideredIndexerIDs,
+			}); err != nil {
 				return err
 			}
 		default:
@@ -1297,6 +1333,7 @@ func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, 
 		Status:             update.status,
 		MatchedTorrentHash: update.matchedTorrentHash,
 		MatchedIndexerID:   update.matchedIndexerID,
+		SearchedIndexerIDs: update.searchedIndexerIDs,
 	}
 	return s.store.UpsertFile(ctx, file)
 }
@@ -1454,6 +1491,9 @@ type searcheeMatch struct {
 }
 
 type searcheeOutcome struct {
+	// searched is true only when the search covered every requested indexer.
+	// A partial search (some indexers failed or timed out) does not count, so
+	// the searchee stays pending and the next scan retries it.
 	searched    bool
 	searchError bool
 }
@@ -1531,6 +1571,7 @@ func (s *Service) processSearchee(
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) ([]*searcheeMatch, searcheeOutcome) {
 	if searchee == nil || settings == nil || matcher == nil {
@@ -1559,21 +1600,8 @@ func (s *Service) processSearchee(
 	contentType := normalizeContentType(contentInfo.ContentType)
 
 	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
-	if len(filteredIndexers) == 0 && s.jackettService != nil {
-		enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
-		if err != nil {
-			if l != nil {
-				l.Warn().Err(err).Msg("dirscan: failed to probe enabled indexers")
-			}
-			return nil, searcheeOutcome{searchError: true}
-		}
-		if len(enabledInfo) > 0 {
-			filteredIndexers = make([]int, 0, len(enabledInfo))
-			for id := range enabledInfo {
-				filteredIndexers = append(filteredIndexers, id)
-			}
-			sort.Ints(filteredIndexers)
-		}
+	if len(filteredIndexers) == 0 {
+		filteredIndexers = sortedIndexerIDs(enabledIndexerIDs)
 	}
 	if len(filteredIndexers) == 0 {
 		if l != nil {
@@ -1599,8 +1627,22 @@ func (s *Service) processSearchee(
 	if response == nil {
 		return nil, searcheeOutcome{}
 	}
+
+	// A search counts as complete only when at least one indexer was resolved
+	// and every resolved indexer answered (or was excluded on purpose). An
+	// incomplete search must not finalize the searchee as no_match: the files
+	// stay pending and the next scan retries the indexers that were missed.
+	searchComplete := len(response.RequestedIndexerIDs) > 0 && response.FullyCovered()
+	if !searchComplete && l != nil {
+		l.Debug().
+			Str("name", searchee.Name).
+			Ints("requestedIndexers", response.RequestedIndexerIDs).
+			Ints("coveredIndexers", response.CoveredIndexerIDs).
+			Msg("dirscan: search did not cover all indexers; searchee stays pending")
+	}
+
 	if len(response.Results) == 0 {
-		return nil, searcheeOutcome{searched: true}
+		return nil, searcheeOutcome{searched: searchComplete}
 	}
 
 	l.Debug().
@@ -1609,7 +1651,21 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	return s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l), searcheeOutcome{searched: true}
+	matches := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	return matches, searcheeOutcome{searched: searchComplete}
+}
+
+// sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.
+func sortedIndexerIDs(ids map[int]struct{}) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
@@ -2864,6 +2920,16 @@ func (s *Service) ResetFilesForDirectory(ctx context.Context, directoryID int) e
 		return fmt.Errorf("reset tracked files: %w", err)
 	}
 	return nil
+}
+
+// RequeueNoMatchFiles resets no_match files for a directory to pending so the
+// next scan searches them again.
+func (s *Service) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int64, error) {
+	affected, err := s.store.RequeueNoMatchFiles(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("requeue no-match files: %w", err)
+	}
+	return affected, nil
 }
 
 // mapContentTypeToARR maps dirscan content type to ARR content type for ID lookup.

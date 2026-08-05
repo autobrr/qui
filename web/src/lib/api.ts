@@ -45,6 +45,7 @@ import type {
   DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
+  DirScanRequeueResponse,
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
@@ -56,6 +57,8 @@ import type {
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  FilterView,
+  FilterViewInput,
   IndexerActivityStatus,
   IndexerResponse,
   InstanceCapabilities,
@@ -1537,6 +1540,8 @@ class ApiClient {
     indexerIds: number[]
     disableTorznab?: boolean
     cooldownMinutes: number
+    skipIndividualEpisodes?: boolean
+    maxAddedAgeDays?: number
   }): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
       method: "POST",
@@ -2166,6 +2171,31 @@ class ApiClient {
     })
   }
 
+  // Filter Views endpoints
+  async listFilterViews(): Promise<FilterView[]> {
+    return this.request<FilterView[]>("/filter-views")
+  }
+
+  async createFilterView(data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>("/filter-views", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFilterView(id: number, data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>(`/filter-views/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFilterView(id: number): Promise<void> {
+    return this.request(`/filter-views/${id}`, {
+      method: "DELETE",
+    })
+  }
+
   // Dashboard Settings endpoints
   async getDashboardSettings(): Promise<DashboardSettings> {
     return this.request<DashboardSettings>("/dashboard-settings")
@@ -2246,12 +2276,15 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string): Promise<DiscoverJackettResponse> {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string, sourceIndexerId?: number): Promise<DiscoverJackettResponse> {
     const user = basicUsername?.trim() ?? ""
     const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
     if (user) {
       payload.basic_username = user
       payload.basic_password = basicPassword ?? ""
+    }
+    if (sourceIndexerId !== undefined) {
+      payload.source_indexer_id = sourceIndexerId
     }
     return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
@@ -2553,6 +2586,12 @@ class ApiClient {
 
   async resetDirScanFiles(directoryId: number): Promise<void> {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
+  async requeueDirScanNoMatch(directoryId: number): Promise<DirScanRequeueResponse> {
+    return this.request<DirScanRequeueResponse>(`/dir-scan/directories/${directoryId}/requeue-no-match`, {
+      method: "POST",
+    })
   }
 
   async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {

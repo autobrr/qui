@@ -418,6 +418,12 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 	require.Len(t, results, 1)
 	require.Equal(t, existing.Name, results[0].Title)
 	require.Equal(t, duplicateHash, results[0].InfoHashV1)
+
+	scored[0].class = searchCandidateClassTitleRescue
+	results, duplicateFiltered, err = svc.buildTorrentSearchResults(context.Background(), instanceID, sourceHash, scored, 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, duplicateFiltered)
+	require.Empty(t, results)
 }
 
 func TestContentFilteringWaitTimeoutDefault(t *testing.T) {
@@ -594,10 +600,8 @@ func TestSearchTorrentMatchesRefreshesLateFilterStatus(t *testing.T) {
 				instanceID,
 				sourceHash,
 				TorrentSearchOptions{
-					IndexerIDs:                      []int{1},
-					SkipGazelle:                     true,
-					SizeMismatchTolerancePercent:    5,
-					SizeMismatchTolerancePercentSet: true,
+					IndexerIDs:  []int{1},
+					SkipGazelle: true,
 				},
 				nil,
 			)
@@ -725,7 +729,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 		InfoHashV1:  duplicateHash,
 		Size:        existing.Size,
 	}
-	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached}, 5)
+	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
@@ -802,7 +806,7 @@ func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists
 		InfoHashV1:  duplicateHash,
 		Size:        existing.Size,
 	}
-	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached}, 5)
+	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
@@ -880,7 +884,7 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExists
 		InfoHashV1:  duplicateHash,
 		Size:        existing.Size,
 	}
-	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached}, 5)
+	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{
@@ -1055,7 +1059,7 @@ func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testi
 		GUID:        "duplicate-guid",
 		InfoHashV1:  strings.Repeat("0", 40),
 	}
-	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached}, 5)
+	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached})
 
 	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
 		Selections: []TorrentSearchSelection{

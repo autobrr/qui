@@ -377,6 +377,27 @@ func matchMaterializedSourceFilesToCandidates(sourceFiles, candidateFiles qbt.To
 	return matchSourceFilesToCandidatesWithPolicy(sourceFiles, candidateFiles, allowMaterializedSizeOnlyMatch)
 }
 
+// exactUsableFilePairing requires every non-ignored file to have one exact-size partner.
+func exactUsableFilePairing(sourceFiles, candidateFiles qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) bool {
+	filteredSource := make(qbt.TorrentFiles, 0, len(sourceFiles))
+	for _, file := range sourceFiles {
+		if !shouldIgnoreFile(file.Name, normalizer) {
+			filteredSource = append(filteredSource, file)
+		}
+	}
+	filteredCandidate := make(qbt.TorrentFiles, 0, len(candidateFiles))
+	for _, file := range candidateFiles {
+		if !shouldIgnoreFile(file.Name, normalizer) {
+			filteredCandidate = append(filteredCandidate, file)
+		}
+	}
+	if len(filteredSource) == 0 || len(filteredSource) != len(filteredCandidate) {
+		return false
+	}
+	matches, unmatched := matchSourceFilesToCandidates(filteredSource, filteredCandidate)
+	return len(unmatched) == 0 && len(matches) == len(filteredSource)
+}
+
 func matchSourceFilesToCandidatesWithPolicy(
 	sourceFiles,
 	candidateFiles qbt.TorrentFiles,

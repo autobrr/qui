@@ -2229,12 +2229,13 @@ func TestSearch_AllIndexersSkippedByRateLimitWaitReturnsError(t *testing.T) {
 
 func TestProwlarrYearParameterWorkaround(t *testing.T) {
 	tests := []struct {
-		name        string
-		backend     models.TorznabBackend
-		inputParams map[string]string
-		expected    map[string]string
-		meta        *searchContext
-		description string
+		name         string
+		backend      models.TorznabBackend
+		capabilities []string
+		inputParams  map[string]string
+		expected     map[string]string
+		meta         *searchContext
+		description  string
 	}{
 		{
 			name:    "prowlarr with year parameter",
@@ -2412,16 +2413,87 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			},
 			description: "Prowlarr indexer should drop title and resolution from q when IDs are present",
 		},
+		{
+			name:         "prowlarr id driven tv keeps structured season when caps support it",
+			backend:      models.TorznabBackendProwlarr,
+			capabilities: []string{"tv-search", "tv-search-tvdbid", "tv-search-season"},
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"season": "5",
+				"tvdbid": "153021",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"season": "5",
+				"tvdbid": "153021",
+				// q must stay absent: BTN-style free-text search matches release
+				// names, so an injected "S05" token returns zero results (#2036)
+			},
+			description: "Prowlarr indexer with season caps should keep structured season param and not inject a token into q",
+		},
+		{
+			name:         "prowlarr tv keeps structured season and title query when caps support it",
+			backend:      models.TorznabBackendProwlarr,
+			capabilities: []string{"tv-search", "tv-search-season", "tv-search-ep"},
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"ep":     "3",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"ep":     "3",
+			},
+			description: "Prowlarr indexer with season/ep caps should keep structured params alongside the title query",
+		},
+		{
+			name:         "prowlarr tv falls back to token when ep cap missing",
+			backend:      models.TorznabBackendProwlarr,
+			capabilities: []string{"tv-search", "tv-search-season"},
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"ep":     "3",
+			},
+			expected: map[string]string{
+				"t": "tvsearch",
+				"q": "Some Show S22E03",
+			},
+			description: "Prowlarr indexer missing the ep cap should fall back to the token workaround for season+episode searches",
+		},
+		{
+			name:         "prowlarr tv restores title query when structured params supported and q empty",
+			backend:      models.TorznabBackendProwlarr,
+			capabilities: []string{"tv-search", "tv-search-season"},
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"season": "17",
+			},
+			meta: &searchContext{
+				originalQuery: "Some Show",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "17",
+			},
+			description: "Prowlarr indexer with season caps should restore the title query instead of a season-only search",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a test indexer with the specified backend
 			indexer := &models.TorznabIndexer{
-				ID:        1,
-				Name:      "Test Indexer",
-				Backend:   tt.backend,
-				IndexerID: "test",
+				ID:           1,
+				Name:         "Test Indexer",
+				Backend:      tt.backend,
+				IndexerID:    "test",
+				Capabilities: tt.capabilities,
 			}
 
 			// Set up mock store
@@ -3239,7 +3311,7 @@ func TestRecentSurfacesTotalIndexerFailure(t *testing.T) {
 
 	respCh := make(chan *SearchResponse, 1)
 	errCh := make(chan error, 1)
-	if err := service.Recent(context.Background(), 0, nil, func(resp *SearchResponse, err error) {
+	if err := service.Recent(context.Background(), 0, 0, nil, func(resp *SearchResponse, err error) {
 		if err != nil {
 			errCh <- err
 		} else {
@@ -3284,7 +3356,7 @@ func TestRecentPartialCoverageMarksPartial(t *testing.T) {
 
 	respCh := make(chan *SearchResponse, 1)
 	errCh := make(chan error, 1)
-	if err := service.Recent(context.Background(), 0, nil, func(resp *SearchResponse, err error) {
+	if err := service.Recent(context.Background(), 0, 0, nil, func(resp *SearchResponse, err error) {
 		if err != nil {
 			errCh <- err
 		} else {

@@ -833,6 +833,14 @@
         "created": "{{count}} created",
         "updated": "{{count}} updated",
         "failed": "{{count}} failed"
+      },
+      "savedConnections": {
+        "title": "Saved connections",
+        "description": "Use a server you imported from before. The API key stays on the server.",
+        "manual": "Enter manually",
+        "storedKey": "The stored API key for this server is used.",
+        "indexerCount_one": "{{count}} indexer",
+        "indexerCount_other": "{{count}} indexers"
       }
     },
     "table": {

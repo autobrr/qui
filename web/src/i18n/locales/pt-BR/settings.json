@@ -833,6 +833,14 @@
         "created": "{{count}} criados",
         "updated": "{{count}} atualizados",
         "failed": "{{count}} falharam"
+      },
+      "savedConnections": {
+        "title": "Conexões salvas",
+        "description": "Use um servidor já importado. A chave API permanece no servidor.",
+        "manual": "Inserir manualmente",
+        "storedKey": "A chave API salva para este servidor é usada.",
+        "indexerCount_one": "{{count}} indexador",
+        "indexerCount_other": "{{count}} indexadores"
       }
     },
     "table": {

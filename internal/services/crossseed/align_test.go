@@ -13,6 +13,62 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+func TestExactUsableFilePairing(t *testing.T) {
+	normalizer := stringutils.NewDefaultNormalizer()
+	t.Run("renamed unique sizes", func(t *testing.T) {
+		require.True(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/audio.flac", Size: 100}},
+			qbt.TorrentFiles{{Name: "old/one.bin", Size: 200}, {Name: "old/two.bin", Size: 100}},
+			normalizer,
+		))
+	})
+
+	t.Run("ambiguous duplicate sizes", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/one.mkv", Size: 200}, {Name: "new/two.mkv", Size: 200}},
+			qbt.TorrentFiles{{Name: "old/a.bin", Size: 200}, {Name: "old/b.bin", Size: 200}},
+			normalizer,
+		))
+	})
+
+	t.Run("duplicate sizes with exact paths", func(t *testing.T) {
+		files := qbt.TorrentFiles{{Name: "one.mkv", Size: 200}, {Name: "two.mkv", Size: 200}}
+		require.True(t, exactUsableFilePairing(files, files, normalizer))
+	})
+
+	t.Run("ignored sidecars do not need partners", func(t *testing.T) {
+		require.True(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/info.nfo", Size: 10}},
+			qbt.TorrentFiles{{Name: "old/video.bin", Size: 200}},
+			normalizer,
+		))
+	})
+
+	t.Run("requires usable files", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "info.nfo", Size: 10}},
+			qbt.TorrentFiles{{Name: "other.nfo", Size: 10}},
+			normalizer,
+		))
+	})
+
+	t.Run("rejects a size mismatch", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}},
+			qbt.TorrentFiles{{Name: "old/video.mkv", Size: 201}},
+			normalizer,
+		))
+	})
+
+	t.Run("rejects an extra usable file", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/extra.mkv", Size: 100}},
+			qbt.TorrentFiles{{Name: "old/video.mkv", Size: 200}},
+			normalizer,
+		))
+	})
+}
+
 func TestBuildFileRenamePlan_MovieRelease(t *testing.T) {
 	t.Parallel()
 

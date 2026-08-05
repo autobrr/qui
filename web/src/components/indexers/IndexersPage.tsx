@@ -292,6 +292,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
       <AutodiscoveryDialog
         open={autodiscoveryOpen}
+        indexers={indexers}
         onClose={() => {
           setAutodiscoveryOpen(false)
           loadIndexers()

@@ -57,7 +57,7 @@ func buildCrossSeedAddPlan(
 	// candidateRoot != "" shape, the episode maps into the season-pack content path
 	// instead of a qBittorrent-created subfolder, so classifying it as Subfolder
 	// would misrepresent an episode-to-season-pack mapping.
-	isEpisodeInPack := matchType == "partial-in-pack" &&
+	isEpisodeInPack := (matchType == "partial-in-pack" || matchType == "size-partial-in-pack") &&
 		isTVEpisode(sourceRelease) &&
 		isTVSeasonPack(candidateRelease)
 

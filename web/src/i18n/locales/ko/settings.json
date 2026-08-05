@@ -831,6 +831,13 @@
         "created": "{{count}}개 생성됨",
         "updated": "{{count}}개 업데이트됨",
         "failed": "{{count}}개 실패"
+      },
+      "savedConnections": {
+        "title": "저장된 연결",
+        "description": "이전에 가져온 서버를 사용하세요. API 키는 서버에 보관됩니다.",
+        "manual": "직접 입력",
+        "storedKey": "이 서버에 저장된 API 키를 사용합니다.",
+        "indexerCount_other": "인덱서 {{count}}개"
       }
     },
     "table": {

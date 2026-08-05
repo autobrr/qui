@@ -40,6 +40,10 @@ updates:
       semver-patch-days: 3
       semver-minor-days: 7
       semver-major-days: 14
+    ignore:
+      # typescript-eslint peer-caps at <6.1.0; unpin once TS 7.1 exposes the APIs
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /documentation
