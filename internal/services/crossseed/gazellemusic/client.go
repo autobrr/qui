@@ -254,7 +254,7 @@ func (c *Client) SearchByHash(ctx context.Context, hash string) (*TorrentSearchR
 		if strings.Contains(lower, "bad id parameter") ||
 			strings.Contains(lower, "bad parameters") ||
 			strings.Contains(lower, "bad hash parameter") {
-			log.Trace().Str("hash", hash).Str("site", c.host).Msg("gazelle: no match by hash")
+			log.Debug().Str("hash", hash).Str("site", c.host).Msg("gazelle: no match by hash")
 			return nil, nil
 		}
 		return nil, err

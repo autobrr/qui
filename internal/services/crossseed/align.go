@@ -179,7 +179,7 @@ func (s *Service) alignCrossSeedContentPaths(
 				Msg("Got torrent files from qBittorrent")
 			break
 		} else {
-			log.Trace().
+			log.Debug().
 				Int("instanceID", instanceID).
 				Str("torrentHash", activeHash).
 				Int("attempt", attempt+1).
@@ -193,7 +193,7 @@ func (s *Service) alignCrossSeedContentPaths(
 	// Fallback to expected files if we couldn't get them from qBittorrent
 	if len(sourceFiles) == 0 {
 		if ctx.Err() != nil {
-			log.Trace().
+			log.Debug().
 				Err(ctx.Err()).
 				Int("instanceID", instanceID).
 				Str("torrentHash", activeHash).

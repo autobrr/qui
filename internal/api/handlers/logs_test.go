@@ -193,6 +193,30 @@ func TestLogsHandler_StreamLogs_WritesToHub(t *testing.T) {
 	}
 }
 
+func TestIsQuiLogFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{"live file", "qui.log", true},
+		{"rotated", "qui-2026-01-01T00-00-00.000.log", true},
+		{"rotated compressed", "qui-2026-01-01T00-00-00.000.log.gz", true},
+		{"live file compressed", "qui.log.gz", false},
+		{"bogus timestamp compressed", "qui-notatimestamp.log.gz", false},
+		{"foreign compressed log", "other-service.log.gz", false},
+		{"double gzip", "qui-2026-01-01T00-00-00.000.log.gz.gz", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isQuiLogFile(tt.filename, "qui.log"); got != tt.want {
+				t.Errorf("isQuiLogFile(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLogsHandler_ListLogFiles_NoLogPath(t *testing.T) {
 	handler := NewLogsHandler(createTestConfig(t))
 
