@@ -337,6 +337,12 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 
 	rescan, staleFileIDs := planTorrentRescan(previous.torrentInfoByHash, torrentByHash)
 
+	// Bail before reading anything when the changes alone already exceed the budget,
+	// so a mass addition does not read half the library off disk twice.
+	if len(rescan)*hardlinkIncrementalChangeRatio > len(torrents) {
+		return nil
+	}
+
 	// Torrents that arrived raise the link count on every file they hardlink to, so
 	// the holders of those files need a second look. Their identities are only known
 	// once the new torrents have been read, hence the two passes.
@@ -405,10 +411,18 @@ func (s *Service) updateHardlinkIndex(ctx context.Context, instanceID int, cache
 // link on it reads as a link outside the client. That is the answer that keeps the
 // torrent out of the delete-safe groups.
 func (idx *HardlinkIndex) scopeAfterRescan(info *torrentFileInfo) string {
-	if idx == nil || idx.buildState == nil || info == nil {
+	if idx == nil || info == nil {
 		return ""
 	}
 	if !info.allAccessible || len(info.fileIDs) == 0 {
+		return ""
+	}
+
+	// Cross-instance augmentation raises uniquePathCount in place, and a preview
+	// request can run it while a scheduled apply verifies its delete candidates.
+	idx.crossScopeMu.Lock()
+	defer idx.crossScopeMu.Unlock()
+	if idx.buildState == nil {
 		return ""
 	}
 

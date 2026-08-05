@@ -1027,17 +1027,7 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 	if instance == nil || !instance.HasLocalFilesystemAccess {
 		return nil
 	}
-	if rule.Conditions == nil || rule.Conditions.Delete == nil {
-		return nil
-	}
-
-	cond := rule.Conditions.Delete.Condition
-	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope) ||
-		rule.Conditions.Delete.IncludeHardlinks
-	needsCrossScope := ConditionUsesField(cond, FieldHardlinkScopeCross) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScopeCross)
-	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
+	needsHardlinkScope, needsCrossScope, needsHardlinkSignatureGrouping := deleteHardlinkNeeds(rule)
 	if !needsHardlinkScope && !needsHardlinkSignatureGrouping && !needsCrossScope {
 		return nil
 	}
@@ -1904,17 +1894,30 @@ func (s *Service) buildCategoryPreviewResult(
 	return result
 }
 
-// deleteUsesHardlinkData reports whether a rule's delete decision rests on hardlink
-// state, either through a condition on the scope or by expanding to the hardlink copies.
-func deleteUsesHardlinkData(rule *models.Automation) bool {
+// deleteHardlinkNeeds reports which hardlink data a rule's delete needs: the
+// single-instance scope, the cross-instance scope, and the signature groups. A rule that
+// sorts or groups by that data picks its delete batch from the index just as surely as
+// one that conditions on it.
+//
+// Both the code that loads the data and the code that re-verifies the deletions must
+// agree on this answer, so they read it from here rather than each deciding again.
+func deleteHardlinkNeeds(rule *models.Automation) (scope, cross, grouping bool) {
 	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
-		return false
-	}
-	if rule.Conditions.Delete.IncludeHardlinks {
-		return true
+		return false, false, false
 	}
 	cond := rule.Conditions.Delete.Condition
-	return ConditionUsesField(cond, FieldHardlinkScope) || ConditionUsesField(cond, FieldHardlinkScopeCross)
+	scope = rule.Conditions.Delete.IncludeHardlinks ||
+		ConditionUsesField(cond, FieldHardlinkScope) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope)
+	cross = ConditionUsesField(cond, FieldHardlinkScopeCross) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScopeCross)
+	return scope, cross, ruleUsesHardlinkSignatureGrouping(rule)
+}
+
+// deleteUsesHardlinkData reports whether a rule's delete decision rests on hardlink state.
+func deleteUsesHardlinkData(rule *models.Automation) bool {
+	scope, cross, grouping := deleteHardlinkNeeds(rule)
+	return scope || cross || grouping
 }
 
 // blockedDeleteCandidates returns the queued deletions that must not run because their

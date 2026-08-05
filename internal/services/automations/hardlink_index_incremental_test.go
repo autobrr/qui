@@ -11,6 +11,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -22,6 +23,18 @@ func scanOne(t *testing.T, savePath string, names ...string) *torrentFileInfo {
 		files = append(files, qbt.TorrentFile{Name: name})
 	}
 	return scanTorrentFiles(qbt.Torrent{SavePath: savePath}, files)
+}
+
+// linkPair creates one file under a/ and hardlinks it into b/, returning both paths.
+// Two paths to one inode is the shape every scope answer turns on.
+func linkPair(t *testing.T, dir string) (string, string) {
+	t.Helper()
+	pathA := filepath.Join(dir, "a", "movie.mkv")
+	pathB := filepath.Join(dir, "b", "movie.mkv")
+	createFile(t, pathA)
+	require.NoError(t, os.MkdirAll(filepath.Dir(pathB), 0o700))
+	require.NoError(t, os.Link(pathA, pathB))
+	return pathA, pathB
 }
 
 // indexFrom derives the link counts and every derived map from a set of scans, exactly
@@ -40,11 +53,7 @@ func TestIncrementalUpdate_RemovedTorrentChangesSurvivorScope(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	pathA := filepath.Join(dir, "a", "movie.mkv")
-	pathB := filepath.Join(dir, "b", "movie.mkv")
-	createFile(t, pathA)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pathB), 0o700))
-	require.NoError(t, os.Link(pathA, pathB))
+	_, pathB := linkPair(t, dir)
 
 	scans := map[string]*torrentFileInfo{
 		"hashA": scanOne(t, filepath.Join(dir, "a"), "movie.mkv"),
@@ -72,11 +81,7 @@ func TestIncrementalUpdate_RemovedTorrentKeepingFilesMovesLinkOutside(t *testing
 	t.Parallel()
 
 	dir := t.TempDir()
-	pathA := filepath.Join(dir, "a", "movie.mkv")
-	pathB := filepath.Join(dir, "b", "movie.mkv")
-	createFile(t, pathA)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pathB), 0o700))
-	require.NoError(t, os.Link(pathA, pathB))
+	linkPair(t, dir)
 
 	scans := map[string]*torrentFileInfo{
 		"hashA": scanOne(t, filepath.Join(dir, "a"), "movie.mkv"),
@@ -123,11 +128,7 @@ func TestPlanSharingRescanSkipsAlreadyPlannedAndDepartedTorrents(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	pathA := filepath.Join(dir, "a", "movie.mkv")
-	pathB := filepath.Join(dir, "b", "movie.mkv")
-	createFile(t, pathA)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pathB), 0o700))
-	require.NoError(t, os.Link(pathA, pathB))
+	linkPair(t, dir)
 
 	infoA := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
 	previous := map[string]*torrentFileInfo{
@@ -172,6 +173,36 @@ func TestScopeAfterRescanSeesLinksAddedSinceTheIndexWasBuilt(t *testing.T) {
 		"the fresh read must report the link the index never saw")
 }
 
+// Cross-instance augmentation raises uniquePathCount in place under crossScopeMu. A
+// preview request can run it while a scheduled apply verifies its delete candidates, so
+// the read side has to take the same lock. Run with -race.
+func TestScopeAfterRescanIsSafeAgainstConcurrentAugmentation(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	linkPair(t, dir)
+
+	info := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
+	index := indexFrom(map[string]*torrentFileInfo{"hashA": info})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 200 {
+			index.crossScopeMu.Lock()
+			for _, tracker := range index.buildState.globalFileIDMap {
+				tracker.uniquePathCount++
+			}
+			index.crossScopeMu.Unlock()
+		}
+	}()
+
+	for range 200 {
+		index.scopeAfterRescan(info)
+	}
+	<-done
+}
+
 func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
 	t.Parallel()
 
@@ -189,17 +220,76 @@ func TestScopeAfterRescanReportsUnknownForUnreadableFiles(t *testing.T) {
 		"a torrent whose files vanished has no scope, and must not read as unlinked")
 }
 
+// A delete is only re-verified when the rule consulted the index to choose its
+// candidates. Every route into setupDeleteHardlinkContext has to count, or a rule that
+// sorts or groups by hardlink data deletes on an index nobody re-read.
+func TestDeleteUsesHardlinkData(t *testing.T) {
+	t.Parallel()
+
+	deleteRule := func(action *models.DeleteAction, sorting *models.SortingConfig) *models.Automation {
+		return &models.Automation{
+			Conditions:    &models.ActionConditions{Delete: action},
+			SortingConfig: sorting,
+		}
+	}
+
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "unregistered rule owes the index nothing",
+			rule: deleteRule(&models.DeleteAction{
+				Enabled:   true,
+				Condition: &models.RuleCondition{Field: models.FieldIsUnregistered},
+			}, nil),
+		},
+		{
+			name: "no delete action",
+			rule: deleteRule(nil, &models.SortingConfig{Type: models.SortingTypeSimple, Field: FieldHardlinkScope}),
+		},
+		{
+			name: "condition on the scope",
+			rule: deleteRule(&models.DeleteAction{
+				Enabled:   true,
+				Condition: &models.RuleCondition{Field: FieldHardlinkScope},
+			}, nil),
+			want: true,
+		},
+		{
+			name: "expands to the hardlink copies",
+			rule: deleteRule(&models.DeleteAction{Enabled: true, IncludeHardlinks: true}, nil),
+			want: true,
+		},
+		{
+			name: "sorted by the scope, which decides who wins a limited batch",
+			rule: deleteRule(&models.DeleteAction{Enabled: true},
+				&models.SortingConfig{Type: models.SortingTypeSimple, Field: FieldHardlinkScopeCross}),
+			want: true,
+		},
+		{
+			name: "grouped by the hardlink signature",
+			rule: deleteRule(&models.DeleteAction{Enabled: true, GroupID: GroupHardlinkSignature}, nil),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, deleteUsesHardlinkData(tt.rule))
+		})
+	}
+}
+
 // Scans taken at different moments can disagree about a file. The higher link count has
 // to win, because it is the one that reports a link outside the torrent set.
 func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	pathA := filepath.Join(dir, "a", "movie.mkv")
-	pathB := filepath.Join(dir, "b", "movie.mkv")
-	createFile(t, pathA)
-	require.NoError(t, os.MkdirAll(filepath.Dir(pathB), 0o700))
-	require.NoError(t, os.Link(pathA, pathB))
+	linkPair(t, dir)
 
 	stale := scanOne(t, filepath.Join(dir, "a"), "movie.mkv")
 	fresh := scanOne(t, filepath.Join(dir, "b"), "movie.mkv")
