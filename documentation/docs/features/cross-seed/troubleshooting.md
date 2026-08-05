@@ -40,7 +40,7 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 | `below_threshold` | Skipped | The matched local files cover less than 95% of the release in hardlink or reflink mode. qui skips the match before it adds the torrent. | See [release matching](#release-didnt-match) and [Hardlink Mode](./hardlink-mode.md). This limit is fixed and is not a setting. |
 | `requires_hardlink_reflink` | Skipped | The torrent layout would scatter rootless or extra files in regular reuse mode. | Enable [Hardlink Mode](./hardlink-mode.md) or [Reflink Mode](./hardlink-mode.md#reflink-mode-alternative), or download the torrent normally. |
 | `size_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it because the torrent file list did not match the source sizes. | Compare the torrent files on the trackers. This protects you from treating different content as a valid cross-seed. See [release matching](#release-didnt-match). |
-| `content_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it for a non-size file-level reason. | Review the row message and enable trace logging if needed. See [How do I see why a release was filtered?](#how-do-i-see-why-a-release-was-filtered). |
+| `content_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it for a non-size file-level reason. | Review the row message. See [How do I see why a release was filtered?](#how-do-i-see-why-a-release-was-filtered). |
 | `hardlink_error` | Failed | Hardlink mode was enabled but qui could not create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](./hardlink-mode.md#requirements). |
 | `reflink_error` | Failed | Reflink mode was enabled but qui could not create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](./hardlink-mode.md#reflink-requirements). |
 | `no_save_path` | Failed | qui could not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Verify the matched torrent's save path and category save path in qBittorrent, then review [category behavior](./rules.md#category-behavior-details). |
@@ -80,13 +80,19 @@ See [Season Packs](./season-packs.md) for the full flow, setup requirements, and
 
 ## How do I see why a release was filtered?
 
-Enable trace logging to see detailed rejection reasons:
+Rejection reasons are logged at `DEBUG`, which is the default level:
 
 ```toml
-loglevel = 'TRACE'
+logLevel = 'DEBUG'
 ```
 
-For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each carries the `pack`, `season`, and `candidate` it compared plus a `reason` field naming the mismatch (e.g. `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`). For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected by search classifier` (at `TRACE`), which names each rejected candidate and the reason it failed; `[CROSSSEED-SEARCH] Release filtering rejection summary` (at `DEBUG`) additionally reports per-reason counts.
+If you upgraded from an older version, open `config.toml`. If `logLevel` holds another value, set it to `DEBUG`.
+
+For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry carries the `pack`, `season`, and `candidate` that qui compared. Each entry also has a `reason` field for the mismatch (for example `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`).
+
+Two of these reasons show that the candidate belongs to different content. `title mismatch` means a different show. `episode not in pack` means an episode that this pack does not contain. These two reasons apply to most of a library, thus qui logs them at `TRACE`. All other reasons appear at `DEBUG`.
+
+For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected`. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 

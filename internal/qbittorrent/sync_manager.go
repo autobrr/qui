@@ -26,6 +26,7 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"github.com/lithammer/fuzzysearch/fuzzy"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
@@ -78,8 +79,16 @@ const (
 	postAddRecheckReadyInterval = 500 * time.Millisecond
 	postAddRecheckSyncTimeout   = 5 * time.Second
 	trackerHealthRefreshTimeout = 30 * time.Second
+	trackerHealthRefreshSlow    = 10 * time.Second
 	torrentResponseFreshWindow  = 2 * time.Second
 )
+
+func trackerHealthRefreshLevel(elapsed time.Duration) zerolog.Level {
+	if elapsed >= trackerHealthRefreshSlow {
+		return zerolog.WarnLevel
+	}
+	return zerolog.DebugLevel
+}
 
 var errPostAddRecheckNotReady = errors.New("torrent still checking resume data after post-add wait")
 
@@ -604,21 +613,12 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 
 	// Only refresh for clients that support IncludeTrackers (qBittorrent 5.1+)
 	supportsTrackerInclude := client.supportsTrackerInclude()
-	log.Debug().
-		Int("instanceID", instanceID).
-		Bool("supportsTrackerInclude", supportsTrackerInclude).
-		Msg("Starting tracker health refresh")
 
 	// Get all torrents from the sync manager
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
-	log.Debug().
-		Int("instanceID", instanceID).
-		Int("torrentCount", len(torrents)).
-		Bool("supportsTrackerInclude", supportsTrackerInclude).
-		Msg("Tracker health refresh loaded cached torrents")
 	if !supportsTrackerInclude {
 		sm.seedValidatedTrackerMappingFromMainData(instanceID, torrents, syncManager.GetDataUnchecked(), started)
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Bool("supportsTrackerInclude", false).
 			Dur("elapsed", time.Since(started)).
@@ -644,11 +644,6 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		}
 		sm.trackerHealthMu.Unlock()
 		sm.setValidatedTrackerMappingWithMetrics(instanceID, newValidatedTrackerMapping(), 0, started, "empty")
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("torrentCount", 0).
-			Dur("elapsed", time.Since(started)).
-			Msg("Refreshed empty tracker health counts")
 		sm.notifyTrackerHealthUpdated(instanceID)
 		return
 	}
@@ -748,14 +743,17 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents,
 		trackericons.QueueFetch(domain, "")
 	}
 
-	log.Debug().
+	// The one summary line per pass. It escalates on its own when a pass runs
+	// long, because no per-pass start line remains to show a stalled instance.
+	elapsed := time.Since(started)
+	log.WithLevel(trackerHealthRefreshLevel(elapsed)).
 		Int("instanceID", instanceID).
 		Int("unregistered", counts.Unregistered).
 		Int("trackerDown", counts.TrackerDown).
 		Int("trackerError", counts.TrackerError).
 		Int("trackerDomains", len(mapping.DomainToHashes)).
 		Int("totalTorrents", len(torrents)).
-		Dur("elapsed", time.Since(started)).
+		Dur("elapsed", elapsed).
 		Msg("Refreshed tracker health counts and validated tracker mapping")
 	return true
 }
@@ -931,7 +929,7 @@ func (sm *SyncManager) setValidatedTrackerMappingWithMetrics(instanceID int, map
 	}
 	sm.validatedTrackerMu.Unlock()
 
-	event := log.Debug().
+	event := log.Trace().
 		Int("instanceID", instanceID).
 		Int("domainCount", domainCount).
 		Int("hashCount", hashCount).
@@ -965,11 +963,6 @@ func (sm *SyncManager) seedValidatedTrackerMappingFromMainData(instanceID int, t
 // authoritative mapping or driving counts and filters.
 func (sm *SyncManager) seedFallbackTrackerMappingFromMainData(instanceID int, torrents []qbt.Torrent, mainData *qbt.MainData, started time.Time) {
 	if sm.hasAuthoritativeTrackerMapping(instanceID) {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Int("torrentCount", len(torrents)).
-			Dur("elapsed", time.Since(started)).
-			Msg("Preserved authoritative tracker mapping instead of storing fallback seed")
 		return
 	}
 	sm.seedTrackerMappingFromMainData(instanceID, torrents, mainData, started, true)
@@ -1589,11 +1582,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
 
-	log.Trace().
-		Int("instanceID", instanceID).
-		Int("filtered", len(filteredTorrents)).
-		Msg("Applied search filtering")
-
 	if sort == "name" {
 		sm.sortTorrentsByNameCaseInsensitive(filteredTorrents, order == "desc")
 	}
@@ -1653,20 +1641,22 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Check if there are more pages (only meaningful when limit > 0)
 	hasMore := limit > 0 && end < totalTorrents
 
-	// Calculate counts from ALL torrents (not filtered) for sidebar
-	// This uses the same cached data, so it's very fast
-	var allTorrents []qbt.Torrent
-	if useManualFiltering {
-		allTorrents = allTorrentsForCounts
-	} else {
-		allTorrents = getTorrents(qbt.TorrentFilterOptions{})
-	}
-
 	var enrichedAll []qbt.Torrent
 
 	if !includeCachedCounts {
 		counts = nil
 	} else {
+		// Counts come from ALL torrents (not filtered) for the sidebar.
+		// Materialized inside this branch on purpose: stream ticks leave
+		// includeCachedCounts false, so hoisting it above cloned every torrent
+		// on every tick and discarded the result.
+		var allTorrents []qbt.Torrent
+		if useManualFiltering {
+			allTorrents = allTorrentsForCounts
+		} else {
+			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
+		}
+
 		if len(allTorrents) == 0 {
 			log.Trace().
 				Int("instanceID", instanceID).
@@ -1779,14 +1769,16 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// This ensures real-time updates are always reflected
 	// The sync manager is the single source of truth
 
-	log.Trace().
+	freshEvent := log.Trace().
 		Int("instanceID", instanceID).
 		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
 		Str("search", search).
-		Interface("filters", filters).
-		Bool("hasMore", hasMore).
-		Msg("Fresh torrent data fetched and cached")
+		Bool("hasMore", hasMore)
+	if !filters.IsEmpty() {
+		freshEvent = freshEvent.Interface("filters", filters)
+	}
+	freshEvent.Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
 }
@@ -2539,7 +2531,7 @@ func waitForPostAddRecheckReady(
 			return err
 		}
 		if syncErr != nil {
-			log.Debug().Err(syncErr).Int("instanceID", instanceID).
+			log.Trace().Err(syncErr).Int("instanceID", instanceID).
 				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
 		}
 
@@ -2551,7 +2543,7 @@ func waitForPostAddRecheckReady(
 			return errPostAddRecheckNotReady
 		}
 
-		log.Debug().Int("instanceID", instanceID).Int("attempt", attempt).
+		log.Trace().Int("instanceID", instanceID).Int("attempt", attempt).
 			Int("maxAttempts", maxAttempts).Msg("Waiting for post-add resume-data check before recheck")
 
 		select {
@@ -2631,7 +2623,7 @@ func bulkActionSyncRetry(
 		syncErr := syncManager.Sync(syncCtx)
 		cancel()
 		if syncErr != nil {
-			log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
+			log.Trace().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
 				Int("attempt", attempt).Msg("BulkAction: forced sync failed")
 			// Continue to retry even if sync failed
 		}
@@ -3429,7 +3421,7 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 	// that has the IncludeTrackers option. Older versions would require individual API
 	// calls per torrent which is catastrophic for performance on large instances.
 	if !client.supportsTrackerInclude() {
-		log.Debug().
+		log.Trace().
 			Int("instanceID", client.instanceID).
 			Str("webAPIVersion", client.GetWebAPIVersion()).
 			Msg("Skipping tracker hydration - version does not support IncludeTrackers (requires qBittorrent 5.1+)")
@@ -3750,11 +3742,6 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	if validatedMapping != nil {
-		log.Trace().
-			Int("domainCount", len(validatedMapping.DomainToHashes)).
-			Time("updatedAt", validatedMapping.UpdatedAt).
-			Msg("Using validated tracker mapping for counting")
-
 		// Count torrents per tracker domain using pre-validated mapping
 		trackerDomainCounts := make(map[string]map[string]bool) // domain -> set of torrent hashes
 		for domain, hashSet := range validatedMapping.DomainToHashes {
@@ -3786,7 +3773,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 			stats, missingCount := trackerTransferStatsForHashes(hashSet, torrentMap)
 			if missingCount > 0 {
-				log.Debug().
+				log.Trace().
 					Str("domain", domain).
 					Int("missing", missingCount).
 					Int("total", len(hashSet)).
@@ -3814,7 +3801,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 	} else if mainData != nil && mainData.Trackers != nil {
 		// Fallback: Use MainData.Trackers with validation (first request before cache populated)
-		log.Debug().
+		log.Trace().
 			Int("trackerCount", len(mainData.Trackers)).
 			Msg("Using MainData.Trackers for counting (fallback, cache not yet populated)")
 
@@ -3873,7 +3860,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 			stats, missingCount := trackerTransferStatsForHashes(hashSet, torrentMap)
 			if missingCount > 0 {
-				log.Debug().
+				log.Trace().
 					Str("domain", domain).
 					Int("missing", missingCount).
 					Int("total", len(hashSet)).
@@ -4010,7 +3997,7 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		return nil, fmt.Errorf("failed to get all torrents for counts: %w", err)
 	}
 
-	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
+	log.Trace().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
 
 	// Calculate counts using the shared function - pass mainData for tracker information
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
@@ -4022,7 +4009,7 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	// Don't cache counts separately - they're always derived from the cached torrent data
 	// This ensures sidebar and table are always in sync
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("total", counts.Total).
 		Int("statusCount", len(counts.Status)).
@@ -4389,7 +4376,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 				// Clear if backend state indicates the operation was successful
 				if sm.shouldClearOptimisticUpdate(torrent.State, optimisticUpdate.OriginalState, optimisticUpdate.State, optimisticUpdate.Action) {
 					shouldClear = true
-					log.Debug().
+					log.Trace().
 						Str("hash", hash).
 						Str("state", string(torrent.State)).
 						Str("originalState", string(optimisticUpdate.OriginalState)).
@@ -4401,14 +4388,14 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 				} else if timeSinceUpdate > 60*time.Second {
 					// Safety net: still clear after 60 seconds if something went wrong
 					shouldClear = true
-					log.Debug().
+					log.Trace().
 						Str("hash", hash).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
 						Dur("timeSinceUpdate", timeSinceUpdate).
 						Msg("Clearing stale optimistic update (safety net)")
 				} else {
 					// Debug: show why we're not clearing yet
-					log.Debug().
+					log.Trace().
 						Str("hash", hash).
 						Time("optimisticAt", optimisticUpdate.UpdatedAt).
 						Time("lastSyncAt", lastSyncTime).
@@ -4424,7 +4411,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 					removedCount++
 				} else {
 					// Apply the optimistic state change to the torrent in our slice
-					log.Debug().
+					log.Trace().
 						Str("hash", hash).
 						Str("oldState", string(torrent.State)).
 						Str("newState", string(optimisticUpdate.State)).
@@ -4436,7 +4423,7 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 				}
 			} else {
 				// Torrent no longer exists - clear the optimistic update
-				log.Debug().
+				log.Trace().
 					Str("hash", hash).
 					Str("action", optimisticUpdate.Action).
 					Time("optimisticAt", optimisticUpdate.UpdatedAt).
@@ -4594,7 +4581,7 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 	for i, match := range matches {
 		filtered[i] = match.torrent
 		if i < 5 { // Log first 5 matches for debugging
-			log.Debug().
+			log.Trace().
 				Str("name", match.torrent.Name).
 				Int("score", match.score).
 				Str("method", match.method).
@@ -4602,7 +4589,7 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("search", search).
 		Int("totalTorrents", len(torrents)).
 		Int("matchedTorrents", len(filtered)).
@@ -4625,7 +4612,7 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 		matched, err := filepath.Match(patternLower, nameLower)
 		if err != nil {
 			// Invalid pattern, log and skip
-			log.Debug().
+			log.Trace().
 				Str("pattern", pattern).
 				Err(err).
 				Msg("Invalid glob pattern")
@@ -4659,7 +4646,7 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("pattern", pattern).
 		Int("totalTorrents", len(torrents)).
 		Int("matchedTorrents", len(filtered)).
@@ -4694,6 +4681,11 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	cachedHealth *TrackerHealthCounts,
 ) []qbt.Torrent {
 	var filtered []qbt.Torrent
+
+	// A bad expression fails identically for every torrent, so record the first
+	// failure and report once after the loop instead of per torrent.
+	var exprErr error
+	exprFailures := 0
 
 	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
 	for _, h := range filters.Hashes {
@@ -4854,7 +4846,7 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	var compileErr error
 	if len(filters.Expr) > 0 {
 		if p, ok := sm.exprCache.Get(filters.Expr); ok {
-			log.Debug().Str("expr", filters.Expr).Msg("Using cached expression")
+			log.Trace().Str("expr", filters.Expr).Msg("Using cached expression")
 			program = p
 		} else {
 			// User expressions see raw qbt.Torrent fields, including the
@@ -5052,13 +5044,19 @@ torrentsLoop:
 		if len(filters.Expr) > 0 && compileErr == nil {
 			result, err := expr.Run(program, torrent)
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to evaluate expression")
+				if exprErr == nil {
+					exprErr = err
+				}
+				exprFailures++
 				continue
 			}
 
 			expResult, ok := result.(bool)
 			if !ok {
-				log.Error().Msg("Expression result is not a boolean")
+				if exprErr == nil {
+					exprErr = errors.New("expression result is not a boolean")
+				}
+				exprFailures++
 				continue
 			}
 
@@ -5069,6 +5067,15 @@ torrentsLoop:
 
 		// If we reach here, torrent passed all active filters
 		filtered = append(filtered, torrent)
+	}
+
+	if exprFailures > 0 {
+		log.Error().
+			Err(exprErr).
+			Int("failedTorrents", exprFailures).
+			Int("totalTorrents", len(torrents)).
+			Str("expr", filters.Expr).
+			Msg("Failed to evaluate expression")
 	}
 
 	log.Trace().
@@ -5219,7 +5226,7 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 		// Clear the optimistic update if the current state is different from the original state
 		// This indicates that the backend has acknowledged and processed the operation
 		if currentState != originalState {
-			log.Debug().
+			log.Trace().
 				Str("currentState", string(currentState)).
 				Str("originalState", string(originalState)).
 				Str("optimisticState", string(optimisticState)).
@@ -5232,7 +5239,7 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 		if successCategory, exists := actionSuccessCategories[action]; exists {
 			if categoryStates, categoryExists := torrentStateCategories[qbt.TorrentFilter(successCategory)]; categoryExists {
 				if slices.Contains(categoryStates, currentState) {
-					log.Debug().
+					log.Trace().
 						Str("currentState", string(currentState)).
 						Str("originalState", string(originalState)).
 						Str("optimisticState", string(optimisticState)).

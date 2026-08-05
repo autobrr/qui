@@ -753,11 +753,8 @@ func (app *Application) runServer() {
 
 				// Trigger connection by trying to get client
 				// This will populate the pool for GetClientOffline calls
-				_, err := clientPool.GetClient(connCtx, instanceID)
-				if err != nil {
+				if _, err := clientPool.GetClient(connCtx, instanceID); err != nil {
 					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance on startup")
-				} else {
-					log.Debug().Int("instanceID", instanceID).Msg("Successfully connected to instance on startup")
 				}
 			}(instance.ID)
 		}
