@@ -1042,7 +1042,7 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 		return nil
 	}
 
-	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents, needsCrossScope)
+	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
 	if hardlinkIndex != nil {
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		if needsHardlinkSignatureGrouping {
@@ -1689,7 +1689,7 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 		return
 	}
 
-	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents, needsCrossScope)
+	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
 	if hardlinkIndex != nil {
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		if needsHardlinkSignatureGrouping {
@@ -1904,6 +1904,51 @@ func (s *Service) buildCategoryPreviewResult(
 	return result
 }
 
+// deleteUsesHardlinkData reports whether a rule's delete decision rests on hardlink
+// state, either through a condition on the scope or by expanding to the hardlink copies.
+func deleteUsesHardlinkData(rule *models.Automation) bool {
+	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return false
+	}
+	if rule.Conditions.Delete.IncludeHardlinks {
+		return true
+	}
+	cond := rule.Conditions.Delete.Condition
+	return ConditionUsesField(cond, FieldHardlinkScope) || ConditionUsesField(cond, FieldHardlinkScopeCross)
+}
+
+// blockedDeleteCandidates returns the queued deletions that must not run because their
+// hardlink state no longer matches what the rule decided on. Only candidates chosen with
+// hardlink data are re-read: a rule deleting on ratio or an unregistered tracker owes
+// nothing to the index, and holding those back on an unreadable file would be a new way
+// to fail.
+func (s *Service) blockedDeleteCandidates(
+	ctx context.Context,
+	instanceID int,
+	hardlinkIndex *HardlinkIndex,
+	torrentByHash map[string]qbt.Torrent,
+	deleteHashesByMode map[string][]string,
+	pendingByHash map[string]pendingDeletion,
+	ruleByID map[int]*models.Automation,
+) map[string]string {
+	if hardlinkIndex == nil {
+		return nil
+	}
+
+	var candidates []string
+	for _, hashes := range deleteHashesByMode {
+		for _, hash := range hashes {
+			pending, queued := pendingByHash[hash]
+			if !queued || !deleteUsesHardlinkData(ruleByID[pending.ruleID]) {
+				continue
+			}
+			candidates = append(candidates, hash)
+		}
+	}
+
+	return s.verifyDeleteCandidates(ctx, instanceID, hardlinkIndex, torrentByHash, candidates)
+}
+
 func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bool) error {
 	rules, err := s.ruleStore.ListByInstance(ctx, instanceID)
 	if err != nil {
@@ -2066,7 +2111,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	needsHardlinkSignatureGrouping := rulesUseHardlinkSignatureGrouping(eligibleRules)
 	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping || needsCrossScope
 	if instance.HasLocalFilesystemAccess && needsHardlinkIndex {
-		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents, needsCrossScope)
+		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 			if needsHardlinkSignatureGrouping {
@@ -3844,6 +3889,34 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// - stop_tracker_timeout setting (default 2s) controls how long to wait for tracker ack
 	//
 	// This behavior is identical for both BitTorrent v1 and v2 torrents.
+	//
+	// Candidates chosen with hardlink data are re-read off disk first. The index may be
+	// up to hardlinkIndexTTL behind for link changes no torrent reported, which is fine
+	// for tagging and not fine here.
+	if blocked := s.blockedDeleteCandidates(ctx, instanceID, hardlinkIndex, torrentByHash, deleteHashesByMode, pendingByHash, ruleByID); len(blocked) > 0 {
+		for mode, hashes := range deleteHashesByMode {
+			kept := hashes[:0]
+			for _, hash := range hashes {
+				reason, isBlocked := blocked[hash]
+				if !isBlocked {
+					kept = append(kept, hash)
+					continue
+				}
+
+				pending := pendingByHash[hash]
+				delete(pendingByHash, hash)
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Str("name", pending.torrentName).
+					Str("ruleName", pending.ruleName).
+					Str("reason", reason).
+					Msg("automations: skipped delete, hardlink state changed since the rule decided")
+			}
+			deleteHashesByMode[mode] = kept
+		}
+	}
+
 	for mode, hashes := range deleteHashesByMode {
 		if len(hashes) == 0 {
 			continue
@@ -5261,7 +5334,7 @@ func (s *Service) recordDryRunActivities(
 					}
 				}
 				if needsHardlinkSignature || needsDryRunCrossScope {
-					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents, needsDryRunCrossScope)
+					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
 					if hardlinkIndex != nil {
 						dryRunEvalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 						if needsHardlinkSignature {
