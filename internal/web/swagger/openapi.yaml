@@ -1205,7 +1205,9 @@ paths:
       tags:
         - Instances
       summary: Get transfer info
-      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      description: >-
+        Retrieve lightweight transfer statistics and the all-time transferred
+        totals for a qBittorrent instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -6060,6 +6062,12 @@ components:
           type: integer
         up_rate_limit:
           type: integer
+        alltime_dl:
+          type: integer
+          description: All-time downloaded bytes. Absent until the instance completes its first sync.
+        alltime_ul:
+          type: integer
+          description: All-time uploaded bytes. Absent until the instance completes its first sync.
 
 
     Torrent:
