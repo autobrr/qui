@@ -49,7 +49,7 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. `DEBUG` records enough to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and grows the file quickly. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty: logs to stdout. Relative paths resolve relative to the config directory. Applied immediately. |
 | `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | MiB threshold before rotation. Applied immediately. |
-| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `10` | Rotated files retained. Rotated files are gzipped, so each uses about 1/20th of `logMaxSize`. `0` keeps all. Applied immediately. |
+| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `10` | Rotated files retained. Rotated files are gzipped, so each is much smaller than `logMaxSize` by an amount that depends on the log content. `0` keeps all. Applied immediately. |
 | `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Always used for non-database assets (logs, tracker icon cache, etc.). When `databaseEngine=sqlite`, `qui.db` also lives here. Restart recommended. |
 | `customThemesDir` | `QUI__CUSTOM_THEMES_DIR` | string | empty | Directory for sideloaded [custom theme](../features/custom-themes.md) `.css` files. If empty: `<config-dir>/themes` (auto-created). Relative paths resolve against the config directory. Listing requires premium access. Config changes applied on next request. |
 | `databaseEngine` | `QUI__DATABASE_ENGINE` | string | `sqlite` | `sqlite` or `postgres`. Existing installs should keep `sqlite` unless you migrate. Restart required. |

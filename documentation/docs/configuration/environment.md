@@ -41,7 +41,7 @@ QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (d
 QUI__LOG_MAX_BACKUPS=10  # Optional: retain N rotated files (default: 10, 0 keeps all)
 ```
 
-When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables to control the rotation thresholds and retention. Rotated files are gzipped, so each one uses about 1/20th of `logMaxSize`.
+When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables to control the rotation thresholds and retention. Rotated files are gzipped, so each one is much smaller than `logMaxSize`. The compressed size depends on the log content.
 
 Rotation and retention apply only when `logPath` is set. If you run qui in Docker with the default stdout logging, set `QUI__LOG_PATH`, or set a `max-size` option on the container log driver, to stop the container log from growing without limit.
 
