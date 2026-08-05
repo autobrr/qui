@@ -4580,7 +4580,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 			matchedTorrents = append(matchedTorrents, torrent)
 			matchTypeCounts[matchType]++
-			log.Debug().
+			log.Trace().
 				Str("targetTitle", req.TorrentName).
 				Str("existingTorrent", torrent.Name).
 				Int("instanceID", instanceID).
@@ -6624,7 +6624,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 
 	if s.torrentFilesCache != nil {
 		if cached, ok := s.torrentFilesCache.Get(key); ok {
-			log.Debug().
+			log.Trace().
 				Int("instanceID", instanceID).
 				Str("hash", normalizeHash(hash)).
 				Msg("Using cached torrent files")
@@ -6646,7 +6646,7 @@ func (s *Service) getTorrentFilesCached(ctx context.Context, instanceID int, has
 		_ = s.torrentFilesCache.Set(key, cloneTorrentFiles(files), ttlcache.DefaultTTL)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Str("hash", normalizeHash(hash)).
 		Msg("Fetched torrent files from qbittorrent")
@@ -7055,7 +7055,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		FilteringState: filteringState,
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Ints("allIndexers", allIndexers).
@@ -7083,7 +7083,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 			if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
 				existingSnapshot := existing.Clone()
 				if existingSnapshot != nil && existingSnapshot.ContentCompleted {
-					log.Debug().
+					log.Trace().
 						Str("torrentHash", hash).
 						Int("instanceID", instanceID).
 						Str("cacheKey", cacheKey).
@@ -7104,39 +7104,19 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 					ContentMatches:        make([]string, 0),
 				}
 				s.asyncFilteringCache.Set(cacheKey, cachedState, ttlcache.DefaultTTL)
-
-				log.Debug().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Str("cacheKey", cacheKey).
-					Bool("contentCompleted", cachedState.ContentCompleted).
-					Int("capabilityIndexersCount", len(cachedState.CapabilityIndexers)).
-					Int("filteredIndexersCount", len(cachedState.FilteredIndexers)).
-					Msg("[CROSSSEED-ASYNC] Stored initial filtering state in cache")
 			}
 		}
 
-		log.Debug().
+		log.Trace().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
 			Int("allIndexersCount", len(allIndexers)).
 			Int("capabilityIndexersCount", len(capabilityIndexers)).
-			Msg("[CROSSSEED-ASYNC] Capability filtering completed synchronously")
-
-		log.Debug().
-			Str("torrentHash", hash).
-			Int("instanceID", instanceID).
 			Bool("enableContentFiltering", enableContentFiltering).
-			Int("capabilityIndexersCount", len(capabilityIndexers)).
-			Msg("[CROSSSEED-ASYNC] Phase 2: Content filtering decision")
+			Msg("[CROSSSEED-ASYNC] Capability filtering completed synchronously")
 
 		if enableContentFiltering {
 			if len(capabilityIndexers) > 0 {
-				log.Debug().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Int("capabilityIndexersCount", len(capabilityIndexers)).
-					Msg("[CROSSSEED-ASYNC] Starting background content filtering")
 				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
 			} else {
 				filteringState.Lock()
@@ -7170,7 +7150,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 // performAsyncContentFiltering performs content filtering in the background and updates the filtering state
 // This method handles concurrent access to the state safely
 func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo, state *AsyncIndexerFilteringState) {
-	log.Debug().
+	log.Trace().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Ints("indexerIDs", indexerIDs).
@@ -7210,7 +7190,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 	snapshot = state.cloneLocked()
 	state.Unlock()
 
-	log.Debug().
+	log.Trace().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Int("originalIndexerCount", len(indexerIDs)).
@@ -7227,21 +7207,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 			cachedState = &AsyncIndexerFilteringState{}
 		}
 
-		log.Debug().
-			Str("torrentHash", hash).
-			Int("instanceID", instanceID).
-			Str("cacheKey", cacheKey).
-			Bool("contentCompleted", cachedState.ContentCompleted).
-			Int("filteredIndexersCount", len(cachedState.FilteredIndexers)).
-			Msg("[CROSSSEED-ASYNC] Storing completed content filtering state in cache")
-
 		s.asyncFilteringCache.Set(cacheKey, cachedState, ttlcache.DefaultTTL)
-
-		log.Debug().
-			Str("torrentHash", hash).
-			Int("instanceID", instanceID).
-			Str("cacheKey", cacheKey).
-			Msg("[CROSSSEED-ASYNC] Stored completed filtering state in cache")
 	}
 
 	log.Debug().
@@ -10369,9 +10335,12 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		deduplicated = append(deduplicated, rep.torrent)
 		if len(group.duplicates) > 0 {
 			totalDuplicates += len(group.duplicates)
-			log.Debug().
+			log.Trace().
 				Str("representative", rep.torrent.Name).
 				Str("representativeHash", rep.torrent.Hash).
+				// A top-level folder wins first, and the oldest torrent breaks
+				// the tie. Both fields are here so the entry explains its choice.
+				Bool("representativeHasRootFolder", group.hasRootFolder).
 				Int64("addedOn", rep.torrent.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
 				Strs("duplicateHashes", group.duplicates).
@@ -11480,7 +11449,7 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Str("cacheKey", cacheKey).
@@ -11508,7 +11477,7 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
 			cachedSnapshot := cached.Clone()
 			if cachedSnapshot != nil {
-				log.Debug().
+				log.Trace().
 					Str("torrentHash", hash).
 					Int("instanceID", instanceID).
 					Bool("capabilitiesCompleted", cachedSnapshot.CapabilitiesCompleted).
@@ -11527,7 +11496,7 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 	}
 
 	if snapshot := asyncResult.FilteringState.Clone(); snapshot != nil {
-		log.Debug().
+		log.Trace().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
 			Bool("capabilitiesCompleted", snapshot.CapabilitiesCompleted).
@@ -11568,7 +11537,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		indexerInfo = make(map[int]jackett.EnabledIndexerInfo)
 	}
 
-	log.Debug().
+	log.Trace().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
 		Int("indexerCount", len(indexerIDs)).
@@ -11626,7 +11595,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 			continue
 		}
 
-		log.Debug().
+		log.Trace().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
 			Int("indexerID", indexerID).
@@ -11637,7 +11606,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		// Skip searching indexers that already provided the source torrent
 		if sourceTorrent != nil {
 			if matched, trackerDomain := s.torrentMatchesIndexerDomain(sourceTorrent, indexerName, indexerDomain); matched {
-				log.Debug().
+				log.Trace().
 					Str("torrentHash", hash).
 					Int("instanceID", instanceID).
 					Int("indexerID", indexerID).
@@ -11658,7 +11627,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 				if matched, trackerDomain := s.trackerDomainsMatchIndexerWithDomain(match.trackerDomains, indexerName, indexerDomain); matched {
 					exclusionReason = fmt.Sprintf("has matching content from %s (%s)", match.view.InstanceName, match.view.Name)
 					shouldIncludeIndexer = false
-					log.Debug().
+					log.Trace().
 						Str("torrentHash", hash).
 						Int("instanceID", instanceID).
 						Int("indexerID", indexerID).
@@ -11771,13 +11740,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 				// Check if mapped domain matches indexer name or specific indexer domain
 				if normalizedMappedDomain == normalizedIndexerName ||
 					(specificIndexerDomain != "" && strings.EqualFold(normalizedMappedDomain, specificIndexerDomain)) {
-					log.Debug().
-						Str("matchType", "hardcoded_mapping").
-						Str("trackerDomain", trackerDomain).
-						Str("mappedDomain", mappedDomain).
-						Str("indexerName", indexerName).
-						Str("specificIndexerDomain", specificIndexerDomain).
-						Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Hardcoded domain mapping ***")
 					return true
 				}
 			}
@@ -11790,11 +11752,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 
 		// 1. Direct match: normalized indexer name matches domain
 		if normalizedIndexerName != "" && normalizedIndexerName == normalizedDomain {
-			log.Debug().
-				Str("matchType", "direct").
-				Str("domain", domain).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Direct match ***")
 			return true
 		}
 
@@ -11804,12 +11761,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 
 			// Direct domain match
 			if normalizedDomain == normalizedSpecificDomain {
-				log.Debug().
-					Str("matchType", "specific_indexer_domain_direct").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Specific indexer domain direct match ***")
 				return true
 			}
 
@@ -11817,19 +11768,9 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 
 		// 3. Partial match: domain contains normalized indexer name or vice versa
 		if normalizedIndexerName != "" && strings.Contains(normalizedDomain, normalizedIndexerName) {
-			log.Debug().
-				Str("matchType", "domain_contains_indexer").
-				Str("domain", domain).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Domain contains indexer ***")
 			return true
 		}
 		if normalizedIndexerName != "" && strings.Contains(normalizedIndexerName, normalizedDomain) {
-			log.Debug().
-				Str("matchType", "indexer_contains_domain").
-				Str("domain", domain).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Indexer contains domain ***")
 			return true
 		}
 
@@ -11839,21 +11780,9 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 
 			// Check if torrent domain contains indexer domain or vice versa
 			if strings.Contains(normalizedDomain, normalizedSpecificDomain) {
-				log.Debug().
-					Str("matchType", "torrent_domain_contains_specific_indexer_domain").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Torrent domain contains specific indexer domain ***")
 				return true
 			}
 			if strings.Contains(normalizedSpecificDomain, normalizedDomain) {
-				log.Debug().
-					Str("matchType", "specific_indexer_domain_contains_torrent_domain").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Specific indexer domain contains torrent domain ***")
 				return true
 			}
 		} // Handle TLD variations and domain normalization
@@ -11870,32 +11799,14 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 
 		// Direct match after normalization
 		if normalizedIndexerName != "" && normalizedIndexerName == normalizedDomainName {
-			log.Debug().
-				Str("matchType", "normalized_match").
-				Str("domain", domain).
-				Str("normalizedDomainName", normalizedDomainName).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized domain match ***")
 			return true
 		}
 
 		// Partial match after normalization
 		if normalizedIndexerName != "" && strings.Contains(normalizedDomainName, normalizedIndexerName) {
-			log.Debug().
-				Str("matchType", "normalized_domain_contains_indexer").
-				Str("domain", domain).
-				Str("normalizedDomainName", normalizedDomainName).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized domain contains indexer ***")
 			return true
 		}
 		if normalizedIndexerName != "" && strings.Contains(normalizedIndexerName, normalizedDomainName) {
-			log.Debug().
-				Str("matchType", "normalized_indexer_contains_domain").
-				Str("domain", domain).
-				Str("normalizedDomainName", normalizedDomainName).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized indexer contains domain ***")
 			return true
 		}
 
@@ -11917,61 +11828,23 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 
 			// Compare normalized torrent domain with normalized indexer domain
 			if normalizedDomainName == normalizedIndexerDomainName {
-				log.Debug().
-					Str("matchType", "normalized_specific_indexer_domain_match").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("normalizedTorrentDomain", normalizedDomainName).
-					Str("normalizedIndexerDomain", normalizedIndexerDomainName).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized specific indexer domain match ***")
 				return true
 			}
 
 			// Partial matches with normalized indexer domains
 			if strings.Contains(normalizedDomainName, normalizedIndexerDomainName) {
-				log.Debug().
-					Str("matchType", "normalized_torrent_domain_contains_specific_indexer").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("normalizedTorrentDomain", normalizedDomainName).
-					Str("normalizedIndexerDomain", normalizedIndexerDomainName).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized torrent domain contains specific indexer domain ***")
 				return true
 			}
 			if strings.Contains(normalizedIndexerDomainName, normalizedDomainName) {
-				log.Debug().
-					Str("matchType", "normalized_specific_indexer_domain_contains_torrent").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("normalizedTorrentDomain", normalizedDomainName).
-					Str("normalizedIndexerDomain", normalizedIndexerDomainName).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized specific indexer domain contains torrent domain ***")
 				return true
 			}
 
 			// Check TLD-stripped match against specific indexer domain
 			if domainWithoutTLD == indexerDomainWithoutTLD {
-				log.Debug().
-					Str("matchType", "tld_stripped_specific_indexer_domain").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("torrentDomainWithoutTLD", domainWithoutTLD).
-					Str("indexerDomainWithoutTLD", indexerDomainWithoutTLD).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - TLD stripped specific indexer domain match ***")
 				return true
 			}
 		} // Check original TLD-stripped match for backward compatibility
 		if normalizedIndexerName != "" && normalizedIndexerName == domainWithoutTLD {
-			log.Debug().
-				Str("matchType", "tld_stripped").
-				Str("domain", domain).
-				Str("domainWithoutTLD", domainWithoutTLD).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - TLD stripped match ***")
 			return true
 		}
 	}
@@ -12853,7 +12726,8 @@ func recordReleaseRejection(
 		reason = "release mismatch"
 	}
 	releaseFilterReasons[reason]++
-	if evt := log.Debug(); evt.Enabled() {
+	// The parsed release pair is developer detail. The caller logs the reason.
+	if evt := log.Trace(); evt.Enabled() {
 		evt.
 			Str("sourceTitle", sourceTitle).
 			Str("candidateTitle", candidateTitle).

@@ -92,7 +92,7 @@ For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entrie
 
 Two of these reasons show that the candidate belongs to different content. `title mismatch` means a different show. `episode not in pack` means an episode that this pack does not contain. These two reasons apply to most of a library, thus qui logs them at `TRACE`. All other reasons appear at `DEBUG`.
 
-For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected by search classifier`. Each entry names the rejected candidate and the reason it failed. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason.
+For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate rejected`. Each entry names the indexer, the rejected candidate, the two sizes, and the reason. The entry `[CROSSSEED-SEARCH] Release filtering rejection summary` reports the count for each reason. `TRACE` adds `[CROSSSEED-SEARCH] Candidate rejected by search classifier`, which shows the parsed fields of both releases.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 
