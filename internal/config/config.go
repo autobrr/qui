@@ -495,7 +495,7 @@ sessionSecret = "{{ .sessionSecret }}"
 #logMaxSize = {{ .logMaxSize }}
 
 # Number of rotated log files to retain (0 keeps all)
-# Rotated files are gzip-compressed, so their size depends on the log content.
+# Rotated files are gzip-compressed. A 50 MB rotation stores as about 2 to 3 MB.
 # Default: {{ .logMaxBackups }}
 #logMaxBackups = {{ .logMaxBackups }}
 
