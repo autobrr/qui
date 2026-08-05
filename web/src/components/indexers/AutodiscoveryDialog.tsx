@@ -41,9 +41,8 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   const [showBasicAuth, setShowBasicAuth] = useState(false)
   const [basicUsername, setBasicUsername] = useState("")
   const [basicPassword, setBasicPassword] = useState("")
-  const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
+  const [discoveredIndexers, setDiscoveredIndexers] = useState<(JackettIndexer & { rowKey: string; existing?: TorznabIndexer })[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
-  const [existingIndexersMap, setExistingIndexersMap] = useState<Map<string, TorznabIndexer>>(new Map())
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null)
   const [manualOpen, setManualOpen] = useState(false)
 
@@ -108,21 +107,30 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
         api.listTorznabIndexers(),
       ])
 
-      setDiscoveredIndexers(response.indexers)
+      const discovered = response.indexers.flatMap((indexer, rowIndex) => {
+        const id = indexer.id.trim()
+        if (!id) return []
 
-      // Build map of existing indexers by name with full indexer data
-      const existingMap = new Map<string, TorznabIndexer>()
-      for (const idx of existing) {
-        existingMap.set(idx.name, idx)
-      }
-      setExistingIndexersMap(existingMap)
+        const candidates = existing.filter(candidate =>
+          candidate.backend === (indexer.backend ?? "jackett") &&
+          normalizeBaseUrl(candidate.base_url) === normalizedBaseUrl &&
+          candidate.name === indexer.name
+        )
+        const idMatches = candidates.filter(candidate => candidate.indexer_id === id)
+        let existingIndexer = candidates.length === 1 ? candidates[0] : undefined
+        if (idMatches.length === 1) existingIndexer = idMatches[0]
+
+        return [{ ...indexer, id, rowKey: `discovered-indexer-${rowIndex}`, existing: existingIndexer }]
+      })
+      setDiscoveredIndexers(discovered)
+      setSelectedIndexers(new Set())
 
       setStep("select")
-      const existingCount = response.indexers.filter(idx => existingMap.has(idx.name)).length
+      const existingCount = discovered.filter(indexer => indexer.existing).length
       if (existingCount > 0) {
-        toast.success(t("indexers.autodiscovery.toast.discoveredWithExisting", { total: response.indexers.length, existing: existingCount }))
+        toast.success(t("indexers.autodiscovery.toast.discoveredWithExisting", { total: discovered.length, existing: existingCount }))
       } else {
-        toast.success(t("indexers.autodiscovery.toast.discovered", { count: response.indexers.length }))
+        toast.success(t("indexers.autodiscovery.toast.discovered", { count: discovered.length }))
       }
 
       // Show discovery warnings if any
@@ -175,14 +183,12 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
     const warningDetails: string[] = []
 
     for (const indexer of discoveredIndexers) {
-      if (!selectedIndexers.has(indexer.id)) continue
+      if (!selectedIndexers.has(indexer.rowKey)) continue
 
       const backend = indexer.backend ?? "jackett"
-      const indexerId = indexer.id?.trim() ?? ""
-      const normalizedIndexerId = indexerId !== "" ? indexerId : undefined
 
       try {
-        const existing = existingIndexersMap.get(indexer.name)
+        const existing = indexer.existing
         if (existing) {
           // Update existing indexer - keep base URL, API key, and backend aligned
           // Omit enabled to preserve the user's current enabled state
@@ -191,7 +197,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
             api_key: apiKey, // empty + source copies the saved connection's credentials
             source_indexer_id: selectedSourceId ?? undefined,
             backend,
-            indexer_id: normalizedIndexerId,
+            indexer_id: indexer.id,
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
@@ -213,7 +219,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
             source_indexer_id: selectedSourceId ?? undefined,
             backend,
             enabled: true,
-            indexer_id: normalizedIndexerId,
+            indexer_id: indexer.id,
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
@@ -272,7 +278,7 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
   }
 
   const handleSelectAll = () => {
-    const allIds = new Set(discoveredIndexers.map(idx => idx.id))
+    const allIds = new Set(discoveredIndexers.map(idx => idx.rowKey))
     setSelectedIndexers(allIds)
   }
 
@@ -488,23 +494,23 @@ export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDi
                 ) : (
                   discoveredIndexers.map((indexer) => (
                     <div
-                      key={indexer.id}
+                      key={indexer.rowKey}
                       className="flex items-start space-x-3 rounded-lg border p-3 hover:bg-accent"
                     >
                       <Checkbox
-                        id={indexer.id}
-                        checked={selectedIndexers.has(indexer.id)}
-                        onCheckedChange={() => toggleIndexer(indexer.id)}
+                        id={indexer.rowKey}
+                        checked={selectedIndexers.has(indexer.rowKey)}
+                        onCheckedChange={() => toggleIndexer(indexer.rowKey)}
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <label
-                            htmlFor={indexer.id}
+                            htmlFor={indexer.rowKey}
                             className="text-sm font-medium leading-none cursor-pointer"
                           >
                             {indexer.name}
                           </label>
-                          {existingIndexersMap.has(indexer.name) && (
+                          {indexer.existing && (
                             <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
                               {t("indexers.autodiscovery.willUpdate")}
                             </span>
