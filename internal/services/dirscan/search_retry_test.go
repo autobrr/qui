@@ -112,6 +112,15 @@ func TestSearchWithRetries(t *testing.T) {
 			wantResultLen: 0,
 		},
 		{
+			name:          "a retry that answers with nothing leaves the searchee uncovered",
+			searcheeName:  "Example.Movie.2024.1080p.WEB-DL",
+			responses:     []*jackett.SearchResponse{response(0, 1, 2)},
+			wantPasses:    2,
+			wantYears:     []int{2024, 0},
+			wantCovered:   nil,
+			wantResultLen: 0,
+		},
+		{
 			name: "an ID-driven search never retries",
 			// The alternate title would produce a retry pass on its own, so this
 			// row fails if the ID gate stops working.

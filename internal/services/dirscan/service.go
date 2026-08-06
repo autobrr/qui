@@ -1787,7 +1787,7 @@ func (s *Service) searchWithRetries(
 		}
 
 		retry, retryErr := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, pass, l)
-		if retryErr != nil {
+		if retryErr != nil || retry == nil {
 			if ctx.Err() != nil {
 				return nil, retryErr
 			}
@@ -1795,9 +1795,6 @@ func (s *Service) searchWithRetries(
 			// Dropping the covered set keeps it pending instead of finalizing it.
 			response.CoveredIndexerIDs = nil
 			break
-		}
-		if retry == nil {
-			continue
 		}
 
 		retry.Results = append(response.Results, retry.Results...)

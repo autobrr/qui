@@ -15,8 +15,25 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
+// stubJackettSearcher completes every search with a fixed response, including the
+// retry passes. recordingSearcher scripts one response per pass instead.
+type stubJackettSearcher struct {
+	response *jackett.SearchResponse
+}
+
+func (s *stubJackettSearcher) SearchWithScope(_ context.Context, req *jackett.TorznabSearchRequest, _ string) error {
+	if req.OnAllComplete != nil {
+		req.OnAllComplete(s.response, nil)
+	}
+	return nil
+}
+
 func coverageTestService(response *jackett.SearchResponse) *Service {
-	return retryTestService(&recordingSearcher{responses: []*jackett.SearchResponse{response}})
+	parser := NewParser(nil)
+	return &Service{
+		parser:   parser,
+		searcher: NewSearcher(&stubJackettSearcher{response: response}, parser),
+	}
 }
 
 func coverageTestSearchee() *Searchee {
