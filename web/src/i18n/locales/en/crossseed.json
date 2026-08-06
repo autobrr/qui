@@ -651,7 +651,7 @@
       "intervalLabel": "Scan Interval (minutes)",
       "intervalHelp": "Minimum: 60 minutes (1 hour). Default: 1440 minutes (24 hours).",
       "skipIndividualEpisodesLabel": "Skip individual episodes",
-      "skipIndividualEpisodesHelp": "The scan searches season packs only. It does not search single TV episodes, and it skips episodes that cannot make a season pack.",
+      "skipIndividualEpisodesHelp": "The scan does not search single TV episodes. It searches the season pack they make instead, and skips episodes that cannot make one.",
       "toleranceLabel": "Size Tolerance (%)",
       "categoryLabel": "Category",
       "categoryPlaceholder": "Optional category override",

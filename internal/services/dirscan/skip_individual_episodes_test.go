@@ -38,6 +38,8 @@ func TestSelectEligibleRootWork_SkipIndividualEpisodesKeepsSeasonPack(t *testing
 	require.Len(t, skipped.roots[0].items, 1)
 	require.Equal(t, "Show Name S01", skipped.roots[0].items[0].searchee.Name)
 	require.False(t, skipped.roots[0].items[0].isEpisode)
+	require.Equal(t, 2, skipped.skippedEpisodes)
+	require.Equal(t, 0, kept.skippedEpisodes)
 }
 
 func TestSelectEligibleRootWork_SkipIndividualEpisodesDropsUngroupableEpisode(t *testing.T) {
@@ -92,4 +94,5 @@ func TestSelectEligibleRootWork_SkipIndividualEpisodesLeavesNonTVAlone(t *testin
 	require.Len(t, skipped.roots, 1)
 	require.Len(t, skipped.roots[0].items, 1)
 	require.Equal(t, "Movie.2024", skipped.roots[0].items[0].searchee.Name)
+	require.Equal(t, 0, skipped.skippedEpisodes)
 }

@@ -26,6 +26,7 @@ type scanWorkSelection struct {
 	discoveredFiles int
 	eligibleFiles   int
 	skippedFiles    int
+	skippedEpisodes int
 }
 
 func selectEligibleRootWork(
@@ -70,6 +71,7 @@ func selectEligibleRootWork(
 				continue
 			}
 			if skipIndividualEpisodes && item.isEpisode {
+				selection.skippedEpisodes++
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
 				continue
 			}

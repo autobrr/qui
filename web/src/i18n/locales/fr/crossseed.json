@@ -651,7 +651,7 @@
       "intervalLabel": "Intervalle (minutes)",
       "intervalHelp": "Minimum : 60 minutes. Défaut : 1440 minutes (24 heures).",
       "skipIndividualEpisodesLabel": "Ignorer les épisodes individuels",
-      "skipIndividualEpisodesHelp": "L'analyse recherche uniquement les packs de saison. Elle ne recherche pas les épisodes TV individuels et ignore les épisodes qui ne peuvent pas former un pack de saison.",
+      "skipIndividualEpisodesHelp": "L'analyse ne recherche pas les épisodes TV individuels. Elle recherche à la place le pack de saison qu'ils forment et ignore les épisodes qui n'en forment aucun.",
       "toleranceLabel": "Tolérance de taille (%)",
       "categoryLabel": "Catégorie",
       "categoryPlaceholder": "Remplacement optionnel",
