@@ -451,6 +451,54 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 	}
 }
 
+// Trackers place word boundaries differently from scene names, and
+// NormalizeForMatching drops a colon rather than turning it into a space, so
+// exact-size candidates from the same group were rejected as title mismatches.
+func TestReleasesMatch_TitleWordBoundaryDiffers(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceName string
+		candidate  string
+		wantMatch  bool
+	}{
+		{
+			name:       "tracker writes the title without spaces",
+			sourceName: "Kiss.X.Sis.S01.1080p.BluRay.Opus2.0.x265-Headpatter",
+			candidate:  "KissXSis S01 JAPANESE 1080p BluRay Opus 2.0 x265-Headpatter",
+			wantMatch:  true,
+		},
+		{
+			name:       "dropped colon closes a word gap",
+			sourceName: "Re.ZERO.Starting.Life.in.Another.World.S03.1080p.BluRay.Opus.2.0.x265-Headpatter",
+			candidate:  "Re:ZERO -Starting Life in Another World- AKA Re:Zero kara Hajimeru Isekai Seikatsu S03 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+			wantMatch:  true,
+		},
+		{
+			name:       "a genuinely different title stays rejected",
+			sourceName: "Ef.A.Tale.of.Melodies.S01.1080p.BluRay.Dual-Audio.Opus.2.0.x265-Headpatter",
+			candidate:  "Ef: A Tale Of Memories & Melodies S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+			wantMatch:  false,
+		},
+	}
+
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := rls.ParseString(tt.sourceName)
+			candidate := rls.ParseString(tt.candidate)
+
+			match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, tt.sourceName, tt.candidate, false)
+
+			if tt.wantMatch {
+				require.True(t, match, "got reason %q", reason)
+				return
+			}
+			require.False(t, match)
+			require.Equal(t, titleMismatchReason, reason)
+		})
+	}
+}
+
 func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
 	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := rls.Release{

@@ -332,9 +332,16 @@ func rawAKATitleParts(rawName string) []string {
 
 func addNormalizedTitle(titles map[string]struct{}, title string) {
 	normalized := stringutils.NormalizeForMatching(title)
-	if normalized != "" {
-		titles[normalized] = struct{}{}
+	if normalized == "" {
+		return
 	}
+	titles[normalized] = struct{}{}
+
+	// Trackers disagree with scene names about where the word boundaries are:
+	// "KissXSis" for "Kiss.X.Sis", and "Re:ZERO" normalizes to "rezero" because
+	// NormalizeForMatching drops the colon instead of turning it into a space.
+	// Store the space-free spelling too so the two readings can overlap.
+	titles[strings.ReplaceAll(normalized, " ", "")] = struct{}{}
 }
 
 func normalizedTitleSetsOverlap(sourceTitles, candidateTitles map[string]struct{}) bool {
