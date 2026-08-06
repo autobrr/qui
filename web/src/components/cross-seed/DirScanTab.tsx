@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
@@ -1247,6 +1247,19 @@ interface DirectoryDialogProps {
   instances: Instance[]
 }
 
+// Field help lives in a tooltip rather than a paragraph under the control:
+// the directory dialog has nine controls and the prose made it scroll.
+function FieldHelp({ children }: { children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger>
+        <Info className="size-3.5 text-muted-foreground" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{children}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function DirectoryDialog({ open, onOpenChange, directory, instances }: DirectoryDialogProps) {
   const { t } = useTranslation("crossseed")
   const createDirectory = useCreateDirScanDirectory()
@@ -1384,14 +1397,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
           <div className="space-y-2">
             <Label htmlFor="qbit-path-prefix" className="flex items-center gap-1">
               {t("dirScan.directoryDialog.qbitPathPrefixLabel")}
-              <Tooltip>
-                <TooltipTrigger>
-                  <Info className="size-3.5 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  {t("dirScan.directoryDialog.qbitPathPrefixHelp")}
-                </TooltipContent>
-              </Tooltip>
+              <FieldHelp>{t("dirScan.directoryDialog.qbitPathPrefixHelp")}</FieldHelp>
             </Label>
             <Input
               id="qbit-path-prefix"
@@ -1425,7 +1431,10 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
           </div>
 
           <div className="space-y-2">
-            <Label>{t("dirScan.directoryDialog.categoryOverrideLabel")}</Label>
+            <Label className="flex items-center gap-1">
+              {t("dirScan.directoryDialog.categoryOverrideLabel")}
+              <FieldHelp>{t("dirScan.directoryDialog.categoryOverrideHelp")}</FieldHelp>
+            </Label>
             <MultiSelect
               options={directoryCategoryOptions}
               selected={form.category ? [form.category] : []}
@@ -1443,13 +1452,22 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 {t("dirScan.directoryDialog.categoryLoadError")}
               </p>
             )}
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.directoryDialog.categoryOverrideHelp")}
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label>{t("dirScan.directoryDialog.additionalTagsLabel")}</Label>
+            <Label className="flex items-center gap-1">
+              {t("dirScan.directoryDialog.additionalTagsLabel")}
+              <FieldHelp>
+                <Trans
+                  ns="crossseed"
+                  i18nKey="dirScan.tagsDescription"
+                  components={{
+                    dirscan: <span className="font-mono" />,
+                    needsReview: <span className="font-mono" />,
+                  }}
+                />
+              </FieldHelp>
+            </Label>
             <MultiSelect
               options={directoryTagOptions}
               selected={form.tags ?? []}
@@ -1465,20 +1483,13 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 {t("dirScan.directoryDialog.tagsLoadError")}
               </p>
             )}
-            <p className="text-xs text-muted-foreground">
-              <Trans
-                ns="crossseed"
-                i18nKey="dirScan.tagsDescription"
-                components={{
-                  dirscan: <span className="font-mono" />,
-                  needsReview: <span className="font-mono" />,
-                }}
-              />
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label>{t("dirScan.directoryDialog.allowedDownloadClientsLabel")}</Label>
+            <Label className="flex items-center gap-1">
+              {t("dirScan.directoryDialog.allowedDownloadClientsLabel")}
+              <FieldHelp>{t("dirScan.directoryDialog.allowedDownloadClientsHelp")}</FieldHelp>
+            </Label>
             <MultiSelect
               options={(form.allowedDownloadClients ?? []).map((value) => ({ label: value, value }))}
               selected={form.allowedDownloadClients ?? []}
@@ -1489,13 +1500,13 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               creatable
               disabled={isPending}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.directoryDialog.allowedDownloadClientsHelp")}
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="scan-interval">{t("dirScan.directoryDialog.intervalLabel")}</Label>
+            <Label htmlFor="scan-interval" className="flex items-center gap-1">
+              {t("dirScan.directoryDialog.intervalLabel")}
+              <FieldHelp>{t("dirScan.directoryDialog.intervalHelp")}</FieldHelp>
+            </Label>
             <Input
               id="scan-interval"
               type="number"
@@ -1509,27 +1520,20 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 }))
               }}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.directoryDialog.intervalHelp")}
-            </p>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="dir-skip-individual-episodes"
-                checked={form.skipIndividualEpisodes ?? false}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({ ...prev, skipIndividualEpisodes: checked }))
-                }
-              />
-              <Label htmlFor="dir-skip-individual-episodes">
-                {t("dirScan.directoryDialog.skipIndividualEpisodesLabel")}
-              </Label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.directoryDialog.skipIndividualEpisodesHelp")}
-            </p>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="dir-skip-individual-episodes"
+              checked={form.skipIndividualEpisodes ?? false}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({ ...prev, skipIndividualEpisodes: checked }))
+              }
+            />
+            <Label htmlFor="dir-skip-individual-episodes" className="flex items-center gap-1">
+              {t("dirScan.directoryDialog.skipIndividualEpisodesLabel")}
+              <FieldHelp>{t("dirScan.directoryDialog.skipIndividualEpisodesHelp")}</FieldHelp>
+            </Label>
           </div>
 
           <div className="flex items-center gap-2">
