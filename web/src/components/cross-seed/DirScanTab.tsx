@@ -816,6 +816,19 @@ interface SettingsDialogProps {
 
 const ageFilterPresets = [1, 3, 7, 14, 30, 60, 90]
 
+// Field help lives in a tooltip rather than a paragraph under the control:
+// these dialogs carry enough controls that the prose made them scroll.
+function FieldHelp({ children }: { children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger>
+        <Info className="size-3.5 text-muted-foreground" />
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{children}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
   return {
     matchMode: (settings?.matchMode ?? "strict") as DirScanMatchMode,
@@ -1097,57 +1110,33 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
             )}
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="allow-partial"
-                checked={form.allowPartial}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({ ...prev, allowPartial: checked }))
-                }
-              />
-              <Label htmlFor="allow-partial" className="flex items-center gap-1">
-                {t("dirScan.settingsDialog.allowPartial")}
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="size-3.5 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    {t("dirScan.settingsDialog.allowPartialHelp")}
-                  </TooltipContent>
-                </Tooltip>
-              </Label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.allowPartialHelp")}
-            </p>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="allow-partial"
+              checked={form.allowPartial}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({ ...prev, allowPartial: checked }))
+              }
+            />
+            <Label htmlFor="allow-partial" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.allowPartial")}
+              <FieldHelp>{t("dirScan.settingsDialog.allowPartialHelp")}</FieldHelp>
+            </Label>
           </div>
 
           {form.allowPartial && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="download-missing-files"
-                  checked={form.downloadMissingFiles}
-                  onCheckedChange={(checked) =>
-                    setForm((prev) => ({ ...prev, downloadMissingFiles: checked }))
-                  }
-                />
-                <Label htmlFor="download-missing-files" className="flex items-center gap-1">
-                  {t("dirScan.settingsDialog.downloadMissingFiles")}
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="size-3.5 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      {t("dirScan.settingsDialog.downloadMissingFilesHelp")}
-                    </TooltipContent>
-                  </Tooltip>
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("dirScan.settingsDialog.downloadMissingFilesHelp")}
-              </p>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="download-missing-files"
+                checked={form.downloadMissingFiles}
+                onCheckedChange={(checked) =>
+                  setForm((prev) => ({ ...prev, downloadMissingFiles: checked }))
+                }
+              />
+              <Label htmlFor="download-missing-files" className="flex items-center gap-1">
+                {t("dirScan.settingsDialog.downloadMissingFiles")}
+                <FieldHelp>{t("dirScan.settingsDialog.downloadMissingFilesHelp")}</FieldHelp>
+              </Label>
             </div>
           )}
 
@@ -1162,14 +1151,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               />
               <Label htmlFor="skip-piece-boundary" className="flex items-center gap-1">
                 {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheck")}
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="size-3.5 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckHelp")}
-                  </TooltipContent>
-                </Tooltip>
+                <FieldHelp>{t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckHelp")}</FieldHelp>
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -1245,19 +1227,6 @@ interface DirectoryDialogProps {
   onOpenChange: (open: boolean) => void
   directory: DirScanDirectory | null
   instances: Instance[]
-}
-
-// Field help lives in a tooltip rather than a paragraph under the control:
-// the directory dialog has nine controls and the prose made it scroll.
-function FieldHelp({ children }: { children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <Info className="size-3.5 text-muted-foreground" />
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">{children}</TooltipContent>
-    </Tooltip>
-  )
 }
 
 function DirectoryDialog({ open, onOpenChange, directory, instances }: DirectoryDialogProps) {
