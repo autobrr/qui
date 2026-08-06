@@ -5,6 +5,7 @@ package releases
 
 import (
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -76,8 +77,31 @@ func (p *Parser) Parse(name string) *rls.Release {
 
 	release := rls.ParseString(key)
 	enrichReleaseHDR(key, &release)
+	enrichEpisodeRange(&release)
 	p.cache.Set(key, &release, ttlcache.DefaultTTL)
 	return &release
+}
+
+// enrichEpisodeRange turns a multi-episode release such as "S00E02-E05" into a
+// pack. rls reports it as its first episode, so the pack looks like a single
+// episode, but it keeps the whole list in SeriesEpisodes. Done at parse time so
+// the result lands in the cache.
+func enrichEpisodeRange(release *rls.Release) {
+	if release == nil || release.Episode == 0 {
+		return
+	}
+	// Count distinct episodes, not entries: a file path names the same episode
+	// twice ("Show.S11E11-GRP/Show.S11E11-GRP.mkv") and that is still one episode.
+	episodes := release.SeriesEpisodes()
+	if len(episodes) < 2 || !slices.ContainsFunc(episodes, func(e []int) bool {
+		return !slices.Equal(e, episodes[0])
+	}) {
+		return
+	}
+	// A season 0 pack carries no season number, so Series alone cannot mark it as
+	// a pack. Set the type as well and let the episode number go.
+	release.Episode = 0
+	release.Type = rls.Series
 }
 
 func enrichReleaseHDR(rawName string, release *rls.Release) {

@@ -646,12 +646,13 @@ func TestSeasonPackDetection(t *testing.T) {
 			episode:     5,
 		},
 		{
+			// A multi-episode release is a pack, not its first episode.
 			name:        "multi-episode",
 			releaseName: "Show.S02E10E11.720p.HDTV",
-			isSeason:    false,
-			isEpisode:   true,
+			isSeason:    true,
+			isEpisode:   false,
 			series:      2,
-			episode:     10, // First episode
+			episode:     0,
 		},
 		{
 			name:        "movie with year",
@@ -745,7 +746,7 @@ func TestReleaseNameVariations(t *testing.T) {
 		{"no resolution", "Show.S02E10.WEB-DL", 2, 10},
 		{"single digit", "Show.S1E2.HDTV", 1, 2},
 		{"with year", "Show.2024.S01E05", 1, 5},
-		{"multi-episode", "Show.S01E05E06", 1, 5}, // First episode
+		{"multi-episode", "Show.S01E05E06", 1, 0}, // A range reads as a pack
 		{"season pack no episode", "Show.S01.Complete", 1, 0},
 		{"season pack explicit", "Show.Season.1.1080p", 1, 0},
 	}
