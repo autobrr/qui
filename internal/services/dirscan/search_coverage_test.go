@@ -15,24 +15,8 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// stubJackettSearcher completes every search with a fixed response.
-type stubJackettSearcher struct {
-	response *jackett.SearchResponse
-}
-
-func (s *stubJackettSearcher) SearchWithScope(_ context.Context, req *jackett.TorznabSearchRequest, _ string) error {
-	if req.OnAllComplete != nil {
-		req.OnAllComplete(s.response, nil)
-	}
-	return nil
-}
-
 func coverageTestService(response *jackett.SearchResponse) *Service {
-	parser := NewParser(nil)
-	return &Service{
-		parser:   parser,
-		searcher: NewSearcher(&stubJackettSearcher{response: response}, parser),
-	}
+	return retryTestService(&recordingSearcher{responses: []*jackett.SearchResponse{response}})
 }
 
 func coverageTestSearchee() *Searchee {

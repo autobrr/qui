@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1613,10 +1614,10 @@ func (s *Service) processSearchee(
 	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
-	s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
+	arrTitles := s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
 
 	// Search indexers
-	response, err := s.searchForSearchee(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, l)
+	response, err := s.searchWithRetries(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, arrTitles, minSize, maxSize, l)
 	if err != nil {
 		// Cancellation is handled by the caller; avoid marking this as a retryable error.
 		if ctx.Err() != nil {
@@ -1741,6 +1742,119 @@ func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *cro
 	return filteredIndexers
 }
 
+// searchPass describes one query variant sent to the indexers. The zero value is
+// the primary pass; retry passes override the query or drop the year.
+type searchPass struct {
+	label    string
+	query    string
+	omitYear bool
+}
+
+// searchWithRetries runs the primary search and, when it produced nothing worth
+// downloading, retries with the two safer query variants cross-seed uses.
+//
+// A result outside the size band cannot match this searchee, so a response full
+// of out-of-band hits is the same dead end as an empty one. Dir scan finalizes a
+// searchee as no_match once its search covered every indexer, so a retry that
+// fails must leave the coverage incomplete: the searchee then stays pending and
+// the next scan tries again.
+func (s *Service) searchWithRetries(
+	ctx context.Context,
+	searchee *Searchee,
+	meta *SearcheeMetadata,
+	indexerIDs []int,
+	categories []int,
+	arrTitles []string,
+	minSize, maxSize int64,
+	l *zerolog.Logger,
+) (*jackett.SearchResponse, error) {
+	response, err := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, searchPass{}, l)
+	if err != nil || response == nil {
+		return response, err
+	}
+
+	for _, pass := range retrySearchPasses(meta, arrTitles) {
+		if hasResultInSizeBand(response.Results, minSize, maxSize) {
+			break
+		}
+
+		if l != nil {
+			l.Debug().
+				Str("name", searchee.Name).
+				Str("pass", pass.label).
+				Str("query", pass.query).
+				Msg("dirscan: nothing in the size band, retrying search")
+		}
+
+		retry, retryErr := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, pass, l)
+		if retryErr != nil {
+			if ctx.Err() != nil {
+				return nil, retryErr
+			}
+			// The retry never answered, so this searchee has not been fully searched.
+			// Dropping the covered set keeps it pending instead of finalizing it.
+			response.CoveredIndexerIDs = nil
+			break
+		}
+		if retry == nil {
+			continue
+		}
+
+		retry.Results = append(response.Results, retry.Results...)
+		retry.Partial = response.Partial || retry.Partial
+		retry.RequestedIndexerIDs = response.RequestedIndexerIDs
+		retry.CoveredIndexerIDs = intersectIndexerIDs(response.CoveredIndexerIDs, retry.CoveredIndexerIDs)
+		response = retry
+	}
+
+	return response, nil
+}
+
+// retrySearchPasses lists the query variants to try, in order, when a search
+// found nothing usable. Both are title-driven, so neither runs for an ID-driven
+// search: the ID already identifies the content and the query is dropped.
+func retrySearchPasses(meta *SearcheeMetadata, arrTitles []string) []searchPass {
+	if meta.HasExternalIDs() {
+		return nil
+	}
+
+	var passes []searchPass
+
+	// The year is the narrowest constraint on the primary query, so drop it first.
+	if meta.Year > 0 && meta.IsMovie {
+		passes = append(passes, searchPass{label: "yearless", omitYear: true})
+	}
+
+	// A tracker can index the same content under a localized, romanized or *arr
+	// alias. Shared with cross-seed so both paths pick the same alternate title.
+	if alt, ok := crossseed.AlternateTitleQuery(buildSearchQuery(meta), meta.Release, arrTitles, meta.CleanedName); ok {
+		// Keep the year the pass before it actually searched: re-applying a year the
+		// yearless retry already ruled out would repeat a known dead end.
+		passes = append(passes, searchPass{label: "alternate-title", query: alt, omitYear: len(passes) > 0})
+	}
+
+	return passes
+}
+
+// hasResultInSizeBand reports whether any result could match the searchee at all.
+// It mirrors the band that tryMatchResultsPerIndexer applies before downloading.
+func hasResultInSizeBand(results []jackett.SearchResult, minSize, maxSize int64) bool {
+	return slices.ContainsFunc(results, func(result jackett.SearchResult) bool {
+		return (minSize <= 0 || result.Size >= minSize) && (maxSize <= 0 || result.Size <= maxSize)
+	})
+}
+
+// intersectIndexerIDs keeps the IDs present in both sets, preserving the order of
+// the first. A retry pass that missed an indexer un-covers it.
+func intersectIndexerIDs(primary, retry []int) []int {
+	if len(retry) == 0 {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(primary), func(id int) bool {
+		return !slices.Contains(retry, id)
+	})
+}
+
 // searchForSearchee searches indexers and waits for results.
 func (s *Service) searchForSearchee(
 	ctx context.Context,
@@ -1748,16 +1862,19 @@ func (s *Service) searchForSearchee(
 	meta *SearcheeMetadata,
 	indexerIDs []int,
 	categories []int,
+	pass searchPass,
 	l *zerolog.Logger,
 ) (*jackett.SearchResponse, error) {
 	resultsCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
 
 	searchReq := &SearchRequest{
-		Searchee:   searchee,
-		Metadata:   meta,       // Pass parsed metadata with external IDs
-		IndexerIDs: indexerIDs, // Use capability-filtered indexers
-		Categories: categories,
+		Searchee:      searchee,
+		Metadata:      meta,       // Pass parsed metadata with external IDs
+		IndexerIDs:    indexerIDs, // Use capability-filtered indexers
+		Categories:    categories,
+		QueryOverride: pass.query,
+		OmitYear:      pass.omitYear,
 		OnAllComplete: func(response *jackett.SearchResponse, err error) {
 			if err != nil {
 				errCh <- err
@@ -2945,39 +3062,46 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	}
 }
 
-// lookupExternalIDs queries the arr service for external IDs and updates metadata.
+// lookupExternalIDs fills in external database IDs from the arr services and
+// returns the alternate titles they know for this content, which the search
+// retry uses when the primary title finds nothing.
 func (s *Service) lookupExternalIDs(
 	ctx context.Context,
 	meta *SearcheeMetadata,
 	contentType string,
 	name string,
 	l *zerolog.Logger,
-) {
+) []string {
 	if meta.HasExternalIDs() || s.arrService == nil {
-		return
+		return nil
 	}
 
 	arrType := mapContentTypeToARR(contentType)
 	if arrType == "" {
-		return
+		return nil
 	}
 
 	result, err := s.arrService.LookupExternalIDs(ctx, name, arrType)
 	if err != nil {
 		l.Debug().Err(err).Msg("dirscan: arr ID lookup failed, continuing without IDs")
-		return
+		return nil
 	}
 
-	if result == nil || result.IDs == nil {
-		return
+	if result == nil {
+		return nil
 	}
 
-	ids := result.IDs
-	meta.SetExternalIDs(ids.IMDbID, ids.TMDbID, ids.TVDbID)
-	l.Debug().
-		Str("imdb", ids.IMDbID).
-		Int("tmdb", ids.TMDbID).
-		Int("tvdb", ids.TVDbID).
-		Bool("fromCache", result.FromCache).
-		Msg("dirscan: got external IDs from arr")
+	// An arr can know the content by name without holding a usable ID. Keep its
+	// titles either way: they are what the alternate-title retry searches with,
+	// and that retry only runs when no ID was found.
+	if ids := result.IDs; ids != nil && !ids.IsEmpty() {
+		meta.SetExternalIDs(ids.IMDbID, ids.TMDbID, ids.TVDbID)
+		l.Debug().
+			Str("imdb", ids.IMDbID).
+			Int("tmdb", ids.TMDbID).
+			Int("tvdb", ids.TVDbID).
+			Bool("fromCache", result.FromCache).
+			Msg("dirscan: got external IDs from arr")
+	}
+	return result.Titles
 }
