@@ -235,7 +235,9 @@ Each scan directory has its own configuration:
 
 Off by default. When it is on, the scan does not search single TV episodes. It searches the season pack that the episodes make together instead. Movies, music, and other content are not affected.
 
-A season pack search needs two or more episodes of the same season in the same folder. Episodes that cannot make a season pack are not searched at all. This applies to a folder with only one episode, a folder that holds more than one season, and specials (season 0).
+A season pack search needs two or more episodes of the same show and season. The scan groups these episodes across the whole searchee, not per subfolder. If a folder holds episodes from more than one season, the scan makes no pack for those seasons. The scan does not search an episode that cannot make a season pack.
+
+This option does not affect specials (season 0) or absolute episode numbers.
 
 ## Operational Behavior
 
