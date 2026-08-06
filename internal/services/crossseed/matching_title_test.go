@@ -473,6 +473,12 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 			wantMatch:  true,
 		},
 		{
+			name:       "slash does not move the artist into the title",
+			sourceName: "Whitesnake-Back.In.Black-1980-FLAC",
+			candidate:  "AC/DC - Back In Black 1980 FLAC",
+			wantMatch:  false,
+		},
+		{
 			name:       "slash does not join unrelated shows",
 			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
 			candidate:  "Fate/Zero S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
@@ -482,7 +488,7 @@ func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+			s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidate)
 
