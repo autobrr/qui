@@ -15,14 +15,18 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// stubJackettSearcher completes every search with a fixed response.
+// stubJackettSearcher completes every search with a fixed response, including the
+// retry passes. recordingSearcher scripts one response per pass instead.
 type stubJackettSearcher struct {
 	response *jackett.SearchResponse
 }
 
 func (s *stubJackettSearcher) SearchWithScope(_ context.Context, req *jackett.TorznabSearchRequest, _ string) error {
 	if req.OnAllComplete != nil {
-		req.OnAllComplete(s.response, nil)
+		// Hand out a copy: the real service builds a fresh response per search, and a
+		// retry pass merges into the response it receives.
+		response := *s.response
+		req.OnAllComplete(&response, nil)
 	}
 	return nil
 }
