@@ -1797,7 +1797,9 @@ func (s *Service) searchWithRetries(
 			break
 		}
 
-		retry.Results = append(response.Results, retry.Results...)
+		// Concat, not append: the merge must never write into the backing array of
+		// the response the caller before us still holds.
+		retry.Results = slices.Concat(response.Results, retry.Results)
 		retry.Partial = response.Partial || retry.Partial
 		retry.RequestedIndexerIDs = response.RequestedIndexerIDs
 		retry.CoveredIndexerIDs = intersectIndexerIDs(response.CoveredIndexerIDs, retry.CoveredIndexerIDs)
