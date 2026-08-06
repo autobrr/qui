@@ -593,6 +593,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 			arr_instance_id INTEGER,
 			target_instance_id INTEGER NOT NULL,
 			scan_interval_minutes INTEGER NOT NULL DEFAULT 60,
+			skip_individual_episodes INTEGER NOT NULL DEFAULT 0,
 			last_scan_at TIMESTAMP,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -606,9 +607,9 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	`)
 	mustExec(t, db, `
 		INSERT INTO dir_scan_directories
-			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
+			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes, skip_individual_episodes)
 		VALUES
-			('/data/incoming', '/data', 'movies', '["tag1"]', '["SABnzbd"]', 1, NULL, 1, 30)
+			('/data/incoming', '/data', 'movies', '["tag1"]', '["SABnzbd"]', 1, NULL, 1, 30, 1)
 	`)
 
 	store := NewDirScanStore(&capturingQuerier{db: db})
@@ -623,4 +624,5 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	dir, err := store.GetDirectory(context.Background(), 1)
 	require.NoError(t, err)
 	require.True(t, dir.Enabled)
+	require.True(t, dir.SkipIndividualEpisodes)
 }

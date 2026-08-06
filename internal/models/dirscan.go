@@ -86,6 +86,7 @@ type DirScanDirectory struct {
 	ArrInstanceID          *int       `json:"arrInstanceId,omitempty"`
 	TargetInstanceID       int        `json:"targetInstanceId"`
 	ScanIntervalMinutes    int        `json:"scanIntervalMinutes"`
+	SkipIndividualEpisodes bool       `json:"skipIndividualEpisodes"`
 	LastScanAt             *time.Time `json:"lastScanAt,omitempty"`
 	CreatedAt              time.Time  `json:"createdAt"`
 	UpdatedAt              time.Time  `json:"updatedAt"`
@@ -357,11 +358,11 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 	var id int
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO dir_scan_directories
-			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes, skip_individual_episodes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
 	`, dir.Path, qbitPathPrefix, category, string(tagsJSON), string(allowedDownloadClientsJSON), boolToInt(dir.Enabled), dir.ArrInstanceID,
-		dir.TargetInstanceID, dir.ScanIntervalMinutes).Scan(&id)
+		dir.TargetInstanceID, dir.ScanIntervalMinutes, boolToInt(dir.SkipIndividualEpisodes)).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert directory: %w", err)
 	}
@@ -373,7 +374,7 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 func (s *DirScanStore) GetDirectory(ctx context.Context, id int) (*DirScanDirectory, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id,
-		       scan_interval_minutes, last_scan_at, created_at, updated_at
+		       scan_interval_minutes, skip_individual_episodes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		WHERE id = ?
 	`, id)
@@ -402,6 +403,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	var arrInstanceID sql.NullInt64
 	var lastScanAt sql.NullTime
 	var enabled int
+	var skipIndividualEpisodes int
 
 	if err := scanner.Scan(
 		&dir.ID,
@@ -414,6 +416,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 		&arrInstanceID,
 		&dir.TargetInstanceID,
 		&dir.ScanIntervalMinutes,
+		&skipIndividualEpisodes,
 		&lastScanAt,
 		&dir.CreatedAt,
 		&dir.UpdatedAt,
@@ -451,6 +454,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 		dir.LastScanAt = &lastScanAt.Time
 	}
 	dir.Enabled = SQLiteIntToBool(enabled)
+	dir.SkipIndividualEpisodes = SQLiteIntToBool(skipIndividualEpisodes)
 
 	return &dir, nil
 }
@@ -476,7 +480,7 @@ func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirect
 func (s *DirScanStore) ListDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id,
-		       scan_interval_minutes, last_scan_at, created_at, updated_at
+		       scan_interval_minutes, skip_individual_episodes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		ORDER BY id
 	`)
@@ -526,6 +530,7 @@ type DirScanDirectoryUpdateParams struct {
 	ArrInstanceID          *int // Use -1 to clear
 	TargetInstanceID       *int
 	ScanIntervalMinutes    *int
+	SkipIndividualEpisodes *bool
 }
 
 // UpdateDirectory updates a scan directory.
@@ -576,10 +581,11 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		    enabled = ?,
 		    arr_instance_id = ?,
 		    target_instance_id = ?,
-		    scan_interval_minutes = ?
+		    scan_interval_minutes = ?,
+		    skip_individual_episodes = ?
 		WHERE id = ?
 	`, existing.Path, qbitPathPrefix, category, string(tagsJSON), string(allowedDownloadClientsJSON), boolToInt(existing.Enabled),
-		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, id)
+		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, boolToInt(existing.SkipIndividualEpisodes), id)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
 	}
@@ -643,6 +649,9 @@ func applyDirectoryUpdateParams(existing *DirScanDirectory, params *DirScanDirec
 	if params.ScanIntervalMinutes != nil {
 		existing.ScanIntervalMinutes = *params.ScanIntervalMinutes
 	}
+	if params.SkipIndividualEpisodes != nil {
+		existing.SkipIndividualEpisodes = *params.SkipIndividualEpisodes
+	}
 }
 
 // DeleteDirectory deletes a scan directory.
@@ -678,7 +687,7 @@ func (s *DirScanStore) UpdateDirectoryLastScan(ctx context.Context, id int) erro
 func (s *DirScanStore) ListEnabledDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id,
-		       scan_interval_minutes, last_scan_at, created_at, updated_at
+		       scan_interval_minutes, skip_individual_episodes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		WHERE enabled = 1
 		ORDER BY id

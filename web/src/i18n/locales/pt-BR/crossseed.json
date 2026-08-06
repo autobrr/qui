@@ -650,6 +650,8 @@
       "selectInstance": "Selecione a instância",
       "intervalLabel": "Intervalo de Busca (minutos)",
       "intervalHelp": "Mínimo: 60 minutos (1 hora). Padrão: 1440 minutos (24 horas).",
+      "skipIndividualEpisodesLabel": "Ignorar episódios avulsos",
+      "skipIndividualEpisodesHelp": "A busca procura apenas pacotes de temporada. Ela não procura episódios de TV avulsos e ignora episódios que não podem formar um pacote de temporada.",
       "toleranceLabel": "Tolerância de Tamanho (%)",
       "categoryLabel": "Categoria",
       "categoryPlaceholder": "Sobrescrita opcional de categoria",

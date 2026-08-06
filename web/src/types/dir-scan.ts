@@ -67,6 +67,7 @@ export interface DirScanDirectory {
   arrInstanceId?: number
   targetInstanceId: number
   scanIntervalMinutes: number
+  skipIndividualEpisodes: boolean
   lastScanAt?: string
   createdAt: string
   updatedAt: string
@@ -82,6 +83,7 @@ export interface DirScanDirectoryCreate {
   arrInstanceId?: number
   targetInstanceId: number
   scanIntervalMinutes?: number
+  skipIndividualEpisodes?: boolean
 }
 
 export interface DirScanDirectoryUpdate {
@@ -94,6 +96,7 @@ export interface DirScanDirectoryUpdate {
   arrInstanceId?: number
   targetInstanceId?: number
   scanIntervalMinutes?: number
+  skipIndividualEpisodes?: boolean
 }
 
 export interface DirScanRun {

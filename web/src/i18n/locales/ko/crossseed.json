@@ -655,6 +655,8 @@
       "selectInstance": "인스턴스 선택",
       "intervalLabel": "스캔 간격(분)",
       "intervalHelp": "최소: 60분(1시간). 기본: 1440분(24시간).",
+      "skipIndividualEpisodesLabel": "개별 에피소드 건너뛰기",
+      "skipIndividualEpisodesHelp": "스캔은 시즌 팩만 검색합니다. 개별 TV 에피소드는 검색하지 않으며, 시즌 팩을 만들 수 없는 에피소드는 건너뜁니다.",
       "toleranceLabel": "크기 허용 범위(%)",
       "categoryLabel": "카테고리",
       "categoryPlaceholder": "선택적 카테고리 재정의",

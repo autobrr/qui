@@ -633,6 +633,8 @@
       "selectInstance": "Seleziona un'istanza",
       "intervalLabel": "Intervallo di scansione (minuti)",
       "intervalHelp": "Minimo: 60 minuti (1 ora). Predefinito: 1440 minuti (24 ore).",
+      "skipIndividualEpisodesLabel": "Salta episodi singoli",
+      "skipIndividualEpisodesHelp": "La scansione cerca solo i pacchetti stagionali. Non cerca i singoli episodi TV e salta gli episodi che non possono formare un pacchetto stagionale.",
       "toleranceLabel": "Tolleranza dimensione (%)",
       "categoryLabel": "Categoria",
       "categoryPlaceholder": "Sovrascrittura facoltativa della categoria",

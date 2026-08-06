@@ -35,6 +35,7 @@ func selectEligibleRootWork(
 	maxSearcheeAgeDays int,
 	now time.Time,
 	enabledIndexerIDs map[int]struct{},
+	skipIndividualEpisodes bool,
 	l *zerolog.Logger,
 ) scanWorkSelection {
 	selection := scanWorkSelection{}
@@ -66,6 +67,10 @@ func selectEligibleRootWork(
 		droppedItems := make([]workItemDropDecision, 0, len(items))
 		for _, item := range items {
 			if item.searchee == nil {
+				continue
+			}
+			if skipIndividualEpisodes && item.isEpisode {
+				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
 				continue
 			}
 			if workItemIsStale(item, selection.cutoff) {

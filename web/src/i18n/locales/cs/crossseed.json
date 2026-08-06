@@ -635,6 +635,8 @@
       "selectInstance": "Vybrat instanci",
       "intervalLabel": "Interval skenování (minut)",
       "intervalHelp": "Minimum: 60 minut (1 hodina). Výchozí: 1440 minut (24 hodin).",
+      "skipIndividualEpisodesLabel": "Přeskočit jednotlivé epizody",
+      "skipIndividualEpisodesHelp": "Sken hledá pouze balíky sezón. Nehledá jednotlivé TV epizody a přeskočí epizody, které nemohou vytvořit balík sezóny.",
       "toleranceLabel": "Velikost tolerance (%)",
       "categoryLabel": "Kategorie",
       "categoryPlaceholder": "Přepsání volitelné kategorie",

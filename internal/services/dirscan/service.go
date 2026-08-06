@@ -620,6 +620,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		effectiveMaxSearcheeAgeDays(settings, run.TriggeredBy),
 		time.Now(),
 		enabledIndexerIDs,
+		dir.SkipIndividualEpisodes,
 		&l,
 	)
 

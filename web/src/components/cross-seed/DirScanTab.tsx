@@ -1264,6 +1264,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     enabled: directory?.enabled ?? true,
     targetInstanceId: directory?.targetInstanceId ?? defaultTargetInstanceId,
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
+    skipIndividualEpisodes: directory?.skipIndividualEpisodes ?? false,
   }))
 
   // Track acknowledgment of regular mode warning
@@ -1303,6 +1304,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         enabled: directory.enabled,
         targetInstanceId: directory.targetInstanceId,
         scanIntervalMinutes: directory.scanIntervalMinutes,
+        skipIndividualEpisodes: directory.skipIndividualEpisodes,
       })
     } else {
       setForm({
@@ -1314,6 +1316,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         enabled: true,
         targetInstanceId: defaultTargetInstanceId,
         scanIntervalMinutes: 1440,
+        skipIndividualEpisodes: false,
       })
     }
   }, [open, directory, defaultTargetInstanceId])
@@ -1508,6 +1511,24 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             />
             <p className="text-xs text-muted-foreground">
               {t("dirScan.directoryDialog.intervalHelp")}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="dir-skip-individual-episodes"
+                checked={form.skipIndividualEpisodes ?? false}
+                onCheckedChange={(checked) =>
+                  setForm((prev) => ({ ...prev, skipIndividualEpisodes: checked }))
+                }
+              />
+              <Label htmlFor="dir-skip-individual-episodes">
+                {t("dirScan.directoryDialog.skipIndividualEpisodesLabel")}
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("dirScan.directoryDialog.skipIndividualEpisodesHelp")}
             </p>
           </div>
 

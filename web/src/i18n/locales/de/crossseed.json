@@ -650,6 +650,8 @@
       "selectInstance": "Instanz auswählen",
       "intervalLabel": "Scan-Intervall (Minuten)",
       "intervalHelp": "Minimum: 60 Minuten (1 Stunde). Standard: 1440 Minuten (24 Stunden).",
+      "skipIndividualEpisodesLabel": "Einzelepisoden überspringen",
+      "skipIndividualEpisodesHelp": "Der Scan sucht nur nach Season Packs. Er sucht keine einzelnen TV-Episoden und überspringt Episoden, die kein Season Pack bilden können.",
       "toleranceLabel": "Größentoleranz (%)",
       "categoryLabel": "Kategorie",
       "categoryPlaceholder": "Optionale Kategorie-Überschreibung",

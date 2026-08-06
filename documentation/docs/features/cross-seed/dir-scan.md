@@ -228,7 +228,14 @@ Each scan directory has its own configuration:
 | Category override | Overrides the global Default Category for this directory. |
 | Additional tags | Added on top of the global Dir Scan tags. |
 | Scan Interval (minutes) | How often to rescan (minimum 60 minutes, default 1440 = 24 hours). |
+| Skip individual episodes | The scan searches season packs only. See [Skip individual episodes](#skip-individual-episodes). |
 | Enabled | Enable/disable without deleting the configuration. |
+
+### Skip individual episodes
+
+Off by default. When it is on, the scan does not search single TV episodes. It searches only the season pack that the episodes make together.
+
+A season pack search needs two or more episodes of the same season in the same folder. Episodes that cannot make a season pack are not searched at all. This applies to a folder with only one episode, a folder that holds more than one season, and specials (season 0).
 
 ## Operational Behavior
 
