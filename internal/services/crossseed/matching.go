@@ -287,6 +287,22 @@ func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]st
 		addNormalizedTitle(titles, parsed.Alt)
 	}
 
+	// rls ends the title at a slash, so an indexer listing like
+	// "Fate/strange Fake S01 ..." parses as "Fate" while the dot-separated source
+	// name parses as "Fate strange Fake". Read the slash as a separator too and
+	// keep both spellings. This only adds titles, so a slash that really is a path
+	// separator ("Pack Name/Episode.mkv") costs an unused entry, never a lost one.
+	//
+	// TODO: drop this block at the next rls bump if
+	// TestReleasesMatch_SlashInTitleReadsAsSeparator still passes without it. rls
+	// merely keeping "/" inside Title is not enough: NormalizeForMatching passes
+	// "/" through, so "fate/strange fake" still will not equal "fate strange fake".
+	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
+		parsed := rls.ParseString(unslashed)
+		addNormalizedTitle(titles, parsed.Title)
+		addNormalizedTitle(titles, parsed.Alt)
+	}
+
 	return titles
 }
 
