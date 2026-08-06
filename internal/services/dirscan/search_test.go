@@ -18,3 +18,29 @@ func TestCalculateSizeRange_NonPositiveSize_IsZero(t *testing.T) {
 		t.Fatalf("expected (0,0), got (%d,%d)", minSize, maxSize)
 	}
 }
+
+// TestBuildSearchQuery pins the q dir scan sends to indexers. Dir scan used to
+// append the year for movies, which returned zero results on trackers that
+// search a movie database rather than release names. The year travels as the
+// separate year parameter instead.
+func TestBuildSearchQuery(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{name: "The.Matrix.1999.1080p.BluRay.x264-GROUP", want: "The Matrix"},
+		{name: "Some Movie (2021) {imdb-tt1234567} [1080p]", want: "Some Movie"},
+		{name: "Some.Show.S01E02.1080p.WEB-DL.DDP5.1.H.264-GROUP", want: "Some Show"},
+		{name: "[Fansub] Example Show - 1140 (1080p) [EEC80774]", want: "Example Show"},
+		{name: "Some.Artist-Some.Album-2020-FLAC", want: "Some Artist Some Album"},
+	}
+
+	parser := NewParser(nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := buildSearchQuery(parser.Parse(tt.name)); got != tt.want {
+				t.Fatalf("buildSearchQuery(%q) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}

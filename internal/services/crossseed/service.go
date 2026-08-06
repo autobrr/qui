@@ -8295,34 +8295,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 	}
 	if query == "" {
-		baseQuery := ""
-		if queryRelease.Title != "" {
-			if contentInfo.IsMusic {
-				// For music, use artist and title format if available
-				if queryRelease.Artist != "" {
-					baseQuery = queryRelease.Artist + " " + queryRelease.Title
-				} else {
-					baseQuery = queryRelease.Title
-				}
-			} else {
-				// For non-music, start with the title
-				baseQuery = queryRelease.Title
-			}
-		}
-
-		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
-		query = strings.TrimSpace(safeQuery.Query)
-		if query == "" {
-			// Fallback to a basic title-based query to avoid empty searches
-			switch {
-			case baseQuery != "":
-				query = strings.TrimSpace(baseQuery)
-			case queryRelease.Title != "":
-				query = queryRelease.Title
-			default:
-				query = sourceTorrent.Name
-			}
-		}
+		safeQuery := BuildTorznabQuery(sourceTorrent.Name, queryRelease, contentInfo.IsMusic)
+		query = safeQuery.Query
 		seasonPtr = safeQuery.Season
 		episodePtr = safeQuery.Episode
 

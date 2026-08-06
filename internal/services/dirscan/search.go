@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -137,27 +138,9 @@ func (s *Searcher) applyExternalIDs(req *jackett.TorznabSearchRequest, meta *Sea
 }
 
 // buildSearchQuery constructs a search query string from metadata.
+// Shared with cross-seed so the two search paths cannot drift apart.
 func buildSearchQuery(meta *SearcheeMetadata) string {
-	var parts []string
-
-	// Use the parsed title
-	title := meta.Title
-	if title == "" {
-		title = meta.CleanedName
-	}
-
-	// Clean the title for searching
-	title = cleanForSearch(title)
-	if title != "" {
-		parts = append(parts, title)
-	}
-
-	// Add year if available and this looks like a movie
-	if meta.Year > 0 && meta.IsMovie {
-		parts = append(parts, strconv.Itoa(meta.Year))
-	}
-
-	return strings.Join(parts, " ")
+	return crossseed.BuildTorznabQuery(meta.CleanedName, meta.Release, meta.IsMusic).Query
 }
 
 // cleanForSearch removes characters that might interfere with search.
