@@ -23,6 +23,21 @@ var (
 	emptyParens       = regexp.MustCompile(`\(\s*\)`)
 )
 
+// BuildTorznabQuery derives the free-text q parameter for a Torznab search.
+// Cross-seed and dir scan both call it so the two paths cannot drift apart.
+//
+// The year is deliberately absent from q: it travels as the separate year
+// parameter instead. Trackers that search a movie database rather than release
+// names (PassThePopcorn, for example) match q against the movie title alone, so
+// a trailing year returns nothing.
+func BuildTorznabQuery(name string, release *rls.Release, isMusic bool) SearchQuery {
+	baseQuery := release.Title
+	if isMusic && baseQuery != "" && release.Artist != "" {
+		baseQuery = release.Artist + " " + baseQuery
+	}
+	return buildSafeSearchQuery(name, release, baseQuery)
+}
+
 // buildSafeSearchQuery constructs a conservative Torznab query for TV/anime when parsing is weak.
 // It tries to preserve parsed season/episode from rls, but when parsing fails (common for anime
 // absolute numbering), it cleans the torrent name and extracts an absolute episode number to
