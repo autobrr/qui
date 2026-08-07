@@ -1777,7 +1777,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     return trackerStats.reduce((sum, t) => sum + t.uploaded, 0)
   }, [trackerStats])
 
-  // Calculate total uploaded for percentage display
+  // Calculate total session uploaded for percentage display
   const totalUploadedSession = useMemo(() => {
     return trackerStats.reduce((sum, t) => sum + t.uploadedSession, 0)
   }, [trackerStats])
@@ -2304,7 +2304,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-1 justify-between">
                     <span className="flex items-center gap-2 text-xs">
-                      {t("trackerBreakdown.sort", { column: sortColumn === "tracker" ? t("trackerBreakdown.sortOptions.tracker") : sortColumn === "uploaded" ?  t("trackerBreakdown.sortOptions.uploaded") : sortColumn === "downloaded" ? t("trackerBreakdown.sortOptions.downloaded") : sortColumn === "uploadedSession" ?  t("trackerBreakdown.sortOptions.uploadedSession") : sortColumn === "downloadedSession" ? t("trackerBreakdown.sortOptions.downloadedSession") : sortColumn === "ratio" ? t("trackerBreakdown.sortOptions.ratio") : sortColumn === "count" ? t("trackerBreakdown.sortOptions.torrents") : sortColumn === "size" ? t("trackerBreakdown.sortOptions.size") : t("trackerBreakdown.sortOptions.seeded") })}
+                      {t("trackerBreakdown.sort", { column: t(`trackerBreakdown.sortOptions.${sortColumn === "count" ? "torrents" : sortColumn === "performance" ? "seeded" : sortColumn}`) })}
                     </span>
                     {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                   </Button>
@@ -2536,9 +2536,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   </TableHead>
                   <TableHead className="text-right">
                     <button
-                        type="button"
-                        onClick={() => handleSort("uploadedSession")}
-                        className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                      type="button"
+                      onClick={() => handleSort("uploadedSession")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
                       {t("trackerBreakdown.tableHeaders.uploadedSession")}
                       <SortIcon column="uploadedSession" sortColumn={sortColumn} sortDirection={sortDirection} />
