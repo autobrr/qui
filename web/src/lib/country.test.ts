@@ -13,17 +13,32 @@ describe("getCountryCode", () => {
     expect(getCountryCode("DE", "Germany")).toBe("de")
   })
 
+  it("resolves aliases ('uk' -> 'gb', 'el' -> 'gr', 'tp' -> 'tl', 'su' -> 'ru') with precedence", () => {
+    expect(getCountryCode("uk", "United Kingdom")).toBe("gb")
+    expect(getCountryCode("UK")).toBe("gb")
+    expect(getCountryCode("el")).toBe("gr")
+    expect(getCountryCode("tp")).toBe("tl")
+    expect(getCountryCode("su")).toBe("ru")
+  })
+
+  it("falls back to country name when 2-character country_code is invalid", () => {
+    expect(getCountryCode("--", "Brazil")).toBe("br")
+    expect(getCountryCode("XX", "United States")).toBe("us")
+  })
+
   it("resolves from country name when country_code is empty or missing", () => {
     expect(getCountryCode("", "Brazil")).toBe("br")
     expect(getCountryCode(undefined, "Brasil")).toBe("br")
-    expect(getCountryCode("", "United States")).toBe("us")
+    expect(getCountryCode("", "Cabo Verde")).toBe("cv")
     expect(getCountryCode(undefined, "Deutschland")).toBe("de")
   })
 
-  it("resolves from 3-letter ISO codes", () => {
+  it("resolves from 3-letter ISO codes including boundary entries", () => {
     expect(getCountryCode("BRA")).toBe("br")
     expect(getCountryCode("USA")).toBe("us")
     expect(getCountryCode("DEU")).toBe("de")
+    expect(getCountryCode("ala")).toBe("ax")
+    expect(getCountryCode("cpt")).toBe("cp")
   })
 
   it("handles country name passed as country_code parameter", () => {
@@ -35,5 +50,7 @@ describe("getCountryCode", () => {
     expect(getCountryCode()).toBeUndefined()
     expect(getCountryCode("", "")).toBeUndefined()
     expect(getCountryCode("UnknownLand", "")).toBeUndefined()
+    expect(getCountryCode("XX", "")).toBeUndefined()
+    expect(getCountryCode("--", "")).toBeUndefined()
   })
 })

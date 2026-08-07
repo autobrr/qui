@@ -4,10 +4,10 @@
  */
 
 const ISO_ALPHA3_TO_ALPHA2: Record<string, string> = {
-  afg: "af", alb: "al", dza: "dz", asm: "as", and: "ad", ago: "ao", aia: "ai", ata: "aq", atg: "ag", arg: "ar",
+  afg: "af", ala: "ax", alb: "al", dza: "dz", asm: "as", and: "ad", ago: "ao", aia: "ai", ata: "aq", atg: "ag", arg: "ar",
   arm: "am", abw: "aw", aus: "au", aut: "at", aze: "az", bhs: "bs", bhr: "bh", bgd: "bd", brb: "bb", blr: "by",
   bel: "be", blz: "bz", ben: "bj", bmu: "bm", btn: "bt", bol: "bo", bes: "bq", bih: "ba", bwa: "bw", bvt: "bv",
-  bra: "br", iot: "io", brn: "bn", bgr: "bg", bfa: "bf", bdi: "bi", cpb: "cp", khm: "kh", cmr: "cm", can: "ca",
+  bra: "br", iot: "io", brn: "bn", bgr: "bg", bfa: "bf", bdi: "bi", cpt: "cp", khm: "kh", cmr: "cm", can: "ca",
   cpv: "cv", cym: "ky", caf: "cf", tcd: "td", chl: "cl", chn: "cn", cxr: "cx", cck: "cc", col: "co", com: "km",
   cog: "cg", cod: "cd", cok: "ck", cri: "cr", civ: "ci", hrv: "hr", cub: "cu", cuw: "cw", cyp: "cy", cze: "cz",
   dnk: "dk", dji: "dj", dma: "dm", dom: "do", ecu: "ec", egy: "eg", slv: "sv", gnq: "gq", eri: "er", est: "ee",
@@ -31,8 +31,19 @@ const ISO_ALPHA3_TO_ALPHA2: Record<string, string> = {
   ven: "ve", vnm: "vn", vgb: "vg", vir: "vi", wlf: "wf", esh: "eh", yem: "ye", zmb: "zm", zwe: "zw",
 }
 
+const VALID_ISO_ALPHA2 = new Set(Object.values(ISO_ALPHA3_TO_ALPHA2).concat(["eu", "un", "xk"]))
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  uk: "gb", // United Kingdom -> Great Britain (ISO alpha-2 GB)
+  el: "gr", // Greece (EU language code alias -> ISO alpha-2 GR)
+  tp: "tl", // Timor-Leste / East Timor (legacy ISO alpha-2 -> TL)
+  su: "ru", // Soviet Union (legacy TLD / GeoIP code -> RU)
+}
+
 const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   "afghanistan": "af",
+  "aland islands": "ax",
+  "åland islands": "ax",
   "albania": "al",
   "algeria": "dz",
   "andorra": "ad",
@@ -60,11 +71,14 @@ const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   "bulgaria": "bg",
   "burkina faso": "bf",
   "burundi": "bi",
+  "cabo verde": "cv",
   "cambodia": "kh",
   "cameroon": "cm",
   "canada": "ca",
+  "cape verde": "cv",
   "chile": "cl",
   "china": "cn",
+  "clipperton island": "cp",
   "colombia": "co",
   "costa rica": "cr",
   "croatia": "hr",
@@ -189,11 +203,15 @@ export function getCountryCode(countryCode?: string, country?: string): string |
     const trimmed = raw.trim()
     if (!trimmed) continue
 
-    if (trimmed.length === 2 && /^[a-zA-Z]{2}$/.test(trimmed)) {
-      return trimmed.toLowerCase()
+    const lower = trimmed.toLowerCase()
+
+    if (COUNTRY_ALIASES[lower]) {
+      return COUNTRY_ALIASES[lower]
     }
 
-    const lower = trimmed.toLowerCase()
+    if (lower.length === 2 && VALID_ISO_ALPHA2.has(lower)) {
+      return lower
+    }
 
     if (lower.length === 3 && ISO_ALPHA3_TO_ALPHA2[lower]) {
       return ISO_ALPHA3_TO_ALPHA2[lower]

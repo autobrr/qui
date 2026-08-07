@@ -61,11 +61,18 @@ func TestResolveCountryCode(t *testing.T) {
 	}{
 		{"2-letter code uppercase", "BR", "Brazil", "br"},
 		{"2-letter code lowercase", "br", "Brazil", "br"},
+		{"alias uk to gb", "uk", "United Kingdom", "gb"},
+		{"alias el to gr", "el", "Greece", "gr"},
+		{"alias tp to tl", "tp", "", "tl"},
+		{"alias su to ru", "su", "", "ru"},
+		{"invalid countryCode -- fallback to country Brazil", "--", "Brazil", "br"},
+		{"missing code, country name Cabo Verde", "", "Cabo Verde", "cv"},
 		{"missing code, country name Brazil", "", "Brazil", "br"},
 		{"missing code, country name Brasil", "", "Brasil", "br"},
 		{"missing code, country name United States", "", "United States", "us"},
 		{"country name in countryCode field", "Brazil", "Brazil", "br"},
 		{"country 2-letter code", "", "BR", "br"},
+		{"unknown countryCode XX", "XX", "", ""},
 		{"empty input", "", "", ""},
 	}
 
