@@ -97,6 +97,14 @@ func selectEligibleRootWork(
 			continue
 		}
 
+		// Skipped episodes are the only signal the skip option leaves behind,
+		// so log them even when the root still has eligible work.
+		for _, item := range droppedItems {
+			if item.reason == "individual_episode" {
+				logDroppedWorkItem(l, root, item, selection.cutoff)
+			}
+		}
+
 		selection.roots = append(selection.roots, rootWorkSelection{
 			root:  root,
 			items: pendingItems,
@@ -267,21 +275,29 @@ func logRootSelectionDrops(l *zerolog.Logger, root *Searchee, droppedItems []wor
 	event.Msg("dirscan: no eligible work items for root")
 
 	for _, item := range droppedItems {
-		event := l.Debug().
-			Str("rootPath", root.Path).
-			Str("itemName", item.name).
-			Str("itemPath", item.path).
-			Str("reason", item.reason).
-			Int("contentFiles", item.contentFiles).
-			Str("statuses", item.statuses)
-		if !item.newestContentMod.IsZero() {
-			event = event.Time("newestContentMod", item.newestContentMod)
-		}
-		if !cutoff.IsZero() {
-			event = event.Time("cutoff", cutoff)
-		}
-		event.Msg("dirscan: dropped work item")
+		logDroppedWorkItem(l, root, item, cutoff)
 	}
+}
+
+func logDroppedWorkItem(l *zerolog.Logger, root *Searchee, item workItemDropDecision, cutoff time.Time) {
+	if l == nil || root == nil {
+		return
+	}
+
+	event := l.Debug().
+		Str("rootPath", root.Path).
+		Str("itemName", item.name).
+		Str("itemPath", item.path).
+		Str("reason", item.reason).
+		Int("contentFiles", item.contentFiles).
+		Str("statuses", item.statuses)
+	if !item.newestContentMod.IsZero() {
+		event = event.Time("newestContentMod", item.newestContentMod)
+	}
+	if !cutoff.IsZero() {
+		event = event.Time("cutoff", cutoff)
+	}
+	event.Msg("dirscan: dropped work item")
 }
 
 func workItemIsStale(item searcheeWorkItem, cutoff time.Time) bool {
