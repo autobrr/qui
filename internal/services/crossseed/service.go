@@ -65,6 +65,7 @@ import (
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/reflinktree"
+	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/sharedextents"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -7904,7 +7905,7 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 	candidates = append(candidates, arrTitles...)
 	candidates = append(candidates, releaseAlt(release))
 	for _, part := range rawAKATitleParts(releaseName) {
-		parsed := rls.ParseString(part)
+		parsed := releases.DefaultParser.Parse(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
 	for _, candidate := range candidates {

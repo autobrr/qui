@@ -52,6 +52,10 @@ func NewDefaultParser() *Parser {
 	return NewParser(defaultParserTTL)
 }
 
+// DefaultParser is a statically allocated default parser; constructing one per call
+// leaks a ttlcache goroutine.
+var DefaultParser = NewDefaultParser()
+
 // Parse returns the parsed release metadata for name.
 func (p *Parser) Parse(name string) *rls.Release {
 	if p == nil {

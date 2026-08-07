@@ -281,8 +281,9 @@ func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]st
 	addNormalizedTitle(titles, releaseTitle(release))
 	addNormalizedTitle(titles, releaseAlt(release))
 
+	// Cached parse: this runs once per library torrent per search.
 	for _, rawTitle := range rawAKATitleParts(rawName) {
-		parsed := rls.ParseString(rawTitle)
+		parsed := releases.DefaultParser.Parse(rawTitle)
 		addNormalizedTitle(titles, parsed.Title)
 		addNormalizedTitle(titles, parsed.Alt)
 	}
