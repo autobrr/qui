@@ -2356,6 +2356,8 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 	// Create sorted peers array
 	sortedPeers := make([]SortedPeer, 0, len(peers.Peers))
 	for key, peer := range peers.Peers {
+		peer.CountryCode = resolveCountryCode(peer.CountryCode, peer.Country)
+		peers.Peers[key] = peer
 		sortedPeers = append(sortedPeers, SortedPeer{
 			Key:         key,
 			TorrentPeer: peer,

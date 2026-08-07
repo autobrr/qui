@@ -7,6 +7,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator,
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { getCountryCode } from "@/lib/country"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatSpeedWithUnit, type SpeedUnit } from "@/lib/speedUnits"
@@ -59,7 +60,8 @@ export const PeersTable = memo(function PeersTable({
   const [sorting, setSorting] = useState<SortingState>([{ id: "progress", desc: true }])
 
   const columns = useMemo(() => [
-    columnHelper.accessor("country_code", {
+    columnHelper.accessor((row) => getCountryCode(row.country_code, row.country), {
+      id: "country_code",
       header: "",
       cell: (info) => {
         const code = info.getValue()?.toLowerCase()

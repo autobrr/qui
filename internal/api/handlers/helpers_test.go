@@ -51,3 +51,28 @@ func TestRespondJSON_NilData(t *testing.T) {
 	assert.Empty(t, rr.Header().Get("Content-Type"), "Content-Type should not be set for nil data")
 	assert.Empty(t, rr.Body.String())
 }
+
+func TestResolveCountryCode(t *testing.T) {
+	tests := []struct {
+		name        string
+		countryCode string
+		country     string
+		want        string
+	}{
+		{"2-letter code uppercase", "BR", "Brazil", "br"},
+		{"2-letter code lowercase", "br", "Brazil", "br"},
+		{"missing code, country name Brazil", "", "Brazil", "br"},
+		{"missing code, country name Brasil", "", "Brasil", "br"},
+		{"missing code, country name United States", "", "United States", "us"},
+		{"country name in countryCode field", "Brazil", "Brazil", "br"},
+		{"country 2-letter code", "", "BR", "br"},
+		{"empty input", "", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveCountryCode(tt.countryCode, tt.country)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

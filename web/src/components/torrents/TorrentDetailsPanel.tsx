@@ -26,6 +26,7 @@ import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-ut
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { getCountryCode } from "@/lib/country"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
@@ -1398,12 +1399,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     <div className="flex-1 space-y-1">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
-                                        {peer.country_code && (
-                                          <span
-                                            className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
-                                            title={peer.country || peer.country_code}
-                                          />
-                                        )}
+                                        {(() => {
+                                          const countryCode = getCountryCode(peer.country_code, peer.country)
+                                          if (!countryCode) return null
+                                          return (
+                                            <span
+                                              className={`fi fi-${countryCode} rounded text-sm`}
+                                              title={peer.country || peer.country_code || countryCode.toUpperCase()}
+                                            />
+                                          )
+                                        })()}
                                         {isSeeder && (
                                           <Badge variant="secondary" className="text-xs">{t("detailsPanel.values.seeder")}</Badge>
                                         )}
