@@ -276,10 +276,12 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		if opts.SkipHashCheck {
 			options["skip_checking"] = "true"
 		}
+		categoryManaged := false
 		if spec.Manifest.Category != nil {
 			category := strings.TrimSpace(*spec.Manifest.Category)
 			if category != "" {
 				options["category"] = category
+				categoryManaged = true
 			}
 		}
 		if len(spec.Manifest.Tags) > 0 {
@@ -299,6 +301,11 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			options["autoTMM"] = "false"
 			options["savepath"] = savePath
 			pinned = true
+		} else if categoryManaged {
+			// A missing per-torrent path means capture proved the category path
+			// can reproduce placement. qB does not select that path merely because
+			// category is present on add; Auto TMM must be requested explicitly.
+			options["autoTMM"] = "true"
 		}
 
 		if _, err := s.torrentWriter.AddTorrent(ctx, instanceID, payload, options); err != nil {

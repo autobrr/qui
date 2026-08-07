@@ -86,7 +86,7 @@ func TestApplyTorrentPlanPinsDivergentSavePath(t *testing.T) {
 	require.Len(t, warnings, 1, "pinning should surface a single aggregate host-path warning")
 }
 
-func TestApplyTorrentPlanLeavesCategoryPlacementWhenNoSavePath(t *testing.T) {
+func TestApplyTorrentPlanUsesCategoryPlacementWhenNoSavePath(t *testing.T) {
 	t.Parallel()
 
 	category := "movies"
@@ -96,9 +96,8 @@ func TestApplyTorrentPlanLeavesCategoryPlacementWhenNoSavePath(t *testing.T) {
 		Category: &category,
 	})
 
-	_, hasAutoTMM := options["autoTMM"]
-	require.False(t, hasAutoTMM, "category-managed torrents must not force Auto TMM off")
+	require.Equal(t, "true", options["autoTMM"], "category-managed torrents must request qB category placement")
 	_, hasSavePath := options["savepath"]
-	require.False(t, hasSavePath, "category-managed torrents must not pin a save path")
+	require.False(t, hasSavePath, "category-managed torrents must not pin a redundant save path")
 	require.Empty(t, warnings, "category-managed torrents must not produce a pinning warning")
 }
