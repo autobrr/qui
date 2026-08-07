@@ -6058,10 +6058,9 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	seedingSizeSeen := make(map[string]struct{})
 
 	for _, torrent := range torrents {
-		// Add speeds (not deduplicated - each torrent has its own speed)
+		// Add speeds and session data (not deduplicated - each torrent has its own)
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
-		stats.TotalUploadSpeed += int(torrent.UpSpeed)		
-		// Add session downloaded (not deduplicated - each torrent has its own session downloaded)
+		stats.TotalUploadSpeed += int(torrent.UpSpeed)
 		stats.TotalDownloadData += torrent.DownloadedSession
 		stats.TotalUploadData += torrent.UploadedSession
 
