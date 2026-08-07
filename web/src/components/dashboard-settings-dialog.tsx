@@ -30,7 +30,7 @@ import { DEFAULT_DASHBOARD_SETTINGS, useDashboardSettings, useUpdateDashboardSet
 
 const SECTION_IDS = ["server-stats", "tracker-breakdown", "global-stats", "instances"] as const
 
-const SORT_COLUMN_IDS = ["tracker", "uploaded", "downloaded", "ratio", "buffer", "count", "size", "performance"] as const
+const SORT_COLUMN_IDS = ["tracker", "uploaded", "downloaded", "uploadedSession", "downloadedSession", "ratio", "buffer", "count", "size", "performance"] as const
 
 export function DashboardSettingsDialog() {
   const { t } = useTranslation("dashboard")

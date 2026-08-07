@@ -29,6 +29,8 @@ function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
       "tracker.example": {
         uploaded: 10,
         downloaded: 20,
+        uploadedSession: 5,
+        downloadedSession: 7,
         totalSize: 30,
         count: 1,
       },

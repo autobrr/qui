@@ -1848,8 +1848,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
                     <ChevronDown className="h-3 w-3 text-muted-foreground"/>
                     <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.downloadSpeed, speedUnit)}</span>
+                    <span className="font-medium">({formatBytes(footerSpeeds.downloadData)})</span>
                     <ChevronUp className="h-3 w-3 text-muted-foreground"/>
                     <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.uploadSpeed, speedUnit)}</span>
+                    <span className="font-medium">({formatBytes(footerSpeeds.uploadData)})</span>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
