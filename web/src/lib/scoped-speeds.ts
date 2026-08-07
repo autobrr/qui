@@ -14,8 +14,8 @@
 export function resolveFooterSpeeds(
   isAggregate: boolean,
   stats: { totalDownloadSpeed?: number; totalUploadSpeed?: number; totalDownloadData?: number; totalUploadData?: number } | null | undefined,
-  serverState: { dl_info_speed?: number; up_info_speed?: number;  dl_info_data?: number; up_info_data?: number } | null | undefined
-): { downloadSpeed: number; uploadSpeed: number; downloadData: number; uploadData: number; } {
+  serverState: { dl_info_speed?: number; up_info_speed?: number; dl_info_data?: number; up_info_data?: number } | null | undefined
+): { downloadSpeed: number; uploadSpeed: number; downloadData: number; uploadData: number } {
   if (isAggregate) {
     return {
       downloadSpeed: stats?.totalDownloadSpeed ?? 0,

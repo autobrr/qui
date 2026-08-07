@@ -266,10 +266,6 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
       sum + (stats?.totalDownloadSpeed || 0), 0)
     const totalUpload = statsData.reduce((sum, { stats }) =>
       sum + (stats?.totalUploadSpeed || 0), 0)
-    const totalDownloadData = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalDownloadData || 0), 0)
-    const totalUploadData = statsData.reduce((sum, { stats }) =>
-      sum + (stats?.totalUploadData || 0), 0)
     const totalErrors = statsData.reduce((sum, { torrentCounts }) =>
       sum + (torrentCounts?.status?.errored || 0), 0)
     const totalSize = statsData.reduce((sum, { stats }) =>
@@ -304,8 +300,6 @@ function useGlobalStats(statsData: DashboardInstanceStats[]) {
       activeTorrents,
       totalDownload,
       totalUpload,
-      totalDownloadData,
-      totalUploadData,
       totalErrors,
       totalSize,
       totalRemainingSize,

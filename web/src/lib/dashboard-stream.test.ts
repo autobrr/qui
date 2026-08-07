@@ -233,8 +233,6 @@ describe("mergeDashboardStatsSnapshot", () => {
           total: 8,
           paused: 9,
           error: 10,
-          totalDownloadData: 11,
-          totalUploadData: 12,
         },
       },
       {

@@ -22,7 +22,7 @@ describe("resolveFooterSpeeds", () => {
   })
 
   it("falls back to 0 when nothing is available", () => {
-    expect(resolveFooterSpeeds(true, null, null)).toEqual({ downloadSpeed: 0, uploadSpeed: 0, downloadData: 0, uploadData: 0})
+    expect(resolveFooterSpeeds(true, null, null)).toEqual({ downloadSpeed: 0, uploadSpeed: 0, downloadData: 0, uploadData: 0 })
     expect(resolveFooterSpeeds(false, null, undefined)).toEqual({ downloadSpeed: 0, uploadSpeed: 0, downloadData: 0, uploadData: 0 })
   })
 
