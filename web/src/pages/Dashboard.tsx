@@ -1483,7 +1483,17 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                 </TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
+                    <span>{t("serverStats.tableHeaders.downloadedSession")}</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">
+                  <div className="flex items-center justify-center gap-1">
                     <span>{t("serverStats.tableHeaders.uploaded")}</span>
+                  </div>
+                </TableHead>
+                <TableHead className="text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <span>{t("serverStats.tableHeaders.uploadedSession")}</span>
                   </div>
                 </TableHead>
                 <TableHead className="text-center">{t("serverStats.tableHeaders.ratio")}</TableHead>
@@ -1504,7 +1514,13 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                         {formatBytes(serverState?.alltime_dl || 0)}
                       </TableCell>
                       <TableCell className="text-center font-semibold">
+                        {formatBytes(serverState?.dl_info_data || 0)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">
                         {formatBytes(serverState?.alltime_ul || 0)}
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">
+                        {formatBytes(serverState?.up_info_data || 0)}
                       </TableCell>
                       <TableCell className="text-center font-semibold" style={{ color: instanceRatioColor }}>
                         {instanceRatio.toFixed(2)}
@@ -1524,7 +1540,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
 }
 
 
-type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "size" | "performance"
+type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "uploadedSession" | "downloadedSession" | "ratio" | "buffer" | "count" | "size" | "performance"
 type SortDirection = "asc" | "desc"
 
 // Helper to compute ratio display values for tracker stats
@@ -1600,6 +1616,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         if (existing) {
           existing.uploaded += stats.uploaded
           existing.downloaded += stats.downloaded
+          existing.uploadedSession += stats.uploadedSession
+          existing.downloadedSession += stats.downloadedSession
           existing.totalSize += stats.totalSize
           existing.count += stats.count
         } else {
@@ -1662,6 +1680,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           if (existing) {
             existing.uploaded += stats.uploaded
             existing.downloaded += stats.downloaded
+            existing.uploadedSession += stats.uploadedSession
+            existing.downloadedSession += stats.downloadedSession
             existing.totalSize += stats.totalSize
             existing.count += stats.count
             continue
@@ -1723,6 +1743,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           return multiplier * (a.uploaded - b.uploaded)
         case "downloaded":
           return multiplier * (a.downloaded - b.downloaded)
+        case "uploadedSession":
+          return multiplier * (a.uploadedSession - b.uploadedSession)
+        case "downloadedSession":
+          return multiplier * (a.downloadedSession - b.downloadedSession)
         case "ratio": {
           const ratioA = a.downloaded > 0 ? a.uploaded / a.downloaded : (a.uploaded > 0 ? Infinity : 0)
           const ratioB = b.downloaded > 0 ? b.uploaded / b.downloaded : (b.uploaded > 0 ? Infinity : 0)
@@ -1751,6 +1775,11 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   // Calculate total uploaded for percentage display
   const totalUploaded = useMemo(() => {
     return trackerStats.reduce((sum, t) => sum + t.uploaded, 0)
+  }, [trackerStats])
+
+  // Calculate total session uploaded for percentage display
+  const totalUploadedSession = useMemo(() => {
+    return trackerStats.reduce((sum, t) => sum + t.uploadedSession, 0)
   }, [trackerStats])
 
   // Selection handlers
@@ -2275,7 +2304,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-1 justify-between">
                     <span className="flex items-center gap-2 text-xs">
-                      {t("trackerBreakdown.sort", { column: sortColumn === "tracker" ? t("trackerBreakdown.sortOptions.tracker") :sortColumn === "uploaded" ? t("trackerBreakdown.sortOptions.uploaded") :sortColumn === "downloaded" ? t("trackerBreakdown.sortOptions.downloaded") :sortColumn === "ratio" ? t("trackerBreakdown.sortOptions.ratio") :sortColumn === "count" ? t("trackerBreakdown.sortOptions.torrents") :sortColumn === "size" ? t("trackerBreakdown.sortOptions.size") : t("trackerBreakdown.sortOptions.seeded") })}
+                      {t("trackerBreakdown.sort", { column: t(`trackerBreakdown.sortOptions.${sortColumn === "count" ? "torrents" : sortColumn === "performance" ? "seeded" : sortColumn}`) })}
                     </span>
                     {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                   </Button>
@@ -2284,6 +2313,8 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   <DropdownMenuItem onClick={() => handleSort("tracker")}>{t("trackerBreakdown.sortOptions.tracker")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleSort("uploaded")}>{t("trackerBreakdown.sortOptions.uploaded")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleSort("downloaded")}>{t("trackerBreakdown.sortOptions.downloaded")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("uploadedSession")}>{t("trackerBreakdown.sortOptions.uploadedSession")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("downloadedSession")}>{t("trackerBreakdown.sortOptions.downloadedSession")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleSort("ratio")}>{t("trackerBreakdown.sortOptions.ratio")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleSort("count")}>{t("trackerBreakdown.sortOptions.torrents")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleSort("size")}>{t("trackerBreakdown.sortOptions.size")}</DropdownMenuItem>
@@ -2308,7 +2339,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             {/* Mobile Card Layout */}
             <div className="sm:hidden px-4 space-y-2 py-3">
               {paginatedTrackerStats.map((tracker) => {
-                const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
+                const { domain, displayName, originalDomains, uploaded, downloaded, uploadedSession, downloadedSession, totalSize, count, customizationId } = tracker
                 const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
                 const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
@@ -2425,6 +2456,15 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                           <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
                         </div>
 
+                        {/* Uploaded Session */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronUp className="h-3 w-3" />
+                            <span>{t("trackerBreakdown.tableHeaders.uploadedSession")}</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(uploadedSession)}</div>
+                        </div>
+
                         {/* Downloaded */}
                         <div className="space-y-1">
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -2432,6 +2472,15 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             <span>{t("trackerBreakdown.tableHeaders.downloaded")}</span>
                           </div>
                           <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
+                        </div>
+
+                        {/* Downloaded Session */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <ChevronDown className="h-3 w-3" />
+                            <span>{t("trackerBreakdown.tableHeaders.downloadedSession")}</span>
+                          </div>
+                          <div className="font-semibold text-sm">{formatBytes(downloadedSession)}</div>
                         </div>
 
                         {/* Ratio */}
@@ -2488,11 +2537,31 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   <TableHead className="text-right">
                     <button
                       type="button"
+                      onClick={() => handleSort("uploadedSession")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      {t("trackerBreakdown.tableHeaders.uploadedSession")}
+                      <SortIcon column="uploadedSession" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
                       onClick={() => handleSort("downloaded")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
                       {t("trackerBreakdown.tableHeaders.downloaded")}
                       <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => handleSort("downloadedSession")}
+                      className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
+                    >
+                      {t("trackerBreakdown.tableHeaders.downloadedSession")}
+                      <SortIcon column="downloadedSession" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
                   <TableHead className="text-right">
@@ -2557,7 +2626,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               </TableHeader>
               <TableBody>
                 {paginatedTrackerStats.map((tracker, index) => {
-                  const { domain, displayName, originalDomains, uploaded, downloaded, totalSize, count, customizationId } = tracker
+                  const { domain, displayName, originalDomains, uploaded, downloaded, uploadedSession, downloadedSession, totalSize, count, customizationId } = tracker
                   const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                   const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
                   const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
@@ -2567,6 +2636,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   const hasCustomization = Boolean(customizationId)
                   const buffer = uploaded - downloaded
                   const uploadPercent = totalUploaded > 0 ? (uploaded / totalUploaded) * 100 : 0
+                  const uploadSessionPercent = totalUploadedSession > 0 ? (uploadedSession / totalUploadedSession) * 100 : 0
 
                   return (
                     <TableRow
@@ -2681,7 +2751,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         {formatBytes(uploaded)} <span className="text-[10px] text-muted-foreground font-normal">({uploadPercent.toFixed(1)}%)</span>
                       </TableCell>
                       <TableCell className="text-right font-semibold">
+                        {formatBytes(uploadedSession)} <span className="text-[10px] text-muted-foreground font-normal">({uploadSessionPercent.toFixed(1)}%)</span>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
                         {formatBytes(downloaded)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatBytes(downloadedSession)}
                       </TableCell>
                       <TableCell className="text-right font-semibold" style={{ color: ratioColor }}>
                         {isInfinite ? "∞" : ratio.toFixed(2)}

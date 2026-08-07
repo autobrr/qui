@@ -180,6 +180,8 @@ export interface CacheMetadata {
 export interface TrackerTransferStats {
   uploaded: number
   downloaded: number
+  uploadedSession: number
+  downloadedSession: number
   totalSize: number
   count: number
 }

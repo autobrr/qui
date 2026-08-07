@@ -2231,10 +2231,12 @@ func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts
 	for key, value := range next.TrackerTransfers {
 		current := base.TrackerTransfers[key]
 		base.TrackerTransfers[key] = TrackerTransferStats{
-			Uploaded:   current.Uploaded + value.Uploaded,
-			Downloaded: current.Downloaded + value.Downloaded,
-			TotalSize:  current.TotalSize + value.TotalSize,
-			Count:      current.Count + value.Count,
+			Uploaded:          current.Uploaded + value.Uploaded,
+			Downloaded:        current.Downloaded + value.Downloaded,
+			UploadedSession:   current.UploadedSession + value.UploadedSession,
+			DownloadedSession: current.DownloadedSession + value.DownloadedSession,
+			TotalSize:         current.TotalSize + value.TotalSize,
+			Count:             current.Count + value.Count,
 		}
 	}
 
@@ -3461,10 +3463,12 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 
 // TrackerTransferStats holds aggregated upload/download stats for a tracker domain
 type TrackerTransferStats struct {
-	Uploaded   int64 `json:"uploaded"`
-	Downloaded int64 `json:"downloaded"`
-	TotalSize  int64 `json:"totalSize"`
-	Count      int   `json:"count"`
+	Uploaded          int64 `json:"uploaded"`
+	Downloaded        int64 `json:"downloaded"`
+	UploadedSession   int64 `json:"uploadedSession"`
+	DownloadedSession int64 `json:"downloadedSession"`
+	TotalSize         int64 `json:"totalSize"`
+	Count             int   `json:"count"`
 }
 
 // TorrentCounts represents counts for filtering sidebar
@@ -6044,6 +6048,9 @@ func trackerTransferStatsForHashes(hashSet map[string]bool, torrentMap map[strin
 
 		stats.Uploaded += torrent.Uploaded
 		stats.Downloaded += torrent.Downloaded
+		stats.UploadedSession += torrent.UploadedSession
+		stats.DownloadedSession += torrent.DownloadedSession
+
 		if torrent.ContentPath == "" {
 			stats.TotalSize += torrent.Size
 			continue
