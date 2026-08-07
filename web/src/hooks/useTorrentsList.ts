@@ -693,6 +693,8 @@ export function useTorrentsList(
         error: source.stats.error || 0,
         totalDownloadSpeed: source.stats.totalDownloadSpeed || 0,
         totalUploadSpeed: source.stats.totalUploadSpeed || 0,
+        totalDownloadData: source.stats.totalDownloadData || 0,
+        totalUploadData: source.stats.totalUploadData || 0,
         totalSize: source.stats.totalSize || 0,
       }
     }
@@ -705,6 +707,8 @@ export function useTorrentsList(
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
+      totalDownloadData: 0,
+      totalUploadData: 0,
       totalSize: source?.stats?.totalSize || 0,
     }
   }, [activeData, data])

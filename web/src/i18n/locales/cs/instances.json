@@ -217,8 +217,8 @@
         "networkDiscovery": {
           "title": "Objevování sítě",
           "description": "Nastavte protokoly nalezení peerů a nastavení trackerů"
-          },
-          "advancedSettings": {
+        },
+        "advancedSettings": {
           "title": "Pokročilé nastavení",
           "description": "Ladění výkonu, disk I/O, správa peerů a nastavení zabezpečení"
         }
@@ -1152,6 +1152,21 @@
       "enableMonitoring": "Povolte monitorování pro začátek sledování zamrzlých torrentů.",
       "hashCopied": "Hash zkopírován",
       "copyHash": "Kopírovat hash",
+      "outcomes": {
+        "succeeded": "Úspěšné",
+        "failed": "Selhalo",
+        "skipped": "Přeskočeno",
+        "started": "Spuštěno"
+      },
+      "reasons": {
+        "debouncedCooldown": "Ignorováno během doby zchlazení",
+        "debouncedRetry": "Ignorováno během intervalu opakování",
+        "serviceNotStarted": "Služba není spuštěna",
+        "trackerHealthy": "Tracker je v pořádku",
+        "jobSucceeded": "Úloha opětovného oznámení byla úspěšná",
+        "jobStarted_one": "Úloha opětovného oznámení spuštěna (max {{count}} pokus)",
+        "jobStarted_other": "Úloha opětovného oznámení spuštěna (max {{count}} pokusů)"
+      },
       "form": {
         "instanceMissing": "Instance chybí",
         "settingsSaved": "Nastavení uloženo",

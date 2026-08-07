@@ -1146,6 +1146,21 @@
       "enableMonitoring": "Activez la surveillance pour commencer le suivi des torrents bloqués.",
       "hashCopied": "Hash copié",
       "copyHash": "Copier le hash",
+      "outcomes": {
+        "succeeded": "Réussi",
+        "failed": "Échoué",
+        "skipped": "Ignoré",
+        "started": "Démarré"
+      },
+      "reasons": {
+        "debouncedCooldown": "Ignoré durant la période de refroidissement",
+        "debouncedRetry": "Ignoré durant l'intervalle de nouvelle tentative",
+        "serviceNotStarted": "Le service n'est pas démarré",
+        "trackerHealthy": "Tracker sain",
+        "jobSucceeded": "Tâche de réannonce réussie",
+        "jobStarted_one": "Tâche de réannonce démarrée (max {{count}} tentative)",
+        "jobStarted_other": "Tâche de réannonce démarrée (max {{count}} tentatives)"
+      },
       "form": {
         "instanceMissing": "Instance manquante",
         "settingsSaved": "Paramètres enregistrés avec succès.",

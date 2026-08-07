@@ -142,7 +142,6 @@ func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.Cl
 
 // ServeHTTP handles the reverse proxy request (fallback for non-intercepted routes)
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Debug().Msg("Forwarding to qBittorrent via reverse proxy")
 	h.proxy.ServeHTTP(w, r)
 }
 
@@ -171,7 +170,7 @@ func (h *Handler) rewriteRequest(pr *httputil.ProxyRequest) {
 	originalPath := pr.In.URL.Path
 	strippedPath := h.stripProxyPrefix(originalPath, apiKey)
 
-	log.Debug().
+	log.Trace().
 		Str("client", clientAPIKey.ClientName).
 		Int("instanceId", instanceID).
 		Str("strippedPath", redact.ProxyPath(strippedPath)).
@@ -301,7 +300,7 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Msg("Proxying sync/maindata request")
@@ -340,7 +339,7 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 
 		if isFullUpdate {
 			h.syncManager.HintMainDataRefresh(instanceID, "proxy_sync_maindata")
-			log.Debug().
+			log.Trace().
 				Int("instanceId", instanceID).
 				Int64("rid", mainData.Rid).
 				Int("torrentCount", len(mainData.Torrents)).
@@ -349,7 +348,7 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 				Int("tagCount", len(mainData.Tags)).
 				Msg("Queued maindata refresh hint from full sync/maindata response")
 		} else {
-			log.Debug().
+			log.Trace().
 				Int("instanceId", instanceID).
 				Int64("rid", mainData.Rid).
 				Msg("Skipping incremental sync/maindata update")
@@ -1219,7 +1218,7 @@ func (h *Handler) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 		order = "desc"
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Strs("filter", filterValues).
@@ -1328,7 +1327,7 @@ func (h *Handler) handleTorrentSearch(w http.ResponseWriter, r *http.Request) {
 		limit = 100000 // Large limit to get all results
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("search", search).
@@ -1383,7 +1382,7 @@ func (h *Handler) handleCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Msg("Handling categories request via qui sync manager")
@@ -1421,7 +1420,7 @@ func (h *Handler) handleTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Msg("Handling tags request via qui sync manager")
@@ -1463,7 +1462,7 @@ func (h *Handler) handleTorrentProperties(w http.ResponseWriter, r *http.Request
 
 	hash := r.URL.Query().Get("hash")
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
@@ -1507,7 +1506,7 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 
 	hash := r.URL.Query().Get("hash")
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
@@ -1544,7 +1543,7 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 
 	hash := r.URL.Query().Get("hash")
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
@@ -1595,14 +1594,14 @@ func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
 			// Update peer state using the same pattern as maindata
 			client.UpdateWithPeersData(hash, &peersData)
 
-			log.Debug().
+			log.Trace().
 				Int("instanceId", instanceID).
 				Str("hash", hash).
 				Int64("rid", peersData.Rid).
 				Int("peerCount", len(peersData.Peers)).
 				Msg("Updated local peer state from full sync/torrentPeers response")
 		} else {
-			log.Debug().
+			log.Trace().
 				Int("instanceId", instanceID).
 				Str("hash", hash).
 				Int64("rid", peersData.Rid).
@@ -1627,7 +1626,7 @@ func (h *Handler) handleTorrentFiles(w http.ResponseWriter, r *http.Request) {
 
 	hash := r.URL.Query().Get("hash")
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Str("hash", hash).
@@ -1700,7 +1699,7 @@ func (h *Handler) handleTorrentMediaInfo(w http.ResponseWriter, r *http.Request)
 		clientName = clientAPIKey.ClientName
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientName).
 		Str("contentPath", contentPath).
@@ -1740,7 +1739,7 @@ func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	instanceID := GetInstanceIDFromContext(ctx)
 	clientAPIKey := GetClientAPIKeyFromContext(ctx)
 
-	log.Debug().
+	log.Trace().
 		Int("instanceId", instanceID).
 		Str("client", clientAPIKey.ClientName).
 		Msg("Handling ceremonial auth/login request")
@@ -1779,7 +1778,7 @@ func (h *Handler) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, cookie)
 
-	log.Debug().
+	log.Trace().
 		Str("client", clientAPIKey.ClientName).
 		Int("instanceId", instanceID).
 		Str("cookieName", cookie.Name).

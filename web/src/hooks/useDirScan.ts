@@ -113,6 +113,17 @@ export function useResetDirScanFiles(directoryId: number) {
   })
 }
 
+export function useRequeueDirScanNoMatch(directoryId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.requeueDirScanNoMatch(directoryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dir-scan", "directory", directoryId, "files"] })
+    },
+  })
+}
+
 export function useTriggerDirScan(directoryId: number) {
   const queryClient = useQueryClient()
 

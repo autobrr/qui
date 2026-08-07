@@ -451,7 +451,7 @@
       },
       "status": {
         "unlockTitle": "프리미엄 테마 잠금 해제",
-        "unlockDescription": "원하는 만큼 지불(최소 $4.99) • 평생 라이선스 • 모든 테마",
+        "unlockDescription": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
         "activeTitle": "프리미엄 접근 활성화됨",
         "activeDescription": "현재 및 향후 모든 프리미엄 테마에 접근할 수 있습니다",
         "activationRequiredTitle": "라이선스 활성화 필요",
@@ -515,7 +515,7 @@
       },
       "paymentDialog": {
         "title": "프리미엄 라이선스 받기",
-        "description": "원하는 만큼 지불(최소 $4.99) • 평생 라이선스 • 모든 테마",
+        "description": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
         "steps": {
           "choosePaymentMethod": {
             "title": "결제 방법 선택",
@@ -831,6 +831,13 @@
         "created": "{{count}}개 생성됨",
         "updated": "{{count}}개 업데이트됨",
         "failed": "{{count}}개 실패"
+      },
+      "savedConnections": {
+        "title": "저장된 연결",
+        "description": "이전에 가져온 서버를 사용하세요. API 키는 서버에 보관됩니다.",
+        "manual": "직접 입력",
+        "storedKey": "이 서버에 저장된 API 키를 사용합니다.",
+        "indexerCount_other": "인덱서 {{count}}개"
       }
     },
     "table": {

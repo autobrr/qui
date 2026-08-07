@@ -55,6 +55,7 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 - **Categories/Tags** - Filter which torrents to include
 - **Interval** - Delay between processing each torrent (minimum 60 seconds with Torznab enabled; minimum 5 seconds when Torznab is disabled and Gazelle is configured; recommended 10+ seconds for Gazelle-only runs)
 - **Cooldown** - Skip torrents searched within this window (minimum 12 hours). qui records this only after an actual remote Gazelle or Torznab request, so local preflight failures and local Gazelle skips do not suppress future searches.
+- **Skip individual episodes** - The run does not search single TV episodes. Groups of episodes still start season pack searches when [automatic assembly](./season-packs.md#automatic-assembly) is on.
 
 :::warning
 Run sparingly. This deep scan touches every matching torrent and queries Torznab and/or Gazelle for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
@@ -89,3 +90,5 @@ Use the per-instance blocklist to prevent specific infohashes from being injecte
 
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (only shown for torrents tagged `cross-seed`)
+
+The delete dialog can also detect cross-seeds that would be affected by the deletion, including [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.

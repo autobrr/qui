@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Sblocca i temi Premium",
-        "unlockDescription": "Paga quanto vuoi (min $4.99) • Licenza a vita • Tutti i temi",
+        "unlockDescription": "Paga quanto vuoi (min $9.99) • Licenza a vita • Tutti i temi",
         "activeTitle": "Accesso Premium attivo",
         "activeDescription": "Hai accesso a tutti i temi premium attuali e futuri",
         "activationRequiredTitle": "Attivazione della licenza richiesta",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Ottieni una licenza Premium",
-        "description": "Paga quanto vuoi (min $4.99) • Licenza a vita • Tutti i temi",
+        "description": "Paga quanto vuoi (min $9.99) • Licenza a vita • Tutti i temi",
         "steps": {
           "choosePaymentMethod": {
             "title": "Scegli il metodo di pagamento",
@@ -812,6 +812,14 @@
         "created": "{{count}} creati",
         "updated": "{{count}} aggiornati",
         "failed": "{{count}} non riusciti"
+      },
+      "savedConnections": {
+        "title": "Connessioni salvate",
+        "description": "Usa un server già importato. La chiave API resta sul server.",
+        "manual": "Inserisci manualmente",
+        "storedKey": "Viene usata la chiave API salvata per questo server.",
+        "indexerCount_one": "{{count}} indexer",
+        "indexerCount_other": "{{count}} indexer"
       }
     },
     "table": {

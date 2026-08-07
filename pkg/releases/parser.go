@@ -52,6 +52,10 @@ func NewDefaultParser() *Parser {
 	return NewParser(defaultParserTTL)
 }
 
+// DefaultParser is a statically allocated default parser; constructing one per call
+// leaks a ttlcache goroutine.
+var DefaultParser = NewDefaultParser()
+
 // Parse returns the parsed release metadata for name.
 func (p *Parser) Parse(name string) *rls.Release {
 	if p == nil {
@@ -61,6 +65,11 @@ func (p *Parser) Parse(name string) *rls.Release {
 	if p.keyNormalizer != nil {
 		key = p.keyNormalizer.Normalize(name)
 	}
+	// Sanitize here: raw non-UTF-8 bytes (e.g. "á" as Latin-1 0xe1) otherwise reach
+	// regexp.Compile in enrichReleaseHDR and panic via MustCompile. Names read from
+	// torrent files and qBt file lists are already sanitized at their ingestion
+	// boundaries.
+	key = stringutils.SanitizeUTF8(key)
 	if key == "" {
 		return &rls.Release{}
 	}

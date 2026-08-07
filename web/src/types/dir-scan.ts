@@ -118,6 +118,10 @@ export interface DirScanTriggerResponse {
   scanRoot: string
 }
 
+export interface DirScanRequeueResponse {
+  requeued: number
+}
+
 export type DirScanRunInjectionStatus = "added" | "failed"
 
 export interface DirScanRunInjection {

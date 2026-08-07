@@ -384,7 +384,7 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			webhook_source_exclude_categories TEXT NOT NULL DEFAULT '[]',
 			webhook_source_exclude_tags TEXT NOT NULL DEFAULT '[]',
 			find_individual_episodes INTEGER NOT NULL DEFAULT 0,
-			size_mismatch_tolerance_percent REAL NOT NULL DEFAULT 5.0,
+			auto_resume_max_download_mb INTEGER NOT NULL DEFAULT 50,
 			use_category_from_indexer INTEGER NOT NULL DEFAULT 0,
 			run_external_program_id INTEGER,
 			rss_automation_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
@@ -402,12 +402,14 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			skip_auto_resume_completion INTEGER NOT NULL DEFAULT 0,
 			skip_auto_resume_webhook INTEGER NOT NULL DEFAULT 0,
 			skip_recheck INTEGER NOT NULL DEFAULT 0,
+			rescue_title_mismatches INTEGER NOT NULL DEFAULT 0,
 			skip_piece_boundary_safety_check INTEGER NOT NULL DEFAULT 1,
 			season_pack_skip_repack_compare INTEGER NOT NULL DEFAULT 1,
 			season_pack_simplify_hdr_compare INTEGER NOT NULL DEFAULT 0,
 			season_pack_simplify_web_compare INTEGER NOT NULL DEFAULT 0,
 			season_pack_skip_year_compare INTEGER NOT NULL DEFAULT 0,
 			season_pack_enabled INTEGER NOT NULL DEFAULT 0,
+			season_pack_automation_enabled INTEGER NOT NULL DEFAULT 0,
 			season_pack_coverage_threshold REAL NOT NULL DEFAULT 0.75,
 			season_pack_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
 			season_pack_category TEXT NOT NULL DEFAULT '',
@@ -438,12 +440,21 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 	settings := DefaultCrossSeedAutomationSettings()
 	settings.RedactedAPIKey = "redacted-key"
 	settings.OrpheusAPIKey = "orpheus-key"
+	settings.SeasonPackAutomationEnabled = true
+	settings.AutoResumeMaxDownloadMB = 200
+	settings.RescueTitleMismatches = true
 
-	_, err = store.UpsertSettings(context.Background(), settings)
+	stored, err := store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 50)
+	require.Len(t, insertArgs, 52)
+	require.Equal(t, 200, insertArgs[17], "auto_resume_max_download_mb should keep its column position")
+	require.Equal(t, 200, stored.AutoResumeMaxDownloadMB, "auto_resume_max_download_mb should survive the round trip")
+	require.Equal(t, 1, insertArgs[35], "rescue_title_mismatches should round-trip as int 1")
+	require.True(t, stored.RescueTitleMismatches, "rescue_title_mismatches should survive the round trip")
+	require.Equal(t, 1, insertArgs[42], "season_pack_automation_enabled should round-trip as int 1")
+	require.True(t, stored.SeasonPackAutomationEnabled, "season_pack_automation_enabled should survive the round trip")
 
-	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 47}
+	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 49}
 	for _, idx := range boolIndexes {
 		_, ok := insertArgs[idx].(int)
 		require.Truef(t, ok, "expected int arg at index %d, got %T", idx, insertArgs[idx])

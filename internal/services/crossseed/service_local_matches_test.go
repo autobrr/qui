@@ -49,6 +49,56 @@ func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *te
 	require.Equal(t, "", matchType)
 }
 
+// A title-rescued cross-seed keeps the retitled name and lands in its own
+// hardlink directory, so content path, name, and strict release matching all
+// miss it. Field case: "Filter Cross-Seeds" and the details panel Cross-Seed
+// tab showed nothing for a byte-identical pair.
+func TestDetermineLocalMatchType_RetitledExactSizeMatchesOnRelease(t *testing.T) {
+	svc := newTestService()
+
+	const size = int64(5_313_384_582)
+	source := &qbt.Torrent{
+		Name:        "Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-CONDITION",
+		SavePath:    "/downloads",
+		ContentPath: "/downloads/Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-CONDITION",
+		TotalSize:   size,
+	}
+	newCandidate := func(name string, totalSize int64) *qbittorrent.CrossInstanceTorrentView {
+		return &qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{
+				Torrent: &qbt.Torrent{
+					Name:        name,
+					SavePath:    "/downloads/cross-seeds/aither",
+					ContentPath: "/downloads/cross-seeds/aither/" + name,
+					TotalSize:   totalSize,
+				},
+			},
+		}
+	}
+	matchType := func(candidate *qbittorrent.CrossInstanceTorrentView) string {
+		return svc.determineLocalMatchType(
+			source,
+			svc.releaseCache.Parse(source.Name),
+			candidate,
+			strings.ToLower(normalizePath(source.ContentPath)),
+			nil,
+		)
+	}
+
+	rescued := newCandidate("cdn-spermageddon.2024.norwegian.1080p.bluray.x264.mkv", size)
+	require.Equal(t, matchTypeRelease, matchType(rescued))
+
+	// Same title difference without byte-identical size stays unmatched.
+	require.Empty(t, matchType(newCandidate("cdn-spermageddon.2024.norwegian.1080p.bluray.x264.mkv", size-1)))
+
+	// Retitled AND differently encoded reaches the new strategy and must still
+	// be rejected there. The two cases below never reach it: they fail the
+	// strict matcher on group and resolution rather than on the title.
+	require.Empty(t, matchType(newCandidate("cdn-spermageddon.2024.norwegian.720p.bluray.x264.mkv", size)))
+	require.Empty(t, matchType(newCandidate("Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-OTHERGRP", size)))
+	require.Empty(t, matchType(newCandidate("Spermageddon.2024.NORWEGIAN.720p.BluRay.x264-CONDITION", size)))
+}
+
 func TestDetermineLocalMatchType_ContentPathMatchWhenSpecific(t *testing.T) {
 	svc := &Service{
 		releaseCache: NewReleaseCache(),

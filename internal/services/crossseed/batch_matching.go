@@ -266,7 +266,7 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 					continue
 				}
 				match, reason := s.releasesMatchWithReason(sourceRelease, c.release, false)
-				traceReleaseMatchDecision(
+				logReleaseMatchDecision(
 					source.Name,
 					c.name,
 					false,

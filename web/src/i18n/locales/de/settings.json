@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Premium-Designs freischalten",
-        "unlockDescription": "Zahle, was du möchtest (min. 4,99 $) • Lebenslange Lizenz • Alle Designs",
+        "unlockDescription": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
         "activeTitle": "Premium-Zugang aktiv",
         "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Premium-Designs",
         "activationRequiredTitle": "Lizenzaktivierung erforderlich",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Premium-Lizenz holen",
-        "description": "Zahle, was du möchtest (min. 4,99 $) • Lebenslange Lizenz • Alle Designs",
+        "description": "Zahle, was du möchtest (min. 9,99 $) • Lebenslange Lizenz • Alle Designs",
         "steps": {
           "choosePaymentMethod": {
             "title": "Zahlungsmethode wählen",
@@ -833,6 +833,14 @@
         "created": "{{count}} erstellt",
         "updated": "{{count}} aktualisiert",
         "failed": "{{count}} fehlgeschlagen"
+      },
+      "savedConnections": {
+        "title": "Gespeicherte Verbindungen",
+        "description": "Einen bereits importierten Server verwenden. Der API-Key bleibt auf dem Server.",
+        "manual": "Manuell eingeben",
+        "storedKey": "Der gespeicherte API-Key für diesen Server wird verwendet.",
+        "indexerCount_one": "{{count}} Indexer",
+        "indexerCount_other": "{{count}} Indexer"
       }
     },
     "table": {

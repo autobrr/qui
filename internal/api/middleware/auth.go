@@ -31,15 +31,12 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey != "" {
 				// Validate API key
-				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
-				if err != nil {
+				if _, err := authService.ValidateAPIKey(r.Context(), apiKey); err != nil {
 					log.Warn().Err(err).Msg("Invalid API key")
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
 
-				// Set API key info in context (optional, for logging)
-				log.Debug().Int("apiKeyID", apiKeyModel.ID).Str("name", apiKeyModel.Name).Msg("API key authenticated")
 				next.ServeHTTP(w, r)
 				return
 			}

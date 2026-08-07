@@ -65,6 +65,9 @@ func isQuiLogFile(name, base string) bool {
 	}
 	ext := filepath.Ext(base)
 	prefix := strings.TrimSuffix(base, ext) + "-"
+	// Only a rotation carries lumberjack's ".gz": the live file returned above is
+	// never compressed, so trimming here cannot widen what the live name matches.
+	name = strings.TrimSuffix(name, ".gz")
 	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ext) {
 		return false
 	}
@@ -151,7 +154,12 @@ func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
 		disposition = fmt.Sprintf("attachment; filename=%q", filename)
 	}
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	contentType := "text/plain; charset=utf-8"
+	if strings.HasSuffix(filename, ".gz") {
+		contentType = "application/gzip"
+	}
+
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", disposition)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")

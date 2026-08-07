@@ -101,7 +101,7 @@ export interface LocalCrossSeedMatch {
   state: string
   tracker: string
   trackerHealth?: string
-  matchType: "content_path" | "name" | "release"
+  matchType: "content_path" | "hardlink" | "reflink" | "name" | "release"
 }
 
 export interface InstanceReannounceActivity {
@@ -109,7 +109,7 @@ export interface InstanceReannounceActivity {
   hash: string
   torrentName?: string
   trackers?: string
-  outcome: "skipped" | "failed" | "succeeded"
+  outcome: "skipped" | "failed" | "succeeded" | "started"
   reason?: string
   timestamp: string
 }

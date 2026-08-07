@@ -106,3 +106,32 @@ func intPtr(v int) *int {
 	value := v
 	return &value
 }
+
+func TestBuildTorznabQueryOmitsYearForMovies(t *testing.T) {
+	// Trackers that search a movie database instead of release names
+	// (PassThePopcorn) match q against the title alone, so a trailing year
+	// returns nothing. The year travels as the separate year parameter.
+	release := rls.Release{Type: rls.Movie, Title: "The Matrix", Year: 1999}
+
+	got := BuildTorznabQuery("The.Matrix.1999.1080p.BluRay.x264-GROUP", &release, false)
+
+	require.Equal(t, "The Matrix", got.Query)
+	require.Nil(t, got.Season)
+	require.Nil(t, got.Episode)
+}
+
+func TestBuildTorznabQueryUsesArtistForMusic(t *testing.T) {
+	release := rls.Release{Type: rls.Music, Artist: "Some Artist", Title: "Some Album", Year: 2020}
+
+	got := BuildTorznabQuery("Some.Artist-Some.Album-2020-FLAC", &release, true)
+
+	require.Equal(t, "Some Artist Some Album", got.Query)
+}
+
+func TestBuildTorznabQueryFallsBackToName(t *testing.T) {
+	release := rls.Release{Type: rls.Unknown}
+
+	got := BuildTorznabQuery("  Untitled Thing  ", &release, false)
+
+	require.Equal(t, "untitled thing", got.Query)
+}

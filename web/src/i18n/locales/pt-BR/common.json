@@ -189,5 +189,14 @@
       "year_one": "{{count}} ano",
       "year_other": "{{count}} anos"
     }
+  },
+  "support": {
+    "title": "Apoiar o qui",
+    "description": "Já tem os temas e quer ajudar ainda mais? Tudo no qui já é seu. Uma assinatura não desbloqueia recursos, ela financia o tempo dedicado a construí-los.",
+    "perkPrefix": "Apoiadores recebem o cargo",
+    "perkSuffix": "no Discord e nossa eterna gratidão.",
+    "yearly": "{{price}} / ano",
+    "monthly": "{{price}} / mês",
+    "notLicense": "Os temas premium são uma compra única à parte."
   }
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type seasonPackRegressionSyncManager struct {
@@ -112,10 +113,107 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 		localFiles,
 		seasonPackNormalizer(nil),
 		nil,
+		nil,
 	)
 
 	require.ErrorIs(t, err, errLayoutMismatch)
 	require.ErrorContains(t, err, "invalid pack target path")
+}
+
+// TestSeasonPack_PunctuationOnlySequelTitles documents the deliberate tradeoff from
+// stripping !/? in title normalization: sequels distinguished only by punctuation
+// (K-On! vs K-On!!) now title-match, because scene naming drops the punctuation
+// anyway. buildSeasonPackPlan still requires exact per-episode byte sizes before
+// linking - the same size-identity trust cross-seeding rests on everywhere - so a
+// wrong link needs two different encodes with byte-identical sizes. A mismatched
+// file is demoted to pending (downloaded, never linked); with no other files the
+// plan comes up empty and the pack fails.
+func TestSeasonPack_PunctuationOnlySequelTitles(t *testing.T) {
+	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	packRelease := rls.ParseString("K-On! S01 1080p BluRay FLAC x264-Fansub")
+	local := rls.ParseString("[Fansub] K-On!! - 05 (1080p) [ABC12345]")
+	// matchEpisodeCandidatesDetailed stamps the pack season onto seasonless locals.
+	local.Series = packRelease.Series
+
+	ok, reason := matcher.seasonPackReleasesMatchWithReason(&packRelease, &local, true, nil, nil)
+	require.True(t, ok, "expected punctuation-only titles to conflate, got reason %q", reason)
+
+	localFiles := map[episodeIdentity]seasonPackLocalFile{
+		{series: 1, episode: 5}: {
+			sourcePath: "/media/[Fansub] K-On!! - 05 (1080p) [ABC12345].mkv",
+			size:       10,
+			release:    &local,
+		},
+	}
+
+	_, err := buildSeasonPackPlan(
+		qbt.TorrentFiles{{Name: "K-On! S01 1080p BluRay/[Fansub] K-On! - 05 (1080p) [DEF67890].mkv", Size: 20}},
+		&packRelease,
+		"K-On! S01 1080p BluRay",
+		t.TempDir(),
+		localFiles,
+		seasonPackNormalizer(nil),
+		nil,
+		nil,
+	)
+
+	require.ErrorIs(t, err, errLayoutMismatch)
+	require.ErrorContains(t, err, "no pack files could be mapped")
+}
+
+// A pack file whose resolved local file fails the size or release check is left
+// pending (downloaded via recheck) instead of failing the whole plan; only
+// verified files are linked.
+func TestBuildSeasonPackPlan_DemotesUnlinkableFilesToPending(t *testing.T) {
+	packRelease := rls.ParseString("Show.S01.1080p.WEB.x264-GRP")
+	release := func(name string) *rls.Release {
+		r := rls.ParseString(name)
+		return &r
+	}
+
+	localFiles := map[episodeIdentity]seasonPackLocalFile{
+		{series: 1, episode: 1}: {
+			sourcePath: "/media/Show.S01E01.1080p.WEB.x264-GRP.mkv",
+			size:       10,
+			release:    release("Show.S01E01.1080p.WEB.x264-GRP"),
+		},
+		{series: 1, episode: 2}: {
+			sourcePath: "/media/Show.S01E02.1080p.WEB.x264-GRP.mkv",
+			size:       99, // size mismatch against the pack file
+			release:    release("Show.S01E02.1080p.WEB.x264-GRP"),
+		},
+		{series: 1, episode: 3}: {
+			sourcePath: "/media/Show.S01E03.720p.WEB.x264-GRP.mkv",
+			size:       10,
+			release:    release("Show.S01E03.720p.WEB.x264-GRP"), // release mismatch (resolution)
+		},
+	}
+
+	build, err := buildSeasonPackPlan(
+		qbt.TorrentFiles{
+			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: 10},
+			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E02.1080p.WEB.x264-GRP.mkv", Size: 10},
+			{Name: "Show.S01.1080p.WEB.x264-GRP/Show.S01E03.1080p.WEB.x264-GRP.mkv", Size: 10},
+		},
+		&packRelease,
+		"Show.S01.1080p.WEB.x264-GRP",
+		t.TempDir(),
+		localFiles,
+		seasonPackNormalizer(nil),
+		nil,
+		nil,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, build.plan.Files, 1)
+	require.Contains(t, build.plan.Files[0].TargetPath, "S01E01")
+	require.True(t, build.hasPendingFiles())
+	require.Len(t, build.materializedPaths, 1)
+	// Demoted files count toward totalBytes but not linkedBytes — the resume
+	// gate derives from this split.
+	require.Equal(t, int64(10), build.linkedBytes)
+	require.Equal(t, int64(30), build.totalBytes)
 }
 
 func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t *testing.T) {

@@ -112,7 +112,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 		})
 		contentMatches = append(contentMatches, fmt.Sprintf("%s (%s)", candidate.view.Name, candidate.view.InstanceName))
 
-		log.Debug().
+		log.Trace().
 			Str("sourceHash", sourceHash).
 			Str("sourceName", sourceTorrent.Name).
 			Str("candidateHash", candidate.view.Hash).

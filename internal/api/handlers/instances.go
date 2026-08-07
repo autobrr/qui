@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -147,6 +148,35 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
+// transferInfoResponse adds qBittorrent's all-time totals, which only
+// /sync/maindata carries, to the /transfer/info statistics. The totals are
+// pointers so the fallback path omits them instead of reporting zero.
+type transferInfoResponse struct {
+	qbt.TransferInfo
+	AlltimeDl *int64 `json:"alltime_dl,omitempty"`
+	AlltimeUl *int64 `json:"alltime_ul,omitempty"`
+}
+
+// newTransferInfoResponse exposes only the transfer fields and the totals: the
+// rest of the server state belongs to the dashboard payload, not to a stats
+// endpoint clients poll every few seconds.
+func newTransferInfoResponse(state *qbt.ServerState) transferInfoResponse {
+	return transferInfoResponse{
+		TransferInfo: qbt.TransferInfo{
+			ConnectionStatus: qbt.ConnectionStatus(state.ConnectionStatus),
+			DHTNodes:         state.DhtNodes,
+			DlInfoData:       state.DlInfoData,
+			DlInfoSpeed:      state.DlInfoSpeed,
+			DlRateLimit:      state.DlRateLimit,
+			UpInfoData:       state.UpInfoData,
+			UpInfoSpeed:      state.UpInfoSpeed,
+			UpRateLimit:      state.UpRateLimit,
+		},
+		AlltimeDl: &state.AlltimeDl,
+		AlltimeUl: &state.AlltimeUl,
+	}
+}
+
 // GetTransferInfo returns lightweight transfer stats for an instance.
 func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -168,6 +198,24 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Prefer the synced server state: one maindata sync answers this endpoint and
+	// the all-time totals, sparing clients a full torrent-list request for the
+	// totals alone. The cache only advances on a completed sync, so instances
+	// nobody is streaming need this explicit one to report live speeds. Sync with
+	// the request context rather than the library's checked accessor, which syncs
+	// on context.Background() and would outlive this handler's deadline against a
+	// saturated WebUI. A failed sync still leaves the last good state to serve.
+	if syncManager := client.GetSyncManager(); syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to sync before reading server state; serving cached state")
+		}
+
+		if state := client.GetCachedServerState(); state != nil {
+			RespondJSON(w, http.StatusOK, newTransferInfoResponse(state))
+			return
+		}
+	}
+
 	info, err := client.GetTransferInfoCtx(ctx)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get transfer info")
@@ -175,7 +223,7 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, info)
+	RespondJSON(w, http.StatusOK, transferInfoResponse{TransferInfo: *info})
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {

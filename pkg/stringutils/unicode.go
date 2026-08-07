@@ -50,6 +50,21 @@ var (
 	)
 )
 
+// SanitizeUTF8 replaces invalid UTF-8 byte sequences in s with U+FFFD, returning valid UTF-8.
+//
+// The BitTorrent spec requires all string fields in a torrent file (torrent name,
+// file paths, comment, etc.) to be UTF-8, but torrents with raw legacy-encoded bytes
+// (e.g. "á" as Latin-1 0xe1) exist in the wild and break code that assumes valid UTF-8,
+// for example regexp.Compile rejects invalid-UTF-8 patterns and panics via MustCompile.
+// Invalid bytes are replaced with U+FFFD rather than dropped because the other lossy
+// decoders in the pipeline (encoding/json, which delivers all qBittorrent API strings,
+// and the NFKD transform in NormalizeForMatching) coerce invalid bytes to U+FFFD too,
+// so sanitized strings still compare equal to those forms. This is a no-op on
+// well-formed input, so legitimate values are unaffected.
+func SanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
 // normalizeUnicodeInner is the inner transformation function used by unicodeNormalizer.
 func normalizeUnicodeInner(s string) string {
 	// Handle special characters that NFKD doesn't decompose to ASCII equivalents
@@ -94,6 +109,11 @@ func normalized(s string) string {
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")
 
+	// Remove exclamation and question marks - scene naming drops them,
+	// so "Overtake!" announces as "Overtake.S01..."
+	s = strings.ReplaceAll(s, "!", "")
+	s = strings.ReplaceAll(s, "?", "")
+
 	// Normalize commas to spaces - "show,title" → "show title"
 	s = strings.ReplaceAll(s, ",", " ")
 
@@ -130,7 +150,7 @@ func NormalizeUnicode(s string) string {
 //   - Unicode normalization (removes diacritics, decomposes ligatures)
 //   - Lowercase
 //   - Strip apostrophes (including Unicode variants)
-//   - Strip colons
+//   - Strip colons, exclamation and question marks
 //   - Convert commas to spaces
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces

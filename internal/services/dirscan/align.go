@@ -203,6 +203,10 @@ func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan a
 // have no folder rename: the root was already dropped at add time (contentLayout=NoSubfolder),
 // so only the root-stripped file renames apply. Returns false if any rename could not be
 // confirmed, in which case the caller leaves the torrent paused.
+// ponytail: renames run in plan order with no collision handling. A cross-paired
+// identical-size cluster (RAR sets, BDMV) could plan a swap whose first rename targets a
+// still-occupied path; that rename fails and the torrent is left paused for inspection.
+// Add temp-name shuffling for cycles if a real-world report ever lands.
 func (i *Injector) applyAlignment(ctx context.Context, instanceID int, hash string, plan alignmentPlan) bool {
 	for _, fr := range plan.fileRenames {
 		if !i.renameTorrentPath(ctx, instanceID, hash, fr.oldPath, fr.newPath, false) {

@@ -35,13 +35,15 @@ QUI__SESSION_SECRET=...       # Auto-generated if not set
 ## Logging
 
 ```bash
-QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
+QUI__LOG_LEVEL=DEBUG     # Options: ERROR, DEBUG, INFO, WARN, TRACE (default: DEBUG)
 QUI__LOG_PATH=...        # Optional: log file path
-QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
-QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)
+QUI__LOG_MAX_SIZE=50     # Optional: rotate when the log file is larger than N MB (default: 50)
+QUI__LOG_MAX_BACKUPS=10  # Optional: retain N rotated files (default: 10, 0 keeps all)
 ```
 
-When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables to control the rotation thresholds and retention.
+When `logPath` is set, the server writes to disk with size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml`, or set the equivalent environment variables. Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file compresses to 2 to 3 MB, thus ten backups use about 25 MB. The ratio depends on the content of your log.
+
+Rotation and retention apply only when `logPath` is set. If you run qui in Docker, it writes the logs to stdout by default. Rotation does not apply to these logs. To limit the size of the container log, set `QUI__LOG_PATH`. As an alternative, set the `max-size` option on the container log driver.
 
 ## Storage
 

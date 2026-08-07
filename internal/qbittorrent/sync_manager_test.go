@@ -15,8 +15,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1268,6 +1270,33 @@ func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
 	require.Equal(t, []string{"Def456"}, client.fileRequests)
 }
 
+func TestGetTorrentFilesBatch_SanitizesInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	// "á" as Latin-1 (0xe1) is invalid UTF-8. The stub client bypasses JSON decoding
+	// (which would coerce to U+FFFD itself), exercising the defense-in-depth sanitize
+	// in GetTorrentFilesBatch directly.
+	client := &stubTorrentFilesClient{
+		torrents: []qbt.Torrent{{Hash: "abc123", Progress: 1.0}},
+		filesByHash: map[string]qbt.TorrentFiles{
+			"abc123": {{Name: "Movie.\xe1.2024.1080p-GROUP.mkv", Size: 1}},
+		},
+	}
+
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+
+	filesByHash, err := sm.GetTorrentFilesBatch(ctx, 1, []string{"abc123"})
+	require.NoError(t, err)
+	require.Len(t, filesByHash["abc123"], 1)
+	require.True(t, utf8.ValidString(filesByHash["abc123"][0].Name), "file name should be valid UTF-8")
+}
+
 func TestHasTorrentByAnyHash(t *testing.T) {
 	t.Parallel()
 
@@ -2353,4 +2382,11 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		return maindataCalls.Load() >= 2
 	}, time.Second, 5*time.Millisecond,
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
+}
+
+// A stalled instance must still be visible now that the per-pass start line is
+// gone.
+func TestTrackerHealthRefreshLevel(t *testing.T) {
+	require.Equal(t, zerolog.DebugLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow-time.Millisecond))
+	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
 }

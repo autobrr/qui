@@ -46,10 +46,10 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). |
 | `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. Empty disables CORS. Origins must be `http(s)://host[:port]`; wildcards are rejected; default ports are normalized. Restart required. |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: changing breaks decryption of stored instance passwords; you must re-enter them in the UI. |
-| `logLevel` | `QUI__LOG_LEVEL` | string | `INFO` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. |
+| `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty: logs to stdout. Relative paths resolve relative to the config directory. Applied immediately. |
-| `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | MiB threshold before rotation. Applied immediately. |
-| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `3` | Rotated files retained. `0` keeps all. Applied immediately. |
+| `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | Size in MB that starts a rotation. Applied immediately. |
+| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `10` | Number of rotated files that qui keeps. `0` keeps all. Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file compresses to 2 to 3 MB. Applied immediately. |
 | `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Always used for non-database assets (logs, tracker icon cache, etc.). When `databaseEngine=sqlite`, `qui.db` also lives here. Restart recommended. |
 | `customThemesDir` | `QUI__CUSTOM_THEMES_DIR` | string | empty | Directory for sideloaded [custom theme](../features/custom-themes.md) `.css` files. If empty: `<config-dir>/themes` (auto-created). Relative paths resolve against the config directory. Listing requires premium access. Config changes applied on next request. |
 | `databaseEngine` | `QUI__DATABASE_ENGINE` | string | `sqlite` | `sqlite` or `postgres`. Existing installs should keep `sqlite` unless you migrate. Restart required. |
@@ -147,10 +147,10 @@ host = "0.0.0.0"
 port = 7476
 baseUrl = "/qui/"
 
-logLevel = "INFO"
+logLevel = "DEBUG"
 logPath = "log/qui.log"
 logMaxSize = 50
-logMaxBackups = 3
+logMaxBackups = 10
 
 trackerIconsFetchEnabled = false
 

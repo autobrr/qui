@@ -453,7 +453,7 @@
       },
       "status": {
         "unlockTitle": "Odemknout premium motivy",
-        "unlockDescription": "Zaplatíte kolik chcete (min $4.99) • Životní licence • Všechny motivy",
+        "unlockDescription": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
         "activeTitle": "Premium přístup aktivní",
         "activeDescription": "Máte přístup ke všem aktuálním a budoucím premium motivům",
         "activationRequiredTitle": "Vyžaduje se aktivace licence",
@@ -517,7 +517,7 @@
       },
       "paymentDialog": {
         "title": "Získat premium licenci",
-        "description": "Zaplatíte kolik chcete (min $4.99) • Životní licence • Všechny motivy",
+        "description": "Zaplatíte kolik chcete (min $9.99) • Životní licence • Všechny motivy",
         "steps": {
           "choosePaymentMethod": {
             "title": "Vyberte způsob platby",
@@ -812,6 +812,14 @@
         "created": "{{count}} vytvořeno",
         "updated": "{{count}} aktualizováno",
         "failed": "{{count}} selhalo"
+      },
+      "savedConnections": {
+        "title": "Uložená připojení",
+        "description": "Použijte server, ze kterého jste už importovali. API klíč zůstává na serveru.",
+        "manual": "Zadat ručně",
+        "storedKey": "Použije se uložený API klíč pro tento server.",
+        "indexerCount_one": "{{count}} indexer",
+        "indexerCount_other": "{{count}} indexerů"
       }
     },
     "table": {

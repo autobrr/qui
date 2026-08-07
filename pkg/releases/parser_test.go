@@ -5,6 +5,7 @@ package releases
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
@@ -82,6 +83,44 @@ func TestParser_EnrichesHDRAliases(t *testing.T) {
 			for _, tag := range tt.notHDR {
 				require.NotContains(t, release.HDR, tag)
 			}
+		})
+	}
+}
+
+func TestParser_HandlesInvalidUTF8WithoutPanicking(t *testing.T) {
+	t.Parallel()
+
+	// "á" encoded as Latin-1 (0xe1) rather than UTF-8 (0xc3 0xa1) is invalid UTF-8.
+	//
+	// Position matters: a bad byte landing in the parsed group/site token reaches
+	// trailingTokenRegexes, where regexp.MustCompile rejects invalid-UTF-8 patterns and
+	// panics. A bad byte in the title is only carried through. Cover both.
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "invalid byte in group",
+			input: "Movie.2024.1080p.BluRay.x264-G\xe1P",
+		},
+		{
+			name:  "invalid byte in group with extension",
+			input: "Amelie.2001.1080p.BluRay.x264-G\xe1P.mkv",
+		},
+		{
+			name:  "invalid byte in title",
+			input: "Movie.\xe1.2024.2160p.BluRay.x265-GROUP.mkv",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			release := NewDefaultParser().Parse(tt.input)
+
+			require.True(t, utf8.ValidString(release.Title), "title should be valid UTF-8")
+			require.True(t, utf8.ValidString(release.Group), "group should be valid UTF-8")
 		})
 	}
 }

@@ -128,6 +128,12 @@
     "deleteCrossSeeds": "Ces cross-seeds seront également supprimés",
     "deletingFilesBreaks": "La suppression des fichiers corrompra ces cross-seeds",
     "dataPreserved": "Cross-seeds détectés : les données seront préservées",
+    "hardlinkedCopies": "Ces cross-seeds sont des copies en liens physiques des mêmes données",
+    "spaceNotFreed": "- la suppression des fichiers ne libérera pas d'espace disque tant que d'autres liens physiques subsistent",
+    "mixedHardlinkNote": "Les copies marquées « lien physique » conservent les données sur le disque même après la suppression des fichiers",
+    "linkedCopies": "Ces cross-seeds sont des copies liées utilisables indépendamment",
+    "sharedBlocksMayRemain": "- les copies liées restent utilisables ; les blocs partagés peuvent rester alloués",
+    "mixedLinkedNote": "Les copies marquées Hardlink ou Reflink restent utilisables après la suppression des fichiers sources",
     "torrentShares": "{{count}} torrent partage ces fichiers",
     "torrentsShare": "{{count}} torrents partagent ces fichiers",
     "acrossInstances": "sur {{count}} instances",
@@ -801,6 +807,32 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Vues",
+      "empty": "Aucune vue enregistrée. Choisissez des filtres, puis enregistrez-les ici.",
+      "saveCurrent": "Enregistrer les filtres actuels",
+      "actions": "Actions de la vue",
+      "updateFilters": "Mettre à jour les filtres",
+      "rename": "Renommer",
+      "delete": "Supprimer",
+      "undo": "Annuler",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "saveTitle": "Enregistrer la vue",
+      "saveDescription": "Enregistrez la sélection de filtres actuelle comme vue nommée. La recherche, le tri et les filtres de colonnes ne sont pas inclus.",
+      "renameTitle": "Renommer la vue",
+      "renameDescription": "Donnez un nouveau nom à cette vue enregistrée.",
+      "nameLabel": "Nom",
+      "namePlaceholder": "ex. Partages bloqués",
+      "deleteTitle": "Supprimer la vue",
+      "deleteDescription": "Supprimer « {{name}} » ? Cette action est irréversible.",
+      "toasts": {
+        "createFailed": "Échec de l'enregistrement de la vue",
+        "updateFailed": "Échec de la mise à jour de la vue",
+        "deleteFailed": "Échec de la suppression de la vue",
+        "updated": "« {{name}} » mis à jour"
+      }
+    },
     "title": "Filtres",
     "clearAll": "Tout effacer",
     "loading": "Chargement...",
@@ -1254,6 +1286,14 @@
       "release": {
         "label": "Release",
         "description": "Même release (correspondance par métadonnées)"
+      },
+      "hardlink": {
+        "label": "Lien physique",
+        "description": "Les fichiers sont des liens physiques vers les mêmes données sur le disque"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "Les fichiers partagent actuellement une ou plusieurs étendues ReFS ; la copie à l'écriture peut n'en laisser qu'une partie partagée"
       }
     },
     "noMatches": "Aucun torrent correspondant trouvé sur d'autres instances",

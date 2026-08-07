@@ -182,5 +182,14 @@
       "month_other": "{{count}}개월",
       "year_other": "{{count}}년"
     }
+  },
+  "support": {
+    "title": "qui 후원하기",
+    "description": "이미 테마를 갖고 계시고 더 돕고 싶으신가요? qui의 모든 기능은 이미 여러분의 것입니다. 구독은 기능을 잠금 해제하지 않고, 개발에 들어가는 시간을 지원합니다.",
+    "perkPrefix": "후원자는 Discord에서",
+    "perkSuffix": "역할과 저희의 영원한 감사를 받습니다.",
+    "yearly": "{{price}} / 년",
+    "monthly": "{{price}} / 월",
+    "notLicense": "프리미엄 테마는 별도의 일회성 구매입니다."
   }
 }

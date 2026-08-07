@@ -105,7 +105,7 @@ function shouldTrackText(text, relaxed = false) {
   // Must be checked before the ALL_CAPS / lowercase-word gates below, because
   // those gates return true in relaxed mode for short caps or longer lowercase
   // words, which would incorrectly flag entries like "RSS" or "autobrr".
-  if (/^(?:[KMGT]?i?B(?:\/s)?|B\/s|Mbps|[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
+  if (/^(?:[KMGT]?i?B(?:\/s)?|B\/s|Mbps|[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|RSS|README|autobrr|qui-premium|qui-patron|cross-seed|<redacted>|libtorrent\s.*\.x|cross-seed\/|\.cross|\/\s*[dhms]|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
   // ALL_CAPS constants -- but in relaxed mode, flag short UI words like "ALL"
   if (/^[A-Z0-9_]+$/.test(text)) {
     return relaxed && text.length >= 3

@@ -128,6 +128,12 @@
     "deleteCrossSeeds": "These cross-seeds will also be deleted",
     "deletingFilesBreaks": "Deleting files will break these cross-seeds",
     "dataPreserved": "Cross-seeds detected: data will be preserved",
+    "hardlinkedCopies": "These cross-seeds are hardlinked copies of the same data",
+    "spaceNotFreed": "- deleting files won't free disk space while other hardlinks remain",
+    "mixedHardlinkNote": "Hardlink-marked copies keep the data on disk even after deleting files",
+    "linkedCopies": "These cross-seeds are independently usable linked copies",
+    "sharedBlocksMayRemain": "- linked copies remain usable; shared blocks may stay allocated",
+    "mixedLinkedNote": "Hardlink- and Reflink-marked copies remain usable after deleting source files",
     "torrentShares": "{{count}} torrent shares these files",
     "torrentsShare": "{{count}} torrents share these files",
     "acrossInstances": "across {{count}} instances",
@@ -801,6 +807,32 @@
     }
   },
   "filterSidebar": {
+    "views": {
+      "title": "Views",
+      "empty": "No saved views yet. Choose some filters, then save them here.",
+      "saveCurrent": "Save current filters",
+      "actions": "View actions",
+      "updateFilters": "Update filters",
+      "rename": "Rename",
+      "delete": "Delete",
+      "undo": "Undo",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saveTitle": "Save view",
+      "saveDescription": "Save the current filter selection as a named view. Search, sorting and column filters are not included.",
+      "renameTitle": "Rename view",
+      "renameDescription": "Give this saved view a new name.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Stalled seeds",
+      "deleteTitle": "Delete view",
+      "deleteDescription": "Delete \"{{name}}\"? This cannot be undone.",
+      "toasts": {
+        "createFailed": "Failed to save view",
+        "updateFailed": "Failed to update view",
+        "deleteFailed": "Failed to delete view",
+        "updated": "\"{{name}}\" updated"
+      }
+    },
     "title": "Filters",
     "clearAll": "Clear all",
     "loading": "Loading...",
@@ -1254,6 +1286,14 @@
       "release": {
         "label": "Release",
         "description": "Same release (matched by metadata)"
+      },
+      "hardlink": {
+        "label": "Hardlink",
+        "description": "Files are hardlinks of the same data on disk"
+      },
+      "reflink": {
+        "label": "Reflink",
+        "description": "Files currently share one or more ReFS extents; copy-on-write may leave only part shared"
       }
     },
     "noMatches": "No matching torrents found on other instances",

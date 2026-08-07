@@ -77,6 +77,31 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 	return buf.Bytes()
 }
 
+// TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8 verifies that non-UTF-8 bytes in
+// torrent name/file fields (e.g. "á" as Latin-1 0xe1) are replaced with U+FFFD at the
+// parse boundary, so downstream release parsing never feeds invalid UTF-8 into regexp.Compile.
+func TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8(t *testing.T) {
+	info := metainfo.Info{
+		Name:        "Movie.\xe1.2024.1080p-GROUP",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"Movie.\xe1.2024.1080p-GROUP.mkv"}, Length: 1},
+		},
+	}
+	infoBytes, err := bencode.Marshal(info)
+	require.NoError(t, err)
+
+	mi := metainfo.MetaInfo{InfoBytes: infoBytes}
+	var buf bytes.Buffer
+	require.NoError(t, mi.Write(&buf))
+
+	meta, err := ParseTorrentMetadataWithInfo(buf.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP", meta.Name)
+	require.Len(t, meta.Files, 1)
+	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/Movie.\uFFFD.2024.1080p-GROUP.mkv", meta.Files[0].Name)
+}
+
 // TestDecodeTorrentData tests base64 decoding with various formats
 func TestDecodeTorrentData(t *testing.T) {
 	s := &Service{}
@@ -1128,7 +1153,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantMatchType:      "metadata",
 		},
 		{
-			name: "tv webhook missing collection stays strict for non-hdb even when group matches",
+			name: "tv webhook tolerates missing incoming collection when group matches",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-NTb",
@@ -1141,12 +1166,13 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					Progress: 1.0,
 				},
 			},
-			wantCanCrossSeed:   false,
-			wantMatchCount:     0,
-			wantRecommendation: "skip",
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
 		},
 		{
-			name: "tv webhook missing collection still requires matching group or site",
+			name: "tv webhook tolerates missing incoming collection without a group anchor",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264",
@@ -1159,9 +1185,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					Progress: 1.0,
 				},
 			},
-			wantCanCrossSeed:   false,
-			wantMatchCount:     0,
-			wantRecommendation: "skip",
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
 		},
 		{
 			name: "movie webhook tolerates missing incoming collection for hdb when group matches",
@@ -1183,7 +1210,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantMatchType:      "metadata",
 		},
 		{
-			name: "movie webhook missing collection still requires matching group or site",
+			name: "movie webhook tolerates missing incoming collection without a group anchor",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
 				TorrentName: "Sample Movie 2024 1080p WEB-DL DD+5.1 H.264",
@@ -1196,9 +1223,10 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 					Progress: 1.0,
 				},
 			},
-			wantCanCrossSeed:   false,
-			wantMatchCount:     0,
-			wantRecommendation: "skip",
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
 		},
 		{
 			name: "pending match when torrent still downloading",
@@ -3273,7 +3301,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-				SizeMismatchTolerancePercent:   5.0,
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1, // Only movies category torrent matches
@@ -3290,8 +3317,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				{Hash: "included", Name: "Tag.Filter.2025.1080p.BluRay.x264-GRP", Tags: "cross-seed", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceExcludeTags:     []string{"no-cross-seed"},
-				SizeMismatchTolerancePercent: 5.0,
+				WebhookSourceExcludeTags: []string{"no-cross-seed"},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1,
@@ -3309,7 +3335,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			},
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceExcludeCategories: []string{"cross-seed-link"},
-				SizeMismatchTolerancePercent:   5.0,
 			},
 			wantCanCrossSeed:   false,
 			wantMatchCount:     0,
@@ -3326,8 +3351,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 				{Hash: "tv", Name: "Include.Only.2025.1080p.BluRay.x264-GRP", Category: "tv", Progress: 1.0},
 			},
 			settings: &models.CrossSeedAutomationSettings{
-				WebhookSourceCategories:      []string{"movies"},
-				SizeMismatchTolerancePercent: 5.0,
+				WebhookSourceCategories: []string{"movies"},
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     1, // Only movies category matches
@@ -3346,7 +3370,6 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			settings: &models.CrossSeedAutomationSettings{
 				WebhookSourceCategories:        []string{},
 				WebhookSourceExcludeCategories: []string{},
-				SizeMismatchTolerancePercent:   5.0,
 			},
 			wantCanCrossSeed:   true,
 			wantMatchCount:     2, // Both match
@@ -4293,8 +4316,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 		expectTags              []string
 		expectExcludeCategories []string
 		expectExcludeTags       []string
-		expectTolerance         float64
-		expectToleranceSet      bool
 	}{
 		{
 			name: "completion include categories passed through",
@@ -4354,33 +4375,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			expectExcludeCategories: []string{"movies-Race"},
 			expectExcludeTags:       []string{"temporary"},
 		},
-		{
-			name: "strict zero tolerance passed through",
-			opts: SearchRunOptions{
-				InstanceID:                      instanceID,
-				SizeMismatchTolerancePercent:    0,
-				SizeMismatchTolerancePercentSet: true,
-			},
-			expectCategories:        nil,
-			expectTags:              nil,
-			expectExcludeCategories: nil,
-			expectExcludeTags:       nil,
-			expectTolerance:         0,
-			expectToleranceSet:      true,
-		},
-		{
-			name: "nonzero tolerance passed through without set flag",
-			opts: SearchRunOptions{
-				InstanceID:                   instanceID,
-				SizeMismatchTolerancePercent: 20,
-			},
-			expectCategories:        nil,
-			expectTags:              nil,
-			expectExcludeCategories: nil,
-			expectExcludeTags:       nil,
-			expectTolerance:         20,
-			expectToleranceSet:      true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -4431,8 +4425,6 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
 			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
-			assert.InDelta(t, tt.expectTolerance, captured.SizeMismatchTolerancePercent, 0.001, "SizeMismatchTolerancePercent mismatch")
-			assert.Equal(t, tt.expectToleranceSet, captured.SizeMismatchTolerancePercentSet, "SizeMismatchTolerancePercentSet mismatch")
 		})
 	}
 }

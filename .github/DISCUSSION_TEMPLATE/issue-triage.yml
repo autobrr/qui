@@ -59,7 +59,7 @@ body:
         - **Docker** - `docker logs qui`
         - **Stdout** - If running the binary directly
 
-        Set log level to TRACE for more detail (Settings > Logs > gear icon).
+        Set log level to DEBUG for more detail (Settings > Logs > gear icon).
       render: text
 
   - type: checkboxes
