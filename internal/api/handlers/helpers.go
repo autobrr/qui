@@ -163,6 +163,8 @@ var countryNameToCodeMap = map[string]string{
 	"venezuela": "ve", "vietnam": "vn", "viet nam": "vn", "yemen": "ye", "zambia": "zm", "zimbabwe": "zw",
 }
 
+// resolveCountryCode normalizes and resolves a two-letter ISO 3166-1 alpha-2 country code
+// from raw countryCode or country name candidates.
 func resolveCountryCode(countryCode, country string) string {
 	candidates := []string{countryCode, country}
 

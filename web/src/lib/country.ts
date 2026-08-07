@@ -196,6 +196,16 @@ const COUNTRY_NAME_TO_CODE: Record<string, string> = {
   "zimbabwe": "zw",
 }
 
+/**
+ * Resolves a two-letter ISO 3166-1 alpha-2 country code for flag-icons from raw country code or name inputs.
+ *
+ * Checks candidates against aliases (e.g. "uk" -> "gb"), valid ISO alpha-2 codes, ISO 3166-1 alpha-3 codes,
+ * and common country names in English or localized forms.
+ *
+ * @param countryCode - Raw country code candidate (e.g., "BR", "uk", "BRA", "--")
+ * @param country - Raw country name candidate (e.g., "Brazil", "Brasil", "United States")
+ * @returns Lowercase two-letter ISO alpha-2 country code, or undefined if unresolvable.
+ */
 export function getCountryCode(countryCode?: string, country?: string): string | undefined {
   const candidates = [countryCode, country].filter(Boolean) as string[]
 
