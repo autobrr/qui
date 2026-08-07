@@ -20,6 +20,8 @@ func TestMergeTorrentStats(t *testing.T) {
 		Checking:           0,
 		TotalDownloadSpeed: 100,
 		TotalUploadSpeed:   200,
+		TotalDownloadData:  500,
+		TotalUploadData:    600,
 		TotalSize:          300,
 		TotalRemainingSize: 50,
 		TotalSeedingSize:   250,
@@ -33,6 +35,8 @@ func TestMergeTorrentStats(t *testing.T) {
 		Checking:           1,
 		TotalDownloadSpeed: 300,
 		TotalUploadSpeed:   400,
+		TotalDownloadData:  500,
+		TotalUploadData:    600,
 		TotalSize:          500,
 		TotalRemainingSize: 100,
 		TotalSeedingSize:   400,
@@ -48,6 +52,8 @@ func TestMergeTorrentStats(t *testing.T) {
 	require.Equal(t, 1, merged.Checking)
 	require.Equal(t, 400, merged.TotalDownloadSpeed)
 	require.Equal(t, 600, merged.TotalUploadSpeed)
+	require.EqualValues(t, 1000, merged.TotalDownloadData)
+	require.EqualValues(t, 1200, merged.TotalUploadData)
 	require.EqualValues(t, 800, merged.TotalSize)
 	require.EqualValues(t, 150, merged.TotalRemainingSize)
 	require.EqualValues(t, 650, merged.TotalSeedingSize)

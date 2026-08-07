@@ -315,6 +315,8 @@ type TorrentStats struct {
 	Checking           int   `json:"checking"`
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
+	TotalDownloadData  int64 `json:"totalDownloadData"`
+	TotalUploadData    int64 `json:"totalUploadData"`
 	TotalSize          int64 `json:"totalSize"`
 	TotalRemainingSize int64 `json:"totalRemainingSize"`
 	TotalSeedingSize   int64 `json:"totalSeedingSize"`
@@ -2160,6 +2162,8 @@ func mergeTorrentStats(base *TorrentStats, next *TorrentStats) *TorrentStats {
 	base.Checking += next.Checking
 	base.TotalDownloadSpeed += next.TotalDownloadSpeed
 	base.TotalUploadSpeed += next.TotalUploadSpeed
+	base.TotalDownloadData += next.TotalDownloadData
+	base.TotalUploadData += next.TotalUploadData
 	base.TotalSize += next.TotalSize
 	base.TotalRemainingSize += next.TotalRemainingSize
 	base.TotalSeedingSize += next.TotalSeedingSize
@@ -6068,9 +6072,11 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	seedingSizeSeen := make(map[string]struct{})
 
 	for _, torrent := range torrents {
-		// Add speeds (not deduplicated - each torrent has its own speed)
+		// Add speeds and session data (not deduplicated - each torrent has its own)
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
 		stats.TotalUploadSpeed += int(torrent.UpSpeed)
+		stats.TotalDownloadData += torrent.DownloadedSession
+		stats.TotalUploadData += torrent.UploadedSession
 
 		// Add size (deduplicated by ContentPath)
 		if _, seen := totalSizeSeen[torrent.ContentPath]; !seen {

@@ -90,6 +90,9 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		assert.Greater(t, stats.TotalDownloadSpeed, 0, "Should have download speed")
 		assert.Greater(t, stats.TotalUploadSpeed, 0, "Should have upload speed")
 
+		assert.Positive(t, stats.TotalDownloadData, "Should have session download data")
+		assert.Positive(t, stats.TotalUploadData, "Should have session upload data")
+
 		// Verify state counts are reasonable - only actively downloading/seeding torrents are counted
 		// Stalled and queued torrents are not counted in Downloading/Seeding
 		totalStates := stats.Downloading + stats.Seeding + stats.Paused + stats.Error + stats.Checking
