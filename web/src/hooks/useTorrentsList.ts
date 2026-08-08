@@ -388,6 +388,17 @@ export function useTorrentsList(
         data = normalizeStreamedSnapshot(payload.data)
       }
 
+      // Publish through the query cache FIRST and adopt its structurally-shared
+      // result as the single object lineage for every sink. setQueryData applies
+      // replaceEqualDeep against the cached response, so a row whose values did not
+      // change keeps its existing object identity even across full frames and the
+      // REST/stream boundary. Without this the delta baseline and the query cache
+      // hold equal-but-distinct row objects, and the processing effect below (which
+      // sees every cache write through the subscribed list query) swaps the page-0
+      // window between the two lineages on every tick — so `torrent === torrent`
+      // never holds and row-level memoization downstream can never take effect.
+      data = queryClient.setQueryData<TorrentResponse>(streamQueryKey, data) ?? data
+
       // Retain the reconstructed full snapshot as the base for the next delta.
       lastFullSnapshotRef.current = data
       lastStreamSnapshotScopeRef.current = viewScopeKey
@@ -396,7 +407,6 @@ export function useTorrentsList(
       rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
       updateAppInfoCache(data)
       updateMetadataCache(data)
-      queryClient.setQueryData(streamQueryKey, data)
 
       if (useCrossInstanceEndpoint) {
         // Aggregated streams only ever deliver the first page of cross-instance

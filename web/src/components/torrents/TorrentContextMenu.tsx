@@ -51,7 +51,7 @@ import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
 
-interface TorrentContextMenuProps {
+export interface TorrentContextMenuProps {
   children: React.ReactNode
   instanceId: number
   readOnly?: boolean

@@ -928,7 +928,11 @@ describe("useTorrentsList", () => {
     })
     await flush()
 
-    expect(result.current.counts).toBe(zeroCounts)
+    // toEqual, not toBe: the stream write now flows through query-cache
+    // structural sharing, which may rebuild the counts container. The contract
+    // is the zero VALUES winning over the preserved fallback, not the identity
+    // of the frame's object.
+    expect(result.current.counts).toEqual(zeroCounts)
   })
 
   it("does not preserve stream counts across filter scope changes", async () => {
@@ -1561,5 +1565,71 @@ describe("useTorrentsList background stream gating", () => {
       tags: ["old"],
       preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
     })
+  })
+
+  it("keeps one object identity for an unchanged row across REST, stream frames, and cache echoes", async () => {
+    // Row memoization compares torrents by reference, so an unchanged row must
+    // keep ONE identity across every write path: the REST fetch, each stream
+    // frame (whose parsed objects are equal but not identical), and the
+    // processing effect that re-applies the query-cache echo of each stream
+    // write. This captures every render, not just the settled end state — the
+    // regression mode is a transient flip to a second lineage and back within
+    // one tick.
+    const seenIdentities: Torrent[] = []
+
+    mockedApi.getTorrents.mockResolvedValue(
+      makeResponse({
+        torrents: [makeTorrent({ hash: "a", name: "alpha" }), makeTorrent({ hash: "b", name: "beta" })],
+        total: 2,
+        hasMore: false,
+      })
+    )
+
+    const { result } = renderHook(() => {
+      const list = useTorrentsList(1, { pollingEnabled: false })
+      const rowA = list.torrents.find(t => t.hash === "a")
+      if (rowA) {
+        seenIdentities.push(rowA)
+      }
+      return list
+    }, { wrapper: makeWrapper() })
+
+    await flush()
+    expect(result.current.torrents).toHaveLength(2)
+
+    // Full stream frame: same values as the REST rows, freshly parsed objects.
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({
+          torrents: [makeTorrent({ hash: "a", name: "alpha" }), makeTorrent({ hash: "b", name: "beta" })],
+          total: 2,
+          hasMore: false,
+        }),
+      })
+    })
+    await flush()
+
+    // Two delta ticks that change only row b; row a rides along untouched.
+    for (const dlspeed of [100, 200]) {
+      act(() => {
+        capturedOnMessage?.({
+          type: "delta",
+          data: makeResponse({
+            torrents: [makeTorrent({ hash: "b", name: "beta", dlspeed })],
+            total: 2,
+            hasMore: false,
+          }),
+        })
+      })
+      await flush()
+    }
+
+    const distinctIdentities = new Set(seenIdentities)
+    expect(seenIdentities.length).toBeGreaterThan(0)
+    expect(distinctIdentities.size).toBe(1)
+
+    // And the changed row did update.
+    expect(result.current.torrents.find(t => t.hash === "b")?.dlspeed).toBe(200)
   })
 })
