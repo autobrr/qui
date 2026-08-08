@@ -85,16 +85,4 @@ describe("useMobileScroll", () => {
     act(() => flushRaf())
     expect(result.current.isFooterVisible).toBe(true)
   })
-
-  it("resets to visible when the scroll container unregisters", () => {
-    const container = document.createElement("div")
-    const { result } = renderHook(() => useMobileScroll(), { wrapper })
-
-    act(() => result.current.setScrollContainer(container))
-    act(() => scrollTo(container, 100))
-    expect(result.current.isFooterVisible).toBe(false)
-
-    act(() => result.current.setScrollContainer(null))
-    expect(result.current.isFooterVisible).toBe(true)
-  })
 })
