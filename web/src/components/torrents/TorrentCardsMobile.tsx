@@ -2209,8 +2209,8 @@ export function TorrentCardsMobile({
       {/* Torrent cards with virtual scrolling */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto overscroll-contain"
-        style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}
+        className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
+        style={{ paddingBottom: isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)" }}
       >
         <div
           style={{
@@ -2874,7 +2874,7 @@ export function TorrentCardsMobile({
           scrollContainerRef={parentRef}
           className={cn(
             "right-8 z-[60]",
-            isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
+            isFooterVisible || selectionMode? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
           )}
         />
       </div>

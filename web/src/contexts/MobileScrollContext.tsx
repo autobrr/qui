@@ -48,15 +48,23 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       ticking.current = false
     }
 
+    let animationFrame: number | null = null
+
     const onScroll = () => {
       if (!ticking.current) {
-        window.requestAnimationFrame(updateScrollDirection)
+        animationFrame = window.requestAnimationFrame(updateScrollDirection)
         ticking.current = true
       }
     }
 
     scrollContainer.addEventListener("scroll", onScroll)
-    return () => scrollContainer.removeEventListener("scroll", onScroll)
+    return () => {
+      scrollContainer.removeEventListener("scroll", onScroll)
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame)
+      }
+      ticking.current = false
+    }
   }, [scrollContainer])
 
   return (

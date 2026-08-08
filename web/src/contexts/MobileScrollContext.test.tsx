@@ -12,22 +12,31 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <MobileScrollProvider>{children}</MobileScrollProvider>
 )
 
-let rafCallbacks: FrameRequestCallback[] = []
+let rafQueue = new Map<number, FrameRequestCallback>()
+let rafId = 0
+
+function flushRaf() {
+  const pending = [...rafQueue.values()]
+  rafQueue.clear()
+  pending.forEach(cb => cb(0))
+}
 
 function scrollTo(container: HTMLElement, scrollTop: number) {
   container.scrollTop = scrollTop
   container.dispatchEvent(new Event("scroll"))
-  const pending = rafCallbacks
-  rafCallbacks = []
-  pending.forEach(cb => cb(0))
+  flushRaf()
 }
 
 describe("useMobileScroll", () => {
   beforeEach(() => {
-    rafCallbacks = []
+    rafQueue = new Map()
+    rafId = 0
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      rafCallbacks.push(cb)
-      return rafCallbacks.length
+      rafQueue.set(++rafId, cb)
+      return rafId
+    })
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      rafQueue.delete(id)
     })
   })
 
@@ -56,6 +65,24 @@ describe("useMobileScroll", () => {
 
     act(() => result.current.setScrollContainer(container))
     act(() => scrollTo(container, 5))
+    expect(result.current.isFooterVisible).toBe(true)
+  })
+
+  it("cancels a queued frame when the container unregisters", () => {
+    const container = document.createElement("div")
+    const { result } = renderHook(() => useMobileScroll(), { wrapper })
+
+    act(() => result.current.setScrollContainer(container))
+    act(() => scrollTo(container, 100))
+    expect(result.current.isFooterVisible).toBe(false)
+
+    // Queue a scroll-down frame but unregister before it runs
+    act(() => {
+      container.scrollTop = 200
+      container.dispatchEvent(new Event("scroll"))
+    })
+    act(() => result.current.setScrollContainer(null))
+    act(() => flushRaf())
     expect(result.current.isFooterVisible).toBe(true)
   })
 
