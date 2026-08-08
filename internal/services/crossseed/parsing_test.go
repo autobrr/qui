@@ -6,7 +6,7 @@ package crossseed
 import (
 	"testing"
 
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

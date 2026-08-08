@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/anacrolix/torrent/bencode"
+	"github.com/autobrr/go-torrent/bencode"
 )
 
 func TestTorrentEncodingRoundTrip(t *testing.T) {

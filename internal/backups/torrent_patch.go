@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anacrolix/torrent/bencode"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
 	"github.com/rs/zerolog/log"
 )
 

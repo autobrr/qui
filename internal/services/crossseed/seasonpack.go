@@ -15,8 +15,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/moistari/rls"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"

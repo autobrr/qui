@@ -9,15 +9,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -29,21 +27,11 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-// Helper function to create a test torrent file
+// Helper function to create a test torrent file. Only file names and sizes
+// end up in the metainfo, so the files are described in memory rather than
+// written to disk.
 func createTestTorrent(t *testing.T, name string, files []string, pieceLength int64) []byte {
 	t.Helper()
-
-	tempDir := t.TempDir()
-
-	// Create actual files
-	for _, f := range files {
-		path := filepath.Join(tempDir, name, f)
-		dir := filepath.Dir(path)
-		require.NoError(t, os.MkdirAll(dir, 0755))
-
-		content := fmt.Appendf(nil, "test content for %s", f)
-		require.NoError(t, os.WriteFile(path, content, 0644))
-	}
 
 	mi := metainfo.MetaInfo{
 		AnnounceList: [][]string{{"http://tracker.example.com:8080/announce"}},
@@ -55,17 +43,18 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 	}
 
 	if len(files) == 1 {
-		// Single file torrent - build from the file directly
-		path := filepath.Join(tempDir, name, files[0])
-		require.NoError(t, info.BuildFromFilePath(path))
-		// Override name to match what we want
-		info.Name = name
+		// Single file torrent.
+		content := fmt.Appendf(nil, "test content for %s", files[0])
+		info.Length = int64(len(content))
 	} else {
-		// Multi-file torrent - build from directory
-		path := filepath.Join(tempDir, name)
-		err := info.BuildFromFilePath(path)
-		require.NoError(t, err)
-		info.Name = name
+		// Multi-file torrent.
+		for _, f := range files {
+			content := fmt.Appendf(nil, "test content for %s", f)
+			info.Files = append(info.Files, metainfo.FileInfo{
+				Path:   strings.Split(f, "/"),
+				Length: int64(len(content)),
+			})
+		}
 	}
 
 	infoBytes, err := bencode.Marshal(info)
@@ -4299,8 +4288,10 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			Pieces:      make([]byte, 20), // Minimal piece hash
 			Length:      1024,
 		}
+		infoBytes, err := bencode.Marshal(info)
+		require.NoError(t, err)
 		mi := metainfo.MetaInfo{
-			InfoBytes: bencode.MustMarshal(info),
+			InfoBytes: infoBytes,
 		}
 		var buf bytes.Buffer
 		if err := mi.Write(&buf); err != nil {
