@@ -35,6 +35,7 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
+import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
@@ -739,7 +740,8 @@ function SwipeableCard({
         "bg-card rounded-lg border cursor-pointer transition-all relative overflow-hidden select-none",
         viewMode === "ultra-compact" ? "px-3 py-1" : viewMode === "compact" ? "p-2" : "p-4",
         isSelected && "bg-accent/50",
-        !selectionMode && "active:scale-[0.98]"
+        !selectionMode && "active:scale-[0.98]",
+        selectionMode && viewMode !== "normal" && "pr-10"
       )}
       onTouchStart={!selectionMode ? handleTouchStart : undefined}
       onTouchMove={!selectionMode ? handleTouchMove : undefined}
@@ -757,9 +759,14 @@ function SwipeableCard({
       {isSelected && (
         <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none" />
       )}
-      {/* Selection checkbox - visible in normal view selection mode */}
-      {selectionMode && viewMode === "normal" && (
-        <div className="absolute top-2 right-2 z-10">
+      {/* Selection checkbox - visible in selection mode */}
+      {selectionMode && (
+        <div
+          className={cn(
+            "absolute right-2 z-10",
+            viewMode === "normal" ? "top-2" : "top-1/2 -translate-y-1/2"
+          )}
+        >
           <Checkbox
             checked={isSelected}
             onCheckedChange={onSelect}
@@ -1082,6 +1089,13 @@ export function TorrentCardsMobile({
   const { setIsSelectionMode } = useTorrentSelection()
 
   const parentRef = useRef<HTMLDivElement>(null)
+  const { isFooterVisible, setScrollContainer } = useMobileScroll()
+
+  useEffect(() => {
+    setScrollContainer(parentRef.current)
+    return () => setScrollContainer(null)
+  }, [setScrollContainer])
+
   const [torrentToDelete, setTorrentToDelete] = useState<Torrent | null>(null)
   const [showActionsSheet, setShowActionsSheet] = useState(false)
   const [actionTorrents, setActionTorrents] = useState<Torrent[]>([]);
@@ -2779,7 +2793,9 @@ export function TorrentCardsMobile({
       {!selectionMode && (
         <div
           className={cn(
-            "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
+            "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
+            "transition-transform duration-300",
+            !isFooterVisible && "translate-y-[calc(100%+4rem+env(safe-area-inset-bottom))]"
           )}
           style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
@@ -2856,7 +2872,10 @@ export function TorrentCardsMobile({
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="right-8 z-[60] bottom-[calc(8.5rem+env(safe-area-inset-bottom))]"
+          className={cn(
+            "right-8 z-[60]",
+            isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
+          )}
         />
       </div>
     </div>

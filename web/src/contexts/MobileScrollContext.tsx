@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useState, useEffect, useRef } from "react"
+import { createContext, useContext, useState, useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 
 interface MobileScrollContextType {
@@ -21,7 +21,12 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
   const threshold = 10
 
   useEffect(() => {
-    if (!scrollContainer) return
+    if (!scrollContainer) {
+      setIsFooterVisible(true)
+      return
+    }
+
+    lastScrollY.current = scrollContainer.scrollTop
 
     const updateScrollDirection = () => {
       const scrollY = scrollContainer.scrollTop
@@ -59,4 +64,12 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       {children}
     </MobileScrollContext.Provider>
   )
+}
+
+export function useMobileScroll() {
+  const context = useContext(MobileScrollContext)
+  if (!context) {
+    throw new Error("useMobileScroll must be used within a MobileScrollProvider")
+  }
+  return context
 }
