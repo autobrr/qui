@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createContext, useState, useEffect, useRef } from "react"
+import { createContext, useContext, useState, useEffect, useRef } from "react"
 import type { ReactNode } from "react"
 
 interface MobileScrollContextType {
@@ -21,7 +21,12 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
   const threshold = 10
 
   useEffect(() => {
-    if (!scrollContainer) return
+    if (!scrollContainer) {
+      setIsFooterVisible(true)
+      return
+    }
+
+    lastScrollY.current = scrollContainer.scrollTop
 
     const updateScrollDirection = () => {
       const scrollY = scrollContainer.scrollTop
@@ -43,15 +48,23 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       ticking.current = false
     }
 
+    let animationFrame: number | null = null
+
     const onScroll = () => {
       if (!ticking.current) {
-        window.requestAnimationFrame(updateScrollDirection)
+        animationFrame = window.requestAnimationFrame(updateScrollDirection)
         ticking.current = true
       }
     }
 
     scrollContainer.addEventListener("scroll", onScroll)
-    return () => scrollContainer.removeEventListener("scroll", onScroll)
+    return () => {
+      scrollContainer.removeEventListener("scroll", onScroll)
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame)
+      }
+      ticking.current = false
+    }
   }, [scrollContainer])
 
   return (
@@ -59,4 +72,12 @@ export function MobileScrollProvider({ children }: { children: ReactNode }) {
       {children}
     </MobileScrollContext.Provider>
   )
+}
+
+export function useMobileScroll() {
+  const context = useContext(MobileScrollContext)
+  if (!context) {
+    throw new Error("useMobileScroll must be used within a MobileScrollProvider")
+  }
+  return context
 }
