@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -164,6 +165,11 @@ func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []strin
 			Length: int64(len(content)),
 		})
 	}
+	// Order files by full path, the shape every real torrent-creation tool
+	// produces.
+	slices.SortFunc(info.Files, func(a, b metainfo.FileInfo) int {
+		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
+	})
 
 	infoBytes, err := bencode.Marshal(info)
 	require.NoError(t, err)

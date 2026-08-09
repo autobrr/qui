@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/autobrr/go-torrent/metainfo"
@@ -11,6 +12,33 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Discussion #2262: torrents in the wild encode announce-list as a bencode
+// string instead of a list of tiers. The parse entry points must tolerate
+// this; the leniency lives in autobrr/go-torrent, so this pins the contract
+// across dependency bumps.
+func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
+	info := "d6:lengthi1e4:name8:Test.Rel12:piece lengthi16384e6:pieces20:" + strings.Repeat("a", 20) + "e"
+	tests := []struct {
+		name         string
+		announceList string
+	}{
+		{name: "empty string", announceList: "0:"},
+		{name: "url string", announceList: "31:https://tracker.example.org/ann"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := []byte("d8:announce31:https://tracker.example.org/ann13:announce-list" + tt.announceList + "4:info" + info + "e")
+
+			meta, err := ParseTorrentMetadataWithInfo(data)
+			require.NoError(t, err)
+			assert.Equal(t, "Test.Rel", meta.Name)
+			assert.NotEmpty(t, meta.HashV1)
+
+			assert.Equal(t, "tracker.example.org", ParseTorrentAnnounceDomain(data))
+		})
+	}
+}
 
 // TestDetermineContentType tests the unified content type detection including
 // expanded JAV/RIAJ/date/xxx corner cases.

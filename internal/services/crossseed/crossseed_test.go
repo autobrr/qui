@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,7 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 				Length: int64(len(content)),
 			})
 		}
+		sortTorrentFiles(info.Files)
 	}
 
 	infoBytes, err := bencode.Marshal(info)
@@ -64,6 +66,14 @@ func createTestTorrent(t *testing.T, name string, files []string, pieceLength in
 	var buf bytes.Buffer
 	require.NoError(t, mi.Write(&buf))
 	return buf.Bytes()
+}
+
+// sortTorrentFiles orders files by full path, the shape every real
+// torrent-creation tool produces.
+func sortTorrentFiles(files []metainfo.FileInfo) {
+	slices.SortFunc(files, func(a, b metainfo.FileInfo) int {
+		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
+	})
 }
 
 // TestParseTorrentMetadataWithInfo_SanitizesInvalidUTF8 verifies that non-UTF-8 bytes in

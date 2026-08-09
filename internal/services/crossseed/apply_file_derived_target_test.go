@@ -76,6 +76,7 @@ func createSizedTestTorrent(t *testing.T, name string) []byte {
 			Length: f.size,
 		})
 	}
+	sortTorrentFiles(info.Files)
 
 	infoBytes, err := bencode.Marshal(info)
 	require.NoError(t, err)
