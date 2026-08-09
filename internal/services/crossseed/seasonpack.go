@@ -1262,7 +1262,7 @@ func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 				continue
 			}
 			if localFile.size != expectedFile.file.Size {
-				lastErr = fmt.Errorf("%w: file size mismatch for %s", errLayoutMismatch, expectedFile.file.Name)
+				lastErr = fmt.Errorf("%w: file size mismatch for %s: pack declares %d bytes, local file is %d bytes", errLayoutMismatch, expectedFile.file.Name, expectedFile.file.Size, localFile.size)
 				continue
 			}
 			if ok, reason := matcher.seasonPackReleasesMatchWithReason(expectedFile.release, localFile.release, false, settings, aliasTitles); !ok {
