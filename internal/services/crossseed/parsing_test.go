@@ -22,9 +22,12 @@ func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 	tests := []struct {
 		name         string
 		announceList string
+		wantDomain   string
 	}{
-		{name: "empty string", announceList: "0:"},
-		{name: "url string", announceList: "31:https://tracker.example.org/ann"},
+		// An empty-string announce-list is dropped, so the domain falls back
+		// to announce; a bare URL string is salvaged as a single tier.
+		{name: "empty string", announceList: "0:", wantDomain: "tracker.example.org"},
+		{name: "url string", announceList: "29:https://other.example.net/ann", wantDomain: "other.example.net"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -33,9 +36,11 @@ func TestParseTorrentTolerantOfMalformedAnnounceList(t *testing.T) {
 			meta, err := ParseTorrentMetadataWithInfo(data)
 			require.NoError(t, err)
 			assert.Equal(t, "Test.Rel", meta.Name)
-			assert.NotEmpty(t, meta.HashV1)
+			// SHA-1 of the raw info substring: the hash must come from the
+			// bytes as served, not a re-encoded form.
+			assert.Equal(t, "1698fdcc4e79d4af9ed4406b72639ccdeec12c61", meta.HashV1)
 
-			assert.Equal(t, "tracker.example.org", ParseTorrentAnnounceDomain(data))
+			assert.Equal(t, tt.wantDomain, ParseTorrentAnnounceDomain(data))
 		})
 	}
 }
