@@ -19,6 +19,7 @@ const workboxMode = nodeMajor >= 24 ? "development" : "production"
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
+  base: "./",
   plugins: [
     react({
       // React 19 requires the new JSX transform
