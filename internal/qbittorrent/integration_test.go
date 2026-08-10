@@ -172,7 +172,7 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 			Trackers: []qbt.TorrentTracker{
 				{
 					Status:  qbt.TrackerStatusNotWorking,
-					Message: "Trumped: https://beyond-hd.me/torrents/paradise-2025-s02e07-the-final-countdown-1080p",
+					Message: "Trumped: https://tracker.example.com/torrents/example-show-2025-s02e07-the-final-countdown-1080p",
 				},
 			},
 		}
@@ -241,7 +241,7 @@ func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
 		Trackers: []qbt.TorrentTracker{
 			{
 				Status:  qbt.TrackerStatusNotWorking,
-				Message: "Trumped: https://beyond-hd.me/torrents/paradise-2025-s02e07-the-final-countdown-1080p",
+				Message: "Trumped: https://tracker.example.com/torrents/example-show-2025-s02e07-the-final-countdown-1080p",
 			},
 		},
 	}
