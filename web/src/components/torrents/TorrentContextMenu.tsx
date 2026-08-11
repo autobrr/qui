@@ -19,7 +19,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { getToggleSelectionState, getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query"
@@ -329,22 +329,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   // select-all: unloaded rows have unknown state, so offer both directions.
   const stateUnknownForSelection = isAllSelected && torrents.length < effectiveSelectionCount
 
-  const forceStartStates = torrents.map(t => t.force_start)
-  const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
-  const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
-  const forceStartMixed = stateUnknownForSelection || (forceStartStates.length > 0 && !allForceStarted && !allForceDisabled)
-
-  // TMM state calculation
-  const tmmStates = torrents.map(t => t.auto_tmm)
-  const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-  const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-  const mixed = stateUnknownForSelection || (tmmStates.length > 0 && !allEnabled && !allDisabled)
-
-  // Sequential download state calculation
-  const seqDlStates = torrents.map(t => t.seq_dl)
-  const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
-  const allSeqDlDisabled = seqDlStates.length > 0 && seqDlStates.every(state => state === false)
-  const seqDlMixed = stateUnknownForSelection || (seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled)
+  const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(torrents.map(t => t.force_start), stateUnknownForSelection)
+  const { allEnabled, mixed } = getToggleSelectionState(torrents.map(t => t.auto_tmm), stateUnknownForSelection)
+  const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(torrents.map(t => t.seq_dl), stateUnknownForSelection)
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes, { targets: actionTargets })

@@ -51,7 +51,7 @@ import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomiz
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -2352,10 +2352,7 @@ export function TorrentCardsMobile({
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
             {(() => {
-              const forceStartStates = getSelectedTorrents?.map(t => t.force_start) ?? []
-              const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
-              const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
-              const forceStartMixed = stateUnknownForSelection || (forceStartStates.length > 0 && !allForceStarted && !allForceDisabled)
+              const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.force_start), stateUnknownForSelection)
 
               if (forceStartMixed) {
                 return (
@@ -2408,10 +2405,7 @@ export function TorrentCardsMobile({
               {t("managementBar.reannounce")}
             </Button>
             {(() => {
-              const seqDlStates = getSelectedTorrents?.map(t => t.seq_dl) ?? []
-              const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
-              const allSeqDlDisabled = seqDlStates.length > 0 && seqDlStates.every(state => state === false)
-              const seqDlMixed = stateUnknownForSelection || (seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled)
+              const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.seq_dl), stateUnknownForSelection)
 
               if (seqDlMixed) {
                 return (
@@ -2511,11 +2505,7 @@ export function TorrentCardsMobile({
               {t("managementBar.bottomPriority")}
             </Button>
             {(() => {
-              // Check TMM state across selected torrents
-              const tmmStates = getSelectedTorrents?.map(t => t.auto_tmm) ?? []
-              const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-              const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-              const mixed = stateUnknownForSelection || (tmmStates.length > 0 && !allEnabled && !allDisabled)
+              const { allEnabled, mixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.auto_tmm), stateUnknownForSelection)
 
               if (mixed) {
                 return (
