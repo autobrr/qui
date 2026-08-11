@@ -996,7 +996,6 @@
       "ignorePaths": "忽略路径",
       "ignorePathsTooltip": "从扫描中排除的路径。这些目录中的文件永远不会被标记为孤立文件。每行输入一个路径。",
       "ignorePathsPlaceholder": "/downloads/preserve\n/downloads/manual\n/data/keep",
-      "ignorePathsDescription": "每行一个路径。路径按前缀匹配。",
       "saving": "保存中...",
       "saveChanges": "保存更改",
       "toast": {
@@ -1363,8 +1362,7 @@
         "skipIfCrossSeedExists": "如果辅种存在于以下分类中则跳过",
         "aboutSkipping": "关于辅种存在时跳过",
         "skipHelp": "适用于 *arr 导入队列：如果至少有一个种子处于 *arr 导入队列中，则阻止自动化移动种子。",
-        "selectCategories": "选择分类...",
-        "skipDescription": "如果指向相同磁盘内容的另一个种子已在这些分类之一中，则跳过分类更改。"
+        "selectCategories": "选择分类..."
       },
       "externalProgram": {
         "program": "程序",

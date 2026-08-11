@@ -1008,7 +1008,6 @@
       "ignorePaths": "Chemins ignorés",
       "ignorePathsTooltip": "Chemins à exclure de l'analyse (un par ligne).",
       "ignorePathsPlaceholder": "/downloads/conserver\n/downloads/manuel\n/data/garder",
-      "ignorePathsDescription": "Un chemin par ligne, correspondances par préfixes.",
       "saving": "Enregistrement...",
       "saveChanges": "Sauvegarder les modifications",
       "toast": {
@@ -1376,8 +1375,7 @@
         "skipIfCrossSeedExists": "Ignorer si le cross-seed existe dans des catégories",
         "aboutSkipping": "Ignorer quand les cross-seeds existent",
         "skipHelp": "Prévient le déplacement si les torrents sont dans la file d'attente *arr.",
-        "selectCategories": "Sélectionner les catégories...",
-        "skipDescription": "Ignore le changement si un autre torrent pointant sur le même contenu y est déjà."
+        "selectCategories": "Sélectionner les catégories..."
       },
       "externalProgram": {
         "program": "Programme",

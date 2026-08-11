@@ -1014,7 +1014,6 @@
       "ignorePaths": "Ignorování cest",
       "ignorePathsTooltip": "Cesty, které mají být vyloučeny z vyhledávání. Soubory v těchto adresářích nebudou nikdy označeny jako nepárové. Zadejte jednu cestu na řádek.",
       "ignorePathsPlaceholder": "/downloads/preserve\n/downloads/manual\n/data/keep",
-      "ignorePathsDescription": "Jedna cesta na řádek. Cesty jsou porovnávány jako předpony.",
       "saving": "Ukládá se...",
       "saveChanges": "Uložit změny",
       "toast": {
@@ -1382,8 +1381,7 @@
         "skipIfCrossSeedExists": "Přeskočit, pokud existuje křížový seed v kategoriích",
         "aboutSkipping": "O přeskakování, když existují křížová sdílení",
         "skipHelp": "Užitečné s *arr importovými frontami: zabrání automatizaci v přesunutí torrentů, pokud alespoň jeden z nich je v *arr importové frontě.",
-        "selectCategories": "Vybrat kategorie...",
-        "skipDescription": "Přeskočí změnu kategorie, pokud jiný torrent ukazující na stejný na disku obsah je již v jedné z těchto kategorií."
+        "selectCategories": "Vybrat kategorie..."
       },
       "externalProgram": {
         "program": "Program",
