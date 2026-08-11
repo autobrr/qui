@@ -51,7 +51,7 @@ import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomiz
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -65,6 +65,7 @@ import {
   Clock,
   Eye,
   EyeOff,
+  FastForward,
   FileEdit,
   Filter,
   Folder,
@@ -2061,6 +2062,9 @@ export function TorrentCardsMobile({
 
   const singleSelectedTorrent = getSelectedTorrents[0] ?? null
 
+  // select-all: unloaded rows have unknown state, so offer both directions.
+  const stateUnknownForSelection = isAllSelected && getSelectedTorrents.length < effectiveSelectionCount
+
   const handleClearSearch = useCallback(() => {
     setGlobalFilter("")
 
@@ -2347,6 +2351,43 @@ export function TorrentCardsMobile({
             </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
+            {(() => {
+              const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.force_start), stateUnknownForSelection)
+
+              if (forceStartMixed) {
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: true })}
+                      className="justify-start"
+                    >
+                      <FastForward className="mr-2 h-4 w-4" />
+                      {t("contextMenu.forceStart")} {t("contextMenu.mixed")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: false })}
+                      className="justify-start"
+                    >
+                      <FastForward className="mr-2 h-4 w-4" />
+                      {t("contextMenu.disableForceStart")} {t("contextMenu.mixed")}
+                    </Button>
+                  </>
+                )
+              }
+
+              return (
+                <Button
+                  variant="outline"
+                  onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: !allForceStarted })}
+                  className="justify-start"
+                >
+                  <FastForward className="mr-2 h-4 w-4" />
+                  {allForceStarted ? t("contextMenu.disableForceStart") : t("contextMenu.forceStart")}
+                </Button>
+              )
+            })()}
             <Button
               variant="outline"
               onClick={() => handleBulkAction(TORRENT_ACTIONS.RECHECK)}
@@ -2364,8 +2405,31 @@ export function TorrentCardsMobile({
               {t("managementBar.reannounce")}
             </Button>
             {(() => {
-              const seqDlStates = getSelectedTorrents?.map(t => t.seq_dl) ?? []
-              const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+              const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.seq_dl), stateUnknownForSelection)
+
+              if (seqDlMixed) {
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: true })}
+                      className="justify-start"
+                    >
+                      <Blocks className="mr-2 h-4 w-4" />
+                      {t("managementBar.sequentialDownload.enable")} {t("contextMenu.mixed")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: false })}
+                      className="justify-start"
+                    >
+                      <Blocks className="mr-2 h-4 w-4" />
+                      {t("managementBar.sequentialDownload.disable")} {t("contextMenu.mixed")}
+                    </Button>
+                  </>
+                )
+              }
+
               return (
                 <Button
                   variant="outline"
@@ -2441,11 +2505,7 @@ export function TorrentCardsMobile({
               {t("managementBar.bottomPriority")}
             </Button>
             {(() => {
-              // Check TMM state across selected torrents
-              const tmmStates = getSelectedTorrents?.map(t => t.auto_tmm) ?? []
-              const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-              const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-              const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
+              const { allEnabled, mixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.auto_tmm), stateUnknownForSelection)
 
               if (mixed) {
                 return (

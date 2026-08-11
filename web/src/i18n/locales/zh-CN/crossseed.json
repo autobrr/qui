@@ -98,7 +98,9 @@
     "runError": "错误：{{message}}",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
-    "scheduledUpper": "定时"
+    "scheduledUpper": "定时",
+    "runDisabledAlreadyRunning": "自动化运行已在进行中。",
+    "runDisabledCooldown": "手动运行的间隔限制为 {{minutes}} 分钟。请在 {{remaining}} 后重试。"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -163,7 +165,37 @@
     "scannedProgress": "已扫描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 个种子",
     "failedCount": "{{count}} 个失败",
-    "runError": "错误：{{message}}"
+    "runError": "错误：{{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "跳过 Torznab（仅限 Gazelle 选择）",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab 已禁用（仅限 Gazelle）",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab 已禁用（启用 Gazelle）",
+      "placeholderAllEnabledNonOpsRed": "所有已启用的非 OPS/RED 索引器（留空表示全部）",
+      "placeholderAllEnabled": "所有已启用的索引器（留空表示全部）",
+      "placeholderOnlyOpsRedEnabled": "仅启用 OPS/RED（Gazelle）",
+      "placeholderNoTorznabConfigured": "未配置 Torznab 索引器",
+      "helpTorznabSkippedGazelleOnly": "选定的 Torznab 索引器仅限 Gazelle (OPS/RED)。本次运行将仅限于 Gazelle。",
+      "helpTorznabDisabledGazelleCheck": "Torznab 已禁用。Gazelle 将为每个源种子检查 RED/OPS。",
+      "helpTorznabDisabledEnableGazelle": "Torznab 已禁用。启用 Gazelle (OPS/RED) 以在仅 Gazelle 模式下运行做种搜索。",
+      "helpOnlyOpsRedEnabled": "仅启用了 OPS/RED Torznab 索引器。Torznab 在此不起作用；Gazelle 仍在检查 RED/OPS。",
+      "helpNoNonOpsRedTorznab": "没有非 OPS/RED 的 Torznab 索引器。Gazelle 仍将为每个源种子检查 RED/OPS。",
+      "helpNoTorznabConfigured": "未配置 Torznab 索引器。",
+      "helpAllEnabledNonOpsRedQueried": "将查询所有已启用的非 OPS/RED Torznab 索引器。Gazelle 也会检查 RED/OPS。",
+      "helpAllEnabledTorznabQueried": "将查询所有已启用的 Torznab 索引器以查找匹配项。",
+      "helpSelectedTorznabQueriedGazelle_other": "将仅查询 {{count}} 个选定的 Torznab 索引器。Gazelle 仍在检查 RED/OPS。",
+      "helpSelectedQueried_other": "将仅查询 {{count}} 个选定的索引器。"
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle：加载中",
+      "disabled": "Gazelle：已禁用",
+      "enabledOpsRed": "Gazelle：已启用（已设置 OPS+RED 密钥）",
+      "enabledOpsMissingRed": "Gazelle：已启用（已设置 OPS 密钥，缺少 RED）",
+      "enabledRedMissingOps": "Gazelle：已启用（已设置 RED 密钥，缺少 OPS）",
+      "enabledKeysMissing": "Gazelle：已启用（缺少密钥）"
+    },
+    "noInstanceSelected": "未选择实例",
+    "instanceFallback": "实例 {{id}}",
+    "noMessageProvided": "未提供消息"
   },
   "rules": {
     "title": "辅种规则",

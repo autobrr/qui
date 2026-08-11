@@ -1459,19 +1459,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive || !hasEnabledIndexers || !hasAutomationTargets
   const runButtonDisabledReason = useMemo(() => {
     if (!hasEnabledIndexers) {
-      return "Configure at least one Torznab indexer before running RSS automation."
+      return t("automation.requiresTorznabIndexer")
     }
     if (!hasAutomationTargets) {
-      return "Select at least one instance before running RSS automation."
+      return t("toast.selectAtLeastOneInstance")
     }
     if (automationRunning) {
-      return "Automation run is already in progress."
+      return t("automation.runDisabledAlreadyRunning")
     }
     if (manualCooldownActive) {
-      return `Manual runs are limited to every ${enforcedRunIntervalMinutes}-minute interval. Try again in ${manualCooldownDisplay}.`
+      return t("automation.runDisabledCooldown", { minutes: enforcedRunIntervalMinutes, remaining: manualCooldownDisplay })
     }
     return undefined
-  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay])
+  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay, t])
 
   const handleTriggerAutomationRun = () => {
     if (!hasEnabledIndexers) {
@@ -1536,13 +1536,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEffectiveEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
-      return "Enable Gazelle (OPS/RED) before running Seeded Torrent Search with Torznab disabled."
+      return t("toast.enableGazelleDescription")
     }
     if (!hasEnabledIndexers && !gazelleSavedConfigured) {
-      return "Configure at least one Torznab indexer, or enable Gazelle (OPS/RED), before running Seeded Torrent Search."
+      return t("toast.configureTorznabOrGazelle")
     }
     return undefined
-  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled, t])
   const seededSearchIntervalMinimum = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
       return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
@@ -1605,18 +1605,18 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const seededSearchIndexerPlaceholder = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled) {
       if (seededSearchForceGazelleOnly) {
-        return "Torznab skipped (Gazelle-only selection)"
+        return t("scan.indexers.placeholderTorznabSkippedGazelleOnly")
       }
-      return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
+      return gazelleSavedConfigured ? t("scan.indexers.placeholderTorznabDisabledGazelleOnly") : t("scan.indexers.placeholderTorznabDisabledEnableGazelle")
     }
     if (seededSearchIndexerOptions.length > 0) {
-      return gazelleSavedFullyConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
+      return gazelleSavedFullyConfigured ? t("scan.indexers.placeholderAllEnabledNonOpsRed") : t("scan.indexers.placeholderAllEnabled")
     }
     if (seededSearchHasOnlyGazelleIndexers) {
-      return "Only OPS/RED enabled (Gazelle)"
+      return t("scan.indexers.placeholderOnlyOpsRedEnabled")
     }
-    return "No Torznab indexers configured"
-  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+    return t("scan.indexers.placeholderNoTorznabConfigured")
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, t])
 
   const seededSearchEffectiveIndexerIds = useMemo(() => {
     const allAllowed = enabledIndexers
@@ -1645,52 +1645,51 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const seededSearchIndexerHelpText = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled) {
       if (seededSearchForceGazelleOnly) {
-        return "Selected Torznab indexers are Gazelle-only (OPS/RED). This run will be Gazelle-only."
+        return t("scan.indexers.helpTorznabSkippedGazelleOnly")
       }
       if (gazelleSavedConfigured) {
-        return "Torznab disabled. Gazelle will check RED/OPS for every source torrent."
+        return t("scan.indexers.helpTorznabDisabledGazelleCheck")
       }
-      return "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode."
+      return t("scan.indexers.helpTorznabDisabledEnableGazelle")
     }
 
     if (seededSearchIndexerOptions.length === 0) {
       if (seededSearchHasOnlyGazelleIndexers) {
-        return "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS."
+        return t("scan.indexers.helpOnlyOpsRedEnabled")
       }
 
       if (gazelleSavedConfigured) {
-        return "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent."
+        return t("scan.indexers.helpNoNonOpsRedTorznab")
       }
-      return "No Torznab indexers configured."
+      return t("scan.indexers.helpNoTorznabConfigured")
     }
 
     if (seededSearchEffectiveIndexerIds.length === 0) {
       if (gazelleSavedConfigured) {
-        return "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS."
+        return t("scan.indexers.helpAllEnabledNonOpsRedQueried")
       }
-      return "All enabled Torznab indexers will be queried for matches."
+      return t("scan.indexers.helpAllEnabledTorznabQueried")
     }
     if (gazelleSavedConfigured) {
-      return `Only ${seededSearchEffectiveIndexerIds.length} selected Torznab indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried. Gazelle still checks RED/OPS.`
+      return t("scan.indexers.helpSelectedTorznabQueriedGazelle", { count: seededSearchEffectiveIndexerIds.length })
     }
-    return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
-  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+    return t("scan.indexers.helpSelectedQueried", { count: seededSearchEffectiveIndexerIds.length })
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, t])
 
   const seededSearchGazelleStatus = useMemo(() => {
     if (!settings) {
-      return "Gazelle: loading"
+      return t("scan.gazelleStatus.loading")
     }
     if (!settings.gazelleEnabled) {
-      return "Gazelle: disabled"
+      return t("scan.gazelleStatus.disabled")
     }
     const ops = (settings.orpheusApiKey ?? "").trim() !== ""
     const red = (settings.redactedApiKey ?? "").trim() !== ""
-    if (ops && red) return "Gazelle: enabled (OPS+RED keys set)"
-    if (ops) return "Gazelle: enabled (OPS key set, RED missing)"
-    if (red) return "Gazelle: enabled (RED key set, OPS missing)"
-    return "Gazelle: enabled (keys missing)"
-  }, [settings])
-
+    if (ops && red) return t("scan.gazelleStatus.enabledOpsRed")
+    if (ops) return t("scan.gazelleStatus.enabledOpsMissingRed")
+    if (red) return t("scan.gazelleStatus.enabledRedMissingOps")
+    return t("scan.gazelleStatus.enabledKeysMissing")
+  }, [settings, t])
   const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
 
   const seededSearchIntervalPresets = useMemo(() => {
@@ -1826,10 +1825,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     // Validate search interval and cooldown
     const errors: Record<string, string> = {}
     if (searchIntervalSeconds < seededSearchIntervalMinimum) {
-      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} seconds`
+      errors.searchIntervalSeconds = t("validation.minIntervalSeconds", { min: seededSearchIntervalMinimum })
     }
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
-      errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
+      errors.searchCooldownMinutes = t("validation.minCooldown", { min: MIN_SEEDED_SEARCH_COOLDOWN_MINUTES })
     }
 
     if (Object.keys(errors).length > 0) {
@@ -1870,18 +1869,18 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const automationEnabled = formInitialized ? automationForm.enabled : settings?.enabled ?? false
 
   const searchInstanceName = useMemo(
-    () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? "No instance selected",
-    [instances, searchInstanceId]
+    () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? t("scan.noInstanceSelected"),
+    [instances, searchInstanceId, t]
   )
 
   const currentSearchInstanceName = useMemo(
     () => {
       if (searchRunning && activeSearchRun) {
-        return instances?.find(instance => instance.id === activeSearchRun.instanceId)?.name ?? `Instance ${activeSearchRun.instanceId}`
+        return instances?.find(instance => instance.id === activeSearchRun.instanceId)?.name ?? t("scan.instanceFallback", { id: activeSearchRun.instanceId })
       }
       return searchInstanceName
     },
-    [instances, searchRunning, activeSearchRun, searchInstanceName]
+    [instances, searchRunning, activeSearchRun, searchInstanceName, t]
   )
 
   const automationStatusLabel = automationRunning ? t("scan.runningUpper") : automationEnabled ? t("automation.scheduledUpper") : t("overview.rssAutomation.disabledUpper")
@@ -2755,7 +2754,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                     <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                       {successResults.map((result, i) => (
                                         <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                         </div>
                                       ))}
@@ -2768,7 +2767,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                           {skippedResults.map((result, i) => (
                                             <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                               <div className="flex items-center gap-2">
-                                                <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                                 <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                               </div>
                                               {result.message && (
@@ -2784,10 +2783,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                           {failedResults.map((result, i) => (
                                             <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                               <div className="flex items-center gap-2">
-                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                                 <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                               </div>
-                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
+                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || t("scan.noMessageProvided")}</span>
                                             </div>
                                           ))}
                                         </div>

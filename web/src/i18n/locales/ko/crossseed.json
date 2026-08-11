@@ -98,7 +98,9 @@
     "failedCount": "실패 {{count}}개",
     "runError": "오류: {{message}}",
     "runSummary": "실행 {{runs}}회 • +{{added}}",
-    "runSummaryWithFailures": "실행 {{runs}}회 • +{{added}} • 실패 {{failed}}개"
+    "runSummaryWithFailures": "실행 {{runs}}회 • +{{added}} • 실패 {{failed}}개",
+    "runDisabledAlreadyRunning": "자동화 실행이 이미 진행 중입니다.",
+    "runDisabledCooldown": "수동 실행은 {{minutes}}분 간격으로 제한됩니다. {{remaining}} 후에 다시 시도하세요."
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -163,7 +165,37 @@
     "scannedProgress": "{{processed}}/{{total}} 스캔됨",
     "torrentsCount": "토렌트 {{count}}개",
     "failedCount": "실패 {{count}}개",
-    "runError": "오류: {{message}}"
+    "runError": "오류: {{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "Torznab 건너뜀(Gazelle 전용 선택)",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab 비활성화됨(Gazelle 전용)",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab 비활성화됨(Gazelle 활성화 필요)",
+      "placeholderAllEnabledNonOpsRed": "활성화된 모든 비-OPS/RED 인덱서(모두 선택 시 비워둠)",
+      "placeholderAllEnabled": "활성화된 모든 인덱서(모두 선택 시 비워둠)",
+      "placeholderOnlyOpsRedEnabled": "OPS/RED만 활성화됨(Gazelle)",
+      "placeholderNoTorznabConfigured": "구성된 Torznab 인덱서 없음",
+      "helpTorznabSkippedGazelleOnly": "선택된 Torznab 인덱서가 Gazelle(OPS/RED) 전용입니다. 이 실행은 Gazelle 전용이 됩니다.",
+      "helpTorznabDisabledGazelleCheck": "Torznab이 비활성화되었습니다. Gazelle이 모든 소스 토렌트에 대해 RED/OPS를 확인합니다.",
+      "helpTorznabDisabledEnableGazelle": "Torznab이 비활성화되었습니다. Gazelle 전용 모드에서 시드 중인 토렌트 검색을 실행하려면 Gazelle(OPS/RED)을 활성화하십시오.",
+      "helpOnlyOpsRedEnabled": "OPS/RED Torznab 인덱서만 활성화되었습니다. 여기서는 Torznab이 사용되지 않으며 Gazelle이 RED/OPS를 계속 확인합니다.",
+      "helpNoNonOpsRedTorznab": "비-OPS/RED Torznab 인덱서가 없습니다. Gazelle이 모든 소스 토렌트에 대해 RED/OPS를 계속 확인합니다.",
+      "helpNoTorznabConfigured": "구성된 Torznab 인덱서가 없습니다.",
+      "helpAllEnabledNonOpsRedQueried": "활성화된 모든 비-OPS/RED Torznab 인덱서를 쿼리합니다. Gazelle도 RED/OPS를 확인합니다.",
+      "helpAllEnabledTorznabQueried": "활성화된 모든 Torznab 인덱서에서 일치 항목을 쿼리합니다.",
+      "helpSelectedTorznabQueriedGazelle_other": "선택된 Torznab 인덱서 {{count}}개만 쿼리합니다. Gazelle은 계속 RED/OPS를 확인합니다.",
+      "helpSelectedQueried_other": "선택된 인덱서 {{count}}개만 쿼리합니다."
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle: 로딩 중",
+      "disabled": "Gazelle: 비활성화됨",
+      "enabledOpsRed": "Gazelle: 활성화됨(OPS+RED 키 설정됨)",
+      "enabledOpsMissingRed": "Gazelle: 활성화됨(OPS 키 설정됨, RED 없음)",
+      "enabledRedMissingOps": "Gazelle: 활성화됨(RED 키 설정됨, OPS 없음)",
+      "enabledKeysMissing": "Gazelle: 활성화됨(키 없음)"
+    },
+    "noInstanceSelected": "선택된 인스턴스 없음",
+    "instanceFallback": "인스턴스 {{id}}",
+    "noMessageProvided": "제공된 메시지 없음"
   },
   "rules": {
     "title": "Cross-Seed 규칙",

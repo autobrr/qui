@@ -7,13 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 
@@ -70,16 +69,14 @@ func bracketAnimePackTorrentFiles() qbt.TorrentFiles {
 func createSizedTestTorrent(t *testing.T, name string) []byte {
 	t.Helper()
 
-	tempDir := t.TempDir()
-	for _, f := range bracketAnimePackFiles {
-		path := filepath.Join(tempDir, name, filepath.FromSlash(f.name))
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-		require.NoError(t, os.WriteFile(path, bytes.Repeat([]byte("x"), int(f.size)), 0o600))
-	}
-
 	info := metainfo.Info{Name: name, PieceLength: 16384}
-	require.NoError(t, info.BuildFromFilePath(filepath.Join(tempDir, name)))
-	info.Name = name
+	for _, f := range bracketAnimePackFiles {
+		info.Files = append(info.Files, metainfo.FileInfo{
+			Path:   strings.Split(f.name, "/"),
+			Length: f.size,
+		})
+	}
+	sortTorrentFiles(info.Files)
 
 	infoBytes, err := bencode.Marshal(info)
 	require.NoError(t, err)
