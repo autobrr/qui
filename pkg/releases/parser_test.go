@@ -158,3 +158,62 @@ func TestTrimTrailingGroupOrSite_RemovesTrailingTokenWithoutExtension(t *testing
 	trimmed := trimTrailingGroupOrSite("Movie.2024.2160p.BluRay.x265-DV", release)
 	require.Equal(t, "Movie.2024.2160p.BluRay.x265", trimmed)
 }
+
+// rls reports "S00E02-E05" as episode 2 and drops the range.
+func TestParser_EpisodeRangeBecomesPack(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+
+	tests := []struct {
+		name        string
+		input       string
+		wantEpisode int
+	}{
+		{
+			name:        "season zero range",
+			input:       "Darker than Black AKA DARKER THAN BLACK: Kuro no Keiyakusha S00E02-E05 720p BluRay Dual-Audio Opus 2.0 x264-Headpatter",
+			wantEpisode: 0,
+		},
+		{
+			name:        "concatenated range",
+			input:       "The.X-Files.S01E01E03.DKsubs.1080p.BluRay.HEVC.x265",
+			wantEpisode: 0,
+		},
+		{
+			name:        "a path repeating one episode is not a range",
+			input:       "Show.Name.S11E11.1080p.WEB-GRP/Show.Name.S11E11.1080p.WEB-GRP.mkv",
+			wantEpisode: 11,
+		},
+		{
+			name:        "trailing resolution is not a range",
+			input:       "Show.Name.S01E01-1080p.WEB-DL-GRP",
+			wantEpisode: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			release := parser.Parse(tt.input)
+			require.Equal(t, tt.wantEpisode, release.Episode)
+			if tt.wantEpisode == 0 {
+				require.Equal(t, rls.Series, release.Type, "a range must read as a pack, not an episode")
+			}
+		})
+	}
+}
+
+func TestIsEpisodeRange(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.S01E05E06.1080p.WEB-GRP")))
+	require.True(t, IsEpisodeRange(parser.Parse("Darker than Black S00E02-E05 720p BluRay x264-Headpatter")))
+	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S01E05.1080p.WEB-GRP")))
+	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S01.1080p.WEB-GRP")))
+	// A path naming the same episode twice is one episode, not a range.
+	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S11E11.1080p.WEB-GRP/Show.Name.S11E11.1080p.WEB-GRP.mkv")))
+	require.False(t, IsEpisodeRange(nil))
+}
