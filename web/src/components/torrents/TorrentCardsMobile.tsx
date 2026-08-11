@@ -65,6 +65,7 @@ import {
   Clock,
   Eye,
   EyeOff,
+  FastForward,
   FileEdit,
   Filter,
   Folder,
@@ -2347,6 +2348,46 @@ export function TorrentCardsMobile({
             </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
+            {(() => {
+              const forceStartStates = getSelectedTorrents?.map(t => t.force_start) ?? []
+              const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
+              const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
+              const forceStartMixed = forceStartStates.length > 0 && !allForceStarted && !allForceDisabled
+
+              if (forceStartMixed) {
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: true })}
+                      className="justify-start"
+                    >
+                      <FastForward className="mr-2 h-4 w-4" />
+                      {t("contextMenu.forceStart")} {t("contextMenu.mixed")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: false })}
+                      className="justify-start"
+                    >
+                      <FastForward className="mr-2 h-4 w-4" />
+                      {t("contextMenu.disableForceStart")} {t("contextMenu.mixed")}
+                    </Button>
+                  </>
+                )
+              }
+
+              return (
+                <Button
+                  variant="outline"
+                  onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: !allForceStarted })}
+                  className="justify-start"
+                >
+                  <FastForward className="mr-2 h-4 w-4" />
+                  {allForceStarted ? t("contextMenu.disableForceStart") : t("contextMenu.forceStart")}
+                </Button>
+              )
+            })()}
             <Button
               variant="outline"
               onClick={() => handleBulkAction(TORRENT_ACTIONS.RECHECK)}
