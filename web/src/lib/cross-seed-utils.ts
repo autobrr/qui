@@ -12,6 +12,12 @@ import { useMemo } from "react"
 export const normalizePath = (path: string) => path?.toLowerCase().replace(/[\\/]+/g, "/").replace(/\/$/, "") || ""
 
 /**
+ * Parse a number-input value to a whole number of 0 or more.
+ * Empty and non-numeric input becomes 0.
+ */
+export const parseNonNegativeInt = (value: string): number => Math.max(0, Math.floor(Number(value) || 0))
+
+/**
  * Check if a path is inside a base directory.
  * Returns true if base is non-empty and path equals base or starts with base + "/".
  */
@@ -40,7 +46,46 @@ export const isHardlinkManaged = (
 export interface CrossSeedTorrent extends Torrent {
   instanceId: number
   instanceName: string
-  matchType: "content_path" | "name" | "release"
+  matchType: LocalCrossSeedMatch["matchType"]
+}
+
+export interface LocalMatchTypeInfo {
+  deleteRelevant: boolean
+  independentlyUsable: boolean
+  breaksWhenSourceDeleted: boolean
+}
+
+export function getLocalMatchTypeInfo(
+  matchType: LocalCrossSeedMatch["matchType"]
+): LocalMatchTypeInfo {
+  switch (matchType) {
+    case "content_path":
+      return {
+        deleteRelevant: true,
+        independentlyUsable: false,
+        breaksWhenSourceDeleted: true,
+      }
+    case "hardlink":
+    case "reflink":
+      return {
+        deleteRelevant: true,
+        independentlyUsable: true,
+        breaksWhenSourceDeleted: false,
+      }
+    case "name":
+    case "release":
+      return {
+        deleteRelevant: false,
+        independentlyUsable: false,
+        breaksWhenSourceDeleted: false,
+      }
+  }
+}
+
+export function hasBreakableLocalMatches(
+  matches: readonly Pick<LocalCrossSeedMatch, "matchType">[]
+): boolean {
+  return matches.some(match => getLocalMatchTypeInfo(match.matchType).breaksWhenSourceDeleted)
 }
 
 /**
@@ -101,7 +146,7 @@ export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
     tags: m.tags,
     state: m.state,
     tracker: m.tracker,
-    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | undefined,
+    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | "tracker_error" | undefined,
     instanceId: m.instanceId,
     instanceName: m.instanceName,
     matchType: m.matchType,

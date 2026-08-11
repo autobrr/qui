@@ -5,24 +5,18 @@ package models_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestArrInstanceStoreUpdateNilParams(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "arr_instance.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "arr-instance")
 
 	store, err := models.NewArrInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
@@ -62,9 +56,4 @@ func TestArrInstanceStoreUpdateNilParams(t *testing.T) {
 			require.EqualError(t, err, tc.expectedErr)
 		})
 	}
-}
-
-//go:fix inline
-func ptr(value string) *string {
-	return new(value)
 }

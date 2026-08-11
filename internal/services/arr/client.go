@@ -348,16 +348,6 @@ func (c *Client) setHeaders(req *http.Request) {
 	}
 }
 
-// InstanceType returns the ARR instance type this client is configured for
-func (c *Client) InstanceType() models.ArrInstanceType {
-	return c.instanceType
-}
-
-// BaseURL returns the base URL this client is configured for
-func (c *Client) BaseURL() string {
-	return c.baseURL
-}
-
 func stringOrEmpty(s *string) string {
 	if s == nil {
 		return ""

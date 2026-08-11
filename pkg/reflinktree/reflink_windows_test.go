@@ -153,6 +153,15 @@ func TestCloneFile_RejectsDifferentVolumes(t *testing.T) {
 			return "", nil
 		}
 	}
+	sameFilesystemFn = func(path1, path2 string) (bool, error) {
+		if filepath.Clean(path1) != filepath.Clean(srcPath) {
+			t.Fatalf("unexpected source path passed to sameFilesystemFn: %s", path1)
+		}
+		if filepath.Clean(path2) != filepath.Clean(dstDir) {
+			t.Fatalf("unexpected destination path passed to sameFilesystemFn: %s", path2)
+		}
+		return false, nil
+	}
 	filesystemNameForVolFn = func(string) (string, error) {
 		t.Fatal("filesystem lookup should not run for different volumes")
 		return "", nil
@@ -168,6 +177,56 @@ func TestCloneFile_RejectsDifferentVolumes(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "same volume") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCloneFile_AllowsDifferentRootAliasesForSameVolume(t *testing.T) {
+	tmpDir := t.TempDir()
+	srcPath := filepath.Join(tmpDir, "src.bin")
+	dstPath := filepath.Join(tmpDir, "dst.bin")
+	dstDir := filepath.Dir(dstPath)
+	if err := os.WriteFile(srcPath, []byte("01234567"), 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	restoreWindowsHelpers(t)
+	volumeRootForPathFn = func(path string) (string, error) {
+		switch filepath.Clean(path) {
+		case filepath.Clean(srcPath):
+			return `\\?\Volume{source-alias}\`, nil
+		case filepath.Clean(dstDir):
+			return `D:\`, nil
+		default:
+			t.Fatalf("unexpected path passed to volumeRootForPathFn: %s", path)
+			return "", nil
+		}
+	}
+	sameFilesystemFn = func(path1, path2 string) (bool, error) {
+		if filepath.Clean(path1) != filepath.Clean(srcPath) {
+			t.Fatalf("unexpected source path passed to sameFilesystemFn: %s", path1)
+		}
+		if filepath.Clean(path2) != filepath.Clean(dstDir) {
+			t.Fatalf("unexpected destination path passed to sameFilesystemFn: %s", path2)
+		}
+		return true, nil
+	}
+	filesystemNameForVolFn = func(volumeRoot string) (string, error) {
+		if volumeRoot != `\\?\Volume{source-alias}\` {
+			t.Fatalf("unexpected volume root for filesystem lookup: %s", volumeRoot)
+		}
+		return "ReFS", nil
+	}
+	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
+	duplicateExtentFn = func(windows.Handle, windows.Handle, int64, int64, int64) error {
+		return nil
+	}
+	copyFileTailFn = func(*os.File, *os.File, int64, int64) error {
+		t.Fatal("tail copy should not run for fully cloneable file")
+		return nil
+	}
+
+	if err := cloneFile(srcPath, dstPath); err != nil {
+		t.Fatalf("cloneFile failed: %v", err)
 	}
 }
 
@@ -426,6 +485,15 @@ func TestCloneFile_UsesResolvedDestinationParentForVolumeChecks(t *testing.T) {
 			return "", nil
 		}
 	}
+	sameFilesystemFn = func(path1, path2 string) (bool, error) {
+		if filepath.Clean(path1) != filepath.Clean(srcPath) {
+			t.Fatalf("unexpected source path passed to sameFilesystemFn: %s", path1)
+		}
+		if filepath.Clean(path2) != filepath.Clean(resolvedDstParent) {
+			t.Fatalf("unexpected destination path passed to sameFilesystemFn: %s", path2)
+		}
+		return true, nil
+	}
 	filesystemNameForVolFn = func(string) (string, error) { return "ReFS", nil }
 	clusterSizeForVolFn = func(string) (int64, error) { return 4, nil }
 	duplicateExtentFn = func(_ windows.Handle, _ windows.Handle, _, _, _ int64) error {
@@ -677,6 +745,7 @@ func restoreWindowsHelpers(t *testing.T) {
 	originalMarkFileSparse := markFileSparseFn
 	originalSetFileEnd := setFileEndFn
 	originalVolumeRoot := volumeRootForPathFn
+	originalSameFilesystem := sameFilesystemFn
 	originalFilesystemName := filesystemNameForVolFn
 	originalClusterSize := clusterSizeForVolFn
 	originalDuplicateExtent := duplicateExtentFn
@@ -689,6 +758,7 @@ func restoreWindowsHelpers(t *testing.T) {
 		markFileSparseFn = originalMarkFileSparse
 		setFileEndFn = originalSetFileEnd
 		volumeRootForPathFn = originalVolumeRoot
+		sameFilesystemFn = originalSameFilesystem
 		filesystemNameForVolFn = originalFilesystemName
 		clusterSizeForVolFn = originalClusterSize
 		duplicateExtentFn = originalDuplicateExtent

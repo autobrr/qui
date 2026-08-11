@@ -6,7 +6,6 @@ package dirscan
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,19 +13,13 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func setupDirScanServiceTestDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "dirscan-service.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	return db
+	return testdb.NewMigratedSQLite(t, "dirscan-service")
 }
 
 func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {

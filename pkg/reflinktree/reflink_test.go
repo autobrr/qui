@@ -38,7 +38,7 @@ func TestSupportsReflink(t *testing.T) {
 }
 
 func TestCreate_NilPlan(t *testing.T) {
-	err := Create(nil)
+	_, err := Create(nil)
 	if err == nil {
 		t.Error("expected error for nil plan")
 	}
@@ -49,7 +49,7 @@ func TestCreate_EmptyRootDir(t *testing.T) {
 		RootDir: "",
 		Files:   []hardlinktree.FilePlan{{SourcePath: "/src", TargetPath: "/dst"}},
 	}
-	err := Create(plan)
+	_, err := Create(plan)
 	if err == nil {
 		t.Error("expected error for empty root dir")
 	}
@@ -60,7 +60,7 @@ func TestCreate_EmptyFiles(t *testing.T) {
 		RootDir: "/tmp",
 		Files:   []hardlinktree.FilePlan{},
 	}
-	err := Create(plan)
+	_, err := Create(plan)
 	if err == nil {
 		t.Error("expected error for empty files")
 	}
@@ -99,7 +99,7 @@ func TestCreate_Success(t *testing.T) {
 		},
 	}
 
-	err := Create(plan)
+	_, err := Create(plan)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -147,7 +147,8 @@ func TestRollback(t *testing.T) {
 		},
 	}
 
-	if err := Create(plan); err != nil {
+	created, err := Create(plan)
+	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
@@ -157,12 +158,17 @@ func TestRollback(t *testing.T) {
 	}
 
 	// Rollback
-	if err := Rollback(plan); err != nil {
+	if err := created.Rollback(); err != nil {
 		t.Fatalf("Rollback failed: %v", err)
 	}
 
 	// Verify file was removed
 	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "test.txt")); !os.IsNotExist(err) {
 		t.Error("file should not exist after rollback")
+	}
+
+	// Create made dstDir and subdir, so rollback removes both
+	if _, err := os.Stat(dstDir); !os.IsNotExist(err) {
+		t.Error("created root dir should be removed after rollback")
 	}
 }

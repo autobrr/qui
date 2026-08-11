@@ -119,20 +119,25 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	service := &Service{
 		syncManager:         sync,
 		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}),
+		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{}, nil
+			settings := models.DefaultCrossSeedAutomationSettings()
+			return settings, nil
 		},
 	}
 
 	cached := TorrentSearchResult{
-		Indexer:     "Indexer",
-		IndexerID:   99,
-		Title:       "Show.S01E01.1080p.BluRay-GROUP",
-		DownloadURL: "https://example.invalid/episode.torrent",
-		GUID:        "guid-2",
-		Size:        2048,
+		Indexer:                    "Indexer",
+		IndexerID:                  99,
+		Title:                      "Show.S01E01.1080p.BluRay-GROUP",
+		DownloadURL:                "https://example.invalid/episode.torrent",
+		GUID:                       "guid-2",
+		Size:                       2048,
+		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+		SearchStrictMismatchReason: "collection mismatch",
+		SearchRelaxedDifferences:   []string{"collection"},
+		SearchSourceTitles:         []string{"ARR Alias"},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
 
@@ -170,6 +175,38 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
+	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
+	require.Equal(t, instanceID, captured.SearchSourceInstanceID)
+	require.Equal(t, sourceTorrent.Hash, captured.SearchSourceHash)
+	require.Equal(t, cached.SearchStrictMismatchReason, captured.SearchStrictMismatchReason)
+	require.Equal(t, cached.SearchRelaxedDifferences, captured.SearchRelaxedDifferences)
+	require.Equal(t, cached.SearchSourceTitles, captured.SearchSourceTitles)
+}
+
+func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+	}
+
+	const (
+		instanceID = 3
+		hash       = "abc123"
+	)
+
+	service.cacheSearchResults(instanceID, hash, []TorrentSearchResult{
+		{
+			IndexerID:   99,
+			Title:       "Previous.Result",
+			DownloadURL: "https://example.invalid/previous.torrent",
+		},
+	})
+	service.cacheSearchResults(instanceID, hash, nil)
+
+	cached := service.getCachedSearchResults(instanceID, hash)
+	require.NotNil(t, cached)
+	require.Empty(t, cached.results)
 }
 
 type episodeInstanceStore struct {

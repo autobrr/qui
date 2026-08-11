@@ -48,6 +48,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Eye, EyeOff, Plus, Server, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface NewClientAPIKey {
@@ -73,6 +74,7 @@ function truncateInstanceName(name: string, maxLength = 20): string {
 }
 
 export function ClientApiKeysManager() {
+  const { t } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
@@ -137,10 +139,10 @@ export function ClientApiKeysManager() {
     onSuccess: (data) => {
       setNewKey(data)
       queryClient.invalidateQueries({ queryKey: ["clientApiKeys"] })
-      toast.success("Client API key created successfully")
+      toast.success(t("clientApiKeys.toasts.created"))
     },
     onError: () => {
-      toast.error("Failed to create client API key")
+      toast.error(t("clientApiKeys.toasts.createFailed"))
     },
   })
 
@@ -151,11 +153,11 @@ export function ClientApiKeysManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clientApiKeys"] })
       setDeleteKeyId(null)
-      toast.success("Client API key deleted successfully")
+      toast.success(t("clientApiKeys.toasts.deleted"))
     },
     onError: (error) => {
       console.error("Delete client API key error:", error)
-      toast.error(`Failed to delete client API key: ${error.message || "Unknown error"}`)
+      toast.error(t("clientApiKeys.toasts.deleteFailed", { error: error.message || "Unknown error" }))
     },
   })
 
@@ -167,13 +169,13 @@ export function ClientApiKeysManager() {
     onSubmit: async ({ value }) => {
       const clientName = value.clientName.trim()
       if (clientName === "") {
-        toast.error("Client name is required")
+        toast.error(t("clientApiKeys.toasts.clientNameRequired"))
         return
       }
 
       const instanceId = parseInt(value.instanceId, 10)
       if (!instanceId) {
-        toast.error("Please select an instance")
+        toast.error(t("clientApiKeys.toasts.selectInstance"))
         return
       }
 
@@ -201,14 +203,14 @@ export function ClientApiKeysManager() {
             <DialogTrigger asChild>
               <Button size="sm" className="w-full sm:w-auto">
                 <Plus className="mr-2 h-4 w-4" />
-                Create Client API Key
+                {t("clientApiKeys.createButton")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-xl max-w-full max-h-[90dvh] flex flex-col">
               <DialogHeader className="flex-shrink-0">
-                <DialogTitle>Create Client API Key</DialogTitle>
+                <DialogTitle>{t("clientApiKeys.createDialog.title")}</DialogTitle>
                 <DialogDescription>
-                  Create an API key for a specific client to connect to a qBittorrent instance.
+                  {t("clientApiKeys.createDialog.description")}
                 </DialogDescription>
               </DialogHeader>
 
@@ -217,14 +219,14 @@ export function ClientApiKeysManager() {
                   <div className="space-y-4">
                     <Card className="w-full">
                       <CardHeader>
-                        <CardTitle className="text-base">API Key Created</CardTitle>
+                        <CardTitle className="text-base">{t("clientApiKeys.newKey.title")}</CardTitle>
                         <CardDescription>
-                          This information is shown only once. Store it in your password manager before closing the dialog.
+                          {t("clientApiKeys.newKey.warning")}
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div>
-                          <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">Proxy URL</Label>
+                          <Label htmlFor="proxy-url" className="text-xs uppercase text-muted-foreground">{t("clientApiKeys.newKey.proxyUrl")}</Label>
                           <div className="mt-1 flex flex-wrap items-center gap-2 sm:flex-nowrap">
                             <code
                               id="proxy-url"
@@ -237,7 +239,7 @@ export function ClientApiKeysManager() {
                               variant="outline"
                               className="h-7 w-7"
                               onClick={() => setIncognitoMode(!incognitoMode)}
-                              title={incognitoMode ? "Show proxy URL" : "Hide proxy URL"}
+                              title={incognitoMode ? t("clientApiKeys.newKey.showProxyUrl") : t("clientApiKeys.newKey.hideProxyUrl")}
                             >
                               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             </Button>
@@ -248,12 +250,12 @@ export function ClientApiKeysManager() {
                               onClick={async () => {
                                 try {
                                   await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
-                                  toast.success("Proxy URL copied to clipboard")
+                                  toast.success(t("clientApiKeys.toasts.proxyCopied"))
                                 } catch {
-                                  toast.error("Failed to copy to clipboard")
+                                  toast.error(t("clientApiKeys.toasts.copyFailed"))
                                 }
                               }}
-                              title="Copy proxy URL"
+                              title={t("clientApiKeys.newKey.copyProxyUrl")}
                             >
                               <Copy className="h-3.5 w-3.5" />
                             </Button>
@@ -266,7 +268,7 @@ export function ClientApiKeysManager() {
                       onClick={() => handleDialogOpenChange(false)}
                       className="w-full"
                     >
-                      Done
+                      {t("clientApiKeys.newKey.done")}
                     </Button>
                   </div>
                 ) : (
@@ -280,16 +282,16 @@ export function ClientApiKeysManager() {
                     <form.Field
                       name="clientName"
                       validators={{
-                        onChange: ({ value }) => value.trim() === "" ? "Client name is required" : undefined,
+                        onChange: ({ value }) => value.trim() === "" ? t("clientApiKeys.toasts.clientNameRequired") : undefined,
                       }}
                     >
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="clientName">Client Name</Label>
+                          <Label htmlFor="clientName">{t("clientApiKeys.createDialog.clientNameLabel")}</Label>
                           <div className="space-y-2">
                             <Input
                               id="clientName"
-                              placeholder="e.g., autobrr, tqm, sonarr, radarr, cross-seed"
+                              placeholder={t("clientApiKeys.createDialog.clientNamePlaceholder")}
                               value={field.state.value}
                               onBlur={field.handleBlur}
                               onChange={(e) => field.handleChange(e.target.value)}
@@ -307,18 +309,18 @@ export function ClientApiKeysManager() {
                     <form.Field
                       name="instanceId"
                       validators={{
-                        onChange: ({ value }) => value.trim() === "" ? "Instance is required" : undefined,
+                        onChange: ({ value }) => value.trim() === "" ? t("clientApiKeys.toasts.selectInstance") : undefined,
                       }}
                     >
                       {(field) => (
                         <div className="space-y-2">
-                          <Label htmlFor="instanceId">qBittorrent Instance</Label>
+                          <Label htmlFor="instanceId">{t("clientApiKeys.createDialog.instanceLabel")}</Label>
                           <Select
                             value={field.state.value}
                             onValueChange={(value) => field.handleChange(value)}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Select an instance" />
+                              <SelectValue placeholder={t("clientApiKeys.createDialog.instancePlaceholder")} />
                             </SelectTrigger>
                             <SelectContent>
                               {instances?.map((instance) => (
@@ -348,7 +350,7 @@ export function ClientApiKeysManager() {
                           disabled={!canSubmit || isSubmitting || createMutation.isPending}
                           className="w-full"
                         >
-                          {isSubmitting || createMutation.isPending ? "Creating..." : "Create Client API Key"}
+                          {isSubmitting || createMutation.isPending ? t("clientApiKeys.createDialog.creating") : t("clientApiKeys.createButton")}
                         </Button>
                       )}
                     </form.Subscribe>
@@ -362,15 +364,15 @@ export function ClientApiKeysManager() {
         <div className="space-y-2">
           {isLoading ? (
             <p className="text-center text-sm text-muted-foreground py-8">
-              Loading client API keys...
+              {t("clientApiKeys.loading")}
             </p>
           ) : error ? (
             <div className="text-center py-8">
               <p className="text-sm text-muted-foreground mb-2">
-                Unable to load client API keys
+                {t("clientApiKeys.loadFailed")}
               </p>
               <p className="text-xs text-destructive">
-                {error.message?.includes("404")? "Feature may not be available in this version": error.message || "An error occurred"
+                {error.message?.includes("404") ? t("clientApiKeys.featureUnavailable") : error.message || t("clientApiKeys.unknownError")
                 }
               </p>
             </div>
@@ -386,7 +388,7 @@ export function ClientApiKeysManager() {
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
                         <Badge variant="outline" className="text-xs">
-                          ID: {key.id}
+                          {t("clientApiKeys.idLabel", { id: key.id })}
                         </Badge>
                         {key.instance ? (
                           key.instance.name.length > 20 ? (
@@ -409,26 +411,26 @@ export function ClientApiKeysManager() {
                           )
                         ) : (
                           <Badge variant="destructive" className="text-xs">
-                            Instance Deleted
+                            {t("clientApiKeys.instanceDeleted")}
                           </Badge>
                         )}
                       </div>
 
                       <div className="space-y-1 text-xs text-muted-foreground">
                         <p className="flex flex-wrap items-center gap-1">
-                          <span className="text-foreground">Created:</span>
+                          <span className="text-foreground">{t("clientApiKeys.labels.created")}</span>
                           <span>{formatDate(new Date(key.createdAt))}</span>
                           {key.lastUsedAt && (
                             <>
                               <span>•</span>
-                              <span className="text-foreground">Last used:</span>
+                              <span className="text-foreground">{t("clientApiKeys.labels.lastUsed")}</span>
                               <span>{formatDate(new Date(key.lastUsedAt))}</span>
                             </>
                           )}
                         </p>
                         {key.instance?.host && (
                           <div className="flex flex-wrap items-center gap-1 break-all">
-                            <span className="text-foreground">Host:</span>
+                            <span className="text-foreground">{t("clientApiKeys.labels.host")}</span>
                             <span className={incognitoMode ? "blur-sm select-none" : ""}>
                               {key.instance.host}
                             </span>
@@ -437,8 +439,8 @@ export function ClientApiKeysManager() {
                               variant="ghost"
                               className="h-6 w-6 px-0 text-muted-foreground hover:text-foreground"
                               onClick={() => setIncognitoMode(!incognitoMode)}
-                              title={incognitoMode ? "Show host" : "Hide host"}
-                              aria-label={incognitoMode ? "Show host" : "Hide host"}
+                              title={incognitoMode ? t("clientApiKeys.labels.showHost") : t("clientApiKeys.labels.hideHost")}
+                              aria-label={incognitoMode ? t("clientApiKeys.labels.showHost") : t("clientApiKeys.labels.hideHost")}
                             >
                               {incognitoMode ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                             </Button>
@@ -452,7 +454,7 @@ export function ClientApiKeysManager() {
                       variant="ghost"
                       className="h-9 w-9 self-end text-destructive hover:text-destructive focus-visible:ring-destructive sm:self-start"
                       onClick={() => setDeleteKeyId(key.id)}
-                      aria-label={`Delete API key ${key.clientName}`}
+                      aria-label={t("clientApiKeys.deleteDialog.deleteLabel", { name: key.clientName })}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -462,7 +464,7 @@ export function ClientApiKeysManager() {
 
               {keys.length === 0 && (
                 <p className="text-center text-sm text-muted-foreground py-8">
-                  No client API keys created yet
+                  {t("clientApiKeys.empty")}
                 </p>
               )}
             </>
@@ -472,18 +474,18 @@ export function ClientApiKeysManager() {
         <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Client API Key?</AlertDialogTitle>
+              <AlertDialogTitle>{t("clientApiKeys.deleteDialog.title")}</AlertDialogTitle>
               <AlertDialogDescription>
-                This action cannot be undone. Any applications using this key will lose access to the qBittorrent instance.
+                {t("clientApiKeys.deleteDialog.description")}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t("clientApiKeys.deleteDialog.cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                Delete
+                {t("clientApiKeys.deleteDialog.delete")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

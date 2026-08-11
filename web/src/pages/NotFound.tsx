@@ -6,8 +6,11 @@
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/ui/Logo"
 import { Link } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 export function NotFound() {
+  const { t } = useTranslation("common")
+
   return (
     <div className="flex items-center min-h-screen px-4 py-12 sm:px-6 md:px-8 lg:px-12 xl:px-16">
       <div className="w-full space-y-6 text-center">
@@ -17,30 +20,30 @@ export function NotFound() {
         </div>
 
         <div className="space-y-3">
-          <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl">Oops! Lost in the swarm?</h1>
-          <p className="text-muted-foreground">Looks like you've ventured into the unknown.</p>
+          <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl">{t("notFound.title")}</h1>
+          <p className="text-muted-foreground">{t("notFound.subtitle")}</p>
         </div>
 
         <div className="text-muted-foreground max-w-2xl mx-auto">
-          <p>In case you think this is a bug rather than a missing link,</p>
+          <p>{t("notFound.bugReport")}</p>
           <p>
-            feel free to report this to our{" "}
+            {t("notFound.reportTo")}{" "}
             <a
               href="https://github.com/autobrr/qui/issues/new?template=bug_report.md"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:text-primary/80 underline font-medium underline-offset-2 transition-colors"
             >
-              GitHub repository
+              {t("notFound.githubRepository")}
             </a>
             .
           </p>
-          <p className="pt-6">Otherwise, let us help you get back on track!</p>
+          <p className="pt-6">{t("notFound.getBackOnTrack")}</p>
         </div>
 
         <Button asChild className="h-10 px-8 text-sm font-medium">
           <Link to="/">
-            Return to dashboard
+            {t("notFound.returnToDashboard")}
           </Link>
         </Button>
       </div>

@@ -32,13 +32,16 @@ export function SelectAllHotkey({
     }
 
     const platformIsMac =
-      typeof isMac === "boolean"
-        ? isMac
-        : typeof window !== "undefined" &&
+      typeof isMac === "boolean"? isMac: typeof window !== "undefined" &&
           /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
 
     const handleSelectAllHotkey = (event: KeyboardEvent) => {
       if (event.key !== "a" && event.key !== "A") {
+        return
+      }
+
+      // Shift/Alt combos are browser shortcuts (e.g. Cmd+Shift+A tab search), not select-all
+      if (event.shiftKey || event.altKey) {
         return
       }
 

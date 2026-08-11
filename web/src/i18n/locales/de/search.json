@@ -1,0 +1,194 @@
+{
+  "pageTitle": "Indexer durchsuchen",
+  "pageDescription": "Durchsuche alle aktivierten Indexer. Wähle einen Suchtyp oder lass Auto die Kategorien automatisch erkennen.",
+  "indexerSummary": {
+    "label": "Indexer",
+    "noEnabled": "Keine aktivierten Indexer",
+    "allEnabled": "Alle aktiviert ({{count}})",
+    "selected": "{{selected}} von {{total}} ausgewählt"
+  },
+  "indexerSheet": {
+    "title": "Indexer-Auswahl",
+    "description": "Wähle aus, welche Indexer in Suchen einbezogen werden.",
+    "selectAll": "Alle auswählen",
+    "clearSelection": "Auswahl aufheben",
+    "noCategories": "Keine Kategorien",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Nativ",
+      "jackett": "Jackett"
+    },
+    "footer": "{{selected}} von {{total}} aktivierten Indexern ausgewählt",
+    "done": "Fertig"
+  },
+  "instanceSelector": {
+    "chooseTarget": "Zielinstanz wählen",
+    "noInstances": "Keine Instanzen",
+    "offline": "Offline",
+    "targetNamed": "Ziel: {{name}}",
+    "targetNamedOffline": "Ziel: {{name}} (offline)",
+    "clearSelection": "Auswahl aufheben",
+    "noInstancesConfigured": "Keine Instanzen konfiguriert",
+    "addInstanceNote": "Füge unter Einstellungen > Instanzen eine Download-Instanz hinzu."
+  },
+  "searchForm": {
+    "advanced": "Erweitert",
+    "active": "Aktiv",
+    "clear": "Leeren",
+    "searching": "Wird gesucht...",
+    "search": "Suchen",
+    "advancedNote": "Optionale (aber empfohlene) Torznab-Parameter.",
+    "searchType": "Suchtyp",
+    "searchQuery": "Suchanfrage",
+    "noIndexers": "Keine aktivierten Indexer verfügbar. Bitte füge Indexer hinzu und aktiviere sie auf der",
+    "indexersPage": "Indexer-Seite"
+  },
+  "searchTypes": {
+    "auto": {
+      "label": "Auto-Erkennung",
+      "description": "Erkennt die passenden Kategorien automatisch",
+      "placeholder": "Versuche: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\" oder \"Example Artist – Example Album\""
+    },
+    "movies": {
+      "label": "Filme",
+      "placeholder": "z. B. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "z. B. \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Musik",
+      "placeholder": "z. B. \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Bücher & Comics",
+      "placeholder": "z. B. \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Apps & Spiele",
+      "placeholder": "z. B. \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Erwachsene",
+      "placeholder": "Gib einen bestimmten Adult-Release-Namen ein"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb-ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb-ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Jahr",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Staffel",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episode",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Künstler",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Offset",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "{{filtered}} von {{total}} Ergebnissen werden angezeigt",
+    "filterPlaceholder": "Ergebnisse filtern...",
+    "clearSearch": "Suche leeren",
+    "clearAllFilters": "Alle Spaltenfilter zurücksetzen",
+    "pickInstance": "Instanz wählen",
+    "download": "Herunterladen",
+    "viewDetails": "Details anzeigen",
+    "clearSelectionButton": "Auswahl aufheben",
+    "actions": "Aktionen",
+    "quickAddTo": "Schnell hinzufügen zu...",
+    "cachedSummary": "Gecacht {{cached}} · Läuft ab {{expires}}",
+    "cacheSource": "Quelle: {{source}} · Bereich: {{scope}}",
+    "refreshReadyIn": "Bereit in {{seconds}}s",
+    "refreshFromIndexers": "Von Indexern aktualisieren",
+    "noValue": "-",
+    "categoryFallback": "Kategorie {{id}}",
+    "noResultsFor": "Keine Ergebnisse für \"{{query}}\" gefunden",
+    "enterQuery": "Gib eine Suchanfrage ein, um loszulegen",
+    "free": "Free",
+    "freeNeutral": "Neutral",
+    "noInfoUrlAvailable": "Keine Info-URL verfügbar"
+  },
+  "historyMeta": "{{type}} · {{count}} Ergebnisse · {{timestamp}}",
+  "table": {
+    "title": "Titel",
+    "indexer": "Indexer",
+    "size": "Größe",
+    "seeders": "Seeder",
+    "category": "Kategorie",
+    "source": "Quelle",
+    "collection": "Sammlung",
+    "group": "Gruppe",
+    "freeleech": "Freeleech",
+    "published": "Veröffentlicht",
+    "actions": "Aktionen",
+    "downloadTorrent": ".torrent herunterladen",
+    "viewDetails": "Details anzeigen",
+    "noInfoUrl": "Keine Info-URL"
+  },
+  "refreshDialog": {
+    "title": "Cache umgehen?",
+    "description": "Dadurch wird die Anfrage direkt an jeden ausgewählten Indexer gesendet. Verwende dies sparsam, um Rate-Limits zu vermeiden. Du kannst nach einer kurzen Abkühlphase erneut aktualisieren.",
+    "cancel": "Abbrechen",
+    "refreshNow": "Jetzt aktualisieren"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + Live",
+    "cacheHit": "Cache-Treffer",
+    "liveFetch": "Live-Abruf"
+  },
+  "card": {
+    "actions": "Aktionen",
+    "addToInstance": "Zu Instanz hinzufügen",
+    "addToNamed": "Zu {{name}} hinzufügen",
+    "addToNamedOffline": "Zu {{name}} hinzufügen (offline)",
+    "quickAddTo": "Schnell hinzufügen zu...",
+    "download": "Herunterladen",
+    "viewDetails": "Details anzeigen",
+    "clearSelection": "Auswahl aufheben",
+    "seeders": "{{count}} Seeder",
+    "published": "Veröffentlicht {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "Bitte gib eine Suchanfrage ein oder fülle die erweiterten Parameter aus",
+    "selectIndexer": "Bitte wähle mindestens einen Indexer aus",
+    "noEnabledIndexers": "Keine aktivierten Indexer verfügbar. Bitte füge zuerst Indexer hinzu und aktiviere sie.",
+    "noResults": "Keine Ergebnisse gefunden",
+    "foundResults": "{{total}} Ergebnisse gefunden{{suffix}}",
+    "cached": " (gecacht)",
+    "searchFailed": "Suche fehlgeschlagen: {{error}}",
+    "failedToLoadIndexers": "Fehler beim Laden der Indexer",
+    "addInstanceFirst": "Füge unter Einstellungen -> Instanzen eine Download-Instanz hinzu",
+    "chooseInstance": "Wähle eine Instanz, um Torrents hinzuzufügen",
+    "noDownloadUrl": "Keine Download-URL für dieses Ergebnis verfügbar",
+    "noInfoUrl": "Keine zusätzlichen Informationen für dieses Ergebnis verfügbar",
+    "invalidProtocol": "Ungültiges URL-Protokoll",
+    "invalidUrl": "Ungültiges URL-Format"
+  }
+}

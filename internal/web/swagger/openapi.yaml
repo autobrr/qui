@@ -520,6 +520,92 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/filter-views:
+    get:
+      tags:
+        - Torrents
+      summary: List saved filter views
+      description: Get all saved filter views ordered by sort order, then name
+      responses:
+        '200':
+          description: List of filter views
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FilterView'
+    post:
+      tags:
+        - Torrents
+      summary: Create filter view
+      description: Save the given torrent filters under a name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterViewInput'
+      responses:
+        '201':
+          description: Filter view created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterView'
+        '400':
+          description: Invalid name or filters payload
+        '409':
+          description: A view with this name already exists
+
+  /api/filter-views/{id}:
+    put:
+      tags:
+        - Torrents
+      summary: Update filter view
+      description: Rename a filter view and/or replace its stored filters
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterViewInput'
+      responses:
+        '200':
+          description: Updated filter view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterView'
+        '400':
+          description: Invalid name or filters payload
+        '404':
+          description: Filter view not found
+        '409':
+          description: A view with this name already exists
+    delete:
+      tags:
+        - Torrents
+      summary: Delete filter view
+      description: Delete a saved filter view
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Filter view deleted
+        '404':
+          description: Filter view not found
+
   /api/notifications/events:
     get:
       tags:
@@ -1119,7 +1205,9 @@ paths:
       tags:
         - Instances
       summary: Get transfer info
-      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      description: >-
+        Retrieve lightweight transfer statistics and the all-time transferred
+        totals for a qBittorrent instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -1217,6 +1305,7 @@ paths:
                         - skipped
                         - failed
                         - succeeded
+                        - started
                     reason:
                       type: string
                       description: Short explanation for the outcome.
@@ -1384,6 +1473,10 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  preferences:
+                    type: object
+                    nullable: true
+                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -1566,6 +1659,7 @@ paths:
                     - addTags
                     - removeTags
                     - setTags
+                    - setComment
                     - setCategory
                     - toggleAutoTMM
                     - setShareLimit
@@ -1582,6 +1676,9 @@ paths:
                 tags:
                   type: string
                   description: Comma-separated list of tags for tag-related actions.
+                comment:
+                  type: string
+                  description: Comment text for setComment action (empty clears the comment).
                 category:
                   type: string
                   description: Category name for setCategory action.
@@ -2973,6 +3070,38 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/themes/custom:
+    get:
+      tags:
+        - Themes
+      summary: List custom themes
+      description: List sideloaded custom theme CSS files and their contents. Requires premium access.
+      responses:
+        '200':
+          description: Custom themes listed successfully. If the custom themes directory cannot be prepared, the response still succeeds with the resolved directory and an empty themes array.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  directory:
+                    type: string
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        filename:
+                          type: string
+                        css:
+                          type: string
+        '403':
+          description: Premium access required
+        '500':
+          description: Failed to check premium access or read the custom themes directory
+
   /api/torrents/cross-instance:
     get:
       tags:
@@ -3290,6 +3419,28 @@ paths:
           description: Directory not found
         '500':
           description: Failed to reset scan progress
+
+  /api/dir-scan/directories/{directoryID}/requeue-no-match:
+    post:
+      tags:
+        - Dir Scan
+      summary: Requeue unmatched files
+      description: Resets no_match files for the directory to pending so the next scan searches them again. Matched and already-seeding files are kept.
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '200':
+          description: Number of files requeued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanRequeueResponse'
+        '404':
+          description: Directory not found
+        '409':
+          description: A scan is running
+        '500':
+          description: Failed to requeue files
 
   /api/dir-scan/directories/{directoryID}/scan:
     post:
@@ -3827,23 +3978,20 @@ paths:
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
+                skipIndividualEpisodes:
+                  type: boolean
+                  description: When true, the run does not search single TV episodes. Groups of episodes still start season pack searches when season pack automation is on.
+                maxAddedAgeDays:
+                  type: integer
+                  minimum: 0
+                  description: An indexer that already searched a torrent does not search it again after this many days. An indexer that never searched a torrent searches it at any age, if its capabilities match the torrent. 0 disables this rule.
       responses:
-        '200':
+        '202':
           description: Search run started
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                  instance_id:
-                    type: integer
-                  status:
-                    type: string
-                  started_at:
-                    type: string
-                    format: date-time
+                $ref: '#/components/schemas/CrossSeedSearchRun'
         '400':
           description: Invalid request body
         '500':
@@ -3871,13 +4019,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  running:
-                    type: boolean
-                  current_run:
-                    type: object
-                    nullable: true
+                $ref: '#/components/schemas/CrossSeedSearchStatus'
         '500':
           description: Failed to get search run status
 
@@ -3917,7 +4059,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: '#/components/schemas/CrossSeedSearchRun'
         '400':
           description: Invalid query parameters
         '500':
@@ -4447,6 +4589,46 @@ paths:
                 type: string
                 description: Each message is a log line in SSE format
 
+  /api/logs/files:
+    get:
+      tags:
+        - System
+      summary: List log files
+      description: List the log files (active and rotated) in the configured log directory. Returns an empty list when file logging is not configured.
+      responses:
+        '200':
+          description: Log files available for download
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogFile'
+
+  /api/logs/files/{filename}:
+    get:
+      tags:
+        - System
+      summary: Download a log file
+      description: Download a single log file from the configured log directory. The filename must exactly match an entry returned by the log file listing.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: Log file name as returned by the listing endpoint
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Log file content
+          content:
+            text/plain:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Log file not found
+
   /api/version/latest:
     get:
       tags:
@@ -4462,6 +4644,20 @@ paths:
                 $ref: '#/components/schemas/LatestVersionResponse'
         '204':
           description: No update available - current version is latest
+
+  /api/version:
+    get:
+      tags:
+        - System
+      summary: Get current running version
+      description: Returns the version qui is currently running, along with whether a newer release is available. Useful for monitoring tools (e.g. Argus) that track the deployed version of a service.
+      responses:
+        '200':
+          description: Current version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
 
   /api/instances/{instanceID}/backups/import:
     post:
@@ -5731,6 +5927,14 @@ components:
         hasDecryptionError:
           type: boolean
           description: Whether there's a password decryption error
+        recentErrors:
+          type: array
+          description: Recent connection/auth/decryption errors for this instance.
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
@@ -5758,6 +5962,37 @@ components:
           description: Display order preference for the instance.
 
 
+    InstanceError:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        errorType:
+          type: string
+        errorMessage:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+
+    InstanceMeta:
+      type: object
+      description: Real-time instance auth/decryption and connection metadata emitted with torrent stream snapshots.
+      properties:
+        connected:
+          type: boolean
+        hasDecryptionError:
+          type: boolean
+        recentErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
+
     InstanceCapabilities:
       type: object
       properties:
@@ -5770,6 +6005,9 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsSetComment:
+          type: boolean
+          description: Whether the instance supports setting torrent comments (Web API 2.12.1+, qBittorrent 5.2+).
         supportsTrackerHealth:
           type: boolean
           description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
@@ -5824,6 +6062,12 @@ components:
           type: integer
         up_rate_limit:
           type: integer
+        alltime_dl:
+          type: integer
+          description: All-time downloaded bytes. Absent until the instance completes its first sync.
+        alltime_ul:
+          type: integer
+          description: All-time uploaded bytes. Absent until the instance completes its first sync.
 
 
     Torrent:
@@ -6107,6 +6351,28 @@ components:
           description: Number of backup files to keep
           example: 5
 
+    LogFile:
+      type: object
+      description: A log file available for download
+      required:
+        - name
+        - sizeBytes
+        - modTime
+      properties:
+        name:
+          type: string
+          description: Log file name
+          example: "qui.log"
+        sizeBytes:
+          type: integer
+          format: int64
+          description: File size in bytes
+          example: 1048576
+        modTime:
+          type: string
+          format: date-time
+          description: Last modification time
+
     LogExclusions:
       type: object
       description: Muted log message patterns
@@ -6145,6 +6411,52 @@ components:
             type: string
           description: List of log message patterns to hide
 
+    FilterView:
+      type: object
+      description: A named snapshot of the torrent filter selections
+      required:
+        - id
+        - name
+        - filters
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          description: View ID
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the view
+        filters:
+          type: object
+          additionalProperties: true
+          description: Opaque torrent filter selections, stored and returned verbatim
+        createdAt:
+          type: string
+          format: date-time
+          description: When the view was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the view was last updated
+
+    FilterViewInput:
+      type: object
+      description: Request to create or update a filter view
+      required:
+        - name
+        - filters
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the view
+        filters:
+          type: object
+          additionalProperties: true
+          description: Opaque torrent filter selections
+
     LatestVersionResponse:
       type: object
       description: Information about the latest available version when an update is available
@@ -6172,6 +6484,26 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+
+    VersionResponse:
+      type: object
+      description: The version qui is currently running and whether a newer release is available
+      required:
+        - version
+        - updateAvailable
+      properties:
+        version:
+          type: string
+          description: The version qui is currently running
+          example: "v1.2.3"
+        latestVersion:
+          type: string
+          description: The latest available release tag. Present only when a newer release than the running version has been detected.
+          example: "v1.3.0"
+        updateAvailable:
+          type: boolean
+          description: Whether a newer release than the running version is available
+          example: true
 
     QBittorrentBuildInfo:
       type: object
@@ -6430,6 +6762,28 @@ components:
           default: 0
           description: Seconds to wait after a torrent completes before starting the cross-seed search. 0 disables the delay.
 
+    SeasonPackCategoryRule:
+      type: object
+      required:
+        - resolution
+        - category
+      properties:
+        resolution:
+          type: string
+          description: Canonical lowercase release resolution to match (e.g. "1080p", "2160p").
+        source:
+          type: string
+          enum:
+            - ""
+            - WEB
+            - BLURAY
+            - REMUX
+            - HDTV
+          description: Canonical uppercase release source to match (WEB, BLURAY, REMUX, HDTV). Empty matches any source.
+        category:
+          type: string
+          description: qBittorrent category to file matching season-pack injections under.
+
     CrossSeedAutomationSettingsPatch:
       type: object
       properties:
@@ -6469,9 +6823,10 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          minimum: 0
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6516,6 +6871,9 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6529,6 +6887,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -6551,6 +6912,11 @@ components:
         seasonPackCategory:
           type: string
           description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
+        seasonPackCategoryRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonPackCategoryRule'
+          description: Per-quality routing rules that pick a category by release resolution and source. seasonPackCategory is the fallback when no rule matches.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.
@@ -6597,9 +6963,10 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          minimum: 0
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6644,6 +7011,10 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          default: false
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6657,6 +7028,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -6679,6 +7053,11 @@ components:
         seasonPackCategory:
           type: string
           description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
+        seasonPackCategoryRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonPackCategoryRule'
+          description: Per-quality routing rules that pick a category by release resolution and source. seasonPackCategory is the fallback when no rule matches.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.
@@ -6895,6 +7274,138 @@ components:
           type: string
           format: date-time
 
+    CrossSeedSearchResultStatus:
+      type: string
+      enum:
+        - added
+        - skipped
+        - failed
+
+    CrossSeedSearchRunStatus:
+      type: string
+      enum:
+        - running
+        - success
+        - failed
+        - canceled
+
+    CrossSeedSearchFilters:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedSearchResult:
+      type: object
+      properties:
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        indexerName:
+          type: string
+        releaseTitle:
+          type: string
+        status:
+          $ref: '#/components/schemas/CrossSeedSearchResultStatus'
+        message:
+          type: string
+        processedAt:
+          type: string
+          format: date-time
+
+    CrossSeedSearchRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        status:
+          $ref: '#/components/schemas/CrossSeedSearchRunStatus'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        totalTorrents:
+          type: integer
+        processed:
+          type: integer
+        torrentsAdded:
+          type: integer
+        torrentsFailed:
+          type: integer
+        torrentsSkipped:
+          type: integer
+        message:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        filters:
+          $ref: '#/components/schemas/CrossSeedSearchFilters'
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchResult'
+        createdAt:
+          type: string
+          format: date-time
+
+    CrossSeedSearchCandidate:
+      type: object
+      properties:
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedSearchStatus:
+      type: object
+      properties:
+        running:
+          type: boolean
+        run:
+          $ref: '#/components/schemas/CrossSeedSearchRun'
+          nullable: true
+        currentTorrent:
+          $ref: '#/components/schemas/CrossSeedSearchCandidate'
+          nullable: true
+        recentResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchResult'
+        nextRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        effectiveIntervalSeconds:
+          type: integer
+
     CrossSeedRunRequest:
       type: object
       properties:
@@ -7046,6 +7557,12 @@ components:
           type: number
         guid:
           type: string
+        infohash_v1:
+          type: string
+          nullable: true
+        infohash_v2:
+          type: string
+          nullable: true
         imdb_id:
           type: string
           nullable: true
@@ -7130,6 +7647,9 @@ components:
         torrent_name:
           type: string
           nullable: true
+        info_hash:
+          type: string
+          nullable: true
         success:
           type: boolean
         instance_results:
@@ -7152,10 +7672,10 @@ components:
       type: object
       description: A torrent that matches another torrent for cross-seeding purposes
       properties:
-        instanceId:
+        instance_id:
           type: integer
           description: The qBittorrent instance ID containing this torrent
-        instanceName:
+        instance_name:
           type: string
           description: The name of the qBittorrent instance
         hash:
@@ -7172,10 +7692,10 @@ components:
           type: number
           format: float
           description: Download progress (0-1)
-        savePath:
+        save_path:
           type: string
           description: Save path on disk
-        contentPath:
+        content_path:
           type: string
           description: Content path on disk
         category:
@@ -7190,13 +7710,13 @@ components:
         tracker:
           type: string
           description: Primary tracker URL
-        trackerHealth:
+        tracker_health:
           type: string
-          enum: [unregistered, tracker_down]
+          enum: [unregistered, tracker_down, tracker_error]
           description: Tracker health status (only present if unhealthy)
-        matchType:
+        match_type:
           type: string
-          enum: [content_path, name, release]
+          enum: [content_path, hardlink, reflink, name, release]
           description: How this torrent was matched
 
     CrossInstanceFilterOptions:
@@ -7830,6 +8350,9 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
+          description: Skip searches for single TV episodes. Season packs are still searched.
         lastScanAt:
           type: string
           format: date-time
@@ -7848,6 +8371,7 @@ components:
         - enabled
         - targetInstanceId
         - scanIntervalMinutes
+        - skipIndividualEpisodes
         - createdAt
         - updatedAt
 
@@ -7877,6 +8401,8 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
       required:
         - path
         - targetInstanceId
@@ -7907,6 +8433,8 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
 
     DirScanRun:
       type: object
@@ -8039,6 +8567,12 @@ components:
         matchedIndexerId:
           type: integer
           nullable: true
+        searchedIndexerIds:
+          type: array
+          items:
+            type: integer
+          nullable: true
+          description: Indexer IDs that the search covered when the file was stamped no_match
         lastProcessedAt:
           type: string
           format: date-time
@@ -8050,6 +8584,16 @@ components:
         - fileSize
         - fileModTime
         - status
+
+    DirScanRequeueResponse:
+      type: object
+      properties:
+        requeued:
+          type: integer
+          format: int64
+          description: Number of files reset to pending
+      required:
+        - requeued
 
     DirScanTriggerResponse:
       type: object
@@ -8256,5 +8800,7 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Themes
+    description: Sideloaded custom theme listing (premium)
   - name: Proxy
     description: qBittorrent-compatible proxy endpoints authenticated by client API key

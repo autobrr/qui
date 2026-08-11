@@ -20,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // Helper function to insert a test instance with interned fields
@@ -46,18 +47,11 @@ func insertTestInstance(t *testing.T, db *database.DB, name string) int {
 func setupTestBackupDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	// Create a unique database file for each test
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err, "Failed to initialize test database with migrations")
+	db := testdb.NewMigratedSQLite(t, "backups-service")
 
 	// Allow multiple connections for tests that need concurrent access
 	db.Conn().SetMaxOpenConns(5)
 	db.Conn().SetMaxIdleConns(2)
-
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
 
 	return db
 }
@@ -1360,6 +1354,80 @@ func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 	_, err = os.Stat(blobAbsPath)
 	require.NoError(t, err)
 }
+
+func TestCleanupOrphanedBlobs(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-gc")
+	store := models.NewBackupStore(db)
+
+	dataDir := t.TempDir()
+	cacheDir := filepath.Join(dataDir, "backups", "torrents", "aa", "bb", "cc")
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+
+	referencedRel := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "cc", "referenced.torrent"))
+	referencedAbs := filepath.Join(dataDir, filepath.FromSlash(referencedRel))
+	orphanAbs := filepath.Join(cacheDir, "orphan.torrent")
+	freshOrphanAbs := filepath.Join(cacheDir, "fresh.torrent")
+	for _, p := range []string{referencedAbs, orphanAbs, freshOrphanAbs} {
+		require.NoError(t, os.WriteFile(p, []byte("blob"), 0o600))
+	}
+	// Age the referenced and orphaned blobs past the guard; only the orphan
+	// may be removed. The fresh orphan stays inside the age guard.
+	old := time.Now().Add(-48 * time.Hour)
+	require.NoError(t, os.Chtimes(referencedAbs, old, old))
+	require.NoError(t, os.Chtimes(orphanAbs, old, old))
+
+	now := time.Now().UTC()
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hash-1",
+		Name:            "Referenced",
+		TorrentBlobPath: &referencedRel,
+	}}))
+
+	svc := NewService(store, &stubBackupSyncManager{}, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc.cleanupOrphanedBlobs(ctx)
+
+	_, err := os.Stat(referencedAbs)
+	require.NoError(t, err, "referenced blobs must survive")
+	_, err = os.Stat(orphanAbs)
+	require.ErrorIs(t, err, os.ErrNotExist, "aged orphan blobs must be removed")
+	_, err = os.Stat(freshOrphanAbs)
+	require.NoError(t, err, "fresh files stay inside the age guard")
+
+	// Cancellation observed mid-walk stops the cleanup before it removes
+	// anything. A plain canceled context would already fail the store query,
+	// so walkCanceledCtx lets the query through and only reports the
+	// cancellation to the walk's ctx.Err() polls.
+	lateOrphanAbs := filepath.Join(cacheDir, "late-orphan.torrent")
+	require.NoError(t, os.WriteFile(lateOrphanAbs, []byte("blob"), 0o600))
+	require.NoError(t, os.Chtimes(lateOrphanAbs, old, old))
+
+	svc.cleanupOrphanedBlobs(walkCanceledCtx{})
+
+	_, err = os.Stat(lateOrphanAbs)
+	require.NoError(t, err, "cleanup must not remove files once the context is canceled")
+}
+
+type walkCanceledCtx struct{}
+
+func (walkCanceledCtx) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (walkCanceledCtx) Done() <-chan struct{}       { return nil }
+func (walkCanceledCtx) Err() error                  { return context.Canceled }
+func (walkCanceledCtx) Value(any) any               { return nil }
 
 type stubBackupSyncManager struct {
 	torrents    []qbt.Torrent

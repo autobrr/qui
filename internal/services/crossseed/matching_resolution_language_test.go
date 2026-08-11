@@ -81,7 +81,8 @@ func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 			candidateName: "Show.S01E01.720p.WEB-DL-GROUP",
 			wantMatch:     false,
 		},
-		// Language exception: empty language treated as equivalent to ENGLISH.
+		// A missing language tag means unknown, not ENGLISH: trackers that label the
+		// original audio language publish releases that others publish untagged.
 		{
 			name:          "empty language matches ENGLISH",
 			sourceName:    "Show.S01E01.1080p.WEB-DL-GROUP",
@@ -95,9 +96,15 @@ func TestReleasesMatch_ResolutionAndLanguage(t *testing.T) {
 			wantMatch:     true,
 		},
 		{
-			name:          "empty language does NOT match FRENCH",
+			name:          "empty language matches FRENCH (size check is the authority)",
 			sourceName:    "Show.S01E01.1080p.WEB-DL-GROUP",
 			candidateName: "Show.S01E01.FRENCH.1080p.WEB-DL-GROUP",
+			wantMatch:     true,
+		},
+		{
+			name:          "FRENCH does NOT match MULTi when both declare a language",
+			sourceName:    "Show.S01E01.FRENCH.1080p.WEB-DL-GROUP",
+			candidateName: "Show.S01E01.MULTi.1080p.WEB-DL-GROUP",
 			wantMatch:     false,
 		},
 	}

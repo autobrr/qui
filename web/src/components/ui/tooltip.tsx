@@ -119,6 +119,10 @@ const TooltipTrigger = React.forwardRef<
     onKeyDown?.(event)
   }, [registerPointerType, onKeyDown])
 
+  // A bare trigger renders a button that would submit any enclosing form. With asChild the
+  // props land on the caller's own element, often not a button, so only default type here.
+  const triggerProps = props.asChild ? props : { type: "button" as const, ...props }
+
   if (context.isTouchDevice) {
     // On touch devices, handle click to toggle tooltip
     return (
@@ -135,7 +139,7 @@ const TooltipTrigger = React.forwardRef<
           // Also call any custom onClick
           onClick?.(e)
         }}
-        {...props}
+        {...triggerProps}
       />
     )
   }
@@ -148,7 +152,7 @@ const TooltipTrigger = React.forwardRef<
       onPointerEnter={handlePointerEnter}
       onKeyDown={handleKeyDown}
       onClick={onClick}
-      {...props}
+      {...triggerProps}
     />
   )
 })

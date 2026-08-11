@@ -80,7 +80,17 @@ func (s *failingDirScanIndexerStore) DeleteRateLimitCooldown(context.Context, in
 	return nil
 }
 
-func TestService_ProcessSearchee_EnabledIndexerProbeError_ReturnsSearchError(t *testing.T) {
+func TestService_EnabledIndexerIDSet_StoreError_ReturnsNil(t *testing.T) {
+	t.Parallel()
+
+	l := zerolog.New(io.Discard)
+	jackettSvc := jackett.NewService(&failingDirScanIndexerStore{err: errors.New("jackett down")})
+	svc := &Service{jackettService: jackettSvc}
+
+	require.Nil(t, svc.enabledIndexerIDSet(context.Background(), &l))
+}
+
+func TestService_ProcessSearchee_NoEnabledIndexers_StaysPending(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -104,8 +114,10 @@ func TestService_ProcessSearchee_EnabledIndexerProbeError_ReturnsSearchError(t *
 		},
 	}
 
-	matches, outcome := svc.processSearchee(ctx, dir, searchee, settings, matcher, 1, &l)
+	// The searchee must not error and must not count as searched: with no known
+	// enabled indexers, a no_match stamp here would be permanent and wrong.
+	matches, outcome := svc.processSearchee(ctx, dir, searchee, settings, matcher, 1, nil, &l)
 	require.Nil(t, matches)
 	require.False(t, outcome.searched)
-	require.True(t, outcome.searchError)
+	require.False(t, outcome.searchError)
 }
