@@ -7322,13 +7322,17 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	}
 }
 
-func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType string) *arr.ExternalIDsResult {
+// lookupARRExternalIDs resolves external IDs for the torrent via ARR. The second
+// return value is the QueryDegraded reason when the lookup could not supply IDs
+// (so the search will run title-only), or "" when IDs resolved or no ARR lookup
+// applies.
+func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType string) (*arr.ExternalIDsResult, string) {
 	if isNilARRLookupService(s.arrService) {
-		return nil
+		return nil, ""
 	}
 	arrContentType := mapContentTypeToARR(contentType)
 	if arrContentType == "" {
-		return nil
+		return nil, ""
 	}
 
 	result, err := s.arrService.LookupExternalIDs(ctx, title, arrContentType)
@@ -7337,10 +7341,12 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 			Str("torrentName", title).
 			Str("contentType", contentType).
 			Msg("[CROSSSEED-SEARCH] ARR ID lookup failed, continuing without IDs")
-		return nil
+		return nil, QueryDegradedARRLookupFailed
 	}
 	if result == nil {
-		return nil
+		// A nil result with no error means no enabled ARR instance covers this
+		// content type — normal steady state, not a degradation of this search.
+		return nil, ""
 	}
 	if result.IDs == nil || result.IDs.IsEmpty() {
 		log.Debug().
@@ -7349,7 +7355,7 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 			Int("titles", len(result.Titles)).
 			Strs("arrTitles", result.Titles).
 			Msg("[CROSSSEED-SEARCH] ARR ID lookup returned no IDs")
-		return result
+		return result, QueryDegradedARRNoIDs
 	}
 
 	log.Debug().
@@ -7363,7 +7369,7 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 		Int("titles", len(result.Titles)).
 		Strs("arrTitles", result.Titles).
 		Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
-	return result
+	return result, ""
 }
 
 const (
@@ -8471,7 +8477,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
 	var arrTitles []string
-	arrResult := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, contentInfo.ContentType)
+	arrResult, queryDegraded := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, contentInfo.ContentType)
 	if arrResult != nil {
 		if arrResult.IDs != nil && !arrResult.IDs.IsEmpty() {
 			externalIDs = arrResult.IDs
@@ -8633,6 +8639,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Results:       gazelleResults,
 			Partial:       true,
 			JobID:         0,
+			QueryDegraded: queryDegraded,
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
@@ -8944,6 +8951,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Partial:           searchResp.Partial,
 			JobID:             searchResp.JobID,
 			CoveredIndexerIDs: coveredIndexerIDs,
+			QueryDegraded:     queryDegraded,
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
@@ -8976,6 +8984,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Partial:           searchResp.Partial,
 		JobID:             searchResp.JobID,
 		CoveredIndexerIDs: coveredIndexerIDs,
+		QueryDegraded:     queryDegraded,
 	}, gazelleLookupAttempted, remoteRequestsMade, nil
 }
 

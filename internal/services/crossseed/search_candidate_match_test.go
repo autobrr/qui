@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1423,9 +1424,12 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		return response
 	}
 
-	require.Empty(t, search([]string{"Unrelated Show"}).Results)
+	emptyResponse := search([]string{"Unrelated Show"})
+	require.Empty(t, emptyResponse.Results)
+	require.Equal(t, QueryDegradedARRNoIDs, emptyResponse.QueryDegraded, "empty-ID ARR result must flag the title-only query")
 	response := search(aliases)
 	require.Len(t, response.Results, 1)
+	require.Equal(t, QueryDegradedARRNoIDs, response.QueryDegraded)
 	match := response.Results[0]
 	require.Equal(t, searchCandidateClassStrict, match.SearchDecisionClass)
 	require.Equal(t, aliases, match.SearchSourceTitles)
@@ -1461,5 +1465,13 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		require.NoError(t, applyErr)
 		require.Equal(t, models.CrossSeedSearchResultStatusFailed, result.Status)
 		require.Contains(t, result.Message, "torrent properties")
+	})
+
+	// Last: this search overwrites the cached results the apply subtests consume.
+	t.Run("arr lookup error reaches the response", func(t *testing.T) {
+		arrLookup.err = errors.New("arr offline")
+		defer func() { arrLookup.err = nil }()
+		errResponse := search(nil)
+		require.Equal(t, QueryDegradedARRLookupFailed, errResponse.QueryDegraded)
 	})
 }

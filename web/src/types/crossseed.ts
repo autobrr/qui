@@ -82,6 +82,8 @@ export interface CrossSeedTorrentSearchResponse {
   results: CrossSeedTorrentSearchResult[]
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
+  /** "arr_lookup_failed" | "arr_no_ids" — the search ran with a title-only query */
+  queryDegraded?: string
 }
 
 export interface CrossSeedTorrentSearchSelection {
