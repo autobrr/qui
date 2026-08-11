@@ -231,7 +231,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 			SeasonPackCoverageThreshold: 1,
 		}, nil
 	})
-	setServiceField(t, svc, "seasonPackLinkCreator", func(*hardlinktree.TreePlan) error { return nil })
+	setServiceField(t, svc, "seasonPackLinkCreator", func(*hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil })
 
 	handler := &CrossSeedHandler{service: svc}
 
