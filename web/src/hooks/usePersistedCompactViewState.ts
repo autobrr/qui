@@ -28,14 +28,17 @@ export function usePersistedCompactViewState(
   const allowedModes = useMemo(() => sanitizeAllowedModes(allowedModesInput), [allowedModesInput])
   const effectiveDefaultMode = allowedModes.includes(defaultMode) ? defaultMode : allowedModes[0]
 
-  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+  // The stored mode is global across every consumer; `allowedModes` only narrows what
+  // this consumer can render. Never persist the narrowing, or a mounted-but-hidden
+  // consumer (e.g. MobileFooterNav on desktop) clobbers the user's choice on reload.
+  const [storedMode, setStoredMode] = useState<ViewMode>(() => {
     if (typeof window === "undefined") {
       return effectiveDefaultMode
     }
 
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY)
-      if (stored && allowedModes.includes(stored as ViewMode)) {
+      if (stored && ALL_VIEW_MODES.includes(stored as ViewMode)) {
         return stored as ViewMode
       }
     } catch (error) {
@@ -45,11 +48,24 @@ export function usePersistedCompactViewState(
     return effectiveDefaultMode
   })
 
-  const setViewMode = useCallback((updater: ViewMode | ((prev: ViewMode) => ViewMode)) => {
-    setViewModeState(prev => {
-      const requested = typeof updater === "function" ? updater(prev) : updater
-      return allowedModes.includes(requested) ? requested : allowedModes[0]
-    })
+  const viewMode = allowedModes.includes(storedMode) ? storedMode : effectiveDefaultMode
+
+  const setViewMode = useCallback((requested: ViewMode) => {
+    const next = allowedModes.includes(requested) ? requested : allowedModes[0]
+
+    setStoredMode(next)
+
+    if (typeof window === "undefined") {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next)
+    } catch (error) {
+      console.error("Failed to save view mode state to localStorage:", error)
+    }
+
+    window.dispatchEvent(new CustomEvent(STORAGE_KEY, { detail: { viewMode: next } }))
   }, [allowedModes])
 
   useEffect(() => {
@@ -57,64 +73,21 @@ export function usePersistedCompactViewState(
       return
     }
 
-    try {
-      window.localStorage.setItem(STORAGE_KEY, viewMode)
-    } catch (error) {
-      console.error("Failed to save view mode state to localStorage:", error)
-    }
-
-    const evt = new CustomEvent(STORAGE_KEY, { detail: { viewMode } })
-    window.dispatchEvent(evt)
-  }, [viewMode])
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
     const handleEvent = (e: Event) => {
-      const custom = e as CustomEvent<{ viewMode: ViewMode }>
-      const nextMode = custom.detail?.viewMode
+      const nextMode = (e as CustomEvent<{ viewMode: ViewMode }>).detail?.viewMode
 
-      if (!nextMode) {
-        return
-      }
-
-      if (allowedModes.includes(nextMode)) {
-        setViewModeState(prev => (prev === nextMode ? prev : nextMode))
-        return
-      }
-
-      if (allowedModes.length > 0) {
-        setViewMode(allowedModes[0])
+      if (nextMode && ALL_VIEW_MODES.includes(nextMode)) {
+        setStoredMode(nextMode)
       }
     }
 
     window.addEventListener(STORAGE_KEY, handleEvent as EventListener)
     return () => window.removeEventListener(STORAGE_KEY, handleEvent as EventListener)
-  }, [allowedModes, setViewMode])
-
-  useEffect(() => {
-    if (allowedModes.includes(viewMode)) {
-      return
-    }
-
-    if (allowedModes.length > 0) {
-      setViewMode(allowedModes[0])
-    }
-  }, [allowedModes, setViewMode, viewMode])
+  }, [])
 
   const cycleViewMode = useCallback(() => {
-    if (allowedModes.length === 0) {
-      return
-    }
-
-    setViewMode(prev => {
-      const currentIndex = allowedModes.indexOf(prev)
-      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedModes.length
-      return allowedModes[nextIndex]
-    })
-  }, [allowedModes, setViewMode])
+    setViewMode(allowedModes[(allowedModes.indexOf(viewMode) + 1) % allowedModes.length])
+  }, [allowedModes, setViewMode, viewMode])
 
   return {
     viewMode,

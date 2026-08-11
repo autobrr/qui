@@ -10,9 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/anacrolix/torrent/metainfo"
-	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/moistari/rls"
 
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -465,7 +464,7 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
-		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
+		h := metainfo.HashV2Bytes([]byte(mi.InfoBytes))
 		hashV2 = strings.ToLower(h.HexString())
 	}
 

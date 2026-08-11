@@ -98,7 +98,9 @@
     "runError": "Error: {{message}}",
     "runSummary": "{{runs}} runs • +{{added}}",
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
-    "scheduledUpper": "SCHEDULED"
+    "scheduledUpper": "SCHEDULED",
+    "runDisabledAlreadyRunning": "Automation run is already in progress.",
+    "runDisabledCooldown": "Manual runs are limited to every {{minutes}}-minute interval. Try again in {{remaining}}."
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -163,7 +165,39 @@
     "scannedProgress": "{{processed}}/{{total}} scanned",
     "torrentsCount": "{{count}} torrents",
     "failedCount": "{{count}} failed",
-    "runError": "Error: {{message}}"
+    "runError": "Error: {{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "Torznab skipped (Gazelle-only selection)",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab disabled (Gazelle-only)",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab disabled (enable Gazelle)",
+      "placeholderAllEnabledNonOpsRed": "All enabled non-OPS/RED indexers (leave empty for all)",
+      "placeholderAllEnabled": "All enabled indexers (leave empty for all)",
+      "placeholderOnlyOpsRedEnabled": "Only OPS/RED enabled (Gazelle)",
+      "placeholderNoTorznabConfigured": "No Torznab indexers configured",
+      "helpTorznabSkippedGazelleOnly": "Selected Torznab indexers are Gazelle-only (OPS/RED). This run will be Gazelle-only.",
+      "helpTorznabDisabledGazelleCheck": "Torznab disabled. Gazelle will check RED/OPS for every source torrent.",
+      "helpTorznabDisabledEnableGazelle": "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode.",
+      "helpOnlyOpsRedEnabled": "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS.",
+      "helpNoNonOpsRedTorznab": "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent.",
+      "helpNoTorznabConfigured": "No Torznab indexers configured.",
+      "helpAllEnabledNonOpsRedQueried": "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS.",
+      "helpAllEnabledTorznabQueried": "All enabled Torznab indexers will be queried for matches.",
+      "helpSelectedTorznabQueriedGazelle_one": "Only {{count}} selected Torznab indexer will be queried. Gazelle still checks RED/OPS.",
+      "helpSelectedTorznabQueriedGazelle_other": "Only {{count}} selected Torznab indexers will be queried. Gazelle still checks RED/OPS.",
+      "helpSelectedQueried_one": "Only {{count}} selected indexer will be queried.",
+      "helpSelectedQueried_other": "Only {{count}} selected indexers will be queried."
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle: loading",
+      "disabled": "Gazelle: disabled",
+      "enabledOpsRed": "Gazelle: enabled (OPS+RED keys set)",
+      "enabledOpsMissingRed": "Gazelle: enabled (OPS key set, RED missing)",
+      "enabledRedMissingOps": "Gazelle: enabled (RED key set, OPS missing)",
+      "enabledKeysMissing": "Gazelle: enabled (keys missing)"
+    },
+    "noInstanceSelected": "No instance selected",
+    "instanceFallback": "Instance {{id}}",
+    "noMessageProvided": "No message provided"
   },
   "rules": {
     "title": "Cross-Seed Rules",

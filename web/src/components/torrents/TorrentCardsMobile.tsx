@@ -35,6 +35,7 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
+import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
@@ -50,7 +51,7 @@ import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomiz
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getToggleSelectionState, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -64,6 +65,7 @@ import {
   Clock,
   Eye,
   EyeOff,
+  FastForward,
   FileEdit,
   Filter,
   Folder,
@@ -739,7 +741,8 @@ function SwipeableCard({
         "bg-card rounded-lg border cursor-pointer transition-all relative overflow-hidden select-none",
         viewMode === "ultra-compact" ? "px-3 py-1" : viewMode === "compact" ? "p-2" : "p-4",
         isSelected && "bg-accent/50",
-        !selectionMode && "active:scale-[0.98]"
+        !selectionMode && "active:scale-[0.98]",
+        selectionMode && viewMode !== "normal" && "pr-10"
       )}
       onTouchStart={!selectionMode ? handleTouchStart : undefined}
       onTouchMove={!selectionMode ? handleTouchMove : undefined}
@@ -757,9 +760,14 @@ function SwipeableCard({
       {isSelected && (
         <div className="absolute inset-0 rounded-lg ring-2 ring-primary ring-inset pointer-events-none" />
       )}
-      {/* Selection checkbox - visible in normal view selection mode */}
-      {selectionMode && viewMode === "normal" && (
-        <div className="absolute top-2 right-2 z-10">
+      {/* Selection checkbox - visible in selection mode */}
+      {selectionMode && (
+        <div
+          className={cn(
+            "absolute right-2 z-10",
+            viewMode === "normal" ? "top-2" : "top-1/2 -translate-y-1/2"
+          )}
+        >
           <Checkbox
             checked={isSelected}
             onCheckedChange={onSelect}
@@ -1082,6 +1090,9 @@ export function TorrentCardsMobile({
   const { setIsSelectionMode } = useTorrentSelection()
 
   const parentRef = useRef<HTMLDivElement>(null)
+  const { isFooterVisible } = useMobileScroll()
+  useRegisterMobileScrollContainer(parentRef)
+
   const [torrentToDelete, setTorrentToDelete] = useState<Torrent | null>(null)
   const [showActionsSheet, setShowActionsSheet] = useState(false)
   const [actionTorrents, setActionTorrents] = useState<Torrent[]>([]);
@@ -1499,6 +1510,8 @@ export function TorrentCardsMobile({
     }
   }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedHashes.size])
 
+  const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
+
   const selectedTotalSize = useMemo(() => {
     if (isAllSelected) {
       const aggregateTotalSize = stats?.totalSize ?? 0
@@ -1683,8 +1696,8 @@ export function TorrentCardsMobile({
 
   // Sync selection mode with context
   useEffect(() => {
-    setIsSelectionMode(selectionMode && effectiveSelectionCount > 0)
-  }, [selectionMode, effectiveSelectionCount, setIsSelectionMode])
+    setIsSelectionMode(selectionBarVisible)
+  }, [selectionBarVisible, setIsSelectionMode])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -2047,6 +2060,9 @@ export function TorrentCardsMobile({
 
   const singleSelectedTorrent = getSelectedTorrents[0] ?? null
 
+  // select-all: unloaded rows have unknown state, so offer both directions.
+  const stateUnknownForSelection = isAllSelected && getSelectedTorrents.length < effectiveSelectionCount
+
   const handleClearSearch = useCallback(() => {
     setGlobalFilter("")
 
@@ -2066,100 +2082,9 @@ export function TorrentCardsMobile({
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden">
       {/* Header with stats */}
       <div className="sticky top-0 z-40 bg-background">
-        {/* Stats bar */}
-        <div className="flex items-center justify-between text-xs mb-3">
-          <div className="text-muted-foreground">
-            {torrents.length === 0 && isLoading ? (
-              t("statusBar.loadingTorrents")
-            ) : totalCount === 0 ? (
-              t("mobileCards.noTorrentsFound")
-            ) : (
-              <>
-                {hasLoadedAll ? (
-                  t("statusBar.torrentCount", { count: torrents.length })
-                ) : isLoadingMore ? (
-                  t("statusBar.loadingMore")
-                ) : (
-                  t("statusBar.torrentsLoaded", { loaded: safeLoadedRows, total: totalCount })
-                )}
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
-                >
-                  {t("mobileCards.sort")}: {currentSortOption.label}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
-                <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={sortField}
-                  onValueChange={(value) => handleSortFieldChange(value as TorrentSortOptionValue)}
-                >
-                  {TORRENT_SORT_OPTIONS.map(option => (
-                    <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleSortOrder}
-              className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
-              aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
-              title={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
-            >
-              {sortOrder === "desc" ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronUp className="h-3.5 w-3.5" />
-              )}
-            </Button>
-            <button
-              onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
-              className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
-            >
-              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">
-                {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {effectiveSearch && (
-          <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
-            <div className="flex min-w-0 items-center gap-2">
-              <Search className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-              <span className="truncate text-sm text-foreground" title={effectiveSearch}>
-                {effectiveSearch}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClearSearch}
-              className="h-7 px-2 text-xs font-medium text-primary hover:text-primary"
-              aria-label={t("mobileCards.clearSearchFilter")}
-            >
-              {t("mobileCards.clear")}
-              <X className="ml-1 h-3 w-3" aria-hidden="true" />
-            </Button>
-          </div>
-        )}
-
-        {/* Selection mode header */}
-        {selectionMode && (
-          <div className="bg-primary text-primary-foreground px-4 py-2 mb-3 flex items-center justify-between">
+        {/* Stats bar - swapped for the selection header in selection mode so the list doesn't shift */}
+        {selectionMode ? (
+          <div className="bg-primary text-primary-foreground px-4 mb-3 flex min-h-7 items-center justify-between">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
@@ -2189,14 +2114,106 @@ export function TorrentCardsMobile({
               {effectiveSelectionCount === totalCount ? t("detailsPanel.deselectAll") : t("detailsPanel.selectAll")}
             </button>
           </div>
+        ) : (
+          <div className="flex items-center justify-between text-xs mb-3">
+            <div className="text-muted-foreground">
+              {torrents.length === 0 && isLoading ? (
+                t("statusBar.loadingTorrents")
+              ) : totalCount === 0 ? (
+                t("mobileCards.noTorrentsFound")
+              ) : (
+                <>
+                  {hasLoadedAll ? (
+                    t("statusBar.torrentCount", { count: torrents.length })
+                  ) : isLoadingMore ? (
+                    t("statusBar.loadingMore")
+                  ) : (
+                    t("statusBar.torrentsLoaded", { loaded: safeLoadedRows, total: totalCount })
+                  )}
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
+                  >
+                    {t("mobileCards.sort")}: {currentSortOption.label}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
+                  <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={sortField}
+                    onValueChange={(value) => handleSortFieldChange(value as TorrentSortOptionValue)}
+                  >
+                    {TORRENT_SORT_OPTIONS.map(option => (
+                      <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
+                        {option.label}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSortOrder}
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
+                aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
+                title={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
+              >
+                {sortOrder === "desc" ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              <button
+                onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+                className="flex items-center gap-1 pl-1.5 py-0.5 rounded-sm transition-all hover:bg-muted/50"
+              >
+                <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {effectiveSearch && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2">
+              <Search className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              <span className="truncate text-sm text-foreground" title={effectiveSearch}>
+                {effectiveSearch}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearSearch}
+              className="h-7 px-2 text-xs font-medium text-primary hover:text-primary"
+              aria-label={t("mobileCards.clearSearchFilter")}
+            >
+              {t("mobileCards.clear")}
+              <X className="ml-1 h-3 w-3" aria-hidden="true" />
+            </Button>
+          </div>
         )}
       </div>
 
       {/* Torrent cards with virtual scrolling */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto overscroll-contain"
-        style={{ paddingBottom: "calc(8rem + env(safe-area-inset-bottom))" }}
+        className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
+        style={{
+          paddingBottom: selectionBarVisible? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
+        }}
       >
         <div
           style={{
@@ -2266,13 +2283,9 @@ export function TorrentCardsMobile({
       </div>
 
       {/* Fixed bottom action bar - visible in selection mode */}
-      {selectionMode && effectiveSelectionCount > 0 && (
+      {selectionBarVisible && (
         <div
-          className={cn(
-            "fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
-            "transition-transform duration-200 ease-in-out",
-            selectionMode && effectiveSelectionCount > 0 ? "translate-y-0" : "translate-y-full"
-          )}
+          className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div className="flex items-center justify-around h-16">
@@ -2334,6 +2347,43 @@ export function TorrentCardsMobile({
             </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
+            {(() => {
+              const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.force_start), stateUnknownForSelection)
+
+              if (forceStartMixed) {
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: true })}
+                      className="justify-start"
+                    >
+                      <FastForward className="mr-2 h-4 w-4" />
+                      {t("contextMenu.forceStart")} {t("contextMenu.mixed")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: false })}
+                      className="justify-start"
+                    >
+                      <FastForward className="mr-2 h-4 w-4" />
+                      {t("contextMenu.disableForceStart")} {t("contextMenu.mixed")}
+                    </Button>
+                  </>
+                )
+              }
+
+              return (
+                <Button
+                  variant="outline"
+                  onClick={() => handleBulkAction(TORRENT_ACTIONS.FORCE_START, { enable: !allForceStarted })}
+                  className="justify-start"
+                >
+                  <FastForward className="mr-2 h-4 w-4" />
+                  {allForceStarted ? t("contextMenu.disableForceStart") : t("contextMenu.forceStart")}
+                </Button>
+              )
+            })()}
             <Button
               variant="outline"
               onClick={() => handleBulkAction(TORRENT_ACTIONS.RECHECK)}
@@ -2351,8 +2401,31 @@ export function TorrentCardsMobile({
               {t("managementBar.reannounce")}
             </Button>
             {(() => {
-              const seqDlStates = getSelectedTorrents?.map(t => t.seq_dl) ?? []
-              const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+              const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.seq_dl), stateUnknownForSelection)
+
+              if (seqDlMixed) {
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: true })}
+                      className="justify-start"
+                    >
+                      <Blocks className="mr-2 h-4 w-4" />
+                      {t("managementBar.sequentialDownload.enable")} {t("contextMenu.mixed")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: false })}
+                      className="justify-start"
+                    >
+                      <Blocks className="mr-2 h-4 w-4" />
+                      {t("managementBar.sequentialDownload.disable")} {t("contextMenu.mixed")}
+                    </Button>
+                  </>
+                )
+              }
+
               return (
                 <Button
                   variant="outline"
@@ -2428,11 +2501,7 @@ export function TorrentCardsMobile({
               {t("managementBar.bottomPriority")}
             </Button>
             {(() => {
-              // Check TMM state across selected torrents
-              const tmmStates = getSelectedTorrents?.map(t => t.auto_tmm) ?? []
-              const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-              const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-              const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
+              const { allEnabled, mixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.auto_tmm), stateUnknownForSelection)
 
               if (mixed) {
                 return (
@@ -2779,7 +2848,9 @@ export function TorrentCardsMobile({
       {!selectionMode && (
         <div
           className={cn(
-            "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
+            "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
+            "transition-transform duration-300",
+            !isFooterVisible && "translate-y-[calc(100%+4rem+env(safe-area-inset-bottom))]"
           )}
           style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
@@ -2856,7 +2927,10 @@ export function TorrentCardsMobile({
       <div className="sm:hidden">
         <ScrollToTopButton
           scrollContainerRef={parentRef}
-          className="right-8 z-[60] bottom-[calc(8.5rem+env(safe-area-inset-bottom))]"
+          className={cn(
+            "right-8 z-[60]",
+            selectionBarVisible? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
+          )}
         />
       </div>
     </div>

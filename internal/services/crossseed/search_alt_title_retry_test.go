@@ -78,7 +78,7 @@ func TestAlternateTitleQuery(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			release := rls.ParseString(tt.releaseName)
-			got, ok := alternateTitleQuery(tt.primaryQuery, &release, tt.arrTitles, tt.releaseName)
+			got, ok := AlternateTitleQuery(tt.primaryQuery, &release, tt.arrTitles, tt.releaseName)
 			require.Equal(t, tt.wantOK, ok)
 			if tt.wantOK {
 				require.Equal(t, tt.wantTitle, got)

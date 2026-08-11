@@ -24,8 +24,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { isThemePremium, themes } from "@/config/themes"
+import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
@@ -78,6 +80,8 @@ import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
 
+const MOBILE_VIEW_MODES = ["normal", "compact", "ultra-compact"] as const
+
 // Custom hook for theme change detection
 const useThemeChange = () => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
@@ -104,11 +108,14 @@ const useThemeChange = () => {
 
 export function MobileFooterNav() {
   const { t, i18n } = useTranslation("common")
+  const { t: tTorrents } = useTranslation("torrents")
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
+  const { isFooterVisible } = useMobileScroll()
+  const { viewMode, setViewMode } = usePersistedCompactViewState("compact", MOBILE_VIEW_MODES)
   const { currentMode, currentTheme } = useThemeChange()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
   const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
@@ -232,7 +239,9 @@ export function MobileFooterNav() {
     <nav
       className={cn(
         "fixed bottom-0 left-0 right-0 z-40 lg:hidden",
-        "bg-background/80 backdrop-blur-md border-t border-border/50"
+        "bg-background/80 backdrop-blur-md border-t border-border/50",
+        "transition-transform duration-300",
+        !isFooterVisible && "translate-y-full"
       )}
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
@@ -622,6 +631,25 @@ export function MobileFooterNav() {
                   <span className="flex-1 text-left">{t("themeToggle.system")}</span>
                   {currentMode === "auto" && <Check className="h-4 w-4" />}
                 </button>
+              </div>
+            </div>
+
+            {/* Torrent list view mode */}
+            <div>
+              <div className="text-sm font-medium mb-2">{tTorrents("filterSidebar.viewMode")}</div>
+              <div className="grid grid-cols-3 gap-1">
+                {MOBILE_VIEW_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={cn(
+                      "px-3 py-2 rounded-md text-sm transition-colors",
+                      viewMode === mode ? "bg-accent" : "hover:bg-accent/50"
+                    )}
+                  >
+                    {mode === "normal"? tTorrents("filterSidebar.viewModeNormal"): mode === "compact"? tTorrents("filterSidebar.viewModeCompact"): tTorrents("filterSidebar.viewModeUltra")}
+                  </button>
+                ))}
               </div>
             </div>
 

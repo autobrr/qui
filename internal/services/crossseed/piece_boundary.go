@@ -6,8 +6,8 @@ package crossseed
 import (
 	"fmt"
 
-	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/metainfo"
 
 	"github.com/autobrr/qui/pkg/stringutils"
 )
