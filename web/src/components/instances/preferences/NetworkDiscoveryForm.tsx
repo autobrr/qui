@@ -217,7 +217,10 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
             <form.Field name="encryption">
               {(field) => (
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">{t("preferences.networkDiscovery.protocolEncryption")}</Label>
+                  <Label className="flex items-center gap-2 text-sm font-medium">
+                    {t("preferences.networkDiscovery.protocolEncryption")}
+                    <FieldHelp>{t("preferences.networkDiscovery.encryptionDescription")}</FieldHelp>
+                  </Label>
                   <Select
                     value={field.state.value.toString()}
                     onValueChange={(value) => field.handleChange(parseInt(value))}
@@ -231,9 +234,6 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
                       <SelectItem value="2">{getEncryptionLabel(2)}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {t("preferences.networkDiscovery.encryptionDescription")}
-                  </p>
                 </div>
               )}
             </form.Field>

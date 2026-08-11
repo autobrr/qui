@@ -4,6 +4,7 @@
  */
 
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -255,17 +256,14 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 htmlFor="tls-skip-verify"
                 className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4 cursor-pointer"
               >
-                <div className="space-y-0.5">
-                  <span className="text-sm font-medium">{t("preferences.settingsPanel.labels.skipTlsVerification")}</span>
-                  <p id="tls-skip-verify-desc" className="text-xs text-muted-foreground">
-                    {t("preferences.settingsPanel.labels.skipTlsDescription")}
-                  </p>
-                </div>
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  {t("preferences.settingsPanel.labels.skipTlsVerification")}
+                  <FieldHelp>{t("preferences.settingsPanel.labels.skipTlsDescription")}</FieldHelp>
+                </span>
                 <Switch
                   id="tls-skip-verify"
                   checked={field.state.value}
                   onCheckedChange={(checked) => field.handleChange(checked)}
-                  aria-describedby="tls-skip-verify-desc"
                 />
               </label>
             )}
@@ -277,17 +275,14 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                 htmlFor="local-filesystem-access"
                 className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4 cursor-pointer"
               >
-                <div className="space-y-0.5">
-                  <span className="text-sm font-medium">{t("preferences.settingsPanel.labels.localFilesystemAccess")}</span>
-                  <p id="local-filesystem-access-desc" className="text-xs text-muted-foreground">
-                    {t("preferences.settingsPanel.labels.localFilesystemDescription")}
-                  </p>
-                </div>
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  {t("preferences.settingsPanel.labels.localFilesystemAccess")}
+                  <FieldHelp>{t("preferences.settingsPanel.labels.localFilesystemDescription")}</FieldHelp>
+                </span>
                 <Switch
                   id="local-filesystem-access"
                   checked={field.state.value}
                   onCheckedChange={(checked) => field.handleChange(checked)}
-                  aria-describedby="local-filesystem-access-desc"
                 />
               </label>
             )}
@@ -298,17 +293,14 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <div className="space-y-2">
-              <div className="space-y-0.5">
-                <span className="text-sm font-medium">{t("preferences.settingsPanel.labels.qbittorrentAuth")}</span>
-                <p id="auth-type-desc" className="text-xs text-muted-foreground">
-                  {t("preferences.settingsPanel.labels.qbittorrentAuthDescription")}
-                </p>
-              </div>
+              <Label htmlFor="auth-type" className="flex items-center gap-2 text-sm font-medium">
+                {t("preferences.settingsPanel.labels.qbittorrentAuth")}
+                <FieldHelp>{t("preferences.settingsPanel.labels.qbittorrentAuthDescription")}</FieldHelp>
+              </Label>
               <select
                 id="auth-type"
                 value={authType}
                 onChange={(e) => setAuthType(e.target.value as "none" | "usernamePassword" | "apiKey")}
-                aria-describedby="auth-type-desc"
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
               >
                 <option value="none">{t("form.authType.none")}</option>
@@ -391,17 +383,14 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
           {/* HTTP Basic Auth */}
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
             <label htmlFor="basic-auth-toggle" className="flex items-center justify-between cursor-pointer">
-              <div className="space-y-0.5">
-                <span className="text-sm font-medium">{t("preferences.settingsPanel.labels.httpBasicAuth")}</span>
-                <p id="basic-auth-toggle-desc" className="text-xs text-muted-foreground">
-                  {t("preferences.settingsPanel.labels.httpBasicAuthDescription")}
-                </p>
-              </div>
+              <span className="flex items-center gap-2 text-sm font-medium">
+                {t("preferences.settingsPanel.labels.httpBasicAuth")}
+                <FieldHelp>{t("preferences.settingsPanel.labels.httpBasicAuthDescription")}</FieldHelp>
+              </span>
               <Switch
                 id="basic-auth-toggle"
                 checked={showBasicAuth}
                 onCheckedChange={setShowBasicAuth}
-                aria-describedby="basic-auth-toggle-desc"
               />
             </label>
 
