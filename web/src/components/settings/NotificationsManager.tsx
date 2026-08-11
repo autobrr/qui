@@ -26,6 +26,7 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -245,18 +246,20 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="notification-url">{t("notifications.form.url")}</Label>
+        <Label htmlFor="notification-url" className="flex items-center gap-1">
+          {t("notifications.form.url")}
+          <FieldHelp>
+            {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">{t("notifications.form.examples.notifiarr")}</span>.
+            {" "}
+            {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">{t("notifications.form.examples.discord")}</span>.
+          </FieldHelp>
+        </Label>
         <Input
           id="notification-url"
           placeholder={t("notifications.form.urlPlaceholder")}
           value={url}
           onChange={(e) => setUrl(normalizeNotificationUrl(e.target.value))}
         />
-        <p className="text-xs text-muted-foreground">
-          {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">{t("notifications.form.examples.notifiarr")}</span>.
-          {" "}
-          {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">{t("notifications.form.examples.discord")}</span>.
-        </p>
       </div>
 
       <div className="flex items-center justify-between rounded-md border px-3 py-2">
