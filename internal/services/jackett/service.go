@@ -76,6 +76,8 @@ type Service struct {
 	rateLimiterRestoreOnce sync.Once
 	persistedCooldowns     map[int]time.Time
 	persistedCooldownsMu   sync.RWMutex
+	capsWarnedAt           map[int]time.Time
+	capsWarnedAtMu         sync.Mutex
 	torrentCache           *models.TorznabTorrentCacheStore
 	searchCache            searchCacheStore
 	searchCacheTTL         time.Duration
@@ -297,6 +299,7 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		rateLimiter:        rl,
 		searchScheduler:    newSearchScheduler(rl, defaultMaxWorkers),
 		persistedCooldowns: make(map[int]time.Time),
+		capsWarnedAt:       make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
 		activityPublisher:  activity.NopPublisher{},
@@ -2352,6 +2355,9 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 			s.handleRateLimit(ctx, idx, cooldown, err)
 			return true, true
 		}
+		if needCaps && len(idx.Capabilities) == 0 {
+			s.warnCapsUnavailable(idx, err)
+		}
 	}
 
 	// Check capabilities first - use enhanced capability checking if we have search parameters
@@ -3297,6 +3303,30 @@ func (s *Service) isCooldownPersisted(indexerID int) bool {
 
 	_, ok := s.persistedCooldowns[indexerID]
 	return ok
+}
+
+// capsUnavailableWarnCooldown keeps one indexer that cannot serve caps from filling the log.
+const capsUnavailableWarnCooldown = time.Hour
+
+// warnCapsUnavailable reports, at most once per cooldown, that this search runs
+// caps-blind and takes the TV token fallback (#2245). err is nil when the fetch
+// succeeded but stored no capabilities.
+func (s *Service) warnCapsUnavailable(idx *models.TorznabIndexer, err error) {
+	now := time.Now()
+
+	s.capsWarnedAtMu.Lock()
+	if now.Sub(s.capsWarnedAt[idx.ID]) < capsUnavailableWarnCooldown {
+		s.capsWarnedAtMu.Unlock()
+		return
+	}
+	s.capsWarnedAt[idx.ID] = now
+	s.capsWarnedAtMu.Unlock()
+
+	log.Warn().
+		Err(err).
+		Int("indexer_id", idx.ID).
+		Str("indexer", idx.Name).
+		Msg("Searching without indexer capabilities. TV season and episode parameters fall back to a query token and can return no results. Run Sync caps on this indexer.")
 }
 
 func requiredCapabilities(meta *searchContext) []string {

@@ -8,9 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -25,6 +29,29 @@ const bookOnlyCapsXML = `<?xml version="1.0" encoding="UTF-8"?>
     <category id="7000" name="Books"/>
   </categories>
 </caps>`
+
+const emptyCapsXML = `<?xml version="1.0" encoding="UTF-8"?>
+<caps>
+  <searching>
+    <search available="no" supportedParams="q"/>
+  </searching>
+  <categories/>
+</caps>`
+
+// countCapsWarnings counts the caps-blind warnings emitted while the test runs.
+func countCapsWarnings(t *testing.T) *atomic.Int32 {
+	t.Helper()
+
+	var count atomic.Int32
+	original := log.Logger
+	log.Logger = original.Hook(zerolog.HookFunc(func(_ *zerolog.Event, level zerolog.Level, msg string) {
+		if level >= zerolog.WarnLevel && strings.Contains(msg, "Searching without indexer capabilities") {
+			count.Add(1)
+		}
+	}))
+	t.Cleanup(func() { log.Logger = original })
+	return &count
+}
 
 func assertSingleCapsFetch(t *testing.T, requests <-chan string) {
 	t.Helper()
@@ -49,6 +76,7 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 		wantRateLimited  bool
 		wantCooldown     bool
 		wantCapsCalls    int32
+		wantCapsWarnings int32
 	}{
 		{
 			name:            "caps 429 skips indexer and applies cooldown",
@@ -59,11 +87,23 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 			wantCapsCalls:   1,
 		},
 		{
-			name:          "caps 500 keeps fail-open",
-			capsStatus:    http.StatusInternalServerError,
-			wantSkip:      false,
-			wantCooldown:  false,
-			wantCapsCalls: 1,
+			name:             "caps 500 keeps fail-open and warns",
+			capsStatus:       http.StatusInternalServerError,
+			wantSkip:         false,
+			wantCooldown:     false,
+			wantCapsCalls:    1,
+			wantCapsWarnings: 1,
+		},
+		{
+			// A 200 that advertises no search modes stores nothing and returns no
+			// error, so the search degrades exactly as a failed fetch does.
+			name:             "caps 200 without search modes warns",
+			capsStatus:       http.StatusOK,
+			capsBody:         emptyCapsXML,
+			wantSkip:         false,
+			wantCooldown:     false,
+			wantCapsCalls:    1,
+			wantCapsWarnings: 1,
 		},
 		{
 			name:          "healed caps without tv-search skip via caps gate without cooldown",
@@ -85,6 +125,8 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			capsWarnings := countCapsWarnings(t)
+
 			var capsCalls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				capsCalls.Add(1)
@@ -127,7 +169,43 @@ func TestApplyIndexerRestrictionsCapsFetchRateLimit(t *testing.T) {
 			if got := capsCalls.Load(); got != tt.wantCapsCalls {
 				t.Fatalf("caps fetches = %d, want %d", got, tt.wantCapsCalls)
 			}
+			if got := capsWarnings.Load(); got != tt.wantCapsWarnings {
+				t.Fatalf("caps warnings = %d, want %d", got, tt.wantCapsWarnings)
+			}
 		})
+	}
+}
+
+// One indexer that cannot serve caps must not fill the log.
+func TestCapsUnavailableWarningIsSuppressedWithinCooldown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	capsWarnings := countCapsWarnings(t)
+
+	idx := &models.TorznabIndexer{
+		ID:      92,
+		Name:    "EmptyCaps",
+		BaseURL: server.URL,
+		Backend: models.TorznabBackendProwlarr,
+		Enabled: true,
+	}
+	service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{idx}})
+	t.Cleanup(service.searchScheduler.Stop)
+
+	client := NewClient(server.URL, "key", nil, nil, models.TorznabBackendProwlarr, 5)
+	meta := &searchContext{searchMode: "tvsearch"}
+
+	for range 3 {
+		if skipped, _ := service.applyIndexerRestrictions(t.Context(), client, idx, "42", meta, map[string]string{"q": "some show", "season": "1"}); skipped {
+			t.Fatal("applyIndexerRestrictions skipped the indexer, want fail-open")
+		}
+	}
+
+	if got := capsWarnings.Load(); got != 1 {
+		t.Fatalf("caps warnings = %d, want 1", got)
 	}
 }
 
