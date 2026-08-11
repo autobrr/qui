@@ -81,11 +81,8 @@ func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
 	require.NoError(t, os.WriteFile(plannedFile, []byte("planned"), 0o600))
 	require.NoError(t, os.WriteFile(unrelatedFile, []byte("keep"), 0o600))
 
-	err := rollbackSeasonPackTree("hardlink", &hardlinktree.TreePlan{
-		RootDir: rootDir,
-		Files: []hardlinktree.FilePlan{
-			{TargetPath: plannedFile},
-		},
+	err := rollbackSeasonPackTree(&hardlinktree.Created{
+		Files: []string{plannedFile},
 	}, rootDir)
 
 	require.NoError(t, err)
@@ -263,9 +260,9 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			capturedPlan = plan
-			return nil
+			return &hardlinktree.Created{}, nil
 		},
 	}
 
@@ -495,11 +492,14 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			require.NotEmpty(t, plan.Files)
 			require.NoError(t, os.MkdirAll(filepath.Dir(plan.Files[0].TargetPath), 0o755))
 			require.NoError(t, os.WriteFile(plan.Files[0].TargetPath, []byte("partial"), 0o600))
-			return errors.New("link creator failed")
+			return &hardlinktree.Created{
+				Files: []string{plan.Files[0].TargetPath},
+				Dirs:  []string{filepath.Dir(plan.Files[0].TargetPath)},
+			}, errors.New("link creator failed")
 		},
 	}
 

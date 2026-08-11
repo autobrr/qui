@@ -589,7 +589,7 @@ func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       &stubSeasonPackRunStore{},
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	checkResp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -1325,7 +1325,7 @@ func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -1434,9 +1434,9 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			capturedPlan = plan
-			return nil
+			return &hardlinktree.Created{}, nil
 		},
 	}
 
@@ -1531,9 +1531,9 @@ func TestApplySeasonPackWebhook_SavePathHonorsDirPreset(t *testing.T) {
 				syncManager:              sm,
 				releaseCache:             NewReleaseCache(),
 				automationSettingsLoader: defaultSettings(true, 0.75),
-				seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+				seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 					capturedPlan = plan
-					return nil
+					return &hardlinktree.Created{}, nil
 				},
 			}
 
@@ -1594,7 +1594,7 @@ func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -1728,7 +1728,7 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return tt.settings, nil
 				},
-				seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) error { return nil },
+				seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 			}
 
 			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -1782,9 +1782,9 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			capturedPlan = plan
-			return nil
+			return &hardlinktree.Created{}, nil
 		},
 	}
 
@@ -1846,7 +1846,7 @@ func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *te
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -1896,7 +1896,7 @@ func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t 
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -1954,7 +1954,7 @@ func TestApplySeasonPackWebhook_TriesNextEpisodeCandidateAfterValidationFailure(
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -2005,7 +2005,7 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 	}
 
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
@@ -2064,7 +2064,7 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 				SkipPieceBoundarySafetyCheck: true,
 			}, nil
 		},
-		seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 		recheckResumeChan:     make(chan *pendingResume, 1),
 	}
 
@@ -2179,7 +2179,7 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 		recheckResumeChan:        make(chan *pendingResume, 1),
 	}
 
@@ -2250,7 +2250,7 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 		recheckResumeChan:        make(chan *pendingResume, 1),
 	}
 
@@ -2316,9 +2316,9 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 			capturedPlan = plan
-			return nil
+			return &hardlinktree.Created{}, nil
 		},
 	}
 
@@ -2793,7 +2793,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       &stubSeasonPackRunStore{},
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
 		arrService:               spy,
 	}
 

@@ -427,7 +427,7 @@ type Service struct {
 	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) error
+	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
 	postInjectionHook       func(context.Context, int, string)
 	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
@@ -14240,7 +14240,8 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Create hardlink tree on disk
-	if err := hardlinktree.Create(plan); err != nil {
+	created, err := hardlinktree.Create(plan)
+	if err != nil {
 		log.Error().
 			Err(err).
 			Int("instanceID", candidate.InstanceID).
@@ -14340,8 +14341,9 @@ func (s *Service) processHardlinkMode(
 
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
-		// Rollback hardlink tree on failure
-		if rollbackErr := hardlinktree.Rollback(plan); rollbackErr != nil {
+		// Rollback only what this attempt created: the destination can be shared
+		// with an earlier successful add for the same release (discussion #2282)
+		if rollbackErr := created.Rollback(); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
@@ -14351,6 +14353,7 @@ func (s *Service) processHardlinkMode(
 			Err(err).
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
+			Int("rolledBackFiles", len(created.Files)).
 			Msg("[CROSSSEED] Hardlink mode: failed to add torrent, aborting")
 		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
 	}
@@ -14927,7 +14930,8 @@ func (s *Service) processReflinkMode(
 	}
 
 	// Create reflink tree on disk
-	if err := reflinktree.Create(plan); err != nil {
+	created, err := reflinktree.Create(plan)
+	if err != nil {
 		logEvent := log.Error()
 		if shouldWarnForReflinkCreateError(err) {
 			logEvent = log.Warn()
@@ -15033,8 +15037,8 @@ func (s *Service) processReflinkMode(
 
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
-		// Rollback reflink tree on failure
-		if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
+		// Rollback only what this attempt created (discussion #2282)
+		if rollbackErr := created.Rollback(); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
@@ -15044,6 +15048,7 @@ func (s *Service) processReflinkMode(
 			Err(err).
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).
+			Int("rolledBackFiles", len(created.Files)).
 			Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
 		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
 	}

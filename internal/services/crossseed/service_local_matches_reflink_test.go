@@ -540,13 +540,14 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 	require.NoError(t, os.WriteFile(sourcePath, data, 0o600)) //nolint:gosec // Path is under verified test temp directory.
 	require.NoError(t, os.WriteFile(copyPath, data, 0o600))   //nolint:gosec // Path is under verified test temp directory.
 	require.NoError(t, os.Link(sourcePath, hardlinkPath))
-	require.NoError(t, reflinktree.Create(&hardlinktree.TreePlan{
+	_, err = reflinktree.Create(&hardlinktree.TreePlan{
 		RootDir: cloneDir,
 		Files: []hardlinktree.FilePlan{{
 			SourcePath: sourcePath,
 			TargetPath: clonePath,
 		}},
-	}))
+	})
+	require.NoError(t, err)
 
 	files := qbt.TorrentFiles{{Name: fileName, Size: int64(len(data))}}
 	service := hardlinkTestService(map[string]qbt.TorrentFiles{

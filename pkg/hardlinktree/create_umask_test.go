@@ -42,7 +42,7 @@ func TestCreate_RespectsUmask(t *testing.T) {
 		RootDir: rootDir,
 		Files:   []FilePlan{{SourcePath: srcFile, TargetPath: target}},
 	}
-	if err := Create(plan); err != nil {
+	if _, err := Create(plan); err != nil {
 		t.Fatalf("Create error: %v", err)
 	}
 

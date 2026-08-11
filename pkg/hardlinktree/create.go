@@ -8,26 +8,80 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/autobrr/qui/pkg/fsutil"
 )
 
+// Created records the files and directories a single Create call actually
+// made on disk. Rollback removes exactly those and nothing else: destinations
+// can be shared between torrents, and a plan-wide cleanup would delete links
+// belonging to a sibling torrent that succeeded (discussion #2282).
+type Created struct {
+	Files []string
+	Dirs  []string
+}
+
+// Rollback removes the files and directories recorded in c. Best-effort:
+// continues even if some removals fail. Directories are only removed when
+// empty. Safe to call on a nil or empty handle.
+func (c *Created) Rollback() error {
+	if c == nil {
+		return nil
+	}
+	return rollback(c.Files, c.Dirs)
+}
+
+// MkdirAllTracked creates dir and any missing ancestors, like os.MkdirAll,
+// and returns the directories it actually created (shallowest first).
+// Pre-existing directories are not returned, so rollback never removes a
+// directory another attempt made.
+func MkdirAllTracked(dir string) ([]string, error) {
+	var created []string
+	err := mkdirAllTracked(dir, &created)
+	return created, err
+}
+
+func mkdirAllTracked(dir string, created *[]string) error {
+	if _, err := os.Lstat(dir); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if parent := filepath.Dir(dir); parent != dir {
+		if err := mkdirAllTracked(parent, created); err != nil {
+			return err
+		}
+	}
+	if err := os.Mkdir(dir, fsutil.ContentDirMode); err != nil {
+		if os.IsExist(err) {
+			// Lost a race with a concurrent attempt: it exists, but not ours
+			return nil
+		}
+		return err
+	}
+	*created = append(*created, dir)
+	return nil
+}
+
 // Create materializes the hardlink tree plan on disk.
 // Creates necessary directories and hardlinks files from source to target paths.
-// On failure, attempts best-effort rollback of created files.
+// On failure, attempts best-effort rollback of created files and returns a nil handle.
 //
-// Returns nil if all hardlinks were created successfully.
-// Returns an error if any hardlink creation fails (after attempting rollback).
-func Create(plan *TreePlan) error {
+// On success, returns a handle recording what this call created. Targets that
+// already were hardlinks to the source are skipped and NOT recorded: they
+// belong to whoever created them first.
+func Create(plan *TreePlan) (*Created, error) {
 	if plan == nil {
-		return errors.New("plan is nil")
+		return nil, errors.New("plan is nil")
 	}
 	if plan.RootDir == "" {
-		return errors.New("plan root directory is empty")
+		return nil, errors.New("plan root directory is empty")
 	}
 	if len(plan.Files) == 0 {
-		return errors.New("plan has no files")
+		return nil, errors.New("plan has no files")
 	}
 
 	// Track created items for rollback
@@ -44,22 +98,20 @@ func Create(plan *TreePlan) error {
 	}
 
 	// Create root directory if needed
-	if err := os.MkdirAll(plan.RootDir, fsutil.ContentDirMode); err != nil {
-		return fmt.Errorf("create root directory %s: %w", plan.RootDir, err)
+	rootDirs, err := MkdirAllTracked(plan.RootDir)
+	createdDirs = append(createdDirs, rootDirs...)
+	if err != nil {
+		return nil, rollbackOnError(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
 	}
 
 	// Process each file in the plan
 	for _, fp := range plan.Files {
 		// Create parent directory if needed
 		parentDir := filepath.Dir(fp.TargetPath)
-		if parentDir != plan.RootDir {
-			if err := os.MkdirAll(parentDir, fsutil.ContentDirMode); err != nil {
-				return rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
-			}
-			// Track directories for rollback (only track new ones)
-			if !containsPath(createdDirs, parentDir) {
-				createdDirs = append(createdDirs, parentDir)
-			}
+		parentDirs, err := MkdirAllTracked(parentDir)
+		createdDirs = append(createdDirs, parentDirs...)
+		if err != nil {
+			return nil, rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
 		}
 
 		// Check if target already exists
@@ -73,47 +125,19 @@ func Create(plan *TreePlan) error {
 				}
 			}
 			// Different file exists at target - this is an error
-			return rollbackOnError(fmt.Errorf("target already exists: %s", fp.TargetPath))
+			return nil, rollbackOnError(fmt.Errorf("target already exists: %s", fp.TargetPath))
 		} else if !os.IsNotExist(err) {
-			return rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
+			return nil, rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
 		}
 
 		// Create hardlink
 		if err := os.Link(fp.SourcePath, fp.TargetPath); err != nil {
-			return rollbackOnError(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, err))
+			return nil, rollbackOnError(fmt.Errorf("hardlink %s -> %s: %w", fp.SourcePath, fp.TargetPath, err))
 		}
 		createdFiles = append(createdFiles, fp.TargetPath)
 	}
 
-	return nil
-}
-
-// Rollback removes created files and directories from a failed plan execution.
-// Best-effort: continues even if some removals fail.
-func Rollback(plan *TreePlan) error {
-	if plan == nil {
-		return nil
-	}
-
-	var files []string
-	for _, fp := range plan.Files {
-		files = append(files, fp.TargetPath)
-	}
-
-	// Collect unique directories
-	dirSet := make(map[string]bool)
-	for _, fp := range plan.Files {
-		dir := filepath.Dir(fp.TargetPath)
-		if dir != plan.RootDir {
-			dirSet[dir] = true
-		}
-	}
-	var dirs []string
-	for d := range dirSet {
-		dirs = append(dirs, d)
-	}
-
-	return rollback(files, dirs)
+	return &Created{Files: createdFiles, Dirs: createdDirs}, nil
 }
 
 // rollback removes files and directories, returning first error encountered.
@@ -129,17 +153,11 @@ func rollback(files, dirs []string) error {
 		}
 	}
 
-	// Sort directories by depth (deepest first) to remove children before parents
+	// Sort directories by depth (deepest first) to remove children before parents;
+	// length descending approximates depth
 	sortedDirs := make([]string, len(dirs))
 	copy(sortedDirs, dirs)
-	// Sort by length descending (approximates depth)
-	for i := 0; i < len(sortedDirs)-1; i++ {
-		for j := i + 1; j < len(sortedDirs); j++ {
-			if len(sortedDirs[j]) > len(sortedDirs[i]) {
-				sortedDirs[i], sortedDirs[j] = sortedDirs[j], sortedDirs[i]
-			}
-		}
-	}
+	slices.SortFunc(sortedDirs, func(a, b string) int { return len(b) - len(a) })
 
 	// Remove directories (only if empty)
 	for _, d := range sortedDirs {
@@ -154,16 +172,6 @@ func rollback(files, dirs []string) error {
 	return firstErr
 }
 
-// containsPath checks if a path is in the slice.
-func containsPath(paths []string, path string) bool {
-	for _, p := range paths {
-		if p == path {
-			return true
-		}
-	}
-	return false
-}
-
 // isDirNotEmpty checks if an error indicates a non-empty directory.
 func isDirNotEmpty(err error) bool {
 	if err == nil {
@@ -174,20 +182,7 @@ func isDirNotEmpty(err error) bool {
 	}
 	// Different OS have different error messages
 	errStr := err.Error()
-	return containsStr(errStr, "not empty") ||
-		containsStr(errStr, "directory not empty") ||
-		containsStr(errStr, "The directory is not empty")
-}
-
-func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && findSubstr(s, substr))
-}
-
-func findSubstr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(errStr, "not empty") ||
+		strings.Contains(errStr, "directory not empty") ||
+		strings.Contains(errStr, "The directory is not empty")
 }
