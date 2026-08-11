@@ -10,7 +10,7 @@ import (
 )
 
 func TestCreate_NilPlan(t *testing.T) {
-	err := Create(nil)
+	_, err := Create(nil)
 	if err == nil {
 		t.Error("Expected error for nil plan")
 	}
@@ -21,7 +21,7 @@ func TestCreate_EmptyRootDir(t *testing.T) {
 		RootDir: "",
 		Files:   []FilePlan{{SourcePath: "/src", TargetPath: "/dst"}},
 	}
-	err := Create(plan)
+	_, err := Create(plan)
 	if err == nil {
 		t.Error("Expected error for empty root directory")
 	}
@@ -32,7 +32,7 @@ func TestCreate_NoFiles(t *testing.T) {
 		RootDir: "/tmp/test",
 		Files:   []FilePlan{},
 	}
-	err := Create(plan)
+	_, err := Create(plan)
 	if err == nil {
 		t.Error("Expected error for plan with no files")
 	}
@@ -60,7 +60,7 @@ func TestCreate_SingleFile(t *testing.T) {
 	}
 
 	// Execute
-	err := Create(plan)
+	_, err := Create(plan)
 	if err != nil {
 		t.Fatalf("Create error: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestCreate_MultipleFiles(t *testing.T) {
 	}
 
 	// Execute
-	err := Create(plan)
+	_, err := Create(plan)
 	if err != nil {
 		t.Fatalf("Create error: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestCreate_NestedDirectories(t *testing.T) {
 	}
 
 	// Execute
-	err := Create(plan)
+	_, err := Create(plan)
 	if err != nil {
 		t.Fatalf("Create error: %v", err)
 	}
@@ -178,11 +178,16 @@ func TestCreate_Idempotent(t *testing.T) {
 	}
 
 	// Execute twice
-	if err := Create(plan); err != nil {
+	if _, err := Create(plan); err != nil {
 		t.Fatalf("First Create error: %v", err)
 	}
-	if err := Create(plan); err != nil {
+	second, err := Create(plan)
+	if err != nil {
 		t.Fatalf("Second Create error (should be idempotent): %v", err)
+	}
+	// The second call skipped the existing link, so it owns nothing
+	if len(second.Files) != 0 {
+		t.Errorf("Second Create should not claim ownership of skipped files, got %v", second.Files)
 	}
 
 	// Verify it's still a valid hardlink
@@ -203,7 +208,7 @@ func TestCreate_SourceNotFound(t *testing.T) {
 		},
 	}
 
-	err := Create(plan)
+	_, err := Create(plan)
 	if err == nil {
 		t.Error("Expected error when source file doesn't exist")
 	}
@@ -232,7 +237,7 @@ func TestCreate_TargetExistsDifferentFile(t *testing.T) {
 		},
 	}
 
-	err := Create(plan)
+	_, err := Create(plan)
 	if err == nil {
 		t.Error("Expected error when target exists with different content")
 	}
@@ -262,7 +267,8 @@ func TestRollback(t *testing.T) {
 	}
 
 	// Create first
-	if err := Create(plan); err != nil {
+	created, err := Create(plan)
+	if err != nil {
 		t.Fatalf("Create error: %v", err)
 	}
 
@@ -272,7 +278,7 @@ func TestRollback(t *testing.T) {
 	}
 
 	// Rollback
-	if err := Rollback(plan); err != nil {
+	if err := created.Rollback(); err != nil {
 		t.Fatalf("Rollback error: %v", err)
 	}
 
@@ -285,22 +291,17 @@ func TestRollback(t *testing.T) {
 	}
 }
 
-func TestRollback_NilPlan(t *testing.T) {
+func TestRollback_NilHandle(t *testing.T) {
 	// Should not panic or error
-	err := Rollback(nil)
-	if err != nil {
-		t.Errorf("Rollback(nil) should not error, got: %v", err)
+	var created *Created
+	if err := created.Rollback(); err != nil {
+		t.Errorf("nil handle Rollback should not error, got: %v", err)
 	}
 }
 
-func TestRollback_NoFiles(t *testing.T) {
-	plan := &TreePlan{
-		RootDir: "/tmp",
-		Files:   []FilePlan{},
-	}
+func TestRollback_EmptyHandle(t *testing.T) {
 	// Should not panic or error
-	err := Rollback(plan)
-	if err != nil {
-		t.Errorf("Rollback with empty files should not error, got: %v", err)
+	if err := (&Created{}).Rollback(); err != nil {
+		t.Errorf("empty handle Rollback should not error, got: %v", err)
 	}
 }
