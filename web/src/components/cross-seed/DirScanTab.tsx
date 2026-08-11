@@ -940,8 +940,16 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* The first focusable element is now the Match Mode FieldHelp trigger; default auto-focus would open its tooltip on every dialog open */}
-      <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col" onOpenAutoFocus={(e) => e.preventDefault()}>
+      {/* The first focusable element is the Match Mode FieldHelp trigger; default auto-focus would open its tooltip on every dialog open.
+          Focus the dialog itself so the focus trap keeps an anchor. */}
+      <DialogContent
+        className="max-w-lg max-h-[90dvh] flex flex-col"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          const content = event.currentTarget as HTMLElement
+          content.focus()
+        }}
+      >
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{t("dirScan.settingsDialog.title")}</DialogTitle>
           <DialogDescription>
