@@ -7,9 +7,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -215,6 +217,13 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 
 func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, cacheNegative bool) (*ExternalIDsResult, error) {
 	anyQueried := false
+	// Parse mis-reads some names (e.g. a yearless title whose group tag ends in
+	// digits parses with a bogus year), so when it yields no IDs, retry as a plain
+	// title search against the instance's lookup endpoint. The rls year (when the
+	// name carries one) disambiguates same-title remakes among lookup candidates.
+	parsedRelease := rls.ParseString(title)
+	lookupTerm := strings.TrimSpace(parsedRelease.Title)
+	lookupYear := parsedRelease.Year
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
 		if client == nil {
@@ -227,12 +236,29 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 				Str("instanceName", instance.Name).
 				Str("title", title).
 				Msg("[ARR-LOOKUP] Parse request failed")
-			continue
+			result = nil
+		} else {
+			anyQueried = true
 		}
 
-		anyQueried = true
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
 			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse"), nil
+		}
+
+		if lookupTerm != "" {
+			lookupResult, lookupErr := client.LookupByTerm(ctx, lookupTerm, lookupYear)
+			if lookupErr != nil {
+				log.Debug().Err(lookupErr).
+					Int("instanceId", instance.ID).
+					Str("instanceName", instance.Name).
+					Str("term", lookupTerm).
+					Msg("[ARR-LOOKUP] Title lookup failed")
+				continue
+			}
+			anyQueried = true
+			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
+				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, lookupResult, "lookup"), nil
+			}
 		}
 
 		log.Debug().

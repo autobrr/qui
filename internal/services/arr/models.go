@@ -41,6 +41,7 @@ type SonarrParsedEpisodeInfo struct {
 type SonarrSeries struct {
 	ID              int              `json:"id"`
 	Title           string           `json:"title"`
+	Year            int              `json:"year"`
 	AlternateTitles []AlternateTitle `json:"alternateTitles"`
 	TVDbID          int              `json:"tvdbId"`
 	TVMazeID        int              `json:"tvMazeId"`
@@ -78,6 +79,7 @@ type RadarrParsedMovieInfo struct {
 type RadarrMovie struct {
 	ID              int              `json:"id"`
 	Title           string           `json:"title"`
+	Year            int              `json:"year"`
 	OriginalTitle   string           `json:"originalTitle"`
 	AlternateTitles []AlternateTitle `json:"alternateTitles"`
 	TMDbID          int              `json:"tmdbId"`
@@ -322,6 +324,74 @@ func seasonLookupTitles(series *SonarrSeries, lookupTitle string, season int) []
 		}
 	}
 	return titlesForSeason(series, season)
+}
+
+// lookupYearMatches reports whether a candidate's year is compatible with the
+// release's parsed year. Unknown years on either side cannot disprove a match;
+// ±1 absorbs premiere-date vs release-date drift.
+func lookupYearMatches(releaseYear, candidateYear int) bool {
+	if releaseYear <= 0 || candidateYear <= 0 {
+		return true
+	}
+	diff := releaseYear - candidateYear
+	return diff >= -1 && diff <= 1
+}
+
+// selectRadarrLookupMatch returns the lookup candidate whose title (or original
+// title) matches term after normalization and whose year is compatible with the
+// release's parsed year; nil when none match. Same-title remakes are the wrong-bind
+// hazard here: with a year both sides, the year decides; with no year, prefer the
+// in-library candidate (nonzero id), and refuse an ambiguous multi-candidate set
+// rather than gamble on lookup order — a wrong pick would be cached for 30 days.
+func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *RadarrMovie {
+	normalized := normalizeTitleWords(term)
+	if normalized == "" {
+		return nil
+	}
+	var matches []*RadarrMovie
+	for i := range movies {
+		movie := &movies[i]
+		if normalizeTitleWords(movie.Title) != normalized && normalizeTitleWords(movie.OriginalTitle) != normalized {
+			continue
+		}
+		if !lookupYearMatches(year, movie.Year) {
+			continue
+		}
+		if movie.ID > 0 {
+			return movie
+		}
+		matches = append(matches, movie)
+	}
+	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
+		return matches[0]
+	}
+	return nil
+}
+
+// selectSonarrLookupMatch is selectRadarrLookupMatch for series, matching on title only.
+func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *SonarrSeries {
+	normalized := normalizeTitleWords(term)
+	if normalized == "" {
+		return nil
+	}
+	var matches []*SonarrSeries
+	for i := range series {
+		candidate := &series[i]
+		if normalizeTitleWords(candidate.Title) != normalized {
+			continue
+		}
+		if !lookupYearMatches(year, candidate.Year) {
+			continue
+		}
+		if candidate.ID > 0 {
+			return candidate
+		}
+		matches = append(matches, candidate)
+	}
+	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
+		return matches[0]
+	}
+	return nil
 }
 
 // normalizeTitleWords lowercases and reduces a title (or release name) to space-separated
