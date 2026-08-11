@@ -49,10 +49,12 @@ type ExternalIDsResult struct {
 	Source        string              `json:"source,omitempty"`
 }
 
-// SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season.
+// SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season,
+// plus the show's alternate titles usable for that season (series-wide + same-season).
 type SeasonEpisodeTotalResult struct {
-	TotalEpisodes int  `json:"total_episodes"`
-	ArrInstanceID *int `json:"arr_instance_id,omitempty"`
+	TotalEpisodes int      `json:"total_episodes"`
+	ArrInstanceID *int     `json:"arr_instance_id,omitempty"`
+	Titles        []string `json:"titles,omitempty"`
 }
 
 // Service orchestrates ARR ID lookups with caching
@@ -319,7 +321,11 @@ func (s *Service) clientForInstance(instance *models.ArrInstance) *Client {
 	return NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 }
 
-// LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific season.
+// LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific
+// season, plus the show's alternate titles usable for that season. When the series
+// resolves but the season's episode rows are unavailable (anime is often stored as one
+// absolute-numbered season), it returns a partial result with TotalEpisodes 0 and the
+// titles intact, so callers must check TotalEpisodes before trusting the count.
 func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*SeasonEpisodeTotalResult, error) {
 	if title == "" {
 		return nil, errors.New("title cannot be empty")
@@ -339,6 +345,7 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 		return nil, nil
 	}
 
+	var partial *SeasonEpisodeTotalResult
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
 		if client == nil {
@@ -358,7 +365,23 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 			continue
 		}
 
-		episodes, err := client.GetSonarrSeasonEpisodes(ctx, parseResp.Series.ID, seasonNumber)
+		// Sonarr's /parse embeds the series WITHOUT alternateTitles: only the series
+		// endpoints populate them (SeriesController.PopulateAlternateTitles, from scene
+		// mappings). Hydrate via /series/{id} so alias matching sees them; on failure
+		// fall back to the canonical title alone.
+		series := parseResp.Series
+		if full, hydrateErr := client.sonarrSeriesByID(ctx, series.ID); hydrateErr == nil && full != nil && full.ID > 0 {
+			series = full
+		} else if hydrateErr != nil {
+			log.Debug().Err(hydrateErr).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Msg("[ARR-LOOKUP] Sonarr series hydration failed; alias matching limited to canonical title")
+		}
+		titles := seasonLookupTitles(series, title, seasonNumber)
+
+		episodes, err := client.GetSonarrSeasonEpisodes(ctx, series.ID, seasonNumber)
 		if err != nil {
 			log.Debug().Err(err).
 				Int("instanceId", instance.ID).
@@ -366,9 +389,18 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 				Str("title", title).
 				Int("seasonNumber", seasonNumber).
 				Msg("[ARR-LOOKUP] Sonarr season episode lookup failed")
-			continue
 		}
-		if len(episodes) == 0 {
+		if err != nil || len(episodes) == 0 {
+			// The series resolved but the season has no episode rows (common for anime
+			// stored as one absolute-numbered season) or the call failed. Keep the alias
+			// titles so the caller's metadata-total fallback can still alias-match.
+			if partial == nil {
+				instanceID := instance.ID
+				partial = &SeasonEpisodeTotalResult{
+					ArrInstanceID: &instanceID,
+					Titles:        titles,
+				}
+			}
 			continue
 		}
 
@@ -376,10 +408,11 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 		return &SeasonEpisodeTotalResult{
 			TotalEpisodes: len(episodes),
 			ArrInstanceID: &instanceID,
+			Titles:        titles,
 		}, nil
 	}
 
-	return nil, nil
+	return partial, nil
 }
 
 // TestConnection tests connectivity to an ARR instance.

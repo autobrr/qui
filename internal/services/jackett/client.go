@@ -49,7 +49,9 @@ type MagnetDownloadError struct {
 }
 
 func (e *MagnetDownloadError) Error() string {
-	return fmt.Sprintf("torrent download redirected to magnet link: %s", e.MagnetURL)
+	// Redact: magnet tr= announce URLs embed private-tracker passkeys, and
+	// this error gets logged verbatim by automation runs.
+	return "torrent download redirected to magnet link: " + redact.URLString(e.MagnetURL)
 }
 
 // IsRateLimited returns true if this error indicates rate limiting (HTTP 429).
@@ -149,18 +151,6 @@ type Result struct {
 	SearchTMDbID         int
 	// Attributes stores every Torznab attribute with lowercase keys from RSS item attr entries (see convertRssToResults normalization).
 	Attributes map[string]string
-}
-
-// SearchAll searches across all indexers when supported by the backend
-func (c *Client) SearchAll(ctx context.Context, params map[string]string) ([]Result, error) {
-	switch c.backend {
-	case models.TorznabBackendJackett:
-		return c.Search(ctx, "all", params)
-	case models.TorznabBackendNative:
-		return c.SearchDirect(ctx, params)
-	default:
-		return nil, fmt.Errorf("search all not supported for backend %s", c.backend)
-	}
 }
 
 // SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
@@ -811,16 +801,4 @@ func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, basicUserna
 		lastErr = fmt.Errorf("caps fetch failed after %d attempts: %w", maxRetries+1, lastErr)
 	}
 	return nil, lastErr
-}
-
-// GetCapabilitiesDirect gets capabilities from a direct Torznab endpoint
-func (c *Client) GetCapabilitiesDirect() (*gojackett.Indexers, error) {
-	if c.jackett == nil {
-		return nil, fmt.Errorf("capabilities not supported for backend %s", c.backend)
-	}
-	indexers, err := c.jackett.GetCapsDirectCtx(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get capabilities: %w", err)
-	}
-	return &indexers, nil
 }

@@ -9,7 +9,7 @@ import (
 
 // CachedFile represents a cached torrent file
 type CachedFile struct {
-	ID              int
+	ID              int64
 	InstanceID      int
 	TorrentHash     string
 	FileIndex       int

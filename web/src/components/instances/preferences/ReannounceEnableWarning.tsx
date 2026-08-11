@@ -12,18 +12,20 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { AlertTriangle } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 export function ReannounceEnableWarningAlert() {
+  const { t } = useTranslation("instances")
   return (
     <Alert variant="warning" className="border-yellow-500/40 bg-yellow-500/10 text-yellow-950 dark:text-yellow-100">
       <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-      <AlertTitle>Leave this off unless you need it</AlertTitle>
+      <AlertTitle>{t("preferences.reannounceWarning.alertTitle")}</AlertTitle>
       <AlertDescription className="space-y-1">
-        <p>This only helps with a small subset of trackers that are slow to register new uploads.</p>
-        <p>If you are not seeing stalled torrents, do not enable it.</p>
+        <p>{t("preferences.reannounceWarning.alertDescription1")}</p>
+        <p>{t("preferences.reannounceWarning.alertDescription2")}</p>
       </AlertDescription>
     </Alert>
   )
@@ -42,23 +44,24 @@ export function ReannounceEnableWarningDialog({
   onConfirm,
   confirming = false,
 }: ReannounceEnableWarningDialogProps) {
+  const { t } = useTranslation("instances")
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Enable automatic reannounce?</AlertDialogTitle>
+          <AlertDialogTitle>{t("preferences.reannounceWarning.dialogTitle")}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              <p>Use this only if stalled torrents are a real problem on this instance.</p>
-              <p>It helps with only a handful of trackers that are slow to register new uploads.</p>
-              <p>If torrents are behaving normally, leave it off.</p>
+              <p>{t("preferences.reannounceWarning.dialogDescription1")}</p>
+              <p>{t("preferences.reannounceWarning.dialogDescription2")}</p>
+              <p>{t("preferences.reannounceWarning.dialogDescription3")}</p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={confirming}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={confirming}>{t("card.deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={confirming}>
-            {confirming ? "Enabling..." : "Enable"}
+            {confirming ? t("preferences.reannounceWarning.enabling") : t("preferences.reannounceWarning.enable")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

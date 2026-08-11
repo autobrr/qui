@@ -22,6 +22,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const (
@@ -181,7 +182,9 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 		}
 
 		if err := s.send(ctx, target, event, title, message); err != nil {
-			s.logger.Error().Err(err).Str("target", target.Name).Str("event", string(event.Type)).Msg("notifications: send failed")
+			// Redact: shoutrrr errors embed the post URL, which carries the
+			// webhook token / bot token for most services.
+			s.logger.Error().Str("error", redact.String(err.Error())).Str("target", target.Name).Str("event", string(event.Type)).Msg("notifications: send failed")
 		}
 	}
 }

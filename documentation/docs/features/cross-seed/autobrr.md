@@ -124,7 +124,7 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 - `skipIfExists` (optional) - Skip adding if the torrent already exists
 - `findIndividualEpisodes` (optional) - Override the global episode matching setting
 
-Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes if progress meets the size tolerance threshold. If progress is too low, it remains paused for manual review.
+Cross-seeded torrents are added paused with `skip_checking=true`. qui polls the torrent state and auto-resumes when the missing data fits the **Max auto-start download** limit, with a 200 MiB exception when only ignorable files are missing (see [Rules](./rules.md#max-auto-start-download)). If the torrent misses more data, it remains paused for manual review.
 
 ### Troubleshooting: autobrr matches, but nothing gets added to qBittorrent
 
@@ -144,7 +144,7 @@ Use this when autobrr shows the filter accepted the release (or your Discord not
 5. **Check paused torrents**
    - Cross-seeds are often added **paused**. Look in qBittorrent's paused list (and any cross-seed tag/category you configured).
 
-If you still can't see why, jump to [Cross-Seed Troubleshooting](troubleshooting).
+If you still can't see why, jump to [Cross-Seed Troubleshooting](./troubleshooting.md).
 
 ## Webhook Source Filters
 
@@ -173,4 +173,4 @@ qui also supports a dedicated season-pack flow through separate endpoints. When 
 
 This uses different endpoints (`/api/cross-seed/season-pack/check` and `/api/cross-seed/season-pack/apply`) and requires a separate autobrr filter.
 
-See [Season Packs](season-packs) for full setup instructions.
+See [Season Packs](./season-packs.md) for full setup instructions.

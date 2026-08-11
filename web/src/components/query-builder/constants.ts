@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { TFunction } from "i18next";
+
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {
   // String fields
@@ -27,8 +29,11 @@ export const CONDITION_FIELDS = {
   RLS_AUDIO: { label: "Audio (RLS)", type: "string" as const, description: "Parsed audio tags (e.g. DTS, TRUEHD, AAC)" },
   RLS_CHANNELS: { label: "Channels (RLS)", type: "string" as const, description: "Parsed audio channels (e.g. 5.1, 7.1)" },
   RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
+  RLS_YEAR: { label: "Year (RLS)", type: "integer" as const, description: "Year parsed from the torrent name (e.g. 2021). Best for movies and dated releases; most TV episodes (e.g. S14E05) have no year and never match any comparison operator (the NOT toggle inverts that, so it matches yearless releases)." },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
   TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
+  TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
+  TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
   // Size fields (bytes)
@@ -113,7 +118,7 @@ export const CONDITION_FIELDS = {
   HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -127,6 +132,10 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "MATCHES", label: "matches regex" },
   ],
   state: [
+    { value: "EQUAL", label: "is" },
+    { value: "NOT_EQUAL", label: "is not" },
+  ],
+  trackerStatus: [
     { value: "EQUAL", label: "is" },
     { value: "NOT_EQUAL", label: "is not" },
   ],
@@ -198,6 +207,7 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
 export const HARDLINK_SCOPE_VALUES = [
   { value: "none", label: "None" },
   { value: "torrents_only", label: "Only other torrents" },
+  { value: "inside_qbittorrent", label: "Inside qBittorrent (even if also linked outside)" },
   { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
 ];
 
@@ -216,6 +226,7 @@ export const TORRENT_STATES = [
   { value: "stalled_downloading", label: "Stalled Down" },
   { value: "errored", label: "Error" },
   { value: "tracker_down", label: "Tracker Down" },
+  { value: "tracker_error", label: "Tracker Error" },
   { value: "checking", label: "Checking" },
   { value: "checkingResumeData", label: "Checking Resume Data" },
   { value: "moving", label: "Moving" },
@@ -240,7 +251,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Release",
-    fields: ["CONTENT_TYPE", "EFFECTIVE_NAME", "RLS_SOURCE", "RLS_RESOLUTION", "RLS_CODEC", "RLS_HDR", "RLS_AUDIO", "RLS_CHANNELS", "RLS_GROUP"],
+    fields: ["CONTENT_TYPE", "EFFECTIVE_NAME", "RLS_SOURCE", "RLS_RESOLUTION", "RLS_CODEC", "RLS_HDR", "RLS_AUDIO", "RLS_CHANNELS", "RLS_GROUP", "RLS_YEAR"],
   },
   {
     label: "Grouping",
@@ -276,7 +287,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Tracker",
-    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
   },
   {
     label: "Cross-Seed",
@@ -360,8 +371,21 @@ export const CAPABILITY_REASONS = {
   localFilesystemAccess: "Requires Local Filesystem Access",
 } as const;
 
+// "disabled" (status 0) is intentionally omitted: it only ever applies to qBittorrent's
+// DHT/PeX/LSD pseudo-trackers, which the evaluator skips, so it could never match a real tracker.
+export const TRACKER_STATUS_VALUES = [
+  { value: "not_contacted", label: "Not contacted" },
+  { value: "working", label: "Working" },
+  { value: "updating", label: "Updating" },
+  { value: "error", label: "Error" },
+  { value: "tracker_error", label: "Tracker error" },
+  { value: "unreachable", label: "Unreachable" },
+] as const;
+
 export const FIELD_REQUIREMENTS = {
   IS_UNREGISTERED: "trackerHealth",
+  TRACKER_STATUS: "trackerHealth",
+  TRACKER_MESSAGE: "trackerHealth",
   HAS_MISSING_FILES: "localFilesystemAccess",
   HARDLINK_SCOPE: "localFilesystemAccess",
   HARDLINK_SCOPE_CROSS: "localFilesystemAccess",
@@ -369,7 +393,87 @@ export const FIELD_REQUIREMENTS = {
 
 export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
+  tracker_error: "trackerHealth",
 } as const;
 
 // Uncategorized sentinel (Radix Select requires non-empty values)
 export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
+
+// --- i18n helper functions ---
+
+/** Get translated label for a condition field */
+export function getFieldLabel(field: string, t: TFunction): string {
+  return t(`queryBuilder.fields.${field}`, { defaultValue: CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS]?.label ?? field });
+}
+
+/** Get translated label for a field group */
+export function getFieldGroupLabel(label: string, t: TFunction): string {
+  return t(`queryBuilder.fieldGroups.${label}`, { defaultValue: label });
+}
+
+/** Operator label lookup keyed by the operator value string */
+const OPERATOR_LABEL_KEYS: Record<string, string> = {
+  EQUAL: "equals",
+  NOT_EQUAL: "notEquals",
+  CONTAINS: "contains",
+  NOT_CONTAINS: "notContains",
+  STARTS_WITH: "startsWith",
+  ENDS_WITH: "endsWith",
+  MATCHES: "matchesRegex",
+  GREATER_THAN: ">",
+  GREATER_THAN_OR_EQUAL: ">=",
+  LESS_THAN: "<",
+  LESS_THAN_OR_EQUAL: "<=",
+  BETWEEN: "between",
+  EXISTS_IN: "existsIn",
+  CONTAINS_IN: "similarExistsIn",
+};
+
+/** Get translated operators for a field, preserving the original structure */
+export function getTranslatedOperatorsForField(field: string, t: TFunction): { value: string; label: string }[] {
+  const ops = getOperatorsForField(field);
+  return ops.map((op) => {
+    // Symbolic operators (=, !=, >, >=, <, <=) stay as-is
+    if (/^[^a-zA-Z]/.test(op.label)) return op;
+    const key = OPERATOR_LABEL_KEYS[op.value];
+    if (!key) return op;
+    // "is" / "is not" share keys with equals/notEquals for state/boolean types but have different labels
+    const type = getFieldType(field);
+    if ((type === "state" || type === "trackerStatus" || type === "boolean" || type === "hardlinkScope") && (op.value === "EQUAL" || op.value === "NOT_EQUAL")) {
+      return { value: op.value, label: t(`queryBuilder.operators.${op.value === "EQUAL" ? "is" : "isNot"}`, { defaultValue: op.label }) };
+    }
+    return { value: op.value, label: t(`queryBuilder.operators.${key}`, { defaultValue: op.label }) };
+  });
+}
+
+/** Get translated torrent states */
+export function getTranslatedTorrentStates(t: TFunction): { value: string; label: string }[] {
+  return TORRENT_STATES.map((state) => ({
+    value: state.value,
+    label: t(`queryBuilder.torrentStates.${state.value}`, { defaultValue: state.label }),
+  }));
+}
+
+/** Get translated tracker status values */
+export function getTranslatedTrackerStatuses(t: TFunction): { value: string; label: string }[] {
+  return TRACKER_STATUS_VALUES.map((status) => ({
+    value: status.value,
+    label: t(`queryBuilder.trackerStatuses.${status.value}`, { defaultValue: status.label }),
+  }));
+}
+
+/** Get translated hardlink scope values */
+export function getTranslatedHardlinkScopes(t: TFunction): { value: string; label: string }[] {
+  return HARDLINK_SCOPE_VALUES.map((scope) => ({
+    value: scope.value,
+    label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
+  }));
+}
+
+/** Get translated delete modes */
+export function getTranslatedDeleteModes(t: TFunction): { value: string; label: string }[] {
+  return DELETE_MODES.map((mode) => ({
+    value: mode.value,
+    label: t(`queryBuilder.deleteModes.${mode.value}`, { defaultValue: mode.label }),
+  }));
+}

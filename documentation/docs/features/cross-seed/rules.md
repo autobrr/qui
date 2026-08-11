@@ -10,17 +10,17 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 ## Matching
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
-- **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
-- **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
+- **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, filesystem fallback, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
+- **Rescue title mismatches** - Disabled by default. This rule can try exact-size results when only the title differs. Each source search can try at most three rescue downloads across all indexers. After download, every usable file must have one exact-size partner. qui adds a rescued torrent paused. It starts only after a full qBittorrent recheck reaches 100%. A rescue that fails still counts as a download on your tracker. **Skip recheck** turns off this rule. Manual search, Library Scan, and completion search use it. RSS, webhooks, and direct apply requests do not use it.
 - **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 
 :::note
-Disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
+Filesystem fallback and disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
 :::
 
 ## Season Pack Threshold
 
-The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr first, then TVDB or TVMaze when Sonarr cannot resolve the release. When torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically when qBittorrent reports progress at or above the season-pack threshold. This is configured in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](season-packs) for details.
+The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr first, then TVDB or TVMaze when Sonarr cannot resolve the release. When torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically when qBittorrent reports progress at or above the season-pack threshold. This is configured in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
 
 Season-pack matching rules live in **Rules > Season packs** and affect only the season-pack webhook flow.
 
@@ -71,6 +71,14 @@ Configure tags applied to cross-seed torrents based on how they were discovered:
 | Completion Search Tags | Torrents added via completion-triggered search | `["cross-seed"]` |
 | Webhook Tags | Torrents added via `/apply` webhook | `["cross-seed"]` |
 | Inherit source torrent tags | Also copy tags from the matched source torrent | - |
+
+## Max Auto-Start Download
+
+After a recheck, qui reads how much data the new cross-seed still misses. qui starts the torrent only when the missing data is at or below **Max auto-start download** (default: 50 MiB). Torrents that miss more data stay paused for manual review. Set 0 to start only fully complete torrents.
+
+When only ignorable files are missing (samples, `.nfo`, subtitles, and similar sidecar files), qui starts the torrent anyway. This exception has a fixed 200 MiB ceiling.
+
+This limit applies to new cross-seed additions from RSS, seeded search, completion search, and the webhooks. The season-pack flow and Dir Scan use their own resume rules and are not affected.
 
 ## External Program
 

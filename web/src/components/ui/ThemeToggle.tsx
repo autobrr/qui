@@ -13,10 +13,11 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, isThemePremium } from "@/config/themes";
+import { themes, isThemePremium, getThemeById, type Theme } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
+import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 
 // Constants
@@ -59,8 +61,10 @@ const useThemeChange = () => {
 };
 
 export const ThemeToggle: React.FC = () => {
+  const { t } = useTranslation("common");
   const { currentMode, currentTheme, isDark } = useThemeChange();
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
+  const { customThemes } = useCustomThemes();
   const [open, setOpen] = useState(false);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
 
@@ -71,13 +75,9 @@ export const ThemeToggle: React.FC = () => {
   });
 
   const sortedThemes = useMemo(() => {
-    return [...themes].sort((a, b) => {
-      const aIsPremium = isThemePremium(a.id);
-      const bIsPremium = isThemePremium(b.id);
-      if (aIsPremium === bIsPremium) return 0;
-      return aIsPremium ? 1 : -1;
-    });
-  }, []);
+    const rank = (theme: Theme) => (theme.isCustom ? 2 : isThemePremium(theme.id) ? 1 : 0);
+    return [...themes, ...customThemes].sort((a, b) => rank(a) - rank(b));
+  }, [customThemes]);
 
   const previewColorsCache = useMemo(() => new Map<string, {
     primary: string;
@@ -125,19 +125,19 @@ export const ThemeToggle: React.FC = () => {
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);
 
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" };
-    toast.success(`Switched to ${modeNames[mode]} mode`);
-  }, []);
+    const modeNames = { light: t("themeToggle.light"), dark: t("themeToggle.dark"), auto: t("themeToggle.system") };
+    toast.success(t("themeToggle.switchedToMode", { mode: modeNames[mode] }));
+  }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("themeToggle.unableToVerifyLicense"), {
+          description: t("themeToggle.licenseCheckFailed"),
         });
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
+        toast.error(t("themeToggle.premiumThemeError"));
       }
       return;
     }
@@ -145,19 +145,19 @@ export const ThemeToggle: React.FC = () => {
     setOpen(false);
     await setTheme(themeId);
 
-    const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme`);
-  }, [canSwitchPremium, isError]);
+    const theme = getThemeById(themeId);
+    toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }));
+  }, [canSwitchPremium, isError, t]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("themeToggle.unableToVerifyLicense"), {
+          description: t("themeToggle.licenseCheckFailed"),
         });
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
+        toast.error(t("themeToggle.premiumThemeError"));
       }
       return;
     }
@@ -165,11 +165,11 @@ export const ThemeToggle: React.FC = () => {
     await setTheme(themeId);
     await setThemeVariation(variationId);
 
-    const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`);
+    const theme = getThemeById(themeId);
+    toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
     setOpen(false);
-  }, [canSwitchPremium, isError]);
+  }, [canSwitchPremium, isError, t]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -180,21 +180,21 @@ export const ThemeToggle: React.FC = () => {
           className={cn("transition-transform duration-300")}
         >
           <Palette className={cn("h-5 w-5 transition-transform duration-200")} />
-          <span className="sr-only">Change theme</span>
+          <span className="sr-only">{t("themeToggle.changeTheme")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("themeToggle.appearance")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {/* Mode Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Mode</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.mode")}</div>
         <DropdownMenuItem
           onClick={() => handleModeSelect("light")}
           className="flex items-center gap-2"
         >
           <Sun className="h-4 w-4" />
-          <span className="flex-1">Light</span>
+          <span className="flex-1">{t("themeToggle.light")}</span>
           {currentMode === "light" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -202,7 +202,7 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Moon className="h-4 w-4" />
-          <span className="flex-1">Dark</span>
+          <span className="flex-1">{t("themeToggle.dark")}</span>
           {currentMode === "dark" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -210,14 +210,14 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Monitor className="h-4 w-4" />
-          <span className="flex-1">System</span>
+          <span className="flex-1">{t("themeToggle.system")}</span>
           {currentMode === "auto" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
         {/* Theme Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.theme")}</div>
         {sortedThemes.map((theme) => {
           const isPremium = isThemePremium(theme.id);
           const isLocked = isPremium && !canSwitchPremium;
@@ -257,9 +257,13 @@ export const ThemeToggle: React.FC = () => {
                   />
                   <div className="flex items-center justify-between gap-1.5 flex-1">
                     <span>{theme.name}</span>
-                    {isPremium && (
+                    {theme.isCustom ? (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                        Premium
+                        {t("themeToggle.custom")}
+                      </span>
+                    ) : isPremium && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
+                        {t("themeToggle.premium")}
                       </span>
                     )}
                   </div>

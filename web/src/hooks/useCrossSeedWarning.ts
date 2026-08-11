@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 
 import { api } from "@/lib/api"
-import { toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { getLocalMatchTypeInfo, toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import type { CrossInstanceTorrent, Torrent } from "@/types"
 
@@ -124,8 +124,9 @@ export function useCrossSeedWarning({
           if (match.instanceId !== torrentInstanceId) continue
           // Skip torrents being deleted
           if (hashesBeingDeleted.has(match.hash)) continue
-          // Only include matches that share the same on-disk location
-          if (match.matchType !== "content_path") continue
+          // Include shared-path matches and independently usable linked copies
+          // verified through hardlink identity or current ReFS extent sharing.
+          if (!getLocalMatchTypeInfo(match.matchType).deleteRelevant) continue
           // Skip duplicates (instance-aware to handle same hash on multiple instances)
           const dedupeKey = isUnified ? `${match.instanceId}:${match.hash}` : match.hash
           if (seenKeys.has(dedupeKey)) continue

@@ -148,87 +148,136 @@ func TestIsDiscLayoutTorrent(t *testing.T) {
 }
 
 func TestPolicyForSourceFiles(t *testing.T) {
-	t.Run("disc layout forces paused", func(t *testing.T) {
-		files := qbt.TorrentFiles{
-			{Name: "Movie/BDMV/index.bdmv"},
-		}
-		policy := PolicyForSourceFiles(files)
+	tests := []struct {
+		name                    string
+		files                   qbt.TorrentFiles
+		wantDiscLayout          bool
+		wantForcePaused         bool
+		wantForceSkipAutoResume bool
+		wantDiscMarker          string
+	}{
+		{
+			name: "disc layout forces paused",
+			files: qbt.TorrentFiles{
+				{Name: "Movie/BDMV/index.bdmv"},
+			},
+			wantDiscLayout:  true,
+			wantForcePaused: true,
+			wantDiscMarker:  "BDMV",
+		},
+		{
+			name: "non-disc layout returns empty policy",
+			files: qbt.TorrentFiles{
+				{Name: "Movie.2024.1080p.mkv"},
+			},
+		},
+	}
 
-		assert.True(t, policy.DiscLayout)
-		assert.True(t, policy.ForcePaused)
-		assert.False(t, policy.ForceSkipAutoResume)
-		assert.Equal(t, "BDMV", policy.DiscMarker)
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policy := PolicyForSourceFiles(tt.files)
 
-	t.Run("non-disc layout returns empty policy", func(t *testing.T) {
-		files := qbt.TorrentFiles{
-			{Name: "Movie.2024.1080p.mkv"},
-		}
-		policy := PolicyForSourceFiles(files)
-
-		assert.False(t, policy.DiscLayout)
-		assert.False(t, policy.ForcePaused)
-		assert.False(t, policy.ForceSkipAutoResume)
-		assert.Empty(t, policy.DiscMarker)
-	})
+			assert.Equal(t, tt.wantDiscLayout, policy.DiscLayout)
+			assert.Equal(t, tt.wantForcePaused, policy.ForcePaused)
+			assert.Equal(t, tt.wantForceSkipAutoResume, policy.ForceSkipAutoResume)
+			assert.Equal(t, tt.wantDiscMarker, policy.DiscMarker)
+		})
+	}
 }
 
 func TestAddPolicy_ApplyToAddOptions(t *testing.T) {
-	t.Run("ForcePaused overrides options", func(t *testing.T) {
-		policy := AddPolicy{ForcePaused: true}
-		options := map[string]string{
-			"paused":  "false",
-			"stopped": "false",
-		}
+	tests := []struct {
+		name        string
+		policy      AddPolicy
+		wantPaused  string
+		wantStopped string
+	}{
+		{
+			name:        "ForcePaused overrides options",
+			policy:      AddPolicy{ForcePaused: true},
+			wantPaused:  "true",
+			wantStopped: "true",
+		},
+		{
+			name:        "non-forced policy preserves options",
+			policy:      AddPolicy{},
+			wantPaused:  "false",
+			wantStopped: "false",
+		},
+	}
 
-		policy.ApplyToAddOptions(options)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			options := map[string]string{
+				"paused":  "false",
+				"stopped": "false",
+			}
 
-		assert.Equal(t, "true", options["paused"])
-		assert.Equal(t, "true", options["stopped"])
-	})
+			tt.policy.ApplyToAddOptions(options)
 
-	t.Run("non-forced policy preserves options", func(t *testing.T) {
-		policy := AddPolicy{}
-		options := map[string]string{
-			"paused":  "false",
-			"stopped": "false",
-		}
-
-		policy.ApplyToAddOptions(options)
-
-		assert.Equal(t, "false", options["paused"])
-		assert.Equal(t, "false", options["stopped"])
-	})
+			assert.Equal(t, tt.wantPaused, options["paused"])
+			assert.Equal(t, tt.wantStopped, options["stopped"])
+		})
+	}
 }
 
 func TestAddPolicy_ShouldSkipAutoResume(t *testing.T) {
-	t.Run("ForceSkipAutoResume true", func(t *testing.T) {
-		policy := AddPolicy{ForceSkipAutoResume: true}
-		assert.True(t, policy.ShouldSkipAutoResume())
-	})
+	tests := []struct {
+		name   string
+		policy AddPolicy
+		want   bool
+	}{
+		{
+			name:   "ForceSkipAutoResume true",
+			policy: AddPolicy{ForceSkipAutoResume: true},
+			want:   true,
+		},
+		{
+			name:   "ForceSkipAutoResume false",
+			policy: AddPolicy{ForceSkipAutoResume: false},
+		},
+	}
 
-	t.Run("ForceSkipAutoResume false", func(t *testing.T) {
-		policy := AddPolicy{ForceSkipAutoResume: false}
-		assert.False(t, policy.ShouldSkipAutoResume())
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.policy.ShouldSkipAutoResume())
+		})
+	}
 }
 
 func TestAddPolicy_StatusSuffix(t *testing.T) {
-	t.Run("disc layout returns suffix", func(t *testing.T) {
-		policy := AddPolicy{
-			DiscLayout: true,
-			DiscMarker: "BDMV",
-		}
-		suffix := policy.StatusSuffix()
-		assert.Contains(t, suffix, "disc layout")
-		assert.Contains(t, suffix, "BDMV")
-		assert.Contains(t, suffix, "recheck")
-	})
+	tests := []struct {
+		name         string
+		policy       AddPolicy
+		wantContains []string
+		wantEmpty    bool
+	}{
+		{
+			name: "disc layout returns suffix",
+			policy: AddPolicy{
+				DiscLayout: true,
+				DiscMarker: "BDMV",
+			},
+			wantContains: []string{"disc layout", "BDMV", "recheck"},
+		},
+		{
+			name:      "non-disc layout returns empty",
+			policy:    AddPolicy{},
+			wantEmpty: true,
+		},
+	}
 
-	t.Run("non-disc layout returns empty", func(t *testing.T) {
-		policy := AddPolicy{}
-		assert.Empty(t, policy.StatusSuffix())
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			suffix := tt.policy.StatusSuffix()
+			if tt.wantEmpty {
+				assert.Empty(t, suffix)
+			}
+			for _, want := range tt.wantContains {
+				assert.Contains(t, suffix, want)
+			}
+		})
+	}
 }
 
 // TestPolicyFlow_DiscLayoutForcesPaused tests the shared policy helper that all modes

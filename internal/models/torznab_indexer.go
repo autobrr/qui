@@ -51,15 +51,6 @@ func ParseTorznabBackend(value string) (TorznabBackend, error) {
 	}
 }
 
-// MustTorznabBackend parses backend and panics on error (useful for defaults).
-func MustTorznabBackend(value string) TorznabBackend {
-	backend, err := ParseTorznabBackend(value)
-	if err != nil {
-		panic(err)
-	}
-	return backend
-}
-
 // TorznabIndexer represents a Torznab API indexer (Jackett, Prowlarr, etc.)
 type TorznabIndexer struct {
 	ID                     int                      `json:"id"`

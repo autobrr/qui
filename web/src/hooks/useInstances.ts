@@ -13,7 +13,8 @@ export function useInstances() {
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
-    refetchInterval: 30000, // Refetch every 30 seconds
+    // Instance list rarely changes; real-time connection status now comes from SSE
+    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes
   })
 
   const createMutation = useMutation({

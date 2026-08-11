@@ -156,20 +156,6 @@ func variantTokens(value string) []string {
 	return tokens
 }
 
-func (o variantOverrides) variantsCompatible(source, candidate *rls.Release) bool {
-	sourceVariants := o.releaseVariants(source)
-	if len(sourceVariants) == 0 {
-		return true
-	}
-	candidateVariants := o.releaseVariants(candidate)
-	for key := range sourceVariants {
-		if _, ok := candidateVariants[key]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
 // findMismatch returns the first variant in source that is missing from candidate.
 // Returns empty string if all variants match.
 func (o variantOverrides) findMismatch(source, candidate *rls.Release) string {

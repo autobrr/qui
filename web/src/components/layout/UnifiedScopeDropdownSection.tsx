@@ -10,6 +10,7 @@ import type { InstanceResponse } from "@/types"
 import { Link } from "@tanstack/react-router"
 import { ChevronRight, HardDrive } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface UnifiedScopeDropdownSectionProps {
   activeInstances: InstanceResponse[]
@@ -30,9 +31,10 @@ export function UnifiedScopeDropdownSection({
   scopeKeyPrefix,
   variant = "dropdown",
 }: UnifiedScopeDropdownSectionProps) {
+  const { t } = useTranslation("common")
   const [isExpanded, setIsExpanded] = useState(false)
   const hasCustomUnifiedScope = effectiveUnifiedInstanceIds.length !== activeInstances.length
-  const scopeSummary = hasCustomUnifiedScope ? `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}` : "ALL"
+  const scopeSummary = hasCustomUnifiedScope ? `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}` : t("header.allScope")
   const isSidebar = variant === "sidebar"
 
   const rowContainerClassName = isSidebar ? cn(
@@ -80,13 +82,13 @@ export function UnifiedScopeDropdownSection({
               className={rowLinkClassName}
             >
               <HardDrive className="h-4 w-4 flex-shrink-0" />
-              <span className="truncate">Unified</span>
+              <span className="truncate">{t("unifiedScope.unified")}</span>
             </Link>
             <CollapsibleTrigger asChild>
               <button
                 type="button"
                 className={triggerClassName}
-                aria-label={isExpanded ? "Collapse unified scope" : "Expand unified scope"}
+                aria-label={isExpanded ? t("unifiedScope.collapseScope") : t("unifiedScope.expandScope")}
               >
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
                   {scopeSummary}
@@ -108,7 +110,7 @@ export function UnifiedScopeDropdownSection({
                 className={rowLinkClassName}
               >
                 <HardDrive className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Unified</span>
+                <span className="truncate">{t("unifiedScope.unified")}</span>
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -122,7 +124,7 @@ export function UnifiedScopeDropdownSection({
                 <button
                   type="button"
                   className={triggerClassName}
-                  aria-label={isExpanded ? "Collapse unified scope" : "Expand unified scope"}
+                  aria-label={isExpanded ? t("unifiedScope.collapseScope") : t("unifiedScope.expandScope")}
                 >
                   <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">
                     {scopeSummary}
@@ -152,7 +154,7 @@ export function UnifiedScopeDropdownSection({
                   "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:bg-sidebar-accent focus-visible:text-sidebar-accent-foreground"
                 )}
               >
-                <span className="truncate">All active ({activeInstances.length})</span>
+                <span className="truncate">{t("unifiedScope.allActive", { count: activeInstances.length })}</span>
               </button>
               {activeInstances.map((instance) => {
                 const checked = effectiveUnifiedInstanceIds.includes(instance.id)
@@ -188,7 +190,7 @@ export function UnifiedScopeDropdownSection({
                 }}
                 className="cursor-pointer text-sm"
               >
-                All active ({activeInstances.length})
+                {t("unifiedScope.allActive", { count: activeInstances.length })}
               </DropdownMenuItem>
               {activeInstances.map((instance) => {
                 const checked = effectiveUnifiedInstanceIds.includes(instance.id)
