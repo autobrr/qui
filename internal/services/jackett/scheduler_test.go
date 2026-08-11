@@ -8,15 +8,62 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 )
+
+// recordingPublisher captures published activity events for assertions.
+type recordingPublisher struct {
+	mu     sync.Mutex
+	events []activity.Event
+}
+
+func (p *recordingPublisher) Publish(ev activity.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, ev)
+}
+
+func (p *recordingPublisher) counts() map[activity.Kind]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	counts := make(map[activity.Kind]int)
+	for _, ev := range p.events {
+		counts[ev.Kind]++
+	}
+	return counts
+}
+
+// recordingHistoryRecorder captures recorded search-history entries.
+type recordingHistoryRecorder struct {
+	mu      sync.Mutex
+	entries []SearchHistoryEntry
+}
+
+func (r *recordingHistoryRecorder) Record(entry SearchHistoryEntry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, entry)
+}
+
+func (r *recordingHistoryRecorder) statuses() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.entries))
+	for i, e := range r.entries {
+		out[i] = e.Status
+	}
+	return out
+}
 
 func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 	s := newSearchScheduler(nil, 10)
@@ -25,7 +72,7 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 	var executed atomic.Bool
 	done := make(chan struct{})
 
-	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	exec := func(_ context.Context, indexers []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
 		executed.Store(true)
 		return []Result{{Title: "test"}}, []int{indexers[0].ID}, nil
 	}
@@ -36,7 +83,7 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 		Indexers: []*models.TorznabIndexer{indexer},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
-			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, results []Result, _ []int, err error) {
 				assert.NoError(t, err)
 				assert.Len(t, results, 1)
 				assert.Equal(t, "test", results[0].Title)
@@ -62,7 +109,7 @@ func TestSearchScheduler_PriorityOrdering(t *testing.T) {
 	var completed int32
 	done := make(chan struct{})
 
-	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, meta *searchContext) ([]Result, []int, error) {
 		execMu.Lock()
 		defer execMu.Unlock()
 		if meta != nil && meta.rateLimit != nil {
@@ -125,7 +172,7 @@ func TestSearchScheduler_WorkerPoolLimit(t *testing.T) {
 	var completed int32
 	done := make(chan struct{})
 
-	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
 		current := atomic.AddInt32(&currentConcurrent, 1)
 		for {
 			max := atomic.LoadInt32(&maxConcurrent)
@@ -170,7 +217,7 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 	defer s.Stop()
 
 	var started atomic.Bool
-	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+	exec := func(ctx context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
 		started.Store(true)
 		select {
 		case <-ctx.Done():
@@ -189,7 +236,7 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 		Indexers: []*models.TorznabIndexer{indexer},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
-			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
 				assert.Error(t, err)
 				assert.True(t, errors.Is(err, context.Canceled))
 				close(done)
@@ -233,7 +280,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		Indexers: []*models.TorznabIndexer{indexer1},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
-			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "scheduler worker panic")
 				if atomic.AddInt32(&completed, 1) == 2 {
@@ -249,7 +296,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		Indexers: []*models.TorznabIndexer{indexer2},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
-			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, results []Result, _ []int, err error) {
 				assert.NoError(t, err)
 				assert.Len(t, results, 1)
 				if atomic.AddInt32(&completed, 1) == 2 {
@@ -261,6 +308,72 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 	require.NoError(t, err2)
 
 	<-done
+}
+
+func TestSearchScheduler_TaskTimeoutCompletesHungExecution(t *testing.T) {
+	s := newSearchScheduler(nil, 10)
+	defer s.Stop()
+
+	parentCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+
+	started := make(chan struct{})
+	completeCh := make(chan error, 1)
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		close(started)
+		time.Sleep(200 * time.Millisecond)
+		return []Result{{Title: "late"}}, []int{1}, nil
+	}
+
+	start := time.Now()
+	_, err := s.Submit(parentCtx, SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn:   exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+				completeCh <- err
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	<-started
+	callbackErr := <-completeCh
+	require.ErrorIs(t, callbackErr, context.DeadlineExceeded)
+	require.Less(t, time.Since(start), 150*time.Millisecond)
+}
+
+func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
+	s := newSearchScheduler(nil, 10)
+	defer s.Stop()
+
+	deadlineCh := make(chan bool, 1)
+	done := make(chan struct{})
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	exec := func(ctx context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		_, hasDeadline := ctx.Deadline()
+		deadlineCh <- hasDeadline
+		return []Result{{Title: "test"}}, []int{1}, nil
+	}
+
+	_, err := s.Submit(ctx, SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn:   exec,
+		Callbacks: JobCallbacks{
+			OnJobDone: func(uint64) {
+				close(done)
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	<-done
+	require.True(t, <-deadlineCh)
 }
 
 func TestSearchScheduler_RSSDeduplication(t *testing.T) {
@@ -308,6 +421,85 @@ func TestSearchScheduler_RSSDeduplication(t *testing.T) {
 	<-done
 
 	// Only first search should have executed
+	assert.Equal(t, int32(1), executions.Load())
+}
+
+func TestSearchScheduler_RSSDeduplicationInvokesOnComplete(t *testing.T) {
+	rl := NewRateLimiter(1 * time.Millisecond)
+	s := newSearchScheduler(rl, 1) // Single worker
+	defer s.Stop()
+
+	var executions atomic.Int32
+	var startOnce sync.Once
+	firstExecStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		executions.Add(1)
+		startOnce.Do(func() { close(firstExecStarted) })
+		<-releaseFirst
+		return []Result{{Title: "test"}}, []int{1}, nil
+	}
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	rssMeta := &searchContext{rateLimit: &RateLimitOptions{Priority: RateLimitPriorityRSS}}
+
+	// First RSS search occupies pendingRSS[1] until released.
+	firstDone := make(chan struct{})
+	_, err1 := s.Submit(context.Background(), SubmitRequest{
+		Indexers:  []*models.TorznabIndexer{indexer},
+		Meta:      rssMeta,
+		ExecFn:    exec,
+		Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(firstDone) }},
+	})
+	require.NoError(t, err1)
+	<-firstExecStarted
+
+	// Second RSS search to the same indexer is fully deduplicated. The deduped
+	// indexer must still report an OnComplete so WaitGroup-based callers finish.
+	type completion struct {
+		jobID     uint64
+		indexerID int
+		results   []Result
+		coverage  []int
+		err       error
+	}
+	completeCh := make(chan completion, 1)
+	secondJobDone := make(chan struct{})
+	jobID2, err2 := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		Meta:     rssMeta,
+		ExecFn:   exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
+				id := 0
+				if idx != nil {
+					id = idx.ID
+				}
+				completeCh <- completion{jobID: jobID, indexerID: id, results: results, coverage: coverage, err: err}
+			},
+			OnJobDone: func(uint64) { close(secondJobDone) },
+		},
+	})
+	require.NoError(t, err2)
+
+	select {
+	case got := <-completeCh:
+		assert.Equal(t, jobID2, got.jobID)
+		assert.Equal(t, 1, got.indexerID)
+		assert.Nil(t, got.results)
+		assert.Nil(t, got.coverage)
+		require.ErrorIs(t, got.err, errRSSDeduplicated)
+	case <-time.After(2 * time.Second):
+		t.Fatal("deduplicated indexer never reported OnComplete")
+	}
+	<-secondJobDone
+
+	// Release the first search and let it finish.
+	close(releaseFirst)
+	<-firstDone
+
+	// Only the first search should have executed.
 	assert.Equal(t, int32(1), executions.Load())
 }
 
@@ -548,18 +740,21 @@ func TestSearchScheduler_ErrorPropagation(t *testing.T) {
 	assert.Equal(t, expectedErr, callbackErr)
 }
 
-func TestSearchScheduler_DispatchTimeRateLimiting(t *testing.T) {
-	rl := NewRateLimiter(100 * time.Millisecond)
+func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {
+	rl := NewRateLimiter(80 * time.Millisecond)
 	s := newSearchScheduler(rl, 10)
 	defer s.Stop()
 
 	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	var calls int32
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			time.Sleep(100 * time.Millisecond)
+		}
 		return []Result{{Title: "test"}}, []int{1}, nil
 	}
 
-	// First request should execute immediately
 	done1 := make(chan struct{})
 	start1 := time.Now()
 	_, err := s.Submit(context.Background(), SubmitRequest{
@@ -570,9 +765,8 @@ func TestSearchScheduler_DispatchTimeRateLimiting(t *testing.T) {
 	require.NoError(t, err)
 	<-done1
 	elapsed1 := time.Since(start1)
-	assert.Less(t, elapsed1, 50*time.Millisecond)
+	assert.GreaterOrEqual(t, elapsed1, 100*time.Millisecond)
 
-	// Second request should be delayed due to rate limiting
 	done2 := make(chan struct{})
 	start2 := time.Now()
 	_, err = s.Submit(context.Background(), SubmitRequest{
@@ -583,8 +777,7 @@ func TestSearchScheduler_DispatchTimeRateLimiting(t *testing.T) {
 	require.NoError(t, err)
 	<-done2
 	elapsed2 := time.Since(start2)
-	// Should have waited for rate limit
-	assert.Greater(t, elapsed2, 50*time.Millisecond)
+	assert.Greater(t, elapsed2, 70*time.Millisecond)
 }
 
 func TestSearchScheduler_MaxWaitSkipsIndexer(t *testing.T) {
@@ -715,6 +908,138 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 	}
 }
 
+// Activity emission tests
+//
+// Both consuming panels (SearchHistoryPanel, IndexerActivityPanel) disabled
+// polling and rely on the scheduler emitting KindIndexerActivity and
+// KindSearchHistory whenever a task completes. These tests lock in emission for
+// completion paths that previously stayed silent: the rate-limit skip in
+// dispatchTasks, and a panicking exec (recovered per-task) still routing its
+// completion through the emit.
+
+func TestSearchScheduler_RateLimitSkipEmitsActivity(t *testing.T) {
+	// Long interval with background priority guarantees the second request is
+	// skipped for exceeding its MaxWait budget, exercising the dispatchTasks
+	// rate-limit-skip completion path.
+	rl := NewRateLimiter(5 * time.Second)
+	s := newSearchScheduler(rl, 10)
+	defer s.Stop()
+
+	pub := &recordingPublisher{}
+	rec := &recordingHistoryRecorder{}
+	s.setActivityPublisher(pub)
+	s.historyRecorder = rec
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		return []Result{{Title: "test"}}, []int{1}, nil
+	}
+
+	// First request sets rate-limit state and completes successfully. Its own
+	// completion already emits both signals, so the skip path below must be measured
+	// as a DELTA on top of this baseline, not as an absolute count.
+	done1 := make(chan struct{})
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers:  []*models.TorznabIndexer{indexer},
+		ExecFn:    exec,
+		Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(done1) }},
+	})
+	require.NoError(t, err)
+	<-done1
+
+	// KindSearchHistory is emitted only by completion paths, never by enqueue, so a
+	// settled count of 1 after the first (successful) request is a stable baseline.
+	require.Eventually(t, func() bool {
+		return pub.counts()[activity.KindSearchHistory] >= 1
+	}, time.Second, 5*time.Millisecond, "first completion should emit a search-history signal")
+	before := pub.counts()
+
+	// Second request with a tiny MaxWait is skipped as rate_limited.
+	completeCh := make(chan error, 1)
+	_, err = s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		Meta: &searchContext{
+			rateLimit: &RateLimitOptions{
+				Priority: RateLimitPriorityBackground,
+				MaxWait:  10 * time.Millisecond,
+			},
+		},
+		ExecFn: exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+				completeCh <- err
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	gotErr := <-completeCh
+	var waitErr *RateLimitWaitError
+	require.ErrorAs(t, gotErr, &waitErr)
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(rec.statuses(), "rate_limited")
+	}, time.Second, 5*time.Millisecond, "rate_limited history entry should be recorded")
+
+	// The skip path must emit its OWN completion signals: the search-history count has
+	// to rise above the post-first-request baseline. Without the dispatchTasks
+	// skip-path emit, KindSearchHistory stays at `before` and this fails
+	// (fail-without-fix). The search-history delta is load-bearing here because
+	// KindIndexerActivity is also bumped by the second request's enqueue.
+	require.Eventually(t, func() bool {
+		after := pub.counts()
+		return after[activity.KindSearchHistory] > before[activity.KindSearchHistory] &&
+			after[activity.KindIndexerActivity] > before[activity.KindIndexerActivity]
+	}, time.Second, 5*time.Millisecond, "rate-limit skip must emit its own indexer-activity and search-history signals")
+}
+
+// TestSearchScheduler_ExecPanicStillEmitsActivity verifies that an exec which
+// panics does not silently swallow the activity signals the panels depend on. The
+// panic is caught by executeTask's inner per-task recover(), converted to an error
+// result, and routed through the normal completion emit, so both signals must
+// still fire. (The outer worker-level recover() in executeTask emits the same way
+// for the near-impossible case of a panic outside the exec goroutine; that branch
+// is covered by inspection since its only triggers are unmockable internals.)
+func TestSearchScheduler_ExecPanicStillEmitsActivity(t *testing.T) {
+	s := newSearchScheduler(nil, 10)
+	defer s.Stop()
+
+	pub := &recordingPublisher{}
+	rec := &recordingHistoryRecorder{}
+	s.setActivityPublisher(pub)
+	s.historyRecorder = rec
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "panic-indexer"}
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		panic("boom")
+	}
+
+	completeCh := make(chan error, 1)
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn:   exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+				completeCh <- err
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	gotErr := <-completeCh
+	require.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "scheduler worker panic")
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(rec.statuses(), "error")
+	}, time.Second, 5*time.Millisecond, "panicked task should record an error history entry")
+
+	require.Eventually(t, func() bool {
+		counts := pub.counts()
+		return counts[activity.KindIndexerActivity] > 0 && counts[activity.KindSearchHistory] > 0
+	}, time.Second, 5*time.Millisecond, "panic-recovery path must emit both indexer-activity and search-history signals")
+}
+
 // Rate limiter tests
 
 func TestRateLimiter_NextWaitRespectsCooldown(t *testing.T) {
@@ -734,12 +1059,29 @@ func TestRateLimiter_NextWaitRespectsMinInterval(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
 	indexer := &models.TorznabIndexer{ID: 1}
 
-	// Record a request
-	limiter.RecordRequest(indexer.ID, time.Now())
+	limiter.RecordRequestComplete(indexer.ID, time.Now())
 
 	wait := limiter.NextWait(indexer, nil)
 	if wait < 40*time.Millisecond {
 		t.Fatalf("expected wait at least 40ms due to min interval, got %v", wait)
+	}
+}
+
+func TestRateLimiter_NextWaitIgnoresStartedUntilCompleted(t *testing.T) {
+	limiter := NewRateLimiter(50 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1}
+
+	limiter.RecordRequestStart(indexer.ID, time.Now())
+
+	wait := limiter.NextWait(indexer, nil)
+	if wait > 0 {
+		t.Fatalf("expected zero wait before request completion, got %v", wait)
+	}
+
+	limiter.RecordRequestComplete(indexer.ID, time.Now())
+	wait = limiter.NextWait(indexer, nil)
+	if wait < 40*time.Millisecond {
+		t.Fatalf("expected wait after request completion, got %v", wait)
 	}
 }
 
@@ -797,8 +1139,7 @@ func TestRateLimiter_NextWaitWithPriorityMultiplier(t *testing.T) {
 	limiter := NewRateLimiter(100 * time.Millisecond)
 	indexer := &models.TorznabIndexer{ID: 1}
 
-	// Record a request
-	limiter.RecordRequest(indexer.ID, time.Now())
+	limiter.RecordRequestComplete(indexer.ID, time.Now())
 
 	// Interactive priority has 0.1x multiplier, so min interval = 10ms
 	opts := &RateLimitOptions{
@@ -812,7 +1153,7 @@ func TestRateLimiter_NextWaitWithPriorityMultiplier(t *testing.T) {
 	}
 }
 
-func TestRateLimiter_RecordRequest(t *testing.T) {
+func TestRateLimiter_RecordRequestComplete(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
 	indexer := &models.TorznabIndexer{ID: 1}
 
@@ -822,8 +1163,7 @@ func TestRateLimiter_RecordRequest(t *testing.T) {
 		t.Fatalf("expected zero wait before recording request")
 	}
 
-	// Record request
-	limiter.RecordRequest(indexer.ID, time.Time{})
+	limiter.RecordRequestComplete(indexer.ID, time.Time{})
 
 	// Should need to wait now
 	wait = limiter.NextWait(indexer, nil)
@@ -836,7 +1176,7 @@ func TestRateLimiter_WaitForMinInterval_ReservesSlot(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
 	indexer := &models.TorznabIndexer{ID: 1}
 
-	limiter.RecordRequest(indexer.ID, time.Time{})
+	limiter.RecordRequestComplete(indexer.ID, time.Time{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()

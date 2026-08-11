@@ -1,0 +1,194 @@
+{
+  "pageTitle": "인덱서 검색",
+  "pageDescription": "활성화된 모든 인덱서에서 검색합니다. 쿼리 유형을 선택하거나 자동으로 두면 카테고리가 자동으로 감지됩니다.",
+  "indexerSummary": {
+    "label": "인덱서",
+    "noEnabled": "활성화된 인덱서 없음",
+    "allEnabled": "모두 활성화됨 ({{count}})",
+    "selected": "{{total}}개 중 {{selected}}개 선택됨"
+  },
+  "indexerSheet": {
+    "title": "인덱서 선택",
+    "description": "검색에 포함할 인덱서를 선택하세요.",
+    "selectAll": "모두 선택",
+    "clearSelection": "선택 해제",
+    "noCategories": "카테고리 없음",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "기본",
+      "jackett": "Jackett"
+    },
+    "footer": "활성화된 인덱서 {{total}}개 중 {{selected}}개 선택됨",
+    "done": "완료"
+  },
+  "instanceSelector": {
+    "chooseTarget": "대상 인스턴스 선택",
+    "noInstances": "인스턴스 없음",
+    "offline": "오프라인",
+    "targetNamed": "대상: {{name}}",
+    "targetNamedOffline": "대상: {{name}} (오프라인)",
+    "clearSelection": "선택 해제",
+    "noInstancesConfigured": "구성된 인스턴스가 없습니다",
+    "addInstanceNote": "설정 > 인스턴스에서 다운로드 인스턴스를 추가하세요."
+  },
+  "searchForm": {
+    "advanced": "고급",
+    "active": "활성",
+    "clear": "지우기",
+    "searching": "검색 중...",
+    "search": "검색",
+    "advancedNote": "선택 사항(권장) Torznab 매개변수입니다.",
+    "searchType": "검색 유형",
+    "searchQuery": "검색어",
+    "noIndexers": "사용 가능한 활성화된 인덱서가 없습니다. 다음에서 인덱서를 추가하고 활성화하세요:",
+    "indexersPage": "인덱서 페이지"
+  },
+  "searchTypes": {
+    "auto": {
+      "label": "자동 감지",
+      "description": "올바른 카테고리를 자동으로 추론합니다",
+      "placeholder": "예: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", 또는 \"Example Artist – Example Album\""
+    },
+    "movies": {
+      "label": "영화",
+      "placeholder": "예: \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "예: \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "음악",
+      "placeholder": "예: \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "도서 및 만화",
+      "placeholder": "예: \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "앱 및 게임",
+      "placeholder": "예: \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "성인",
+      "placeholder": "특정 성인 릴리스 이름을 입력하세요"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "연도",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "시즌",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "에피소드",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "아티스트",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "앨범",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "제한",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "오프셋",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "{{total}}개 결과 중 {{filtered}}개 표시",
+    "filterPlaceholder": "결과 필터링...",
+    "clearSearch": "검색 지우기",
+    "clearAllFilters": "모든 열 필터 지우기",
+    "pickInstance": "인스턴스 선택",
+    "download": "다운로드",
+    "viewDetails": "세부 정보 보기",
+    "clearSelectionButton": "선택 해제",
+    "actions": "작업",
+    "quickAddTo": "빠른 추가...",
+    "cachedSummary": "캐시됨 {{cached}} · 만료 {{expires}}",
+    "cacheSource": "소스: {{source}} · 범위: {{scope}}",
+    "refreshReadyIn": "{{seconds}}초 후 준비됨",
+    "refreshFromIndexers": "인덱서에서 새로 고침",
+    "noValue": "-",
+    "categoryFallback": "카테고리 {{id}}",
+    "noResultsFor": "\"{{query}}\"에 대한 결과를 찾을 수 없습니다",
+    "enterQuery": "시작하려면 검색어를 입력하세요",
+    "free": "무료",
+    "freeNeutral": "중립",
+    "noInfoUrlAvailable": "사용 가능한 정보 URL 없음"
+  },
+  "historyMeta": "{{type}} · 결과 {{count}}개 · {{timestamp}}",
+  "table": {
+    "title": "제목",
+    "indexer": "인덱서",
+    "size": "크기",
+    "seeders": "시더",
+    "category": "카테고리",
+    "source": "소스",
+    "collection": "컬렉션",
+    "group": "그룹",
+    "freeleech": "Freeleech",
+    "published": "게시일",
+    "actions": "작업",
+    "downloadTorrent": ".torrent 다운로드",
+    "viewDetails": "세부 정보 보기",
+    "noInfoUrl": "정보 URL 없음"
+  },
+  "refreshDialog": {
+    "title": "캐시를 우회하시겠습니까?",
+    "description": "선택한 모든 인덱서에 요청을 직접 전송합니다. 속도 제한을 피하려면 신중하게 사용하세요. 짧은 대기 시간 후 다시 새로 고칠 수 있습니다.",
+    "cancel": "취소",
+    "refreshNow": "지금 새로 고침"
+  },
+  "cache": {
+    "cacheAndLive": "캐시 + 실시간",
+    "cacheHit": "캐시 적중",
+    "liveFetch": "실시간 가져오기"
+  },
+  "card": {
+    "actions": "작업",
+    "addToInstance": "인스턴스에 추가",
+    "addToNamed": "{{name}}에 추가",
+    "addToNamedOffline": "{{name}}에 추가 (오프라인)",
+    "quickAddTo": "빠른 추가...",
+    "download": "다운로드",
+    "viewDetails": "세부 정보 보기",
+    "clearSelection": "선택 해제",
+    "seeders": "시더 {{count}}개",
+    "published": "게시일 {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "검색어를 입력하거나 고급 매개변수를 채워 주세요",
+    "selectIndexer": "인덱서를 하나 이상 선택해 주세요",
+    "noEnabledIndexers": "사용 가능한 활성화된 인덱서가 없습니다. 먼저 인덱서를 추가하고 활성화하세요.",
+    "noResults": "결과를 찾을 수 없습니다",
+    "foundResults": "결과 {{total}}개를 찾았습니다{{suffix}}",
+    "cached": " (캐시됨)",
+    "searchFailed": "검색 실패: {{error}}",
+    "failedToLoadIndexers": "인덱서를 불러오지 못했습니다",
+    "addInstanceFirst": "설정 -> 인스턴스에서 다운로드 인스턴스를 추가하세요",
+    "chooseInstance": "토렌트를 추가할 인스턴스를 선택하세요",
+    "noDownloadUrl": "이 결과에 사용 가능한 다운로드 URL이 없습니다",
+    "noInfoUrl": "이 결과에 사용 가능한 추가 정보가 없습니다",
+    "invalidProtocol": "잘못된 URL 프로토콜",
+    "invalidUrl": "잘못된 URL 형식"
+  }
+}

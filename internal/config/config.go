@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 var envPrefix = "QUI__"
@@ -103,10 +104,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
-	c.viper.SetDefault("logLevel", "INFO")
+	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
-	c.viper.SetDefault("logMaxBackups", 3)
+	c.viper.SetDefault("logMaxBackups", 10)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("databaseEngine", "sqlite")
 	c.viper.SetDefault("databaseDsn", "")
@@ -122,8 +123,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
+	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
+	c.viper.SetDefault("pprofAddr", "127.0.0.1:6060")
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
@@ -225,8 +228,10 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
+	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
+	c.viper.BindEnv("pprofAddr", envPrefix+"PPROF_ADDR")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
@@ -316,7 +321,8 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
-	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	// Canonical "/prefix/" form; the index.html redirect breaks on a slashless base.
+	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
 
@@ -340,8 +346,10 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
 	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
+	c.Config.PprofAddr = c.viper.GetString("pprofAddr")
 
 	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
 	c.Config.MetricsHost = c.viper.GetString("metricsHost")
@@ -484,17 +492,24 @@ sessionSecret = "{{ .sessionSecret }}"
 #logPath = "log/qui.log"
 
 # Log rotation
-# Maximum log file size in megabytes before rotation
+# Size in MB that starts a rotation
 # Default: {{ .logMaxSize }}
 #logMaxSize = {{ .logMaxSize }}
 
-# Number of rotated log files to retain (0 keeps all)
+# Number of rotated log files that qui keeps (0 keeps all)
+# Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file
+# compresses to 2 to 3 MB.
 # Default: {{ .logMaxBackups }}
 #logMaxBackups = {{ .logMaxBackups }}
 
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Custom themes directory (default: <config-dir>/themes, auto-created)
+# Drop sideloaded *.css theme files here. Listing requires premium access.
+# A relative path is resolved against the config directory.
+#customThemesDir = "/config/themes"
 
 # Database engine
 # Options: "sqlite" (default), "postgres"
@@ -531,9 +546,11 @@ sessionSecret = "{{ .sessionSecret }}"
 #crossSeedRecoverErroredTorrents = false
 
 # Log level
-# Default: "INFO"
+# Default: "DEBUG"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
-logLevel = "{{ .logLevel }}"
+# DEBUG records sufficient detail to diagnose most reports.
+# TRACE adds per-request and per-sync-tick detail and makes the file grow quickly.
+#logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
 # Enable Prometheus metrics on separate port (no authentication required)
@@ -600,8 +617,10 @@ logLevel = "{{ .logLevel }}"
 		return fmt.Errorf("failed to parse config template: %w", err)
 	}
 
-	// Create config file
-	f, err := os.Create(path)
+	// Create config file with owner-only permissions. It holds the session
+	// secret, so it must never be group/world readable or writable, regardless
+	// of the process umask (e.g. when UMASK is set for content sharing).
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -791,6 +810,30 @@ func (c *AppConfig) GetConfigDir() string {
 	}
 	// Fallback to default config directory when no config file is explicitly used
 	return GetDefaultConfigDir()
+}
+
+// GetCustomThemesDir returns the resolved custom themes directory.
+// Empty config defaults to <config-dir>/themes; a relative override is resolved
+// against the config directory, an absolute override is used verbatim.
+func (c *AppConfig) GetCustomThemesDir() string {
+	dir := strings.TrimSpace(c.Config.CustomThemesDir)
+	if dir == "" {
+		return filepath.Join(c.GetConfigDir(), "themes")
+	}
+	if !filepath.IsAbs(dir) {
+		return filepath.Join(c.GetConfigDir(), dir)
+	}
+	return dir
+}
+
+// EnsureCustomThemesDir resolves the custom themes directory and creates it if missing.
+// The resolved path is returned even when creation fails so callers can report it.
+func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
+	dir := c.GetCustomThemesDir()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return dir, fmt.Errorf("failed to create custom themes directory %s: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.

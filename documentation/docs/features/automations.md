@@ -131,6 +131,8 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Trackers (All)  | All tracker URLs/domains/display names for this torrent       |
 | Private         | Boolean - is private tracker                                  |
 | Is Unregistered | Boolean - tracker reports unregistered                        |
+| Tracker status  | Per-tracker announce status; see [Tracker Status Values](#tracker-status-values) (requires qBittorrent 5.1+) |
+| Tracker message | Per-tracker status message; use `nil` for an empty message (requires qBittorrent 5.1+)                       |
 | Comment         | Torrent comment field                                         |
 
 Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
@@ -158,6 +160,7 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Release Audio      | Parsed release specifier (e.g. `TrueHD`; may be empty)                                     |
 | Release Channels   | Parsed release specifier (e.g. `5.1`; may be empty)                                        |
 | Release Group      | Parsed release specifier (e.g. `NTb`; may be empty)                                        |
+| Release Year       | Year parsed from the torrent name (e.g. `2021`). Numeric; best for movies/dated releases. Releases with no detectable year (including most TV episodes like `S14E05`) never match any comparison operator, including `!=`. The condition's NOT toggle wraps the whole leaf, so `NOT (year = X)` still matches yearless releases |
 | Group Size         | Size of the selected group for this condition (requires grouping; see [Grouping](#grouping)) |
 | Is Grouped         | Boolean - true when selected group size > 1 (requires grouping; see [Grouping](#grouping)) |
 
@@ -201,6 +204,23 @@ The State field matches these status buckets:
 | `moving`       | Moving files                 |
 | `missingFiles` | Files not found              |
 | `unregistered` | Tracker reports unregistered |
+
+### Tracker Status Values
+
+The **Tracker status** field matches if **any** of a torrent's real trackers reports the selected status. qBittorrent's DHT/PeX/LSD pseudo-trackers are ignored. Pick a value from the dropdown:
+
+| Status        | Description                               |
+| ------------- | ----------------------------------------- |
+| Not contacted | Tracker has not been contacted yet        |
+| Working       | Tracker has been contacted and is working |
+| Updating      | Tracker is being updated                  |
+| Error         | Announce failed (generic)                 |
+| Tracker error | Tracker returned an explicit error        |
+| Unreachable   | Cannot connect to the tracker             |
+
+**Tracker message** matches the per-tracker status message with the standard string operators. Use the literal value `nil` with **is** / **is not** to match an empty (or non-empty) message.
+
+Both fields require **qBittorrent 5.1+** (Web API 2.11.4+) and are disabled in the query builder otherwise.
 
 ### Operators
 
@@ -719,7 +739,7 @@ If no save path is set but a category is configured, qBittorrent's Automatic Tor
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
 
-- **Detection** - Cross-seed condition fields use the same matching logic as **Filter Cross-Seeds**: content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself.
+- **Detection** - Cross-seed condition fields match on content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself. **Filter Cross-Seeds** also pairs a retitled upload that has the same exact byte size. The condition fields do not, because a rule can delete torrents and a title is weaker evidence than a shared file.
 - **Delete Rules**:
   - Use `deleteWithFilesPreserveCrossSeeds` to keep files if cross-seeds exist
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together
@@ -739,11 +759,19 @@ When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by c
 
 It then counts how many unique file paths across the entire qBittorrent torrent set point to each inode. The scope for each torrent is determined by comparing these two numbers:
 
-| Scope                 | Condition                                                                    | Meaning                                                                                           |
-| --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `none`                | No file has `nlink > 1`                                                      | No hardlinks detected.                                                                            |
-| `torrents_only`       | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links.             |
-| `outside_qbittorrent` | Any file has `nlink > uniquePathCount`                                       | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
+| Scope                 | Condition                                                                     | Meaning                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `none`                | No file has `nlink > 1`                                                       | No hardlinks detected.                                                                            |
+| `torrents_only`       | Some file is linked inside the torrent set, no file has outside links         | Hardlinks exist, but only between torrents in qBittorrent. No external library links.             |
+| `outside_qbittorrent` | Some file has `nlink > uniquePathCount`, no file is linked inside the set     | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
+| `both`                | Some file is linked inside the torrent set, some file also has outside links  | Linked to other torrents *and* to an external location (e.g. a cross-seeded library import).      |
+
+In conditions, two additional predicate values are available on top of the exact scopes above:
+
+- `inside_qbittorrent` matches torrents linked to other torrents in the set, even when they are also linked outside (`torrents_only` or `both`).
+- `outside_qbittorrent` as a condition value keeps its historical meaning: it matches any torrent with outside links (`outside_qbittorrent` or `both`).
+
+Combined with AND/OR groups and the "is not" operator, every combination of the inside/outside link states is expressible.
 
 :::note
 `HARDLINK_SCOPE` only reflects hardlink metadata. Cross-seeds are detected separately (ContentPath matching), so a torrent can have `HARDLINK_SCOPE = none` and still be cross-seeded.

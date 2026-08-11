@@ -12,18 +12,29 @@ import (
 )
 
 // sensitiveParams lists query parameter names that should be redacted (case-insensitive).
-var sensitiveParams = []string{"apikey", "api_key", "passkey", "token", "password"}
+var sensitiveParams = []string{"apikey", "api_key", "passkey", "token", "password", "authkey", "torrent_pass"}
 
 // sensitiveParamRegex matches sensitive query parameters in a string.
 // Used as a fallback when URL parsing fails or for error message redaction.
-var sensitiveParamRegex = regexp.MustCompile(`(?i)(apikey|api_key|passkey|token|password)=([^&\s]*)`)
+var sensitiveParamRegex = regexp.MustCompile(`(?i)(apikey|api_key|passkey|token|password|authkey|torrent_pass)=([^&\s]*)`)
 
 // proxyPathRegex matches /proxy/{api-key}/ segments in paths
 var proxyPathRegex = regexp.MustCompile(`(/proxy/)([^/]+)(/|$)`)
 
+// pathTokenRegex matches path segments that look like credentials: long,
+// unbroken alphanumeric tokens (tracker passkeys, Discord webhook tokens).
+// Real path segments (file names, endpoints) virtually always contain dots,
+// spaces, or are shorter than this.
+var pathTokenRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{24,}$`)
+
+// urlInTextRegex finds http(s) and magnet URLs embedded in free text
+// (typically error messages) so each can be redacted individually.
+var urlInTextRegex = regexp.MustCompile(`https?://[^\s"'<>]+|magnet:\?[^\s"'<>]+`)
+
 // URLString redacts sensitive query parameter values in a URL string.
-// Also redacts passwords in userinfo (user:pass@host) and proxy path segments.
-// If the URL can be parsed, it replaces values of known sensitive parameters with REDACTED.
+// Also redacts userinfo passwords (user:pass@host), proxy path segments,
+// credential-shaped path segments, and URLs nested in query values (magnet
+// tr= announce URLs, redirect targets).
 // If parsing fails, it uses a regex fallback to perform the same redaction.
 func URLString(raw string) string {
 	if raw == "" {
@@ -33,7 +44,7 @@ func URLString(raw string) string {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		// Fallback to regex for unparseable URLs
-		return String(raw)
+		return regexRedact(raw)
 	}
 
 	modified := false
@@ -56,15 +67,48 @@ func URLString(raw string) string {
 		}
 	}
 
-	// Redact sensitive query parameters
+	// Redact credential-shaped path segments (/download/{passkey}/x.torrent,
+	// Discord webhook tokens)
+	if segments := strings.Split(parsed.Path, "/"); len(segments) > 0 {
+		segmentModified := false
+		for i, segment := range segments {
+			if pathTokenRegex.MatchString(segment) {
+				segments[i] = "REDACTED"
+				segmentModified = true
+			}
+		}
+		if segmentModified {
+			parsed.Path = strings.Join(segments, "/")
+			parsed.RawPath = ""
+			modified = true
+		}
+	}
+
+	// Redact sensitive query parameters, and recurse into query values that
+	// are themselves URLs (magnet tr= announce URLs carry passkeys)
 	query := parsed.Query()
-	for _, param := range sensitiveParams {
-		// Check all case variations - url.Values keys are case-sensitive
-		for key := range query {
+	for key, values := range query {
+		redactedWholeParam := false
+		for _, param := range sensitiveParams {
 			if strings.EqualFold(key, param) {
 				// Always redact to exactly one REDACTED value
 				query[key] = []string{"REDACTED"}
 				modified = true
+				redactedWholeParam = true
+				break
+			}
+		}
+		if redactedWholeParam {
+			continue
+		}
+		for i, value := range values {
+			// Any scheme, not just http(s): magnet tr= values are often
+			// udp:// announce URLs carrying a passkey in the path.
+			if strings.Contains(value, "://") {
+				if redacted := URLString(value); redacted != value {
+					values[i] = redacted
+					modified = true
+				}
 			}
 		}
 	}
@@ -101,18 +145,24 @@ func URLError(err error) error {
 // userinfoPasswordRegex matches user:password@ patterns in URLs
 var userinfoPasswordRegex = regexp.MustCompile(`(://[^/:@\s]+):([^@\s]+)@`)
 
-// String redacts sensitive query parameter values in any string using regex.
-// Also redacts userinfo passwords and proxy path segments.
+// String redacts sensitive information in any string. URLs found in the text
+// get full URL redaction (query params, userinfo, path tokens); the remainder
+// gets a regex pass for URL fragments.
 // This is useful for sanitizing error messages that may contain URLs or URL fragments.
 func String(s string) string {
 	if s == "" {
 		return s
 	}
-	// Redact sensitive query params
+	result := urlInTextRegex.ReplaceAllStringFunc(s, URLString)
+	return regexRedact(result)
+}
+
+// regexRedact redacts sensitive query params, userinfo passwords, and proxy
+// path segments using regexes only. Fallback for unparseable URLs and bare
+// URL fragments in text.
+func regexRedact(s string) string {
 	result := sensitiveParamRegex.ReplaceAllString(s, "${1}=REDACTED")
-	// Redact userinfo passwords (user:pass@ -> user:REDACTED@)
 	result = userinfoPasswordRegex.ReplaceAllString(result, "${1}:REDACTED@")
-	// Redact proxy path segments
 	result = proxyPathRegex.ReplaceAllString(result, "${1}REDACTED${3}")
 	return result
 }

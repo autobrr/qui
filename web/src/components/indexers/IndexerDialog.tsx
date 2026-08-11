@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
 import type { TorznabIndexer, TorznabIndexerFormData } from "@/types"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface IndexerDialogProps {
@@ -42,6 +43,7 @@ const DEFAULT_FORM: TorznabIndexerFormData = {
 }
 
 export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogProps) {
+  const { t } = useTranslation("settings")
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TorznabIndexerFormData>(DEFAULT_FORM)
   const [showBasicAuth, setShowBasicAuth] = useState(false)
@@ -84,15 +86,15 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
 
       if (showBasicAuth) {
         if (!trimmedBasicUser) {
-          toast.error("Basic auth username is required")
+          toast.error(t("indexers.dialog.toast.basicUsernameRequired"))
           return
         }
         if (mode === "create" && !basicPass.trim()) {
-          toast.error("Basic auth password is required")
+          toast.error(t("indexers.dialog.toast.basicPasswordRequired"))
           return
         }
         if (mode === "edit" && !isRedactedPassword && !basicPass.trim()) {
-          toast.error("Basic auth password is required (or keep <redacted>)")
+          toast.error(t("indexers.dialog.toast.basicPasswordRequiredOrKeep"))
           return
         }
       }
@@ -117,9 +119,9 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
 
         const response = await api.createTorznabIndexer(createPayload)
         if (response.warnings?.length) {
-          toast.warning(`Indexer created with warnings: ${response.warnings.join(", ")}`)
+          toast.warning(t("indexers.dialog.toast.createdWithWarnings", { warnings: response.warnings.join(", ") }))
         } else {
-          toast.success("Indexer created successfully")
+          toast.success(t("indexers.dialog.toast.createdSuccess"))
         }
       } else if (mode === "edit" && indexer) {
         const updatePayload: Partial<TorznabIndexerFormData> = {
@@ -153,14 +155,14 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
 
         const response = await api.updateTorznabIndexer(indexer.id, updatePayload)
         if (response.warnings?.length) {
-          toast.warning(`Indexer updated with warnings: ${response.warnings.join(", ")}`)
+          toast.warning(t("indexers.dialog.toast.updatedWithWarnings", { warnings: response.warnings.join(", ") }))
         } else {
-          toast.success("Indexer updated successfully")
+          toast.success(t("indexers.dialog.toast.updatedSuccess"))
         }
       }
       onClose()
     } catch {
-      toast.error(`Failed to ${mode} indexer`)
+      toast.error(mode === "create" ? t("indexers.dialog.toast.failedCreate") : t("indexers.dialog.toast.failedEdit"))
     } finally {
       setLoading(false)
     }
@@ -171,30 +173,30 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
       <DialogContent className="sm:max-w-[525px] max-h-[90dvh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>
-            {mode === "create" ? "Add Indexer" : "Edit Indexer"}
+            {mode === "create" ? t("indexers.dialog.addTitle") : t("indexers.dialog.editTitle")}
           </DialogTitle>
           <DialogDescription>
-            {mode === "create"? "Add a new Torznab indexer for cross-seed discovery": "Update indexer settings"}
+            {mode === "create" ? t("indexers.dialog.addDescription") : t("indexers.dialog.editDescription")}
           </DialogDescription>
         </DialogHeader>
         <form id="indexer-form" onSubmit={handleSubmit} autoComplete="off" data-1p-ignore className="flex-1 overflow-y-auto min-h-0">
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{t("indexers.dialog.labels.name")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) =>
                   setFormData({ ...formData, name: e.target.value })
                 }
-                placeholder="My Indexer"
+                placeholder={t("indexers.dialog.placeholders.name")}
                 autoComplete="off"
                 data-1p-ignore
                 required
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="backend">Backend</Label>
+              <Label htmlFor="backend">{t("indexers.dialog.labels.backend")}</Label>
               <Select
                 value={backend}
                 onValueChange={(value) =>
@@ -206,17 +208,17 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 }
               >
                 <SelectTrigger id="backend">
-                  <SelectValue placeholder="Select backend" />
+                  <SelectValue placeholder={t("indexers.dialog.placeholders.selectBackend")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="jackett">Jackett</SelectItem>
-                  <SelectItem value="prowlarr">Prowlarr</SelectItem>
-                  <SelectItem value="native">Native Torznab</SelectItem>
+                  <SelectItem value="jackett">{t("indexers.dialog.backends.jackett")}</SelectItem>
+                  <SelectItem value="prowlarr">{t("indexers.dialog.backends.prowlarr")}</SelectItem>
+                  <SelectItem value="native">{t("indexers.dialog.backends.native")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="baseUrl">Base URL</Label>
+              <Label htmlFor="baseUrl">{t("indexers.dialog.labels.baseUrl")}</Label>
               <Input
                 id="baseUrl"
                 type="url"
@@ -233,7 +235,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             {backend !== "native" && (
               <div className="grid gap-2">
                 <Label htmlFor="indexerId">
-                  Indexer ID {requiresIndexerId && <span className="text-destructive">*</span>}
+                  {t("indexers.dialog.labels.indexerId")} {requiresIndexerId && <span className="text-destructive">*</span>}
                 </Label>
                 <Input
                   id="indexerId"
@@ -241,18 +243,18 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   onChange={(e) =>
                     setFormData({ ...formData, indexer_id: e.target.value })
                   }
-                  placeholder={backend === "prowlarr" ? "Prowlarr indexer ID (e.g., 1)" : "Optional Jackett indexer ID (e.g., aither)"}
+                  placeholder={backend === "prowlarr" ? t("indexers.dialog.placeholders.indexerIdProwlarr") : t("indexers.dialog.placeholders.indexerIdJackett")}
                   autoComplete="off"
                   data-1p-ignore
                   required={requiresIndexerId}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {backend === "prowlarr"? "Enter the numeric ID from the indexer details page in Prowlarr.": "Optional for Jackett. Leave blank to let qui derive it automatically."}
+                  {backend === "prowlarr" ? t("indexers.dialog.hints.indexerIdProwlarr") : t("indexers.dialog.hints.indexerIdJackett")}
                 </p>
               </div>
             )}
             <div className="grid gap-2">
-              <Label htmlFor="apiKey">API Key</Label>
+              <Label htmlFor="apiKey">{t("indexers.dialog.labels.apiKey")}</Label>
               <Input
                 id="apiKey"
                 type="password"
@@ -260,7 +262,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 onChange={(e) =>
                   setFormData({ ...formData, api_key: e.target.value })
                 }
-                placeholder={mode === "edit" ? "Leave blank to keep existing" : "Your API key"}
+                placeholder={mode === "edit" ? t("indexers.dialog.placeholders.apiKeyEdit") : t("indexers.dialog.placeholders.apiKeyCreate")}
                 autoComplete="off"
                 data-1p-ignore
                 required={mode === "create"}
@@ -268,9 +270,9 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             </div>
             <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
-                <Label htmlFor="indexer-basic-auth">Basic Auth</Label>
+                <Label htmlFor="indexer-basic-auth">{t("indexers.dialog.labels.basicAuth")}</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
-                  Use HTTP basic authentication for Torznab behind a reverse proxy.
+                  {t("indexers.dialog.labels.basicAuthDescription")}
                 </p>
               </div>
               <Switch
@@ -289,32 +291,32 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             {showBasicAuth && (
               <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="basicUsername">Basic Username</Label>
+                  <Label htmlFor="basicUsername">{t("indexers.dialog.labels.basicUsername")}</Label>
                   <Input
                     id="basicUsername"
                     value={formData.basic_username ?? ""}
                     onChange={(e) => setFormData({ ...formData, basic_username: e.target.value })}
-                    placeholder="Username"
+                    placeholder={t("indexers.dialog.placeholders.username")}
                     autoComplete="off"
                     data-1p-ignore
                     required
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="basicPassword">Basic Password</Label>
+                  <Label htmlFor="basicPassword">{t("indexers.dialog.labels.basicPassword")}</Label>
                   <Input
                     id="basicPassword"
                     type="password"
                     value={formData.basic_password ?? ""}
                     onChange={(e) => setFormData({ ...formData, basic_password: e.target.value })}
-                    placeholder={mode === "edit" ? "<redacted>" : "Password"}
+                    placeholder={mode === "edit" ? "<redacted>" : t("indexers.dialog.placeholders.password")}
                     autoComplete="off"
                     data-1p-ignore
                     required={mode === "create"}
                   />
                   {mode === "edit" && (
                     <p className="text-xs text-muted-foreground">
-                      Leave as <span className="font-mono">&lt;redacted&gt;</span> to keep existing password.
+                      {t("indexers.dialog.hints.basicPasswordKeep")}
                     </p>
                   )}
                 </div>
@@ -322,7 +324,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="priority">Priority</Label>
+                <Label htmlFor="priority">{t("indexers.dialog.labels.priority")}</Label>
                 <Input
                   id="priority"
                   type="number"
@@ -337,7 +339,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="timeout">Timeout (seconds)</Label>
+                <Label htmlFor="timeout">{t("indexers.dialog.labels.timeout")}</Label>
                 <Input
                   id="timeout"
                   type="number"
@@ -354,7 +356,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
               </div>
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="enabled">Enabled</Label>
+              <Label htmlFor="enabled">{t("indexers.dialog.labels.enabled")}</Label>
               <Switch
                 id="enabled"
                 checked={formData.enabled}
@@ -367,10 +369,10 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
         </form>
         <DialogFooter className="flex-shrink-0">
           <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
+            {t("indexers.dialog.buttons.cancel")}
           </Button>
           <Button type="submit" form="indexer-form" disabled={loading}>
-            {loading ? "Saving..." : mode === "create" ? "Add" : "Save"}
+            {loading ? t("indexers.dialog.buttons.saving") : mode === "create" ? t("indexers.dialog.buttons.add") : t("indexers.dialog.buttons.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -12,15 +12,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"unsafe"
 
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -154,19 +154,22 @@ func (*seasonPackHandlerSyncManager) CreateCategory(context.Context, int, string
 func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []string) string {
 	t.Helper()
 
-	tempDir := t.TempDir()
-	for _, file := range files {
-		path := filepath.Join(tempDir, rootName, file)
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, "content for %s", file), 0o600))
-	}
-
 	info := metainfo.Info{
 		Name:        rootName,
 		PieceLength: 256 * 1024,
 	}
-	require.NoError(t, info.BuildFromFilePath(filepath.Join(tempDir, rootName)))
-	info.Name = rootName
+	for _, file := range files {
+		content := fmt.Appendf(nil, "content for %s", file)
+		info.Files = append(info.Files, metainfo.FileInfo{
+			Path:   strings.Split(file, "/"),
+			Length: int64(len(content)),
+		})
+	}
+	// Order files by full path, the shape every real torrent-creation tool
+	// produces.
+	slices.SortFunc(info.Files, func(a, b metainfo.FileInfo) int {
+		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
+	})
 
 	infoBytes, err := bencode.Marshal(info)
 	require.NoError(t, err)
@@ -228,7 +231,7 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 			SeasonPackCoverageThreshold: 1,
 		}, nil
 	})
-	setServiceField(t, svc, "seasonPackLinkCreator", func(*hardlinktree.TreePlan) error { return nil })
+	setServiceField(t, svc, "seasonPackLinkCreator", func(*hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil })
 
 	handler := &CrossSeedHandler{service: svc}
 

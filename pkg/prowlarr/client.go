@@ -291,38 +291,6 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	return &payload, nil
 }
 
-// GetTrackerDomains extracts actual tracker domains from Prowlarr indexers
-func (c *Client) GetTrackerDomains(ctx context.Context) ([]string, error) {
-	indexers, err := c.GetIndexers(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get indexers: %w", err)
-	}
-
-	var domains []string
-	domainMap := make(map[string]bool)
-
-	for _, indexer := range indexers {
-		if !indexer.Enable {
-			continue
-		}
-
-		// Get detailed indexer information to extract the tracker URL
-		detail, err := c.GetIndexer(ctx, indexer.ID)
-		if err != nil {
-			continue // Skip this indexer if we can't get details
-		}
-
-		// Extract tracker domain from indexer fields
-		domain := ExtractDomainFromIndexerFields(detail.Fields)
-		if domain != "" && !domainMap[domain] {
-			domainMap[domain] = true
-			domains = append(domains, domain)
-		}
-	}
-
-	return domains, nil
-}
-
 // ExtractDomainFromIndexerFields extracts the tracker domain from Prowlarr indexer configuration fields
 func ExtractDomainFromIndexerFields(fields []IndexerField) string {
 	// Look for common field names that contain the tracker URL
