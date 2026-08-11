@@ -207,6 +207,7 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
 export const HARDLINK_SCOPE_VALUES = [
   { value: "none", label: "None" },
   { value: "torrents_only", label: "Only other torrents" },
+  { value: "inside_qbittorrent", label: "Inside qBittorrent (even if also linked outside)" },
   { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
 ];
 

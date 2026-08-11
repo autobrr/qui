@@ -129,6 +129,8 @@ const (
 	HardlinkScopeNone               = models.HardlinkScopeNone
 	HardlinkScopeTorrentsOnly       = models.HardlinkScopeTorrentsOnly
 	HardlinkScopeOutsideQBitTorrent = models.HardlinkScopeOutsideQBitTorrent
+	HardlinkScopeBoth               = models.HardlinkScopeBoth
+	HardlinkScopeInsideQBitTorrent  = models.HardlinkScopeInsideQBitTorrent
 
 	// Delete modes
 	DeleteModeNone                        = models.DeleteModeNone

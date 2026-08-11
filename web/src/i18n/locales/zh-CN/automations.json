@@ -263,7 +263,9 @@
     "hardlinkScopes": {
       "none": "无",
       "torrents_only": "仅其他种子",
-      "outside_qbittorrent": "qBittorrent 外部（媒体库/导入）"
+      "inside_qbittorrent": "qBittorrent 内部（即使同时链接到外部）",
+      "outside_qbittorrent": "qBittorrent 外部（媒体库/导入）",
+      "both": "qBittorrent 内部 + 外部"
     },
     "trackerStatuses": {
       "not_contacted": "未联系",

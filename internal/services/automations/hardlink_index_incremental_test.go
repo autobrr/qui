@@ -303,3 +303,44 @@ func TestDeriveLinkCountsPrefersTheHigherLinkCount(t *testing.T) {
 	require.Equal(t, uint64(9), tracker.nlink)
 	require.Equal(t, 2, tracker.uniquePathCount, "two distinct paths point at the file")
 }
+
+// bothScopeFixture builds two torrents sharing one file (inside link) that is also
+// hardlinked into a library path (outside link): nlink=3, two set paths -> "both".
+func bothScopeFixture(t *testing.T) map[string]*torrentFileInfo {
+	t.Helper()
+	dir := t.TempDir()
+	pathA, _ := linkPair(t, dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "library"), 0o700))
+	require.NoError(t, os.Link(pathA, filepath.Join(dir, "library", "movie.mkv")))
+	return map[string]*torrentFileInfo{
+		"hashA": scanOne(t, filepath.Join(dir, "a"), "movie.mkv"),
+		"hashB": scanOne(t, filepath.Join(dir, "b"), "movie.mkv"),
+	}
+}
+
+// A "both" torrent still has links outside the client, so it must never enter the
+// delete-safe groups, or a delete rule would remove data a library still points at.
+func TestApplyLinkState_BothScopeIsNotDeleteSafe(t *testing.T) {
+	t.Parallel()
+
+	index := indexFrom(bothScopeFixture(t))
+
+	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash["hashA"])
+	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash["hashB"])
+	require.Len(t, index.GroupBySignature, 1, "the pair still groups as hardlink duplicates")
+	require.Empty(t, index.DeleteSafeGroupBySignature, "outside-linked torrents must not be delete-safe")
+}
+
+// The delete verifier compares a fresh rescan against the indexed scope and vetoes on
+// mismatch. The rescan must be able to answer "both", or every both-scoped torrent
+// would fail verification forever.
+func TestScopeAfterRescanReportsBoth(t *testing.T) {
+	t.Parallel()
+
+	scans := bothScopeFixture(t)
+	index := indexFrom(scans)
+	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash["hashA"])
+
+	require.Equal(t, HardlinkScopeBoth, index.scopeAfterRescan(scans["hashA"]),
+		"rescan must agree with the indexed scope for an unchanged torrent")
+}

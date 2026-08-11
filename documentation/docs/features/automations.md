@@ -759,11 +759,19 @@ When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by c
 
 It then counts how many unique file paths across the entire qBittorrent torrent set point to each inode. The scope for each torrent is determined by comparing these two numbers:
 
-| Scope                 | Condition                                                                    | Meaning                                                                                           |
-| --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `none`                | No file has `nlink > 1`                                                      | No hardlinks detected.                                                                            |
-| `torrents_only`       | At least one file has `nlink > 1`, and no file has `nlink > uniquePathCount` | Hardlinks exist, but only between torrents in qBittorrent. No external library links.             |
-| `outside_qbittorrent` | Any file has `nlink > uniquePathCount`                                       | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
+| Scope                 | Condition                                                                     | Meaning                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `none`                | No file has `nlink > 1`                                                       | No hardlinks detected.                                                                            |
+| `torrents_only`       | Some file is linked inside the torrent set, no file has outside links         | Hardlinks exist, but only between torrents in qBittorrent. No external library links.             |
+| `outside_qbittorrent` | Some file has `nlink > uniquePathCount`, no file is linked inside the set     | Something outside qBittorrent has hardlinked the file — typically a Sonarr/Radarr library import. |
+| `both`                | Some file is linked inside the torrent set, some file also has outside links  | Linked to other torrents *and* to an external location (e.g. a cross-seeded library import).      |
+
+In conditions, two additional predicate values are available on top of the exact scopes above:
+
+- `inside_qbittorrent` matches torrents linked to other torrents in the set, even when they are also linked outside (`torrents_only` or `both`).
+- `outside_qbittorrent` as a condition value keeps its historical meaning: it matches any torrent with outside links (`outside_qbittorrent` or `both`).
+
+Combined with AND/OR groups and the "is not" operator, every combination of the inside/outside link states is expressible.
 
 :::note
 `HARDLINK_SCOPE` only reflects hardlink metadata. Cross-seeds are detected separately (ContentPath matching), so a torrent can have `HARDLINK_SCOPE = none` and still be cross-seeded.

@@ -56,7 +56,7 @@ type EvalContext struct {
 	TrackerDownSet map[string]struct{}
 	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
 	TrackerErrorSet map[string]struct{}
-	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
+	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
 	// Same values as HardlinkScopeByHash but considers files from all instances.
@@ -1219,15 +1219,26 @@ func compareBool(value bool, cond *RuleCondition) bool {
 	}
 }
 
-// compareHardlinkScope compares a hardlink scope value against the condition.
+// compareHardlinkScope compares a stored hardlink scope value against the condition.
 func compareHardlinkScope(value string, cond *RuleCondition) bool {
 	switch cond.Operator {
 	case OperatorEqual:
-		return strings.EqualFold(value, cond.Value)
+		return hardlinkScopeMatches(value, cond.Value)
 	case OperatorNotEqual:
-		return !strings.EqualFold(value, cond.Value)
+		return !hardlinkScopeMatches(value, cond.Value)
 	default:
 		return false
+	}
+}
+
+func hardlinkScopeMatches(value, condValue string) bool {
+	switch {
+	case strings.EqualFold(condValue, HardlinkScopeInsideQBitTorrent):
+		return value == HardlinkScopeTorrentsOnly || value == HardlinkScopeBoth
+	case strings.EqualFold(condValue, HardlinkScopeOutsideQBitTorrent):
+		return value == HardlinkScopeOutsideQBitTorrent || value == HardlinkScopeBoth
+	default:
+		return strings.EqualFold(value, condValue)
 	}
 }
 

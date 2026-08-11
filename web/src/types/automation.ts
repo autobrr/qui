@@ -427,8 +427,8 @@ export interface AutomationPreviewTorrent {
   isUnregistered?: boolean
   isCrossSeed?: boolean
   isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
-  hardlinkScope?: string // none, torrents_only, outside_qbittorrent
-  hardlinkCrossScope?: string // cross-instance: none, torrents_only, outside_qbittorrent
+  hardlinkScope?: string // none, torrents_only, outside_qbittorrent, both
+  hardlinkCrossScope?: string // cross-instance: none, torrents_only, outside_qbittorrent, both
   // Additional fields for dynamic columns
   numSeeds: number
   numComplete: number

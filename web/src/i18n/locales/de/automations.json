@@ -263,7 +263,9 @@
     "hardlinkScopes": {
       "none": "Keine",
       "torrents_only": "Nur andere Torrents",
-      "outside_qbittorrent": "Außerhalb von qBittorrent (Bibliothek/Import)"
+      "inside_qbittorrent": "Innerhalb von qBittorrent (auch wenn zusätzlich außerhalb verlinkt)",
+      "outside_qbittorrent": "Außerhalb von qBittorrent (Bibliothek/Import)",
+      "both": "Innerhalb + außerhalb von qBittorrent"
     },
     "trackerStatuses": {
       "not_contacted": "Nicht kontaktiert",

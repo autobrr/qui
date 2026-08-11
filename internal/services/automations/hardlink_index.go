@@ -60,7 +60,7 @@ type HardlinkIndex struct {
 	// Only contains groups with 2+ members.
 	DeleteSafeGroupBySignature map[string][]string
 
-	// ScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent).
+	// ScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both).
 	// Used for HARDLINK_SCOPE condition evaluation.
 	ScopeByHash map[string]string
 
@@ -426,20 +426,41 @@ func (idx *HardlinkIndex) scopeAfterRescan(info *torrentFileInfo) string {
 		return ""
 	}
 
-	scope := HardlinkScopeNone
+	// Same inside/outside partition as scopeForTorrent, or a "both" torrent could
+	// never verify equal to its indexed scope and its delete would always be vetoed.
+	hasInside, hasOutside := false, false
 	for _, lf := range info.linkedFiles {
 		uniquePaths := 1
 		if tracker := idx.buildState.globalFileIDMap[lf.fileID]; tracker != nil && tracker.uniquePathCount > 1 {
 			uniquePaths = tracker.uniquePathCount
 		}
 
-		if lf.nlink > uint64(uniquePaths) { //nolint:gosec // uniquePaths is always positive
-			return HardlinkScopeOutsideQBitTorrent
+		if uniquePaths > 1 {
+			hasInside = true
 		}
-		scope = HardlinkScopeTorrentsOnly
+		if lf.nlink > uint64(uniquePaths) { //nolint:gosec // uniquePaths is always positive
+			hasOutside = true
+		}
+		if hasInside && hasOutside {
+			break
+		}
 	}
 
-	return scope
+	return hardlinkScope(hasInside, hasOutside)
+}
+
+// hardlinkScope names the partition cell for the two independent link facts.
+func hardlinkScope(hasInside, hasOutside bool) string {
+	switch {
+	case hasInside && hasOutside:
+		return HardlinkScopeBoth
+	case hasOutside:
+		return HardlinkScopeOutsideQBitTorrent
+	case hasInside:
+		return HardlinkScopeTorrentsOnly
+	default:
+		return HardlinkScopeNone
+	}
 }
 
 // verifyDeleteCandidates re-reads the given torrents' files and returns the hashes whose
@@ -714,7 +735,7 @@ func (idx *HardlinkIndex) applyLinkState(state *hardlinkBuildState) indexStats {
 			continue
 		}
 
-		hasOutsideLinks := scope == HardlinkScopeOutsideQBitTorrent
+		hasOutsideLinks := scope == HardlinkScopeOutsideQBitTorrent || scope == HardlinkScopeBoth
 
 		// Only include in duplicate index if:
 		// 1. Has hardlinks (otherwise not a duplicate candidate)
@@ -830,7 +851,7 @@ func (idx *HardlinkIndex) GetHardlinkCopies(triggerHash string) []string {
 	return copies
 }
 
-// GetHardlinkScope returns the hardlink scope for a torrent (none, torrents_only, outside_qbittorrent).
+// GetHardlinkScope returns the hardlink scope for a torrent (none, torrents_only, outside_qbittorrent, both).
 // Returns empty string if the scope is unknown (torrent not in index, files inaccessible, etc.).
 func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
 	if idx == nil {
@@ -911,12 +932,26 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		return
 	}
 
+	// Same for other incomplete scans: peer instances that failed to answer, or an
+	// exhausted Lstat budget with deficits left (unscanned links indistinguishable
+	// from external ones). A scope computed from incomplete evidence could match
+	// HARDLINK_SCOPE_CROSS conditions wrongly; a nil CrossScopeByHash means those
+	// conditions never match (unknown-safe).
+	if stats.skipped > 0 || (stats.lstatCalls >= maxCrossInstanceLstatCalls && len(deficitSet) > 0) {
+		log.Warn().Int("instanceID", instanceID).
+			Int("skippedInstances", stats.skipped).
+			Int("lstatCalls", stats.lstatCalls).
+			Int("remainingDeficits", len(deficitSet)).
+			Msg("automations: cross-instance scope incomplete, will retry on next run")
+		return
+	}
+
 	// Recompute scope for all torrents using augmented counts. The state stays so the
 	// next torrent set change can update incrementally; the counts this scan raised are
 	// discarded there, because deriveLinkCounts rebuilds them from the per-torrent scans.
 	index.CrossScopeByHash = computeScopeMap(state)
 
-	var countNone, countTorrentsOnly, countOutside int
+	var countNone, countTorrentsOnly, countOutside, countBoth int
 	for _, scope := range index.CrossScopeByHash {
 		switch scope {
 		case HardlinkScopeNone:
@@ -925,6 +960,8 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 			countTorrentsOnly++
 		case HardlinkScopeOutsideQBitTorrent:
 			countOutside++
+		case HardlinkScopeBoth:
+			countBoth++
 		}
 	}
 
@@ -937,6 +974,7 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		Int("crossScopeNone", countNone).
 		Int("crossScopeTorrentsOnly", countTorrentsOnly).
 		Int("crossScopeOutside", countOutside).
+		Int("crossScopeBoth", countBoth).
 		Int("lstatCalls", stats.lstatCalls).
 		Int("lstatErrors", stats.lstatErrors).
 		Dur("crossScopeBuildTime", time.Since(phase2Start)).
@@ -1108,21 +1146,32 @@ func computeScopeMap(state *hardlinkBuildState) map[string]string {
 		if !info.allAccessible || len(info.fileIDs) == 0 {
 			continue
 		}
-		scope := HardlinkScopeNone
-		for _, fileID := range info.fileIDs {
-			tracker := state.globalFileIDMap[fileID]
-			if tracker == nil || tracker.nlink <= 1 {
-				continue
-			}
-			if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
-				scope = HardlinkScopeOutsideQBitTorrent
-				break
-			}
-			scope = HardlinkScopeTorrentsOnly
-		}
-		result[hash] = scope
+		result[hash] = scopeForTorrent(info, state.globalFileIDMap)
 	}
 	return result
+}
+
+// scopeForTorrent partitions a torrent into none/torrents_only/outside_qbittorrent/both
+// by checking each file for links inside the torrent set (inode shared by 2+ set paths)
+// and outside it (nlink exceeds the paths accounted for in the set).
+func scopeForTorrent(info *torrentFileInfo, fileIDMap map[hardlink.FileID]*fileIDTracker) string {
+	hasInside, hasOutside := false, false
+	for _, fileID := range info.fileIDs {
+		tracker := fileIDMap[fileID]
+		if tracker == nil || tracker.nlink <= 1 {
+			continue // Not hard-linked
+		}
+		if tracker.uniquePathCount > 1 {
+			hasInside = true
+		}
+		if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+			hasOutside = true
+		}
+		if hasInside && hasOutside {
+			break
+		}
+	}
+	return hardlinkScope(hasInside, hasOutside)
 }
 
 // Ensure syncManager implements the required interface

@@ -141,9 +141,7 @@ export function DashboardSettingsDialog() {
                     htmlFor={`section-${sectionId}`}
                     className="flex-1 text-sm cursor-pointer"
                   >
-                    {SECTION_IDS.includes(sectionId as (typeof SECTION_IDS)[number])
-                      ? t(`settingsDialog.sectionLabels.${sectionId}`)
-                      : sectionId}
+                    {SECTION_IDS.includes(sectionId as (typeof SECTION_IDS)[number])? t(`settingsDialog.sectionLabels.${sectionId}`): sectionId}
                   </Label>
                   <div className="flex items-center gap-1">
                     <Button

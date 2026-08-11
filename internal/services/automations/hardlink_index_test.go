@@ -375,6 +375,75 @@ func TestCrossScope_HardlinksWithinSameInstance(t *testing.T) {
 	}
 }
 
+func TestScope_InsideAndOutsideLinksOnSameFileYieldBoth(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Two torrents share a hardlinked file, and the same file is also linked
+	// into a library path outside the torrent set (nlink=3, uniquePathCount=2).
+	original := filepath.Join(dir, "instance-a", "torrent1", "movie.mkv")
+	createFile(t, original)
+	for _, p := range []string{
+		filepath.Join(dir, "instance-a", "torrent2", "movie.mkv"),
+		filepath.Join(dir, "library", "movie.mkv"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(original, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	state := buildStateFromLstat(t, map[string][]string{
+		"hash1": {original},
+		"hash2": {filepath.Join(dir, "instance-a", "torrent2", "movie.mkv")},
+	})
+	scope := computeScopeFromState(state)
+
+	for _, hash := range []string{"hash1", "hash2"} {
+		if got := scope[hash]; got != HardlinkScopeBoth {
+			t.Errorf("%s: expected %q, got %q", hash, HardlinkScopeBoth, got)
+		}
+	}
+}
+
+func TestScope_MixedInsideAndOutsideFilesYieldBoth(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// One file is hardlinked to another torrent (inside), a second file is
+	// hardlinked to a library path (outside). The torrent spans both → "both".
+	insideFile := filepath.Join(dir, "instance-a", "pack", "episode1.mkv")
+	outsideFile := filepath.Join(dir, "instance-a", "pack", "episode2.mkv")
+	createFile(t, insideFile)
+	createFile(t, outsideFile)
+	crossSeed := filepath.Join(dir, "instance-a", "torrent2", "episode1.mkv")
+	library := filepath.Join(dir, "library", "episode2.mkv")
+	for src, dst := range map[string]string{insideFile: crossSeed, outsideFile: library} {
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(src, dst); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	state := buildStateFromLstat(t, map[string][]string{
+		"pack":  {insideFile, outsideFile},
+		"hash2": {crossSeed},
+	})
+	scope := computeScopeFromState(state)
+
+	if got := scope["pack"]; got != HardlinkScopeBoth {
+		t.Errorf("pack: expected %q, got %q", HardlinkScopeBoth, got)
+	}
+	// The cross-seed only holds the inside-linked file → torrents_only.
+	if got := scope["hash2"]; got != HardlinkScopeTorrentsOnly {
+		t.Errorf("hash2: expected %q, got %q", HardlinkScopeTorrentsOnly, got)
+	}
+}
+
 func TestCrossScope_CrossInstanceResolvesDeficit(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -425,7 +494,7 @@ func TestCrossScope_CrossInstancePlusExternal(t *testing.T) {
 	dir := t.TempDir()
 
 	// Instance A torrent, Instance B cross-seed, plus external media library hardlink.
-	// After augmentation, cross-scope should still be outside_qbittorrent.
+	// After augmentation, cross-scope is linked both inside and outside the set.
 	fileA := filepath.Join(dir, "instance-a", "torrent", "movie.mkv")
 	createFile(t, fileA)
 	fileB := filepath.Join(dir, "instance-b", "xseed", "movie.mkv")
@@ -461,10 +530,10 @@ func TestCrossScope_CrossInstancePlusExternal(t *testing.T) {
 	state.seenPaths[fileB] = struct{}{}
 	tracker.uniquePathCount++
 
-	// nlink=3 (A + B + media), uniquePathCount=2 (A + B) → still outside.
+	// nlink=3 (A + B + media), uniquePathCount=2 (A + B) → inside + outside.
 	crossScope := computeScopeFromState(state)
-	if got := crossScope["hashA"]; got != HardlinkScopeOutsideQBitTorrent {
-		t.Errorf("cross-scope: expected %q, got %q", HardlinkScopeOutsideQBitTorrent, got)
+	if got := crossScope["hashA"]; got != HardlinkScopeBoth {
+		t.Errorf("cross-scope: expected %q, got %q", HardlinkScopeBoth, got)
 	}
 }
 
@@ -514,11 +583,12 @@ func TestCrossScope_DeficitSetResolution(t *testing.T) {
 		tracker.uniquePathCount++
 	}
 
-	// file1 is now resolved, but file2 still has nlink > uniquePathCount.
+	// file1 is now linked inside the torrent set, but file2 still has
+	// nlink > uniquePathCount → linked both inside and outside.
 	crossScope := computeScopeFromState(state)
-	if got := crossScope["hashT1"]; got != HardlinkScopeOutsideQBitTorrent {
-		t.Errorf("cross-scope: expected %q (file2 still has external link), got %q",
-			HardlinkScopeOutsideQBitTorrent, got)
+	if got := crossScope["hashT1"]; got != HardlinkScopeBoth {
+		t.Errorf("cross-scope: expected %q (file1 inside, file2 external), got %q",
+			HardlinkScopeBoth, got)
 	}
 }
 
