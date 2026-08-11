@@ -105,6 +105,17 @@ func TestBuildEnsembleSeasonCandidates(t *testing.T) {
 			},
 		},
 		{
+			// The two-parter must not suppress the group as a seeded pack, and it
+			// must count episodes 1 and 2, or the group stays below the floor.
+			name: "a seeded two-parter does not suppress and counts each episode it names",
+			torrents: []qbt.Torrent{
+				episode("Show.Title.S01E01E02.1080p.WEB.H264-GRP"),
+				episode("Show.Title.S01E03.1080p.WEB.H264-GRP"),
+			},
+			wantHashes: []string{"season:" + norm("Show Title") + ":s01"},
+			wantNames:  []string{"Show Title S01"},
+		},
+		{
 			name: "seeded pack suppresses its season only",
 			torrents: []qbt.Torrent{
 				episode("Show.Title.S01E01.1080p.WEB.H264-GRP"),

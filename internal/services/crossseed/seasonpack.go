@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/reflinktree"
+	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -1134,7 +1135,8 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		}
 
 		parsed := s.releaseCache.Parse(torrent.Name)
-		if !isTVEpisode(parsed) {
+		isRange := releases.IsEpisodeRange(parsed)
+		if !isTVEpisode(parsed) && !isRange {
 			continue
 		}
 
@@ -1152,6 +1154,12 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		// path for exactly the anime libraries this matching exists for.
 		resolved := parsed
 		id := episodeIdentity{series: parsed.Series, episode: parsed.Episode}
+		if isRange {
+			// A multi-episode range parses with Episode 0. Identify it by its
+			// first episode, the same identity its file carries inside the pack.
+			eps := parsed.SeriesEpisodes()
+			id = episodeIdentity{series: eps[0][0], episode: eps[0][1]}
+		}
 		if packEpisodes != nil {
 			localSeasonless := parsed.Series == 0
 			targetID := id

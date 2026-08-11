@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 // Ensemble season search synthesizes virtual "season pack" queue entries from
@@ -111,6 +112,11 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		if !isTVSeasonPack(release) {
 			continue
 		}
+		// A multi-episode range ("S01E01E02") parses as a pack but is not the
+		// season: owning a two-parter must not cancel the season search.
+		if releases.IsEpisodeRange(release) {
+			continue
+		}
 		key := ensembleGroupKey{
 			normalizedTitle: s.stringNormalizer.Normalize(release.Title),
 			season:          release.Series,
@@ -126,7 +132,8 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 			continue
 		}
 		release := s.releaseCache.Parse(torrent.Name)
-		if !isTVEpisode(release) {
+		isRange := releases.IsEpisodeRange(release)
+		if !isTVEpisode(release) && !isRange {
 			continue
 		}
 		key := ensembleGroupKey{
@@ -144,7 +151,16 @@ func (s *Service) buildEnsembleSeasonCandidates(torrents, packSource []qbt.Torre
 		if group.displayTitle == "" {
 			group.displayTitle = release.Title
 		}
-		group.episodes[release.Episode] = struct{}{}
+		if isRange {
+			// A range counts each episode it names toward the group.
+			for _, se := range release.SeriesEpisodes() {
+				if se[0] == release.Series {
+					group.episodes[se[1]] = struct{}{}
+				}
+			}
+		} else {
+			group.episodes[release.Episode] = struct{}{}
+		}
 	}
 
 	virtual := make([]qbt.Torrent, 0, len(groups))

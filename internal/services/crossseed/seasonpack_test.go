@@ -2819,3 +2819,30 @@ func TestPackEpisodeRejectReason(t *testing.T) {
 	require.Equal(t, "episode not in pack", packEpisodeRejectReason(false))
 	require.Equal(t, "episode numbering mismatch", packEpisodeRejectReason(true))
 }
+
+// A multi-episode local ("S03E25E26") parses as a pack since the range
+// enrichment, but it is still an episode source for season pack assembly,
+// identified by its first episode, the identity its file carries in the pack.
+func TestMatchEpisodeCandidates_MultiEpisodeLocalStaysAnEpisodeSource(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	parsedPack := rls.ParseString(packName)
+	packRelease := &parsedPack
+
+	packEpisodes := map[episodeIdentity]packEpisodeOrigin{
+		{series: 3, episode: 25}: {seasoned: true},
+	}
+
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	local := qbt.Torrent{Hash: "e2526", Name: "Cool.Show.S03E25E26.1080p.WEB.x264-GRP", Progress: 1.0}
+	cached := buildCrossInstanceViews(inst, []qbt.Torrent{local})
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, packEpisodes, settings, nil)
+	require.Len(t, got, 1)
+	matches, ok := got[episodeIdentity{series: 3, episode: 25}]
+	require.True(t, ok, "range local must be identified by its first episode")
+	require.Len(t, matches, 1)
+	require.Equal(t, "e2526", matches[0].torrentHash)
+}

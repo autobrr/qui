@@ -204,3 +204,16 @@ func TestParser_EpisodeRangeBecomesPack(t *testing.T) {
 		})
 	}
 }
+
+func TestIsEpisodeRange(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.S01E05E06.1080p.WEB-GRP")))
+	require.True(t, IsEpisodeRange(parser.Parse("Darker than Black S00E02-E05 720p BluRay x264-Headpatter")))
+	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S01E05.1080p.WEB-GRP")))
+	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S01.1080p.WEB-GRP")))
+	// A path naming the same episode twice is one episode, not a range.
+	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S11E11.1080p.WEB-GRP/Show.Name.S11E11.1080p.WEB-GRP.mkv")))
+	require.False(t, IsEpisodeRange(nil))
+}
