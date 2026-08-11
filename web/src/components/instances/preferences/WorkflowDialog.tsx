@@ -33,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect, type Option } from "@/components/ui/multi-select"
@@ -3194,7 +3195,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.tagEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.tag.title")}</Label>
+                          <Label className="text-sm font-medium">
+                            {t("preferences.workflowDialog.tag.title")}
+                            <FieldHelp>{t("preferences.workflowDialog.tag.multipleActionsHelp")}</FieldHelp>
+                          </Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -3384,9 +3388,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             {t("preferences.workflowDialog.tag.addAction")}
                           </Button>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {t("preferences.workflowDialog.tag.multipleActionsHelp")}
-                        </p>
                       </div>
                     )}
 
@@ -3579,16 +3580,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           )}
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("preferences.workflowDialog.export.savePathLabel")}</Label>
+                          <Label className="text-xs">
+                            {t("preferences.workflowDialog.export.savePathLabel")}
+                            <FieldHelp>
+                              {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .Tracker }}"}</code>
+                            </FieldHelp>
+                          </Label>
                           <Input
                             value={formState.exprExportSavePath}
                             onChange={(e) => setFormState(prev => ({ ...prev, exprExportSavePath: e.target.value }))}
                             placeholder={t("preferences.workflowDialog.export.savePathPlaceholder")}
                             className="text-sm"
                           />
-                          <p className="text-xs text-muted-foreground">
-                            {t("preferences.workflowDialog.export.savePathHelp")} <code>{"{{ .Name }}"}</code>, <code>{"{{ .Category }}"}</code>, <code>{"{{ .Hash }}"}</code>, <code>{"{{ .Tracker }}"}</code>
-                          </p>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">{t("preferences.workflowDialog.export.categoryLabel")}</Label>
@@ -3982,9 +3985,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         exprBlockIfCrossSeedInCategories: [...prev.exprBlockIfCrossSeedInCategories, value],
                       }))}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {t("preferences.workflowDialog.category.skipDescription")}
-                    </p>
                   </div>
                 )}
               </div>
@@ -4298,7 +4298,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           </AlertDialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <Label htmlFor="group-id" className="text-sm">{t("preferences.workflowDialog.customGroup.groupId")}</Label>
+              <Label htmlFor="group-id" className="text-sm">
+                {t("preferences.workflowDialog.customGroup.groupId")}
+                <FieldHelp>{t("preferences.workflowDialog.customGroup.groupIdHelp")}</FieldHelp>
+              </Label>
               <Input
                 id="group-id"
                 value={newGroupId}
@@ -4306,11 +4309,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 placeholder={t("preferences.workflowDialog.customGroup.groupIdPlaceholder")}
                 className="h-8 text-xs"
               />
-              <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.customGroup.groupIdHelp")}</p>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-sm">{t("preferences.workflowDialog.customGroup.keys")}</Label>
+              <Label className="text-sm">
+                {t("preferences.workflowDialog.customGroup.keys")}
+                <FieldHelp>{t("preferences.workflowDialog.customGroup.keysHelp")}</FieldHelp>
+              </Label>
               <div className="grid grid-cols-2 gap-1">
                 {AVAILABLE_GROUP_KEYS.map(key => (
                   <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
@@ -4330,13 +4335,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   </label>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {t("preferences.workflowDialog.customGroup.keysHelp")}
-              </p>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-sm">{t("preferences.workflowDialog.customGroup.ambiguousPolicy")}</Label>
+              <Label className="text-sm">
+                {t("preferences.workflowDialog.customGroup.ambiguousPolicy")}
+                <FieldHelp>{t("preferences.workflowDialog.customGroup.ambiguousPolicyHelp")}</FieldHelp>
+              </Label>
               <Select
                 value={newGroupAmbiguousPolicy || AMBIGUOUS_POLICY_NONE_VALUE}
                 onValueChange={(value) => setNewGroupAmbiguousPolicy(
@@ -4352,14 +4357,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <SelectItem value="skip">{t("preferences.workflowDialog.customGroup.skip")}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {t("preferences.workflowDialog.customGroup.ambiguousPolicyHelp")}
-              </p>
             </div>
 
             {newGroupAmbiguousPolicy === "verify_overlap" && (
               <div className="space-y-1">
-                <Label htmlFor="min-overlap" className="text-sm">{t("preferences.workflowDialog.customGroup.minFileOverlap")}</Label>
+                <Label htmlFor="min-overlap" className="text-sm">
+                  {t("preferences.workflowDialog.customGroup.minFileOverlap")}
+                  <FieldHelp>{t("preferences.workflowDialog.customGroup.defaultOverlap")}</FieldHelp>
+                </Label>
                 <Input
                   id="min-overlap"
                   type="number"
@@ -4369,7 +4374,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   max="100"
                   className="h-8 text-xs"
                 />
-                <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.customGroup.defaultOverlap")}</p>
               </div>
             )}
           </div>

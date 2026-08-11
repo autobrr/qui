@@ -6,6 +6,7 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useTranslation } from "react-i18next"
@@ -27,7 +28,6 @@ function SwitchSetting({
   description?: string
 }) {
   const switchId = React.useId()
-  const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
     <label
@@ -38,14 +38,9 @@ function SwitchSetting({
         id={switchId}
         checked={checked}
         onCheckedChange={onCheckedChange}
-        aria-describedby={descriptionId}
       />
-      <div className="space-y-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        {description && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </label>
   )
 }

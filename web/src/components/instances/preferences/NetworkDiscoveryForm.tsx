@@ -6,6 +6,7 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -33,7 +34,6 @@ function SwitchSetting({
   onChange: (checked: boolean) => void
 }) {
   const switchId = React.useId()
-  const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
     <label
@@ -44,14 +44,9 @@ function SwitchSetting({
         id={switchId}
         checked={checked}
         onCheckedChange={onChange}
-        aria-describedby={descriptionId}
       />
-      <div className="space-y-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        {description && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </label>
   )
 }
@@ -222,7 +217,10 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
             <form.Field name="encryption">
               {(field) => (
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">{t("preferences.networkDiscovery.protocolEncryption")}</Label>
+                  <Label className="flex items-center gap-2 text-sm font-medium">
+                    {t("preferences.networkDiscovery.protocolEncryption")}
+                    <FieldHelp>{t("preferences.networkDiscovery.encryptionDescription")}</FieldHelp>
+                  </Label>
                   <Select
                     value={field.state.value.toString()}
                     onValueChange={(value) => field.handleChange(parseInt(value))}
@@ -236,9 +234,6 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
                       <SelectItem value="2">{getEncryptionLabel(2)}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {t("preferences.networkDiscovery.encryptionDescription")}
-                  </p>
                 </div>
               )}
             </form.Field>

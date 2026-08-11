@@ -4,6 +4,7 @@
  */
 
 import React from "react"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useTranslation } from "react-i18next"
@@ -73,15 +74,15 @@ export function NumberInputWithUnlimited({
 
   return (
     <div className="space-y-2">
-      <div className="space-y-1">
-        <Label className="text-sm font-medium">{label}</Label>
+      <Label className="flex items-center gap-2 text-sm font-medium">
+        {label}
         {description && (
-          <p className="text-xs text-muted-foreground">
+          <FieldHelp>
             {description}
             {allowUnlimited && t("numberInput.useUnlimited")}
-          </p>
+          </FieldHelp>
         )}
-      </div>
+      </Label>
       <Input
         type="number"
         value={displayValue}
