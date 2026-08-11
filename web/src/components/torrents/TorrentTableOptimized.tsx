@@ -31,21 +31,20 @@ import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
-import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes } from "@/lib/utils"
 import {
-  flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
-  useReactTable
+  useReactTable,
+  type Row
 } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
-import { TorrentContextMenu } from "./TorrentContextMenu"
+import { type TableViewMode } from "./TorrentTableColumns"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import { Badge } from "@/components/ui/badge"
@@ -112,8 +111,8 @@ import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
-import { CompactRow } from "./table/CompactRow"
 import { TableColumnHeader } from "./table/TableColumnHeader"
+import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
@@ -438,8 +437,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
   const isAllInstancesView = instanceId <= 0
 
-  const effectiveIncludedCategories = filters?.expandedCategories ?? filters?.categories ?? []
-  const effectiveExcludedCategories = filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? []
+  // Memoized so the `?? []` fallback cannot mint a fresh array per render:
+  // these feed fetchAllTorrentField, whose identity anchors the shared row
+  // menu bundle.
+  const effectiveIncludedCategories = useMemo(
+    () => filters?.expandedCategories ?? filters?.categories ?? [],
+    [filters]
+  )
+  const effectiveExcludedCategories = useMemo(
+    () => filters?.expandedExcludeCategories ?? filters?.excludeCategories ?? [],
+    [filters]
+  )
 
   const { isHiddenDelayed, isVisible } = useDelayedVisibility(3000)
   const isVisibilitySettled = isHiddenDelayed || isVisible
@@ -1154,6 +1162,169 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onAddTorrentModalChange,
   })
 
+  // Latest-ref for the row interaction handlers: rows are memoized, so these
+  // handlers must keep one identity for the lifetime of the table while still
+  // reading current state at click time. Assigned during render, same pattern
+  // as leafColumnIdsRef above.
+  const rowInteraction = {
+    isReadOnly,
+    isAllSelected,
+    selectedRowIds,
+    selectedHashes,
+    onTorrentSelect,
+    handleRowSelection,
+    getSelectionIdentity,
+    setRowSelection,
+    setIsAllSelected,
+    setExcludedFromSelectAll,
+  }
+  const rowInteractionRef = useRef(rowInteraction)
+  rowInteractionRef.current = rowInteraction
+
+  const handleRowClick = useCallback((e: React.MouseEvent, row: Row<Torrent>, isSelected: boolean, isRowSelected: boolean) => {
+    const s = rowInteractionRef.current
+    // Don't select when clicking checkbox or its wrapper
+    const target = e.target as HTMLElement
+    if (target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")) {
+      return
+    }
+    const torrent = row.original
+
+    if (s.isReadOnly) {
+      s.onTorrentSelect?.(isSelected ? null : torrent)
+      return
+    }
+
+    const selectionIdentity = s.getSelectionIdentity(torrent)
+    const allRows = table.getRowModel().rows
+    const currentIndex = allRows.findIndex(r => r.id === row.id)
+
+    // Handle shift-click for range selection - EXACTLY like checkbox
+    if (e.shiftKey) {
+      e.preventDefault() // Prevent text selection
+      if (lastSelectedIndexRef.current !== null) {
+        const start = Math.min(lastSelectedIndexRef.current, currentIndex)
+        const end = Math.max(lastSelectedIndexRef.current, currentIndex)
+        // Select range EXACTLY like checkbox does
+        for (let i = start; i <= end; i++) {
+          const targetRow = allRows[i]
+          if (targetRow) {
+            s.handleRowSelection(s.getSelectionIdentity(targetRow.original), true, targetRow.id)
+          }
+        }
+        // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
+      } else {
+        // No anchor - just select this row
+        s.handleRowSelection(selectionIdentity, true, row.id)
+        lastSelectedIndexRef.current = currentIndex
+      }
+      return
+    }
+
+    // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
+    if (e.ctrlKey || e.metaKey) {
+      s.handleRowSelection(selectionIdentity, !isRowSelected, row.id)
+      lastSelectedIndexRef.current = currentIndex
+      return
+    }
+
+    // Plain click - open details panel
+    // Re-clicking the currently focused row toggles both details and selection off.
+    if (isSelected && isRowSelected) {
+      if (s.isAllSelected) {
+        s.handleRowSelection(selectionIdentity, false, row.id)
+      } else {
+        s.setRowSelection(prev => {
+          if (!prev[row.id]) {
+            return prev
+          }
+
+          const next = { ...prev }
+          delete next[row.id]
+          return next
+        })
+
+        if (s.selectedRowIds.length <= 1) {
+          lastSelectedIndexRef.current = null
+        }
+      }
+
+      s.onTorrentSelect?.(null)
+      return
+    }
+
+    // If row is not selected, select only this torrent (replace selection).
+    if (!isRowSelected) {
+      s.setIsAllSelected(false)
+      s.setExcludedFromSelectAll(new Set())
+      s.setRowSelection({ [row.id]: true })
+      lastSelectedIndexRef.current = currentIndex
+    }
+    s.onTorrentSelect?.(torrent)
+  }, [table, lastSelectedIndexRef])
+
+  const handleRowContextMenu = useCallback((row: Row<Torrent>, isRowSelected: boolean) => {
+    const s = rowInteractionRef.current
+    if (s.isReadOnly) {
+      return
+    }
+    // Only select this row if not already selected and not part of a multi-selection
+    if (!isRowSelected && s.selectedHashes.length <= 1) {
+      s.setRowSelection({ [row.id]: true })
+    }
+  }, [])
+
+  // One context-menu props bundle shared by every row, memoized so the row memo
+  // compares a single reference. A member changing (selection, capabilities,
+  // pending state) re-renders the rows, which is exactly when menu content can
+  // differ.
+  const rowMenuProps = useMemo<TorrentRowMenuProps>(() => ({
+    instanceId,
+    readOnly: isReadOnly,
+    isAllSelected,
+    selectedHashes,
+    selectedTorrents,
+    effectiveSelectionCount,
+    onTorrentSelect,
+    onAction: runAction,
+    onPrepareDelete: prepareDeleteAction,
+    onPrepareTags: prepareTagsAction,
+    onPrepareComment: prepareCommentAction,
+    onPrepareCategory: prepareCategoryAction,
+    onPrepareCreateCategory: prepareCreateCategoryAction,
+    onPrepareShareLimit: prepareShareLimitAction,
+    onPrepareSpeedLimits: prepareSpeedLimitAction,
+    onPrepareLocation: prepareLocationAction,
+    onPrepareRenameTorrent: prepareRenameTorrentAction,
+    onPrepareRecheck: prepareRecheckAction,
+    onPrepareReannounce: prepareReannounceAction,
+    onPrepareTmm: prepareTmmAction,
+    availableCategories,
+    onSetCategory: handleSetCategoryDirect,
+    isPending,
+    onExport: handleExportWrapper,
+    isExporting: isExportingTorrent,
+    capabilities,
+    useSubcategories: allowSubcategories,
+    canCrossSeedSearch,
+    onCrossSeedSearch,
+    isCrossSeedSearching,
+    onFilterChange,
+    onFetchAllField: fetchAllTorrentField,
+  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchAllTorrentField])
+
+  const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
+  const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
+    showCheckbox: showCompactCheckbox,
+    incognitoMode,
+    speedUnit,
+    supportsTrackerHealth,
+    trackerIcons,
+    trackerCustomizationLookup,
+    onCheckboxPointerDown: handleCompactCheckboxPointerDown,
+    onCheckboxChange: handleCompactCheckboxChange,
+  }), [showCompactCheckbox, incognitoMode, speedUnit, supportsTrackerHealth, trackerIcons, trackerCustomizationLookup, handleCompactCheckboxPointerDown, handleCompactCheckboxChange])
+
   return (
     <>
       <SelectAllHotkey
@@ -1418,336 +1589,31 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   const row = rows[virtualRow.index]
                   if (!row || !row.original) return null
                   const torrent = row.original
-                  const selectionIdentity = getSelectionIdentity(torrent)
                   const selectedInstanceID = (selectedTorrent as Partial<CrossInstanceTorrent> | null)?.instanceId ?? instanceId
                   const rowInstanceID = (torrent as Partial<CrossInstanceTorrent>).instanceId ?? instanceId
                   const isSelected = selectedTorrent?.hash === torrent.hash && selectedInstanceID === rowInstanceID
-                  const isRowSelected = isAllSelected ? !excludedFromSelectAll.has(selectionIdentity) : row.getIsSelected()
+                  const isRowSelected = isAllSelected ? !excludedFromSelectAll.has(getSelectionIdentity(torrent)) : row.getIsSelected()
 
-                  // Render compact view for compact mode
-                  if (desktopViewMode === "compact") {
-                    return (
-                      <TorrentContextMenu
-                        key={row.id}
-                        instanceId={instanceId}
-                        readOnly={isReadOnly}
-                        torrent={torrent}
-                        isSelected={isRowSelected}
-                        isAllSelected={isAllSelected}
-                        selectedHashes={selectedHashes}
-                        selectedTorrents={selectedTorrents}
-                        effectiveSelectionCount={effectiveSelectionCount}
-                        onTorrentSelect={onTorrentSelect}
-                        onAction={runAction}
-                        onPrepareDelete={prepareDeleteAction}
-                        onPrepareTags={prepareTagsAction}
-                        onPrepareComment={prepareCommentAction}
-                        onPrepareCategory={prepareCategoryAction}
-                        onPrepareCreateCategory={prepareCreateCategoryAction}
-                        onPrepareShareLimit={prepareShareLimitAction}
-                        onPrepareSpeedLimits={prepareSpeedLimitAction}
-                        onPrepareLocation={prepareLocationAction}
-                        onPrepareRenameTorrent={prepareRenameTorrentAction}
-                        onPrepareRecheck={prepareRecheckAction}
-                        onPrepareReannounce={prepareReannounceAction}
-                        onPrepareTmm={prepareTmmAction}
-                        availableCategories={availableCategories}
-                        onSetCategory={handleSetCategoryDirect}
-                        isPending={isPending}
-                        onExport={handleExportWrapper}
-                        isExporting={isExportingTorrent}
-                        capabilities={capabilities}
-                        useSubcategories={allowSubcategories}
-                        canCrossSeedSearch={canCrossSeedSearch}
-                        onCrossSeedSearch={onCrossSeedSearch}
-                        isCrossSeedSearching={isCrossSeedSearching}
-                        onFilterChange={onFilterChange}
-                        onFetchAllField={fetchAllTorrentField}
-                      >
-                        <CompactRow
-                          torrent={torrent}
-                          rowId={row.id}
-                          rowIndex={virtualRow.index}
-                          isSelected={isSelected}
-                          isRowSelected={isRowSelected}
-                          showCheckbox={table.getColumn("select")?.getIsVisible() !== false}
-                          onClick={(e) => {
-                            const target = e.target as HTMLElement
-                            const isCheckboxElement = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]")
-                            if (isCheckboxElement) {
-                              return
-                            }
-
-                            if (isReadOnly) {
-                              if (isSelected) {
-                                onTorrentSelect?.(null)
-                              } else {
-                                onTorrentSelect?.(torrent)
-                              }
-                              return
-                            }
-
-                            // Handle shift-click for range selection
-                            if (e.shiftKey) {
-                              e.preventDefault()
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
-                              if (lastSelectedIndexRef.current !== null) {
-                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
-                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
-                                for (let i = start; i <= end; i++) {
-                                  const targetRow = allRows[i]
-                                  if (targetRow) {
-                                    handleRowSelection(getSelectionIdentity(targetRow.original), true, targetRow.id)
-                                  }
-                                }
-                              } else {
-                                handleRowSelection(selectionIdentity, true, row.id)
-                                lastSelectedIndexRef.current = currentIndex
-                              }
-                            } else if (e.ctrlKey || e.metaKey) {
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
-                              handleRowSelection(selectionIdentity, !isRowSelected, row.id)
-                              lastSelectedIndexRef.current = currentIndex
-                            } else {
-                              // Plain click - open details panel
-                              // Re-clicking the currently focused row toggles both details and selection off.
-                              if (isSelected && isRowSelected) {
-                                if (isAllSelected) {
-                                  handleRowSelection(selectionIdentity, false, row.id)
-                                } else {
-                                  setRowSelection(prev => {
-                                    if (!prev[row.id]) {
-                                      return prev
-                                    }
-
-                                    const next = { ...prev }
-                                    delete next[row.id]
-                                    return next
-                                  })
-
-                                  if (selectedRowIds.length <= 1) {
-                                    lastSelectedIndexRef.current = null
-                                  }
-                                }
-
-                                onTorrentSelect?.(null)
-                                return
-                              }
-
-                              // If row is not selected, select only this torrent (replace selection).
-                              if (!isRowSelected) {
-                                const allRows = table.getRowModel().rows
-                                const currentIndex = allRows.findIndex(r => r.id === row.id)
-                                setIsAllSelected(false)
-                                setExcludedFromSelectAll(new Set())
-                                setRowSelection({ [row.id]: true })
-                                lastSelectedIndexRef.current = currentIndex
-                              }
-                              onTorrentSelect?.(torrent)
-                            }
-                          }}
-                          onContextMenu={() => {
-                            if (isReadOnly) {
-                              return
-                            }
-                            if (!isRowSelected && selectedHashes.length <= 1) {
-                              setRowSelection({ [row.id]: true })
-                            }
-                          }}
-                          incognitoMode={incognitoMode}
-                          speedUnit={speedUnit}
-                          supportsTrackerHealth={supportsTrackerHealth}
-                          trackerIcons={trackerIcons}
-                          trackerCustomizationLookup={trackerCustomizationLookup}
-                          onCheckboxPointerDown={handleCompactCheckboxPointerDown}
-                          onCheckboxChange={handleCompactCheckboxChange}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            height: `${virtualRow.size}px`,
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        />
-                      </TorrentContextMenu>
-                    )
-                  }
-
-                  // Use memoized minTableWidth for normal table view
                   return (
-                    <TorrentContextMenu
+                    <TorrentTableRow
                       key={row.id}
-                      instanceId={instanceId}
-                      readOnly={isReadOnly}
-                      torrent={torrent}
-                      isSelected={isRowSelected}
-                      isAllSelected={isAllSelected}
-                      selectedHashes={selectedHashes}
-                      selectedTorrents={selectedTorrents}
-                      effectiveSelectionCount={effectiveSelectionCount}
-                      onTorrentSelect={onTorrentSelect}
-                      onAction={runAction}
-                      onPrepareDelete={prepareDeleteAction}
-                      onPrepareTags={prepareTagsAction}
-                      onPrepareComment={prepareCommentAction}
-                      onPrepareCategory={prepareCategoryAction}
-                      onPrepareCreateCategory={prepareCreateCategoryAction}
-                      onPrepareShareLimit={prepareShareLimitAction}
-                      onPrepareSpeedLimits={prepareSpeedLimitAction}
-                      onPrepareLocation={prepareLocationAction}
-                      onPrepareRenameTorrent={prepareRenameTorrentAction}
-                      onPrepareRecheck={prepareRecheckAction}
-                      onPrepareReannounce={prepareReannounceAction}
-                      onPrepareTmm={prepareTmmAction}
-                      availableCategories={availableCategories}
-                      onSetCategory={handleSetCategoryDirect}
-                      isPending={isPending}
-                      onExport={handleExportWrapper}
-                      isExporting={isExportingTorrent}
-                      capabilities={capabilities}
-                      useSubcategories={allowSubcategories}
-                      canCrossSeedSearch={canCrossSeedSearch}
-                      onCrossSeedSearch={onCrossSeedSearch}
-                      isCrossSeedSearching={isCrossSeedSearching}
-                      onFilterChange={onFilterChange}
-                      onFetchAllField={fetchAllTorrentField}
-                    >
-                      <div
-                        className={`flex cursor-pointer hover:bg-accent/40 ${getRowBackgroundClass(isRowSelected, isSelected, virtualRow.index)}`}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          minWidth: `${minTableWidth}px`,
-                          height: `${virtualRow.size}px`,
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                        onClick={(e) => {
-                          // Don't select when clicking checkbox or its wrapper
-                          const target = e.target as HTMLElement
-                          const isCheckbox = target.closest("[data-slot=\"checkbox\"]") || target.closest("[role=\"checkbox\"]") || target.closest(".p-1.-m-1")
-                          if (!isCheckbox) {
-                            if (isReadOnly) {
-                              if (isSelected) {
-                                onTorrentSelect?.(null)
-                              } else {
-                                onTorrentSelect?.(torrent)
-                              }
-                              return
-                            }
-
-                            // Handle shift-click for range selection - EXACTLY like checkbox
-                            if (e.shiftKey) {
-                              e.preventDefault() // Prevent text selection
-
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
-
-                              if (lastSelectedIndexRef.current !== null) {
-                                const start = Math.min(lastSelectedIndexRef.current, currentIndex)
-                                const end = Math.max(lastSelectedIndexRef.current, currentIndex)
-
-                                // Select range EXACTLY like checkbox does
-                                for (let i = start; i <= end; i++) {
-                                  const targetRow = allRows[i]
-                                  if (targetRow) {
-                                    handleRowSelection(getSelectionIdentity(targetRow.original), true, targetRow.id)
-                                  }
-                                }
-                              } else {
-                                // No anchor - just select this row
-                                handleRowSelection(selectionIdentity, true, row.id)
-                                lastSelectedIndexRef.current = currentIndex
-                              }
-
-                              // Don't update lastSelectedIndexRef on shift-click (keeps anchor stable)
-                            } else if (e.ctrlKey || e.metaKey) {
-                              // Ctrl/Cmd click - toggle single row EXACTLY like checkbox
-                              const allRows = table.getRowModel().rows
-                              const currentIndex = allRows.findIndex(r => r.id === row.id)
-
-                              handleRowSelection(selectionIdentity, !isRowSelected, row.id)
-                              lastSelectedIndexRef.current = currentIndex
-                            } else {
-                              // Plain click - open details panel
-                              // Re-clicking the currently focused row toggles both details and selection off.
-                              if (isSelected && isRowSelected) {
-                                if (isAllSelected) {
-                                  handleRowSelection(selectionIdentity, false, row.id)
-                                } else {
-                                  setRowSelection(prev => {
-                                    if (!prev[row.id]) {
-                                      return prev
-                                    }
-
-                                    const next = { ...prev }
-                                    delete next[row.id]
-                                    return next
-                                  })
-
-                                  if (selectedRowIds.length <= 1) {
-                                    lastSelectedIndexRef.current = null
-                                  }
-                                }
-
-                                onTorrentSelect?.(null)
-                                return
-                              }
-
-                              // If row is not selected, select only this torrent (replace selection).
-                              if (!isRowSelected) {
-                                const allRows = table.getRowModel().rows
-                                const currentIndex = allRows.findIndex(r => r.id === row.id)
-                                setIsAllSelected(false)
-                                setExcludedFromSelectAll(new Set())
-                                setRowSelection({ [row.id]: true })
-                                lastSelectedIndexRef.current = currentIndex
-                              }
-                              onTorrentSelect?.(torrent)
-                            }
-                          }
-                        }}
-                        onContextMenu={() => {
-                          if (isReadOnly) {
-                            return
-                          }
-                          // Only select this row if not already selected and not part of a multi-selection
-                          if (!isRowSelected && selectedHashes.length <= 1) {
-                            setRowSelection({ [row.id]: true })
-                          }
-                        }}
-                      >
-                        {row.getVisibleCells().map(cell => {
-                          // Compact columns (tracker_icon, status_icon) use px-0 to match header
-                          const isCompactColumn = cell.column.id === "tracker_icon" || cell.column.id === "status_icon"
-                          const isSelectColumn = cell.column.id === "select"
-                          return (
-                            <div
-                              key={cell.id}
-                              data-torrent-column-measure={cell.column.id}
-                              style={{
-                                width: cell.column.getSize(),
-                                flexShrink: 0,
-                              }}
-                              className={cn(
-                                "flex items-center overflow-hidden min-w-0",
-                                // Select and compact columns are centered to match header
-                                (isSelectColumn || isCompactColumn) && "justify-center",
-                                isCompactColumn? (desktopViewMode === "dense" ? "px-0 py-0.5" : "px-0 py-2"): (desktopViewMode === "dense" ? "px-2 py-0.5" : "px-3 py-2")
-                              )}
-                            >
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext()
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </TorrentContextMenu>
+                      row={row}
+                      virtualIndex={virtualRow.index}
+                      virtualStart={virtualRow.start}
+                      virtualSize={virtualRow.size}
+                      isSelected={isSelected}
+                      isRowSelected={isRowSelected}
+                      desktopViewMode={desktopViewMode as TableViewMode}
+                      minTableWidth={minTableWidth}
+                      columns={columns}
+                      columnSizing={columnSizing}
+                      columnVisibility={columnVisibility}
+                      columnOrder={columnOrder}
+                      menu={rowMenuProps}
+                      compact={compactRowProps}
+                      onRowClick={handleRowClick}
+                      onRowContextMenu={handleRowContextMenu}
+                    />
                   )
                 })}
               </div>
