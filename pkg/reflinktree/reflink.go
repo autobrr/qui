@@ -15,9 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 
-	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -61,25 +59,20 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 	}
 
 	// Create root directory if needed
-	if err := os.MkdirAll(plan.RootDir, fsutil.ContentDirMode); err != nil {
-		return nil, fmt.Errorf("create root directory %s: %w", plan.RootDir, err)
+	rootDirs, err := hardlinktree.MkdirAllTracked(plan.RootDir)
+	created.Dirs = append(created.Dirs, rootDirs...)
+	if err != nil {
+		return nil, rollbackOnError(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
 	}
 
 	// Process each file in the plan
 	for _, fp := range plan.Files {
-		// Create parent directory if needed; only pre-existing dirs are left
-		// untracked so rollback never removes a directory another attempt made.
+		// Create parent directory if needed
 		parentDir := filepath.Dir(fp.TargetPath)
-		if parentDir != plan.RootDir && !slices.Contains(created.Dirs, parentDir) {
-			if _, err := os.Lstat(parentDir); err != nil {
-				if !os.IsNotExist(err) {
-					return nil, rollbackOnError(fmt.Errorf("check directory %s: %w", parentDir, err))
-				}
-				if err := os.MkdirAll(parentDir, fsutil.ContentDirMode); err != nil {
-					return nil, rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
-				}
-				created.Dirs = append(created.Dirs, parentDir)
-			}
+		parentDirs, err := hardlinktree.MkdirAllTracked(parentDir)
+		created.Dirs = append(created.Dirs, parentDirs...)
+		if err != nil {
+			return nil, rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
 		}
 
 		// Check if target already exists

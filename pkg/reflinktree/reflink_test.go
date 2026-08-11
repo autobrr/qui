@@ -166,4 +166,9 @@ func TestRollback(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "test.txt")); !os.IsNotExist(err) {
 		t.Error("file should not exist after rollback")
 	}
+
+	// Create made dstDir and subdir, so rollback removes both
+	if _, err := os.Stat(dstDir); !os.IsNotExist(err) {
+		t.Error("created root dir should be removed after rollback")
+	}
 }

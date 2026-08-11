@@ -289,6 +289,49 @@ func TestRollback(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dstDir, "subdir", "file2.txt")); !os.IsNotExist(err) {
 		t.Error("File2 should be removed after rollback")
 	}
+
+	// The created subdir is removed; the pre-existing root is not ours to remove
+	if _, err := os.Stat(filepath.Join(dstDir, "subdir")); !os.IsNotExist(err) {
+		t.Error("Created subdir should be removed after rollback")
+	}
+	if _, err := os.Stat(dstDir); err != nil {
+		t.Errorf("Pre-existing root should survive rollback: %v", err)
+	}
+}
+
+func TestRollback_RemovesCreatedRootChain(t *testing.T) {
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "file.txt")
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	// Root dir and its ancestors do not exist yet; Create must own the whole chain
+	base := t.TempDir()
+	rootDir := filepath.Join(base, "a", "b", "c")
+	plan := &TreePlan{
+		RootDir: rootDir,
+		Files: []FilePlan{
+			{SourcePath: srcFile, TargetPath: filepath.Join(rootDir, "pack", "file.txt")},
+		},
+	}
+
+	created, err := Create(plan)
+	if err != nil {
+		t.Fatalf("Create error: %v", err)
+	}
+	if err := created.Rollback(); err != nil {
+		t.Fatalf("Rollback error: %v", err)
+	}
+
+	// Everything this attempt created is gone, down to the first ancestor it made
+	if _, err := os.Stat(filepath.Join(base, "a")); !os.IsNotExist(err) {
+		t.Error("Created ancestor chain should be removed after rollback")
+	}
+	// The pre-existing base survives
+	if _, err := os.Stat(base); err != nil {
+		t.Errorf("Pre-existing base should survive rollback: %v", err)
+	}
 }
 
 func TestRollback_NilHandle(t *testing.T) {

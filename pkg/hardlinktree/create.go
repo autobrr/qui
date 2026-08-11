@@ -34,6 +34,38 @@ func (c *Created) Rollback() error {
 	return rollback(c.Files, c.Dirs)
 }
 
+// MkdirAllTracked creates dir and any missing ancestors, like os.MkdirAll,
+// and returns the directories it actually created (shallowest first).
+// Pre-existing directories are not returned, so rollback never removes a
+// directory another attempt made.
+func MkdirAllTracked(dir string) ([]string, error) {
+	var created []string
+	err := mkdirAllTracked(dir, &created)
+	return created, err
+}
+
+func mkdirAllTracked(dir string, created *[]string) error {
+	if _, err := os.Lstat(dir); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if parent := filepath.Dir(dir); parent != dir {
+		if err := mkdirAllTracked(parent, created); err != nil {
+			return err
+		}
+	}
+	if err := os.Mkdir(dir, fsutil.ContentDirMode); err != nil {
+		if os.IsExist(err) {
+			// Lost a race with a concurrent attempt: it exists, but not ours
+			return nil
+		}
+		return err
+	}
+	*created = append(*created, dir)
+	return nil
+}
+
 // Create materializes the hardlink tree plan on disk.
 // Creates necessary directories and hardlinks files from source to target paths.
 // On failure, attempts best-effort rollback of created files and returns a nil handle.
@@ -66,25 +98,20 @@ func Create(plan *TreePlan) (*Created, error) {
 	}
 
 	// Create root directory if needed
-	if err := os.MkdirAll(plan.RootDir, fsutil.ContentDirMode); err != nil {
-		return nil, fmt.Errorf("create root directory %s: %w", plan.RootDir, err)
+	rootDirs, err := MkdirAllTracked(plan.RootDir)
+	createdDirs = append(createdDirs, rootDirs...)
+	if err != nil {
+		return nil, rollbackOnError(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
 	}
 
 	// Process each file in the plan
 	for _, fp := range plan.Files {
-		// Create parent directory if needed; only pre-existing dirs are left
-		// untracked so rollback never removes a directory another attempt made.
+		// Create parent directory if needed
 		parentDir := filepath.Dir(fp.TargetPath)
-		if parentDir != plan.RootDir && !slices.Contains(createdDirs, parentDir) {
-			if _, err := os.Lstat(parentDir); err != nil {
-				if !os.IsNotExist(err) {
-					return nil, rollbackOnError(fmt.Errorf("check directory %s: %w", parentDir, err))
-				}
-				if err := os.MkdirAll(parentDir, fsutil.ContentDirMode); err != nil {
-					return nil, rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
-				}
-				createdDirs = append(createdDirs, parentDir)
-			}
+		parentDirs, err := MkdirAllTracked(parentDir)
+		createdDirs = append(createdDirs, parentDirs...)
+		if err != nil {
+			return nil, rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
 		}
 
 		// Check if target already exists
