@@ -5140,6 +5140,22 @@ func (s *Service) processCrossSeedCandidate(
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
 
+	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
+	// Rename-only alignment: every source file maps to an existing candidate file of
+	// identical size under the same matcher the rename plan uses, and alignment will
+	// actually run (not the episode-in-pack shortcut, which deliberately skips file
+	// renames). Verified renames plus skip_checking complete such an add without a
+	// recheck, so SkipRecheck need not block it (#2272).
+	renameOnlyAlignment := requiresAlignment && !hasExtraFiles &&
+		shouldAlignFilesWithCandidate(sourceRelease, matchedRelease)
+	if req.SkipRecheck && renameOnlyAlignment && !startPaused {
+		// The rename must land before qBittorrent starts serving the torrent; with
+		// no recheck gating resumption, add paused and resume right after alignment.
+		startPaused = true
+		options["paused"] = "true"
+		options["stopped"] = "true"
+	}
+
 	// Force recheck is automatic (no user setting):
 	//  - Disc-layout torrents always trigger a recheck after injection
 	//  - Recheck-required matches (alignment/extras) trigger a recheck when SkipRecheck is OFF
@@ -5180,28 +5196,11 @@ func (s *Service) processCrossSeedCandidate(
 			return true
 		}
 
-		// Build set of missing file paths (files in source that have no (normalizedKey, size) match in candidate).
-		// This uses the same multiset matching as hasExtraSourceFiles.
-		type fileKeySize struct {
-			key  string
-			size int64
-		}
-		candidateKeys := make(map[fileKeySize]int)
-		for _, cf := range candidateFiles {
-			key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
-			candidateKeys[key]++
-		}
-		missingPaths := make(map[string]bool)
-		for _, sf := range sourceFiles {
-			key := fileKeySize{key: normalizeFileKey(sf.Name), size: sf.Size}
-			if count := candidateKeys[key]; count > 0 {
-				candidateKeys[key]--
-			} else {
-				missingPaths[sf.Name] = true
-			}
-		}
+		// Build set of missing file paths using the same matcher as hasExtraSourceFiles,
+		// so a sole-candidate renamed file is not miscounted as missing on disk.
+		missingPaths := unmaterializedSourceFilePaths(sourceFiles, candidateFiles)
 
-		// isMissingOnDisk returns true if the file has no (normalizedKey, size) match in candidate files.
+		// isMissingOnDisk returns true if the file has no match in candidate files.
 		// These files will be downloaded by qBittorrent during recheck.
 		// Note: ignore patterns are NOT checked here - the piece-boundary check applies
 		// to ALL missing files regardless of whether they match ignore patterns.
@@ -5252,7 +5251,7 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	}
 
-	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) {
+	if req.SkipRecheck && (requiresAlignment || hasExtraFiles) && !renameOnlyAlignment {
 		result.Status = "skipped_recheck"
 		result.Message = skippedRecheckMessage
 		log.Info().
@@ -5309,7 +5308,6 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Detect episode matched to season pack - these need special handling
 	// to use the season pack's content path instead of category save path
-	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
 	isEpisodeInPack := (matchType == "partial-in-pack" || matchType == "size-partial-in-pack") &&
 		sourceRelease.Series > 0 && sourceRelease.Episode > 0 &&
 		matchedRelease.Series > 0 && matchedRelease.Episode == 0
@@ -5465,6 +5463,14 @@ func (s *Service) processCrossSeedCandidate(
 		}
 
 		linkFallbackRequiresFullRecheck = true
+	}
+
+	// A byte-complete rename-only pair needs no post-fallback recheck: every file
+	// already exists at the matched size and the alignment renames are verified.
+	// Without this, any link-mode bail-out would turn into skipped_recheck for a
+	// pair that link mode itself would have accepted without a recheck (#2272).
+	if linkFallbackRequiresFullRecheck && req.SkipRecheck && renameOnlyAlignment {
+		linkFallbackRequiresFullRecheck = false
 	}
 
 	if linkFallbackRequiresFullRecheck {
@@ -5808,7 +5814,8 @@ func (s *Service) processCrossSeedCandidate(
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	// - linkFallbackRequiresFullRecheck: regular-mode fallback was forced paused and must be rechecked
-	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
+	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded &&
+		(!req.SkipRecheck || !renameOnlyAlignment)
 	needsRecheck := candidate.titleRescue || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
 
 	if needsRecheck {
