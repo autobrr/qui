@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Увімкнено",
-      "enabledDescription": "Увімкнути або вимкнути доставку для цієї цілі.",
       "events": "Події",
       "selectAll": "Вибрати все",
       "select": "Виберіть",

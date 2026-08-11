@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Povoleno",
-      "enabledDescription": "Přepnout doručení pro tento cíl.",
       "events": "Události",
       "selectAll": "Vybrat vše",
       "select": "Vybrat",

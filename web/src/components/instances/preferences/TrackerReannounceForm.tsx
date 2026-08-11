@@ -484,21 +484,16 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
         </div>
 
         <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="quick-retry" className="text-base">{t("preferences.reannounceOverview.form.quickRetry")}</Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[300px]">
-                  <p>{t("preferences.reannounceOverview.form.quickRetryTooltip")}</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t("preferences.reannounceOverview.form.quickRetryDescription")}
-            </p>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="quick-retry" className="text-base">{t("preferences.reannounceOverview.form.quickRetry")}</Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">
+                <p>{t("preferences.reannounceOverview.form.quickRetryTooltip")}</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
           <Switch
             id="quick-retry"

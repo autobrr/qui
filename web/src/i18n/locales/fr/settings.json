@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Activé",
-      "enabledDescription": "Activer la distribution pour cette cible.",
       "events": "Événements",
       "selectAll": "Tout sélectionner",
       "select": "Sélectionner",

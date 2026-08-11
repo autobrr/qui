@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "활성화됨",
-      "enabledDescription": "이 대상에 대한 전송을 전환합니다.",
       "events": "이벤트",
       "selectAll": "모두 선택",
       "select": "선택",
