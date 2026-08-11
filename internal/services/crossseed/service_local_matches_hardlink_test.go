@@ -14,6 +14,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -48,11 +50,17 @@ func writeHardlinkFixture(t *testing.T, fileName string, link bool) (sourceDir, 
 }
 
 func hardlinkTestService(files map[string]qbt.TorrentFiles) *Service {
-	return &Service{
+	svc := &Service{
 		releaseCache:     NewReleaseCache(),
 		syncManager:      &localMatchSyncManager{files: files},
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
+	svc.SetBackendPool(fsops.NewPool(&mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {ID: 1, HasLocalFilesystemAccess: true},
+		},
+	}, local.NewBackend()))
+	return svc
 }
 
 func hardlinkTestCandidate(candidateDir string) *qbittorrent.CrossInstanceTorrentView {
@@ -260,7 +268,7 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 	}
 
 	var visited int
-	forEachLocalFileID(sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(context.Background(), local.NewBackend(), sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})
@@ -268,11 +276,11 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 
 	// Relative or empty save paths are refused outright.
 	visited = 0
-	forEachLocalFileID("relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(context.Background(), local.NewBackend(), "relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})
-	forEachLocalFileID("", files, func(_ hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(context.Background(), local.NewBackend(), "", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})

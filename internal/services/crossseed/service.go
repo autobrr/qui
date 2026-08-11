@@ -1029,8 +1029,14 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 		return nil
 	}
 
+	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID)
+	if err != nil {
+		// A missing backend carries no hardlink evidence, same as a stat failure.
+		return nil
+	}
+
 	ids := make(map[hardlink.FileID]struct{})
-	forEachLocalFileID(m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
+	forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
 		if nlink > 1 {
 			ids[id] = struct{}{}
 		}
@@ -1041,12 +1047,14 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 }
 
 func candidateSharesSourceFileID(
+	ctx context.Context,
+	backend fsops.Backend,
 	sourceIDs map[hardlink.FileID]struct{},
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
 ) bool {
 	shared := false
-	forEachLocalFileID(candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
 		if _, ok := sourceIDs[id]; ok {
 			shared = true
 			return false
@@ -1084,14 +1092,27 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	if candidateSharesSourceFileID(sourceIDs, candidate.SavePath, candidateFiles) {
+	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID)
+	if err != nil {
+		// A missing backend carries no hardlink evidence, same as a stat failure.
+		return ""
+	}
+
+	if candidateSharesSourceFileID(matchCtx.ctx, candidateBackend, sourceIDs, candidate.SavePath, candidateFiles) {
 		return matchTypeHardlink
 	}
 
 	if filesShareAllocation == nil {
 		return ""
 	}
+	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID)
+	if err != nil {
+		return ""
+	}
 	pairs := pairLocalTorrentFiles(
+		matchCtx.ctx,
+		sourceBackend,
+		candidateBackend,
 		matchCtx.sourceSavePath,
 		matchCtx.sourceFiles,
 		candidate.SavePath,
@@ -1134,17 +1155,17 @@ func (s *Service) getLocalMatchCandidateFiles(
 	return candidateFiles, true
 }
 
-// forEachLocalFileID stats each torrent file under savePath on the local filesystem
-// and invokes fn with its FileID and link count until fn returns false. The save path
-// must be absolute; file names that escape it and files that cannot be statted are
-// skipped so malicious torrent metadata cannot probe arbitrary filesystem locations.
-func forEachLocalFileID(savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
-	forEachLocalTorrentFile(savePath, files, func(_ qbt.TorrentFile, fullPath string, fi os.FileInfo) bool {
-		id, nlink, err := hardlink.GetFileID(fi, fullPath)
-		if err != nil {
+// forEachLocalFileID stats each torrent file under savePath through the instance's
+// filesystem backend and invokes fn with its FileID and link count until fn returns
+// false. The save path must be absolute; file names that escape it and files that
+// cannot be statted are skipped so malicious torrent metadata cannot probe arbitrary
+// filesystem locations.
+func forEachLocalFileID(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
+	forEachLocalTorrentFile(ctx, backend, savePath, files, func(_ qbt.TorrentFile, _ string, info *fsops.LstatInfo) bool {
+		if info.FileID.IsZero() {
 			return true
 		}
-		return fn(id, nlink)
+		return fn(info.FileID, info.Nlinks)
 	})
 }
 
@@ -1163,13 +1184,16 @@ type localTorrentFile struct {
 }
 
 func pairLocalTorrentFiles(
+	ctx context.Context,
+	sourceBackend fsops.Backend,
+	candidateBackend fsops.Backend,
 	sourceSavePath string,
 	sourceFiles qbt.TorrentFiles,
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
 ) []localFilePair {
-	source := collectLocalTorrentFiles(sourceSavePath, sourceFiles)
-	candidate := collectLocalTorrentFiles(candidateSavePath, candidateFiles)
+	source := collectLocalTorrentFiles(ctx, sourceBackend, sourceSavePath, sourceFiles)
+	candidate := collectLocalTorrentFiles(ctx, candidateBackend, candidateSavePath, candidateFiles)
 
 	sourceByPath := indexLocalFiles(source, func(file localTorrentFile) string {
 		return localFileSizeKey(file.normalizedPath, file.file.Size)
@@ -1229,19 +1253,18 @@ func pairLocalTorrentFiles(
 	return pairs
 }
 
-func collectLocalTorrentFiles(savePath string, files qbt.TorrentFiles) []localTorrentFile {
+func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) []localTorrentFile {
 	localFiles := make([]localTorrentFile, 0, len(files))
-	forEachLocalTorrentFile(savePath, files, func(file qbt.TorrentFile, fullPath string, fi os.FileInfo) bool {
+	forEachLocalTorrentFile(ctx, backend, savePath, files, func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool {
 		if file.Size == 0 {
 			return true
 		}
-		fileID, _, fileIDErr := hardlink.GetFileID(fi, fullPath)
 		normalizedPath := normalizeTorrentRelativePath(file.Name)
 		localFiles = append(localFiles, localTorrentFile{
 			file:           file,
 			fullPath:       fullPath,
-			fileID:         fileID,
-			hasFileID:      fileIDErr == nil,
+			fileID:         info.FileID,
+			hasFileID:      !info.FileID.IsZero(),
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})
@@ -1272,9 +1295,11 @@ func normalizeTorrentRelativePath(name string) string {
 }
 
 func forEachLocalTorrentFile(
+	ctx context.Context,
+	backend fsops.Backend,
 	savePath string,
 	files qbt.TorrentFiles,
-	fn func(file qbt.TorrentFile, fullPath string, fi os.FileInfo) bool,
+	fn func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool,
 ) {
 	base := filepath.Clean(filepath.FromSlash(savePath))
 	if !filepath.IsAbs(base) {
@@ -1286,11 +1311,11 @@ func forEachLocalTorrentFile(
 		if !ok {
 			continue
 		}
-		fi, err := os.Lstat(fullPath)
-		if err != nil || !fi.Mode().IsRegular() {
+		info, err := backend.Lstat(ctx, fullPath)
+		if err != nil || !info.Mode.IsRegular() {
 			continue
 		}
-		if !fn(file, fullPath, fi) {
+		if !fn(file, fullPath, info) {
 			return
 		}
 	}
