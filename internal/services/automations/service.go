@@ -955,8 +955,9 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 
 	backend, err := s.backendPool.GetBackend(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: no backend for free space check")
-		return nil
+		// The rule needs FREE_SPACE; evaluating without it would silently
+		// treat the disk as having no data. Fail the setup instead.
+		return fmt.Errorf("no filesystem backend for free space check: %w", err)
 	}
 
 	freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, rule.FreeSpaceSource, backend)
@@ -5221,18 +5222,25 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 	return result
 }
 
-// buildFullPath constructs the full path for a torrent file.
-// qBittorrent always returns forward slashes, so we normalize using filepath.FromSlash.
-func buildFullPath(basePath, filePath string) string {
-	// Normalize forward slashes to OS-native path separators
-	normalizedFile := filepath.FromSlash(filePath)
-	normalizedBase := filepath.FromSlash(basePath)
-
-	cleaned := filepath.Clean(normalizedFile)
-	if filepath.IsAbs(cleaned) {
-		return cleaned
+// buildFullPath converts a torrent-internal (slash-delimited) file name into a
+// local filesystem path under basePath. Torrent metadata is untrusted on every
+// OS, so names that are absolute, drive-qualified, UNC, or escape basePath via
+// ".." are rejected in both POSIX and Windows form (ok=false).
+func buildFullPath(basePath, fileName string) (string, bool) {
+	slashName := strings.ReplaceAll(fileName, `\`, "/")
+	if slashName == "" || strings.HasPrefix(slashName, "/") || hasWindowsDrivePrefix(slashName) {
+		return "", false
 	}
-	return filepath.Join(normalizedBase, cleaned)
+	cleaned := path.Clean(slashName)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	return filepath.Join(filepath.FromSlash(basePath), filepath.FromSlash(cleaned)), true
+}
+
+func hasWindowsDrivePrefix(p string) bool {
+	return len(p) >= 2 && p[1] == ':' &&
+		(('a' <= p[0] && p[0] <= 'z') || ('A' <= p[0] && p[0] <= 'Z'))
 }
 
 // applySpeedLimits applies upload or download limits in batches, logging and recording failures.

@@ -711,12 +711,23 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 	t.Parallel()
 
-	// Verify that buildFullPath + isPathInsideBase correctly handle dangerous save paths.
-	// Empty save path: buildFullPath("", "../etc/passwd") should not pass isPathInsideBase.
-	emptyBase := ""
-	traversal := buildFullPath(emptyBase, "../etc/passwd")
-	if isPathInsideBase(emptyBase, traversal) {
-		t.Error("expected empty base path to reject traversal")
+	// buildFullPath rejects traversal and absolute names in both POSIX and Windows form.
+	for _, name := range []string{
+		"../etc/passwd",
+		"..\\etc\\passwd",
+		"a/../../etc/passwd",
+		"/etc/passwd",
+		"\\evil\\path",
+		"\\\\server\\share\\file",
+		"C:/evil.mkv",
+		"c:\\evil.mkv",
+	} {
+		if _, ok := buildFullPath("/data", name); ok {
+			t.Errorf("expected %q to be rejected", name)
+		}
+	}
+	if _, ok := buildFullPath("/data", "Show.S01/episode.mkv"); !ok {
+		t.Error("expected a normal relative name to be accepted")
 	}
 
 	// Relative save path: should be rejected by the filepath.IsAbs check in Phase 2.

@@ -54,7 +54,10 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 			if f.Name == "" {
 				continue
 			}
-			fullPath := buildFullPath(torrent.SavePath, f.Name)
+			fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
+			if !ok {
+				continue
+			}
 			if _, err := backend.Stat(ctx, fullPath); err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					hasMissing = true

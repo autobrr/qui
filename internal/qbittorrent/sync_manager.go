@@ -2368,8 +2368,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
+	var managedDeleteBackend fsops.Backend
 	if action == "deleteWithFiles" {
-		managedDeleteCleanupTargets = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
+		managedDeleteCleanupTargets, managedDeleteBackend = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
 	}
 
 	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
@@ -2455,12 +2456,8 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			if sm.backendPool != nil {
-				if backend, backendErr := sm.backendPool.GetBackend(ctx, instanceID); backendErr == nil {
-					cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, backend)
-				} else {
-					log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend")
-				}
+			if managedDeleteBackend != nil {
+				cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, managedDeleteBackend)
 			}
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
@@ -2604,35 +2601,39 @@ func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) boo
 	return true
 }
 
+// buildManagedDeleteCleanupTargets also returns the backend it resolved so the
+// post-delete cleanup uses the same one instead of a second lookup that could
+// disagree with this one.
 func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	ctx context.Context,
 	instanceID int,
 	syncManager *qbt.SyncManager,
 	hashes []string,
-) []managedDeleteCleanupTarget {
+) ([]managedDeleteCleanupTarget, fsops.Backend) {
 	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil || syncManager == nil {
-		return nil
+		return nil, nil
 	}
 
 	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
 	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
-		return nil
+		return nil, nil
 	}
 
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 	if len(torrents) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if sm.backendPool == nil {
-		return nil
+		return nil, nil
 	}
 	backend, err := sm.backendPool.GetBackend(ctx, instanceID)
 	if err != nil {
-		return nil
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
+		return nil, nil
 	}
 
-	return buildManagedDeleteCleanupTargets(ctx, instance.HardlinkBaseDir, torrents, backend)
+	return buildManagedDeleteCleanupTargets(ctx, instance.HardlinkBaseDir, torrents, backend), backend
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution.

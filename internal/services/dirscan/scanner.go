@@ -225,6 +225,12 @@ func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searche
 		return nil, fmt.Errorf("stat file %s: %w", filePath, err)
 	}
 
+	// Skip symlinks, matching the directory walk: linked data belongs to
+	// whatever it points at, not to this scan root.
+	if info.IsSymlink {
+		return nil, nil
+	}
+
 	base := filepath.Base(filePath)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
 

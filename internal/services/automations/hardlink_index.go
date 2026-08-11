@@ -243,11 +243,10 @@ func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.To
 			return info
 		}
 
-		fullPath := buildFullPath(torrent.SavePath, f.Name)
-
 		// Reject paths that escape the torrent's save path to prevent malicious
 		// torrent metadata from causing Lstat on arbitrary filesystem locations.
-		if !isPathInsideBase(torrent.SavePath, fullPath) {
+		fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
+		if !ok || !isPathInsideBase(torrent.SavePath, fullPath) {
 			info.allAccessible = false
 			info.hasInvalidPath = true
 			continue
@@ -626,6 +625,11 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 
 	scanned := make(map[string]*torrentFileInfo, len(list))
 	for _, hash := range list {
+		if ctx.Err() != nil {
+			// A canceled scan is incomplete; caching it would freeze wrong link
+			// counts until the next full rebuild.
+			return nil, false
+		}
 		files, present := filesByHash[hash]
 		if !present {
 			// A torrent with no file list has unknown links. Recording it as inspected
@@ -634,6 +638,9 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 			continue
 		}
 		scanned[hash] = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+	}
+	if ctx.Err() != nil {
+		return nil, false
 	}
 
 	return scanned, true
@@ -1132,8 +1139,8 @@ func (s *Service) scanOtherInstancesForDeficits(
 					break
 				}
 
-				fullPath := buildFullPath(savePath, f.Name)
-				if !isPathInsideBase(savePath, fullPath) {
+				fullPath, ok := buildFullPath(savePath, f.Name)
+				if !ok || !isPathInsideBase(savePath, fullPath) {
 					continue
 				}
 				if _, seen := state.seenPaths[fullPath]; seen {
