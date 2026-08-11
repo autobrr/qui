@@ -1380,7 +1380,7 @@
         "includeAffectedCrossSeeds": "Include affected cross-seeds",
         "skipIfCrossSeedExists": "Skip if cross-seed exists in categories",
         "aboutSkipping": "About skipping when cross-seeds exist",
-        "skipHelp": "Skips the category change if another torrent pointing at the same on-disk content is already in one of these categories. Useful with *arr import queues: prevents automation from moving the torrents if at least one of them are in the *arr import queue.",
+        "skipHelp": "Skips the category change if another torrent pointing at the same on-disk content is already in one of these categories. Useful with *arr import queues: prevents automation from moving the torrents if at least one of them is in the *arr import queue.",
         "selectCategories": "Select categories..."
       },
       "externalProgram": {
