@@ -1012,9 +1012,8 @@
       "files": "files",
       "exclusions": "Exclusions",
       "ignorePaths": "Ignore Paths",
-      "ignorePathsTooltip": "Paths to exclude from scanning. Files in these directories will never be flagged as orphans. Enter one path per line.",
+      "ignorePathsTooltip": "Paths to exclude from scanning. Files in these directories will never be flagged as orphans. Enter one path per line. Paths are matched as prefixes.",
       "ignorePathsPlaceholder": "/downloads/preserve\n/downloads/manual\n/data/keep",
-      "ignorePathsDescription": "One path per line. Paths are matched as prefixes.",
       "saving": "Saving...",
       "saveChanges": "Save Changes",
       "toast": {
@@ -1381,9 +1380,8 @@
         "includeAffectedCrossSeeds": "Include affected cross-seeds",
         "skipIfCrossSeedExists": "Skip if cross-seed exists in categories",
         "aboutSkipping": "About skipping when cross-seeds exist",
-        "skipHelp": "Useful with *arr import queues: prevents automation from moving the torrents if at least one of them are in the *arr import queue.",
-        "selectCategories": "Select categories...",
-        "skipDescription": "Skips the category change if another torrent pointing at the same on-disk content is already in one of these categories."
+        "skipHelp": "Skips the category change if another torrent pointing at the same on-disk content is already in one of these categories. Useful with *arr import queues: prevents automation from moving the torrents if at least one of them is in the *arr import queue.",
+        "selectCategories": "Select categories..."
       },
       "externalProgram": {
         "program": "Program",
