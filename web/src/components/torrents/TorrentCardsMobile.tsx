@@ -2062,6 +2062,9 @@ export function TorrentCardsMobile({
 
   const singleSelectedTorrent = getSelectedTorrents[0] ?? null
 
+  // select-all: unloaded rows have unknown state, so offer both directions.
+  const stateUnknownForSelection = isAllSelected && getSelectedTorrents.length < effectiveSelectionCount
+
   const handleClearSearch = useCallback(() => {
     setGlobalFilter("")
 
@@ -2352,7 +2355,7 @@ export function TorrentCardsMobile({
               const forceStartStates = getSelectedTorrents?.map(t => t.force_start) ?? []
               const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
               const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
-              const forceStartMixed = forceStartStates.length > 0 && !allForceStarted && !allForceDisabled
+              const forceStartMixed = stateUnknownForSelection || (forceStartStates.length > 0 && !allForceStarted && !allForceDisabled)
 
               if (forceStartMixed) {
                 return (
@@ -2407,6 +2410,32 @@ export function TorrentCardsMobile({
             {(() => {
               const seqDlStates = getSelectedTorrents?.map(t => t.seq_dl) ?? []
               const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
+              const allSeqDlDisabled = seqDlStates.length > 0 && seqDlStates.every(state => state === false)
+              const seqDlMixed = stateUnknownForSelection || (seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled)
+
+              if (seqDlMixed) {
+                return (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: true })}
+                      className="justify-start"
+                    >
+                      <Blocks className="mr-2 h-4 w-4" />
+                      {t("managementBar.sequentialDownload.enable")} {t("contextMenu.mixed")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleBulkAction(TORRENT_ACTIONS.TOGGLE_SEQUENTIAL_DOWNLOAD, { enable: false })}
+                      className="justify-start"
+                    >
+                      <Blocks className="mr-2 h-4 w-4" />
+                      {t("managementBar.sequentialDownload.disable")} {t("contextMenu.mixed")}
+                    </Button>
+                  </>
+                )
+              }
+
               return (
                 <Button
                   variant="outline"
@@ -2486,7 +2515,7 @@ export function TorrentCardsMobile({
               const tmmStates = getSelectedTorrents?.map(t => t.auto_tmm) ?? []
               const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
               const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-              const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
+              const mixed = stateUnknownForSelection || (tmmStates.length > 0 && !allEnabled && !allDisabled)
 
               if (mixed) {
                 return (
