@@ -210,7 +210,11 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 
 					if (opts.WantFileID || opts.WantNlinks) && fi.Mode().IsRegular() {
 						fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
-						if fidErr == nil {
+						if fidErr != nil {
+							// The caller asked for identity data; an entry without it
+							// must read as unreadable, not as a file with no links.
+							entry.Err = fidErr
+						} else {
 							entry.FileID = fid
 							entry.Nlinks = nlinks
 						}
