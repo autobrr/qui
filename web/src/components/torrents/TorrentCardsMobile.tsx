@@ -1510,6 +1510,8 @@ export function TorrentCardsMobile({
     }
   }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedHashes.size])
 
+  const selectionBarVisible = selectionMode && effectiveSelectionCount > 0
+
   const selectedTotalSize = useMemo(() => {
     if (isAllSelected) {
       const aggregateTotalSize = stats?.totalSize ?? 0
@@ -1694,8 +1696,8 @@ export function TorrentCardsMobile({
 
   // Sync selection mode with context
   useEffect(() => {
-    setIsSelectionMode(selectionMode && effectiveSelectionCount > 0)
-  }, [selectionMode, effectiveSelectionCount, setIsSelectionMode])
+    setIsSelectionMode(selectionBarVisible)
+  }, [selectionBarVisible, setIsSelectionMode])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -2210,7 +2212,7 @@ export function TorrentCardsMobile({
         ref={parentRef}
         className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
         style={{
-          paddingBottom: selectionMode && effectiveSelectionCount > 0? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
+          paddingBottom: selectionBarVisible? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
         }}
       >
         <div
@@ -2281,13 +2283,9 @@ export function TorrentCardsMobile({
       </div>
 
       {/* Fixed bottom action bar - visible in selection mode */}
-      {selectionMode && effectiveSelectionCount > 0 && (
+      {selectionBarVisible && (
         <div
-          className={cn(
-            "fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
-            "transition-transform duration-200 ease-in-out",
-            selectionMode && effectiveSelectionCount > 0 ? "translate-y-0" : "translate-y-full"
-          )}
+          className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50"
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div className="flex items-center justify-around h-16">
@@ -2931,7 +2929,7 @@ export function TorrentCardsMobile({
           scrollContainerRef={parentRef}
           className={cn(
             "right-8 z-[60]",
-            selectionMode && effectiveSelectionCount > 0? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
+            selectionBarVisible? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
           )}
         />
       </div>
