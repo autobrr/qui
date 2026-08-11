@@ -2210,7 +2210,11 @@ export function TorrentCardsMobile({
         ref={parentRef}
         className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
         style={{
-          paddingBottom: isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": selectionMode && effectiveSelectionCount > 0? "calc(4rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
+          paddingBottom: selectionMode && effectiveSelectionCount > 0
+            ? "calc(4rem + env(safe-area-inset-bottom))"
+            : isFooterVisible
+              ? "calc(8rem + env(safe-area-inset-bottom))"
+              : "env(safe-area-inset-bottom)",
         }}
       >
         <div
