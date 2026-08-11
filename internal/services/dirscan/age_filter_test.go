@@ -121,7 +121,7 @@ func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
 	}
 
 	require.NotNil(t, seasonItem)
-	require.False(t, workItemIsStale(*seasonItem, now.AddDate(0, 0, -3)))
+	require.False(t, workItemIsStale(*seasonItem, now.AddDate(0, 0, -3), false))
 }
 
 func TestMaxSearcheeAgeDaysFromSettings(t *testing.T) {

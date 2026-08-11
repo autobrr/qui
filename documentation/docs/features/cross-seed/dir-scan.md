@@ -204,7 +204,7 @@ This setting reduces tracker/API load by excluding stale content before search b
 
 - Movies/music are included only when the item's newest video/audio file is within the cutoff.
 - TV is evaluated at the season/episode work-item level so one fresh episode does not pull an entire older show back in.
-- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only.
+- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only. With [Skip individual episodes](#skip-individual-episodes) on, there is no episode-level fallback, so the season pack stays in scope as long as its newest episode is within the cutoff.
 - Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
 - The timestamp used is filesystem **modified time (mtime)** from video/audio files only, not subtitles, extras, release date, or qBittorrent add time.
 - Webhook-triggered scans ignore the cutoff entirely and trust the webhook path as the freshness signal.

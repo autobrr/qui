@@ -70,17 +70,19 @@ func selectEligibleRootWork(
 			if item.searchee == nil {
 				continue
 			}
-			if skipIndividualEpisodes && item.isEpisode {
-				selection.skippedEpisodes++
-				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
-				continue
-			}
-			if workItemIsStale(item, selection.cutoff) {
+			if workItemIsStale(item, selection.cutoff, skipIndividualEpisodes) {
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "stale", selection.cutoff, trackedFiles))
 				continue
 			}
 			if !workItemHasPendingFiles(item, trackedFiles, enabledIndexerIDs) {
 				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "all_final", selection.cutoff, trackedFiles))
+				continue
+			}
+			// Checked after stale and all_final so the count reads as searches
+			// the option avoided this scan, not as a running total of episodes.
+			if skipIndividualEpisodes && item.isEpisode {
+				selection.skippedEpisodes++
+				droppedItems = append(droppedItems, buildWorkItemDropDecision(item, "individual_episode", selection.cutoff, trackedFiles))
 				continue
 			}
 			pendingItems = append(pendingItems, item)
@@ -300,7 +302,7 @@ func logDroppedWorkItem(l *zerolog.Logger, root *Searchee, item workItemDropDeci
 	event.Msg("dirscan: dropped work item")
 }
 
-func workItemIsStale(item searcheeWorkItem, cutoff time.Time) bool {
+func workItemIsStale(item searcheeWorkItem, cutoff time.Time, skipIndividualEpisodes bool) bool {
 	if item.searchee == nil || cutoff.IsZero() {
 		return false
 	}
@@ -310,7 +312,11 @@ func workItemIsStale(item searcheeWorkItem, cutoff time.Time) bool {
 		return false
 	}
 
-	if item.tvGroup != nil && len(contentFiles) > 1 {
+	// A mixed-age season pack is normally stale: its old episodes were already
+	// searched, and a fresh episode gets its own episode search. With individual
+	// episodes skipped, the pack is the only search a fresh episode has, so the
+	// pack stays eligible as long as its newest episode is fresh.
+	if item.tvGroup != nil && len(contentFiles) > 1 && !skipIndividualEpisodes {
 		for _, f := range contentFiles {
 			if f == nil {
 				continue
