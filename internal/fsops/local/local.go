@@ -8,6 +8,7 @@ package local
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -141,13 +142,19 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	go func() {
 		defer close(ch)
 		count := 0
-		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 			if ctx.Err() != nil {
 				return fs.SkipAll
 			}
 
 			if opts.MaxEntries > 0 && count >= opts.MaxEntries {
 				return fs.SkipAll
+			}
+
+			// d is nil when filepath.WalkDir cannot stat the root (TOCTOU
+			// between our pre-check and the walk's internal stat).
+			if d == nil {
+				return walkErr
 			}
 
 			// Skip hidden files/dirs if requested.
@@ -215,6 +222,17 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			}
 			return nil
 		})
+		// Surface unrecoverable walk errors (permission denied, etc.) as a
+		// final entry so the caller knows the walk did not complete fully.
+		// Context cancellation is not an error — the caller initiated it.
+		if walkErr != nil && ctx.Err() == nil {
+			entry := fsops.WalkEntry{Err: walkErr}
+			entry.Path = root
+			select {
+			case ch <- entry:
+			case <-ctx.Done():
+			}
+		}
 	}()
 	return ch, nil
 }
@@ -249,6 +267,9 @@ func (b *Backend) Remove(ctx context.Context, path string, opts fsops.RemoveOpti
 		return err
 	}
 	if opts.Recursive {
+		if len(opts.IgnorePaths) > 0 {
+			return errors.New("recursive remove with IgnorePaths is not supported by the local backend")
+		}
 		return os.RemoveAll(path)
 	}
 	return os.Remove(path)
@@ -258,29 +279,42 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := hardlinktree.Create(plan)
+	created, err := hardlinktree.Create(plan)
 	if err != nil {
 		return &fsops.TreeCreateResult{RolledBack: true}, err
 	}
-	return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+	return treeCreateResult(created, plan), nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := reflinktree.Create(plan)
+	created, err := reflinktree.Create(plan)
 	if err != nil {
 		return &fsops.TreeCreateResult{RolledBack: true}, err
 	}
-	return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+	return treeCreateResult(created, plan), nil
 }
 
-func (b *Backend) RemoveTree(ctx context.Context, plan *hardlinktree.TreePlan) error {
+func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return hardlinktree.Rollback(plan)
+	if created == nil {
+		return nil
+	}
+	handle := &hardlinktree.Created{Files: created.Files, Dirs: created.Dirs}
+	return handle.Rollback()
+}
+
+func treeCreateResult(created *hardlinktree.Created, plan *hardlinktree.TreePlan) *fsops.TreeCreateResult {
+	return &fsops.TreeCreateResult{
+		Created:       len(created.Files),
+		SkippedExists: len(plan.Files) - len(created.Files),
+		Files:         created.Files,
+		Dirs:          created.Dirs,
+	}
 }
 
 func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, string, error) {

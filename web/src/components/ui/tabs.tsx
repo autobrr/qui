@@ -35,7 +35,7 @@ function TabsList({
     const list = listRef.current
     if (!list) return
 
-    const activeTab = list.querySelector<HTMLElement>('[data-state="active"]')
+    const activeTab = list.querySelector<HTMLElement>("[data-state=\"active\"]")
     if (!activeTab) return
 
     setIndicatorStyle({
@@ -68,7 +68,7 @@ function TabsList({
       ref={listRef}
       data-slot="tabs-list"
       className={cn(
-        "bg-muted text-muted-foreground relative inline-flex h-9 w-fit items-center justify-center rounded-lg p-0.75",
+        "bg-muted text-muted-foreground relative inline-flex h-9 w-fit items-center justify-center rounded-lg p-0.75 overflow-hidden",
         className
       )}
       {...props}
@@ -114,4 +114,3 @@ function TabsContent({
 }
 
 export { Tabs, TabsContent, TabsList, TabsTrigger }
-

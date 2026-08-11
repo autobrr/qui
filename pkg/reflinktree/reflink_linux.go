@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/autobrr/qui/pkg/fsutil"
 )
 
 const (
@@ -33,7 +35,7 @@ var (
 // Returns true if reflinks are supported, along with a reason string.
 func SupportsReflink(dir string) (supported bool, reason string) {
 	// Ensure directory exists
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
 		return false, fmt.Sprintf("cannot access directory: %v", err)
 	}
 

@@ -22,6 +22,7 @@ import {
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { TrackerContextMenu } from "./TrackerContextMenu"
 
 interface TrackersTableProps {
@@ -52,13 +53,14 @@ export const TrackersTable = memo(function TrackersTable({
   onEditTracker,
   supportsTrackerEditing = false,
 }: TrackersTableProps) {
+  const { t } = useTranslation("torrents")
   // Default sort by status with disabled at bottom
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }])
   const { data: trackerIcons } = useTrackerIcons()
 
   const columns = useMemo(() => [
     columnHelper.accessor("status", {
-      header: "Status",
+      header: t("trackersTable.status"),
       cell: (info) => getTrackerStatusBadge(info.getValue(), true),
       size: 90,
       // Custom sort: disabled (0) always at bottom
@@ -71,7 +73,7 @@ export const TrackersTable = memo(function TrackersTable({
       },
     }),
     columnHelper.accessor("url", {
-      header: "Tracker",
+      header: t("trackersTable.tracker"),
       cell: (info) => {
         const url = info.getValue()
         const fullUrl = incognitoMode ? "https://tracker.example.com/announce" : url
@@ -113,7 +115,7 @@ export const TrackersTable = memo(function TrackersTable({
       },
     }),
     columnHelper.accessor("msg", {
-      header: "Message",
+      header: t("trackersTable.message"),
       meta: { fullWidth: true },
       cell: (info) => {
         const msg = info.getValue()
@@ -130,26 +132,26 @@ export const TrackersTable = memo(function TrackersTable({
       },
     }),
     columnHelper.accessor("num_seeds", {
-      header: "Seeds",
+      header: t("trackersTable.seeds"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 70,
     }),
     columnHelper.accessor("num_peers", {
-      header: "Peers",
+      header: t("trackersTable.leeches"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 70,
     }),
     columnHelper.accessor("num_leeches", {
-      header: "Leeches",
+      header: t("trackersTable.leeches"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 80,
     }),
     columnHelper.accessor("num_downloaded", {
-      header: "DLs",
+      header: t("trackersTable.downloaded"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 60,
     }),
-  ], [incognitoMode, trackerIcons])
+  ], [incognitoMode, t, trackerIcons])
 
   const data = useMemo(() => trackers || [], [trackers])
 
@@ -173,7 +175,7 @@ export const TrackersTable = memo(function TrackersTable({
   if (!trackers || trackers.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No trackers found
+        {t("trackersTable.noTrackersFound")}
       </div>
     )
   }

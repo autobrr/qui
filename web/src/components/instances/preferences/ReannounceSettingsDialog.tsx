@@ -10,9 +10,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { useInstances } from "@/hooks/useInstances"
+import { useTranslation } from "react-i18next"
 import { TrackerReannounceForm } from "./TrackerReannounceForm"
 
 const FORM_ID = "reannounce-settings-dialog-form"
@@ -30,13 +31,14 @@ export function ReannounceSettingsDialog({
   instanceId,
   instanceName,
 }: ReannounceSettingsDialogProps) {
+  const { t } = useTranslation("instances")
   const { isUpdating } = useInstances()
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90dvh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>Configure Reannounce</DialogTitle>
+          <DialogTitle>{t("preferences.reannounce.title")}</DialogTitle>
           <DialogDescription>{instanceName ?? "Instance"}</DialogDescription>
         </DialogHeader>
 
@@ -51,7 +53,7 @@ export function ReannounceSettingsDialog({
 
         <DialogFooter className="flex-shrink-0 border-t pt-4">
           <Button type="submit" form={FORM_ID} disabled={isUpdating}>
-            {isUpdating ? "Saving..." : "Save Changes"}
+            {isUpdating ? t("preferences.reannounce.saving") : t("preferences.reannounce.saveChanges")}
           </Button>
         </DialogFooter>
       </DialogContent>

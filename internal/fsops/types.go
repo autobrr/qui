@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package fsops defines the Backend interface that abstracts filesystem
-// operations for qui's services. Two implementations exist: Local (delegates
-// to os.* on the qui host) and Remote (delegates over SSH to a qui-helper
-// process on a seedbox). Service code uses only this interface, making the
-// transport transparent.
+// operations for qui's services. Current implementations: Local (delegates
+// to os.* on the qui host) and Noop (returns ErrNoFilesystemAccess for
+// instances without filesystem access). A Remote implementation (SSH-backed)
+// is planned. Service code uses only this interface, making the transport
+// transparent.
 package fsops
 
 import (
@@ -71,10 +72,15 @@ type RemoveOptions struct {
 }
 
 // TreeCreateResult holds the outcome of a HardlinkTree or ReflinkTree call.
+// Files and Dirs record what the call actually created on disk (pre-existing
+// paths are excluded), so RemoveTree can undo exactly this call's work without
+// touching links shared with sibling torrents (discussion #2282).
 type TreeCreateResult struct {
 	Created       int
 	SkippedExists int
 	RolledBack    bool
+	Files         []string
+	Dirs          []string
 }
 
 // BackendInfo describes the capabilities of a Backend implementation.

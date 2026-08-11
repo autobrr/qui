@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 type NotificationsHandler struct {
@@ -302,7 +303,8 @@ func (h *NotificationsHandler) TestTarget(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := h.service.SendTest(r.Context(), target, title, message); err != nil {
-		log.Error().Err(err).Str("target", target.Name).Msg("notifications: test send failed")
+		// Redact: shoutrrr errors embed the post URL, which carries the webhook token
+		log.Error().Str("error", redact.String(err.Error())).Str("target", target.Name).Msg("notifications: test send failed")
 		RespondError(w, http.StatusBadGateway, "failed to send test notification")
 		return
 	}

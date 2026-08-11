@@ -99,11 +99,6 @@ func FailureResult(err error) ExecuteResult {
 	return ExecuteResult{Success: false, Error: err}
 }
 
-// FailureResultWithMessage creates a failed execution result with an additional message.
-func FailureResultWithMessage(err error, message string) ExecuteResult {
-	return ExecuteResult{Success: false, Error: err, Message: message}
-}
-
 // Execute runs an external program asynchronously with the given torrent data.
 // It returns immediately after launching the program (fire-and-forget).
 //

@@ -4,12 +4,14 @@
 package dirscan
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
@@ -55,6 +57,14 @@ type SearchRequest struct {
 
 	// Categories to search (optional, but recommended for better results).
 	Categories []int
+
+	// QueryOverride replaces the query derived from Metadata. Retry passes set it
+	// to search the same searchee under an alternate title.
+	QueryOverride string
+
+	// OmitYear drops the year parameter. The yearless retry sets it after a
+	// year-constrained pass found nothing.
+	OmitYear bool
 
 	// OnAllComplete is called when all search jobs complete with the final results
 	OnAllComplete func(response *jackett.SearchResponse, err error)
@@ -103,7 +113,7 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 	}
 
 	// Always set the query for fallback/combined search
-	searchReq.Query = buildSearchQuery(meta)
+	searchReq.Query = cmp.Or(req.QueryOverride, buildSearchQuery(meta))
 
 	// Apply TV-specific parameters
 	if meta.IsTV {
@@ -116,7 +126,7 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 	}
 
 	// Year hurts TV searches on many indexers; keep it for movies only.
-	if meta.Year > 0 && meta.IsMovie {
+	if meta.Year > 0 && meta.IsMovie && !req.OmitYear {
 		searchReq.Year = meta.Year
 	}
 
@@ -137,27 +147,9 @@ func (s *Searcher) applyExternalIDs(req *jackett.TorznabSearchRequest, meta *Sea
 }
 
 // buildSearchQuery constructs a search query string from metadata.
+// Shared with cross-seed so the two search paths cannot drift apart.
 func buildSearchQuery(meta *SearcheeMetadata) string {
-	var parts []string
-
-	// Use the parsed title
-	title := meta.Title
-	if title == "" {
-		title = meta.CleanedName
-	}
-
-	// Clean the title for searching
-	title = cleanForSearch(title)
-	if title != "" {
-		parts = append(parts, title)
-	}
-
-	// Add year if available and this looks like a movie
-	if meta.Year > 0 && meta.IsMovie {
-		parts = append(parts, strconv.Itoa(meta.Year))
-	}
-
-	return strings.Join(parts, " ")
+	return crossseed.BuildTorznabQuery(meta.CleanedName, meta.Release, meta.IsMusic).Query
 }
 
 // cleanForSearch removes characters that might interfere with search.
@@ -192,28 +184,6 @@ type SearchResult struct {
 
 	// MatchScore indicates match quality (higher is better)
 	MatchScore float64
-}
-
-// FilterResults filters search results based on basic criteria.
-func FilterResults(results []*SearchResult, minSize, maxSize int64) []*SearchResult {
-	if len(results) == 0 {
-		return results
-	}
-
-	filtered := make([]*SearchResult, 0, len(results))
-	for _, r := range results {
-		// Skip if size is outside bounds
-		if minSize > 0 && r.Size < minSize {
-			continue
-		}
-		if maxSize > 0 && r.Size > maxSize {
-			continue
-		}
-
-		filtered = append(filtered, r)
-	}
-
-	return filtered
 }
 
 // CalculateSizeRange calculates min/max size based on searchee size and tolerance.

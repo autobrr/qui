@@ -672,16 +672,19 @@ const (
 	FieldEffectiveName ConditionField = "EFFECTIVE_NAME"
 
 	// RLS-derived specifiers (from torrent name parsing)
-	FieldRlsSource     ConditionField = "RLS_SOURCE"
-	FieldRlsResolution ConditionField = "RLS_RESOLUTION"
-	FieldRlsCodec      ConditionField = "RLS_CODEC"
-	FieldRlsHDR        ConditionField = "RLS_HDR"
-	FieldRlsAudio      ConditionField = "RLS_AUDIO"
-	FieldRlsChannels   ConditionField = "RLS_CHANNELS"
-	FieldRlsGroup      ConditionField = "RLS_GROUP"
-	FieldState         ConditionField = "STATE"
-	FieldTracker       ConditionField = "TRACKER"
-	FieldComment       ConditionField = "COMMENT"
+	FieldRlsSource      ConditionField = "RLS_SOURCE"
+	FieldRlsResolution  ConditionField = "RLS_RESOLUTION"
+	FieldRlsCodec       ConditionField = "RLS_CODEC"
+	FieldRlsHDR         ConditionField = "RLS_HDR"
+	FieldRlsAudio       ConditionField = "RLS_AUDIO"
+	FieldRlsChannels    ConditionField = "RLS_CHANNELS"
+	FieldRlsGroup       ConditionField = "RLS_GROUP"
+	FieldRlsYear        ConditionField = "RLS_YEAR"
+	FieldState          ConditionField = "STATE"
+	FieldTracker        ConditionField = "TRACKER"
+	FieldTrackerStatus  ConditionField = "TRACKER_STATUS"
+	FieldTrackerMessage ConditionField = "TRACKER_MESSAGE"
+	FieldComment        ConditionField = "COMMENT"
 
 	// Numeric fields (bytes)
 	FieldSize              ConditionField = "SIZE"
@@ -791,11 +794,17 @@ func (f ConditionField) IsString() bool {
 	}
 }
 
-// Hardlink scope values (wire format - stable API values)
+// Hardlink scope values (wire format - stable API values).
+// The stored per-torrent scope is one of none/torrents_only/outside_qbittorrent/both,
+// a partition of the two independent facts "linked inside the torrent set" and
+// "linked outside it". As condition values, outside_qbittorrent also matches "both"
+// (its historical meaning), and inside_qbittorrent matches torrents_only or "both".
 const (
 	HardlinkScopeNone               = "none"                // No file has link count > 1
-	HardlinkScopeTorrentsOnly       = "torrents_only"       // All links are within qBittorrent's torrent set
-	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // At least one file has links outside the torrent set
+	HardlinkScopeTorrentsOnly       = "torrents_only"       // Links exist only between torrents in the set
+	HardlinkScopeOutsideQBitTorrent = "outside_qbittorrent" // Links outside the torrent set (stored: outside only; condition: also matches "both")
+	HardlinkScopeBoth               = "both"                // Links both inside and outside the torrent set
+	HardlinkScopeInsideQBitTorrent  = "inside_qbittorrent"  // Condition-only: linked to other torrents, even if also outside (#1177)
 )
 
 // ConditionOperator represents operators for comparing field values.

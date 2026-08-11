@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -110,6 +110,11 @@ clean: themes-clean
 test:
 	@echo "Running tests..."
 	go test -race -v ./...
+
+# Run frontend tests (vitest)
+test-frontend:
+	@echo "Running frontend tests..."
+	cd $(WEB_DIR) && pnpm test
 
 # Validate OpenAPI specification
 test-openapi:
@@ -241,7 +246,8 @@ help:
 	@echo "  make dev-expose     - Run frontend dev server exposed on 0.0.0.0"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test           - Run all tests with race detection"
+	@echo "  make test           - Run all Go tests with race detection"
+	@echo "  make test-frontend  - Run frontend vitest suite"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo ""
 	@echo "Linting:"

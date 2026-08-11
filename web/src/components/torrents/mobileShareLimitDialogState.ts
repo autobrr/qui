@@ -8,7 +8,7 @@ import {
   LIMIT_UNLIMITED,
   LIMIT_USE_GLOBAL,
   shareLimitEnumFieldFromTorrents,
-  type TorrentLimitSnapshot,
+  type TorrentLimitSnapshot
 } from "./torrentLimitDialogHelpers"
 
 function numericShareLimitToMobile(
@@ -53,15 +53,9 @@ export function buildMobileShareLimitInitialState(
   const ratioCheck = checkFieldConsistency(torrents, t => t.ratio_limit)
   const seedTimeCheck = checkFieldConsistency(torrents, t => t.seeding_time_limit)
   const inactiveTimeCheck = checkFieldConsistency(torrents, t => t.inactive_seeding_time_limit)
-  const ratio = ratioCheck.isMixed
-    ? { enabled: defaults.ratioEnabled, limit: defaults.ratioLimit }
-    : numericShareLimitToMobile(ratioCheck.commonValue, defaults.ratioLimit)
-  const seedTime = seedTimeCheck.isMixed
-    ? { enabled: defaults.seedingTimeEnabled, limit: defaults.seedingTimeLimit }
-    : numericShareLimitToMobile(seedTimeCheck.commonValue, defaults.seedingTimeLimit)
-  const inactiveTime = inactiveTimeCheck.isMixed
-    ? { enabled: defaults.inactiveSeedingTimeEnabled, limit: defaults.inactiveSeedingTimeLimit }
-    : numericShareLimitToMobile(inactiveTimeCheck.commonValue, defaults.inactiveSeedingTimeLimit)
+  const ratio = ratioCheck.isMixed? { enabled: defaults.ratioEnabled, limit: defaults.ratioLimit }: numericShareLimitToMobile(ratioCheck.commonValue, defaults.ratioLimit)
+  const seedTime = seedTimeCheck.isMixed? { enabled: defaults.seedingTimeEnabled, limit: defaults.seedingTimeLimit }: numericShareLimitToMobile(seedTimeCheck.commonValue, defaults.seedingTimeLimit)
+  const inactiveTime = inactiveTimeCheck.isMixed? { enabled: defaults.inactiveSeedingTimeEnabled, limit: defaults.inactiveSeedingTimeLimit }: numericShareLimitToMobile(inactiveTimeCheck.commonValue, defaults.inactiveSeedingTimeLimit)
   const action = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limit_action)
   const mode = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
 

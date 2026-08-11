@@ -14,6 +14,8 @@ import (
 type searcheeWorkItem struct {
 	searchee *Searchee
 	tvGroup  *tvGroupKey
+	// isEpisode marks a search for one loose TV episode, which a directory can opt out of.
+	isEpisode bool
 }
 
 type tvGroupKey struct {
@@ -44,7 +46,7 @@ func buildSearcheeWorkItems(searchee *Searchee, parser *Parser) []searcheeWorkIt
 				continue
 			}
 			k := key
-			items = append(items, searcheeWorkItem{searchee: epSearchee, tvGroup: &k})
+			items = append(items, searcheeWorkItem{searchee: epSearchee, tvGroup: &k, isEpisode: true})
 		}
 	}
 

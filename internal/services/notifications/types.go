@@ -72,14 +72,6 @@ func EventDefinitions() []EventDefinition {
 	return out
 }
 
-func AllEventTypes() []EventType {
-	out := make([]EventType, 0, len(eventDefinitions))
-	for _, def := range eventDefinitions {
-		out = append(out, def.Type)
-	}
-	return out
-}
-
 func AllEventTypeStrings() []string {
 	out := make([]string, 0, len(eventDefinitions))
 	for _, def := range eventDefinitions {

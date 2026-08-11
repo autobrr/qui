@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -19,21 +20,18 @@ const maxParams = 900
 // This is designed for use within transactions.
 // All values are required (non-empty). Returns error if any value is empty.
 //
-// Performance: Uses INSERT + SELECT instead of INSERT...RETURNING for massive speedup.
-// RETURNING causes expensive B-tree traversals. For 180k torrents, this optimization
-// provides 5-10x faster string interning by separating insert from ID retrieval.
-// For multiple strings, uses batch operations with deduplication for optimal performance.
+// Looks up existing IDs first and only inserts values that are missing. The
+// SELECT-first order matters on Postgres: INSERT ... ON CONFLICT DO NOTHING
+// evaluates nextval before conflict detection, so blindly re-inserting
+// existing strings permanently consumes sequence values and eventually
+// exhausts the id space (the working set is re-interned on every file cache
+// refresh). Missing values are inserted in sorted order so concurrent
+// transactions take row locks in a deterministic order.
 func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64, error) {
 	if len(values) == 0 {
 		return []int64{}, nil
 	}
 
-	// Fast path for single string.
-	if len(values) == 1 {
-		return internSingleString(ctx, tx, values[0])
-	}
-
-	// Batch path for multiple strings
 	// Validate all values first
 	for i, value := range values {
 		if value == "" {
@@ -41,10 +39,10 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 		}
 	}
 
-	// Deduplicate input values and track original positions
-	uniqueValues := make(map[string][]int) // value -> list of indices
-	for i, v := range values {
-		uniqueValues[v] = append(uniqueValues[v], i)
+	// Deduplicate input values
+	uniqueValues := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		uniqueValues[v] = struct{}{}
 	}
 
 	// Build list of unique values
@@ -53,70 +51,64 @@ func InternStrings(ctx context.Context, tx TxQuerier, values ...string) ([]int64
 		valuesList = append(valuesList, v)
 	}
 
-	// Pre-build the query template for full chunks to avoid repeated string building in hot path
-	queryTemplate := "INSERT INTO string_pool (value) VALUES %s ON CONFLICT(value) DO NOTHING"
-	fullQuery := BuildQueryWithPlaceholders(queryTemplate, 1, maxParams)
-
-	for i := 0; i < len(valuesList); i += maxParams {
-		end := min(i+maxParams, len(valuesList))
-		chunk := valuesList[i:end]
-
-		// Build args for this chunk
-		args := make([]any, len(chunk))
-		for j, v := range chunk {
-			args[j] = v
-		}
-
-		// Use pre-built query for full chunks, build new one only for smaller final chunk
-		query := fullQuery
-		if len(chunk) < maxParams {
-			query = BuildQueryWithPlaceholders(queryTemplate, 1, len(chunk))
-		}
-
-		_, err := tx.ExecContext(ctx, query, args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to batch insert strings: %w", err)
-		}
-	}
-
-	// Step 2: Get all IDs using GetStringID
-	ids, err := GetStringID(ctx, tx, values...)
+	// Look up existing IDs and collect the values that still need inserting
+	existingIDs, err := GetStringID(ctx, tx, valuesList...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Verify all IDs are valid (they should be after ON CONFLICT DO NOTHING insert)
-	result := make([]int64, len(ids))
-	for i, id := range ids {
-		if !id.Valid {
-			return nil, fmt.Errorf("failed to get ID for interned string %q", values[i])
+	valueToID := make(map[string]int64, len(valuesList))
+	var missing []string
+	for i, id := range existingIDs {
+		if id.Valid {
+			valueToID[valuesList[i]] = id.Int64
+		} else {
+			missing = append(missing, valuesList[i])
 		}
-		result[i] = id.Int64
+	}
+
+	if len(missing) > 0 {
+		slices.Sort(missing)
+
+		queryTemplate := "INSERT INTO string_pool (value) VALUES %s ON CONFLICT(value) DO NOTHING"
+		for i := 0; i < len(missing); i += maxParams {
+			end := min(i+maxParams, len(missing))
+			chunk := missing[i:end]
+
+			args := make([]any, len(chunk))
+			for j, v := range chunk {
+				args[j] = v
+			}
+
+			query := BuildQueryWithPlaceholders(queryTemplate, 1, len(chunk))
+			if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+				return nil, fmt.Errorf("failed to batch insert strings: %w", err)
+			}
+		}
+
+		insertedIDs, err := GetStringID(ctx, tx, missing...)
+		if err != nil {
+			return nil, err
+		}
+		for i, id := range insertedIDs {
+			if !id.Valid {
+				return nil, fmt.Errorf("failed to get ID for interned string %q", missing[i])
+			}
+			valueToID[missing[i]] = id.Int64
+		}
+	}
+
+	// Map IDs back to the original positions (duplicates included)
+	result := make([]int64, len(values))
+	for i, v := range values {
+		id, ok := valueToID[v]
+		if !ok {
+			return nil, fmt.Errorf("failed to get ID for interned string %q", v)
+		}
+		result[i] = id
 	}
 
 	return result, nil
-}
-
-func internSingleString(ctx context.Context, tx TxQuerier, value string) ([]int64, error) {
-	if value == "" {
-		return nil, errors.New("value at index 0 is empty")
-	}
-
-	_, err := tx.ExecContext(ctx,
-		"INSERT INTO string_pool (value) VALUES (?) ON CONFLICT(value) DO NOTHING",
-		value)
-	if err != nil {
-		return nil, fmt.Errorf("insert into string pool: %w", err)
-	}
-
-	ids, err := GetStringID(ctx, tx, value)
-	if err != nil {
-		return nil, err
-	}
-	if !ids[0].Valid {
-		return nil, fmt.Errorf("failed to get ID for interned string %q", value)
-	}
-	return []int64{ids[0].Int64}, nil
 }
 
 // InternStringNullable interns one or more optional string values and returns their IDs as sql.NullInt64.
@@ -177,85 +169,6 @@ func InternStringNullable(ctx context.Context, tx TxQuerier, values ...*string) 
 	return results, nil
 }
 
-// GetString retrieves one or more string values from the string_pool by their IDs.
-// This is designed for use within transactions.
-// Returns strings in the same order as the input IDs.
-func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error) {
-	if len(ids) == 0 {
-		return []string{}, nil
-	}
-
-	// Fast path for single ID
-	if len(ids) == 1 {
-		var value string
-		err := tx.QueryRowContext(ctx, "SELECT value FROM string_pool WHERE id = ?", ids[0]).Scan(&value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get string from pool: %w", err)
-		}
-		return []string{value}, nil
-	}
-
-	// Batch path for multiple IDs
-	// SQLite has SQLITE_MAX_VARIABLE_NUMBER limit (default 999)
-	// Process in chunks to avoid hitting this limit
-	results := make([]string, len(ids))
-	idToPositions := make(map[int64][]int, len(ids))
-	for i, id := range ids {
-		idToPositions[id] = append(idToPositions[id], i)
-	}
-
-	for i := 0; i < len(ids); i += maxParams {
-		end := min(i+maxParams, len(ids))
-		chunk := ids[i:end]
-
-		// Build args for this chunk
-		args := make([]any, len(chunk))
-		for j, id := range chunk {
-			args[j] = id
-		}
-
-		// Build IN clause: id IN (?,?,?)
-		var sb strings.Builder
-		const queryPrefix = "SELECT id, value FROM string_pool WHERE id IN ("
-		sb.Grow(len(queryPrefix) + (len(chunk) * 4) + 1) // preallocate
-		sb.WriteString(queryPrefix)
-		for j := range chunk {
-			if j > 0 {
-				sb.WriteString(",")
-			}
-			sb.WriteString("?")
-		}
-		sb.WriteString(")")
-
-		rows, err := tx.QueryContext(ctx, sb.String(), args...)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query string pool: %w", err)
-		}
-
-		for rows.Next() {
-			var id int64
-			var value string
-			if err := rows.Scan(&id, &value); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("failed to scan string pool row: %w", err)
-			}
-			if positions, exists := idToPositions[id]; exists {
-				for _, idx := range positions {
-					results[idx] = value
-				}
-			}
-		}
-
-		if err = rows.Err(); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("error iterating string pool rows: %w", err)
-		}
-		rows.Close()
-	}
-
-	return results, nil
-}
-
 // InternEmptyString ensures the empty string exists in string_pool and returns its ID.
 // This is needed for special cases like localhost bypass auth where an empty username
 // is a valid, intentional value (not NULL). The empty string is created if it doesn't exist.
@@ -263,14 +176,22 @@ func GetString(ctx context.Context, tx TxQuerier, ids ...int64) ([]string, error
 // Unlike InternStrings which rejects empty strings (treating them as invalid input),
 // this function specifically handles the case where empty string is a meaningful value.
 func InternEmptyString(ctx context.Context, tx TxQuerier) (int64, error) {
-	// Ensure empty string exists
-	_, err := tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES ('') ON CONFLICT(value) DO NOTHING")
+	// SELECT first: a conflicting INSERT would still burn a Postgres sequence
+	// value (see InternStrings).
+	var id int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("failed to get empty string ID: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO string_pool (value) VALUES ('') ON CONFLICT(value) DO NOTHING")
 	if err != nil {
 		return 0, fmt.Errorf("failed to ensure empty string in string_pool: %w", err)
 	}
 
-	// Get the ID
-	var id int64
 	err = tx.QueryRowContext(ctx, "SELECT id FROM string_pool WHERE value = ''").Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get empty string ID: %w", err)

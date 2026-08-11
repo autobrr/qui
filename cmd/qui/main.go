@@ -36,6 +36,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -59,6 +60,11 @@ var (
 
 func main() {
 	config.InitDefaultLogger(buildinfo.Version)
+
+	// Honor the UMASK env var before any command creates files/dirs, so the
+	// process umask controls the final permissions of content directories
+	// (see discussion #1704). No-op when UMASK is unset or on Windows.
+	applyUmask()
 
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
@@ -99,7 +105,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
 	command.Flags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
 	command.Flags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
-	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
+	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
 		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
@@ -476,6 +482,12 @@ func (app *Application) runServer() {
 	}
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
+
+	// Ensure the custom themes directory exists so users have a place to drop
+	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
+	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
+		log.Warn().Err(err).Str("dir", themesDir).Msg("Failed to create custom themes directory")
+	}
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
@@ -524,6 +536,7 @@ func (app *Application) runServer() {
 	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+	filterViewStore := models.NewFilterViewStore(db)
 	logExclusionsStore := models.NewLogExclusionsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
@@ -616,6 +629,17 @@ func (app *Application) runServer() {
 		notificationService.Start(notificationCtx)
 	}
 
+	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
+	// backups, automations, indexer activity, etc.) onto the SSE stream so the
+	// frontend can stop polling those endpoints. Background services publish to it;
+	// the StreamManager (wired via api.Dependencies) forwards events to clients.
+	activityHub := activity.NewHub()
+	defer activityHub.Close()
+
+	// Wire services constructed earlier (before the hub) as activity publishers.
+	trackerIconService.SetActivityPublisher(activityHub)
+	jackettService.SetActivityPublisher(activityHub)
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
 	if err != nil {
@@ -642,19 +666,24 @@ func (app *Application) runServer() {
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
+	crossSeedService.SetActivityPublisher(activityHub)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
+	reannounceService.SetActivityPublisher(activityHub)
 
 	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
 	crossSeedService.SetBackendPool(backendPool)
 	syncManager.SetBackendPool(backendPool)
 
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
+	automationService.SetActivityPublisher(activityHub)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
+	orphanScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
 	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool)
+	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
@@ -691,6 +720,7 @@ func (app *Application) runServer() {
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()}, notificationService)
+	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -730,11 +760,8 @@ func (app *Application) runServer() {
 
 				// Trigger connection by trying to get client
 				// This will populate the pool for GetClientOffline calls
-				_, err := clientPool.GetClient(connCtx, instanceID)
-				if err != nil {
+				if _, err := clientPool.GetClient(connCtx, instanceID); err != nil {
 					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance on startup")
-				} else {
-					log.Debug().Int("instanceID", instanceID).Msg("Successfully connected to instance on startup")
 				}
 			}(instance.ID)
 		}
@@ -778,6 +805,7 @@ func (app *Application) runServer() {
 		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
+		FilterViewStore:                  filterViewStore,
 		LogExclusionsStore:               logExclusionsStore,
 		NotificationTargetStore:          notificationTargetStore,
 		NotificationService:              notificationService,
@@ -788,6 +816,7 @@ func (app *Application) runServer() {
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		ActivityHub:                      activityHub,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
@@ -829,11 +858,18 @@ func (app *Application) runServer() {
 
 	// Start profiling server if enabled
 	if cfg.Config.PprofEnabled {
+		// Bind to loopback by default so pprof never collides with another listener
+		// sharing the network namespace (e.g. a Tailscale sidecar already serving
+		// :6060) and is not exposed on a wildcard address. Override with QUI__PPROF_ADDR.
+		pprofAddr := cfg.Config.PprofAddr
+		if pprofAddr == "" {
+			pprofAddr = "127.0.0.1:6060"
+		}
 		go func() {
-			log.Info().Msg("Starting pprof server on :6060")
-			log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
-			if err := http.ListenAndServe(":6060", nil); err != nil {
-				log.Error().Err(err).Msg("Profiling server failed")
+			log.Info().Str("addr", pprofAddr).Msg("Starting pprof server")
+			log.Info().Msgf("Access profiling at: http://%s/debug/pprof/", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Error().Err(err).Str("addr", pprofAddr).Msg("Profiling server failed")
 			}
 		}()
 	}

@@ -6,7 +6,10 @@
 import { useCallback, useState } from "react"
 import { api } from "@/lib/api"
 import { getLinuxIsoName } from "@/lib/incognito"
+import { isAllInstancesScope } from "@/lib/instances"
+import { getTorrentTargetInstanceId, type TorrentActionTarget } from "@/lib/torrent-action-targets"
 import type { Torrent, TorrentFilters } from "@/types"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface UseTorrentExporterOptions {
@@ -22,11 +25,14 @@ interface ExportSelection {
   filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
+  excludeTargets?: TorrentActionTarget[]
+  instanceIds?: number[]
   sortField?: string
   sortOrder?: "asc" | "desc"
 }
 
 export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExporterOptions) {
+  const { t } = useTranslation("torrents")
   const [isExporting, setIsExporting] = useState(false)
 
   const exportTorrents = useCallback(async (selection: ExportSelection) => {
@@ -38,12 +44,15 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       filters,
       search,
       excludeHashes,
+      excludeTargets,
+      instanceIds,
       sortField,
       sortOrder,
     } = selection
 
     const sanitizedHashes = Array.from(new Set(hashes)).filter(Boolean)
     const excludeSet = new Set(excludeHashes ?? [])
+    const excludeTargetSet = new Set((excludeTargets ?? []).map(target => targetKey(target.instanceId, target.hash)))
 
     if (!isAllSelected && sanitizedHashes.length === 0) {
       return
@@ -56,19 +65,21 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       if (isAllSelected) {
         targets = await fetchAllMatchingTorrents({
           instanceId,
+          instanceIds,
           filters,
           search,
           sortField,
           sortOrder,
           totalSelected,
           excludeSet,
+          excludeTargetSet,
         })
       } else {
-        targets = dedupeTorrents(torrents, sanitizedHashes)
+        targets = dedupeTorrents(torrents, sanitizedHashes, instanceId)
       }
 
       if (targets.length === 0) {
-        toast.info("No torrents found to export")
+        toast.info(t("contextMenu.toast.noTorrentsFoundToExport"))
         return
       }
 
@@ -76,11 +87,12 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       let exportedCount = 0
 
       for (const torrent of targets) {
-        if (excludeSet.has(torrent.hash)) {
+        const targetInstanceId = getTorrentTargetInstanceId(torrent, instanceId)
+        if (excludeSet.has(torrent.hash) || excludeTargetSet.has(targetKey(targetInstanceId, torrent.hash))) {
           continue
         }
 
-        const { blob, filename } = await api.exportTorrent(instanceId, torrent.hash)
+        const { blob, filename } = await api.exportTorrent(targetInstanceId, torrent.hash)
         const fallbackName = filename || torrent.name || torrent.hash
         const downloadName = buildDownloadName(torrent.hash, fallbackName, incognitoMode)
         const uniqueName = ensureUniqueFilename(downloadName, filenameCounts)
@@ -90,60 +102,67 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       }
 
       if (exportedCount === 0) {
-        toast.info("No torrents exported")
+        toast.info(t("contextMenu.toast.noTorrentsExported"))
       } else {
-        toast.success(exportedCount === 1 ? "Torrent exported" : `${exportedCount} torrents exported`)
+        toast.success(exportedCount === 1? t("contextMenu.toast.torrentExported"): t("contextMenu.toast.torrentsExported", { count: exportedCount }))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to export torrent"
+      const message = error instanceof Error ? error.message : t("contextMenu.toast.exportFailed")
       toast.error(message)
     } finally {
       setIsExporting(false)
     }
-  }, [incognitoMode, instanceId])
+  }, [incognitoMode, instanceId, t])
 
   return { exportTorrents, isExporting }
 }
 
 async function fetchAllMatchingTorrents({
   instanceId,
+  instanceIds,
   filters,
   search,
   sortField,
   sortOrder,
   totalSelected,
   excludeSet,
+  excludeTargetSet,
 }: {
   instanceId: number
+  instanceIds?: number[]
   filters?: TorrentFilters
   search?: string
   sortField?: string
   sortOrder?: "asc" | "desc"
   totalSelected: number
   excludeSet: Set<string>
+  excludeTargetSet: Set<string>
 }): Promise<Torrent[]> {
   const results: Torrent[] = []
   const seen = new Set<string>()
   let page = 0
   const limit = 300
+  const allInstances = isAllInstancesScope(instanceId)
 
   while (true) {
-    const response = await api.getTorrents(instanceId, {
+    const params = {
       page,
       limit,
       filters,
       search,
       sort: sortField,
       order: sortOrder,
-    })
+    }
+    const response = allInstances? await api.getCrossInstanceTorrents({ ...params, instanceIds }): await api.getTorrents(instanceId, params)
 
-    const pageTorrents = response.torrents ?? []
+    const pageTorrents = allInstances? response.crossInstanceTorrents ?? response.cross_instance_torrents ?? []: response.torrents ?? []
 
     for (const torrent of pageTorrents) {
-      if (seen.has(torrent.hash) || excludeSet.has(torrent.hash)) {
+      const key = targetKey(getTorrentTargetInstanceId(torrent, instanceId), torrent.hash)
+      if (seen.has(key) || excludeSet.has(torrent.hash) || excludeTargetSet.has(key)) {
         continue
       }
-      seen.add(torrent.hash)
+      seen.add(key)
       results.push(torrent)
 
       if (totalSelected > 0 && results.length >= totalSelected) {
@@ -169,18 +188,31 @@ async function fetchAllMatchingTorrents({
   return results
 }
 
-function dedupeTorrents(torrents: Torrent[], hashes: string[]): Torrent[] {
-  const map = new Map<string, Torrent>()
-  for (const torrent of torrents) {
-    map.set(torrent.hash, torrent)
-  }
+// Identity is instanceId:hash, not hash alone: in the unified view the same
+// infohash can live on several instances (cross-seeds) and each copy is a
+// distinct export target.
+function targetKey(instanceId: number, hash: string): string {
+  return `${instanceId}:${hash.toLowerCase()}`
+}
+
+function dedupeTorrents(torrents: Torrent[], hashes: string[], fallbackInstanceId: number): Torrent[] {
+  const wanted = new Set(hashes.map(hash => hash.toLowerCase()))
+  const seen = new Set<string>()
 
   const results: Torrent[] = []
-  for (const hash of hashes) {
-    const found = map.get(hash)
-    if (found) {
-      results.push(found)
+  for (const torrent of torrents) {
+    const hash = torrent.hash?.trim()
+    if (!hash || !wanted.has(hash.toLowerCase())) {
+      continue
     }
+
+    const key = targetKey(getTorrentTargetInstanceId(torrent, fallbackInstanceId), hash)
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    results.push(torrent)
   }
   return results
 }

@@ -173,6 +173,7 @@ type DirScanDirectoryPayload struct {
 	ArrInstanceID          *int      `json:"arrInstanceId"`
 	TargetInstanceID       *int      `json:"targetInstanceId"`
 	ScanIntervalMinutes    *int      `json:"scanIntervalMinutes"`
+	SkipIndividualEpisodes *bool     `json:"skipIndividualEpisodes"`
 }
 
 // ListDirectories returns all configured scan directories.
@@ -265,6 +266,9 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 	} else {
 		dir.ScanIntervalMinutes = 1440
 	}
+	if payload.SkipIndividualEpisodes != nil {
+		dir.SkipIndividualEpisodes = *payload.SkipIndividualEpisodes
+	}
 
 	return dir, true
 }
@@ -316,14 +320,15 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	}
 
 	params := &models.DirScanDirectoryUpdateParams{
-		Path:                payload.Path,
-		QbitPathPrefix:      payload.QbitPathPrefix,
-		Category:            payload.Category,
-		Tags:                payload.Tags,
-		Enabled:             payload.Enabled,
-		ArrInstanceID:       payload.ArrInstanceID,
-		TargetInstanceID:    payload.TargetInstanceID,
-		ScanIntervalMinutes: payload.ScanIntervalMinutes,
+		Path:                   payload.Path,
+		QbitPathPrefix:         payload.QbitPathPrefix,
+		Category:               payload.Category,
+		Tags:                   payload.Tags,
+		Enabled:                payload.Enabled,
+		ArrInstanceID:          payload.ArrInstanceID,
+		TargetInstanceID:       payload.TargetInstanceID,
+		ScanIntervalMinutes:    payload.ScanIntervalMinutes,
+		SkipIndividualEpisodes: payload.SkipIndividualEpisodes,
 	}
 	if payload.AllowedDownloadClients != nil {
 		normalizedAllowed := normalizeAllowedDownloadClients(*payload.AllowedDownloadClients)
@@ -455,6 +460,42 @@ func (h *DirScanHandler) ResetFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type dirScanRequeueResponse struct {
+	Requeued int64 `json:"requeued"`
+}
+
+// RequeueNoMatch resets no_match files for a directory to pending.
+func (h *DirScanHandler) RequeueNoMatch(w http.ResponseWriter, r *http.Request) {
+	dirID, err := parseDirectoryID(w, r)
+	if err != nil {
+		return
+	}
+
+	if !h.requireDirectory(w, r, dirID) {
+		return
+	}
+
+	run, err := h.service.GetActiveRun(r.Context(), dirID)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to check active run before requeue")
+		RespondError(w, http.StatusInternalServerError, "Failed to requeue unmatched files")
+		return
+	}
+	if run != nil {
+		RespondError(w, http.StatusConflict, "Cannot requeue unmatched files while a scan is running")
+		return
+	}
+
+	requeued, err := h.service.RequeueNoMatchFiles(r.Context(), dirID)
+	if err != nil {
+		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to requeue unmatched files")
+		RespondError(w, http.StatusInternalServerError, "Failed to requeue unmatched files")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, dirScanRequeueResponse{Requeued: requeued})
 }
 
 // GetStatus returns the status of the current or most recent scan.

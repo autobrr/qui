@@ -9,42 +9,48 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 )
 
-func TestCancelAutomationRun_NoActiveRun(t *testing.T) {
-	s := &Service{}
-
-	// When no run is active, cancel should return false
-	if got := s.CancelAutomationRun(); got {
-		t.Errorf("CancelAutomationRun() = %v, want false when no run is active", got)
+func TestCancelAutomationRun(t *testing.T) {
+	tests := []struct {
+		name             string
+		active           bool
+		hasCancel        bool
+		wantCanceled     bool
+		wantCancelCalled bool
+	}{
+		{
+			name: "no active run",
+		},
+		{
+			name:             "active run",
+			active:           true,
+			hasCancel:        true,
+			wantCanceled:     true,
+			wantCancelCalled: true,
+		},
+		{
+			name:   "active run with nil cancel",
+			active: true,
+		},
 	}
-}
 
-func TestCancelAutomationRun_ActiveRun(t *testing.T) {
-	s := &Service{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{}
+			s.runActive.Store(tt.active)
+			cancelCalled := false
+			if tt.hasCancel {
+				s.runCancel = func() { cancelCalled = true }
+			}
 
-	// Simulate an active run
-	s.runActive.Store(true)
-	canceled := false
-	s.runCancel = func() { canceled = true }
+			got := s.CancelAutomationRun()
 
-	// When a run is active, cancel should return true and call the cancel func
-	if got := s.CancelAutomationRun(); !got {
-		t.Errorf("CancelAutomationRun() = %v, want true when run is active", got)
-	}
-	if !canceled {
-		t.Errorf("CancelAutomationRun() did not call the cancel function")
-	}
-}
-
-func TestCancelAutomationRun_ActiveRunNilCancel(t *testing.T) {
-	s := &Service{}
-
-	// Simulate an active run but with nil cancel (shouldn't happen in practice)
-	s.runActive.Store(true)
-	s.runCancel = nil
-
-	// Should return false since cancel is nil
-	if got := s.CancelAutomationRun(); got {
-		t.Errorf("CancelAutomationRun() = %v, want false when cancel is nil", got)
+			if got != tt.wantCanceled {
+				t.Errorf("CancelAutomationRun() = %v, want %v", got, tt.wantCanceled)
+			}
+			if cancelCalled != tt.wantCancelCalled {
+				t.Errorf("CancelAutomationRun() cancel called = %v, want %v", cancelCalled, tt.wantCancelCalled)
+			}
+		})
 	}
 }
 

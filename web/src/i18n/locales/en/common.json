@@ -1,0 +1,205 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "search": "Search",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automations",
+    "backups": "Backups",
+    "rss": "RSS",
+    "settings": "Settings",
+    "logs": "Logs",
+    "instances": "Instances",
+    "generalSettings": "General Settings",
+    "manageInstances": "Manage Instances",
+    "appearance": "Appearance",
+    "instanceBackups": "Instance Backups"
+  },
+  "sidebar": {
+    "instances": "Instances",
+    "allInstancesDisabled": "All instances are disabled",
+    "noInstancesConfigured": "No instances configured",
+    "logout": "Logout",
+    "version": "Version {{version}}",
+    "language": "Language",
+    "viewOnGitHub": "View on GitHub",
+    "rssRunning": "RSS running",
+    "rssEnabled": "RSS enabled",
+    "scanRunning": "Scan running",
+    "showSidebar": "Show sidebar",
+    "hideSidebar": "Hide sidebar"
+  },
+  "header": {
+    "currentInstance": "Current instance: {{name}}. Click to switch instances.",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "noActiveInstances": "No active instances",
+    "showFilters": "Show filters",
+    "hideFilters": "Hide filters",
+    "addTorrent": "Add torrent",
+    "createTorrent": "Create torrent",
+    "torrentCreationTasks": "Torrent creation tasks",
+    "instanceSettings": "Instance settings",
+    "addToInstance": "Add to instance",
+    "createForInstance": "Create for instance",
+    "tasksForInstance": "Tasks for instance",
+    "settingsForInstance": "Settings for instance",
+    "clearSearch": "Clear search",
+    "searchTorrents": "Search torrents... ({{shortcutKey}})",
+    "globPattern": "Glob pattern...",
+    "smartSearchTitle": "Smart Search Features:",
+    "smartSearchGlob": "Glob patterns:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "Fuzzy matching:",
+    "smartSearchFuzzyExample": "\"breaking bad\" finds \"Breaking.Bad\"",
+    "smartSearchDots": "Handles dots, underscores, and brackets",
+    "smartSearchFields": "Searches name, category, and tags",
+    "smartSearchEnter": "Press Enter for instant search",
+    "smartSearchAuto": "Auto-searches after 500ms pause",
+    "torrentCreationTasksTitle": "Torrent Creation Tasks",
+    "updateAvailable": "Update Available",
+    "updateVersion": "Version {{version}}",
+    "rssRunning": "RSS running",
+    "rssEnabled": "RSS enabled",
+    "scanRunning": "Scan running",
+    "allScope": "ALL",
+    "unified": "Unified"
+  },
+  "unifiedScope": {
+    "unified": "Unified",
+    "collapseScope": "Collapse unified scope",
+    "expandScope": "Expand unified scope",
+    "allActive": "All active ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "Dashboard",
+    "clients": "Clients",
+    "settings": "Settings",
+    "qbittorrentClients": "qBittorrent Clients",
+    "instances": "Instances",
+    "noActiveInstances": "No active instances",
+    "loading": "Loading...",
+    "noActiveClients": "No active clients",
+    "updateAvailable": "Update Available",
+    "updateVersion": "Version {{version}}",
+    "rssRunning": "RSS running",
+    "rssEnabled": "RSS enabled",
+    "scanRunning": "Scan running",
+    "logout": "Logout",
+    "version": "Version {{version}}",
+    "viewOnGitHub": "View on GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "copyPath": "Copy path",
+    "scrollToTop": "Scroll to top",
+    "search": "Search",
+    "select": "Select",
+    "toggle": "Toggle"
+  },
+  "placeholders": {
+    "search": "Search...",
+    "selectItems": "Select items..."
+  },
+  "feedback": {
+    "noResultsFound": "No results found."
+  },
+  "status": {
+    "disabled": "Disabled",
+    "notContacted": "Not contacted",
+    "working": "Working",
+    "updating": "Updating",
+    "error": "Error",
+    "unknown": "Unknown",
+    "trackerError": "Tracker error",
+    "unreachable": "Unreachable"
+  },
+  "themeToggle": {
+    "changeTheme": "Change theme",
+    "appearance": "Appearance",
+    "mode": "Mode",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "theme": "Theme",
+    "premium": "Premium",
+    "switchedToMode": "Switched to {{mode}} mode",
+    "switchedToTheme": "Switched to {{theme}} theme",
+    "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
+    "unableToVerifyLicense": "Unable to verify license",
+    "licenseCheckFailed": "License check failed. Premium theme switching is temporarily unavailable.",
+    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license.",
+    "custom": "Custom"
+  },
+  "updateBanner": {
+    "updateAvailable": "Update Available",
+    "versionAvailable": "Version {{version}} is now available",
+    "viewRelease": "View Release",
+    "dismiss": "Dismiss"
+  },
+  "notFound": {
+    "title": "Oops! Lost in the swarm?",
+    "subtitle": "Looks like you've ventured into the unknown.",
+    "bugReport": "In case you think this is a bug rather than a missing link,",
+    "reportTo": "feel free to report this to our",
+    "githubRepository": "GitHub repository",
+    "getBackOnTrack": "Otherwise, let us help you get back on track!",
+    "returnToDashboard": "Return to dashboard"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Register qui as your magnet link handler",
+    "register": "Register",
+    "dismiss": "Dismiss",
+    "registrationRequested": "Magnet handler registration requested",
+    "registrationFailed": "Failed to register magnet handler",
+    "guidance": {
+      "standalone": "Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show).",
+      "chromium": "Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers.",
+      "default": "If prompted by your browser, please accept to complete registration."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "More information"
+  },
+  "numberInput": {
+    "unlimited": "Unlimited",
+    "useUnlimited": " (use -1 for unlimited)"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "Just now",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "past": "{{value}} ago",
+    "future": "in {{value}}",
+    "units": {
+      "second_one": "{{count}} second",
+      "second_other": "{{count}} seconds",
+      "minute_one": "{{count}} minute",
+      "minute_other": "{{count}} minutes",
+      "hour_one": "{{count}} hour",
+      "hour_other": "{{count}} hours",
+      "day_one": "{{count}} day",
+      "day_other": "{{count}} days",
+      "week_one": "{{count}} week",
+      "week_other": "{{count}} weeks",
+      "month_one": "{{count}} month",
+      "month_other": "{{count}} months",
+      "year_one": "{{count}} year",
+      "year_other": "{{count}} years"
+    }
+  },
+  "support": {
+    "title": "Support qui",
+    "description": "Already got themes and want to help further? Everything in qui is already yours. A subscription doesn't unlock features, it funds the time that goes into building them.",
+    "perkPrefix": "Patrons get the",
+    "perkSuffix": "role in Discord and our eternal gratitude.",
+    "yearly": "{{price}} / year",
+    "monthly": "{{price}} / month",
+    "notLicense": "Premium themes are a separate one-time purchase."
+  }
+}

@@ -10,10 +10,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/anacrolix/torrent/metainfo"
-	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/moistari/rls"
+
+	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // ContentTypeInfo contains all information about a torrent's detected content type
@@ -384,54 +386,6 @@ func containsVideoTokens(value string, tokens []string) bool {
 	return false
 }
 
-// OptimizeContentTypeForIndexers optimizes content type information for specific indexers
-// This function takes the basic content type and adjusts categories based on indexer capabilities
-func OptimizeContentTypeForIndexers(basicInfo ContentTypeInfo, indexerCategories []int) ContentTypeInfo {
-	if len(indexerCategories) == 0 || len(basicInfo.Categories) == 0 {
-		return basicInfo
-	}
-
-	// Create a map of available categories from the indexer
-	availableCategories := make(map[int]struct{})
-	for _, cat := range indexerCategories {
-		availableCategories[cat] = struct{}{}
-	}
-
-	// Filter the basic categories to only include those supported by the indexer
-	optimizedCategories := make([]int, 0, len(basicInfo.Categories))
-	for _, cat := range basicInfo.Categories {
-		if _, exists := availableCategories[cat]; exists {
-			optimizedCategories = append(optimizedCategories, cat)
-		} else {
-			// Try parent category
-			parent := cat / 100 * 100
-			if parent != cat {
-				if _, exists := availableCategories[parent]; exists {
-					optimizedCategories = append(optimizedCategories, parent)
-				}
-			}
-		}
-	}
-
-	// If no categories match, fall back to parent categories
-	if len(optimizedCategories) == 0 {
-		for _, cat := range basicInfo.Categories {
-			parent := cat / 100 * 100
-			if _, exists := availableCategories[parent]; exists {
-				optimizedCategories = append(optimizedCategories, parent)
-			}
-		}
-	}
-
-	// Create optimized info
-	optimizedInfo := basicInfo
-	if len(optimizedCategories) > 0 {
-		optimizedInfo.Categories = optimizedCategories
-	}
-
-	return optimizedInfo
-}
-
 // ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
 // First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
 func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
@@ -493,22 +447,6 @@ type TorrentMetadata struct {
 	Info   *metainfo.Info
 }
 
-// ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
-func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
-	name, hash, _, err = ParseTorrentMetadata(torrentBytes)
-	return name, hash, err
-}
-
-// ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
-func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	return meta.Name, meta.HashV1, meta.Files, nil
-}
-
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
 func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {
@@ -522,11 +460,11 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name := infoVal.Name
+	name := stringutils.SanitizeUTF8(infoVal.Name)
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
-		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
+		h := metainfo.HashV2Bytes([]byte(mi.InfoBytes))
 		hashV2 = strings.ToLower(h.HexString())
 	}
 
@@ -586,7 +524,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath := f.DisplayPath(&info)
+		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(&info, &f))
 		name := rootName
 		if info.IsDir() && displayPath != "" {
 			name = rootName + "/" + displayPath
@@ -628,6 +566,22 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	}
 
 	return files
+}
+
+// torrentDisplayPath is metainfo.FileInfo.DisplayPath with libtorrent's empty-component
+// rule applied, so the path lines up with the one qBittorrent stores for the file.
+// The non-directory branch is kept so this stays a drop-in for DisplayPath.
+func torrentDisplayPath(info *metainfo.Info, f *metainfo.FileInfo) string {
+	if !info.IsDir() {
+		return info.BestName()
+	}
+
+	parts := f.BestPath()
+	components := make([]string, len(parts))
+	for i, part := range parts {
+		components[i] = pathutil.TorrentPathComponent(part)
+	}
+	return strings.Join(components, "/")
 }
 
 // ParseTorrentAnnounceDomain extracts the primary announce URL's domain from torrent bytes.

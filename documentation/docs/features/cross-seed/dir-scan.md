@@ -204,7 +204,7 @@ This setting reduces tracker/API load by excluding stale content before search b
 
 - Movies/music are included only when the item's newest video/audio file is within the cutoff.
 - TV is evaluated at the season/episode work-item level so one fresh episode does not pull an entire older show back in.
-- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only.
+- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only. With [Skip individual episodes](#skip-individual-episodes) on, there is no episode-level fallback, so the season pack stays in scope as long as its newest episode is within the cutoff.
 - Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
 - The timestamp used is filesystem **modified time (mtime)** from video/audio files only, not subtitles, extras, release date, or qBittorrent add time.
 - Webhook-triggered scans ignore the cutoff entirely and trust the webhook path as the freshness signal.
@@ -228,7 +228,16 @@ Each scan directory has its own configuration:
 | Category override | Overrides the global Default Category for this directory. |
 | Additional tags | Added on top of the global Dir Scan tags. |
 | Scan Interval (minutes) | How often to rescan (minimum 60 minutes, default 1440 = 24 hours). |
+| Skip individual episodes | The scan does not search single TV episodes. See [Skip individual episodes](#skip-individual-episodes). |
 | Enabled | Enable/disable without deleting the configuration. |
+
+### Skip individual episodes
+
+Off by default. When it is on, the scan does not search single TV episodes. It searches the season pack that the episodes make together instead. Movies, music, and other content are not affected.
+
+A season pack search needs two or more episodes of the same show and season. The scan groups these episodes across the whole searchee, not per subfolder. If a folder holds episodes from more than one season, the scan makes no pack for those seasons. The scan does not search an episode that cannot make a season pack.
+
+This option does not affect specials (season 0) or absolute episode numbers.
 
 ## Operational Behavior
 
@@ -248,7 +257,22 @@ This is **not** an exact checkpoint resume. When you start a new run after cance
 
 From a user perspective, this behaves like **restart with preserved progress**, not “continue from the exact file where it stopped.”
 
-If you want to force a directory to be re-processed from scratch, use **Reset Scan Progress** for that directory in the UI. This clears the tracked file state for that directory.
+### New indexers reopen "no match" files
+
+Each "no match" file records which indexers were enabled when the search ran. When you enable an indexer that is not in that record, the next scan searches the file again. You do not need to reset anything. An indexer that was already in the record does not trigger a retry, because the file was searched against it before.
+
+A search only marks a file as "no match" when every indexer it asked answered. If some indexers were down or rate-limited, the file stays pending and the next scan retries it.
+
+Files marked "no match" on older qui versions have no recorded indexer set. They stay skipped until you requeue them (see below).
+
+### Retry Unmatched vs Reset Scan Progress
+
+Both buttons sit on the directory details card, next to the run history.
+
+- **Retry Unmatched** resets only "no match" files to pending. Matched and already-seeding files keep their state. Use this after you add an indexer and want old "no match" files searched again.
+- **Reset Scan Progress** deletes all tracked file state for the directory. The next scan re-processes everything, including files that already matched. Use this only when you want a full redo.
+
+Neither button starts a scan. Trigger a scan with **Scan Now**, or wait for the next scheduled run.
 
 ### Scheduled vs manual scans
 
@@ -355,12 +379,16 @@ Partial matches in link tree mode (hardlink or reflink) require **Download missi
 :::
 
 See:
-- [Hardlink Mode](hardlink-mode)
-- [Link Directories](link-directories)
+- [Hardlink Mode](./hardlink-mode.md)
+- [Link Directories](./link-directories.md)
 
 ### Fallback to regular mode
 
 When link-tree creation fails (hardlinking across filesystems, permission issues), Dir Scan falls back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate fails.
+
+Filesystem fallback adds the torrent against the matched source files instead of the link-tree directory, so qui requires a full 100% recheck before auto-resume. If **Skip recheck** is enabled, the fallback candidate is skipped.
+
+For partial or otherwise non-perfect fallback matches, qui runs piece-boundary protection before adding the torrent. This fallback check is always enforced, even when **Skip piece boundary safety check** is enabled for regular reuse mode.
 
 ## Scanning Your *arr Library
 
@@ -408,4 +436,4 @@ Click a run to see details including failure reasons for individual items.
 - Indexers may throttle requests. Check **Scheduler Activity** on the Indexers page.
 - Consider reducing scan frequency or limiting to fewer indexers.
 
-For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](troubleshooting).
+For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](./troubleshooting.md).
