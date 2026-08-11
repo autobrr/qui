@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Settings, HardDrive, Zap, Ban, Radio, AlertTriangle } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
@@ -35,7 +36,6 @@ function SwitchSetting({
   onChange: (checked: boolean) => void
 }) {
   const switchId = React.useId()
-  const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
     <label
@@ -46,14 +46,9 @@ function SwitchSetting({
         id={switchId}
         checked={checked}
         onCheckedChange={onChange}
-        aria-describedby={descriptionId}
       />
-      <div className="space-y-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        {description && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </label>
   )
 }
@@ -78,17 +73,14 @@ function NumberInput({
   unit?: string
 }) {
   const inputId = React.useId()
-  const descriptionId = description ? `${inputId}-desc` : undefined
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={inputId} className="text-sm font-medium">
+      <Label htmlFor={inputId} className="flex items-center gap-2 text-sm font-medium">
         {label}
-        {unit && <span className="text-muted-foreground ml-1">({unit})</span>}
+        {unit && <span className="text-muted-foreground">({unit})</span>}
+        {description && <FieldHelp>{description}</FieldHelp>}
       </Label>
-      {description && (
-        <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-      )}
       <Input
         id={inputId}
         type="number"
@@ -100,7 +92,6 @@ function NumberInput({
           onChange(isNaN(val) ? 0 : val)
         }}
         placeholder={placeholder}
-        aria-describedby={descriptionId}
       />
     </div>
   )
@@ -258,16 +249,16 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
             <form.Field name="announce_ip">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="announce_ip">{t("preferences.advancedNetwork.announceIp")}</Label>
+                  <Label htmlFor="announce_ip" className="flex items-center gap-2">
+                    {t("preferences.advancedNetwork.announceIp")}
+                    <FieldHelp>{t("preferences.advancedNetwork.announceIpDescription")}</FieldHelp>
+                  </Label>
                   <Input
                     id="announce_ip"
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={t("preferences.connectionSettings.autoDetect")}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t("preferences.advancedNetwork.announceIpDescription")}
-                  </p>
                 </div>
               )}
             </form.Field>

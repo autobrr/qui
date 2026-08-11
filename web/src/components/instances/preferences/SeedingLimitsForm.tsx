@@ -6,6 +6,7 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
@@ -30,12 +31,8 @@ function SwitchSetting({
   return (
     <div className="flex items-center gap-3">
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
-      <div className="space-y-0.5">
-        <Label className="text-sm font-medium">{label}</Label>
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <Label className="text-sm font-medium">{label}</Label>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </div>
   )
 }

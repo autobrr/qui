@@ -1014,7 +1014,6 @@
       "ignorePaths": "Ignore-Pfade",
       "ignorePathsTooltip": "Pfade, die vom Scan ausgeschlossen werden. Dateien in diesen Verzeichnissen werden nie als Orphans markiert. Gib einen Pfad pro Zeile ein.",
       "ignorePathsPlaceholder": "/downloads/preserve\n/downloads/manual\n/data/keep",
-      "ignorePathsDescription": "Ein Pfad pro Zeile. Pfade werden als Präfixe abgeglichen.",
       "saving": "Wird gespeichert…",
       "saveChanges": "Änderungen speichern",
       "toast": {
@@ -1382,8 +1381,7 @@
         "skipIfCrossSeedExists": "Überspringen, wenn Cross-Seed in Kategorien vorhanden",
         "aboutSkipping": "Über das Überspringen, wenn Cross-Seeds vorhanden sind",
         "skipHelp": "Nützlich mit *arr-Import-Warteschlangen: verhindert, dass die Automatisierung die Torrents verschiebt, wenn mindestens einer von ihnen in der *arr-Import-Warteschlange ist.",
-        "selectCategories": "Kategorien auswählen...",
-        "skipDescription": "Überspringt die Kategorieänderung, wenn ein anderer Torrent, der auf denselben Inhalt auf der Festplatte zeigt, bereits in einer dieser Kategorien ist."
+        "selectCategories": "Kategorien auswählen..."
       },
       "externalProgram": {
         "program": "Programm",

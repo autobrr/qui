@@ -411,9 +411,6 @@ export function OrphanScanSettingsForm({
             rows={4}
             className="font-mono text-sm"
           />
-          <p className="text-xs text-muted-foreground">
-            {t("preferences.orphanScanSettings.ignorePathsDescription")}
-          </p>
         </div>
       </div>
 

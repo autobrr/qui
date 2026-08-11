@@ -9,6 +9,7 @@ package local
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -112,19 +113,22 @@ func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]f
 		truncated = true
 	}
 
-	result := make([]fsops.DirEntry, len(entries))
-	for i, e := range entries {
-		info, _ := e.Info()
-		de := fsops.DirEntry{
+	result := make([]fsops.DirEntry, 0, len(entries))
+	for _, e := range entries {
+		info, err := e.Info()
+		if err != nil {
+			// The entry vanished between ReadDir and Info: a race, not a failure.
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, false, fmt.Errorf("read entry %s: %w", e.Name(), err)
+		}
+		result = append(result, fsops.DirEntry{
 			Name:      e.Name(),
 			IsDir:     e.IsDir(),
 			IsSymlink: e.Type()&os.ModeSymlink != 0,
-			Mode:      e.Type().Perm(),
-		}
-		if info != nil {
-			de.Mode = info.Mode().Perm()
-		}
-		result[i] = de
+			Mode:      info.Mode().Perm(),
+		})
 	}
 	return result, truncated, nil
 }
