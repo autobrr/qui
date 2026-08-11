@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -228,15 +227,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
-	// Resolve backend once for rollback (materializeLinkTree already used it).
-	var backend fsops.Backend
-	if isLinkTreeMode(addMode) && i.backendPool != nil {
-		if b, err := i.backendPool.GetBackend(ctx, instance.ID); err != nil {
-			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("dirscan: failed to get backend for rollback")
-		} else {
-			backend = b
-		}
-	}
+	// Resolve backend once for rollback and alignment checks (materializeLinkTree
+	// already used it for link-tree modes).
+	backend := i.resolveBackend(ctx, instance.ID)
 
 	// In regular (reuse) mode the torrent keeps its own folder/file names (minus the root for
 	// stripRoot plans, added with NoSubfolder). When those differ from the on-disk paths we
@@ -245,7 +238,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	// they can download the missing files, which is incompatible with the pause-rename-recheck
 	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
 	// need this either.
-	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(req.Searchee.Path))
+	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(ctx, backend, req.Searchee.Path))
 	regularFullMatch := addMode == injectModeRegular && !hasUnmatchedFiles
 	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
@@ -562,6 +555,20 @@ func (i *Injector) validateInjectRequest(req *InjectRequest) error {
 	return nil
 }
 
+// resolveBackend returns the instance's filesystem backend, or nil when the pool is
+// missing or resolution fails. Callers treat a nil backend like an unreadable path.
+func (i *Injector) resolveBackend(ctx context.Context, instanceID int) fsops.Backend {
+	if i.backendPool == nil {
+		return nil
+	}
+	backend, err := i.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("dirscan: failed to get filesystem backend")
+		return nil
+	}
+	return backend
+}
+
 func (i *Injector) prepareInjection(
 	ctx context.Context,
 	instance *models.Instance,
@@ -572,7 +579,7 @@ func (i *Injector) prepareInjection(
 	}
 
 	if !instance.UseReflinks && !instance.UseHardlinks {
-		return i.calculateSavePath(req), injectModeRegular, nil, nil
+		return i.calculateSavePath(ctx, instance, req), injectModeRegular, nil, nil
 	}
 
 	plan, linkMode, created, linkErr := i.materializeLinkTree(ctx, instance, req)
@@ -588,7 +595,7 @@ func (i *Injector) prepareInjection(
 	}
 
 	i.logLinkTreeFallback(instance, linkErr)
-	return i.calculateSavePath(req), injectModeRegular, nil, nil
+	return i.calculateSavePath(ctx, instance, req), injectModeRegular, nil, nil
 }
 
 func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
@@ -627,7 +634,7 @@ func (i *Injector) rollbackLinkTree(ctx context.Context, created *fsops.TreeCrea
 }
 
 // calculateSavePath determines the save path for the torrent.
-func (i *Injector) calculateSavePath(req *InjectRequest) string {
+func (i *Injector) calculateSavePath(ctx context.Context, instance *models.Instance, req *InjectRequest) string {
 	// Start with the provided save path or derive from searchee
 	savePath := req.SavePath
 	if savePath == "" {
@@ -637,7 +644,7 @@ func (i *Injector) calculateSavePath(req *InjectRequest) string {
 
 		// Special case: for directory searchees, if the incoming torrent is rootless (no common root folder),
 		// use the searchee directory directly so single-file/rootless torrents land inside that folder.
-		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(req.Searchee.Path, req.ParsedTorrent) {
+		if req.ParsedTorrent != nil && shouldUseSearcheeDirectory(ctx, i.resolveBackend(ctx, instance.ID), req.Searchee.Path, req.ParsedTorrent) {
 			savePath = req.Searchee.Path
 		}
 	}
@@ -650,13 +657,13 @@ func (i *Injector) calculateSavePath(req *InjectRequest) string {
 	return savePath
 }
 
-func shouldUseSearcheeDirectory(searcheePath string, parsed *ParsedTorrent) bool {
-	if searcheePath == "" || parsed == nil {
+func shouldUseSearcheeDirectory(ctx context.Context, backend fsops.Backend, searcheePath string, parsed *ParsedTorrent) bool {
+	if searcheePath == "" || parsed == nil || backend == nil {
 		return false
 	}
 
-	fi, err := os.Stat(searcheePath)
-	if err != nil || !fi.IsDir() {
+	fi, err := backend.Stat(ctx, searcheePath)
+	if err != nil || !fi.IsDir {
 		return false
 	}
 

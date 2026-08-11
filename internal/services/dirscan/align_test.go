@@ -312,7 +312,7 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"} // regular mode (no hardlink/reflink)
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true} // regular mode (no hardlink/reflink)
 
 	manager := &alignFakeManager{
 		hash: "deadbeef01",
@@ -402,7 +402,7 @@ func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
 		hash:  "deadbeef04",
@@ -464,7 +464,7 @@ func TestInjector_Inject_AlignmentFailure_ReportsFailureAndDoesNotResume(t *test
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	// Simulate a qBittorrent that cannot rename (e.g. WebAPI < 2.7.0): every rename errors and the
 	// file list never changes, so alignment can never be confirmed.
@@ -524,7 +524,7 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
 		hash:  "deadbeef02",
@@ -581,7 +581,7 @@ func TestInjector_Inject_AlignmentRecheckFailure_ReportsFailureAndDoesNotResume(
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	// Renames succeed, but the post-alignment recheck can't be scheduled. The torrent was added
 	// force-paused for alignment, so a swallowed recheck error would strand it paused while the
@@ -645,7 +645,7 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
 		hash:  "deadbeef07",
@@ -717,7 +717,7 @@ func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
 		t.Fatalf("write loose file: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
 		hash: "deadbeef09",
@@ -788,7 +788,7 @@ func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
 		t.Fatalf("write loose file: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
 		hash:  "deadbeef10",
@@ -866,7 +866,7 @@ func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
 		t.Fatalf("mkdir searchee: %v", err)
 	}
 
-	instance := &models.Instance{ID: 1, Name: "test"}
+	instance := &models.Instance{ID: 1, Name: "test", HasLocalFilesystemAccess: true}
 
 	manager := &alignFakeManager{
 		hash:              "deadbeef12",
