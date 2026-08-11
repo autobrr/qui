@@ -22,6 +22,7 @@ const (
 	// searchCandidateClassExactSizeFallback means positive exact byte equality
 	// replaced only the soft release-attribute checks rejected by strict matching.
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
+	searchCandidateClassTitleRescue       searchCandidateClass = "title-rescue"
 )
 
 // searchSizeEvidence describes size evidence available before a candidate
@@ -47,6 +48,7 @@ type searchCandidateInput struct {
 	CandidateSize          int64
 	TolerancePercent       float64
 	FindIndividualEpisodes bool
+	RescueTitleMismatches  bool
 }
 
 // searchCandidateDecision records admission provenance, including which strict
@@ -118,6 +120,19 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 		mismatchReason,
 	):
 		class = searchCandidateClassWebSourceRelabel
+	case input.RescueTitleMismatches &&
+		mismatchReason == titleMismatchReason &&
+		decision.SizeEvidence.matches():
+		if ok, reason := s.releasesMatchExceptTitleWithReason(
+			input.SourceRelease,
+			input.CandidateRelease,
+			input.FindIndividualEpisodes,
+		); ok {
+			class = searchCandidateClassTitleRescue
+		} else {
+			decision.RejectReason = reason
+			return decision
+		}
 	case decision.SizeEvidence.matches():
 		relaxedDifferences := softMetadataDifferences(input.SourceRelease, input.CandidateRelease)
 		if ok, reason := s.validateExactSizeFallback(input, mismatchReason, relaxedDifferences); ok {
@@ -157,6 +172,8 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	}
 
 	switch class {
+	case searchCandidateClassTitleRescue:
+		decision.MatchReason = "Title rescue · full check required"
 	case searchCandidateClassExactSizeFallback:
 		decision.Score += sizeEvidenceFallbackScoreBonus
 		decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict title/season/resolution/group"

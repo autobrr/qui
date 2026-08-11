@@ -22,16 +22,14 @@ This guide helps you get started developing qui.
 Make sure you have the following dependencies installed before setting up your developer environment:
 
 - [Git](https://git-scm.com/)
-- [Go](https://golang.org/dl/) 1.26 or later (see [go.mod](go.mod#L3) for exact version)
-- [Node.js](https://nodejs.org) (we usually use the latest Node LTS version - for further information see `@types/node` major version in [package.json](web/package.json))
+- [Go](https://golang.org/dl/) 1.26 or later (see [go.mod](../go.mod#L3) for exact version)
+- [Node.js](https://nodejs.org) (we usually use the latest Node LTS version - for further information see `@types/node` major version in [package.json](../web/package.json))
 - [pnpm](https://pnpm.io/installation)
 - [prek](https://github.com/prefix-dev/prek) (optional, for pre-commit hooks)
 
 ## How to contribute
 
-- **Pull request access:** This repo restricts pull request creation to **collaborators only**.
-  - If you are **not** a collaborator: start with an issue/discussion (or Discord) and include a patch (`git diff`) or link to your fork/branch so a maintainer can apply it.
-- **Clone:** Clone the repository to start working on your changes. If you are not a collaborator, you can still work from a [fork](https://github.com/autobrr/qui/fork) and share a patch/link (see above).
+- **Clone:** Clone the repository, or a [fork](https://github.com/autobrr/qui/fork), to start work on your changes.
 - **Branching:** Create a new branch for your changes. Use a descriptive name for easy understanding.
   - Checkout a new branch for your fix or feature `git checkout -b fix/torrent-actions-issue`
 - **Coding:** Ensure your code is well-commented for clarity. With go use `go fmt`

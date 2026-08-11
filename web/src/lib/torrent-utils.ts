@@ -199,3 +199,16 @@ export function getTotalSize(torrents: Torrent[]): number {
   // Use reduce to sum up all torrent sizes
   return torrents.reduce((total, torrent) => total + (torrent.size || 0), 0)
 }
+
+/**
+ * Resolve how a boolean toggle (force start, sequential download, auto TMM)
+ * should be presented for the current selection. `stateUnknown` is true when
+ * rows in the selection are still unloaded, so the sampled values say nothing
+ * about the rest.
+ */
+export function getToggleSelectionState(values: boolean[], stateUnknown: boolean): { allEnabled: boolean; mixed: boolean } {
+  return {
+    allEnabled: values.length > 0 && values.every(Boolean),
+    mixed: stateUnknown || values.some(value => value !== values[0]),
+  }
+}

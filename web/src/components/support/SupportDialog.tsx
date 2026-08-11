@@ -30,7 +30,7 @@ export function SupportDialog({ open, onOpenChange }: SupportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" overlayClassName="backdrop-blur-sm">
         <DialogHeader className="space-y-2">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Heart className="h-4 w-4 fill-current text-red-500" />

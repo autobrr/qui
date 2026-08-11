@@ -110,6 +110,7 @@ func (lm *LogManager) buildWriter(baseWriter io.Writer, logPath string, maxSize,
 		Filename:   logPath,
 		MaxSize:    maxSize,
 		MaxBackups: maxBackups,
+		Compress:   true,
 	}
 	return io.MultiWriter(baseWriter, rotator), rotator, nil
 }

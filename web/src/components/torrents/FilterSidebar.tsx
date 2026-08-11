@@ -70,6 +70,7 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { CategoryTree } from "./CategoryTree"
+import { FilterViewsSection } from "./FilterViewsSection"
 import {
   CreateCategoryDialog,
   CreateTagDialog,
@@ -1908,6 +1909,16 @@ const FilterSidebarComponent = ({
             onValueChange={setExpandedItems}
             className={viewMode === "dense" ? "space-y-1" : "space-y-2"}
           >
+            {/* Saved Views */}
+            <FilterViewsSection
+              selectedFilters={selectedFilters}
+              onApply={applyFilterChange}
+              hasActiveFilters={hasActiveFilters}
+              triggerClassName={accordionTriggerClass}
+              contentClassName={accordionContentClass}
+              itemClassName={filterItemClass}
+            />
+
             {/* Custom Filter */}
             {selectedFilters.expr && (
               <AccordionItem value="custom" className="border rounded-lg">
@@ -2159,9 +2170,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenCategories && hiddenCategorySearchMatches > 0
-                        ? t("filterSidebar.allCategoriesEmpty")
-                        : t("filterSidebar.noCategoriesFound", { query: debouncedCategorySearch })}
+                      {!showHiddenCategories && hiddenCategorySearchMatches > 0? t("filterSidebar.allCategoriesEmpty"): t("filterSidebar.noCategoriesFound", { query: debouncedCategorySearch })}
                     </div>
                   )}
 
@@ -2571,9 +2580,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenTags && hiddenTagSearchMatches > 0
-                        ? t("filterSidebar.allTagsEmpty")
-                        : t("filterSidebar.noTagsFound", { query: debouncedTagSearch })}
+                      {!showHiddenTags && hiddenTagSearchMatches > 0? t("filterSidebar.allTagsEmpty"): t("filterSidebar.noTagsFound", { query: debouncedTagSearch })}
                     </div>
                   )}
 

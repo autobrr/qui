@@ -71,21 +71,23 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, defaults.Enabled)
 	assert.Equal(t, 120, defaults.RunIntervalMinutes)
+	assert.False(t, defaults.RescueTitleMismatches)
 
 	category := "TV"
 
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
-		Enabled:              true,
-		RunIntervalMinutes:   30,
-		StartPaused:          false,
-		Category:             &category,
-		RSSAutomationTags:    []string{"cross-seed", "automation"},
-		SeededSearchTags:     []string{"seeded"},
-		CompletionSearchTags: []string{"completion"},
-		WebhookTags:          []string{"webhook"},
-		TargetInstanceIDs:    []int{1, 2},
-		TargetIndexerIDs:     []int{11, 42},
-		MaxResultsPerRun:     25,
+		Enabled:               true,
+		RunIntervalMinutes:    30,
+		StartPaused:           false,
+		Category:              &category,
+		RSSAutomationTags:     []string{"cross-seed", "automation"},
+		SeededSearchTags:      []string{"seeded"},
+		CompletionSearchTags:  []string{"completion"},
+		WebhookTags:           []string{"webhook"},
+		TargetInstanceIDs:     []int{1, 2},
+		TargetIndexerIDs:      []int{11, 42},
+		MaxResultsPerRun:      25,
+		RescueTitleMismatches: true,
 	})
 	require.NoError(t, err)
 
@@ -101,6 +103,7 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, []int{1, 2}, updated.TargetInstanceIDs)
 	assert.ElementsMatch(t, []int{11, 42}, updated.TargetIndexerIDs)
 	assert.Equal(t, 25, updated.MaxResultsPerRun)
+	assert.True(t, updated.RescueTitleMismatches)
 
 	reloaded, err := store.GetSettings(ctx)
 	require.NoError(t, err)

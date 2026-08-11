@@ -10,10 +10,13 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -97,24 +100,43 @@ type seasonPackTestFixture struct {
 	torrentData string
 }
 
+const seasonPackFixtureName = "Cool.Show.S01.1080p.WEB.x264-GRP"
+
+var seasonPackFixtureFiles = []string{
+	"Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv",
+	"Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv",
+	"Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv",
+	"Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv",
+}
+
 func newSeasonPackFixture(t *testing.T) seasonPackTestFixture {
 	t.Helper()
 
-	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
-	packFiles := []string{
-		"Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv",
-		"Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv",
-		"Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv",
-		"Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv",
-	}
-
-	torrentBytes := createTestTorrent(t, packName, packFiles, 262144)
-	torrentData := base64.StdEncoding.EncodeToString(torrentBytes)
+	torrentBytes := createTestTorrent(t, seasonPackFixtureName, seasonPackFixtureFiles, 262144)
 
 	return seasonPackTestFixture{
-		packName:    packName,
-		packFiles:   packFiles,
-		torrentData: torrentData,
+		packName:    seasonPackFixtureName,
+		packFiles:   seasonPackFixtureFiles,
+		torrentData: base64.StdEncoding.EncodeToString(torrentBytes),
+	}
+}
+
+// alignedSeasonPackFixture builds a pack whose files are exactly one piece each,
+// so a demoted (pending) episode shares no pieces with linked neighbors and the
+// hardlink piece-boundary safety check passes.
+func alignedSeasonPackFixture(t *testing.T) seasonPackTestFixture {
+	t.Helper()
+
+	const pieceLen = 64
+	contents := make(map[string][]byte, len(seasonPackFixtureFiles))
+	for _, name := range seasonPackFixtureFiles {
+		contents[name] = bytes.Repeat([]byte("x"), pieceLen)
+	}
+
+	return seasonPackTestFixture{
+		packName:    seasonPackFixtureName,
+		packFiles:   seasonPackFixtureFiles,
+		torrentData: base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, seasonPackFixtureName, pieceLen, contents)),
 	}
 }
 
@@ -474,11 +496,10 @@ func TestCheckSeasonPackWebhook_RejectsSxxExxLocalsAgainstAbsolutePack(t *testin
 	require.Equal(t, "no_matches", resp.Reason)
 }
 
-// TestFixC_CRCollection_CheckAndApplyBothReject pins fix C: the pack season is
-// stamped onto a seasonless local BEFORE the release match, so the seasonless-only
-// collection tolerance (unknownSeasonTV) can no longer pass at check while apply
-// (which matches stamped file releases) rejects. Pack carries CR, locals do not:
-// both stages must reject. Reverting the stamp-before-match ordering turns this red.
+// TestFixC_CRCollection_CheckAndApplyBothReject pins the check/apply agreement
+// from fix C: a collection conflict must reject at BOTH stages, never pass at
+// check and fail at apply. Pack carries CR, locals carry AMZN: both stages must
+// reject the conflicting service tags.
 func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 	packName := "Cool.Show.S03.1080p.CR.WEB-DL.x264-GRP"
 	packFiles := []string{
@@ -495,12 +516,12 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 		UseHardlinks:             true,
 		HardlinkBaseDir:          t.TempDir(),
 	}
-	// Locals lack the CR collection tag.
+	// Locals carry a conflicting AMZN collection tag.
 	episodeTorrents := []qbt.Torrent{
-		{Hash: "e25", Name: "Cool.Show.-.25.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e26", Name: "Cool.Show.-.26.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e27", Name: "Cool.Show.-.27.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
-		{Hash: "e28", Name: "Cool.Show.-.28.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e25", Name: "Cool.Show.-.25.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e26", Name: "Cool.Show.-.26.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e27", Name: "Cool.Show.-.27.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e28", Name: "Cool.Show.-.28.1080p.AMZN.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.AMZN.WEB-DL.x264-GRP.mkv", Progress: 1.0},
 	}
 
 	baseSM := newMultiFakeSyncManager(
@@ -520,7 +541,7 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})
 	require.NoError(t, err)
-	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals do not")
+	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals have AMZN")
 
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
@@ -665,6 +686,97 @@ func TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes(t *testing.T) {
 	require.Len(t, got, 1, "incomplete episode must not count as a candidate")
 	_, ok := got[episodeIdentity{series: 3, episode: 1}]
 	require.True(t, ok, "complete episode must count")
+}
+
+// TestMatchEpisodeCandidates_FilterLogLevels pins the level split for filtered episode
+// candidates. The loop reads every cached episode, so a reason that means "belongs to
+// another show or another pack" must stay off the default level.
+func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
+	parsedPack := rls.ParseString("Cool.Show.S03.1080p.WEB.x264-GRP")
+	packRelease := &parsedPack
+
+	type want struct {
+		reason string
+		level  string
+		count  int
+	}
+
+	tests := []struct {
+		name         string
+		packEpisodes map[episodeIdentity]packEpisodeOrigin
+		locals       []qbt.Torrent
+		want         []want
+	}{
+		{
+			// Light check: no torrent data, so the release match is the only gate.
+			name: "no pack episodes",
+			locals: []qbt.Torrent{
+				{Hash: "ok", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "grp", Name: "Cool.Show.S03E02.1080p.WEB.x264-OTHER", Progress: 1.0},
+				{Hash: "other1", Name: "Other.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "other2", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
+			},
+			want: []want{
+				{titleMismatchReason, "trace", 2},
+				{"group mismatch", "debug", 1},
+			},
+		},
+		{
+			// The path every real caller takes: the pack-episode gate runs first. 1140 is
+			// listed as seasoned, so the absolute-numbered local reaches the gate in-pack
+			// and only the scheme guard rejects it. That case is bounded by the pack size.
+			name: "pack episodes set",
+			packEpisodes: map[episodeIdentity]packEpisodeOrigin{
+				{series: 3, episode: 1}:    {seasoned: true},
+				{series: 3, episode: 2}:    {seasoned: true},
+				{series: 3, episode: 1140}: {seasoned: true},
+			},
+			locals: []qbt.Torrent{
+				{Hash: "ok", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "away1", Name: "Third.Show.S01E05.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "away2", Name: "Fourth.Show.S09E11.1080p.WEB.x264-GRP", Progress: 1.0},
+				{Hash: "absolute", Name: "Cool Show - 1140 [1080p][WEB][x264]-GRP", Progress: 1.0},
+			},
+			want: []want{
+				{notInPackReason, "trace", 2},
+				{"episode numbering mismatch", "debug", 1},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previousLogger := log.Logger
+			previousLevel := zerolog.GlobalLevel()
+			var buf bytes.Buffer
+			log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+			t.Cleanup(func() {
+				log.Logger = previousLogger
+				zerolog.SetGlobalLevel(previousLevel)
+			})
+
+			inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+			cached := buildCrossInstanceViews(inst, tt.locals)
+			svc := &Service{releaseCache: NewReleaseCache()}
+			settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+			got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, tt.packEpisodes, settings, nil)
+			require.Len(t, got, 1, "only the fully matching episode may count")
+
+			for _, w := range tt.want {
+				count := 0
+				for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+					if !strings.Contains(line, `"reason":"`+w.reason+`"`) {
+						continue
+					}
+					require.Contains(t, line, `"level":"`+w.level+`"`, "%q must log at %s", w.reason, w.level)
+					count++
+				}
+				require.Equal(t, w.count, count, "line count for %q", w.reason)
+			}
+		})
+	}
 }
 
 func TestCheckSeasonPackWebhook_ReturnsNotFoundBelowThreshold(t *testing.T) {
@@ -1282,6 +1394,11 @@ func TestApplySeasonPackWebhook_HardFailsWhenCoverageDrifts(t *testing.T) {
 	require.Equal(t, "apply", store.runs[0].Phase)
 	require.Equal(t, "failed", store.runs[0].Status)
 	require.Equal(t, "drifted", store.runs[0].Reason)
+	// The run row must carry the real partial coverage, not a flat 0/N.
+	require.Equal(t, 1, store.runs[0].MatchedEpisodes)
+	require.InDelta(t, 0.25, store.runs[0].Coverage, 0.001)
+	require.NotNil(t, store.runs[0].InstanceID)
+	require.Equal(t, inst.ID, *store.runs[0].InstanceID)
 }
 
 func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
@@ -1629,8 +1746,76 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 	}
 }
 
-func TestApplySeasonPackWebhook_RejectsSizeMismatchedEpisodeFiles(t *testing.T) {
-	fix := newSeasonPackFixture(t)
+// A size-mismatched episode file is demoted to missing instead of failing the
+// whole pack (the Hotellet 18/20 case): the pack applies paused with the bad
+// episode left pending for download, and the mismatched file is never linked.
+func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing.T) {
+	fix := alignedSeasonPackFixture(t)
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+	sm.files[normalizeHash("e03")][0].Size++
+
+	var capturedPlan *hardlinktree.TreePlan
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+			capturedPlan = plan
+			return nil
+		},
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Applied)
+	require.Equal(t, 3, resp.MatchedEpisodes)
+	require.InDelta(t, 0.75, resp.Coverage, 0.001)
+
+	require.NotNil(t, capturedPlan)
+	require.Len(t, capturedPlan.Files, 3)
+	for _, file := range capturedPlan.Files {
+		require.NotContains(t, file.TargetPath, "S01E03")
+	}
+
+	require.Len(t, sm.addCalls, 1)
+	require.Equal(t, "true", sm.addCalls[0].options["paused"])
+	require.Len(t, sm.bulkCalls, 1)
+	require.Equal(t, "recheck", sm.bulkCalls[0].action)
+}
+
+// On an unaligned pack (files share pieces) in hardlink mode, the piece-boundary
+// safety check vetoes a demotion: downloading the pending file would write into
+// pieces shared with linked (hardlinked) neighbors and corrupt seeded data.
+func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *testing.T) {
+	fix := newSeasonPackFixture(t) // files share the single 256 KiB piece
 	baseDir := t.TempDir()
 
 	inst := &models.Instance{
@@ -1673,6 +1858,57 @@ func TestApplySeasonPackWebhook_RejectsSizeMismatchedEpisodeFiles(t *testing.T) 
 	require.NoError(t, err)
 	require.False(t, resp.Applied)
 	require.Equal(t, "layout_mismatch", resp.Reason)
+	require.Contains(t, resp.Message, "unsafe piece boundary")
+	require.Empty(t, sm.addCalls)
+}
+
+// When demotions push resolved coverage below the threshold, the apply drifts
+// instead of linking a pack the instance can no longer cover.
+func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t *testing.T) {
+	fix := alignedSeasonPackFixture(t)
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+	sm.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+	sm.files[normalizeHash("e03")][0].Size++
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 1.0),
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Applied)
+	require.Equal(t, "drifted", resp.Reason)
+	require.Contains(t, resp.Message, "3/4")
 	require.Empty(t, sm.addCalls)
 }
 
@@ -1846,7 +2082,8 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 	require.Len(t, sm.bulkCalls, 1)
 	require.Equal(t, "recheck", sm.bulkCalls[0].action)
 	req := <-svc.recheckResumeChan
-	require.InDelta(t, 0.75, req.threshold, 0.0001)
+	// Resume gate = linked byte fraction (53-byte episode of a 64-byte pack), with slack.
+	require.InDelta(t, 53.0/64.0*seasonPackResumeSlack, req.threshold, 0.0001)
 }
 
 func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
@@ -1969,7 +2206,8 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.InDelta(t, 0.75, pending.threshold, 0.001)
+		// Resume gate = linked byte fraction (3 of 4 equal episodes), with slack.
+		require.InDelta(t, 0.75*seasonPackResumeSlack, pending.threshold, 0.001)
 	default:
 		t.Fatal("expected season pack apply to queue recheck resume")
 	}
@@ -2033,7 +2271,8 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.InDelta(t, 0.75, pending.threshold, 0.0001)
+		// Resume gate = linked byte fraction (64-byte episode of a 75-byte pack), with slack.
+		require.InDelta(t, 64.0/75.0*seasonPackResumeSlack, pending.threshold, 0.0001)
 	default:
 		t.Fatal("expected safe extras flow to queue recheck resume")
 	}
@@ -2579,4 +2818,31 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 func TestPackEpisodeRejectReason(t *testing.T) {
 	require.Equal(t, "episode not in pack", packEpisodeRejectReason(false))
 	require.Equal(t, "episode numbering mismatch", packEpisodeRejectReason(true))
+}
+
+// A multi-episode local ("S03E25E26") parses as a pack since the range
+// enrichment, but it is still an episode source for season pack assembly,
+// identified by its first episode, the identity its file carries in the pack.
+func TestMatchEpisodeCandidates_MultiEpisodeLocalStaysAnEpisodeSource(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	parsedPack := rls.ParseString(packName)
+	packRelease := &parsedPack
+
+	packEpisodes := map[episodeIdentity]packEpisodeOrigin{
+		{series: 3, episode: 25}: {seasoned: true},
+	}
+
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	local := qbt.Torrent{Hash: "e2526", Name: "Cool.Show.S03E25E26.1080p.WEB.x264-GRP", Progress: 1.0}
+	cached := buildCrossInstanceViews(inst, []qbt.Torrent{local})
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, packEpisodes, settings, nil)
+	require.Len(t, got, 1)
+	matches, ok := got[episodeIdentity{series: 3, episode: 25}]
+	require.True(t, ok, "range local must be identified by its first episode")
+	require.Len(t, matches, 1)
+	require.Equal(t, "e2526", matches[0].torrentHash)
 }

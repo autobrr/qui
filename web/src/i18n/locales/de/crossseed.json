@@ -98,7 +98,9 @@
     "runError": "Fehler: {{message}}",
     "runSummary": "{{runs}} Läufe • +{{added}}",
     "runSummaryWithFailures": "{{runs}} Läufe • +{{added}} • {{failed}} fehlgeschlagen",
-    "scheduledUpper": "GEPLANT"
+    "scheduledUpper": "GEPLANT",
+    "runDisabledAlreadyRunning": "Es läuft bereits ein Automatisierungslauf.",
+    "runDisabledCooldown": "Manuelle Läufe sind auf ein Intervall von {{minutes}} Minuten begrenzt. Versuche es in {{remaining}} erneut."
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -116,6 +118,11 @@
     "gazelleOnlyNote": " Empfohlen 10s+; dies ist die Taktung pro Torrent, und jeder Torrent kann mehrere Gazelle-API-Aufrufe auslösen.",
     "cooldownLabel": "Cooldown (Minuten)",
     "cooldownDescription": "Überspringe geseedete Torrents, die innerhalb dieses Zeitfensters bereits durchsucht wurden. Mindestens {{min}} Minuten.",
+    "skipIndividualEpisodesLabel": "Einzelepisoden überspringen",
+    "skipIndividualEpisodesDescription": "Der Lauf durchsucht keine einzelnen TV-Episoden. Gruppen von Episoden starten weiterhin Season-Pack-Suchen.",
+    "skipIndividualEpisodesAutomationOff": "Die automatische Season-Pack-Zusammenstellung ist aus. Dieser Lauf sucht nicht nach Season Packs.",
+    "maxAddedAgeLabel": "Maximales Torrent-Alter (Tage)",
+    "maxAddedAgeDescription": "Überspringt Torrents, die vor mehr als dieser Anzahl an Tagen hinzugefügt wurden. 0 deaktiviert das Limit. Indexer, die einen Torrent noch nie durchsucht haben, werden immer einbezogen.",
     "categories": "Kategorien",
     "tags": "Tags",
     "allCategoriesAll": "Alle Kategorien (leer lassen für alle)",
@@ -158,7 +165,39 @@
     "scannedProgress": "{{processed}}/{{total}} gescannt",
     "torrentsCount": "{{count}} Torrents",
     "failedCount": "{{count}} fehlgeschlagen",
-    "runError": "Fehler: {{message}}"
+    "runError": "Fehler: {{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "Torznab übersprungen (nur Gazelle-Auswahl)",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab deaktiviert (nur Gazelle)",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab deaktiviert (Gazelle aktivieren)",
+      "placeholderAllEnabledNonOpsRed": "Alle aktivierten Nicht-OPS/RED-Indexer (für alle leer lassen)",
+      "placeholderAllEnabled": "Alle aktivierten Indexer (für alle leer lassen)",
+      "placeholderOnlyOpsRedEnabled": "Nur OPS/RED aktiviert (Gazelle)",
+      "placeholderNoTorznabConfigured": "Keine Torznab-Indexer konfiguriert",
+      "helpTorznabSkippedGazelleOnly": "Die ausgewählten Torznab-Indexer sind nur für Gazelle (OPS/RED). Dieser Durchlauf erfolgt nur für Gazelle.",
+      "helpTorznabDisabledGazelleCheck": "Torznab deaktiviert. Gazelle wird RED/OPS für jeden Quell-Torrent überprüfen.",
+      "helpTorznabDisabledEnableGazelle": "Torznab deaktiviert. Aktiviere Gazelle (OPS/RED), um die Suche nach geseedeten Torrents im Nur-Gazelle-Modus auszuführen.",
+      "helpOnlyOpsRedEnabled": "Nur OPS/RED Torznab-Indexer sind aktiviert. Torznab trägt hier nichts bei; Gazelle überprüft weiterhin RED/OPS.",
+      "helpNoNonOpsRedTorznab": "Keine Nicht-OPS/RED Torznab-Indexer. Gazelle wird RED/OPS für jeden Quell-Torrent überprüfen.",
+      "helpNoTorznabConfigured": "Keine Torznab-Indexer konfiguriert.",
+      "helpAllEnabledNonOpsRedQueried": "Alle aktivierten Nicht-OPS/RED Torznab-Indexer werden abgefragt. Gazelle überprüft auch RED/OPS.",
+      "helpAllEnabledTorznabQueried": "Alle aktivierten Torznab-Indexer werden nach Treffern abgefragt.",
+      "helpSelectedTorznabQueriedGazelle_one": "Nur {{count}} ausgewählter Torznab-Indexer wird abgefragt. Gazelle überprüft weiterhin RED/OPS.",
+      "helpSelectedTorznabQueriedGazelle_other": "Nur {{count}} ausgewählte Torznab-Indexer werden abgefragt. Gazelle überprüft weiterhin RED/OPS.",
+      "helpSelectedQueried_one": "Nur {{count}} ausgewählter Indexer wird abgefragt.",
+      "helpSelectedQueried_other": "Nur {{count}} ausgewählte Indexer werden abgefragt."
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle: wird geladen",
+      "disabled": "Gazelle: deaktiviert",
+      "enabledOpsRed": "Gazelle: aktiviert (OPS+RED-Schlüssel gesetzt)",
+      "enabledOpsMissingRed": "Gazelle: aktiviert (OPS-Schlüssel gesetzt, RED fehlt)",
+      "enabledRedMissingOps": "Gazelle: aktiviert (RED-Schlüssel gesetzt, OPS fehlt)",
+      "enabledKeysMissing": "Gazelle: aktiviert (Schlüssel fehlen)"
+    },
+    "noInstanceSelected": "Keine Instanz ausgewählt",
+    "instanceFallback": "Instanz {{id}}",
+    "noMessageProvided": "Keine Meldung vorhanden"
   },
   "rules": {
     "title": "Cross-Seed-Regeln",
@@ -196,6 +235,8 @@
       "description": "Wenn autobrr ein Season Pack greift, prüft qui, ob du bereits genug lokale Daten zum Injizieren hast, und lässt qBittorrent dann alles noch Fehlende herunterladen.",
       "enable": "Season-Pack-Matching aktivieren",
       "enableDescription": "Erlaube autobrr, qui für die Season-Pack-Prüfung und -Anwendung aufzurufen.",
+      "enableAutomation": "Season Packs automatisch zusammenstellen",
+      "enableAutomationDescription": "Findet die RSS-Automatisierung oder ein Cross-Seed-Apply ein Season Pack, von dem nur Einzelepisoden vorhanden sind, stellt qui es aus den lokalen Episoden zusammen und lässt qBittorrent den Rest herunterladen. Bibliotheks-Suchläufe suchen zusätzlich auf den Indexern nach solchen Season Packs.",
       "coverageThreshold": "Abdeckungs-Schwellenwert (%)",
       "coverageThresholdDescription": "Minimale lokale Abdeckung, bevor qui ein Season Pack injiziert. Wenn Sonarr die Serie auflöst, verwendet qui die größere Staffel-Gesamtzahl; andernfalls greift qui auf die abspielbaren Dateien im Pack zurück. Unvollständige Packs werden pausiert hinzugefügt, neu geprüft und dann automatisch fortgesetzt.",
       "matchingTitle": "Matching-Einstellungen",
@@ -250,14 +291,14 @@
     "matching": {
       "title": "Matching-Verhalten",
       "description": "Steuere, wie Torrents abgeglichen werden und welche Dateiunterschiede erlaubt sind.",
-      "sizeTolerance": "Toleranz für Größenabweichung (%)",
-      "sizeToleranceDescription": "Maximale Größendifferenz für ein Match. Legt zugleich den Schwellenwert für die automatische Fortsetzung fest (z. B. 5 % = Fortsetzen ab >=95 %).",
       "crossSeedEpisodes": "Episoden aus Packs cross-seeden",
       "crossSeedEpisodesDescription": "Deine lokalen Season Packs können einzelne Episoden-Torrents auf Indexern matchen, sodass du beide Formate seeden kannst."
     },
     "safety": {
       "title": "Sicherheit & Validierung",
       "description": "Steuere, welche Matches durchgeführt werden, und schütze deine vorhandenen geseedeten Daten.",
+      "rescueTitleMismatches": "Abweichende Titel retten",
+      "rescueTitleMismatchesDescription": "Versuche pro Quellsuche insgesamt bis zu drei Ergebnisse mit exakt gleicher Größe aus allen Indexern. qui prüft alle Daten, bevor der Torrent startet. Recheck überspringen schaltet diese Regel aus.",
       "skipRecheck": "Matches überspringen, die eine Neuprüfung erfordern",
       "skipRecheckDescription": "Matches überspringen, die eine Umbenennungs-Anpassung, zusätzliche Dateien oder Disc-Layouts (BDMV/VIDEO_TS) erfordern. Ist dies AUS, werden solche Matches standardmäßig zwangsweise neu geprüft.",
       "pieceBoundaryDisabled": "Piece-Grenzen-Sicherheitsprüfung derzeit deaktiviert",
@@ -323,6 +364,8 @@
       "completionDescription": "Completion-ausgelöste Torrents automatisch fortsetzen",
       "webhookLabel": "Webhook",
       "webhookDescription": "/apply-Webhook-Torrents automatisch fortsetzen",
+      "maxAutoResumeDownload": "Maximaler Download beim Autostart (MiB)",
+      "maxAutoResumeDownloadDescription": "Startet einen hinzugefügten Torrent nur, wenn die fehlenden Daten höchstens diese Größe haben. 0 startet nur vollständige Torrents. Fehlen nur Dateien wie Samples, .nfo und Untertitel, startet qui den Torrent trotzdem, bis 200 MiB.",
       "externalProgram": "Externes Programm nach der Injektion ausführen",
       "noExternalPrograms": "Keine externen Programme verfügbar",
       "selectExternalProgram": "Externes Programm auswählen (optional)",
@@ -517,6 +560,10 @@
     "resetScanProgressTitle": "Scan-Fortschritt zurücksetzen?",
     "resetScanProgressDescription": "Dadurch wird der erfasste Dir-Scan-Fortschritt für dieses Verzeichnis gelöscht. Der nächste Scan prüft das Verzeichnis erneut und versucht alle Einträge erneut, auch bereits abgeschlossene.",
     "resetFilesSuccess": "Dateien zurückgesetzt. Der nächste Scan wertet sie erneut aus.",
+    "requeueNoMatch": "Ohne Treffer erneut versuchen",
+    "requeueNoMatchTooltip": "Markiert Dateien ohne Treffer, damit der nächste Scan sie erneut sucht. Zugeordnete Dateien bleiben unberührt. Nutze dies nach dem Hinzufügen eines Indexers, oder wenn ein Tracker den Inhalt jetzt haben könnte.",
+    "requeueNoMatchSuccess_one": "Der nächste Scan versucht {{count}} Datei ohne Treffer erneut.",
+    "requeueNoMatchSuccess_other": "Der nächste Scan versucht {{count}} Dateien ohne Treffer erneut.",
     "toast": {
       "scannerEnabled": "Verzeichnis-Scanner aktiviert",
       "scannerDisabled": "Verzeichnis-Scanner deaktiviert",
@@ -533,6 +580,7 @@
       "directoryDeleteFailed": "Verzeichnis konnte nicht gelöscht werden: {{error}}",
       "settingsSaved": "Einstellungen gespeichert",
       "settingsSaveFailed": "Einstellungen konnten nicht gespeichert werden: {{error}}",
+      "requeueFailed": "Erneuter Versuch für Dateien ohne Treffer fehlgeschlagen: {{error}}",
       "resetFailed": "Dateien konnten nicht zurückgesetzt werden: {{error}}"
     },
     "statusLabels": {
@@ -636,6 +684,8 @@
       "selectInstance": "Instanz auswählen",
       "intervalLabel": "Scan-Intervall (Minuten)",
       "intervalHelp": "Minimum: 60 Minuten (1 Stunde). Standard: 1440 Minuten (24 Stunden).",
+      "skipIndividualEpisodesLabel": "Einzelepisoden überspringen",
+      "skipIndividualEpisodesHelp": "Der Scan sucht keine einzelnen TV-Episoden. Er sucht stattdessen das Season Pack, das sie bilden, und überspringt Episoden, die keines bilden können.",
       "toleranceLabel": "Größentoleranz (%)",
       "categoryLabel": "Kategorie",
       "categoryPlaceholder": "Optionale Kategorie-Überschreibung",

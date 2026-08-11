@@ -134,6 +134,7 @@ func buildTrackedFileUpsert(
 	status := models.DirScanFileStatusPending
 	var matchedTorrentHash string
 	var matchedIndexerID *int
+	var searchedIndexerIDs []int
 	unchanged := false
 
 	if existing != nil {
@@ -142,6 +143,7 @@ func buildTrackedFileUpsert(
 			status = existing.Status
 			matchedTorrentHash = existing.MatchedTorrentHash
 			matchedIndexerID = existing.MatchedIndexerID
+			searchedIndexerIDs = existing.SearchedIndexerIDs
 		}
 	}
 
@@ -151,6 +153,7 @@ func buildTrackedFileUpsert(
 		status = models.DirScanFileStatusAlreadySeeding
 		matchedTorrentHash = ""
 		matchedIndexerID = nil
+		searchedIndexerIDs = nil
 	}
 
 	// If the torrent disappeared since the last scan, clear already_seeding so the file becomes eligible again.
@@ -158,6 +161,7 @@ func buildTrackedFileUpsert(
 		status = models.DirScanFileStatusPending
 		matchedTorrentHash = ""
 		matchedIndexerID = nil
+		searchedIndexerIDs = nil
 	}
 
 	// If the file changed on disk, clear any prior match and reprocess.
@@ -165,6 +169,7 @@ func buildTrackedFileUpsert(
 		// status already pending; ensure match info isn't carried forward.
 		matchedTorrentHash = ""
 		matchedIndexerID = nil
+		searchedIndexerIDs = nil
 	}
 
 	fileModel := &models.DirScanFile{
@@ -176,6 +181,7 @@ func buildTrackedFileUpsert(
 		Status:             status,
 		MatchedTorrentHash: matchedTorrentHash,
 		MatchedIndexerID:   matchedIndexerID,
+		SearchedIndexerIDs: searchedIndexerIDs,
 	}
 
 	logTrackedFileDecision(l, scanned, existing, fileModel, matchedBy, unchanged, alreadySeeding)

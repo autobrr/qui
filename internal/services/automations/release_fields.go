@@ -5,6 +5,7 @@ package automations
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -49,6 +50,23 @@ func torrentEffectiveName(t qbt.Torrent, ctx *EvalContext) string {
 	if r.Series > 0 {
 		if r.Episode > 0 {
 			return fmt.Sprintf("%s|s%02de%02d", base, r.Series, r.Episode)
+		}
+		// A multi-episode range ("S01E05E06") also parses with Episode 0, but it
+		// is its own item: it must not share the season pack's group.
+		if releases.IsEpisodeRange(r) {
+			eps := make([]int, 0, 4)
+			for _, se := range r.SeriesEpisodes() {
+				if len(se) == 2 {
+					eps = append(eps, se[1])
+				}
+			}
+			slices.Sort(eps)
+			var key strings.Builder
+			fmt.Fprintf(&key, "%s|s%02d", base, r.Series)
+			for _, e := range slices.Compact(eps) {
+				fmt.Fprintf(&key, "e%02d", e)
+			}
+			return key.String()
 		}
 		return fmt.Sprintf("%s|s%02d", base, r.Series)
 	}

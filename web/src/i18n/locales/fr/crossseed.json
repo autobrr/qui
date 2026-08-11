@@ -98,7 +98,9 @@
     "runError": "Erreur : {{message}}",
     "runSummary": "{{runs}} exécutions • +{{added}}",
     "runSummaryWithFailures": "{{runs}} exécutions • +{{added}} • {{failed}} échec(s)",
-    "scheduledUpper": "PLANIFIÉ"
+    "scheduledUpper": "PLANIFIÉ",
+    "runDisabledAlreadyRunning": "Une exécution de l'automatisation est déjà en cours.",
+    "runDisabledCooldown": "Les exécutions manuelles sont limitées à un intervalle de {{minutes}} minutes. Réessayez dans {{remaining}}."
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -116,6 +118,11 @@
     "gazelleOnlyNote": " Recommandé 10s+ ; il s'agit d'un rythme par torrent, et chaque torrent peut déclencher plusieurs appels API Gazelle.",
     "cooldownLabel": "Délai d'attente (minutes)",
     "cooldownDescription": "Ignorer les torrents en seed qui ont été recherchés plus récemment que cette fenêtre. Minimum {{min}} minutes.",
+    "skipIndividualEpisodesLabel": "Ignorer les épisodes individuels",
+    "skipIndividualEpisodesDescription": "L'exécution ne recherche pas les épisodes TV individuels. Les groupes d'épisodes déclenchent toujours des recherches de packs de saison.",
+    "skipIndividualEpisodesAutomationOff": "L'assemblage automatique des packs de saison est désactivé. Cette exécution ne recherche pas de packs de saison.",
+    "maxAddedAgeLabel": "Âge maximal du torrent (jours)",
+    "maxAddedAgeDescription": "Ignore les torrents ajoutés il y a plus de ce nombre de jours. 0 désactive la limite. Les indexeurs qui n'ont jamais recherché un torrent sont toujours inclus.",
     "categories": "Catégories",
     "tags": "Tags",
     "allCategoriesAll": "Toutes les catégories (laisser vide pour toutes)",
@@ -158,7 +165,39 @@
     "scannedProgress": "{{processed}}/{{total}} analysé(s)",
     "torrentsCount": "{{count}} torrents",
     "failedCount": "{{count}} échec(s)",
-    "runError": "Erreur : {{message}}"
+    "runError": "Erreur : {{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "Torznab ignoré (sélection uniquement Gazelle)",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab désactivé (uniquement Gazelle)",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab désactivé (activer Gazelle)",
+      "placeholderAllEnabledNonOpsRed": "Tous les indexeurs non-OPS/RED activés (laisser vide pour tous)",
+      "placeholderAllEnabled": "Tous les indexeurs activés (laisser vide pour tous)",
+      "placeholderOnlyOpsRedEnabled": "Seuls OPS/RED sont activés (Gazelle)",
+      "placeholderNoTorznabConfigured": "Aucun indexeur Torznab configuré",
+      "helpTorznabSkippedGazelleOnly": "Les indexeurs Torznab sélectionnés correspondent à OPS/RED. Cette exécution utilisera uniquement l'intégration Gazelle.",
+      "helpTorznabDisabledGazelleCheck": "Torznab désactivé. Gazelle vérifiera RED/OPS pour chaque torrent source.",
+      "helpTorznabDisabledEnableGazelle": "Torznab désactivé. Activez Gazelle (OPS/RED) pour lancer la recherche de torrents en seed en mode exclusivement Gazelle.",
+      "helpOnlyOpsRedEnabled": "Seuls les indexeurs Torznab OPS/RED sont activés. Torznab ne sera pas utilisé ici ; Gazelle continue de vérifier RED/OPS.",
+      "helpNoNonOpsRedTorznab": "Il n'y a aucun indexeur Torznab autre que OPS/RED. Gazelle continuera de vérifier RED/OPS pour chaque torrent source.",
+      "helpNoTorznabConfigured": "Aucun indexeur Torznab configuré.",
+      "helpAllEnabledNonOpsRedQueried": "Tous les indexeurs Torznab non-OPS/RED activés seront interrogés. Gazelle vérifiera également RED/OPS.",
+      "helpAllEnabledTorznabQueried": "Tous les indexeurs Torznab activés seront interrogés.",
+      "helpSelectedTorznabQueriedGazelle_one": "Seul {{count}} indexeur Torznab sélectionné sera interrogé. Gazelle continuera de vérifier RED/OPS.",
+      "helpSelectedTorznabQueriedGazelle_other": "Seuls {{count}} indexeurs Torznab sélectionnés seront interrogés. Gazelle continuera de vérifier RED/OPS.",
+      "helpSelectedQueried_one": "Seul {{count}} indexeur sélectionné sera interrogé.",
+      "helpSelectedQueried_other": "Seuls {{count}} indexeurs sélectionnés seront interrogés."
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle : en cours de chargement",
+      "disabled": "Gazelle : désactivé",
+      "enabledOpsRed": "Gazelle : activé (clés OPS+RED configurées)",
+      "enabledOpsMissingRed": "Gazelle : activé (clé OPS configurée, RED manquante)",
+      "enabledRedMissingOps": "Gazelle : activé (clé RED configurée, OPS manquante)",
+      "enabledKeysMissing": "Gazelle : activé (clés manquantes)"
+    },
+    "noInstanceSelected": "Aucune instance sélectionnée",
+    "instanceFallback": "Instance {{id}}",
+    "noMessageProvided": "Aucun message fourni"
   },
   "rules": {
     "title": "Règles de Cross-Seed",
@@ -196,6 +235,8 @@
       "description": "Lorsqu'autobrr saisit un pack de saison, qui vérifie si vous avez suffisamment de données locales pour l'injecter, puis laisse qBittorrent télécharger ce qui manque.",
       "enable": "Activer la correspondance des packs de saison",
       "enableDescription": "Autoriser autobrr à appeler qui pour vérifier et appliquer un pack de saison.",
+      "enableAutomation": "Assembler les packs de saison automatiquement",
+      "enableAutomationDescription": "Quand l'automatisation RSS ou une application cross-seed trouve un pack de saison dont vous n'avez que des épisodes, qui l'assemble à partir des épisodes locaux et laisse qBittorrent télécharger le reste. Les recherches de bibliothèque cherchent aussi ces packs sur vos indexeurs.",
       "coverageThreshold": "Seuil de couverture (%)",
       "coverageThresholdDescription": "Couverture locale minimale avant que qui n'injecte un pack de saison. Si Sonarr résout la série, qui utilise le total de la saison ; sinon, il se rabat sur les fichiers jouables dans le pack. Les packs incomplets sont ajoutés en pause, revérifiés, puis repris automatiquement.",
       "matchingTitle": "Paramètres de correspondance",
@@ -250,14 +291,14 @@
     "matching": {
       "title": "Comportement de correspondance",
       "description": "Contrôlez comment les torrents sont mis en correspondance et quelles différences de fichiers sont autorisées.",
-      "sizeTolerance": "Tolérance de différence de taille (%)",
-      "sizeToleranceDescription": "Différence de taille maximale pour la correspondance. Définit également le seuil de reprise automatique (ex. 5% = reprise à >=95%).",
       "crossSeedEpisodes": "Cross-seed des épisodes depuis les packs",
       "crossSeedEpisodesDescription": "Vos packs de saison locaux peuvent correspondre à des torrents d'épisodes individuels sur les indexeurs, vous permettant de seeder les deux formats."
     },
     "safety": {
       "title": "Sécurité et validation",
       "description": "Contrôlez quelles correspondances sont acceptées et protégez vos données existantes en seed.",
+      "rescueTitleMismatches": "Récupérer les titres différents",
+      "rescueTitleMismatchesDescription": "Essayez au total jusqu’à trois résultats de taille exacte par recherche source, tous indexeurs confondus. qui vérifie toutes les données avant de démarrer le torrent. Ignorer la revérification désactive cette règle.",
       "skipRecheck": "Ignorer les correspondances nécessitant une revérification",
       "skipRecheckDescription": "Ignorer les correspondances nécessitant un alignement de renommage, des fichiers supplémentaires ou des structures de disques (BDMV/VIDEO_TS). Lorsque désactivé, ces correspondances sont forcées à être revérifiées par défaut.",
       "pieceBoundaryDisabled": "Vérification de sécurité des limites de pièces actuellement désactivée",
@@ -323,6 +364,8 @@
       "completionDescription": "Reprendre automatiquement les torrents déclenchés par complétion",
       "webhookLabel": "Webhook",
       "webhookDescription": "Reprendre automatiquement les torrents du webhook /apply",
+      "maxAutoResumeDownload": "Téléchargement maximal au démarrage automatique (MiB)",
+      "maxAutoResumeDownloadDescription": "Démarre un torrent ajouté seulement si les données manquantes ne dépassent pas cette taille. Mettez 0 pour ne démarrer que les torrents complets. Si seuls des fichiers comme les samples, .nfo et sous-titres manquent, qui démarre quand même le torrent, jusqu'à 200 MiB.",
       "externalProgram": "Exécuter un programme externe après injection",
       "noExternalPrograms": "Aucun programme externe disponible",
       "selectExternalProgram": "Sélectionner un programme externe (optionnel)",
@@ -517,6 +560,10 @@
     "resetScanProgressTitle": "Réinitialiser la progression ?",
     "resetScanProgressDescription": "La prochaine analyse vérifiera le répertoire et réessaiera tous les éléments.",
     "resetFilesSuccess": "Fichiers réinitialisés.",
+    "requeueNoMatch": "Réessayer sans correspondance",
+    "requeueNoMatchTooltip": "Marque les fichiers sans correspondance pour que la prochaine analyse les recherche à nouveau. Les fichiers correspondus ne sont pas touchés. Utilisez ceci après avoir ajouté un indexeur, ou quand un tracker peut maintenant avoir le contenu.",
+    "requeueNoMatchSuccess_one": "La prochaine analyse réessaiera {{count}} fichier sans correspondance.",
+    "requeueNoMatchSuccess_other": "La prochaine analyse réessaiera {{count}} fichiers sans correspondance.",
     "toast": {
       "scannerEnabled": "Analyse de répertoires activée",
       "scannerDisabled": "Analyse de répertoires désactivée",
@@ -533,6 +580,7 @@
       "directoryDeleteFailed": "Échec de la suppression : {{error}}",
       "settingsSaved": "Paramètres sauvegardés",
       "settingsSaveFailed": "Échec de la sauvegarde : {{error}}",
+      "requeueFailed": "Échec de la relance des fichiers sans correspondance : {{error}}",
       "resetFailed": "Échec de la réinitialisation : {{error}}"
     },
     "statusLabels": {
@@ -636,6 +684,8 @@
       "selectInstance": "Sélectionner une instance",
       "intervalLabel": "Intervalle (minutes)",
       "intervalHelp": "Minimum : 60 minutes. Défaut : 1440 minutes (24 heures).",
+      "skipIndividualEpisodesLabel": "Ignorer les épisodes individuels",
+      "skipIndividualEpisodesHelp": "L'analyse ne recherche pas les épisodes TV individuels. Elle recherche à la place le pack de saison qu'ils forment et ignore les épisodes qui n'en forment aucun.",
       "toleranceLabel": "Tolérance de taille (%)",
       "categoryLabel": "Catégorie",
       "categoryPlaceholder": "Remplacement optionnel",

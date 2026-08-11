@@ -45,6 +45,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
+import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
@@ -91,7 +92,7 @@ interface AutomationFormState {
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
-  sizeMismatchTolerancePercent: number
+  autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -115,6 +116,7 @@ interface GlobalCrossSeedSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  rescueTitleMismatches: boolean
   skipPieceBoundarySafetyCheck: boolean
   // Webhook source filtering: filter which local torrents to search when checking webhook requests
   webhookSourceCategories: string[]
@@ -123,6 +125,7 @@ interface GlobalCrossSeedSettings {
   webhookSourceExcludeTags: string[]
   // Season packs
   seasonPackEnabled: boolean
+  seasonPackAutomationEnabled: boolean
   seasonPackSkipRepackCompare: boolean
   seasonPackSimplifyHdrCompare: boolean
   seasonPackSimplifyWebCompare: boolean
@@ -158,9 +161,11 @@ const DEFAULT_AUTOMATION_FORM: AutomationFormState = {
   rssSourceExcludeTags: [],
 }
 
+const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
+
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
-  sizeMismatchTolerancePercent: 5.0,
+  autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -183,9 +188,11 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeCompletion: false,
   skipAutoResumeWebhook: false,
   skipRecheck: false,
+  rescueTitleMismatches: false,
   skipPieceBoundarySafetyCheck: true,
   // Season packs
   seasonPackEnabled: false,
+  seasonPackAutomationEnabled: false,
   seasonPackSkipRepackCompare: true,
   seasonPackSimplifyHdrCompare: false,
   seasonPackSimplifyWebCompare: false,
@@ -850,6 +857,20 @@ function HardlinkModeSettings() {
   )
 }
 
+export function TitleRescueSetting({ checked, disabled = false, onCheckedChange }: { checked: boolean, disabled?: boolean, onCheckedChange: (checked: boolean) => void }) {
+  const { t } = useTranslation("crossseed")
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="space-y-0.5">
+        <Label htmlFor="rescue-title-mismatches" className="font-medium">{t("rules.safety.rescueTitleMismatches")}</Label>
+        <p className="text-xs text-muted-foreground">{t("rules.safety.rescueTitleMismatchesDescription")}</p>
+      </div>
+      <Switch id="rescue-title-mismatches" checked={checked} disabled={disabled} onCheckedChange={value => onCheckedChange(!!value)} />
+    </div>
+  )
+}
+
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -874,6 +895,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const [seededSearchTorznabEnabled, setSeededSearchTorznabEnabled] = useState(true)
   const [searchIntervalSeconds, setSearchIntervalSeconds] = useState(MIN_SEEDED_SEARCH_INTERVAL_SECONDS)
   const [searchCooldownMinutes, setSearchCooldownMinutes] = useState(MIN_SEEDED_SEARCH_COOLDOWN_MINUTES)
+  const [skipIndividualEpisodes, setSkipIndividualEpisodes] = useState(false)
+  const [maxAddedAgeDays, setMaxAddedAgeDays] = useState(0)
   const [searchSettingsInitialized, setSearchSettingsInitialized] = useState(false)
   const [searchResultsOpen, setSearchResultsOpen] = useState(false)
   const [rssRunsOpen, setRssRunsOpen] = useState(false)
@@ -1099,7 +1122,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
-        sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent ?? 5.0,
+        autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1122,6 +1145,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
         skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
         skipRecheck: settings.skipRecheck ?? false,
+        rescueTitleMismatches: settings.rescueTitleMismatches ?? false,
         skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
         // Webhook source filtering
         webhookSourceCategories: settings.webhookSourceCategories ?? [],
@@ -1130,6 +1154,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
         // Season packs
         seasonPackEnabled: settings.seasonPackEnabled ?? false,
+        seasonPackAutomationEnabled: settings.seasonPackAutomationEnabled ?? false,
         seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
         seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
         seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
@@ -1201,7 +1226,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: settings.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1222,6 +1247,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeCompletion: settings.skipAutoResumeCompletion ?? false,
       skipAutoResumeWebhook: settings.skipAutoResumeWebhook ?? false,
       skipRecheck: settings.skipRecheck ?? false,
+      rescueTitleMismatches: settings.rescueTitleMismatches ?? false,
       skipPieceBoundarySafetyCheck: settings.skipPieceBoundarySafetyCheck ?? true,
       webhookSourceCategories: settings.webhookSourceCategories ?? [],
       webhookSourceTags: settings.webhookSourceTags ?? [],
@@ -1229,6 +1255,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       // Season packs
       seasonPackEnabled: settings.seasonPackEnabled ?? false,
+      seasonPackAutomationEnabled: settings.seasonPackAutomationEnabled ?? false,
       seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
       seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
       seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
@@ -1244,7 +1271,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
-      sizeMismatchTolerancePercent: globalSource.sizeMismatchTolerancePercent,
+      autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
       categoryAffixMode: globalSource.categoryAffixMode,
@@ -1267,6 +1294,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       skipAutoResumeCompletion: globalSource.skipAutoResumeCompletion,
       skipAutoResumeWebhook: globalSource.skipAutoResumeWebhook,
       skipRecheck: globalSource.skipRecheck,
+      rescueTitleMismatches: globalSource.rescueTitleMismatches,
       skipPieceBoundarySafetyCheck: globalSource.skipPieceBoundarySafetyCheck,
       // Webhook source filtering
       webhookSourceCategories: globalSource.webhookSourceCategories,
@@ -1275,6 +1303,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
       // Season packs
       seasonPackEnabled: globalSource.seasonPackEnabled,
+      seasonPackAutomationEnabled: globalSource.seasonPackAutomationEnabled,
       seasonPackSkipRepackCompare: globalSource.seasonPackSkipRepackCompare,
       seasonPackSimplifyHdrCompare: globalSource.seasonPackSimplifyHdrCompare,
       seasonPackSimplifyWebCompare: globalSource.seasonPackSimplifyWebCompare,
@@ -1430,19 +1459,19 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const runButtonDisabled = triggerRunMutation.isPending || automationRunning || manualCooldownActive || !hasEnabledIndexers || !hasAutomationTargets
   const runButtonDisabledReason = useMemo(() => {
     if (!hasEnabledIndexers) {
-      return "Configure at least one Torznab indexer before running RSS automation."
+      return t("automation.requiresTorznabIndexer")
     }
     if (!hasAutomationTargets) {
-      return "Select at least one instance before running RSS automation."
+      return t("toast.selectAtLeastOneInstance")
     }
     if (automationRunning) {
-      return "Automation run is already in progress."
+      return t("automation.runDisabledAlreadyRunning")
     }
     if (manualCooldownActive) {
-      return `Manual runs are limited to every ${enforcedRunIntervalMinutes}-minute interval. Try again in ${manualCooldownDisplay}.`
+      return t("automation.runDisabledCooldown", { minutes: enforcedRunIntervalMinutes, remaining: manualCooldownDisplay })
     }
     return undefined
-  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay])
+  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay, t])
 
   const handleTriggerAutomationRun = () => {
     if (!hasEnabledIndexers) {
@@ -1507,13 +1536,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const startSearchRunDisabled = !searchInstanceId || startSearchRunMutation.isPending || searchRunning || (seededSearchTorznabEffectiveEnabled ? (!hasEnabledIndexers && !gazelleSavedConfigured) : !gazelleSavedConfigured)
   const startSearchRunDisabledReason = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled && !gazelleSavedConfigured) {
-      return "Enable Gazelle (OPS/RED) before running Seeded Torrent Search with Torznab disabled."
+      return t("toast.enableGazelleDescription")
     }
     if (!hasEnabledIndexers && !gazelleSavedConfigured) {
-      return "Configure at least one Torznab indexer, or enable Gazelle (OPS/RED), before running Seeded Torrent Search."
+      return t("toast.configureTorznabOrGazelle")
     }
     return undefined
-  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled, t])
   const seededSearchIntervalMinimum = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
       return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
@@ -1576,18 +1605,18 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const seededSearchIndexerPlaceholder = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled) {
       if (seededSearchForceGazelleOnly) {
-        return "Torznab skipped (Gazelle-only selection)"
+        return t("scan.indexers.placeholderTorznabSkippedGazelleOnly")
       }
-      return gazelleSavedConfigured ? "Torznab disabled (Gazelle-only)" : "Torznab disabled (enable Gazelle)"
+      return gazelleSavedConfigured ? t("scan.indexers.placeholderTorznabDisabledGazelleOnly") : t("scan.indexers.placeholderTorznabDisabledEnableGazelle")
     }
     if (seededSearchIndexerOptions.length > 0) {
-      return gazelleSavedFullyConfigured ? "All enabled non-OPS/RED indexers (leave empty for all)" : "All enabled indexers (leave empty for all)"
+      return gazelleSavedFullyConfigured ? t("scan.indexers.placeholderAllEnabledNonOpsRed") : t("scan.indexers.placeholderAllEnabled")
     }
     if (seededSearchHasOnlyGazelleIndexers) {
-      return "Only OPS/RED enabled (Gazelle)"
+      return t("scan.indexers.placeholderOnlyOpsRedEnabled")
     }
-    return "No Torznab indexers configured"
-  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+    return t("scan.indexers.placeholderNoTorznabConfigured")
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, t])
 
   const seededSearchEffectiveIndexerIds = useMemo(() => {
     const allAllowed = enabledIndexers
@@ -1616,52 +1645,51 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const seededSearchIndexerHelpText = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled) {
       if (seededSearchForceGazelleOnly) {
-        return "Selected Torznab indexers are Gazelle-only (OPS/RED). This run will be Gazelle-only."
+        return t("scan.indexers.helpTorznabSkippedGazelleOnly")
       }
       if (gazelleSavedConfigured) {
-        return "Torznab disabled. Gazelle will check RED/OPS for every source torrent."
+        return t("scan.indexers.helpTorznabDisabledGazelleCheck")
       }
-      return "Torznab disabled. Enable Gazelle (OPS/RED) to run Seeded Torrent Search in Gazelle-only mode."
+      return t("scan.indexers.helpTorznabDisabledEnableGazelle")
     }
 
     if (seededSearchIndexerOptions.length === 0) {
       if (seededSearchHasOnlyGazelleIndexers) {
-        return "Only OPS/RED Torznab indexers are enabled. Torznab contributes nothing here; Gazelle still checks RED/OPS."
+        return t("scan.indexers.helpOnlyOpsRedEnabled")
       }
 
       if (gazelleSavedConfigured) {
-        return "No non-OPS/RED Torznab indexers. Gazelle will still check RED/OPS for every source torrent."
+        return t("scan.indexers.helpNoNonOpsRedTorznab")
       }
-      return "No Torznab indexers configured."
+      return t("scan.indexers.helpNoTorznabConfigured")
     }
 
     if (seededSearchEffectiveIndexerIds.length === 0) {
       if (gazelleSavedConfigured) {
-        return "All enabled non-OPS/RED Torznab indexers will be queried. Gazelle also checks RED/OPS."
+        return t("scan.indexers.helpAllEnabledNonOpsRedQueried")
       }
-      return "All enabled Torznab indexers will be queried for matches."
+      return t("scan.indexers.helpAllEnabledTorznabQueried")
     }
     if (gazelleSavedConfigured) {
-      return `Only ${seededSearchEffectiveIndexerIds.length} selected Torznab indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried. Gazelle still checks RED/OPS.`
+      return t("scan.indexers.helpSelectedTorznabQueriedGazelle", { count: seededSearchEffectiveIndexerIds.length })
     }
-    return `Only ${seededSearchEffectiveIndexerIds.length} selected indexer${seededSearchEffectiveIndexerIds.length === 1 ? "" : "s"} will be queried.`
-  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+    return t("scan.indexers.helpSelectedQueried", { count: seededSearchEffectiveIndexerIds.length })
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, t])
 
   const seededSearchGazelleStatus = useMemo(() => {
     if (!settings) {
-      return "Gazelle: loading"
+      return t("scan.gazelleStatus.loading")
     }
     if (!settings.gazelleEnabled) {
-      return "Gazelle: disabled"
+      return t("scan.gazelleStatus.disabled")
     }
     const ops = (settings.orpheusApiKey ?? "").trim() !== ""
     const red = (settings.redactedApiKey ?? "").trim() !== ""
-    if (ops && red) return "Gazelle: enabled (OPS+RED keys set)"
-    if (ops) return "Gazelle: enabled (OPS key set, RED missing)"
-    if (red) return "Gazelle: enabled (RED key set, OPS missing)"
-    return "Gazelle: enabled (keys missing)"
-  }, [settings])
-
+    if (ops && red) return t("scan.gazelleStatus.enabledOpsRed")
+    if (ops) return t("scan.gazelleStatus.enabledOpsMissingRed")
+    if (red) return t("scan.gazelleStatus.enabledRedMissingOps")
+    return t("scan.gazelleStatus.enabledKeysMissing")
+  }, [settings, t])
   const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
 
   const seededSearchIntervalPresets = useMemo(() => {
@@ -1797,10 +1825,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     // Validate search interval and cooldown
     const errors: Record<string, string> = {}
     if (searchIntervalSeconds < seededSearchIntervalMinimum) {
-      errors.searchIntervalSeconds = `Must be at least ${seededSearchIntervalMinimum} seconds`
+      errors.searchIntervalSeconds = t("validation.minIntervalSeconds", { min: seededSearchIntervalMinimum })
     }
     if (searchCooldownMinutes < MIN_SEEDED_SEARCH_COOLDOWN_MINUTES) {
-      errors.searchCooldownMinutes = `Must be at least ${MIN_SEEDED_SEARCH_COOLDOWN_MINUTES} minutes`
+      errors.searchCooldownMinutes = t("validation.minCooldown", { min: MIN_SEEDED_SEARCH_COOLDOWN_MINUTES })
     }
 
     if (Object.keys(errors).length > 0) {
@@ -1816,6 +1844,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       indexerIds: seededSearchTorznabEffectiveEnabled ? seededSearchEffectiveIndexerIds : [],
       disableTorznab: !seededSearchTorznabEffectiveEnabled,
       cooldownMinutes: searchCooldownMinutes,
+      skipIndividualEpisodes,
+      maxAddedAgeDays,
     })
   }
 
@@ -1839,18 +1869,18 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const automationEnabled = formInitialized ? automationForm.enabled : settings?.enabled ?? false
 
   const searchInstanceName = useMemo(
-    () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? "No instance selected",
-    [instances, searchInstanceId]
+    () => instances?.find(instance => instance.id === searchInstanceId)?.name ?? t("scan.noInstanceSelected"),
+    [instances, searchInstanceId, t]
   )
 
   const currentSearchInstanceName = useMemo(
     () => {
       if (searchRunning && activeSearchRun) {
-        return instances?.find(instance => instance.id === activeSearchRun.instanceId)?.name ?? `Instance ${activeSearchRun.instanceId}`
+        return instances?.find(instance => instance.id === activeSearchRun.instanceId)?.name ?? t("scan.instanceFallback", { id: activeSearchRun.instanceId })
       }
       return searchInstanceName
     },
-    [instances, searchRunning, activeSearchRun, searchInstanceName]
+    [instances, searchRunning, activeSearchRun, searchInstanceName, t]
   )
 
   const automationStatusLabel = automationRunning ? t("scan.runningUpper") : automationEnabled ? t("automation.scheduledUpper") : t("overview.rssAutomation.disabledUpper")
@@ -2593,6 +2623,34 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="skip-individual-episodes" className="font-medium">{t("scan.skipIndividualEpisodesLabel")}</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("scan.skipIndividualEpisodesDescription")}
+                      {skipIndividualEpisodes && settings?.seasonPackAutomationEnabled === false && ` ${t("scan.skipIndividualEpisodesAutomationOff")}`}
+                    </p>
+                  </div>
+                  <Switch
+                    id="skip-individual-episodes"
+                    checked={skipIndividualEpisodes}
+                    onCheckedChange={value => setSkipIndividualEpisodes(!!value)}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <Label htmlFor="max-added-age-days">{t("scan.maxAddedAgeLabel")}</Label>
+                  <Input
+                    id="max-added-age-days"
+                    type="number"
+                    min={0}
+                    value={maxAddedAgeDays}
+                    onChange={event => setMaxAddedAgeDays(parseNonNegativeInt(event.target.value))}
+                  />
+                  <p className="text-xs text-muted-foreground">{t("scan.maxAddedAgeDescription")}</p>
+                </div>
+              </div>
+
               <Separator />
 
               {activeSearchRun && (
@@ -2696,7 +2754,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                     <div className="pl-5 pr-2 py-2 space-y-1 border-l-2 border-muted ml-1.5 mt-1 max-h-48 overflow-y-auto">
                                       {successResults.map((result, i) => (
                                         <div key={`success-${result.torrentHash}-${i}`} className="flex items-center gap-2 text-xs">
-                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                          <Badge variant="default" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                         </div>
                                       ))}
@@ -2709,7 +2767,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                           {skippedResults.map((result, i) => (
                                             <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                               <div className="flex items-center gap-2">
-                                                <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                                 <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                               </div>
                                               {result.message && (
@@ -2725,10 +2783,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                           {failedResults.map((result, i) => (
                                             <div key={`failed-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
                                               <div className="flex items-center gap-2">
-                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <Badge variant="destructive" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || t("common:status.unknown")}</Badge>
                                                 <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                               </div>
-                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || "No message provided"}</span>
+                                              <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message || t("scan.noMessageProvided")}</span>
                                             </div>
                                           ))}
                                         </div>
@@ -2869,25 +2927,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="global-size-tolerance">{t("rules.matching.sizeTolerance")}</Label>
-                  <Input
-                    id="global-size-tolerance"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={globalSettings.sizeMismatchTolerancePercent}
-                    onChange={event => setGlobalSettings(prev => ({
-                      ...prev,
-                      sizeMismatchTolerancePercent: Math.max(0, Math.min(100, Number(event.target.value) || 0)),
-                    }))}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t("rules.matching.sizeToleranceDescription")}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.matching.crossSeedEpisodesDescription")}</p>
@@ -2915,6 +2955,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     id="season-pack-enabled"
                     checked={globalSettings.seasonPackEnabled}
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackEnabled: !!value }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="season-pack-automation-enabled" className="font-medium">{t("rules.seasonPack.enableAutomation")}</Label>
+                    <p className="text-xs text-muted-foreground">{t("rules.seasonPack.enableAutomationDescription")}</p>
+                  </div>
+                  <Switch
+                    id="season-pack-automation-enabled"
+                    checked={globalSettings.seasonPackAutomationEnabled}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackAutomationEnabled: !!value }))}
                   />
                 </div>
                 <div className="space-y-2 pt-3 border-t border-border/50">
@@ -2955,7 +3006,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-skip-repack-compare"
                       checked={globalSettings.seasonPackSkipRepackCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipRepackCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2967,7 +3018,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-simplify-hdr-compare"
                       checked={globalSettings.seasonPackSimplifyHdrCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyHdrCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2979,7 +3030,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-simplify-web-compare"
                       checked={globalSettings.seasonPackSimplifyWebCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyWebCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-3">
@@ -2991,7 +3042,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       id="season-pack-skip-year-compare"
                       checked={globalSettings.seasonPackSkipYearCompare}
                       onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipYearCompare: !!value }))}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
                 </div>
@@ -3005,8 +3056,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       value={globalSettings.seasonPackTvdbApiKey}
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.seasonPack.pasteTvdbApiKey") : t("rules.seasonPack.enableToConfigure")}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
                   </div>
@@ -3019,8 +3070,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       value={globalSettings.seasonPackTvdbPin}
                       data-1p-ignore="true"
                       onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
-                      disabled={!globalSettings.seasonPackEnabled}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.seasonPack.pasteTvdbPin") : t("rules.seasonPack.enableToConfigure")}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                       autoComplete="off"
                     />
                   </div>
@@ -3033,7 +3084,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     value={globalSettings.seasonPackCategoryRules}
                     onChange={rules => setGlobalSettings(prev => ({ ...prev, seasonPackCategoryRules: rules }))}
                     categoryMetadata={webhookSourceMetadata?.categories ?? {}}
-                    disabled={!globalSettings.seasonPackEnabled}
+                    disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                   />
                   <div className="space-y-2">
                     <Label htmlFor="season-pack-category">{t("rules.seasonPack.categoryRouting.fallbackLabel")}</Label>
@@ -3042,10 +3093,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       selected={globalSettings.seasonPackCategory ? [globalSettings.seasonPackCategory] : []}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: values[0] ?? "" }))}
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: value }))}
-                      placeholder={globalSettings.seasonPackEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
+                      placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
                       className="max-w-sm"
                       creatable
-                      disabled={!globalSettings.seasonPackEnabled}
+                      disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                     <p className="text-xs text-muted-foreground">
                       {t("rules.seasonPack.categoryRouting.fallbackDescriptionBefore")}<code>tv-hd</code>{t("rules.seasonPack.categoryRouting.fallbackDescriptionAfter")}
@@ -3068,7 +3119,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-sm font-medium leading-none">{t("rules.safety.title")}</p>
                   <p className="text-xs text-muted-foreground">{t("rules.safety.description")}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
+                <TitleRescueSetting
+                  checked={globalSettings.rescueTitleMismatches && !globalSettings.skipRecheck}
+                  disabled={globalSettings.skipRecheck}
+                  onCheckedChange={rescueTitleMismatches => setGlobalSettings(prev => ({ ...prev, rescueTitleMismatches }))}
+                />
+                <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">{t("rules.safety.skipRecheck")}</Label>
                     <p className="text-xs text-muted-foreground">{t("rules.safety.skipRecheckDescription")}</p>
@@ -3409,6 +3465,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       />
                     </div>
                   </div>
+                </div>
+
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+                  <Input
+                    id="global-auto-resume-max-download"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={globalSettings.autoResumeMaxDownloadMb}
+                    onChange={event => setGlobalSettings(prev => ({
+                      ...prev,
+                      autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value),
+                    }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("rules.postInjection.maxAutoResumeDownloadDescription")}
+                  </p>
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-border/50">

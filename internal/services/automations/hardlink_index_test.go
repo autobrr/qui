@@ -193,8 +193,10 @@ func TestAugmentCrossInstanceScope_NoDeficits(t *testing.T) {
 			t.Errorf("hash %s: expected %q, got %q", hash, expected, got)
 		}
 	}
-	if index.buildState != nil {
-		t.Error("expected buildState to be nil after augmentation")
+	// The scan results stay so the next torrent set change can update incrementally
+	// instead of re-reading every torrent off disk.
+	if index.buildState == nil {
+		t.Error("expected buildState to be retained after augmentation")
 	}
 }
 

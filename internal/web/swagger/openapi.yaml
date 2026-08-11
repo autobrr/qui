@@ -520,6 +520,92 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/filter-views:
+    get:
+      tags:
+        - Torrents
+      summary: List saved filter views
+      description: Get all saved filter views ordered by sort order, then name
+      responses:
+        '200':
+          description: List of filter views
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FilterView'
+    post:
+      tags:
+        - Torrents
+      summary: Create filter view
+      description: Save the given torrent filters under a name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterViewInput'
+      responses:
+        '201':
+          description: Filter view created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterView'
+        '400':
+          description: Invalid name or filters payload
+        '409':
+          description: A view with this name already exists
+
+  /api/filter-views/{id}:
+    put:
+      tags:
+        - Torrents
+      summary: Update filter view
+      description: Rename a filter view and/or replace its stored filters
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FilterViewInput'
+      responses:
+        '200':
+          description: Updated filter view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterView'
+        '400':
+          description: Invalid name or filters payload
+        '404':
+          description: Filter view not found
+        '409':
+          description: A view with this name already exists
+    delete:
+      tags:
+        - Torrents
+      summary: Delete filter view
+      description: Delete a saved filter view
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Filter view deleted
+        '404':
+          description: Filter view not found
+
   /api/notifications/events:
     get:
       tags:
@@ -1119,7 +1205,9 @@ paths:
       tags:
         - Instances
       summary: Get transfer info
-      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      description: >-
+        Retrieve lightweight transfer statistics and the all-time transferred
+        totals for a qBittorrent instance.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       responses:
@@ -3332,6 +3420,28 @@ paths:
         '500':
           description: Failed to reset scan progress
 
+  /api/dir-scan/directories/{directoryID}/requeue-no-match:
+    post:
+      tags:
+        - Dir Scan
+      summary: Requeue unmatched files
+      description: Resets no_match files for the directory to pending so the next scan searches them again. Matched and already-seeding files are kept.
+      parameters:
+        - $ref: '#/components/parameters/directoryID'
+      responses:
+        '200':
+          description: Number of files requeued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanRequeueResponse'
+        '404':
+          description: Directory not found
+        '409':
+          description: A scan is running
+        '500':
+          description: Failed to requeue files
+
   /api/dir-scan/directories/{directoryID}/scan:
     post:
       tags:
@@ -3868,6 +3978,13 @@ paths:
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
+                skipIndividualEpisodes:
+                  type: boolean
+                  description: When true, the run does not search single TV episodes. Groups of episodes still start season pack searches when season pack automation is on.
+                maxAddedAgeDays:
+                  type: integer
+                  minimum: 0
+                  description: An indexer that already searched a torrent does not search it again after this many days. An indexer that never searched a torrent searches it at any age, if its capabilities match the torrent. 0 disables this rule.
       responses:
         '202':
           description: Search run started
@@ -5945,6 +6062,12 @@ components:
           type: integer
         up_rate_limit:
           type: integer
+        alltime_dl:
+          type: integer
+          description: All-time downloaded bytes. Absent until the instance completes its first sync.
+        alltime_ul:
+          type: integer
+          description: All-time uploaded bytes. Absent until the instance completes its first sync.
 
 
     Torrent:
@@ -6287,6 +6410,52 @@ components:
           items:
             type: string
           description: List of log message patterns to hide
+
+    FilterView:
+      type: object
+      description: A named snapshot of the torrent filter selections
+      required:
+        - id
+        - name
+        - filters
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          description: View ID
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the view
+        filters:
+          type: object
+          additionalProperties: true
+          description: Opaque torrent filter selections, stored and returned verbatim
+        createdAt:
+          type: string
+          format: date-time
+          description: When the view was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the view was last updated
+
+    FilterViewInput:
+      type: object
+      description: Request to create or update a filter view
+      required:
+        - name
+        - filters
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Display name of the view
+        filters:
+          type: object
+          additionalProperties: true
+          description: Opaque torrent filter selections
 
     LatestVersionResponse:
       type: object
@@ -6654,9 +6823,10 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          minimum: 0
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6701,6 +6871,9 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6714,6 +6887,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -6787,9 +6963,10 @@ components:
           deprecated: true
         findIndividualEpisodes:
           type: boolean
-        sizeMismatchTolerancePercent:
-          type: number
-          format: float
+        autoResumeMaxDownloadMb:
+          type: integer
+          minimum: 0
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6834,6 +7011,10 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        rescueTitleMismatches:
+          type: boolean
+          default: false
+          description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6847,6 +7028,9 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackAutomationEnabled:
+          type: boolean
+          description: Allow qui to assemble season packs from seeded episodes on its own initiative (RSS/automation)
         seasonPackSkipRepackCompare:
           type: boolean
         seasonPackSimplifyHdrCompare:
@@ -8166,6 +8350,9 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
+          description: Skip searches for single TV episodes. Season packs are still searched.
         lastScanAt:
           type: string
           format: date-time
@@ -8184,6 +8371,7 @@ components:
         - enabled
         - targetInstanceId
         - scanIntervalMinutes
+        - skipIndividualEpisodes
         - createdAt
         - updatedAt
 
@@ -8213,6 +8401,8 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
       required:
         - path
         - targetInstanceId
@@ -8243,6 +8433,8 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
 
     DirScanRun:
       type: object
@@ -8375,6 +8567,12 @@ components:
         matchedIndexerId:
           type: integer
           nullable: true
+        searchedIndexerIds:
+          type: array
+          items:
+            type: integer
+          nullable: true
+          description: Indexer IDs that the search covered when the file was stamped no_match
         lastProcessedAt:
           type: string
           format: date-time
@@ -8386,6 +8584,16 @@ components:
         - fileSize
         - fileModTime
         - status
+
+    DirScanRequeueResponse:
+      type: object
+      properties:
+        requeued:
+          type: integer
+          format: int64
+          description: Number of files reset to pending
+      required:
+        - requeued
 
     DirScanTriggerResponse:
       type: object

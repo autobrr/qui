@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -611,12 +612,16 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
+	enabledIndexerIDs := s.enabledIndexerIDSet(ctx, &l)
+
 	workSelection := selectEligibleRootWork(
 		scanResult,
 		trackedFiles,
 		s.parser,
 		effectiveMaxSearcheeAgeDays(settings, run.TriggeredBy),
 		time.Now(),
+		enabledIndexerIDs,
+		dir.SkipIndividualEpisodes,
 		&l,
 	)
 
@@ -636,6 +641,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		Int("filesDiscovered", workSelection.discoveredFiles).
 		Int("filesEligible", workSelection.eligibleFiles).
 		Int("filesSkipped", workSelection.skippedFiles).
+		Int("episodesSkipped", workSelection.skippedEpisodes).
 		Int64("totalSize", scanResult.TotalSize).
 		Msg("dirscan: scan phase complete")
 
@@ -643,8 +649,29 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
-	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, &l)
+	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
 	s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
+}
+
+// enabledIndexerIDSet returns the IDs of all enabled indexers as a set.
+// It returns nil when the lookup fails; callers then keep the old behavior
+// (no_match rows are not reopened and new stamps carry no search set).
+func (s *Service) enabledIndexerIDSet(ctx context.Context, l *zerolog.Logger) map[int]struct{} {
+	if s == nil || s.jackettService == nil {
+		return nil
+	}
+	enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
+	if err != nil {
+		if l != nil {
+			l.Warn().Err(err).Msg("dirscan: failed to list enabled indexers")
+		}
+		return nil
+	}
+	ids := make(map[int]struct{}, len(enabledInfo))
+	for id := range enabledInfo {
+		ids[id] = struct{}{}
+	}
+	return ids
 }
 
 func (s *Service) updateDirectoryLastScan(ctx context.Context, directoryID int, l *zerolog.Logger) {
@@ -866,6 +893,7 @@ func (s *Service) runSearchAndInjectPhase(
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) (matchesFound, torrentsAdded int) {
 	if len(workSelection.roots) == 0 {
@@ -922,6 +950,7 @@ func (s *Service) runSearchAndInjectPhase(
 			runID,
 			matchesFound,
 			torrentsAdded,
+			enabledIndexerIDs,
 			l,
 		)
 	}
@@ -933,6 +962,7 @@ type dirScanFileUpdate struct {
 	status             models.DirScanFileStatus
 	matchedTorrentHash string
 	matchedIndexerID   *int
+	searchedIndexerIDs []int
 }
 
 func (s *Service) processRootSearchee(
@@ -948,6 +978,7 @@ func (s *Service) processRootSearchee(
 	runID int64,
 	matchesFoundIn int,
 	torrentsAddedIn int,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) (matchesFoundOut, torrentsAddedOut int) {
 	matchesFoundOut = matchesFoundIn
@@ -961,15 +992,14 @@ func (s *Service) processRootSearchee(
 		if trackedFiles == nil {
 			return false
 		}
-		tracked := trackedFiles.byPath[path]
-		if tracked == nil {
-			return false
-		}
-		return isFinalFileStatus(tracked.Status)
+		return isFinalTrackedFile(trackedFiles.byPath[path], enabledIndexerIDs)
 	}
 
 	fileUpdates := make(map[string]dirScanFileUpdate)
 	attemptedFiles := make(map[string]struct{})
+	// The set of indexers this scan considers; recorded on no_match stamps so a
+	// later scan can reopen the file when new indexers appear.
+	consideredIndexerIDs := sortedIndexerIDs(enabledIndexerIDs)
 	hadSearchSuccess := false
 	hadSearchError := false
 	hasProcessingError := false
@@ -999,6 +1029,8 @@ func (s *Service) processRootSearchee(
 			false,
 			false,
 			false,
+			nil,
+			enabledIndexerIDs,
 			l,
 		); err != nil && l != nil {
 			l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist already-seeding searchee file statuses")
@@ -1035,7 +1067,7 @@ func (s *Service) processRootSearchee(
 			continue
 		}
 
-		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, l)
+		matches, outcome := s.processSearchee(ctx, dir, item.searchee, settings, matcher, runID, enabledIndexerIDs, l)
 		if outcome.searched || outcome.searchError {
 			for _, f := range item.searchee.Files {
 				if f == nil {
@@ -1176,6 +1208,8 @@ func (s *Service) processRootSearchee(
 		hadSearchSuccess,
 		hadSearchError,
 		hasProcessingError,
+		consideredIndexerIDs,
+		enabledIndexerIDs,
 		l,
 	); err != nil && l != nil {
 		l.Debug().Err(err).Str("name", searchee.Name).Msg("dirscan: failed to persist searchee file statuses")
@@ -1203,6 +1237,8 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 	hadSearchSuccess bool,
 	hadSearchError bool,
 	hasProcessingError bool,
+	consideredIndexerIDs []int,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) error {
 	if s == nil || s.store == nil || directoryID <= 0 || root == nil {
@@ -1224,7 +1260,7 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 		if trackedFiles != nil {
 			tracked = trackedFiles.byPath[f.Path]
 		}
-		isFinal := tracked != nil && isFinalFileStatus(tracked.Status)
+		isFinal := isFinalTrackedFile(tracked, enabledIndexerIDs)
 
 		update, ok := updates[f.Path]
 		switch {
@@ -1257,7 +1293,10 @@ func (s *Service) finalizeRootSearcheeFileStatuses(
 			if !attempted && isVideo {
 				continue
 			}
-			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, dirScanFileUpdate{status: models.DirScanFileStatusNoMatch}); err != nil {
+			if err := s.upsertDirScanFileStatus(ctx, directoryID, f, dirScanFileUpdate{
+				status:             models.DirScanFileStatusNoMatch,
+				searchedIndexerIDs: consideredIndexerIDs,
+			}); err != nil {
 				return err
 			}
 		default:
@@ -1297,6 +1336,7 @@ func (s *Service) upsertDirScanFileStatus(ctx context.Context, directoryID int, 
 		Status:             update.status,
 		MatchedTorrentHash: update.matchedTorrentHash,
 		MatchedIndexerID:   update.matchedIndexerID,
+		SearchedIndexerIDs: update.searchedIndexerIDs,
 	}
 	return s.store.UpsertFile(ctx, file)
 }
@@ -1454,6 +1494,9 @@ type searcheeMatch struct {
 }
 
 type searcheeOutcome struct {
+	// searched is true only when the search covered every requested indexer.
+	// A partial search (some indexers failed or timed out) does not count, so
+	// the searchee stays pending and the next scan retries it.
 	searched    bool
 	searchError bool
 }
@@ -1531,6 +1574,7 @@ func (s *Service) processSearchee(
 	settings *models.DirScanSettings,
 	matcher *Matcher,
 	runID int64,
+	enabledIndexerIDs map[int]struct{},
 	l *zerolog.Logger,
 ) ([]*searcheeMatch, searcheeOutcome) {
 	if searchee == nil || settings == nil || matcher == nil {
@@ -1559,21 +1603,8 @@ func (s *Service) processSearchee(
 	contentType := normalizeContentType(contentInfo.ContentType)
 
 	filteredIndexers := s.filterIndexersForContent(ctx, &contentInfo, l)
-	if len(filteredIndexers) == 0 && s.jackettService != nil {
-		enabledInfo, err := s.jackettService.GetEnabledIndexersInfo(ctx)
-		if err != nil {
-			if l != nil {
-				l.Warn().Err(err).Msg("dirscan: failed to probe enabled indexers")
-			}
-			return nil, searcheeOutcome{searchError: true}
-		}
-		if len(enabledInfo) > 0 {
-			filteredIndexers = make([]int, 0, len(enabledInfo))
-			for id := range enabledInfo {
-				filteredIndexers = append(filteredIndexers, id)
-			}
-			sort.Ints(filteredIndexers)
-		}
+	if len(filteredIndexers) == 0 {
+		filteredIndexers = sortedIndexerIDs(enabledIndexerIDs)
 	}
 	if len(filteredIndexers) == 0 {
 		if l != nil {
@@ -1585,10 +1616,10 @@ func (s *Service) processSearchee(
 	}
 
 	// Lookup external IDs via arr service if not already present in TRaSH naming
-	s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
+	arrTitles := s.lookupExternalIDs(ctx, meta, contentType, arrLookupName, l)
 
 	// Search indexers
-	response, err := s.searchForSearchee(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, l)
+	response, err := s.searchWithRetries(ctx, searchee, meta, filteredIndexers, contentInfo.Categories, arrTitles, minSize, maxSize, l)
 	if err != nil {
 		// Cancellation is handled by the caller; avoid marking this as a retryable error.
 		if ctx.Err() != nil {
@@ -1599,8 +1630,22 @@ func (s *Service) processSearchee(
 	if response == nil {
 		return nil, searcheeOutcome{}
 	}
+
+	// A search counts as complete only when at least one indexer was resolved
+	// and every resolved indexer answered (or was excluded on purpose). An
+	// incomplete search must not finalize the searchee as no_match: the files
+	// stay pending and the next scan retries the indexers that were missed.
+	searchComplete := len(response.RequestedIndexerIDs) > 0 && response.FullyCovered()
+	if !searchComplete && l != nil {
+		l.Debug().
+			Str("name", searchee.Name).
+			Ints("requestedIndexers", response.RequestedIndexerIDs).
+			Ints("coveredIndexers", response.CoveredIndexerIDs).
+			Msg("dirscan: search did not cover all indexers; searchee stays pending")
+	}
+
 	if len(response.Results) == 0 {
-		return nil, searcheeOutcome{searched: true}
+		return nil, searcheeOutcome{searched: searchComplete}
 	}
 
 	l.Debug().
@@ -1609,7 +1654,21 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	return s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l), searcheeOutcome{searched: true}
+	matches := s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l)
+	return matches, searcheeOutcome{searched: searchComplete}
+}
+
+// sortedIndexerIDs returns the set as a sorted slice, or nil for an empty set.
+func sortedIndexerIDs(ids map[int]struct{}) []int {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
@@ -1685,6 +1744,118 @@ func (s *Service) filterIndexersForContent(ctx context.Context, contentInfo *cro
 	return filteredIndexers
 }
 
+// searchPass describes one query variant sent to the indexers. The zero value is
+// the primary pass; retry passes override the query or drop the year.
+type searchPass struct {
+	label    string
+	query    string
+	omitYear bool
+}
+
+// searchWithRetries runs the primary search and, when it produced nothing worth
+// downloading, retries with the two safer query variants cross-seed uses.
+//
+// A result outside the size band cannot match this searchee, so a response full
+// of out-of-band hits is the same dead end as an empty one. Dir scan finalizes a
+// searchee as no_match once its search covered every indexer, so a retry that
+// fails must leave the coverage incomplete: the searchee then stays pending and
+// the next scan tries again.
+func (s *Service) searchWithRetries(
+	ctx context.Context,
+	searchee *Searchee,
+	meta *SearcheeMetadata,
+	indexerIDs []int,
+	categories []int,
+	arrTitles []string,
+	minSize, maxSize int64,
+	l *zerolog.Logger,
+) (*jackett.SearchResponse, error) {
+	response, err := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, searchPass{}, l)
+	if err != nil || response == nil {
+		return response, err
+	}
+
+	for _, pass := range retrySearchPasses(meta, arrTitles) {
+		if hasResultInSizeBand(response.Results, minSize, maxSize) {
+			break
+		}
+
+		if l != nil {
+			l.Debug().
+				Str("name", searchee.Name).
+				Str("pass", pass.label).
+				Str("query", pass.query).
+				Msg("dirscan: nothing in the size band, retrying search")
+		}
+
+		retry, retryErr := s.searchForSearchee(ctx, searchee, meta, indexerIDs, categories, pass, l)
+		if retryErr != nil || retry == nil {
+			if ctx.Err() != nil {
+				return nil, retryErr
+			}
+			// The retry never answered, so this searchee has not been fully searched.
+			// Dropping the covered set keeps it pending instead of finalizing it.
+			response.CoveredIndexerIDs = nil
+			break
+		}
+
+		// Concat, not append: the merge must never write into the backing array of
+		// the response the caller before us still holds.
+		retry.Results = slices.Concat(response.Results, retry.Results)
+		retry.Partial = response.Partial || retry.Partial
+		retry.RequestedIndexerIDs = response.RequestedIndexerIDs
+		retry.CoveredIndexerIDs = intersectIndexerIDs(response.CoveredIndexerIDs, retry.CoveredIndexerIDs)
+		response = retry
+	}
+
+	return response, nil
+}
+
+// retrySearchPasses lists the query variants to try, in order, when a search
+// found nothing usable. Both are title-driven, so neither runs for an ID-driven
+// search: the ID already identifies the content and the query is dropped.
+func retrySearchPasses(meta *SearcheeMetadata, arrTitles []string) []searchPass {
+	if meta.HasExternalIDs() {
+		return nil
+	}
+
+	var passes []searchPass
+
+	// The year is the narrowest constraint on the primary query, so drop it first.
+	if meta.Year > 0 && meta.IsMovie {
+		passes = append(passes, searchPass{label: "yearless", omitYear: true})
+	}
+
+	// A tracker can index the same content under a localized, romanized or *arr
+	// alias. Shared with cross-seed so both paths pick the same alternate title.
+	if alt, ok := crossseed.AlternateTitleQuery(buildSearchQuery(meta), meta.Release, arrTitles, meta.CleanedName); ok {
+		// Keep the year the pass before it actually searched: re-applying a year the
+		// yearless retry already ruled out would repeat a known dead end.
+		passes = append(passes, searchPass{label: "alternate-title", query: alt, omitYear: len(passes) > 0})
+	}
+
+	return passes
+}
+
+// hasResultInSizeBand reports whether any result could match the searchee at all.
+// It mirrors the band that tryMatchResultsPerIndexer applies before downloading.
+func hasResultInSizeBand(results []jackett.SearchResult, minSize, maxSize int64) bool {
+	return slices.ContainsFunc(results, func(result jackett.SearchResult) bool {
+		return (minSize <= 0 || result.Size >= minSize) && (maxSize <= 0 || result.Size <= maxSize)
+	})
+}
+
+// intersectIndexerIDs keeps the IDs present in both sets, preserving the order of
+// the first. A retry pass that missed an indexer un-covers it.
+func intersectIndexerIDs(primary, retry []int) []int {
+	if len(retry) == 0 {
+		return nil
+	}
+	return slices.DeleteFunc(slices.Clone(primary), func(id int) bool {
+		return !slices.Contains(retry, id)
+	})
+}
+
 // searchForSearchee searches indexers and waits for results.
 func (s *Service) searchForSearchee(
 	ctx context.Context,
@@ -1692,16 +1863,19 @@ func (s *Service) searchForSearchee(
 	meta *SearcheeMetadata,
 	indexerIDs []int,
 	categories []int,
+	pass searchPass,
 	l *zerolog.Logger,
 ) (*jackett.SearchResponse, error) {
 	resultsCh := make(chan *jackett.SearchResponse, 1)
 	errCh := make(chan error, 1)
 
 	searchReq := &SearchRequest{
-		Searchee:   searchee,
-		Metadata:   meta,       // Pass parsed metadata with external IDs
-		IndexerIDs: indexerIDs, // Use capability-filtered indexers
-		Categories: categories,
+		Searchee:      searchee,
+		Metadata:      meta,       // Pass parsed metadata with external IDs
+		IndexerIDs:    indexerIDs, // Use capability-filtered indexers
+		Categories:    categories,
+		QueryOverride: pass.query,
+		OmitYear:      pass.omitYear,
 		OnAllComplete: func(response *jackett.SearchResponse, err error) {
 			if err != nil {
 				errCh <- err
@@ -2866,6 +3040,16 @@ func (s *Service) ResetFilesForDirectory(ctx context.Context, directoryID int) e
 	return nil
 }
 
+// RequeueNoMatchFiles resets no_match files for a directory to pending so the
+// next scan searches them again.
+func (s *Service) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int64, error) {
+	affected, err := s.store.RequeueNoMatchFiles(ctx, directoryID)
+	if err != nil {
+		return 0, fmt.Errorf("requeue no-match files: %w", err)
+	}
+	return affected, nil
+}
+
 // mapContentTypeToARR maps dirscan content type to ARR content type for ID lookup.
 func mapContentTypeToARR(contentType string) arr.ContentType {
 	switch contentType {
@@ -2879,39 +3063,46 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	}
 }
 
-// lookupExternalIDs queries the arr service for external IDs and updates metadata.
+// lookupExternalIDs fills in external database IDs from the arr services and
+// returns the alternate titles they know for this content, which the search
+// retry uses when the primary title finds nothing.
 func (s *Service) lookupExternalIDs(
 	ctx context.Context,
 	meta *SearcheeMetadata,
 	contentType string,
 	name string,
 	l *zerolog.Logger,
-) {
+) []string {
 	if meta.HasExternalIDs() || s.arrService == nil {
-		return
+		return nil
 	}
 
 	arrType := mapContentTypeToARR(contentType)
 	if arrType == "" {
-		return
+		return nil
 	}
 
 	result, err := s.arrService.LookupExternalIDs(ctx, name, arrType)
 	if err != nil {
 		l.Debug().Err(err).Msg("dirscan: arr ID lookup failed, continuing without IDs")
-		return
+		return nil
 	}
 
-	if result == nil || result.IDs == nil {
-		return
+	if result == nil {
+		return nil
 	}
 
-	ids := result.IDs
-	meta.SetExternalIDs(ids.IMDbID, ids.TMDbID, ids.TVDbID)
-	l.Debug().
-		Str("imdb", ids.IMDbID).
-		Int("tmdb", ids.TMDbID).
-		Int("tvdb", ids.TVDbID).
-		Bool("fromCache", result.FromCache).
-		Msg("dirscan: got external IDs from arr")
+	// An arr can know the content by name without holding a usable ID. Keep its
+	// titles either way: they are what the alternate-title retry searches with,
+	// and that retry only runs when no ID was found.
+	if ids := result.IDs; ids != nil && !ids.IsEmpty() {
+		meta.SetExternalIDs(ids.IMDbID, ids.TMDbID, ids.TVDbID)
+		l.Debug().
+			Str("imdb", ids.IMDbID).
+			Int("tmdb", ids.TMDbID).
+			Int("tvdb", ids.TVDbID).
+			Bool("fromCache", result.FromCache).
+			Msg("dirscan: got external IDs from arr")
+	}
+	return result.Titles
 }

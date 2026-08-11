@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 var envPrefix = "QUI__"
@@ -103,10 +104,10 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
-	c.viper.SetDefault("logLevel", "INFO")
+	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
-	c.viper.SetDefault("logMaxBackups", 3)
+	c.viper.SetDefault("logMaxBackups", 10)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
 	c.viper.SetDefault("databaseEngine", "sqlite")
 	c.viper.SetDefault("databaseDsn", "")
@@ -320,7 +321,8 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
-	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	// Canonical "/prefix/" form; the index.html redirect breaks on a slashless base.
+	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
 
@@ -490,11 +492,13 @@ sessionSecret = "{{ .sessionSecret }}"
 #logPath = "log/qui.log"
 
 # Log rotation
-# Maximum log file size in megabytes before rotation
+# Size in MB that starts a rotation
 # Default: {{ .logMaxSize }}
 #logMaxSize = {{ .logMaxSize }}
 
-# Number of rotated log files to retain (0 keeps all)
+# Number of rotated log files that qui keeps (0 keeps all)
+# Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file
+# compresses to 2 to 3 MB.
 # Default: {{ .logMaxBackups }}
 #logMaxBackups = {{ .logMaxBackups }}
 
@@ -542,9 +546,11 @@ sessionSecret = "{{ .sessionSecret }}"
 #crossSeedRecoverErroredTorrents = false
 
 # Log level
-# Default: "INFO"
+# Default: "DEBUG"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
-logLevel = "{{ .logLevel }}"
+# DEBUG records sufficient detail to diagnose most reports.
+# TRACE adds per-request and per-sync-tick detail and makes the file grow quickly.
+#logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
 # Enable Prometheus metrics on separate port (no authentication required)

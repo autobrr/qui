@@ -98,7 +98,9 @@
     "runError": "错误：{{message}}",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
-    "scheduledUpper": "定时"
+    "scheduledUpper": "定时",
+    "runDisabledAlreadyRunning": "自动化运行已在进行中。",
+    "runDisabledCooldown": "手动运行的间隔限制为 {{minutes}} 分钟。请在 {{remaining}} 后重试。"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -116,6 +118,11 @@
     "gazelleOnlyNote": " 建议 10 秒以上；这是每个种子的节奏控制，每个种子可能触发多个 Gazelle API 调用。",
     "cooldownLabel": "冷却时间（分钟）",
     "cooldownDescription": "跳过在此时间窗口内已搜索过的做种种子。最小 {{min}} 分钟。",
+    "skipIndividualEpisodesLabel": "跳过单集",
+    "skipIndividualEpisodesDescription": "本次运行不搜索单集剧集。成组的单集仍会触发季度包搜索。",
+    "skipIndividualEpisodesAutomationOff": "季度包自动组装已关闭。本次运行不会搜索季度包。",
+    "maxAddedAgeLabel": "种子最长添加时间（天）",
+    "maxAddedAgeDescription": "跳过添加时间超过该天数的种子。0 表示不限制。从未搜索过某个种子的索引器始终包含在内。",
     "categories": "分类",
     "tags": "标签",
     "allCategoriesAll": "所有分类（留空表示全部）",
@@ -158,7 +165,37 @@
     "scannedProgress": "已扫描 {{processed}}/{{total}}",
     "torrentsCount": "{{count}} 个种子",
     "failedCount": "{{count}} 个失败",
-    "runError": "错误：{{message}}"
+    "runError": "错误：{{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "跳过 Torznab（仅限 Gazelle 选择）",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab 已禁用（仅限 Gazelle）",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab 已禁用（启用 Gazelle）",
+      "placeholderAllEnabledNonOpsRed": "所有已启用的非 OPS/RED 索引器（留空表示全部）",
+      "placeholderAllEnabled": "所有已启用的索引器（留空表示全部）",
+      "placeholderOnlyOpsRedEnabled": "仅启用 OPS/RED（Gazelle）",
+      "placeholderNoTorznabConfigured": "未配置 Torznab 索引器",
+      "helpTorznabSkippedGazelleOnly": "选定的 Torznab 索引器仅限 Gazelle (OPS/RED)。本次运行将仅限于 Gazelle。",
+      "helpTorznabDisabledGazelleCheck": "Torznab 已禁用。Gazelle 将为每个源种子检查 RED/OPS。",
+      "helpTorznabDisabledEnableGazelle": "Torznab 已禁用。启用 Gazelle (OPS/RED) 以在仅 Gazelle 模式下运行做种搜索。",
+      "helpOnlyOpsRedEnabled": "仅启用了 OPS/RED Torznab 索引器。Torznab 在此不起作用；Gazelle 仍在检查 RED/OPS。",
+      "helpNoNonOpsRedTorznab": "没有非 OPS/RED 的 Torznab 索引器。Gazelle 仍将为每个源种子检查 RED/OPS。",
+      "helpNoTorznabConfigured": "未配置 Torznab 索引器。",
+      "helpAllEnabledNonOpsRedQueried": "将查询所有已启用的非 OPS/RED Torznab 索引器。Gazelle 也会检查 RED/OPS。",
+      "helpAllEnabledTorznabQueried": "将查询所有已启用的 Torznab 索引器以查找匹配项。",
+      "helpSelectedTorznabQueriedGazelle_other": "将仅查询 {{count}} 个选定的 Torznab 索引器。Gazelle 仍在检查 RED/OPS。",
+      "helpSelectedQueried_other": "将仅查询 {{count}} 个选定的索引器。"
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle：加载中",
+      "disabled": "Gazelle：已禁用",
+      "enabledOpsRed": "Gazelle：已启用（已设置 OPS+RED 密钥）",
+      "enabledOpsMissingRed": "Gazelle：已启用（已设置 OPS 密钥，缺少 RED）",
+      "enabledRedMissingOps": "Gazelle：已启用（已设置 RED 密钥，缺少 OPS）",
+      "enabledKeysMissing": "Gazelle：已启用（缺少密钥）"
+    },
+    "noInstanceSelected": "未选择实例",
+    "instanceFallback": "实例 {{id}}",
+    "noMessageProvided": "未提供消息"
   },
   "rules": {
     "title": "辅种规则",
@@ -196,6 +233,8 @@
       "description": "当 autobrr 抓取季度包时，qui 会检查你是否已有足够的本地数据来注入它，然后让 qBittorrent 下载仍然缺失的内容。",
       "enable": "启用季度包匹配",
       "enableDescription": "允许 autobrr 调用 qui 进行季度包检查和应用。",
+      "enableAutomation": "自动组装季度包",
+      "enableAutomationDescription": "当 RSS 自动化或交叉做种应用发现你只有部分单集的季度包时，qui 会用本地单集组装该季度包，其余部分交由 qBittorrent 下载。媒体库搜索也会在你的索引器中查找此类季度包。",
       "coverageThreshold": "覆盖率阈值（%）",
       "coverageThresholdDescription": "qui 注入季度包前所需的最低本地覆盖率。如果 Sonarr 解析到该剧集，qui 会使用较大的季度总数；否则会回退到包中可播放的文件。不完整的包会以暂停状态添加，重新校验后自动恢复。",
       "matchingTitle": "匹配设置",
@@ -250,14 +289,14 @@
     "matching": {
       "title": "匹配行为",
       "description": "控制种子的匹配方式以及允许的文件差异。",
-      "sizeTolerance": "大小不匹配容差（%）",
-      "sizeToleranceDescription": "匹配时允许的最大大小差异。同时设置自动恢复阈值（例如 5% = 在 >=95% 时恢复）。",
       "crossSeedEpisodes": "从合集包辅种单集",
       "crossSeedEpisodesDescription": "你的本地季度合集包可以匹配索引器上的单集种子，让你同时做种两种格式。"
     },
     "safety": {
       "title": "安全与验证",
       "description": "控制哪些匹配可以继续，并保护你已做种的数据。",
+      "rescueTitleMismatches": "挽救标题不匹配的结果",
+      "rescueTitleMismatchesDescription": "每次源搜索会在所有索引器中合计尝试最多三个大小完全相同的结果。qui 会先检查所有数据，再启动种子。启用跳过重新校验会关闭此规则。",
       "skipRecheck": "跳过需要重新校验的匹配",
       "skipRecheckDescription": "跳过需要重命名对齐、额外文件或光盘布局（BDMV/VIDEO_TS）的匹配。关闭此选项时，这些匹配默认会强制重新校验。",
       "pieceBoundaryDisabled": "块边界安全检查当前已禁用",
@@ -323,6 +362,8 @@
       "completionDescription": "自动继续完成触发的种子",
       "webhookLabel": "Webhook",
       "webhookDescription": "自动继续 /apply Webhook 种子",
+      "maxAutoResumeDownload": "自动开始的最大下载量（MiB）",
+      "maxAutoResumeDownloadDescription": "仅当缺失数据不超过此大小时才自动开始新添加的种子。设为 0 则仅自动开始完整的种子。当仅缺少样本、.nfo 和字幕等文件时，qui 仍会开始该种子，上限为 200 MiB。",
       "externalProgram": "注入后运行外部程序",
       "noExternalPrograms": "没有可用的外部程序",
       "selectExternalProgram": "选择外部程序（可选）",
@@ -510,6 +551,9 @@
     "resetScanProgressTitle": "重置扫描进度？",
     "resetScanProgressDescription": "这将删除此目录的已跟踪目录扫描进度。下次扫描将重新检查目录并重试所有项目，包括已完成的项目。",
     "resetFilesSuccess": "文件已重置。下次扫描将重新评估。",
+    "requeueNoMatch": "重试未匹配",
+    "requeueNoMatchTooltip": "标记未匹配的文件，以便下次扫描重新搜索它们。已匹配的文件不受影响。在添加索引器后使用，或当 tracker 现在可能有该内容时使用。",
+    "requeueNoMatchSuccess_other": "下次扫描将重试 {{count}} 个未匹配的文件。",
     "toast": {
       "scannerEnabled": "目录扫描器已启用",
       "scannerDisabled": "目录扫描器已禁用",
@@ -526,6 +570,7 @@
       "directoryDeleteFailed": "删除目录失败：{{error}}",
       "settingsSaved": "设置已保存",
       "settingsSaveFailed": "保存设置失败：{{error}}",
+      "requeueFailed": "重试未匹配文件失败：{{error}}",
       "resetFailed": "重置文件失败：{{error}}"
     },
     "statusLabels": {
@@ -629,6 +674,8 @@
       "selectInstance": "选择实例",
       "intervalLabel": "扫描间隔（分钟）",
       "intervalHelp": "最小：60 分钟（1 小时）。默认：1440 分钟（24 小时）。",
+      "skipIndividualEpisodesLabel": "跳过单集",
+      "skipIndividualEpisodesHelp": "扫描不搜索单集剧集。它改为搜索这些单集组成的季度包，并跳过无法组成季度包的单集。",
       "toleranceLabel": "大小容差（%）",
       "categoryLabel": "分类",
       "categoryPlaceholder": "可选的分类覆盖",

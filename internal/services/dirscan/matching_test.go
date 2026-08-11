@@ -5,10 +5,11 @@ package dirscan
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +27,17 @@ func buildTorrentBytes(t *testing.T, info *metainfo.Info) []byte {
 	var buf bytes.Buffer
 	require.NoError(t, mi.Write(&buf))
 	return buf.Bytes()
+}
+
+// Discussion #2262: announce-list encoded as a bencode string must not fail
+// the parse. Pins the leniency contract across go-torrent bumps.
+func TestParseTorrentBytes_MalformedAnnounceList(t *testing.T) {
+	info := "d6:lengthi1e4:name8:Test.Rel12:piece lengthi16384e6:pieces20:" + strings.Repeat("a", 20) + "e"
+	data := []byte("d13:announce-list0:4:info" + info + "e")
+
+	parsed, err := ParseTorrentBytes(data)
+	require.NoError(t, err)
+	require.Equal(t, "Test.Rel", parsed.Name)
 }
 
 func TestParseTorrentBytes_MultiFilePrefixesRootFolder(t *testing.T) {
