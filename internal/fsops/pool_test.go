@@ -65,7 +65,7 @@ func (f fakeBackend) HardlinkTree(context.Context, *hardlinktree.TreePlan) (*Tre
 func (f fakeBackend) ReflinkTree(context.Context, *hardlinktree.TreePlan) (*TreeCreateResult, error) {
 	return nil, nil
 }
-func (f fakeBackend) RemoveTree(context.Context, *hardlinktree.TreePlan) error { return nil }
+func (f fakeBackend) RemoveTree(context.Context, *TreeCreateResult) error { return nil }
 func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, error) {
 	return false, "", nil
 }

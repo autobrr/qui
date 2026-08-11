@@ -7,7 +7,7 @@ title: Environment Variables
 
 Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
 
-For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference).
+For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference.md).
 
 ## Server
 
@@ -35,13 +35,15 @@ QUI__SESSION_SECRET=...       # Auto-generated if not set
 ## Logging
 
 ```bash
-QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
+QUI__LOG_LEVEL=DEBUG     # Options: ERROR, DEBUG, INFO, WARN, TRACE (default: DEBUG)
 QUI__LOG_PATH=...        # Optional: log file path
-QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
-QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)
+QUI__LOG_MAX_SIZE=50     # Optional: rotate when the log file is larger than N MB (default: 50)
+QUI__LOG_MAX_BACKUPS=10  # Optional: retain N rotated files (default: 10, 0 keeps all)
 ```
 
-When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables to control the rotation thresholds and retention.
+When `logPath` is set, the server writes to disk with size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml`, or set the equivalent environment variables. Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file compresses to 2 to 3 MB, thus ten backups use about 25 MB. The ratio depends on the content of your log.
+
+Rotation and retention apply only when `logPath` is set. If you run qui in Docker, it writes the logs to stdout by default. Rotation does not apply to these logs. To limit the size of the container log, set `QUI__LOG_PATH`. As an alternative, set the `max-size` option on the container log driver.
 
 ## Storage
 
@@ -50,6 +52,12 @@ QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: nex
 ```
 
 `QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
+
+```bash
+QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .css files (default: <config-dir>/themes)
+```
+
+`QUI__CUSTOM_THEMES_DIR` sets where [custom themes](../features/custom-themes.md) are read from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker) and is created automatically. Loading custom themes requires premium access.
 
 ## Database
 
@@ -89,7 +97,8 @@ QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicator
 ## Profiling (pprof)
 
 ```bash
-QUI__PPROF_ENABLED=true  # Optional: enable pprof server on :6060 (default: false)
+QUI__PPROF_ENABLED=true        # Optional: enable pprof server (default: false)
+QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.1:6060)
 ```
 
 ## Metrics
@@ -123,7 +132,7 @@ Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
 
 `QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
 
-Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
+Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference.md#authentication) for a full explanation of the risks.
 
 Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) always allow loopback probes, so the official Docker image healthcheck continues to work even if your allowlist only includes the reverse proxy subnet(s).
 

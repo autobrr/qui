@@ -75,7 +75,7 @@ func TestFindBestCandidateMatch_PrefersLayoutCompatibleTorrent(t *testing.T) {
 	require.Len(t, files, 1)
 }
 
-func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
+func TestFindBestCandidateMatch_PrefersLayoutCompatibilityBeforeTopLevelFolder(t *testing.T) {
 	t.Parallel()
 
 	svc := &Service{
@@ -112,9 +112,119 @@ func TestFindBestCandidateMatch_PrefersTopLevelFolderOnTie(t *testing.T) {
 	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
 	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
 	require.NotNil(t, bestTorrent)
-	require.Equal(t, "folder", bestTorrent.Hash, "top-level folder layout should win tie-breakers")
+	require.Equal(t, "single", bestTorrent.Hash, "same-shape rootless layout should win before folder-root tie-breakers")
 	require.Equal(t, "size", matchType)
-	require.Len(t, files, 2, "should return folder-based file list")
+	require.Len(t, files, 1, "should return rootless file list")
+}
+
+func TestFindBestCandidateMatch_FolderIncomingPrefersFolderExisting(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"rootless": {{Name: "payload.bin", Size: 4 << 30}},
+				"folder":   {{Name: "Existing.Release/payload.bin", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "Incoming.Release/PAYLOAD.bin", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "rootless", Name: "Payload.Rootless", Progress: 1.0},
+			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "folder", bestTorrent.Hash)
+	require.Equal(t, "size", matchType)
+	require.Len(t, files, 1)
+	require.Equal(t, "Existing.Release/payload.bin", files[0].Name)
+}
+
+func TestFindBestCandidateMatch_FilenameAlignmentBeatsRootFolderAlignment(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"filename": {{Name: "payload.bin", Size: 4 << 30}},
+				"folder":   {{Name: "Existing.Release/PAYLOAD.bin", Size: 4 << 30}},
+			},
+		},
+	}
+
+	sourceRelease := rls.Release{}
+	sourceFiles := qbt.TorrentFiles{{Name: "PAYLOAD.bin", Size: 4 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "folder", Name: "Payload.Folder", Progress: 1.0},
+			{Hash: "filename", Name: "Payload.Rootless", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, &sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "filename", bestTorrent.Hash)
+	require.Equal(t, "size", matchType)
+	require.Len(t, files, 1)
+	require.Equal(t, "payload.bin", files[0].Name)
+}
+
+func TestFindBestCandidateMatch_UploadCXRootlessRegression(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &candidateSelectionSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				"folder": {
+					{
+						Name: "Some.Release.2017.LIMITED.1080p.BluRay.x264-DRONES/Some.Release.2017.1080p.BluRay.x264-DRONES.mkv",
+						Size: 7 << 30,
+					},
+				},
+				"rootless": {
+					{Name: "Some.Release.2017.1080p.BluRay.x264-DRONES.MKV", Size: 7 << 30},
+				},
+			},
+		},
+	}
+
+	torrentName := "Some.Release.2017.1080p.BluRay.x264-DRONES.mkv"
+	sourceRelease := svc.releaseCache.Parse(torrentName)
+	sourceFiles := qbt.TorrentFiles{{Name: torrentName, Size: 7 << 30}}
+
+	candidate := CrossSeedCandidate{
+		InstanceID: 1,
+		Torrents: []qbt.Torrent{
+			{Hash: "folder", Name: "Some.Release.2017.LIMITED.1080p.BluRay.x264-DRONES", Progress: 1.0},
+			{Hash: "rootless", Name: "some.release.2017.limited.1080p.bluray.x264-drones.mkv", Progress: 1.0},
+		},
+	}
+
+	filesByHash := svc.batchLoadCandidateFiles(context.Background(), candidate.InstanceID, candidate.Torrents)
+	bestTorrent, files, matchType, _ := svc.findBestCandidateMatch(context.Background(), candidate, sourceRelease, sourceFiles, filesByHash, 5.0)
+	require.NotNil(t, bestTorrent)
+	require.Equal(t, "rootless", bestTorrent.Hash)
+	require.Equal(t, "partial-contains", matchType)
+	require.Len(t, files, 1)
+	require.Equal(t, "Some.Release.2017.1080p.BluRay.x264-DRONES.MKV", files[0].Name)
 }
 
 func TestFindBestCandidateMatch_RejectsSeasonPackAgainstEpisodeCandidate(t *testing.T) {

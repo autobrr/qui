@@ -23,7 +23,6 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
-  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
@@ -46,6 +45,7 @@ import type {
   DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
+  DirScanRequeueResponse,
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
@@ -57,6 +57,8 @@ import type {
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  FilterView,
+  FilterViewInput,
   IndexerActivityStatus,
   IndexerResponse,
   InstanceCapabilities,
@@ -68,6 +70,7 @@ import type {
   LocalCrossSeedMatch,
   LogExclusions,
   LogExclusionsInput,
+  LogFile,
   LogSettings,
   LogSettingsUpdate,
   MarkRSSAsReadRequest,
@@ -132,6 +135,7 @@ import type {
   ArrTestResponse
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
+import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
 
 const API_BASE = getApiBaseUrl()
 
@@ -420,11 +424,9 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
 // Custom error class for API errors with status and additional data
 export class APIError extends Error {
   status: number
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any
+  data?: unknown
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(message: string, status: number, data?: any) {
+  constructor(message: string, status: number, data?: unknown) {
     super(message)
     this.name = "APIError"
     this.status = status
@@ -459,8 +461,7 @@ class ApiClient {
     return response.json()
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async extractErrorData(response: Response): Promise<{ message: string; data?: any }> {
+  private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
     const fallbackMessage = `HTTP error! status: ${response.status}`
 
     try {
@@ -473,8 +474,7 @@ class ApiClient {
 
       // Try to parse as JSON first
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: any }
+        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
         const parsedMessage = errorData?.error ?? errorData?.message
         if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
           // Return both the message and the full data (for 409 conflicts with automations, etc.)
@@ -689,6 +689,7 @@ class ApiClient {
     keepMonthly: number
     includeCategories: boolean
     includeTags: boolean
+    includeSavePaths: boolean
   }): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
       method: "PUT",
@@ -818,7 +819,9 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
-    }
+      preferCached?: boolean
+    },
+    signal?: AbortSignal
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set("page", params.page.toString())
@@ -827,10 +830,53 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
-      `/instances/${instanceId}/torrents?${searchParams}`
+      `/instances/${instanceId}/torrents?${searchParams}`,
+      { signal }
     )
+  }
+
+  getTorrentsStreamBatchUrl(
+    streams: Array<{
+      key: string
+      instanceId: number
+      instanceIds?: number[] | null
+      page: number
+      limit: number
+      sort: string
+      order: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters | null
+    }>,
+    options: { activity?: boolean } = {}
+  ): string {
+    const params = new URLSearchParams()
+
+    if (streams.length > 0) {
+      const normalized = streams.map(stream => ({
+        key: stream.key,
+        instanceId: stream.instanceId,
+        instanceIds: stream.instanceIds ?? null,
+        page: stream.page,
+        limit: stream.limit,
+        sort: stream.sort,
+        order: stream.order,
+        search: stream.search ?? "",
+        filters: stream.filters ?? null,
+      }))
+      params.set("streams", JSON.stringify(normalized))
+    }
+
+    // Activity events (qui-owned server signals) ride the same multiplexed
+    // EventSource; the flag lets a connection with no torrent streams stay open
+    // purely to receive them.
+    if (options.activity) {
+      params.set("activity", "1")
+    }
+
+    return withBasePath(`/api/stream?${params.toString()}`)
   }
 
   async getTorrentField(
@@ -879,7 +925,8 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
-    }
+    },
+    signal?: AbortSignal
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set("page", params.page.toString())
@@ -892,56 +939,9 @@ class ApiClient {
       searchParams.set("instanceIds", params.instanceIds.join(","))
     }
 
-    type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
-      instanceId?: number
-      instanceName?: string
-      instance_id?: number
-      instance_name?: string
-    }
-
-    const normalizeCrossInstanceTorrents = (
-      torrents?: RawCrossInstanceTorrent[] | null
-    ): CrossInstanceTorrent[] | undefined => {
-      if (!torrents) {
-        return undefined
-      }
-
-      let needsNormalization = false
-
-      for (const torrent of torrents) {
-        if (torrent.instanceId === undefined || torrent.instanceName === undefined) {
-          needsNormalization = true
-          break
-        }
-      }
-
-      if (!needsNormalization) {
-        return torrents as CrossInstanceTorrent[]
-      }
-
-      const normalizedTorrents: CrossInstanceTorrent[] = []
-
-      torrents.forEach(torrent => {
-        const instanceId = torrent.instanceId ?? torrent.instance_id
-        const instanceName = torrent.instanceName ?? torrent.instance_name
-
-        if (instanceId === undefined || instanceName === undefined) {
-          console.error("Missing instance fields in cross-instance torrent:", torrent)
-          return
-        }
-
-        normalizedTorrents.push({
-          ...torrent,
-          instanceId,
-          instanceName,
-        })
-      })
-
-      return normalizedTorrents
-    }
-
     const response = await this.request<TorrentResponse>(
-      `/torrents/cross-instance?${searchParams}`
+      `/torrents/cross-instance?${searchParams}`,
+      { signal }
     )
 
     const normalizedCrossInstanceTorrents = normalizeCrossInstanceTorrents(
@@ -1042,10 +1042,11 @@ class ApiClient {
     data: {
       hashes: string[]
       targets?: Array<{ instanceId: number; hash: string }>
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
+      comment?: string  // For setComment action
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
       filters?: TorrentFilters
@@ -1281,6 +1282,8 @@ class ApiClient {
       download_volume_factor: number
       upload_volume_factor: number
       guid: string
+      infohash_v1?: string
+      infohash_v2?: string
       imdb_id?: string
       tvdb_id?: string
       match_reason?: string
@@ -1291,6 +1294,7 @@ class ApiClient {
       source_torrent: RawTorrentInfo
       results?: RawSearchResult[]
       cache?: TorznabSearchCacheMetadata
+      partial?: boolean
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -1338,12 +1342,15 @@ class ApiClient {
         downloadVolumeFactor: result.download_volume_factor,
         uploadVolumeFactor: result.upload_volume_factor,
         guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
         imdbId: result.imdb_id ?? undefined,
         tvdbId: result.tvdb_id ?? undefined,
         matchReason: result.match_reason ?? undefined,
         matchScore: result.match_score ?? 0,
       })),
       cache: response.cache,
+      partial: response.partial ?? undefined,
     }
   }
 
@@ -1533,6 +1540,8 @@ class ApiClient {
     indexerIds: number[]
     disableTorznab?: boolean
     cooldownMinutes: number
+    skipIndividualEpisodes?: boolean
+    maxAddedAgeDays?: number
   }): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
       method: "POST",
@@ -2001,6 +2010,14 @@ class ApiClient {
     return this.request("/license/refresh", { method: "POST" })
   }
 
+  // Custom themes (sideloaded CSS files; premium-gated server-side)
+  async getCustomThemes(): Promise<{
+    directory: string
+    themes: Array<{ id: string; filename: string; css: string }>
+  }> {
+    return this.request("/themes/custom")
+  }
+
   // Preferences endpoints
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
@@ -2154,6 +2171,31 @@ class ApiClient {
     })
   }
 
+  // Filter Views endpoints
+  async listFilterViews(): Promise<FilterView[]> {
+    return this.request<FilterView[]>("/filter-views")
+  }
+
+  async createFilterView(data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>("/filter-views", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFilterView(id: number, data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>(`/filter-views/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFilterView(id: number): Promise<void> {
+    return this.request(`/filter-views/${id}`, {
+      method: "DELETE",
+    })
+  }
+
   // Dashboard Settings endpoints
   async getDashboardSettings(): Promise<DashboardSettings> {
     return this.request<DashboardSettings>("/dashboard-settings")
@@ -2181,6 +2223,12 @@ class ApiClient {
   // Torznab Indexer endpoints
   async listTorznabIndexers(): Promise<TorznabIndexer[]> {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
+  }
+
+  // Returns tracker domains derived from enabled indexers whose domain can be
+  // resolved reliably (native + Prowlarr backends; Jackett is omitted server-side).
+  async getIndexerTrackerDomains(): Promise<string[]> {
+    return this.request<string[]>("/torznab/indexers/tracker-domains")
   }
 
   async getTorznabIndexer(id: number): Promise<TorznabIndexer> {
@@ -2228,12 +2276,15 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string): Promise<DiscoverJackettResponse> {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string, sourceIndexerId?: number): Promise<DiscoverJackettResponse> {
     const user = basicUsername?.trim() ?? ""
     const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
     if (user) {
       payload.basic_username = user
       payload.basic_password = basicPassword ?? ""
+    }
+    if (sourceIndexerId !== undefined) {
+      payload.source_indexer_id = sourceIndexerId
     }
     return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
@@ -2470,6 +2521,28 @@ class ApiClient {
     return `${API_BASE}/logs/stream?limit=${limit}`
   }
 
+  async getLogFiles(): Promise<LogFile[]> {
+    return this.request<LogFile[]>("/logs/files")
+  }
+
+  async downloadLogFile(filename: string): Promise<void> {
+    const response = await ssoSafeFetch(`${API_BASE}/logs/files/${encodeURIComponent(filename)}`, { method: "GET" })
+
+    if (!response.ok) {
+      throw new Error(`Failed to download log file: ${response.statusText}`)
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
   // Directory Scanner endpoints
   async getDirScanSettings(): Promise<DirScanSettings> {
     return this.request<DirScanSettings>("/dir-scan/settings")
@@ -2513,6 +2586,12 @@ class ApiClient {
 
   async resetDirScanFiles(directoryId: number): Promise<void> {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
+  }
+
+  async requeueDirScanNoMatch(directoryId: number): Promise<DirScanRequeueResponse> {
+    return this.request<DirScanRequeueResponse>(`/dir-scan/directories/${directoryId}/requeue-no-match`, {
+      method: "POST",
+    })
   }
 
   async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {

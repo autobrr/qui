@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -439,6 +440,65 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 	assert.DirExists(t, validDir)
 }
 
+func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
+	savePath := t.TempDir()
+	contentPath := filepath.Join(savePath, "Movie.2024")
+	candidateFiles := qbt.TorrentFiles{{Name: path.Join("Movie.2024", "Movie.2024.mkv")}}
+	filePath := filepath.Join(savePath, candidateFiles[0].Name)
+	require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("movie"), 0o600))
+
+	got, ok := matchedFilesystemProbePath(
+		&qbt.Torrent{ContentPath: contentPath},
+		&qbt.TorrentProperties{SavePath: savePath},
+		candidateFiles,
+	)
+
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join(savePath, candidateFiles[0].Name), got)
+}
+
+func TestMatchedFilesystemProbePath_FallsBackToContentPath(t *testing.T) {
+	contentPath := filepath.Join(string(filepath.Separator), "mnt", "cross_linked", "HDBits", "Movie.2024")
+
+	got, ok := matchedFilesystemProbePath(
+		&qbt.Torrent{ContentPath: contentPath},
+		&qbt.TorrentProperties{},
+		nil,
+	)
+
+	require.True(t, ok)
+	assert.Equal(t, filepath.ToSlash(contentPath), filepath.ToSlash(got))
+}
+
+func TestSafeTorrentRelativeFilePath(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+		ok   bool
+	}{
+		{name: "Movie.2024/Movie.2024.mkv", want: "Movie.2024/Movie.2024.mkv", ok: true},
+		{name: "Movie.2024/./Movie.2024.mkv", want: "Movie.2024/Movie.2024.mkv", ok: true},
+		{name: "../evil.mkv"},
+		{name: "Movie.2024/../../evil.mkv"},
+		{name: "/absolute.mkv"},
+		{name: `\absolute.mkv`},
+		{name: "C:/absolute.mkv"},
+		{name: "C:relative.mkv"},
+		{name: "//server/share/file.mkv"},
+		{name: `Movie.2024\Movie.2024.mkv`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := safeTorrentRelativeFilePath(tt.name)
+
+			require.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
@@ -586,6 +646,63 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 	require.Equal(t, 1, hookCallCount, "expected successful hardlink injection to run post-injection hooks once")
 }
 
+func TestProcessHardlinkMode_TitleRescueWaitsForFullRecheck(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Original"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Original", "old.mkv"), []byte("movie"), 0o600))
+
+	syncManager := &rootlessSavePathSyncManager{}
+	service := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseHardlinks:             true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+				},
+			},
+		},
+		syncManager:       syncManager,
+		recheckResumeChan: make(chan *pendingResume, 1),
+		recheckResumeCtx:  context.Background(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+	}
+
+	result := service.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1", titleRescue: true},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"Renamed",
+		&CrossSeedRequest{SkipAutoResume: true},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
+		"size",
+		qbt.TorrentFiles{{Name: "Renamed/new.mkv", Size: 5}},
+		qbt.TorrentFiles{{Name: "Original/old.mkv", Size: 5}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"",
+		"",
+	)
+
+	require.True(t, result.Success, result.Result.Message)
+	require.Equal(t, "true", syncManager.addedOptions["paused"])
+	require.Equal(t, "true", syncManager.addedOptions["stopped"])
+	select {
+	case pending := <-service.recheckResumeChan:
+		require.NotNil(t, pending.budgetBytes)
+		require.Zero(t, *pending.budgetBytes)
+		require.True(t, pending.monitorOnly)
+	default:
+		require.Fail(t, "expected hardlink title rescue to wait for a full recheck")
+	}
+}
+
 func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{
@@ -658,7 +775,7 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/also/nonexistent/path"},
 		"exact",
-		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 		&qbt.TorrentProperties{SavePath: "/also/nonexistent"},
 		"category",
@@ -785,6 +902,276 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 	assert.Equal(t, "skipped_recheck", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "requires recheck")
 	assert.Contains(t, result.Result.Message, "Skip recheck")
+}
+
+func TestCoverageThresholdFromTolerance(t *testing.T) {
+	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(0), 0.001)
+	assert.InDelta(t, 0.95, coverageThresholdFromTolerance(5), 0.001)
+	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(-1), 0.001)
+	assert.InDelta(t, 0.8, coverageThresholdFromTolerance(20), 0.001)
+	assert.InDelta(t, 0.0, coverageThresholdFromTolerance(150), 0.001)
+}
+
+func TestResumeBudgetBytes(t *testing.T) {
+	tests := []struct {
+		name       string
+		settingsMB int
+		loaderErr  error
+		want       int64
+	}{
+		{name: "default 50 MiB", settingsMB: models.DefaultAutoResumeMaxDownloadMB, want: 50 << 20},
+		{name: "custom value", settingsMB: 200, want: 200 << 20},
+		{name: "zero means only complete torrents", settingsMB: 0, want: 0},
+		{name: "negative clamps to zero", settingsMB: -5, want: 0},
+		{name: "loader error falls back to default", loaderErr: errors.New("db down"), want: int64(models.DefaultAutoResumeMaxDownloadMB) << 20},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					if tt.loaderErr != nil {
+						return nil, tt.loaderErr
+					}
+					settings := models.DefaultCrossSeedAutomationSettings()
+					settings.AutoResumeMaxDownloadMB = tt.settingsMB
+					return settings, nil
+				},
+			}
+
+			assert.Equal(t, tt.want, s.resumeBudgetBytes(context.Background()))
+		})
+	}
+}
+
+func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "subtitle.srt"), []byte("subtitle"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseHardlinks:             true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+				},
+			},
+		},
+		syncManager: sync,
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"partial-in-pack",
+		qbt.TorrentFiles{
+			{Name: "Movie/movie.mkv", Size: 1000},
+			{Name: "Movie/subtitle.srt", Size: 10},
+		},
+		qbt.TorrentFiles{{Name: "Movie/subtitle.srt", Size: 10}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	require.Equal(t, "below_threshold", result.Result.Status)
+	require.Contains(t, result.Result.Message, "matched files cover")
+	require.Contains(t, result.Result.Message, "below required 95.0% threshold")
+	require.Nil(t, sync.addedOptions, "torrent should not be added below threshold")
+}
+
+func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "subtitle.srt"), []byte("subtitle"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseReflinks:              true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "reflinks"),
+				},
+			},
+		},
+		syncManager: sync,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"partial-in-pack",
+		qbt.TorrentFiles{
+			{Name: "Movie/movie.mkv", Size: 1000},
+			{Name: "Movie/subtitle.srt", Size: 10},
+		},
+		qbt.TorrentFiles{{Name: "Movie/subtitle.srt", Size: 10}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	require.Equal(t, "below_threshold", result.Result.Status)
+	require.Contains(t, result.Result.Message, "matched files cover")
+	require.Contains(t, result.Result.Message, "below required 95.0% threshold")
+	require.Nil(t, sync.addedOptions, "torrent should not be added below threshold")
+}
+
+func TestSelectExistingSourceFilesUsesAlignmentMatchingForRenamedFiles(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Show/Sheriff.Hoot.Kloot.S01E01.mkv", Size: 1000},
+		{Name: "Show/Sheriff.Hoot.Kloot.S01E02.mkv", Size: 2000},
+		{Name: "Show/Sheriff.Hoot.Kloot.nfo", Size: 10},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Show/Hoot.Kloot.S01E01.mkv", Size: 1000},
+		{Name: "Show/Hoot.Kloot.S01E02.mkv", Size: 2000},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 2)
+	assert.Equal(t, "Show/Sheriff.Hoot.Kloot.S01E01.mkv", selected[0].Path)
+	assert.Equal(t, "Show/Sheriff.Hoot.Kloot.S01E02.mkv", selected[1].Path)
+}
+
+func TestSelectExistingSourceFilesUsesSizeOnlyFallbackForNonIgnoredContent(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Music/Artist - Track 01.flac", Size: 1000},
+		{Name: "Books/Author - Book.epub", Size: 2000},
+		{Name: "Games/Game Disc.iso", Size: 3000},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Music/01 - Track.flac", Size: 1000},
+		{Name: "Books/Book - Author.epub", Size: 2000},
+		{Name: "Games/Disc 1.iso", Size: 3000},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 3)
+	assert.Equal(t, "Music/Artist - Track 01.flac", selected[0].Path)
+	assert.Equal(t, "Books/Author - Book.epub", selected[1].Path)
+	assert.Equal(t, "Games/Game Disc.iso", selected[2].Path)
+}
+
+func TestSelectExistingSourceFilesDoesNotUseSizeOnlyFallbackForSidecars(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/english.srt", Size: 1024},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/spanish.srt", Size: 1024},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 1)
+	assert.Equal(t, "Movie/movie.mkv", selected[0].Path)
+}
+
+func TestHasUnmaterializedSourceFilesUsesSelectorResult(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/english.srt", Size: 1024},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/spanish.srt", Size: 1024},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 1)
+	assert.True(t, hasUnmaterializedSourceFiles(sourceFiles, selected))
+}
+
+func TestSelectExistingSourceFilesDoesNotMatchContentToSidecarBySizeOnly(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1024},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.nfo", Size: 1024},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Empty(t, selected)
+}
+
+func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	reflinkDir := filepath.Join(tempDir, "reflinks")
+	require.NoError(t, os.MkdirAll(downloadsDir, 0o755))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseReflinks:              true,
+					FallbackToRegularMode:    true,
+					HardlinkBaseDir:          reflinkDir,
+				},
+			},
+		},
+		syncManager: sync,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: downloadsDir},
+		"exact",
+		qbt.TorrentFiles{{Name: "../Movie/movie.mkv", Size: 1000}},
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	require.Equal(t, "reflink_error", result.Result.Status)
+	require.Contains(t, result.Result.Message, "Failed to build reflink plan")
+	require.Nil(t, sync.addedOptions, "regular fallback must not add into the matched torrent path")
 }
 
 func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {

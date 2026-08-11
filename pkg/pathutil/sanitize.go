@@ -68,22 +68,20 @@ func SanitizePathSegment(name string) string {
 	return result
 }
 
-// TorrentKey generates a stable, filesystem-safe directory key for a torrent.
-// Uses the infohash as the primary identifier, falling back to sanitized name.
-// The key is suitable for use as a directory name on any platform.
-func TorrentKey(infohash, name string) string {
-	// Prefer infohash as it's guaranteed unique and filesystem-safe
-	if infohash != "" {
-		// Infohash is already hex (a-f0-9), but lowercase it for consistency
-		return strings.ToLower(infohash)
+// TorrentPathComponent maps one component of a torrent's file path to the name
+// libtorrent, and therefore qBittorrent, puts on disk for it.
+//
+// libtorrent's sanitize_append_path_element replaces an empty component with "_"
+// instead of dropping it, on every release line qBittorrent ships (1.1, 1.2, 2.0).
+// Go's path.Join drops it, which would place a link tree one directory above where
+// qBittorrent looks for the data. Only this rule is mirrored: libtorrent's handling
+// of "." and ".." differs between 1.x and 2.0, so copying it would produce wrong
+// paths for whichever version we did not target.
+func TorrentPathComponent(component string) string {
+	if component == "" {
+		return "_"
 	}
-
-	// Fallback to sanitized name
-	if name != "" {
-		return SanitizePathSegment(name)
-	}
-
-	return "_unknown"
+	return component
 }
 
 // IsolationFolderName generates a human-readable isolation folder name for

@@ -6,7 +6,7 @@ body:
         > [!IMPORTANT]
         > Before opening a discussion, please check the [documentation](https://getqui.com) and search existing [Discussions](https://github.com/autobrr/qui/discussions) and [Issues](https://github.com/autobrr/qui/issues).
         >
-        > Code contributions: PR creation is restricted to collaborators only, so start here (or open an Issue) to coordinate changes.
+        > Code contributions: for a large change, start here (or open an Issue) to coordinate before you write code.
 
   - type: textarea
     attributes:
@@ -59,7 +59,7 @@ body:
         - **Docker** - `docker logs qui`
         - **Stdout** - If running the binary directly
 
-        Set log level to TRACE for more detail (Settings > Logs > gear icon).
+        Set log level to DEBUG for more detail (Settings > Logs > gear icon).
       render: text
 
   - type: checkboxes

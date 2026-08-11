@@ -53,7 +53,7 @@ When enabled, qui can access the same filesystem as qBittorrent. This unlocks se
 Only enable this if qui runs on the same machine (or has the same mounts) as qBittorrent. If paths don't match, features will fail silently or produce incorrect results.
 :::
 
-For Docker deployments, ensure the container has the necessary volume mounts. See [Docker configuration](/docs/getting-started/docker) for details.
+For Docker deployments, ensure the container has the necessary volume mounts. See [Docker configuration](../getting-started/docker.md) for details.
 
 ## Instance Actions
 

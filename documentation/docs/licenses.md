@@ -6,7 +6,7 @@ description: Manage premium theme license activations, deactivate old servers, a
 
 # License Management
 
-Premium themes require a license key. Each key has a limited number of activation slots — one per server where qui is running.
+Premium themes require a license key. Each key has a limited number of activation slots — one per server where qui is running. The same license also unlocks [custom themes](./features/custom-themes.md) (sideloading your own CSS).
 
 ## Activating a License
 

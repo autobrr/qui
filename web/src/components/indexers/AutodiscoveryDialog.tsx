@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,17 +18,21 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import type { JackettIndexer, TorznabIndexer, TorznabIndexerFormData, TorznabIndexerUpdate } from "@/types"
 import { api } from "@/lib/api"
+import { deriveSavedConnections, type SavedDiscoveryConnection } from "@/lib/discovery-connections"
 
 interface AutodiscoveryDialogProps {
   open: boolean
   onClose: () => void
+  indexers: TorznabIndexer[]
 }
 
-export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
+export function AutodiscoveryDialog({ open, onClose, indexers }: AutodiscoveryDialogProps) {
+  const { t } = useTranslation("settings")
   const [step, setStep] = useState<"input" | "select">("input")
   const [loading, setLoading] = useState(false)
   const [baseUrl, setBaseUrl] = useState("http://localhost:9696")
@@ -36,9 +41,34 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const [showBasicAuth, setShowBasicAuth] = useState(false)
   const [basicUsername, setBasicUsername] = useState("")
   const [basicPassword, setBasicPassword] = useState("")
-  const [discoveredIndexers, setDiscoveredIndexers] = useState<JackettIndexer[]>([])
+  const [discoveredIndexers, setDiscoveredIndexers] = useState<(JackettIndexer & { rowKey: string; existing?: TorznabIndexer })[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<string>>(new Set())
-  const [existingIndexersMap, setExistingIndexersMap] = useState<Map<string, TorznabIndexer>>(new Map())
+  const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null)
+  const [manualOpen, setManualOpen] = useState(false)
+
+  const savedConnections = deriveSavedConnections(indexers)
+
+  // Selecting a connection wipes the manual credentials, so the plain apiKey /
+  // showBasicAuth reads below stay correct in both modes.
+  const selectConnection = (connection: SavedDiscoveryConnection) => {
+    setSelectedSourceId(connection.sourceIndexerId)
+    setManualOpen(false)
+    setBaseUrl(connection.baseUrl)
+    setBaseUrlError(null)
+    setApiKey("")
+    setShowBasicAuth(false)
+    setBasicUsername("")
+    setBasicPassword("")
+  }
+
+  const handleManualToggle = (nextOpen: boolean) => {
+    setManualOpen(nextOpen)
+    if (nextOpen) {
+      setSelectedSourceId(null)
+      setBaseUrl("http://localhost:9696")
+      setBaseUrlError(null)
+    }
+  }
 
   const normalizeBaseUrl = (value: string) => {
     const trimmed = value.trim()
@@ -50,15 +80,15 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     e.preventDefault()
     const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
     if (!normalizedBaseUrl) {
-      setBaseUrlError("Indexer URL is required")
-      toast.error("Indexer URL is required")
+      setBaseUrlError(t("indexers.autodiscovery.toast.urlRequired"))
+      toast.error(t("indexers.autodiscovery.toast.urlRequired"))
       return
     }
 
     const trimmedBasicUser = basicUsername.trim()
     const trimmedBasicPass = basicPassword
     if (showBasicAuth && (!trimmedBasicUser || !trimmedBasicPass)) {
-      toast.error("Basic auth requires username and password")
+      toast.error(t("indexers.autodiscovery.toast.basicAuthRequired"))
       return
     }
 
@@ -72,25 +102,35 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           apiKey,
           showBasicAuth ? trimmedBasicUser : undefined,
           showBasicAuth ? trimmedBasicPass : undefined,
+          selectedSourceId ?? undefined
         ),
         api.listTorznabIndexers(),
       ])
 
-      setDiscoveredIndexers(response.indexers)
+      const discovered = response.indexers.flatMap((indexer, rowIndex) => {
+        const id = indexer.id.trim()
+        if (!id) return []
 
-      // Build map of existing indexers by name with full indexer data
-      const existingMap = new Map<string, TorznabIndexer>()
-      for (const idx of existing) {
-        existingMap.set(idx.name, idx)
-      }
-      setExistingIndexersMap(existingMap)
+        const candidates = existing.filter(candidate =>
+          candidate.backend === (indexer.backend ?? "jackett") &&
+          normalizeBaseUrl(candidate.base_url) === normalizedBaseUrl &&
+          candidate.name === indexer.name
+        )
+        const idMatches = candidates.filter(candidate => candidate.indexer_id === id)
+        let existingIndexer = candidates.length === 1 ? candidates[0] : undefined
+        if (idMatches.length === 1) existingIndexer = idMatches[0]
+
+        return [{ ...indexer, id, rowKey: `discovered-indexer-${rowIndex}`, existing: existingIndexer }]
+      })
+      setDiscoveredIndexers(discovered)
+      setSelectedIndexers(new Set())
 
       setStep("select")
-      const existingCount = response.indexers.filter(idx => existingMap.has(idx.name)).length
+      const existingCount = discovered.filter(indexer => indexer.existing).length
       if (existingCount > 0) {
-        toast.success(`Found ${response.indexers.length} indexers (${existingCount} already exist)`)
+        toast.success(t("indexers.autodiscovery.toast.discoveredWithExisting", { total: discovered.length, existing: existingCount }))
       } else {
-        toast.success(`Found ${response.indexers.length} indexers`)
+        toast.success(t("indexers.autodiscovery.toast.discovered", { count: discovered.length }))
       }
 
       // Show discovery warnings if any
@@ -101,8 +141,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       }
     } catch (error) {
       console.error("Failed to discover indexers:", error)
-      const errorMessage = error instanceof Error ? error.message : "Unknown error"
-      toast.error(`Failed to discover indexers: ${errorMessage}`)
+      const errorMessage = error instanceof Error ? error.message : t("indexers.autodiscovery.unknownError")
+      toast.error(t("indexers.autodiscovery.toast.discoverFailed", { error: errorMessage }))
     } finally {
       setLoading(false)
     }
@@ -121,8 +161,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   const handleImport = async () => {
     const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
     if (!normalizedBaseUrl) {
-      setBaseUrlError("Indexer URL is required")
-      toast.error("Provide an indexer URL before importing")
+      setBaseUrlError(t("indexers.autodiscovery.toast.urlRequired"))
+      toast.error(t("indexers.autodiscovery.toast.urlRequiredBeforeImport"))
       setStep("input")
       return
     }
@@ -130,7 +170,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     const trimmedBasicUser = basicUsername.trim()
     const trimmedBasicPass = basicPassword
     if (showBasicAuth && (!trimmedBasicUser || !trimmedBasicPass)) {
-      toast.error("Basic auth requires username and password")
+      toast.error(t("indexers.autodiscovery.toast.basicAuthRequired"))
       return
     }
 
@@ -143,22 +183,21 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     const warningDetails: string[] = []
 
     for (const indexer of discoveredIndexers) {
-      if (!selectedIndexers.has(indexer.id)) continue
+      if (!selectedIndexers.has(indexer.rowKey)) continue
 
       const backend = indexer.backend ?? "jackett"
-      const indexerId = indexer.id?.trim() ?? ""
-      const normalizedIndexerId = indexerId !== "" ? indexerId : undefined
 
       try {
-        const existing = existingIndexersMap.get(indexer.name)
+        const existing = indexer.existing
         if (existing) {
           // Update existing indexer - keep base URL, API key, and backend aligned
           // Omit enabled to preserve the user's current enabled state
           const updateData: TorznabIndexerUpdate = {
             base_url: normalizedBaseUrl,
-            api_key: apiKey,
+            api_key: apiKey, // empty + source copies the saved connection's credentials
+            source_indexer_id: selectedSourceId ?? undefined,
             backend,
-            indexer_id: normalizedIndexerId,
+            indexer_id: indexer.id,
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
@@ -177,9 +216,10 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
             name: indexer.name,
             base_url: normalizedBaseUrl,
             api_key: apiKey,
+            source_indexer_id: selectedSourceId ?? undefined,
             backend,
             enabled: true,
-            indexer_id: normalizedIndexerId,
+            indexer_id: indexer.id,
             capabilities: indexer.caps, // Include capabilities if discovered
             categories: indexer.categories, // Include categories if discovered
           }
@@ -205,32 +245,32 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
 
     if (errorCount === 0) {
       const messages = []
-      if (createdCount > 0) messages.push(`${createdCount} created`)
-      if (updatedCount > 0) messages.push(`${updatedCount} updated`)
+      if (createdCount > 0) messages.push(t("indexers.autodiscovery.toast.created", { count: createdCount }))
+      if (updatedCount > 0) messages.push(t("indexers.autodiscovery.toast.updated", { count: updatedCount }))
       if (warningDetails.length > 0) {
-        toast.warning(`${messages.join(", ")} (${warningDetails.length} with warnings)`)
+        toast.warning(t("indexers.autodiscovery.toast.importWithWarnings", { details: messages.join(", "), warningCount: warningDetails.length }))
         // Show first few warning details
         for (const detail of warningDetails.slice(0, 3)) {
           toast.warning(detail)
         }
         if (warningDetails.length > 3) {
-          toast.warning(`...and ${warningDetails.length - 3} more warnings`)
+          toast.warning(t("indexers.autodiscovery.toast.moreWarnings", { count: warningDetails.length - 3 }))
         }
       } else {
-        toast.success(`Success: ${messages.join(", ")}`)
+        toast.success(t("indexers.autodiscovery.toast.importSuccess", { details: messages.join(", ") }))
       }
     } else {
       const messages = []
-      if (createdCount > 0) messages.push(`${createdCount} created`)
-      if (updatedCount > 0) messages.push(`${updatedCount} updated`)
-      if (errorCount > 0) messages.push(`${errorCount} failed`)
+      if (createdCount > 0) messages.push(t("indexers.autodiscovery.toast.created", { count: createdCount }))
+      if (updatedCount > 0) messages.push(t("indexers.autodiscovery.toast.updated", { count: updatedCount }))
+      if (errorCount > 0) messages.push(t("indexers.autodiscovery.toast.failed", { count: errorCount }))
       toast.error(messages.join(", "))
       // Show first few error details
       for (const detail of errors.slice(0, 3)) {
         toast.error(detail)
       }
       if (errors.length > 3) {
-        toast.error(`...and ${errors.length - 3} more errors`)
+        toast.error(t("indexers.autodiscovery.toast.moreErrors", { count: errors.length - 3 }))
       }
     }
 
@@ -238,7 +278,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
   }
 
   const handleSelectAll = () => {
-    const allIds = new Set(discoveredIndexers.map(idx => idx.id))
+    const allIds = new Set(discoveredIndexers.map(idx => idx.rowKey))
     setSelectedIndexers(allIds)
   }
 
@@ -251,6 +291,8 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     setBaseUrl("http://localhost:9696")
     setBaseUrlError(null)
     setApiKey("")
+    setSelectedSourceId(null)
+    setManualOpen(false)
     setShowBasicAuth(false)
     setBasicUsername("")
     setBasicPassword("")
@@ -259,115 +301,162 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
     onClose()
   }
 
+  const manualFields = (
+    <>
+      <div className="grid gap-2">
+        <Label htmlFor="torznabUrl">{t("indexers.autodiscovery.labels.indexerUrl")}</Label>
+        <Input
+          id="torznabUrl"
+          type="url"
+          value={baseUrl}
+          onChange={(e) => {
+            setBaseUrl(e.target.value)
+            if (baseUrlError) {
+              setBaseUrlError(null)
+            }
+          }}
+          placeholder={t("indexers.autodiscovery.placeholders.indexerUrl")}
+          className={baseUrlError ? "border-destructive focus-visible:ring-destructive" : undefined}
+          aria-invalid={baseUrlError ? "true" : "false"}
+          autoComplete="off"
+          data-1p-ignore
+          required
+        />
+        {baseUrlError && (
+          <p className="text-xs text-destructive">
+            {baseUrlError}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t("indexers.autodiscovery.hints.indexerUrl")}
+        </p>
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="torznabApiKey">{t("indexers.autodiscovery.labels.apiKey")}</Label>
+        <Input
+          id="torznabApiKey"
+          type="password"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={t("indexers.autodiscovery.placeholders.apiKey")}
+          autoComplete="off"
+          data-1p-ignore
+          required
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4">
+        <div className="space-y-1">
+          <Label htmlFor="torznab-basic-auth">{t("indexers.autodiscovery.labels.basicAuth")}</Label>
+          <p className="text-sm text-muted-foreground max-w-prose">
+            {t("indexers.autodiscovery.labels.basicAuthDescription")}
+          </p>
+        </div>
+        <Switch
+          id="torznab-basic-auth"
+          checked={showBasicAuth}
+          onCheckedChange={(checked) => {
+            setShowBasicAuth(checked)
+            if (!checked) {
+              setBasicUsername("")
+              setBasicPassword("")
+            }
+          }}
+        />
+      </div>
+      {showBasicAuth && (
+        <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
+          <div className="grid gap-2">
+            <Label htmlFor="torznab-basic-username">{t("indexers.autodiscovery.labels.basicUsername")}</Label>
+            <Input
+              id="torznab-basic-username"
+              value={basicUsername}
+              onChange={(e) => setBasicUsername(e.target.value)}
+              placeholder={t("indexers.autodiscovery.placeholders.username")}
+              autoComplete="off"
+              data-1p-ignore
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="torznab-basic-password">{t("indexers.autodiscovery.labels.basicPassword")}</Label>
+            <Input
+              id="torznab-basic-password"
+              type="password"
+              value={basicPassword}
+              onChange={(e) => setBasicPassword(e.target.value)}
+              placeholder={t("indexers.autodiscovery.placeholders.password")}
+              autoComplete="off"
+              data-1p-ignore
+              required
+            />
+          </div>
+        </div>
+      )}
+    </>
+  )
+
   return (
     <Dialog open={open} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent className="sm:max-w-[525px] max-h-[90dvh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>Discover Indexers</DialogTitle>
+          <DialogTitle>{t("indexers.autodiscovery.title")}</DialogTitle>
           <DialogDescription>
-            {step === "input"? "Connect to Jackett or Prowlarr to discover configured indexers": "Select indexers to import"}
+            {step === "input" ? t("indexers.autodiscovery.descriptionInput") : t("indexers.autodiscovery.descriptionSelect")}
           </DialogDescription>
         </DialogHeader>
 
         {step === "input" ? (
           <form onSubmit={handleDiscover} autoComplete="off" data-1p-ignore className="flex-1 flex flex-col min-h-0">
             <div className="grid gap-4 py-4 flex-1 overflow-y-auto">
-              <div className="grid gap-2">
-                <Label htmlFor="torznabUrl">Indexer URL</Label>
-                <Input
-                  id="torznabUrl"
-                  type="url"
-                  value={baseUrl}
-                  onChange={(e) => {
-                    setBaseUrl(e.target.value)
-                    if (baseUrlError) {
-                      setBaseUrlError(null)
-                    }
-                  }}
-                  placeholder="http://localhost:9696"
-                  className={baseUrlError ? "border-destructive focus-visible:ring-destructive" : undefined}
-                  aria-invalid={baseUrlError ? "true" : "false"}
-                  autoComplete="off"
-                  data-1p-ignore
-                  required
-                />
-                {baseUrlError && (
-                  <p className="text-xs text-destructive">
-                    {baseUrlError}
+              {savedConnections.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>{t("indexers.autodiscovery.savedConnections.title")}</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {t("indexers.autodiscovery.savedConnections.description")}
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Prowlarr defaults to http://localhost:9696, Jackett to http://localhost:9117.
-                </p>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="torznabApiKey">API Key</Label>
-                <Input
-                  id="torznabApiKey"
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Your indexer API key"
-                  autoComplete="off"
-                  data-1p-ignore
-                  required
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/40 p-4">
-                <div className="space-y-1">
-                  <Label htmlFor="torznab-basic-auth">Basic Auth</Label>
-                  <p className="text-sm text-muted-foreground max-w-prose">
-                    Use HTTP basic authentication for Jackett/Prowlarr behind a reverse proxy.
-                  </p>
-                </div>
-                <Switch
-                  id="torznab-basic-auth"
-                  checked={showBasicAuth}
-                  onCheckedChange={(checked) => {
-                    setShowBasicAuth(checked)
-                    if (!checked) {
-                      setBasicUsername("")
-                      setBasicPassword("")
-                    }
-                  }}
-                />
-              </div>
-              {showBasicAuth && (
-                <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="torznab-basic-username">Basic Username</Label>
-                    <Input
-                      id="torznab-basic-username"
-                      value={basicUsername}
-                      onChange={(e) => setBasicUsername(e.target.value)}
-                      placeholder="Username"
-                      autoComplete="off"
-                      data-1p-ignore
-                      required
-                    />
+                    {savedConnections.map((connection) => (
+                      <button
+                        key={`${connection.backend}|${connection.baseUrl}`}
+                        type="button"
+                        onClick={() => selectConnection(connection)}
+                        className={`flex items-center justify-between rounded-lg border p-3 text-left text-sm hover:bg-accent ${selectedSourceId === connection.sourceIndexerId ? "border-primary bg-accent" : ""}`}
+                      >
+                        <span className="truncate font-medium">{connection.baseUrl}</span>
+                        <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+                          {t(`indexers.dialog.backends.${connection.backend}`)} • {t("indexers.autodiscovery.savedConnections.indexerCount", { count: connection.indexerCount })}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="torznab-basic-password">Basic Password</Label>
-                    <Input
-                      id="torznab-basic-password"
-                      type="password"
-                      value={basicPassword}
-                      onChange={(e) => setBasicPassword(e.target.value)}
-                      placeholder="Password"
-                      autoComplete="off"
-                      data-1p-ignore
-                      required
-                    />
-                  </div>
+                  {selectedSourceId !== null && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("indexers.autodiscovery.savedConnections.storedKey")}
+                    </p>
+                  )}
                 </div>
+              )}
+              {savedConnections.length > 0 ? (
+                <Collapsible open={manualOpen} onOpenChange={handleManualToggle}>
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="outline" size="sm" className="w-full">
+                      {t("indexers.autodiscovery.savedConnections.manual")}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="grid gap-4 pt-4">
+                    {manualFields}
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                manualFields
               )}
             </div>
             <DialogFooter className="flex-shrink-0">
               <Button type="button" variant="outline" onClick={handleClose}>
-                Cancel
+                {t("indexers.autodiscovery.buttons.cancel")}
               </Button>
-              <Button type="submit" disabled={loading}>
-                {loading ? "Discovering..." : "Discover"}
+              <Button type="submit" disabled={loading || (savedConnections.length > 0 && selectedSourceId === null && !manualOpen)}>
+                {loading ? t("indexers.autodiscovery.buttons.discovering") : t("indexers.autodiscovery.buttons.discover")}
               </Button>
             </DialogFooter>
           </form>
@@ -381,7 +470,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   size="sm"
                   onClick={handleSelectAll}
                 >
-                  Select All
+                  {t("indexers.autodiscovery.buttons.selectAll")}
                 </Button>
                 <Button
                   type="button"
@@ -389,10 +478,10 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                   size="sm"
                   onClick={handleDeselectAll}
                 >
-                  Deselect All
+                  {t("indexers.autodiscovery.buttons.deselectAll")}
                 </Button>
                 <span className="text-sm text-muted-foreground ml-auto self-center">
-                  {selectedIndexers.size} of {discoveredIndexers.length} selected
+                  {t("indexers.autodiscovery.selectionCount", { selected: selectedIndexers.size, total: discoveredIndexers.length })}
                 </span>
               </div>
             )}
@@ -400,30 +489,30 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
               <div className="space-y-2">
                 {discoveredIndexers.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
-                    No indexers found
+                    {t("indexers.autodiscovery.noIndexersFound")}
                   </p>
                 ) : (
                   discoveredIndexers.map((indexer) => (
                     <div
-                      key={indexer.id}
+                      key={indexer.rowKey}
                       className="flex items-start space-x-3 rounded-lg border p-3 hover:bg-accent"
                     >
                       <Checkbox
-                        id={indexer.id}
-                        checked={selectedIndexers.has(indexer.id)}
-                        onCheckedChange={() => toggleIndexer(indexer.id)}
+                        id={indexer.rowKey}
+                        checked={selectedIndexers.has(indexer.rowKey)}
+                        onCheckedChange={() => toggleIndexer(indexer.rowKey)}
                       />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <label
-                            htmlFor={indexer.id}
+                            htmlFor={indexer.rowKey}
                             className="text-sm font-medium leading-none cursor-pointer"
                           >
                             {indexer.name}
                           </label>
-                          {existingIndexersMap.has(indexer.name) && (
+                          {indexer.existing && (
                             <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded">
-                              Will Update
+                              {t("indexers.autodiscovery.willUpdate")}
                             </span>
                           )}
                         </div>
@@ -433,9 +522,9 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
-                          Type: {indexer.type}
-                          {indexer.backend && ` • Backend: ${indexer.backend}`}
-                          {!indexer.configured && " (Not configured)"}
+                          {t("indexers.autodiscovery.typeLabel")} {indexer.type}
+                          {indexer.backend && ` • ${t("indexers.autodiscovery.backendLabel")} ${indexer.backend}`}
+                          {!indexer.configured && ` ${t("indexers.autodiscovery.notConfigured")}`}
                         </p>
                       </div>
                     </div>
@@ -449,13 +538,13 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                 variant="outline"
                 onClick={() => setStep("input")}
               >
-                Back
+                {t("indexers.autodiscovery.buttons.back")}
               </Button>
               <Button
                 onClick={handleImport}
                 disabled={loading || selectedIndexers.size === 0}
               >
-                {loading? "Importing...": `Import ${selectedIndexers.size} indexer${selectedIndexers.size !== 1 ? "s" : ""}`}
+                {loading ? t("indexers.autodiscovery.buttons.importing") : (selectedIndexers.size !== 1 ? t("indexers.autodiscovery.buttons.importPlural", { count: selectedIndexers.size }) : t("indexers.autodiscovery.buttons.import", { count: selectedIndexers.size }))}
               </Button>
             </DialogFooter>
           </div>

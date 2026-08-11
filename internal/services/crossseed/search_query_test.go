@@ -16,7 +16,6 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 		inputName       string
 		release         rls.Release
 		parsedTitle     string
-		options         SearchQueryOptions
 		expectedQuery   string
 		expectedSeason  *int
 		expectedEpisode *int
@@ -29,7 +28,11 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 			expectedEpisode: intPtr(1140),
 		},
 		{
-			name:      "KeepsParsedTitle",
+			// Resolution must never be appended to the query: indexers whose free-text
+			// search only matches the series name (e.g. BTN, IPT) return zero results
+			// when a bare resolution token is present. Resolution is enforced post-search
+			// in releasesMatch instead.
+			name:      "KeepsParsedTitleWithoutResolution",
 			inputName: "Some.Show.S01E02.mkv",
 			release: rls.Release{
 				Type:       rls.Episode,
@@ -39,24 +42,9 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 				Resolution: "720p",
 			},
 			parsedTitle:     "Some Show",
-			options:         SearchQueryOptions{IncludeResolution: true},
-			expectedQuery:   "Some Show 720",
+			expectedQuery:   "Some Show",
 			expectedSeason:  intPtr(1),
 			expectedEpisode: intPtr(2),
-		},
-		{
-			name:      "DoesNotDuplicateResolution",
-			inputName: "Some.Show.S01.720p.WEB-DL.mkv",
-			release: rls.Release{
-				Type:       rls.Series,
-				Title:      "Some Show",
-				Series:     1,
-				Resolution: "720p",
-			},
-			parsedTitle:    "Some Show 720p",
-			options:        SearchQueryOptions{IncludeResolution: true},
-			expectedQuery:  "Some Show 720p",
-			expectedSeason: intPtr(1),
 		},
 		{
 			name:      "MovieFallback",
@@ -67,11 +55,19 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 			},
 			expectedQuery: "some movie 2024",
 		},
+		{
+			// Non-movie path with no parsed title where cleanAnimeTitle strips
+			// everything: fall back to the original name so the query is never empty.
+			name:          "FallsBackToNameWhenCleanedEmpty",
+			inputName:     "[Group][1080p]",
+			release:       rls.Release{Type: rls.Unknown},
+			expectedQuery: "[Group][1080p]",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			q := buildSafeSearchQuery(tc.inputName, &tc.release, tc.parsedTitle, tc.options)
+			q := buildSafeSearchQuery(tc.inputName, &tc.release, tc.parsedTitle)
 
 			require.Equal(t, tc.expectedQuery, q.Query)
 			require.Equal(t, tc.expectedSeason, q.Season)
@@ -109,4 +105,33 @@ func TestParseEpisodeNumber(t *testing.T) {
 func intPtr(v int) *int {
 	value := v
 	return &value
+}
+
+func TestBuildTorznabQueryOmitsYearForMovies(t *testing.T) {
+	// Trackers that search a movie database instead of release names
+	// (PassThePopcorn) match q against the title alone, so a trailing year
+	// returns nothing. The year travels as the separate year parameter.
+	release := rls.Release{Type: rls.Movie, Title: "The Matrix", Year: 1999}
+
+	got := BuildTorznabQuery("The.Matrix.1999.1080p.BluRay.x264-GROUP", &release, false)
+
+	require.Equal(t, "The Matrix", got.Query)
+	require.Nil(t, got.Season)
+	require.Nil(t, got.Episode)
+}
+
+func TestBuildTorznabQueryUsesArtistForMusic(t *testing.T) {
+	release := rls.Release{Type: rls.Music, Artist: "Some Artist", Title: "Some Album", Year: 2020}
+
+	got := BuildTorznabQuery("Some.Artist-Some.Album-2020-FLAC", &release, true)
+
+	require.Equal(t, "Some Artist Some Album", got.Query)
+}
+
+func TestBuildTorznabQueryFallsBackToName(t *testing.T) {
+	release := rls.Release{Type: rls.Unknown}
+
+	got := BuildTorznabQuery("  Untitled Thing  ", &release, false)
+
+	require.Equal(t, "untitled thing", got.Query)
 }

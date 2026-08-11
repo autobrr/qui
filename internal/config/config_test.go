@@ -77,6 +77,82 @@ func TestDatabasePathResolution(t *testing.T) {
 	}
 }
 
+func TestCustomThemesDirResolution(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, tmpDir string) (configPath string, env string, expected string)
+	}{
+		{
+			name: "default_themes_subdir_of_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+				return configPath, "", filepath.Join(tmpDir, "themes")
+			},
+		},
+		{
+			name: "absolute_override_in_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				themesDir := filepath.Join(tmpDir, "custom-themes")
+				content := testConfigContent + fmt.Sprintf("customThemesDir = %q\n", themesDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", themesDir
+			},
+		},
+		{
+			name: "relative_override_resolved_against_config_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				content := testConfigContent + "customThemesDir = \"my-themes\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", filepath.Join(tmpDir, "my-themes")
+			},
+		},
+		{
+			name: "env_override",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+				envDir := filepath.Join(tmpDir, "env-themes")
+				return configPath, envDir, envDir
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath, env, expected := tt.prepare(t, tmpDir)
+			if env != "" {
+				t.Setenv(envPrefix+"CUSTOM_THEMES_DIR", env)
+			}
+
+			cfg, err := New(configPath)
+			require.NoError(t, err)
+
+			assert.Equal(t, filepath.Clean(expected), filepath.Clean(cfg.GetCustomThemesDir()))
+		})
+	}
+}
+
+func TestEnsureCustomThemesDirCreatesDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+
+	cfg, err := New(configPath)
+	require.NoError(t, err)
+
+	dir, err := cfg.EnsureCustomThemesDir()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Clean(filepath.Join(tmpDir, "themes")), filepath.Clean(dir))
+
+	info, statErr := os.Stat(dir)
+	require.NoError(t, statErr)
+	assert.True(t, info.IsDir())
+}
+
 func TestGenerateSecureTokenHexOutput(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -527,5 +603,28 @@ func TestHydrateConfigFromViperSplitsStringSlices(t *testing.T) {
 			assert.Equal(t, tt.wantCORSAllowedOrigins, cfg.Config.CORSAllowedOrigins)
 			assert.Equal(t, tt.wantExternalProgramList, cfg.Config.ExternalProgramAllowList)
 		})
+	}
+}
+
+func TestBaseURLNormalization(t *testing.T) {
+	tests := map[string]string{
+		"":          "/",
+		"/":         "/",
+		"/qui/":     "/qui/",
+		"/qui":      "/qui/",
+		"qui":       "/qui/",
+		"qui/":      "/qui/",
+		" /qui ":    "/qui/", //nolint:gocritic // the whitespace is the input under test
+		"/apps/qui": "/apps/qui/",
+	}
+
+	for input, want := range tests {
+		v := viper.New()
+		v.Set("baseUrl", input)
+		cfg := &AppConfig{Config: &domain.Config{}, viper: v}
+
+		cfg.hydrateConfigFromViper()
+
+		assert.Equal(t, want, cfg.Config.BaseURL, "input %q", input)
 	}
 }

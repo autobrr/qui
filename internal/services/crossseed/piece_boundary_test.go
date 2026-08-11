@@ -8,11 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metainfo.Info) {
@@ -25,33 +28,39 @@ func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metai
 	require.NoError(t, err)
 
 	require.Greater(t, info.PieceLength, int64(0))
-	require.NotEmpty(t, info.Pieces)
-	require.Equal(t, 0, len(info.Pieces)%20, "pieces must be a multiple of 20 bytes (sha1 per piece)")
 
 	return *mi, info
 }
 
+// buildMultiFileTorrent builds torrent bytes describing files with the given
+// names and content lengths. Only file paths and lengths ever feed the
+// piece-boundary logic under test, so no piece hashes are computed and no
+// files are written to disk.
 func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, files map[string][]byte) []byte {
 	t.Helper()
 
-	base := t.TempDir()
-	root := filepath.Join(base, rootName)
-	require.NoError(t, os.MkdirAll(root, 0o755))
-
-	for name, content := range files {
-		path := filepath.Join(root, name)
-		require.NoError(t, os.WriteFile(path, content, 0o644))
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
 	}
+	slices.Sort(names)
 
 	info := metainfo.Info{
 		Name:        rootName,
 		PieceLength: pieceLength,
 	}
-	require.NoError(t, info.BuildFromFilePath(root))
-	info.Name = rootName
+	for _, name := range names {
+		info.Files = append(info.Files, metainfo.FileInfo{
+			Path:   strings.Split(name, "/"),
+			Length: int64(len(files[name])),
+		})
+	}
+
+	infoBytes, err := bencode.Marshal(info)
+	require.NoError(t, err)
 
 	mi := metainfo.MetaInfo{
-		InfoBytes: bencode.MustMarshal(info),
+		InfoBytes: infoBytes,
 	}
 
 	var buf bytes.Buffer
@@ -59,84 +68,8 @@ func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, fil
 	return buf.Bytes()
 }
 
-func pieceHash(t *testing.T, pieces []byte, idx int) []byte {
-	t.Helper()
-
-	start := idx * 20
-	end := start + 20
-	require.GreaterOrEqual(t, start, 0)
-	require.LessOrEqual(t, end, len(pieces))
-
-	out := make([]byte, 20)
-	copy(out, pieces[start:end])
-	return out
-}
-
 func fileDisplayPath(info *metainfo.Info, file metainfo.FileInfo) string {
-	if len(info.Files) == 0 {
-		return info.Name
-	}
-	return file.DisplayPath(info)
-}
-
-func TestPieceBoundaryOverlapCanCauseMainPieceHashMismatch(t *testing.T) {
-	const pieceLength = int64(16)
-
-	// Main file length is intentionally not a multiple of pieceLength so that the piece
-	// containing the end of the main file also contains the beginning of the extra file.
-	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5))
-
-	// These extras differ, but the main file content is identical across torrents.
-	extraA := bytes.Repeat([]byte("A"), 19)
-	extraB := bytes.Repeat([]byte("B"), 19)
-
-	// Prefix file names to ensure deterministic ordering (main first, extra second).
-	torrentA := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
-		"a-main.bin":  main,
-		"b-extra.bin": extraA,
-	})
-	torrentB := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
-		"a-main.bin":  main,
-		"b-extra.bin": extraB,
-	})
-
-	_, infoA := mustLoadTorrent(t, torrentA)
-	_, infoB := mustLoadTorrent(t, torrentB)
-
-	require.Equal(t, infoA.PieceLength, infoB.PieceLength)
-
-	require.Len(t, infoA.Files, 2)
-	require.Len(t, infoB.Files, 2)
-
-	require.Equal(t, "a-main.bin", fileDisplayPath(&infoA, infoA.Files[0]))
-	require.Equal(t, "a-main.bin", fileDisplayPath(&infoB, infoB.Files[0]))
-	require.Equal(t, int64(len(main)), infoA.Files[0].Length)
-	require.Equal(t, int64(len(main)), infoB.Files[0].Length)
-
-	mainEndOffset := infoA.Files[0].Length
-	require.NotZero(t, mainEndOffset%pieceLength, "test requires main->extra boundary to be mid-piece")
-
-	// The piece containing the last byte of the main file spans the boundary and therefore
-	// depends on the extra file's bytes. Different extra bytes => different boundary piece hash.
-	boundaryPiece := int((mainEndOffset - 1) / pieceLength)
-	require.GreaterOrEqual(t, boundaryPiece, 0)
-
-	// Sanity check: pieces strictly before boundaryPiece are fully within the main file (main is first file),
-	// so they should match across torrents when the main content is identical.
-	for i := range boundaryPiece {
-		require.Equalf(t,
-			pieceHash(t, infoA.Pieces, i),
-			pieceHash(t, infoB.Pieces, i),
-			"piece %d should match (fully within main file)",
-			i,
-		)
-	}
-
-	require.NotEqual(t,
-		pieceHash(t, infoA.Pieces, boundaryPiece),
-		pieceHash(t, infoB.Pieces, boundaryPiece),
-		"boundary piece should differ because it spans main+extra and extras differ",
-	)
+	return torrentDisplayPath(info, &file)
 }
 
 func TestPieceBoundariesSpanFiles_InRealTorrentFixtures(t *testing.T) {
@@ -441,40 +374,6 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 	}
 }
 
-// TestCheckPieceBoundarySafetyFromMetainfo tests the metainfo wrapper.
-func TestCheckPieceBoundarySafetyFromMetainfo(t *testing.T) {
-	const pieceLength = int64(16)
-
-	// Build a torrent with content file ending mid-piece followed by ignored file
-	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5)) // 53 bytes, ends mid-piece
-	extra := bytes.Repeat([]byte("E"), 11)                  // NFO-like extra file
-
-	torrentData := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
-		"a-main.mkv":  main,
-		"b-extra.nfo": extra,
-	})
-
-	_, info := mustLoadTorrent(t, torrentData)
-
-	// Test with extra file marked as ignored (should be unsafe)
-	// Path format includes root folder: "test-root/a-main.mkv"
-	result := CheckPieceBoundarySafetyFromMetainfo(&info, func(path string) bool {
-		return path == "test-root/a-main.mkv" // Only main is content
-	})
-
-	require.False(t, result.Safe, "should detect unsafe boundary when ignored file starts mid-piece")
-	require.Len(t, result.UnsafeBoundaries, 1)
-	require.Equal(t, "test-root/a-main.mkv", result.UnsafeBoundaries[0].ContentFile)
-	require.Equal(t, "test-root/b-extra.nfo", result.UnsafeBoundaries[0].IgnoredFile)
-
-	// Test with both files marked as content (should be safe - no transitions)
-	result2 := CheckPieceBoundarySafetyFromMetainfo(&info, func(path string) bool {
-		return true // All content
-	})
-
-	require.True(t, result2.Safe, "should be safe when all files are content")
-}
-
 // TestHasUnsafeIgnoredExtras tests the main entry point function.
 func TestHasUnsafeIgnoredExtras(t *testing.T) {
 	const pieceLength = int64(16)
@@ -587,4 +486,28 @@ func TestPathFormatMatchesSourceFiles(t *testing.T) {
 	require.Len(t, files, 2)
 	require.Equal(t, "test-root/a-main.mkv", files[0].Path, "path should include root folder")
 	require.Equal(t, "test-root/b-extra.nfo", files[1].Path, "path should include root folder")
+}
+
+func TestBuildFilesForBoundaryCheck_MatchesQbtFileNames(t *testing.T) {
+	// The boundary-check paths are looked up in maps keyed by qbt.TorrentFiles.Name,
+	// so the two builders must format paths identically. Malformed UTF-8 in the
+	// metadata used to break that: only BuildTorrentFilesFromInfo sanitized it.
+	info := metainfo.Info{
+		Name:        "Movie.\xe1.2024",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"sub\xe1", "file.mkv"}, Length: 1},
+			{Path: []string{"", "extra.nfo"}, Length: 1},
+		},
+	}
+
+	qbtFiles := BuildTorrentFilesFromInfo(stringutils.SanitizeUTF8(info.Name), info)
+	boundaryFiles := BuildFilesForBoundaryCheck(&info, func(string) bool { return true })
+
+	require.Len(t, boundaryFiles, len(qbtFiles))
+	for i := range qbtFiles {
+		require.Equal(t, qbtFiles[i].Name, boundaryFiles[i].Path)
+	}
+	require.Equal(t, "Movie.�.2024/sub�/file.mkv", boundaryFiles[0].Path)
+	require.Equal(t, "Movie.�.2024/_/extra.nfo", boundaryFiles[1].Path)
 }

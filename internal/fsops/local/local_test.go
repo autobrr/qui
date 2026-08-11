@@ -440,9 +440,11 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, os.SameFile(srcFi, fi1))
 
-	// Remove the tree.
-	require.NoError(t, b.RemoveTree(context.Background(), plan))
+	// Remove the tree using the create result's recorded files/dirs.
+	require.NoError(t, b.RemoveTree(context.Background(), result))
 	_, err = os.Stat(filepath.Join(treeRoot, "a.mkv"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(treeRoot)
 	assert.True(t, os.IsNotExist(err))
 }
 

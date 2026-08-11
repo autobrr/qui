@@ -121,6 +121,14 @@ export default defineConfig(() => ({
       },
     }),
   ],
+  experimental: {
+    // The Go handler rewrites the absolute /assets/ paths in index.html for
+    // base-URL deployments, but never rewrites CSS content, so CSS url()
+    // assets (large flag icons) 404 under a subpath. Emit CSS urls relative
+    // to the stylesheet; they resolve correctly for any base. HTML keeps the
+    // absolute paths the handler rewrite depends on.
+    renderBuiltUrl: (_filename, { hostType }) => hostType === "css" ? { relative: true } : undefined,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -141,7 +149,7 @@ export default defineConfig(() => ({
           groups: [
             {
               name: "react-vendor",
-              test: /node_modules[\\/](react|react-dom|react-hook-form)([\\/]|$)/,
+              test: /node_modules[\\/](react|react-dom)([\\/]|$)/,
               priority: 30,
             },
             {

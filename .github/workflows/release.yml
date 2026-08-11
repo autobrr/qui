@@ -42,17 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6.0.6
+        uses: pnpm/action-setup@v6.0.9
         with:
           package_json_file: web/package.json
 
@@ -62,7 +62,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -88,6 +88,10 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
+      - name: Run frontend tests
+        working-directory: web
+        run: pnpm test
+
       - name: Type check and build frontend
         working-directory: web
         run: |
@@ -106,12 +110,12 @@ jobs:
 
   goreleaserbuild:
     name: Build distribution binaries
-    if: github.event_name != 'pull_request'
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     needs: [test, web]
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
@@ -125,7 +129,7 @@ jobs:
         run: tar -czf web-dist.tar.gz -C . web/dist
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -138,6 +142,14 @@ jobs:
           test -n "$RELEASE_SIGNING_PRIVATE_KEY"
           key_file="$RUNNER_TEMP/release-signing-key.pem"
           printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+
+      - name: Prepare ephemeral release signing key
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: |
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
           chmod 600 "$key_file"
           echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
 
@@ -157,79 +169,14 @@ jobs:
           fi
 
       - name: Run GoReleaser build and publish tags
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v7.2.1
+        uses: goreleaser/goreleaser-action@v7.2.3
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --config .goreleaser.release.yml
+          args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean --config .goreleaser.release.yml' || 'release --skip=publish --snapshot --clean --config .goreleaser.release.yml' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDER: ${{ github.actor }}@github-actions
-          RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
-
-      - name: Upload assets
-        uses: actions/upload-artifact@v7
-        with:
-          name: qui
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/*.deb
-            dist/*.rpm
-
-  goreleasersignedsmoke:
-    name: PR signed release smoke test (ephemeral key)
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    needs: [web]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Download web production build
-        uses: actions/download-artifact@v8
-        with:
-          name: web-dist
-          path: web/dist
-
-      - name: Create web dist tarball
-        run: tar -czf web-dist.tar.gz -C . web/dist
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Cache Go build artifacts
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/go-build
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-build-
-
-      - name: Prepare ephemeral release signing key
-        run: |
-          key_file="$RUNNER_TEMP/release-signing-key.pem"
-          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
-          chmod 600 "$key_file"
-          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
-          echo "POLAR_ORG_ID=00000000-0000-0000-0000-000000000000" >> "$GITHUB_ENV"
-
-      - name: Run signed GoReleaser smoke build
-        uses: goreleaser/goreleaser-action@v7.2.1
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --snapshot --clean --config .goreleaser.release.yml --parallelism 5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDER: ${{ github.actor }}@github-actions
-          POLAR_ORG_ID: ${{ env.POLAR_ORG_ID }}
           RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
 
       - name: Verify signed checksum signature
@@ -240,6 +187,17 @@ jobs:
             -verify "$public_key_file" \
             -signature dist/checksums.txt.sig \
             dist/checksums.txt
+
+      - name: Upload assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: qui
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+          if-no-files-found: error
 
   docker-matrix:
     name: Determine Docker platforms
@@ -265,10 +223,10 @@ jobs:
         platform: ${{ fromJSON(needs.docker-matrix.outputs.platforms) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
@@ -282,7 +240,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
@@ -294,14 +252,14 @@ jobs:
             latest=auto
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@v4.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v4.2.0
 
       - name: Build and publish image
         id: docker_build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7.3.0
         with:
           context: .
           file: ./distrib/docker/ci.Dockerfile
@@ -348,10 +306,10 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v4.2.0
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
@@ -359,7 +317,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
@@ -385,13 +343,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Create placeholder web dist for embed
         run: mkdir -p web/dist && touch web/dist/.gitkeep
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true

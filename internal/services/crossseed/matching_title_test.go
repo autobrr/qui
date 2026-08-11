@@ -451,6 +451,59 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 	}
 }
 
+// rls ends a title at a slash, so "Fate/strange Fake" parsed as only "Fate" and
+// an exact-size cross-seed of the same release was rejected as a title mismatch.
+func TestReleasesMatch_SlashInTitleReadsAsSeparator(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceName string
+		candidate  string
+		wantMatch  bool
+	}{
+		{
+			name:       "forward slash in candidate title",
+			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
+			candidate:  "Fate/strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+			wantMatch:  true,
+		},
+		{
+			name:       "back slash in candidate title",
+			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
+			candidate:  `Fate\strange Fake S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter`,
+			wantMatch:  true,
+		},
+		{
+			name:       "slash does not move the artist into the title",
+			sourceName: "Whitesnake-Back.In.Black-1980-FLAC",
+			candidate:  "AC/DC - Back In Black 1980 FLAC",
+			wantMatch:  false,
+		},
+		{
+			name:       "slash does not join unrelated shows",
+			sourceName: "Fate.strange.Fake.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
+			candidate:  "Fate/Zero S01 1080p BluRay Dual-Audio Opus 2.0 x265-Headpatter",
+			wantMatch:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer(), releaseCache: NewReleaseCache()}
+			source := rls.ParseString(tt.sourceName)
+			candidate := rls.ParseString(tt.candidate)
+
+			match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, tt.sourceName, tt.candidate, false)
+
+			if tt.wantMatch {
+				require.True(t, match, "got reason %q", reason)
+				return
+			}
+			require.False(t, match)
+			require.Equal(t, "title mismatch", reason)
+		})
+	}
+}
+
 func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
 	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	source := rls.Release{

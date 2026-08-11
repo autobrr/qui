@@ -279,29 +279,42 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := hardlinktree.Create(plan)
+	created, err := hardlinktree.Create(plan)
 	if err != nil {
 		return &fsops.TreeCreateResult{RolledBack: true}, err
 	}
-	return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+	return treeCreateResult(created, plan), nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := reflinktree.Create(plan)
+	created, err := reflinktree.Create(plan)
 	if err != nil {
 		return &fsops.TreeCreateResult{RolledBack: true}, err
 	}
-	return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+	return treeCreateResult(created, plan), nil
 }
 
-func (b *Backend) RemoveTree(ctx context.Context, plan *hardlinktree.TreePlan) error {
+func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return hardlinktree.Rollback(plan)
+	if created == nil {
+		return nil
+	}
+	handle := &hardlinktree.Created{Files: created.Files, Dirs: created.Dirs}
+	return handle.Rollback()
+}
+
+func treeCreateResult(created *hardlinktree.Created, plan *hardlinktree.TreePlan) *fsops.TreeCreateResult {
+	return &fsops.TreeCreateResult{
+		Created:       len(created.Files),
+		SkippedExists: len(plan.Files) - len(created.Files),
+		Files:         created.Files,
+		Dirs:          created.Dirs,
+	}
 }
 
 func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, string, error) {

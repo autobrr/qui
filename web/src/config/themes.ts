@@ -12,18 +12,30 @@ export interface Theme {
   description?: string;
   lightOnly?: boolean;
   variations?: string[];
+  /** True for sideloaded custom themes loaded at runtime from disk. */
+  isCustom?: boolean;
+  /** Raw CSS for custom themes, injected verbatim as a <style> element. */
+  rawCss?: string;
   cssVars: {
     light: Record<string, string>;
     dark: Record<string, string>;
   };
 }
 
-// Load all themes from the themes directory
+// Load all built-in themes (globbed at build time).
 export const themes: Theme[] = loadThemes();
+
+// Sideloaded custom themes are fetched at runtime (premium-gated) and registered
+// here so the synchronous theme lookups below can resolve their "custom:" ids.
+let customThemes: Theme[] = [];
+
+export function registerCustomThemes(list: Theme[]): void {
+  customThemes = list;
+}
 
 // Helper functions
 export function getThemeById(id: string): Theme | undefined {
-  return themes.find(theme => theme.id === id);
+  return themes.find(theme => theme.id === id) ?? customThemes.find(theme => theme.id === id);
 }
 
 export function getDefaultTheme(): Theme {

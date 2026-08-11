@@ -1102,10 +1102,7 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 		}
 		return float64(t.AddedOn)
 	case models.FieldCompletionOn:
-		if t.CompletionOn <= 0 {
-			return 0
-		}
-		return float64(t.CompletionOn)
+		return float64(qbittorrent.NormalizeCompletionTimestamp(t.CompletionOn))
 	case models.FieldLastActivity:
 		if t.LastActivity <= 0 {
 			return 0
@@ -1167,7 +1164,7 @@ func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.T
 	case models.FieldAddedOnAge:
 		ts = t.AddedOn
 	case models.FieldCompletionOnAge:
-		ts = t.CompletionOn
+		ts = qbittorrent.NormalizeCompletionTimestamp(t.CompletionOn)
 	case models.FieldLastActivityAge:
 		ts = t.LastActivity
 	default:

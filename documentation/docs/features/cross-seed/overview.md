@@ -22,13 +22,13 @@ qui supports three modes for handling files:
 - **Hardlink mode** (optional): Creates a hardlinked copy of the matched files laid out exactly as the incoming torrent expects, then adds the torrent pointing at that tree. Avoids rename-alignment entirely.
 - **Reflink mode** (optional): Creates copy-on-write clones (reflinks) of the matched files. Allows safe cross-seeding of torrents with extra/missing files because qBittorrent can write/repair the clones without affecting originals.
 
-Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshooting](troubleshooting#blu-ray-or-dvd-cross-seed-left-paused).
+Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshooting](./troubleshooting.md#blu-ray-or-dvd-cross-seed-left-paused).
 
 ## Prerequisites
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
 
-Optional: qui can also query OPS/RED via the trackers' Gazelle JSON APIs. This complements Torznab (and excludes OPS/RED Torznab indexers for per-torrent searches only when **both** Gazelle keys are configured). See [OPS/RED (Gazelle)](gazelle-ops-red).
+Optional: qui can also query OPS/RED directly via the trackers' Gazelle JSON APIs. This complements Torznab, can handle OPS/RED searches even when no Torznab backend is available, and excludes OPS/RED Torznab indexers for per-torrent searches only when **both** Gazelle keys are configured. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
 
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
 - This is especially helpful for content that is "AKA" type, and can have differing names depending on locale.
@@ -53,8 +53,9 @@ Deep scan of torrents you already seed to find cross-seed opportunities on other
 
 - **Source instance** - The qBittorrent instance to scan
 - **Categories/Tags** - Filter which torrents to include
-- **Interval** - Delay between processing each torrent (minimum 60 seconds with Torznab enabled; minimum 5 seconds when Torznab is disabled and Gazelle is configured (recommended 10+ seconds))
-- **Cooldown** - Skip torrents searched within this window (minimum 12 hours)
+- **Interval** - Delay between processing each torrent (minimum 60 seconds with Torznab enabled; minimum 5 seconds when Torznab is disabled and Gazelle is configured; recommended 10+ seconds for Gazelle-only runs)
+- **Cooldown** - Skip torrents searched within this window (minimum 12 hours). qui records this only after an actual remote Gazelle or Torznab request, so local preflight failures and local Gazelle skips do not suppress future searches.
+- **Skip individual episodes** - The run does not search single TV episodes. Groups of episodes still start season pack searches when [automatic assembly](./season-packs.md#automatic-assembly) is on.
 
 :::warning
 Run sparingly. This deep scan touches every matching torrent and queries Torznab and/or Gazelle for each one. Use RSS automation or autobrr for routine coverage; reserve library scan for occasional catch-up passes.
@@ -81,7 +82,7 @@ Right-click any torrent in the list to access cross-seed actions:
 
 ### Season Pack Assembly
 
-Assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes, links whatever is already local, and lets qBittorrent download the remainder after recheck when coverage passes the configured threshold (default 75%). Sonarr, TVDB, and TVMaze improve the threshold decision when available. Requires local filesystem access and hardlink/reflink mode. See [Season Packs](season-packs) for setup.
+Assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes, links whatever is already local, and lets qBittorrent download the remainder after recheck when coverage passes the configured threshold (default 75%). Sonarr, TVDB, and TVMaze improve the threshold decision when available. Requires local filesystem access and hardlink/reflink mode. See [Season Packs](./season-packs.md) for setup.
 
 ## Blocklist
 
@@ -89,3 +90,5 @@ Use the per-instance blocklist to prevent specific infohashes from being injecte
 
 - **Manage**: Cross-Seed page → Blocklist tab
 - **Quick add**: Delete dialog checkbox (only shown for torrents tagged `cross-seed`)
+
+The delete dialog can also detect cross-seeds that would be affected by the deletion, including [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.
