@@ -91,7 +91,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 - Keep commits focused; split backend/frontend when practical.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
-- PRs need clear summary, testing checklist, and screenshots for visual UI changes.
+- Fill `.github/pull_request_template.md` into the PR body; `gh pr create --body` does not auto-fill it.
 - Never publish private tracker links or torrent names taken from a client. This covers PR and issue titles, bodies, and comments, commit messages, and `documentation/`.
   - No tracker URL that carries a path, query, or key: torrent pages, announce URLs, passkeys, `.torrent` links. Bare hostnames and tracker names stay allowed; the code and docs use them.
   - No release name copied word for word from a user report or a torrent client. Build an equivalent name: keep each token that matters, change the title and the group. Make sure the new name still causes the bug before you publish it.
