@@ -49,6 +49,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -1829,16 +1830,16 @@ function RuleFormFields({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-episode-filter`}>{t("ruleForm.episodeFilter")}</Label>
+        <Label htmlFor={`${idPrefix}-episode-filter`} className="flex items-center gap-1">
+          {t("ruleForm.episodeFilter")}
+          <FieldHelp>{t("ruleForm.episodeFilterHelp")}</FieldHelp>
+        </Label>
         <Input
           id={`${idPrefix}-episode-filter`}
           placeholder={t("ruleForm.episodeFilterPlaceholder")}
           value={state.episodeFilter}
           onChange={(e) => onChange("episodeFilter", e.target.value)}
         />
-        <p className="text-xs text-muted-foreground">
-          {t("ruleForm.episodeFilterHelp")}
-        </p>
       </div>
 
       <div className="flex items-center gap-6">
