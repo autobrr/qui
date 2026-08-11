@@ -51,7 +51,7 @@ func TestStat_Directory(t *testing.T) {
 
 func TestStat_NotFound(t *testing.T) {
 	b := newBackend()
-	_, err := b.Stat(context.Background(), "/nonexistent/path/xyz")
+	_, err := b.Stat(context.Background(), filepath.Join(t.TempDir(), "nonexistent", "path"))
 	require.Error(t, err)
 	assert.True(t, os.IsNotExist(err))
 }
@@ -289,7 +289,7 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 
 func TestWalkDir_NonexistentRoot(t *testing.T) {
 	b := newBackend()
-	_, err := b.WalkDir(context.Background(), "/nonexistent/root/xyz", fsops.WalkOptions{})
+	_, err := b.WalkDir(context.Background(), filepath.Join(t.TempDir(), "nonexistent", "root"), fsops.WalkOptions{})
 	require.Error(t, err)
 }
 
