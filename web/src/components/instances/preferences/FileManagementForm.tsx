@@ -5,6 +5,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -127,7 +128,6 @@ function SwitchSetting({
   disabled?: boolean
 }) {
   const switchId = React.useId()
-  const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
     <label
@@ -138,15 +138,10 @@ function SwitchSetting({
         id={switchId}
         checked={checked}
         onCheckedChange={onCheckedChange}
-        aria-describedby={descriptionId}
         disabled={disabled}
       />
-      <div className="space-y-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        {description && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </label>
   )
 }

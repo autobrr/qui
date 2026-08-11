@@ -6,6 +6,7 @@
 import React from "react"
 import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -33,7 +34,6 @@ function SwitchSetting({
   onChange: (checked: boolean) => void
 }) {
   const switchId = React.useId()
-  const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
     <label
@@ -44,14 +44,9 @@ function SwitchSetting({
         id={switchId}
         checked={checked}
         onCheckedChange={onChange}
-        aria-describedby={descriptionId}
       />
-      <div className="space-y-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        {description && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </label>
   )
 }
