@@ -187,8 +187,8 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitles := normalizedReleaseTitles(source, sourceName)
-	candidateTitles := normalizedReleaseTitles(candidate, candidateName)
+	sourceTitles := s.normalizedReleaseTitles(source, sourceName)
+	candidateTitles := s.normalizedReleaseTitles(candidate, candidateName)
 	addNormalizedTitles(sourceTitles, sourceExtraTitles)
 	addNormalizedTitles(candidateTitles, candidateExtraTitles)
 	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
@@ -276,7 +276,7 @@ func (s *Service) releasesMatchExceptTitleWithReason(source, candidate *rls.Rele
 	return validateReleaseVariants(source, candidate)
 }
 
-func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
+func (s *Service) normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
 	titles := make(map[string]struct{})
 	addNormalizedTitle(titles, releaseTitle(release))
 	addNormalizedTitle(titles, releaseAlt(release))
@@ -286,6 +286,27 @@ func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]st
 		parsed := releases.DefaultParser.Parse(rawTitle)
 		addNormalizedTitle(titles, parsed.Title)
 		addNormalizedTitle(titles, parsed.Alt)
+	}
+
+	// rls ends the title at a slash, so an indexer listing like
+	// "Fate/strange Fake S01 ..." parses as "Fate" while the dot-separated source
+	// name parses as "Fate strange Fake". Read the slash as a separator too and
+	// keep both spellings.
+	//
+	// Keep only the reading that extends the truncated title: dropping the slash
+	// also re-splits artist from title ("AC/DC - Back In Black" -> title "Back In
+	// Black"), which would reach a different artist's album.
+	//
+	// TODO: drop this block at the next rls bump if
+	// TestReleasesMatch_SlashInTitleReadsAsSeparator still passes without it. rls
+	// merely keeping "/" inside Title is not enough: NormalizeForMatching passes
+	// "/" through, so "fate/strange fake" still will not equal "fate strange fake".
+	if unslashed := strings.ReplaceAll(strings.ReplaceAll(rawName, "/", " "), `\`, " "); unslashed != rawName {
+		parsed := s.parseReleaseName(unslashed)
+		if strings.HasPrefix(parsed.Title, releaseTitle(release)) {
+			addNormalizedTitle(titles, parsed.Title)
+			addNormalizedTitle(titles, parsed.Alt)
+		}
 	}
 
 	return titles
