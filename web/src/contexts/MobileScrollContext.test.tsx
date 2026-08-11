@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { act, cleanup, renderHook } from "@testing-library/react"
+import { act, cleanup, render, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { useRef } from "react"
 import type { ReactNode } from "react"
-import { MobileScrollProvider, useMobileScroll } from "./MobileScrollContext"
+import { MobileScrollProvider, useMobileScroll, useRegisterMobileScrollContainer } from "./MobileScrollContext"
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <MobileScrollProvider>{children}</MobileScrollProvider>
@@ -66,6 +67,41 @@ describe("useMobileScroll", () => {
     act(() => result.current.setScrollContainer(container))
     act(() => scrollTo(container, 5))
     expect(result.current.isFooterVisible).toBe(true)
+  })
+
+  it("keeps the new list registered when the old list unmounts after it", () => {
+    const oldEl = document.createElement("div")
+    const newEl = document.createElement("div")
+    let footerVisible = true
+
+    function List({ el }: { el: HTMLElement }) {
+      const ref = useRef(el)
+      useRegisterMobileScrollContainer(ref)
+      return null
+    }
+    function Probe() {
+      footerVisible = useMobileScroll().isFooterVisible
+      return null
+    }
+    function Harness({ phase }: { phase: number }) {
+      return (
+        <MobileScrollProvider>
+          {phase <= 1 && <List el={oldEl} />}
+          {phase >= 1 && <List el={newEl} />}
+          <Probe />
+        </MobileScrollProvider>
+      )
+    }
+
+    // Old list mounts, new list mounts beside it, then the old one unmounts —
+    // the route-transition interleaving where cleanup runs after the takeover.
+    const { rerender } = render(<Harness phase={0} />)
+    rerender(<Harness phase={1} />)
+    rerender(<Harness phase={2} />)
+
+    // The new list must still drive footer visibility
+    act(() => scrollTo(newEl, 100))
+    expect(footerVisible).toBe(false)
   })
 
   it("cancels a queued frame when the container unregisters", () => {

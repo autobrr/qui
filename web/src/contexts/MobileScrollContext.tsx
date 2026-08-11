@@ -4,11 +4,11 @@
  */
 
 import { createContext, useContext, useState, useEffect, useRef } from "react"
-import type { ReactNode } from "react"
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react"
 
 interface MobileScrollContextType {
   isFooterVisible: boolean
-  setScrollContainer: (element: HTMLElement | null) => void
+  setScrollContainer: Dispatch<SetStateAction<HTMLElement | null>>
 }
 
 const MobileScrollContext = createContext<MobileScrollContextType | undefined>(undefined)
@@ -80,4 +80,16 @@ export function useMobileScroll() {
     throw new Error("useMobileScroll must be used within a MobileScrollProvider")
   }
   return context
+}
+
+export function useRegisterMobileScrollContainer(ref: RefObject<HTMLElement | null>) {
+  const { setScrollContainer } = useMobileScroll()
+
+  useEffect(() => {
+    const el = ref.current
+    setScrollContainer(el)
+    // On fast route changes the next list may register before this cleanup
+    // runs, so only clear our own registration.
+    return () => setScrollContainer(prev => (prev === el ? null : prev))
+  }, [ref, setScrollContainer])
 }

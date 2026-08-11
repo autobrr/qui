@@ -35,7 +35,7 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
-import { useMobileScroll } from "@/contexts/MobileScrollContext"
+import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
@@ -1090,12 +1090,8 @@ export function TorrentCardsMobile({
   const { setIsSelectionMode } = useTorrentSelection()
 
   const parentRef = useRef<HTMLDivElement>(null)
-  const { isFooterVisible, setScrollContainer } = useMobileScroll()
-
-  useEffect(() => {
-    setScrollContainer(parentRef.current)
-    return () => setScrollContainer(null)
-  }, [setScrollContainer])
+  const { isFooterVisible } = useMobileScroll()
+  useRegisterMobileScrollContainer(parentRef)
 
   const [torrentToDelete, setTorrentToDelete] = useState<Torrent | null>(null)
   const [showActionsSheet, setShowActionsSheet] = useState(false)
@@ -2213,7 +2209,9 @@ export function TorrentCardsMobile({
       <div
         ref={parentRef}
         className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
-        style={{ paddingBottom: isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)" }}
+        style={{
+          paddingBottom: isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": selectionMode && effectiveSelectionCount > 0? "calc(4rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
+        }}
       >
         <div
           style={{
