@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "已启用",
-      "enabledDescription": "切换此目标的投递状态。",
       "events": "事件",
       "selectAll": "全选",
       "select": "选择",

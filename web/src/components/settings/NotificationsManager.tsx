@@ -260,10 +260,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
       </div>
 
       <div className="flex items-center justify-between rounded-md border px-3 py-2">
-        <div>
-          <Label className="text-sm">{t("notifications.form.enabled")}</Label>
-          <p className="text-xs text-muted-foreground">{t("notifications.form.enabledDescription")}</p>
-        </div>
+        <Label className="text-sm">{t("notifications.form.enabled")}</Label>
         <Switch checked={enabled} onCheckedChange={setEnabled} />
       </div>
 

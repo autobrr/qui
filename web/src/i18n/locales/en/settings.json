@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Enabled",
-      "enabledDescription": "Toggle delivery for this target.",
       "events": "Events",
       "selectAll": "Select all",
       "select": "Select",

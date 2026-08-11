@@ -293,23 +293,18 @@ export function OrphanScanSettingsForm({
 
         <div className="space-y-4">
           <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">
-                  {t("preferences.orphanScanSettings.autoCleanupLabel")}
-                </Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[300px]">
-                    <p>{t("preferences.orphanScanSettings.autoCleanupTooltip")}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("preferences.orphanScanSettings.autoCleanupDescription")}
-              </p>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">
+                {t("preferences.orphanScanSettings.autoCleanupLabel")}
+              </Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[300px]">
+                  <p>{t("preferences.orphanScanSettings.autoCleanupTooltip")}</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
             <Switch
               id="auto-cleanup-enabled"
@@ -384,9 +379,6 @@ export function OrphanScanSettingsForm({
                   />
                   <span className="text-sm text-muted-foreground">{t("preferences.orphanScanSettings.files")}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("preferences.orphanScanSettings.maxFilesThresholdDescription")}
-                </p>
               </div>
             </div>
           )}

@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Ativado",
-      "enabledDescription": "Ativar/desativar entrega para este alvo.",
       "events": "Eventos",
       "selectAll": "Selecionar todos",
       "select": "Selecionar",

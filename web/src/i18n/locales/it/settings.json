@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Abilitato",
-      "enabledDescription": "Attiva o disattiva la consegna per questa destinazione.",
       "events": "Eventi",
       "selectAll": "Seleziona tutto",
       "select": "Seleziona",

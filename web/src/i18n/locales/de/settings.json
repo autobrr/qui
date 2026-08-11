@@ -266,7 +266,6 @@
         "discord": "discord://token@id"
       },
       "enabled": "Aktiviert",
-      "enabledDescription": "Zustellung für dieses Ziel umschalten.",
       "events": "Ereignisse",
       "selectAll": "Alle auswählen",
       "select": "Auswählen",
