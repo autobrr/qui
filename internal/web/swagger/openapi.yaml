@@ -8350,6 +8350,9 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
+          description: Skip searches for single TV episodes. Season packs are still searched.
         lastScanAt:
           type: string
           format: date-time
@@ -8368,6 +8371,7 @@ components:
         - enabled
         - targetInstanceId
         - scanIntervalMinutes
+        - skipIndividualEpisodes
         - createdAt
         - updatedAt
 
@@ -8397,6 +8401,8 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
       required:
         - path
         - targetInstanceId
@@ -8427,6 +8433,8 @@ components:
           type: integer
         scanIntervalMinutes:
           type: integer
+        skipIndividualEpisodes:
+          type: boolean
 
     DirScanRun:
       type: object

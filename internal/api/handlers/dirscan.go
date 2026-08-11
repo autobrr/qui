@@ -173,6 +173,7 @@ type DirScanDirectoryPayload struct {
 	ArrInstanceID          *int      `json:"arrInstanceId"`
 	TargetInstanceID       *int      `json:"targetInstanceId"`
 	ScanIntervalMinutes    *int      `json:"scanIntervalMinutes"`
+	SkipIndividualEpisodes *bool     `json:"skipIndividualEpisodes"`
 }
 
 // ListDirectories returns all configured scan directories.
@@ -265,6 +266,9 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 	} else {
 		dir.ScanIntervalMinutes = 1440
 	}
+	if payload.SkipIndividualEpisodes != nil {
+		dir.SkipIndividualEpisodes = *payload.SkipIndividualEpisodes
+	}
 
 	return dir, true
 }
@@ -316,14 +320,15 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	}
 
 	params := &models.DirScanDirectoryUpdateParams{
-		Path:                payload.Path,
-		QbitPathPrefix:      payload.QbitPathPrefix,
-		Category:            payload.Category,
-		Tags:                payload.Tags,
-		Enabled:             payload.Enabled,
-		ArrInstanceID:       payload.ArrInstanceID,
-		TargetInstanceID:    payload.TargetInstanceID,
-		ScanIntervalMinutes: payload.ScanIntervalMinutes,
+		Path:                   payload.Path,
+		QbitPathPrefix:         payload.QbitPathPrefix,
+		Category:               payload.Category,
+		Tags:                   payload.Tags,
+		Enabled:                payload.Enabled,
+		ArrInstanceID:          payload.ArrInstanceID,
+		TargetInstanceID:       payload.TargetInstanceID,
+		ScanIntervalMinutes:    payload.ScanIntervalMinutes,
+		SkipIndividualEpisodes: payload.SkipIndividualEpisodes,
 	}
 	if payload.AllowedDownloadClients != nil {
 		normalizedAllowed := normalizeAllowedDownloadClients(*payload.AllowedDownloadClients)

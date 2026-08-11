@@ -674,6 +674,8 @@
       "selectInstance": "选择实例",
       "intervalLabel": "扫描间隔（分钟）",
       "intervalHelp": "最小：60 分钟（1 小时）。默认：1440 分钟（24 小时）。",
+      "skipIndividualEpisodesLabel": "跳过单集",
+      "skipIndividualEpisodesHelp": "扫描不搜索单集剧集。它改为搜索这些单集组成的季度包，并跳过无法组成季度包的单集。",
       "toleranceLabel": "大小容差（%）",
       "categoryLabel": "分类",
       "categoryPlaceholder": "可选的分类覆盖",

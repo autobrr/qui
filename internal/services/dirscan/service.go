@@ -621,6 +621,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		effectiveMaxSearcheeAgeDays(settings, run.TriggeredBy),
 		time.Now(),
 		enabledIndexerIDs,
+		dir.SkipIndividualEpisodes,
 		&l,
 	)
 
@@ -640,6 +641,7 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		Int("filesDiscovered", workSelection.discoveredFiles).
 		Int("filesEligible", workSelection.eligibleFiles).
 		Int("filesSkipped", workSelection.skippedFiles).
+		Int("episodesSkipped", workSelection.skippedEpisodes).
 		Int64("totalSize", scanResult.TotalSize).
 		Msg("dirscan: scan phase complete")
 
