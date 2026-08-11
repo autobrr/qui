@@ -940,7 +940,8 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col">
+      {/* The first focusable element is now the Match Mode FieldHelp trigger; default auto-focus would open its tooltip on every dialog open */}
+      <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{t("dirScan.settingsDialog.title")}</DialogTitle>
           <DialogDescription>
@@ -950,7 +951,10 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
         <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
           <div className="space-y-2">
-            <Label htmlFor="match-mode">{t("dirScan.settingsDialog.matchModeLabel")}</Label>
+            <Label htmlFor="match-mode" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.matchModeLabel")}
+              <FieldHelp>{t("dirScan.settingsDialog.matchModeHelp")}</FieldHelp>
+            </Label>
             <Select
               value={form.matchMode}
               onValueChange={(value: DirScanMatchMode) =>
@@ -965,13 +969,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 <SelectItem value="flexible">{t("dirScan.settingsDialog.matchModeFlexible")}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.matchModeHelp")}
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="size-tolerance">{t("dirScan.settingsDialog.sizeToleranceLabel")}</Label>
+            <Label htmlFor="size-tolerance" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.sizeToleranceLabel")}
+              <FieldHelp>{t("dirScan.settingsDialog.sizeToleranceHelp")}</FieldHelp>
+            </Label>
             <Input
               id="size-tolerance"
               type="number"
@@ -986,13 +990,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 }))
               }
             />
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.sizeToleranceHelp")}
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="min-piece-ratio">{t("dirScan.settingsDialog.minPieceRatioLabel")}</Label>
+            <Label htmlFor="min-piece-ratio" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.minPieceRatioLabel")}
+              <FieldHelp>{t("dirScan.settingsDialog.minPieceRatioHelp")}</FieldHelp>
+            </Label>
             <Input
               id="min-piece-ratio"
               type="number"
@@ -1006,13 +1010,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 }))
               }
             />
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.minPieceRatioHelp")}
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="max-searchees-per-run">{t("dirScan.settingsDialog.maxSearcheesPerRunLabel")}</Label>
+            <Label htmlFor="max-searchees-per-run" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.maxSearcheesPerRunLabel")}
+              <FieldHelp>{t("dirScan.settingsDialog.maxSearcheesPerRunHelp")}</FieldHelp>
+            </Label>
             <Input
               id="max-searchees-per-run"
               type="number"
@@ -1029,9 +1033,6 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 })
               }
             />
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.maxSearcheesPerRunHelp")}
-            </p>
           </div>
 
           <div className="space-y-2 rounded-lg border p-3">
@@ -1046,7 +1047,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   }))
                 }}
               />
-              <Label htmlFor="max-searchee-age-enabled">{t("dirScan.settingsDialog.maxAgeEnabled")}</Label>
+              <Label htmlFor="max-searchee-age-enabled" className="flex items-center gap-1">
+                {t("dirScan.settingsDialog.maxAgeEnabled")}
+                <FieldHelp>
+                  {t("dirScan.settingsDialog.maxAgeHelp")}{" "}
+                  {t("dirScan.settingsDialog.maxAgeWebhookHelp")}
+                </FieldHelp>
+              </Label>
             </div>
 
             {ageFilterEnabled && (
@@ -1086,12 +1093,6 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  {t("dirScan.settingsDialog.maxAgeHelp")}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t("dirScan.settingsDialog.maxAgeWebhookHelp")}
-                </p>
-                <p className="text-xs text-muted-foreground">
                   {t("dirScan.settingsDialog.currentCutoff", { cutoff: ageFilterCutoffPreview })}
                 </p>
               </>
@@ -1128,43 +1129,42 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
             </div>
           )}
 
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="skip-piece-boundary"
-                checked={form.skipPieceBoundarySafetyCheck}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({ ...prev, skipPieceBoundarySafetyCheck: checked }))
-                }
-              />
-              <Label htmlFor="skip-piece-boundary" className="flex items-center gap-1">
-                {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheck")}
-                <FieldHelp>{t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckHelp")}</FieldHelp>
-              </Label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckDescription")}
-            </p>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="skip-piece-boundary"
+              checked={form.skipPieceBoundarySafetyCheck}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({ ...prev, skipPieceBoundarySafetyCheck: checked }))
+              }
+            />
+            <Label htmlFor="skip-piece-boundary" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheck")}
+              <FieldHelp>
+                {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckHelp")}{" "}
+                {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckDescription")}
+              </FieldHelp>
+            </Label>
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Switch
-                id="start-paused"
-                checked={form.startPaused}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({ ...prev, startPaused: checked }))
-                }
-              />
-              <Label htmlFor="start-paused">{t("dirScan.settingsDialog.startPaused")}</Label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.startPausedHelp")}
-            </p>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="start-paused"
+              checked={form.startPaused}
+              onCheckedChange={(checked) =>
+                setForm((prev) => ({ ...prev, startPaused: checked }))
+              }
+            />
+            <Label htmlFor="start-paused" className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.startPaused")}
+              <FieldHelp>{t("dirScan.settingsDialog.startPausedHelp")}</FieldHelp>
+            </Label>
           </div>
 
           <div className="space-y-2">
-            <Label>{t("dirScan.settingsDialog.defaultCategory")}</Label>
+            <Label className="flex items-center gap-1">
+              {t("dirScan.settingsDialog.defaultCategory")}
+              <FieldHelp>{t("dirScan.settingsDialog.defaultCategoryHelp")}</FieldHelp>
+            </Label>
             <MultiSelect
               options={categorySelectOptions}
               selected={form.category ? [form.category] : []}
@@ -1175,9 +1175,6 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               creatable
               disabled={updateSettings.isPending}
             />
-            <p className="text-xs text-muted-foreground">
-              {t("dirScan.settingsDialog.defaultCategoryHelp")}
-            </p>
           </div>
 
           <div className="space-y-2">
