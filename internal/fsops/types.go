@@ -5,8 +5,9 @@
 // operations for qui's services. Current implementations: Local (delegates
 // to os.* on the qui host) and Noop (returns ErrNoFilesystemAccess for
 // instances without filesystem access). A Remote implementation (SSH-backed)
-// is planned. Service code uses only this interface, making the transport
-// transparent.
+// is planned. Services still call os.* directly; they adopt this interface
+// in a separate callsite migration, after which the transport is transparent
+// to them.
 package fsops
 
 import (
