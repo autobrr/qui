@@ -162,6 +162,9 @@
       "default": "如果浏览器弹出提示，请接受以完成注册。"
     }
   },
+  "fieldHelp": {
+    "trigger": "更多信息"
+  },
   "numberInput": {
     "unlimited": "无限制",
     "useUnlimited": "（使用 -1 表示无限制）"

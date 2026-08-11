@@ -11,6 +11,11 @@ Frontend and i18n rules for work under `web/`.
 - File names should be descriptive, e.g. `torrent-table.tsx`.
 - Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
 - Frontend tests: Vitest + React Testing Library, colocated as `*.test.tsx` near the component.
+- Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.
+- Keep this text inline, never in a tooltip: error and validation messages, warnings about data loss or actions the user cannot undo, and text the user must read before they choose.
+- Per-option text in a radio group or a checkbox list stays inline. The user compares the options side by side and cannot do that through hovers.
+- Status text, computed previews, section intros, and empty states are not field help. The rule does not apply to them.
+- If the help text only repeats the label, delete it. Do not move it to a tooltip.
 
 ## Frontend Tests
 

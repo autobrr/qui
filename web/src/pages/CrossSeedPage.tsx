@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
@@ -64,7 +65,6 @@ import {
   ChevronDown,
   Clock,
   History,
-  Info,
   Loader2,
   Play,
   RefreshCw,
@@ -2071,20 +2071,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Label htmlFor="automation-interval">{t("automation.intervalLabel")}</Label>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-foreground"
-                          aria-label={t("automation.intervalLabel")}
-                        >
-                          <Info className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent align="start" className="max-w-xs text-xs">
-                        {t("automation.intervalTooltip", { min: MIN_RSS_INTERVAL_MINUTES })}
-                      </TooltipContent>
-                    </Tooltip>
+                    <FieldHelp>{t("automation.intervalTooltip", { min: MIN_RSS_INTERVAL_MINUTES })}</FieldHelp>
                   </div>
                   <Input
                     id="automation-interval"
@@ -3176,16 +3163,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
                         <Label htmlFor="category-reuse" className="font-medium cursor-pointer">{t("rules.categories.reuseCategory")}</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={t("rules.categories.reuseCategory")}>
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent align="start" className="max-w-xs text-xs">
-                            {t("rules.categories.reuseCategoryHelp")}
-                          </TooltipContent>
-                        </Tooltip>
+                        <FieldHelp>{t("rules.categories.reuseCategoryHelp")}</FieldHelp>
                       </div>
                       <p className="text-xs text-muted-foreground">{t("rules.categories.reuseCategoryDescription")}</p>
                     </div>
@@ -3195,16 +3173,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
                         <Label htmlFor="category-affix" className="font-medium cursor-pointer">{t("rules.categories.categoryAffix")}</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={t("rules.categories.categoryAffix")}>
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent align="start" className="max-w-xs text-xs">
-                            {t("rules.categories.categoryAffixHelp")}
-                          </TooltipContent>
-                        </Tooltip>
+                        <FieldHelp>{t("rules.categories.categoryAffixHelp")}</FieldHelp>
                       </div>
                       <p className="text-xs text-muted-foreground">{t("rules.categories.categoryAffixDescription")}</p>
                       {getCategoryMode() === "affix" && (
@@ -3240,16 +3209,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
                         <Label htmlFor="category-indexer" className="font-medium cursor-pointer">{t("rules.categories.indexerCategory")}</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={t("rules.categories.indexerCategory")}>
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent align="start" className="max-w-xs text-xs">
-                            {t("rules.categories.indexerCategoryHelp")}
-                          </TooltipContent>
-                        </Tooltip>
+                        <FieldHelp>{t("rules.categories.indexerCategoryHelp")}</FieldHelp>
                       </div>
                       <p className="text-xs text-muted-foreground">{t("rules.categories.indexerCategoryDescription")}</p>
                     </div>
@@ -3259,16 +3219,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <div className="space-y-0.5 flex-1">
                       <div className="flex items-center gap-1.5">
                         <Label htmlFor="category-custom" className="font-medium cursor-pointer">{t("rules.categories.customCategory")}</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button type="button" className="text-muted-foreground hover:text-foreground" aria-label={t("rules.categories.customCategory")}>
-                              <Info className="h-3.5 w-3.5" />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent align="start" className="max-w-xs text-xs">
-                            {t("rules.categories.customCategoryHelp")}
-                          </TooltipContent>
-                        </Tooltip>
+                        <FieldHelp>{t("rules.categories.customCategoryHelp")}</FieldHelp>
                       </div>
                       <p className="text-xs text-muted-foreground">{t("rules.categories.customCategoryDescription")}</p>
                       {globalSettings.useCustomCategory && (

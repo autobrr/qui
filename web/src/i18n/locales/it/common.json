@@ -162,6 +162,9 @@
       "default": "Se il browser te lo chiede, accetta per completare la registrazione."
     }
   },
+  "fieldHelp": {
+    "trigger": "Maggiori informazioni"
+  },
   "numberInput": {
     "unlimited": "Illimitato",
     "useUnlimited": " (usa -1 per illimitato)"

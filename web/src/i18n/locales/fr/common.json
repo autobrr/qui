@@ -162,6 +162,9 @@
       "default": "Si votre navigateur vous y invite, veuillez accepter pour finaliser l'enregistrement."
     }
   },
+  "fieldHelp": {
+    "trigger": "Plus d'informations"
+  },
   "numberInput": {
     "unlimited": "Illimité",
     "useUnlimited": " (utiliser -1 pour illimité)"

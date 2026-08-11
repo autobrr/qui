@@ -162,6 +162,9 @@
       "default": "브라우저에서 메시지가 표시되면 등록을 완료하기 위해 수락해 주세요."
     }
   },
+  "fieldHelp": {
+    "trigger": "자세한 정보"
+  },
   "numberInput": {
     "unlimited": "무제한",
     "useUnlimited": " (무제한은 -1 사용)"

@@ -162,6 +162,9 @@
       "default": "Wenn dein Browser dich dazu auffordert, bestätige bitte, um die Registrierung abzuschließen."
     }
   },
+  "fieldHelp": {
+    "trigger": "Weitere Informationen"
+  },
   "numberInput": {
     "unlimited": "Unbegrenzt",
     "useUnlimited": " (-1 für unbegrenzt verwenden)"
