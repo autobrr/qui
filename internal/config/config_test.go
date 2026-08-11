@@ -605,3 +605,26 @@ func TestHydrateConfigFromViperSplitsStringSlices(t *testing.T) {
 		})
 	}
 }
+
+func TestBaseURLNormalization(t *testing.T) {
+	tests := map[string]string{
+		"":          "/",
+		"/":         "/",
+		"/qui/":     "/qui/",
+		"/qui":      "/qui/",
+		"qui":       "/qui/",
+		"qui/":      "/qui/",
+		" /qui ":    "/qui/", //nolint:gocritic // the whitespace is the input under test
+		"/apps/qui": "/apps/qui/",
+	}
+
+	for input, want := range tests {
+		v := viper.New()
+		v.Set("baseUrl", input)
+		cfg := &AppConfig{Config: &domain.Config{}, viper: v}
+
+		cfg.hydrateConfigFromViper()
+
+		assert.Equal(t, want, cfg.Config.BaseURL, "input %q", input)
+	}
+}
