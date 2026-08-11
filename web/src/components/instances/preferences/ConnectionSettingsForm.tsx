@@ -6,6 +6,7 @@
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -62,7 +63,6 @@ function SwitchSetting({
   onChange: (checked: boolean) => void
 }) {
   const switchId = React.useId()
-  const descriptionId = description ? `${switchId}-desc` : undefined
 
   return (
     <label
@@ -73,14 +73,9 @@ function SwitchSetting({
         id={switchId}
         checked={checked}
         onCheckedChange={onChange}
-        aria-describedby={descriptionId}
       />
-      <div className="space-y-0.5">
-        <span className="text-sm font-medium">{label}</span>
-        {description && (
-          <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-        )}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
+      {description && <FieldHelp>{description}</FieldHelp>}
     </label>
   )
 }
@@ -103,14 +98,13 @@ function NumberInput({
   placeholder?: string
 }) {
   const inputId = React.useId()
-  const descriptionId = description ? `${inputId}-desc` : undefined
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={inputId} className="text-sm font-medium">{label}</Label>
-      {description && (
-        <p id={descriptionId} className="text-xs text-muted-foreground">{description}</p>
-      )}
+      <Label htmlFor={inputId} className="flex items-center gap-2 text-sm font-medium">
+        {label}
+        {description && <FieldHelp>{description}</FieldHelp>}
+      </Label>
       <Input
         id={inputId}
         type="number"
@@ -122,7 +116,6 @@ function NumberInput({
           onChange(isNaN(val) ? 0 : val)
         }}
         placeholder={placeholder}
-        aria-describedby={descriptionId}
       />
     </div>
   )
@@ -350,7 +343,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
                 return (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">{t("preferences.connectionSettings.bittorrentProtocol")}</Label>
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      {t("preferences.connectionSettings.bittorrentProtocol")}
+                      <FieldHelp>{t("preferences.connectionSettings.protocolDescription")}</FieldHelp>
+                    </Label>
                     <Select
                       value={sanitizedValue.toString()}
                       onValueChange={(value) => {
@@ -370,9 +366,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                         <SelectItem value="2">{getBittorrentProtocolLabel(2)}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
-                      {t("preferences.connectionSettings.protocolDescription")}
-                    </p>
                   </div>
                 )
               }}
@@ -389,7 +382,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
                 return (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">{t("preferences.connectionSettings.utpTcpMixedMode")}</Label>
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      {t("preferences.connectionSettings.utpTcpMixedMode")}
+                      <FieldHelp>{t("preferences.connectionSettings.utpTcpMixedModeDescription")}</FieldHelp>
+                    </Label>
                     <Select
                       value={sanitizedValue.toString()}
                       onValueChange={(value) => {
@@ -408,9 +404,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                         <SelectItem value="1">{getUtpTcpMixedModeLabel(1)}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
-                      {t("preferences.connectionSettings.utpTcpMixedModeDescription")}
-                    </p>
                   </div>
                 )
               }}
@@ -431,7 +424,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
               <form.Field name="current_network_interface">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="network_interface">{t("preferences.connectionSettings.networkInterfaceReadOnly")}</Label>
+                    <Label htmlFor="network_interface" className="flex items-center gap-2">
+                      {t("preferences.connectionSettings.networkInterfaceReadOnly")}
+                      <FieldHelp>{t("preferences.connectionSettings.networkInterfaceDescription")}</FieldHelp>
+                    </Label>
                     <Input
                       id="network_interface"
                       value={field.state.value || t("preferences.connectionSettings.autoDetect")}
@@ -439,9 +435,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                       className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                       disabled
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {t("preferences.connectionSettings.networkInterfaceDescription")}
-                    </p>
                   </div>
                 )}
               </form.Field>
@@ -449,7 +442,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
               <form.Field name="current_interface_address">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="interface_address">{t("preferences.connectionSettings.interfaceIpAddress")}</Label>
+                    <Label htmlFor="interface_address" className="flex items-center gap-2">
+                      {t("preferences.connectionSettings.interfaceIpAddress")}
+                      <FieldHelp>{t("preferences.connectionSettings.interfaceIpAddressDescription")}</FieldHelp>
+                    </Label>
                     <Input
                       id="interface_address"
                       value={field.state.value || t("preferences.connectionSettings.autoDetect")}
@@ -457,9 +453,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                       disabled
                       className={incognitoMode ? "bg-muted blur-sm select-none" : "bg-muted"}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {t("preferences.connectionSettings.interfaceIpAddressDescription")}
-                    </p>
                   </div>
                 )}
               </form.Field>
@@ -689,7 +682,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             <form.Field name="ip_filter_path">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="ip_filter_path">{t("preferences.connectionSettings.ipFilterPath")}</Label>
+                  <Label htmlFor="ip_filter_path" className="flex items-center gap-2">
+                    {t("preferences.connectionSettings.ipFilterPath")}
+                    <FieldHelp>{t("preferences.connectionSettings.ipFilterPathDescription")}</FieldHelp>
+                  </Label>
                   <Input
                     id="ip_filter_path"
                     value={field.state.value}
@@ -698,9 +694,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
                     disabled={!form.state.values.ip_filter_enabled}
                     className={incognitoMode ? "blur-sm select-none" : ""}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t("preferences.connectionSettings.ipFilterPathDescription")}
-                  </p>
                 </div>
               )}
             </form.Field>
@@ -719,16 +712,16 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             <form.Field name="banned_IPs">
               {(field) => (
                 <div className="space-y-2">
-                  <Label>{t("preferences.connectionSettings.bannedIps")}</Label>
+                  <Label className="flex items-center gap-2">
+                    {t("preferences.connectionSettings.bannedIps")}
+                    <FieldHelp>{t("preferences.connectionSettings.bannedIpsDescription")}</FieldHelp>
+                  </Label>
                   <Textarea
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={t("preferences.connectionSettings.bannedIpsPlaceholder")}
                     className={incognitoMode ? "min-h-[100px] font-mono text-sm blur-sm select-none" : "min-h-[100px] font-mono text-sm"}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t("preferences.connectionSettings.bannedIpsDescription")}
-                  </p>
                 </div>
               )}
             </form.Field>

@@ -1014,7 +1014,6 @@
       "ignorePaths": "Percorsi da ignorare",
       "ignorePathsTooltip": "Percorsi da escludere dalla scansione. I file in queste cartelle non verranno mai contrassegnati come orfani. Inserisci un percorso per riga.",
       "ignorePathsPlaceholder": "/downloads/preserve\n/downloads/manual\n/data/keep",
-      "ignorePathsDescription": "Un percorso per riga. I percorsi vengono confrontati come prefissi.",
       "saving": "Salvataggio...",
       "saveChanges": "Salva modifiche",
       "toast": {
@@ -1382,8 +1381,7 @@
         "skipIfCrossSeedExists": "Ignora se esiste un cross-seed nelle categorie",
         "aboutSkipping": "Informazioni sull'ignorare quando esistono cross-seed",
         "skipHelp": "Utile con le code di importazione *arr: impedisce all'automazione di spostare i torrent se almeno uno di essi è nella coda di importazione *arr.",
-        "selectCategories": "Seleziona le categorie...",
-        "skipDescription": "Ignora il cambio di categoria se un altro torrent che punta allo stesso contenuto su disco è già in una di queste categorie."
+        "selectCategories": "Seleziona le categorie..."
       },
       "externalProgram": {
         "program": "Programma",

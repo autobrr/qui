@@ -1014,7 +1014,6 @@
       "ignorePaths": "Caminhos Ignorados",
       "ignorePathsTooltip": "Arquivos nesses caminhos jamais serão identificados como órfãos.",
       "ignorePathsPlaceholder": "/downloads/importantes\n/filmes/antigos",
-      "ignorePathsDescription": "Insira os caminhos a excluir (um por linha)",
       "saving": "Salvando...",
       "saveChanges": "Salvar",
       "toast": {
@@ -1382,8 +1381,7 @@
         "skipIfCrossSeedExists": "Abortar caso já exista um torrent desse numa dessas categorias",
         "aboutSkipping": "O que significa 'Abortar se o Cross-seed existir'",
         "skipHelp": "Se você migra torrents de uma categoria 'arr' para 'filmes' através dessa automação, se esse torrent já possuir um cross-seed alocado em 'filmes', a regra falha, prevenindo duplicações de movimento.",
-        "selectCategories": "Categorias...",
-        "skipDescription": "Ignora a mudança de categoria se outro torrent apontando para o mesmo conteúdo no disco já estiver em uma destas categorias."
+        "selectCategories": "Categorias..."
       },
       "externalProgram": {
         "program": "Aplicativo Script",
