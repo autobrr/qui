@@ -23,7 +23,6 @@ import (
 	"maps"
 	"math"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -431,7 +430,7 @@ type Service struct {
 	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
+	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
 	postInjectionHook       func(context.Context, int, string)
 	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
@@ -14209,20 +14208,20 @@ func (s *Service) processHardlinkMode(
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
+	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
+	if err != nil {
+		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
+	}
+
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the hardlink base directory.
-	existingFilePath, ok := matchedFilesystemProbePath(matchedTorrent, props, candidateFiles)
+	existingFilePath, ok := matchedFilesystemProbePath(ctx, backend, matchedTorrent, props, candidateFiles)
 	if !ok {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("matchedHash", matchedTorrent.Hash).
 			Msg("[CROSSSEED] Hardlink mode: no content path or save path available")
 		return handleError("No content path or save path available for matched torrent")
-	}
-
-	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
-	if err != nil {
-		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}
 
 	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend)
@@ -14295,7 +14294,7 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Create hardlink tree on disk
-	created, err := hardlinktree.Create(plan)
+	created, err := backend.HardlinkTree(ctx, plan)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -14398,7 +14397,7 @@ func (s *Service) processHardlinkMode(
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
 		// Rollback only what this attempt created: the destination can be shared
 		// with an earlier successful add for the same release (discussion #2282)
-		if rollbackErr := created.Rollback(); rollbackErr != nil {
+		if rollbackErr := backend.RemoveTree(ctx, created); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
@@ -14640,14 +14639,14 @@ func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath 
 	return "", errors.New("no base directory on same filesystem as source")
 }
 
-func matchedFilesystemProbePath(matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
+func matchedFilesystemProbePath(ctx context.Context, backend fsops.Backend, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
 	if props != nil && props.SavePath != "" && len(candidateFiles) > 0 && candidateFiles[0].Name != "" {
 		relativePath, ok := safeTorrentRelativeFilePath(candidateFiles[0].Name)
 		if !ok {
 			return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
 		}
 		filePath := filepath.Join(props.SavePath, filepath.FromSlash(relativePath))
-		if _, err := os.Stat(filePath); err == nil {
+		if _, err := backend.Stat(ctx, filePath); err == nil {
 			return filePath, true
 		}
 	}
@@ -14897,20 +14896,20 @@ func (s *Service) processReflinkMode(
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
+	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
+	if err != nil {
+		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
+	}
+
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the reflink base directory.
-	existingFilePath, ok := matchedFilesystemProbePath(matchedTorrent, props, candidateFiles)
+	existingFilePath, ok := matchedFilesystemProbePath(ctx, backend, matchedTorrent, props, candidateFiles)
 	if !ok {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("matchedHash", matchedTorrent.Hash).
 			Msg("[CROSSSEED] Reflink mode: no content path or save path available")
 		return handleError("No content path or save path available for matched torrent")
-	}
-
-	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
-	if err != nil {
-		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
 	}
 
 	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend)
@@ -14980,7 +14979,10 @@ func (s *Service) processReflinkMode(
 
 	// Check reflink support after the coverage and plan gates so clearly invalid
 	// partial matches are skipped before probing filesystem capabilities.
-	supported, reason := reflinktree.SupportsReflink(selectedBaseDir)
+	supported, reason, err := backend.SupportsReflink(ctx, selectedBaseDir)
+	if err != nil {
+		supported, reason = false, err.Error()
+	}
 	if !supported {
 		log.Warn().
 			Str("reason", reason).
@@ -14990,7 +14992,7 @@ func (s *Service) processReflinkMode(
 	}
 
 	// Create reflink tree on disk
-	created, err := reflinktree.Create(plan)
+	created, err := backend.ReflinkTree(ctx, plan)
 	if err != nil {
 		logEvent := log.Error()
 		if shouldWarnForReflinkCreateError(err) {
@@ -15098,7 +15100,7 @@ func (s *Service) processReflinkMode(
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
 		// Rollback only what this attempt created (discussion #2282)
-		if rollbackErr := created.Rollback(); rollbackErr != nil {
+		if rollbackErr := backend.RemoveTree(ctx, created); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).

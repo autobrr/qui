@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -231,7 +232,9 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 			SeasonPackCoverageThreshold: 1,
 		}, nil
 	})
-	setServiceField(t, svc, "seasonPackLinkCreator", func(*hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil })
+	setServiceField(t, svc, "seasonPackLinkCreator", func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+		return &fsops.TreeCreateResult{}, nil
+	})
 
 	handler := &CrossSeedHandler{service: svc}
 

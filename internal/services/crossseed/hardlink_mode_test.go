@@ -451,6 +451,8 @@ func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
 	require.NoError(t, os.WriteFile(filePath, []byte("movie"), 0o600))
 
 	got, ok := matchedFilesystemProbePath(
+		context.Background(),
+		local.NewBackend(),
 		&qbt.Torrent{ContentPath: contentPath},
 		&qbt.TorrentProperties{SavePath: savePath},
 		candidateFiles,
@@ -464,6 +466,8 @@ func TestMatchedFilesystemProbePath_FallsBackToContentPath(t *testing.T) {
 	contentPath := filepath.Join(string(filepath.Separator), "mnt", "cross_linked", "HDBits", "Movie.2024")
 
 	got, ok := matchedFilesystemProbePath(
+		context.Background(),
+		local.NewBackend(),
 		&qbt.Torrent{ContentPath: contentPath},
 		&qbt.TorrentProperties{},
 		nil,

@@ -15,6 +15,8 @@ import (
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -81,7 +83,7 @@ func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
 	require.NoError(t, os.WriteFile(plannedFile, []byte("planned"), 0o600))
 	require.NoError(t, os.WriteFile(unrelatedFile, []byte("keep"), 0o600))
 
-	err := rollbackSeasonPackTree(&hardlinktree.Created{
+	err := rollbackSeasonPackTree(context.Background(), local.NewBackend(), &fsops.TreeCreateResult{
 		Files: []string{plannedFile},
 	}, rootDir)
 
@@ -260,12 +262,13 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			capturedPlan = plan
-			return &hardlinktree.Created{}, nil
+			return &fsops.TreeCreateResult{}, nil
 		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -317,6 +320,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 		seasonPackRunStore:       store,
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -398,6 +402,7 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenCoverageLookupFails
 		seasonPackRunStore:       store,
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -447,6 +452,7 @@ func TestApplySeasonPackWebhook_ClassifiesFileBatchErrorsAsOperationalFailures(t
 		automationSettingsLoader: defaultSettings(true, 1.0),
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -492,17 +498,18 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			require.NotEmpty(t, plan.Files)
 			require.NoError(t, os.MkdirAll(filepath.Dir(plan.Files[0].TargetPath), 0o755))
 			require.NoError(t, os.WriteFile(plan.Files[0].TargetPath, []byte("partial"), 0o600))
-			return &hardlinktree.Created{
+			return &fsops.TreeCreateResult{
 				Files: []string{plan.Files[0].TargetPath},
 				Dirs:  []string{filepath.Dir(plan.Files[0].TargetPath)},
 			}, errors.New("link creator failed")
 		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
