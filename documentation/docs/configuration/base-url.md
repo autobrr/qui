@@ -7,6 +7,8 @@ title: Base URL
 
 If you need to serve qui from a subdirectory (e.g., `https://example.com/qui/`), you can configure the base URL.
 
+qui normalizes the value at startup. `/qui/`, `/qui`, and `qui` all become `/qui/`.
+
 ## Using Environment Variable
 
 ```bash

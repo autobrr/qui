@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 var envPrefix = "QUI__"
@@ -320,7 +321,8 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
-	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	// Canonical "/prefix/" form; the index.html redirect breaks on a slashless base.
+	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
 

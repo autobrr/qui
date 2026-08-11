@@ -19,7 +19,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { getTorrentDisplayHash } from "@/lib/torrent-utils"
+import { getToggleSelectionState, getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query"
@@ -51,7 +51,7 @@ import { CategorySubmenu } from "./CategorySubmenu"
 import { QueueSubmenu } from "./QueueSubmenu"
 import { RenameSubmenu } from "./RenameSubmenu"
 
-interface TorrentContextMenuProps {
+export interface TorrentContextMenuProps {
   children: React.ReactNode
   instanceId: number
   readOnly?: boolean
@@ -163,6 +163,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   })
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
+  const mixedLabel = count > 1 ? `${t("contextMenu.mixed")} (${count})` : t("contextMenu.mixed")
 
   // State for cross-seed search
   const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
@@ -325,22 +326,12 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     void onExport(hashes, torrents)
   }, [hashes, onExport, torrents])
 
-  const forceStartStates = torrents.map(t => t.force_start)
-  const allForceStarted = forceStartStates.length > 0 && forceStartStates.every(state => state === true)
-  const allForceDisabled = forceStartStates.length > 0 && forceStartStates.every(state => state === false)
-  const forceStartMixed = forceStartStates.length > 0 && !allForceStarted && !allForceDisabled
+  // select-all: unloaded rows have unknown state, so offer both directions.
+  const stateUnknownForSelection = isAllSelected && torrents.length < effectiveSelectionCount
 
-  // TMM state calculation
-  const tmmStates = torrents.map(t => t.auto_tmm)
-  const allEnabled = tmmStates.length > 0 && tmmStates.every(state => state === true)
-  const allDisabled = tmmStates.length > 0 && tmmStates.every(state => state === false)
-  const mixed = tmmStates.length > 0 && !allEnabled && !allDisabled
-
-  // Sequential download state calculation
-  const seqDlStates = torrents.map(t => t.seq_dl)
-  const allSeqDlEnabled = seqDlStates.length > 0 && seqDlStates.every(state => state === true)
-  const allSeqDlDisabled = seqDlStates.length > 0 && seqDlStates.every(state => state === false)
-  const seqDlMixed = seqDlStates.length > 0 && !allSeqDlEnabled && !allSeqDlDisabled
+  const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(torrents.map(t => t.force_start), stateUnknownForSelection)
+  const { allEnabled, mixed } = getToggleSelectionState(torrents.map(t => t.auto_tmm), stateUnknownForSelection)
+  const { allEnabled: allSeqDlEnabled, mixed: seqDlMixed } = getToggleSelectionState(torrents.map(t => t.seq_dl), stateUnknownForSelection)
 
   const handleQueueAction = useCallback((action: "topPriority" | "increasePriority" | "decreasePriority" | "bottomPriority") => {
     onAction(action as TorrentAction, hashes, { targets: actionTargets })
@@ -427,14 +418,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                   disabled={isPending}
                 >
                   <FastForward className="mr-2 h-4 w-4" />
-                  {t("contextMenu.forceStart")} {count > 1 ? `(${count} ${t("contextMenu.mixed")})` : t("contextMenu.mixed")}
+                  {t("contextMenu.forceStart")} {mixedLabel}
                 </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => handleForceStartToggle(false)}
                   disabled={isPending}
                 >
                   <FastForward className="mr-2 h-4 w-4" />
-                  {t("contextMenu.disableForceStart")} {count > 1 ? `(${count} ${t("contextMenu.mixed")})` : t("contextMenu.mixed")}
+                  {t("contextMenu.disableForceStart")} {mixedLabel}
                 </ContextMenuItem>
               </>
             ) : (
@@ -474,14 +465,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                   disabled={isPending}
                 >
                   <Blocks className="mr-2 h-4 w-4" />
-                  {t("contextMenu.enableSequentialDownload")} {count > 1 ? `(${count} ${t("contextMenu.mixed")})` : t("contextMenu.mixed")}
+                  {t("contextMenu.enableSequentialDownload")} {mixedLabel}
                 </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => handleSeqDlToggle(false)}
                   disabled={isPending}
                 >
                   <Blocks className="mr-2 h-4 w-4" />
-                  {t("contextMenu.disableSequentialDownload")} {count > 1 ? `(${count} ${t("contextMenu.mixed")})` : t("contextMenu.mixed")}
+                  {t("contextMenu.disableSequentialDownload")} {mixedLabel}
                 </ContextMenuItem>
               </>
             ) : (
@@ -592,14 +583,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                   disabled={isPending}
                 >
                   <Sparkles className="mr-2 h-4 w-4" />
-                  {t("contextMenu.enableTmm")} {count > 1 ? `(${count} ${t("contextMenu.mixed")})` : t("contextMenu.mixed")}
+                  {t("contextMenu.enableTmm")} {mixedLabel}
                 </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => handleTmmToggle(false)}
                   disabled={isPending}
                 >
                   <Settings2 className="mr-2 h-4 w-4" />
-                  {t("contextMenu.disableTmm")} {count > 1 ? `(${count} ${t("contextMenu.mixed")})` : t("contextMenu.mixed")}
+                  {t("contextMenu.disableTmm")} {mixedLabel}
                 </ContextMenuItem>
               </>
             ) : (

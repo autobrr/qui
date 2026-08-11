@@ -13,7 +13,7 @@ import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import { Folder, Tag } from "lucide-react"
-import { memo, useMemo } from "react"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { TrackerIcon } from "./TrackerIcon"
 
@@ -37,7 +37,10 @@ interface CompactRowProps {
   style: React.CSSProperties
 }
 
-export const CompactRow = memo(({
+// Not memoized: this renders inside TorrentTableRow, whose memo already skips
+// unchanged rows. A local memo would need its own comparator and could only
+// re-check props the parent has already proven changed.
+export function CompactRow({
   torrent,
   rowId,
   rowIndex,
@@ -54,7 +57,7 @@ export const CompactRow = memo(({
   trackerIcons,
   trackerCustomizationLookup,
   style,
-}: CompactRowProps) => {
+}: CompactRowProps) {
   const { t } = useTranslation("torrents")
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
@@ -199,33 +202,4 @@ export const CompactRow = memo(({
       </div>
     </div>
   )
-}, (prev, next) =>
-  // Handler props (onClick/onContextMenu/onCheckbox*) are intentionally excluded:
-  // the parent passes fresh inline lambdas every render, so comparing them would
-  // defeat row memoization (every row would re-render on every poll/stream tick).
-  // The state those handlers act on is reflected in the compared props below.
-  prev.torrent.hash === next.torrent.hash &&
-  prev.rowId === next.rowId &&
-  prev.rowIndex === next.rowIndex &&
-  prev.torrent.name === next.torrent.name &&
-  prev.torrent.category === next.torrent.category &&
-  prev.torrent.tags === next.torrent.tags &&
-  prev.torrent.tracker === next.torrent.tracker &&
-  prev.torrent.tracker_health === next.torrent.tracker_health &&
-  prev.torrent.state === next.torrent.state &&
-  prev.torrent.progress === next.torrent.progress &&
-  prev.torrent.dlspeed === next.torrent.dlspeed &&
-  prev.torrent.upspeed === next.torrent.upspeed &&
-  prev.torrent.downloaded === next.torrent.downloaded &&
-  prev.torrent.size === next.torrent.size &&
-  prev.torrent.ratio === next.torrent.ratio &&
-  prev.isSelected === next.isSelected &&
-  prev.isRowSelected === next.isRowSelected &&
-  prev.showCheckbox === next.showCheckbox &&
-  prev.incognitoMode === next.incognitoMode &&
-  prev.speedUnit === next.speedUnit &&
-  prev.supportsTrackerHealth === next.supportsTrackerHealth &&
-  prev.trackerIcons === next.trackerIcons &&
-  prev.trackerCustomizationLookup === next.trackerCustomizationLookup &&
-  prev.style === next.style
-)
+}

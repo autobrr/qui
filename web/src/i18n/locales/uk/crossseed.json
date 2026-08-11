@@ -98,7 +98,9 @@
     "runError": "Помилка: {{message}}",
     "runSummary": "{{runs}} запусків • +{{added}}",
     "runSummaryWithFailures": "{{runs}} запусків • +{{added}} • {{failed}} невдалих",
-    "scheduledUpper": "ЗА РОЗКЛАДОМ"
+    "scheduledUpper": "ЗА РОЗКЛАДОМ",
+    "runDisabledAlreadyRunning": "Запуск автоматизації вже виконується.",
+    "runDisabledCooldown": "Ручні запуски обмежені інтервалом у {{minutes}} хвилин. Спробуйте знову через {{remaining}}."
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -163,7 +165,43 @@
     "scannedProgress": "{{processed}}/{{total}} відскановано",
     "torrentsCount": "{{count}} торентів",
     "failedCount": "{{count}} невдалих",
-    "runError": "Помилка: {{message}}"
+    "runError": "Помилка: {{message}}",
+    "indexers": {
+      "placeholderTorznabSkippedGazelleOnly": "Torznab пропущено (вибір лише Gazelle)",
+      "placeholderTorznabDisabledGazelleOnly": "Torznab вимкнено (лише Gazelle)",
+      "placeholderTorznabDisabledEnableGazelle": "Torznab вимкнено (увімкнути Gazelle)",
+      "placeholderAllEnabledNonOpsRed": "Усі ввімкнені не-OPS/RED індексатори (залиште порожнім для всіх)",
+      "placeholderAllEnabled": "Усі ввімкнені індексатори (залиште порожнім для всіх)",
+      "placeholderOnlyOpsRedEnabled": "Увімкнено лише OPS/RED (Gazelle)",
+      "placeholderNoTorznabConfigured": "Індексатори Torznab не налаштовані",
+      "helpTorznabSkippedGazelleOnly": "Вибрані індексатори Torznab є лише Gazelle (OPS/RED). Цей запуск буде лише для Gazelle.",
+      "helpTorznabDisabledGazelleCheck": "Torznab вимкнено. Gazelle перевірятиме RED/OPS для кожного вихідного торента.",
+      "helpTorznabDisabledEnableGazelle": "Torznab вимкнено. Увімкніть Gazelle (OPS/RED), щоб запустити пошук серед торентів, що роздаються, у режимі лише Gazelle.",
+      "helpOnlyOpsRedEnabled": "Увімкнено лише індексатори Torznab OPS/RED. Torznab тут нічого не робить; Gazelle все ще перевіряє RED/OPS.",
+      "helpNoNonOpsRedTorznab": "Немає не-OPS/RED індексаторів Torznab. Gazelle все ще перевірятиме RED/OPS для кожного вихідного торента.",
+      "helpNoTorznabConfigured": "Індексатори Torznab не налаштовані.",
+      "helpAllEnabledNonOpsRedQueried": "Буде надіслано запит до всіх увімкнених не-OPS/RED індексаторів Torznab. Gazelle також перевіряє RED/OPS.",
+      "helpAllEnabledTorznabQueried": "Буде надіслано запит до всіх увімкнених індексаторів Torznab щодо збігів.",
+      "helpSelectedTorznabQueriedGazelle_one": "Буде надіслано запит лише до {{count}} вибраного індексатора Torznab. Gazelle все ще перевіряє RED/OPS.",
+      "helpSelectedTorznabQueriedGazelle_few": "Буде надіслано запит лише до {{count}} вибраних індексаторів Torznab. Gazelle все ще перевіряє RED/OPS.",
+      "helpSelectedTorznabQueriedGazelle_many": "Буде надіслано запит лише до {{count}} вибраних індексаторів Torznab. Gazelle все ще перевіряє RED/OPS.",
+      "helpSelectedTorznabQueriedGazelle_other": "Буде надіслано запит лише до {{count}} вибраних індексаторів Torznab. Gazelle все ще перевіряє RED/OPS.",
+      "helpSelectedQueried_one": "Буде надіслано запит лише до {{count}} вибраного індексатора.",
+      "helpSelectedQueried_few": "Буде надіслано запит лише до {{count}} вибраних індексаторів.",
+      "helpSelectedQueried_many": "Буде надіслано запит лише до {{count}} вибраних індексаторів.",
+      "helpSelectedQueried_other": "Буде надіслано запит лише до {{count}} вибраних індексаторів."
+    },
+    "gazelleStatus": {
+      "loading": "Gazelle: завантаження",
+      "disabled": "Gazelle: вимкнено",
+      "enabledOpsRed": "Gazelle: увімкнено (налаштовані ключі OPS+RED)",
+      "enabledOpsMissingRed": "Gazelle: увімкнено (налаштовано ключ OPS, немає RED)",
+      "enabledRedMissingOps": "Gazelle: увімкнено (налаштовано ключ RED, немає OPS)",
+      "enabledKeysMissing": "Gazelle: увімкнено (немає ключів)"
+    },
+    "noInstanceSelected": "Екземпляр не вибрано",
+    "instanceFallback": "Екземпляр {{id}}",
+    "noMessageProvided": "Повідомлення не надано"
   },
   "rules": {
     "title": "Правила Cross-Seed",

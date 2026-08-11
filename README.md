@@ -116,9 +116,9 @@ For other currencies or donation methods, [reach out on Discord](https://discord
 
 ## Contributing
 
-Contributions are welcome. Note: this repo restricts pull request creation to **collaborators only**. Please start with a Discussion/Issue (or Discord) so we can coordinate changes.
+Contributions are welcome.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development and test workflow.
+See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the development and test workflow.
 
 ## License
 
