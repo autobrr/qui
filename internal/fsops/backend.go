@@ -67,16 +67,20 @@ type Backend interface {
 
 	// --- High-level (atomic, server-orchestrated) ---
 
-	// HardlinkTree creates a hardlink tree from plan. Rolls back atomically on
-	// partial failure.
+	// HardlinkTree creates a hardlink tree from plan. Rolls back what it
+	// created on partial failure. The result records the files and dirs this
+	// call made, for a later RemoveTree.
 	HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*TreeCreateResult, error)
 
-	// ReflinkTree creates a reflink (CoW) tree from plan. Rolls back atomically
-	// on partial failure.
+	// ReflinkTree creates a reflink (CoW) tree from plan. Rolls back what it
+	// created on partial failure. The result records the files and dirs this
+	// call made, for a later RemoveTree.
 	ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*TreeCreateResult, error)
 
-	// RemoveTree removes a previously created link tree (hardlink or reflink).
-	RemoveTree(ctx context.Context, plan *hardlinktree.TreePlan) error
+	// RemoveTree removes exactly the files and dirs recorded in created —
+	// never the whole plan, which could delete links shared with sibling
+	// torrents (discussion #2282). Safe to call with a nil result.
+	RemoveTree(ctx context.Context, created *TreeCreateResult) error
 
 	// --- Capabilities ---
 

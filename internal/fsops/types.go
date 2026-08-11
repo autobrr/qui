@@ -72,10 +72,15 @@ type RemoveOptions struct {
 }
 
 // TreeCreateResult holds the outcome of a HardlinkTree or ReflinkTree call.
+// Files and Dirs record what the call actually created on disk (pre-existing
+// paths are excluded), so RemoveTree can undo exactly this call's work without
+// touching links shared with sibling torrents (discussion #2282).
 type TreeCreateResult struct {
 	Created       int
 	SkippedExists int
 	RolledBack    bool
+	Files         []string
+	Dirs          []string
 }
 
 // BackendInfo describes the capabilities of a Backend implementation.

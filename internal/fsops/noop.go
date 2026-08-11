@@ -66,7 +66,7 @@ func (noopBackend) HardlinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (
 func (noopBackend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*TreeCreateResult, error) {
 	return nil, noopErr(ctx)
 }
-func (noopBackend) RemoveTree(ctx context.Context, _ *hardlinktree.TreePlan) error {
+func (noopBackend) RemoveTree(ctx context.Context, _ *TreeCreateResult) error {
 	return noopErr(ctx)
 }
 func (noopBackend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
