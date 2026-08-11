@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
@@ -52,6 +52,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
@@ -556,7 +557,7 @@ function RunRow({
             <DirectoryStatusBadge run={run} />
             {run.status === "failed" && run.errorMessage && (
               <Tooltip>
-                <TooltipTrigger className="cursor-default">
+                <TooltipTrigger className="cursor-default" aria-label={t("dirScan.showError")}>
                   <Info className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-lg whitespace-pre-wrap">
@@ -815,19 +816,6 @@ interface SettingsDialogProps {
 }
 
 const ageFilterPresets = [1, 3, 7, 14, 30, 60, 90]
-
-// Field help lives in a tooltip rather than a paragraph under the control:
-// these dialogs carry enough controls that the prose made them scroll.
-function FieldHelp({ children }: { children: ReactNode }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <Info className="size-3.5 text-muted-foreground" />
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">{children}</TooltipContent>
-    </Tooltip>
-  )
-}
 
 function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
   return {

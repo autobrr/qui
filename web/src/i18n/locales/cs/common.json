@@ -162,6 +162,9 @@
       "default": "Pokud váš prohlížeč požádá o registraci, prosím, přijměte ji."
     }
   },
+  "fieldHelp": {
+    "trigger": "Více informací"
+  },
   "numberInput": {
     "unlimited": "Neomezené",
     "useUnlimited": " (použij -1 pro neomezené)"

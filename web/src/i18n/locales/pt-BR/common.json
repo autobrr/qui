@@ -162,6 +162,9 @@
       "default": "Se solicitado pelo seu navegador, por favor aceite para concluir o registro."
     }
   },
+  "fieldHelp": {
+    "trigger": "Mais informações"
+  },
   "numberInput": {
     "unlimited": "Ilimitado",
     "useUnlimited": " (use -1 para ilimitado)"
