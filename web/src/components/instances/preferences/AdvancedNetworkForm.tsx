@@ -249,16 +249,16 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
             <form.Field name="announce_ip">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="announce_ip">{t("preferences.advancedNetwork.announceIp")}</Label>
+                  <Label htmlFor="announce_ip" className="flex items-center gap-2">
+                    {t("preferences.advancedNetwork.announceIp")}
+                    <FieldHelp>{t("preferences.advancedNetwork.announceIpDescription")}</FieldHelp>
+                  </Label>
                   <Input
                     id="announce_ip"
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     placeholder={t("preferences.connectionSettings.autoDetect")}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t("preferences.advancedNetwork.announceIpDescription")}
-                  </p>
                 </div>
               )}
             </form.Field>

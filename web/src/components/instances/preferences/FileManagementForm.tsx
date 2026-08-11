@@ -369,10 +369,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="save_path">
             {(field) => (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">{t("preferences.fileManagement.defaultSavePath")}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("preferences.fileManagement.defaultSavePathDescription")}
-                </p>
+                <Label className="flex items-center gap-2 text-sm font-medium">
+                  {t("preferences.fileManagement.defaultSavePath")}
+                  <FieldHelp>{t("preferences.fileManagement.defaultSavePathDescription")}</FieldHelp>
+                </Label>
                 <Input
                   value={field.state.value as string}
                   onChange={(e) => field.handleChange(e.target.value)}
@@ -399,10 +399,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               <form.Subscribe selector={(state) => state.values.temp_path_enabled}>
                 {(tempPathEnabled) => (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">{t("preferences.fileManagement.tempDownloadPath")}</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {t("preferences.fileManagement.tempDownloadPathDescription")}
-                    </p>
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      {t("preferences.fileManagement.tempDownloadPath")}
+                      <FieldHelp>{t("preferences.fileManagement.tempDownloadPathDescription")}</FieldHelp>
+                    </Label>
                     <Input
                       value={field.state.value as string}
                       onChange={(e) => field.handleChange(e.target.value)}
@@ -419,10 +419,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="torrent_content_layout">
             {(field) => (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">{t("preferences.fileManagement.defaultContentLayout")}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {t("preferences.fileManagement.defaultContentLayoutDescription")}
-                </p>
+                <Label className="flex items-center gap-2 text-sm font-medium">
+                  {t("preferences.fileManagement.defaultContentLayout")}
+                  <FieldHelp>{t("preferences.fileManagement.defaultContentLayoutDescription")}</FieldHelp>
+                </Label>
                 <Select
                   value={field.state.value as string}
                   onValueChange={field.handleChange}
@@ -566,7 +566,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                       <form.Field name="autorun_on_torrent_added_program">
                         {(programField) => (
                           <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
-                            <Label className="text-sm font-medium">{t("preferences.fileManagement.command")}</Label>
+                            <Label className="flex items-center gap-2 text-sm font-medium">
+                              {t("preferences.fileManagement.command")}
+                              <FieldHelp>{t("preferences.fileManagement.autorunProgramTip")}</FieldHelp>
+                            </Label>
                             <Input
                               value={programField.state.value as string}
                               onChange={(e) => programField.handleChange(e.target.value)}
@@ -574,9 +577,6 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                               disabled={!(enabledField.state.value as boolean)}
                               className={incognitoMode ? "blur-sm select-none" : ""}
                             />
-                            <p className="text-xs text-muted-foreground">
-                              {t("preferences.fileManagement.autorunProgramTip")}
-                            </p>
                           </div>
                         )}
                       </form.Field>
@@ -608,7 +608,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                     <form.Field name="autorun_program">
                       {(programField) => (
                         <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
-                          <Label className="text-sm font-medium">{t("preferences.fileManagement.command")}</Label>
+                          <Label className="flex items-center gap-2 text-sm font-medium">
+                            {t("preferences.fileManagement.command")}
+                            <FieldHelp>{t("preferences.fileManagement.autorunProgramTip")}</FieldHelp>
+                          </Label>
                           <Input
                             value={programField.state.value as string}
                             onChange={(e) => programField.handleChange(e.target.value)}
@@ -616,9 +619,6 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                             disabled={!(enabledField.state.value as boolean)}
                             className={incognitoMode ? "blur-sm select-none" : ""}
                           />
-                          <p className="text-xs text-muted-foreground">
-                            {t("preferences.fileManagement.autorunProgramTip")}
-                          </p>
                         </div>
                       )}
                     </form.Field>
