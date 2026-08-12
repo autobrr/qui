@@ -2183,6 +2183,17 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		return
 	}
 
+	// Item rows are committed only at run end, so a live run's blob reuse is
+	// invisible to the refcount, and blobs are content-addressed and shared
+	// across instances. Defer to the startup sweep while any run is active.
+	if active, err := s.store.FindIncompleteRuns(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to check for active backup runs; skipping blob cleanup")
+		return
+	} else if len(active) > 0 {
+		log.Debug().Int("activeRuns", len(active)).Msg("Backup run in progress; deferring blob cleanup to the startup sweep")
+		return
+	}
+
 	refCounts, err := s.store.CountBlobReferencesBatch(ctx, lookup)
 	if err != nil {
 		// Unknown counts must keep the blob: deleting on error can lose a file
