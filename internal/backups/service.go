@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2089,11 +2090,15 @@ func (s *Service) markImportComplete(instanceID int, runID int64) {
 
 // backupRelPath normalizes a stored backup-relative path to a slash form
 // without the legacy "backups/" prefix. Returns "" for unsafe paths:
-// absolute (POSIX or Windows), drive-prefixed, UNC, or escaping via "..".
+// absolute (POSIX or Windows), drive-prefixed, UNC, or containing a ".."
+// path segment.
 func backupRelPath(rel string) string {
-	slash := path.Clean(strings.ReplaceAll(strings.TrimSpace(rel), `\`, "/"))
-	if slash == "." || slash == ".." || strings.HasPrefix(slash, "../") ||
-		strings.HasPrefix(slash, "/") || (len(slash) >= 2 && slash[1] == ':') {
+	raw := strings.ReplaceAll(strings.TrimSpace(rel), `\`, "/")
+	if slices.Contains(strings.Split(raw, "/"), "..") {
+		return ""
+	}
+	slash := path.Clean(raw)
+	if slash == "." || strings.HasPrefix(slash, "/") || (len(slash) >= 2 && slash[1] == ':') {
 		return ""
 	}
 	return strings.TrimPrefix(slash, "backups/")

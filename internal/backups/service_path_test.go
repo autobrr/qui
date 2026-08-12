@@ -51,10 +51,11 @@ func TestResolveBackupPath(t *testing.T) {
 		{name: "traversal with ../", rel: "../../../etc/passwd", wantSafe: false},
 		{name: "traversal in middle", rel: "backups/../../../etc/passwd", wantSafe: false},
 		{name: "hidden traversal with dot segments", rel: "backups/./../../etc/passwd", wantSafe: false},
+		{name: "mid-path traversal rejected even when it stays under the root", rel: "backups/x/../../etc/passwd", wantSafe: false},
 		{
-			name:     "mid-path traversal that stays under the root is confined",
-			rel:      "backups/x/../../etc/passwd",
-			wantAbs:  filepath.Join(root, "etc", "passwd"),
+			name:     "dotted filename is not a traversal segment",
+			rel:      "backups/..hidden.torrent",
+			wantAbs:  filepath.Join(root, "..hidden.torrent"),
 			wantSafe: true,
 		},
 		{
