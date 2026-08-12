@@ -93,7 +93,7 @@ export function MultiSelect({
       disabled={disabled}
       className={cn("w-full justify-between h-auto min-h-10 hover:bg-background", className)}
     >
-      <div className="flex flex-wrap gap-1 flex-1 text-left">
+      <div className="flex flex-wrap gap-1 flex-1 min-w-0 text-left">
         {selected.length > 0 ? (
           selected.map((item) => {
             const option = options.find((o) => o.value === item)
@@ -101,14 +101,14 @@ export function MultiSelect({
               <Badge
                 variant="secondary"
                 key={item}
-                className="shrink-0"
+                className="max-w-full min-w-0"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleUnselect(item)
                 }}
               >
                 {option?.icon && <span className="mr-1 shrink-0">{option.icon}</span>}
-                {option?.label || item}
+                <span className="truncate">{option?.label || item}</span>
                 <span
                   role="button"
                   tabIndex={0}
@@ -135,7 +135,7 @@ export function MultiSelect({
             )
           })
         ) : (
-          <span className="text-muted-foreground font-normal">{resolvedPlaceholder}</span>
+          <span className="text-muted-foreground font-normal truncate">{resolvedPlaceholder}</span>
         )}
       </div>
       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
