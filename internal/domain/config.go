@@ -28,6 +28,7 @@ type Config struct {
 	LogMaxSize               int    `toml:"logMaxSize" mapstructure:"logMaxSize"`
 	LogMaxBackups            int    `toml:"logMaxBackups" mapstructure:"logMaxBackups"`
 	DataDir                  string `toml:"dataDir" mapstructure:"dataDir"`
+	BackupDir                string `toml:"backupDir" mapstructure:"backupDir"`
 	DatabaseEngine           string `toml:"databaseEngine" mapstructure:"databaseEngine"`
 	DatabaseDSN              string `toml:"databaseDsn" mapstructure:"databaseDsn"`
 	DatabaseHost             string `toml:"databaseHost" mapstructure:"databaseHost"`

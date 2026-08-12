@@ -17,7 +17,6 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -66,13 +65,7 @@ func newSearchRunLoopFixture(t *testing.T, dbName string, syncManager *hashFilte
 	clients, err := gazelleClientsForTest()
 	require.NoError(t, err)
 
-	prevFindMatch := findGazelleMatch
-	findGazelleMatch = func(_ context.Context, _ *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
-		return nil, nil
-	}
-	t.Cleanup(func() {
-		findGazelleMatch = prevFindMatch
-	})
+	stubGazelleMatchLookup(t)
 
 	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
 		InstanceID:      instance.ID,
