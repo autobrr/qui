@@ -754,6 +754,7 @@ const (
 	FieldSeedingOnOtherInstance ConditionField = "SEEDING_ON_OTHER_INSTANCE"
 	FieldExistsOnSameInstance   ConditionField = "EXISTS_ON_SAME_INSTANCE"
 	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
+	FieldCrossSeedTags          ConditionField = "CROSS_SEED_TAGS"
 
 	// System time fields
 	FieldSystemHour      ConditionField = "SYSTEM_HOUR"
