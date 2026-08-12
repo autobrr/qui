@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
@@ -143,9 +144,94 @@ func detectRIAJMediaType(title string) string {
 	return ""
 }
 
+// audioFileExtensions lists the extensions of standalone audio content for the
+// byte-weighted signal in DetermineContentTypeWithFiles. It is deliberately a
+// separate list from gazellePlausibleExtensions: that one encodes what RED/OPS
+// host, this one encodes what is audio.
+var audioFileExtensions = map[string]bool{
+	".flac": true,
+	".mp3":  true,
+	".m4a":  true,
+	".m4b":  true,
+	".aac":  true,
+	".ac3":  true,
+	".dts":  true,
+	".ogg":  true,
+	".opus": true,
+	".wav":  true,
+	".aiff": true,
+	".dsf":  true,
+	".dff":  true,
+	".dsd":  true,
+	".wma":  true,
+	".ape":  true,
+	".alac": true,
+	".wv":   true,
+	".mka":  true,
+	".tta":  true,
+	".aob":  true,
+}
+
+// dominantFileContent reports which class of content holds the majority of a
+// torrent's bytes: rls.Music for audio, rls.Movie for video, or rls.Unknown
+// when neither dominates. It weighs total bytes per class instead of picking
+// the largest file, because booklet scans and cover art outweigh individual
+// tracks in many music releases.
+//
+// ponytail: videoExtensions is the season-pack list and misses .vob, .mpg,
+// .webm, and .m4v; those torrents fall through to name-based classification.
+// Widen the list if field reports show it.
+func dominantFileContent(files qbt.TorrentFiles) rls.Type {
+	var audioBytes, videoBytes, totalBytes int64
+	for _, file := range files {
+		ext := strings.ToLower(path.Ext(file.Name))
+		if audioFileExtensions[ext] {
+			audioBytes += file.Size
+		} else if _, ok := videoExtensions[ext]; ok {
+			videoBytes += file.Size
+		}
+		totalBytes += file.Size
+	}
+	switch {
+	case audioBytes > 0 && audioBytes >= totalBytes-audioBytes:
+		return rls.Music
+	case videoBytes > 0 && videoBytes >= totalBytes-videoBytes:
+		return rls.Movie
+	}
+	return rls.Unknown
+}
+
+// DetermineContentTypeWithFiles classifies a release like DetermineContentType,
+// but first corrects the parsed type with the byte-weighted extension signal
+// from the torrent's files (discussion #1734). Release names often defeat the
+// rls parser, music names most of all, but file extensions are ground truth:
+// audio bytes force the music classification, and video bytes pull a music
+// parse back to tv or movie. The tv/movie split stays with the name-based
+// parse. Without files, or when neither class dominates, the name decides.
+func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles) ContentTypeInfo {
+	dominant := dominantFileContent(files)
+	if dominant == rls.Music {
+		if release.Type != rls.Music && release.Type != rls.Audiobook {
+			adjusted := *release
+			adjusted.Type = rls.Music
+			release = &adjusted
+		}
+		// Skip the music-to-video name rescue: the bytes are audio, so a
+		// video-looking token in the name must not flip the type back.
+		return classifyRelease(release)
+	}
+	if dominant == rls.Movie && release.Type == rls.Music {
+		return classifyRelease(demoteMusicToVideo(release))
+	}
+	return DetermineContentType(release)
+}
+
 // DetermineContentType analyzes a release and returns comprehensive content type information
 func DetermineContentType(release *rls.Release) ContentTypeInfo {
-	release = normalizeReleaseTypeForContent(release)
+	return classifyRelease(normalizeReleaseTypeForContent(release))
+}
+
+func classifyRelease(release *rls.Release) ContentTypeInfo {
 	var info ContentTypeInfo
 
 	// Apply stacked parsing for clarity and to avoid false-positives
@@ -307,21 +393,24 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 // misclassifications (e.g. video torrents parsed as music because of dash-separated
 // folder names such as BDMV/STREAM paths).
 func normalizeReleaseTypeForContent(release *rls.Release) *rls.Release {
+	if release.Type == rls.Music && looksLikeVideoRelease(release) {
+		return demoteMusicToVideo(release)
+	}
+
 	normalized := *release
-	if normalized.Type != rls.Music {
-		return &normalized
-	}
-
-	if looksLikeVideoRelease(&normalized) {
-		// Preserve episode metadata when present so TV content keeps season info.
-		if normalized.Series > 0 || normalized.Episode > 0 {
-			normalized.Type = rls.Episode
-		} else {
-			normalized.Type = rls.Movie
-		}
-	}
-
 	return &normalized
+}
+
+// demoteMusicToVideo returns a copy of a music-typed release retyped as video.
+// Episode metadata is preserved when present so TV content keeps season info.
+func demoteMusicToVideo(release *rls.Release) *rls.Release {
+	demoted := *release
+	if demoted.Series > 0 || demoted.Episode > 0 {
+		demoted.Type = rls.Episode
+	} else {
+		demoted.Type = rls.Movie
+	}
+	return &demoted
 }
 
 func looksLikeVideoRelease(release *rls.Release) bool {

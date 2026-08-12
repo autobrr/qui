@@ -7004,7 +7004,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
 	// Use unified content type detection
-	contentInfo := DetermineContentType(contentDetectionRelease)
+	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles)
 
 	// Detect disc layout
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
@@ -8206,7 +8206,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
 	// Use unified content type detection with expanded categories for search
-	contentInfo := DetermineContentType(contentDetectionRelease)
+	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles)
 	searchRelease := s.selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease, sourceFiles, contentInfo)
 	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
 	// so later release matching follows the same search mode.
