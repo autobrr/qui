@@ -1201,26 +1201,7 @@ func (s *BackupStore) ListTorrentBlobPaths(ctx context.Context) ([]string, error
 	return paths, rows.Err()
 }
 
-func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM instance_backup_items_view
-		WHERE torrent_blob_path = ?
-	`, relPath).Scan(&count)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
-}
-
 func (s *BackupStore) CountBlobReferencesBatch(ctx context.Context, relPaths []string) (map[string]int, error) {
-	return s.countBlobReferencesBatchChunk(ctx, relPaths)
-}
-
-func (s *BackupStore) countBlobReferencesBatchChunk(ctx context.Context, relPaths []string) (map[string]int, error) {
 	if len(relPaths) == 0 {
 		return nil, nil
 	}

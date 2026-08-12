@@ -2183,20 +2183,13 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		return
 	}
 
-	// Batch count references for all blobs
 	refCounts, err := s.store.CountBlobReferencesBatch(ctx, lookup)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to count torrent blob references")
-		// Fall back to individual counts if batch fails
-		refCounts = make(map[string]int)
-		for _, form := range lookup {
-			count, err := s.store.CountBlobReferences(ctx, form)
-			if err != nil {
-				log.Warn().Err(err).Str("blob", form).Msg("Failed to count torrent blob references")
-				continue
-			}
-			refCounts[form] = count
-		}
+		// Unknown counts must keep the blob: deleting on error can lose a file
+		// another run still references. Startup's cleanupOrphanedBlobs sweeps
+		// anything truly unreferenced later.
+		log.Warn().Err(err).Msg("Failed to count torrent blob references; skipping blob cleanup")
+		return
 	}
 
 	var blobsToDelete []string

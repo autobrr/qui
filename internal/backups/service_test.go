@@ -1293,6 +1293,27 @@ func TestDeleteAllRunsRemovesFilesAndToleratesMissingOnes(t *testing.T) {
 	require.Empty(t, runIDs)
 }
 
+func TestCleanupTorrentBlobsKeepsBlobWhenCountsUnavailable(t *testing.T) {
+	db := setupTestBackupDB(t)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "unknown.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	items := []*models.BackupItem{{TorrentBlobPath: &blobRelPath}}
+
+	// A closed database makes every reference count fail; unknown counts must
+	// keep the blob, not delete it.
+	require.NoError(t, db.Close())
+	svc.cleanupTorrentBlobs(context.Background(), items)
+
+	require.FileExists(t, blobAbsPath)
+}
+
 func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 	t.Parallel()
 
