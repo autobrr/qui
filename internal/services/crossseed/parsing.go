@@ -318,13 +318,17 @@ func classifyRelease(release *rls.Release) ContentTypeInfo {
 		info.RequiredCaps = []string{"music-search", "audio-search"}
 		info.IsMusic = true
 	case rls.Book:
+		// Books is 7000, not 8000. 8000 is Other, and an indexer that advertises
+		// its caps drops a request for a category it does not carry, so books were
+		// skipped at every book indexer. Torznab derives the search mode from these
+		// categories, so the 7000 range is also what makes the request t=book.
 		info.ContentType = "book"
-		info.Categories = []int{8000} // Books
+		info.Categories = []int{7000, 7010, 7020, 7040, 7050, 7060} // Books, minus comics
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case rls.Comic:
 		info.ContentType = "comic"
-		info.Categories = []int{8000} // Books (comics are under books)
+		info.Categories = []int{7000, 7030} // Books, Books/Comics
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case rls.Game:
