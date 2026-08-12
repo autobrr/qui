@@ -133,39 +133,6 @@ type nopCloser struct {
 
 func (nopCloser) Close() error { return nil }
 
-// validateBlobPath checks that a blob path doesn't escape the base directory.
-// Returns the safe absolute path or empty string if the path is unsafe.
-func validateBlobPath(baseDir, blobPath string) string {
-	if baseDir == "" || blobPath == "" {
-		return ""
-	}
-
-	// Treat Unix-style absolute paths as unsafe on all platforms.
-	// (On Windows, filepath.IsAbs("/etc/passwd") is false.)
-	if strings.HasPrefix(blobPath, "/") {
-		return ""
-	}
-	// Reject any Windows volume-prefixed path (e.g. C:\..., \\server\share\...).
-	if filepath.VolumeName(blobPath) != "" {
-		return ""
-	}
-
-	rel := filepath.Clean(blobPath)
-	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
-		return ""
-	}
-	absBase, err := filepath.Abs(baseDir)
-	if err != nil {
-		return ""
-	}
-	absTarget := filepath.Join(absBase, rel)
-	relCheck, err := filepath.Rel(absBase, absTarget)
-	if err != nil || strings.HasPrefix(relCheck, "..") {
-		return ""
-	}
-	return absTarget
-}
-
 func NewBackupsHandler(service *backups.Service) *BackupsHandler {
 	return &BackupsHandler{service: service}
 }
@@ -538,7 +505,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Validate blob path to prevent directory traversal
-			torrentPath := validateBlobPath(h.service.DataDir(), item.TorrentBlob)
+			torrentPath := h.service.ResolveBackupPath(item.TorrentBlob)
 			if torrentPath == "" {
 				continue
 			}
@@ -626,7 +593,7 @@ func (h *BackupsHandler) DownloadRun(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Validate blob path to prevent directory traversal
-			torrentPath := validateBlobPath(h.service.DataDir(), item.TorrentBlob)
+			torrentPath := h.service.ResolveBackupPath(item.TorrentBlob)
 			if torrentPath == "" {
 				continue
 			}
@@ -1043,27 +1010,8 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	dataDir := strings.TrimSpace(h.service.DataDir())
-	if dataDir == "" {
-		RespondError(w, http.StatusInternalServerError, "Backup data directory unavailable")
-		return
-	}
-
-	rel := filepath.Clean(*item.TorrentBlobPath)
-	absTarget, err := filepath.Abs(filepath.Join(dataDir, rel))
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to resolve torrent path")
-		return
-	}
-
-	baseDir, err := filepath.Abs(dataDir)
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to resolve data directory")
-		return
-	}
-
-	relCheck, err := filepath.Rel(baseDir, absTarget)
-	if err != nil || strings.HasPrefix(relCheck, "..") {
+	absTarget := h.service.ResolveBackupPath(*item.TorrentBlobPath)
+	if absTarget == "" {
 		RespondError(w, http.StatusNotFound, "Cached torrent unavailable")
 		return
 	}
@@ -1071,13 +1019,6 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 	file, err := os.Open(absTarget)
 	if err != nil {
 		if os.IsNotExist(err) {
-			altRel := filepath.ToSlash(filepath.Join("backups", rel))
-			altAbs := filepath.Join(dataDir, altRel)
-			if altFile, altErr := os.Open(altAbs); altErr == nil {
-				file = altFile
-				defer file.Close()
-				goto serve
-			}
 			RespondError(w, http.StatusNotFound, "Cached torrent file missing")
 			return
 		}
@@ -1085,8 +1026,6 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer file.Close()
-
-serve:
 
 	info, err := file.Stat()
 	if err != nil {

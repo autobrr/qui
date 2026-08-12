@@ -54,6 +54,12 @@ QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: nex
 `QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
 
 ```bash
+QUI__BACKUP_DIR=...      # Optional: custom backup directory (default: <dataDir>/backups)
+```
+
+`QUI__BACKUP_DIR` sets where qui writes [backup](../features/backups.md) manifests, archives, and cached `.torrent` files. Point it at separate storage, for example a redundant array or a network share. Then a failure of the data drive does not also remove your backups. If you change this on an existing install, move the contents of `<dataDir>/backups` to the new directory.
+
+```bash
 QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .css files (default: <config-dir>/themes)
 ```
 
