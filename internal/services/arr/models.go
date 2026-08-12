@@ -348,7 +348,7 @@ func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *Radar
 	if normalized == "" {
 		return nil
 	}
-	var matches []*RadarrMovie
+	var inLibrary, matches []*RadarrMovie
 	for i := range movies {
 		movie := &movies[i]
 		if normalizeTitleWords(movie.Title) != normalized && normalizeTitleWords(movie.OriginalTitle) != normalized {
@@ -358,9 +358,16 @@ func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *Radar
 			continue
 		}
 		if movie.ID > 0 {
-			return movie
+			inLibrary = append(inLibrary, movie)
+			continue
 		}
 		matches = append(matches, movie)
+	}
+	if len(inLibrary) == 1 || (len(inLibrary) > 1 && year > 0) {
+		return inLibrary[0]
+	}
+	if len(inLibrary) > 1 {
+		return nil // two same-title library entries and no year to pick between them
 	}
 	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
 		return matches[0]
@@ -374,7 +381,7 @@ func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *Sona
 	if normalized == "" {
 		return nil
 	}
-	var matches []*SonarrSeries
+	var inLibrary, matches []*SonarrSeries
 	for i := range series {
 		candidate := &series[i]
 		if normalizeTitleWords(candidate.Title) != normalized {
@@ -384,9 +391,16 @@ func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *Sona
 			continue
 		}
 		if candidate.ID > 0 {
-			return candidate
+			inLibrary = append(inLibrary, candidate)
+			continue
 		}
 		matches = append(matches, candidate)
+	}
+	if len(inLibrary) == 1 || (len(inLibrary) > 1 && year > 0) {
+		return inLibrary[0]
+	}
+	if len(inLibrary) > 1 {
+		return nil // two same-title library entries and no year to pick between them
 	}
 	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
 		return matches[0]

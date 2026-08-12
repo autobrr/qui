@@ -358,6 +358,22 @@ describe("api.crossseed contract", () => {
       expect(result.partial).toBeUndefined()
       expect(result.queryDegraded).toBeUndefined()
     })
+
+    it("maps the arr_no_ids degradation reason", async () => {
+      server.use(
+        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
+          HttpResponse.json({
+            source_torrent: null,
+            results: [],
+            query_degraded: "arr_no_ids",
+          })
+        )
+      )
+
+      const result = await api.searchCrossSeedTorrent(1, "abc")
+
+      expect(result.queryDegraded).toBe("arr_no_ids")
+    })
   })
 
   describe("getAsyncFilteringStatus", () => {

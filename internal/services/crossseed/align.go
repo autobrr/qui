@@ -281,7 +281,7 @@ func (s *Service) alignCrossSeedContentPaths(
 		// The folder rename API is as async as the file rename one: 200 OK does not
 		// mean libtorrent applied it. A silently dropped folder rename would leave the
 		// torrent pointing at a nonexistent folder, so verify before reporting success.
-		if !s.verifyFolderRenameCompleted(ctx, instanceID, activeHash, sourceRoot) {
+		if !s.verifyFolderRenameCompleted(ctx, instanceID, activeHash, sourceRoot, targetRoot) {
 			log.Warn().
 				Int("instanceID", instanceID).
 				Str("torrentHash", activeHash).
@@ -1016,42 +1016,44 @@ func planRequiresRenames(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 // fail even when returning 200 OK. This function retries with verification to handle such cases.
 //
 // Timing constants may need adjustment for systems with slow storage or high qBittorrent load.
-// verifyFolderRenameCompleted polls the torrent's file list until no path lives
-// under the old root anymore. Mirrors the file-rename verification: qBittorrent's
-// rename APIs return 200 before libtorrent applies the change and can silently
-// drop it. Like that verification, an unverifiable state (file list unavailable)
+// verifyFolderRenameCompleted polls the torrent's file list until paths live
+// under the new root and none remain under the old one — the folder analogue of
+// the file verification's newPathExists && !oldPathExists. qBittorrent's rename
+// APIs return 200 before libtorrent applies the change and can silently drop it.
+// Like the file verification, an unverifiable state (file list never available)
 // accepts the rename — the API call itself succeeded and absence of evidence is
 // not evidence the rename was dropped.
-func (s *Service) verifyFolderRenameCompleted(ctx context.Context, instanceID int, hash, oldRoot string) bool {
+func (s *Service) verifyFolderRenameCompleted(ctx context.Context, instanceID int, hash, oldRoot, newRoot string) bool {
 	const verifyTimeout = 2 * time.Second
 	const verifyInterval = 150 * time.Millisecond
 
 	canonicalHash := normalizeHash(hash)
 	oldPrefix := oldRoot + "/"
+	newPrefix := newRoot + "/"
 	deadline := time.Now().Add(verifyTimeout)
-	everSawOldPaths := false
+	everVerifiable := false
 	for {
 		filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
 		if err == nil {
 			if files, ok := filesByHash[canonicalHash]; ok && len(files) > 0 {
-				stale := false
+				everVerifiable = true
+				oldPathExists := false
+				newPathExists := false
 				for _, f := range files {
 					if strings.HasPrefix(f.Name, oldPrefix) {
-						stale = true
-						break
+						oldPathExists = true
+					}
+					if strings.HasPrefix(f.Name, newPrefix) {
+						newPathExists = true
 					}
 				}
-				if !stale {
+				if newPathExists && !oldPathExists {
 					return true
 				}
-				everSawOldPaths = true
 			}
 		}
 		if time.Now().After(deadline) || ctx.Err() != nil {
-			// Timed out still seeing old paths: the rename demonstrably did not
-			// land. Timed out without ever seeing the file list: unverifiable,
-			// accept (matches renameFileWithVerification's unverifiable path).
-			return !everSawOldPaths
+			return !everVerifiable
 		}
 		time.Sleep(verifyInterval)
 	}

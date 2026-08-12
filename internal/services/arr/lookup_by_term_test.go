@@ -70,6 +70,21 @@ func TestClient_LookupByTerm_Radarr(t *testing.T) {
 			wantNil:      true,
 		},
 		{
+			name:         "ambiguous in-library titles without year refuse",
+			term:         "Solitude",
+			responseCode: http.StatusOK,
+			responseBody: `[{"id": 42, "title": "Solitude", "year": 2019, "tmdbId": 9999}, {"id": 43, "title": "Solitude", "year": 1993, "tmdbId": 1234}]`,
+			wantNil:      true,
+		},
+		{
+			name:         "in-library ambiguity resolved by year",
+			term:         "Solitude",
+			year:         1993,
+			responseCode: http.StatusOK,
+			responseBody: `[{"id": 42, "title": "Solitude", "year": 2019, "tmdbId": 9999}, {"id": 43, "title": "Solitude", "year": 1993, "tmdbId": 1234}]`,
+			wantTMDbID:   1234,
+		},
+		{
 			name:         "normalized title match",
 			term:         "solitude",
 			responseCode: http.StatusOK,
@@ -177,6 +192,24 @@ func TestClient_LookupByTerm_Sonarr(t *testing.T) {
 		require.NotNil(t, result.IDs)
 		assert.Equal(t, 471000, result.IDs.TVDbID)
 		assert.Contains(t, result.Titles, "Kodoku no Solitude")
+	})
+
+	t.Run("ambiguous in-library titles without year refuse", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v3/series/lookup" {
+				t.Errorf("unexpected ARR request: %s", r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`[{"id": 42, "title": "Solitude", "tvdbId": 471000}, {"id": 43, "title": "Solitude", "tvdbId": 471001}]`))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, "test-api-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+		result, err := client.LookupByTerm(context.Background(), "Solitude", 0)
+
+		require.NoError(t, err)
+		require.Nil(t, result)
 	})
 
 	t.Run("no match returns nil", func(t *testing.T) {
