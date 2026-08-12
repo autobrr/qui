@@ -4,8 +4,10 @@
 package backups
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,6 +106,50 @@ func TestBackupDirOverridesDataDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(backupDir, "instance-7"), abs)
 	assert.Equal(t, filepath.Join("backups", "instance-7"), base)
+}
+
+func TestDeleteRunKeepsBlobReferencedUnderOtherSpelling(t *testing.T) {
+	db := setupTestBackupDB(t)
+	instanceID := insertTestInstance(t, db, "test-instance")
+	store := models.NewBackupStore(db)
+
+	backupDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: t.TempDir(), BackupDir: backupDir}, nil)
+
+	blobAbs := filepath.Join(backupDir, "torrents", "aa", "bb", "cc", "shared.torrent")
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbs), 0o755))
+	require.NoError(t, os.WriteFile(blobAbs, []byte("shared"), 0o600))
+
+	ctx := t.Context()
+	now := time.Unix(0, 0).UTC()
+	makeRun := func(blobRel string) *models.BackupRun {
+		run := &models.BackupRun{
+			InstanceID:  instanceID,
+			Kind:        models.BackupRunKindManual,
+			Status:      models.BackupRunStatusSuccess,
+			RequestedBy: "tester",
+			RequestedAt: now,
+			StartedAt:   &now,
+			CompletedAt: &now,
+		}
+		require.NoError(t, store.CreateRun(ctx, run))
+		require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+			RunID:           run.ID,
+			TorrentHash:     "shared-hash",
+			Name:            "Shared Torrent",
+			SizeBytes:       6,
+			TorrentBlobPath: &blobRel,
+		}}))
+		return run
+	}
+
+	// Both spellings resolve to the same blob file (see TestResolveBackupPath).
+	canonical := makeRun("backups/torrents/aa/bb/cc/shared.torrent")
+	makeRun("torrents/aa/bb/cc/shared.torrent")
+
+	require.NoError(t, svc.DeleteRun(ctx, canonical.ID))
+
+	require.FileExists(t, blobAbs, "blob still referenced by the remaining run must survive the delete")
 }
 
 func TestBackupDirDefaultsUnderDataDir(t *testing.T) {

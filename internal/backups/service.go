@@ -2155,24 +2155,28 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		return
 	}
 
+	// Rows can reference the same blob under the canonical "backups/"-prefixed
+	// spelling or the legacy unprefixed one; both resolve to the same file, so
+	// count remaining references across both spellings before deleting.
 	seen := make(map[string]struct{})
-	var uniqueBlobs []string
+	var uniqueBlobs, lookup []string
 
 	for _, item := range items {
 		if item == nil || item.TorrentBlobPath == nil {
 			continue
 		}
 
-		rel := strings.TrimSpace(*item.TorrentBlobPath)
-		if rel == "" {
+		canon := backupRelPath(*item.TorrentBlobPath)
+		if canon == "" {
 			continue
 		}
-		if _, ok := seen[rel]; ok {
+		if _, ok := seen[canon]; ok {
 			continue
 		}
 
-		seen[rel] = struct{}{}
-		uniqueBlobs = append(uniqueBlobs, rel)
+		seen[canon] = struct{}{}
+		uniqueBlobs = append(uniqueBlobs, canon)
+		lookup = append(lookup, canon, "backups/"+canon)
 	}
 
 	if len(uniqueBlobs) == 0 {
@@ -2180,35 +2184,31 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 	}
 
 	// Batch count references for all blobs
-	refCounts, err := s.store.CountBlobReferencesBatch(ctx, uniqueBlobs)
+	refCounts, err := s.store.CountBlobReferencesBatch(ctx, lookup)
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to count torrent blob references")
 		// Fall back to individual counts if batch fails
 		refCounts = make(map[string]int)
-		for _, blob := range uniqueBlobs {
-			count, err := s.store.CountBlobReferences(ctx, blob)
+		for _, form := range lookup {
+			count, err := s.store.CountBlobReferences(ctx, form)
 			if err != nil {
-				log.Warn().Err(err).Str("blob", blob).Msg("Failed to count torrent blob references")
+				log.Warn().Err(err).Str("blob", form).Msg("Failed to count torrent blob references")
 				continue
 			}
-			refCounts[blob] = count
+			refCounts[form] = count
 		}
 	}
 
 	var blobsToDelete []string
 
-	for _, rel := range uniqueBlobs {
-		count, exists := refCounts[rel]
-		if !exists {
-			count = 0 // If not in map, assume 0 references
-		}
-		if count > 0 {
+	for _, canon := range uniqueBlobs {
+		if refCounts[canon]+refCounts["backups/"+canon] > 0 {
 			continue
 		}
 
-		abs := s.ResolveBackupPath(rel)
+		abs := s.ResolveBackupPath(canon)
 		if abs == "" {
-			log.Warn().Str("blob", rel).Msg("Cannot cleanup torrent blob without backup directory")
+			log.Warn().Str("blob", canon).Msg("Cannot cleanup torrent blob without backup directory")
 			continue
 		}
 		blobsToDelete = append(blobsToDelete, abs)
