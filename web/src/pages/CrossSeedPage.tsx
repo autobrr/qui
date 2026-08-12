@@ -2927,30 +2927,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
-              {/* Matching behavior */}
+              {/* Search category rules */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
-                  <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
+                  <p className="text-sm font-medium leading-none">{t("rules.matching.categoryMapping.title")}</p>
+                  <p className="text-xs text-muted-foreground">{t("rules.matching.categoryMapping.description")}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
-                    <FieldHelp>{t("rules.matching.crossSeedEpisodesDescription")}</FieldHelp>
-                  </div>
-                  <Switch
-                    id="global-find-individual-episodes"
-                    checked={globalSettings.findIndividualEpisodes}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, findIndividualEpisodes: !!value }))}
-                  />
-                </div>
-                <div className="pt-3 border-t border-border/50">
-                  <CategoryMappingRulesEditor
-                    value={globalSettings.categoryMappingRules}
-                    onChange={rules => setGlobalSettings(prev => ({ ...prev, categoryMappingRules: rules }))}
-                    categoryMetadata={webhookSourceMetadata?.categories ?? {}}
-                  />
-                </div>
+                <CategoryMappingRulesEditor
+                  value={globalSettings.categoryMappingRules}
+                  onChange={rules => setGlobalSettings(prev => ({ ...prev, categoryMappingRules: rules }))}
+                  categoryMetadata={webhookSourceMetadata?.categories ?? {}}
+                />
               </div>
 
               {/* Season packs */}
@@ -3167,6 +3154,22 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     id="skip-piece-boundary-check"
                     checked={!globalSettings.skipPieceBoundarySafetyCheck}
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipPieceBoundarySafetyCheck: !value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Episodes */}
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
+                  <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
+                  <Switch
+                    id="global-find-individual-episodes"
+                    checked={globalSettings.findIndividualEpisodes}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, findIndividualEpisodes: !!value }))}
                   />
                 </div>
               </div>

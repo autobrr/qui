@@ -4,7 +4,6 @@
  */
 
 import { Button } from "@/components/ui/button"
-import { FieldHelp } from "@/components/ui/field-help"
 import { MultiSelect, type Option } from "@/components/ui/multi-select"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { buildCategorySelectOptions } from "@/lib/category-utils"
@@ -49,11 +48,6 @@ export function CategoryMappingRulesEditor({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-1.5">
-        <p className="text-sm font-medium leading-none">{t("rules.matching.categoryMapping.title")}</p>
-        <FieldHelp>{t("rules.matching.categoryMapping.description")}</FieldHelp>
-      </div>
-
       <div className="space-y-2">
         {value.map((rule, index) => (
           <div key={index} className="flex flex-wrap items-center gap-2">
