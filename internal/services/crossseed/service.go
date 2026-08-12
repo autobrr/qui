@@ -8125,12 +8125,12 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 		out := &gazelleClientSet{byHost: make(map[string]*gazellemusic.Client, 2)}
 		if settings != nil {
 			if key := strings.TrimSpace(settings.RedactedAPIKey); key != "" && !domain.IsRedactedString(key) {
-				if c, err := gazellemusic.NewClient("https://redacted.sh", key); err == nil {
+				if c, err := gazellemusic.NewClient("redacted.sh", "", key); err == nil {
 					out.byHost["redacted.sh"] = c
 				}
 			}
 			if key := strings.TrimSpace(settings.OrpheusAPIKey); key != "" && !domain.IsRedactedString(key) {
-				if c, err := gazellemusic.NewClient("https://orpheus.network", key); err == nil {
+				if c, err := gazellemusic.NewClient("orpheus.network", "", key); err == nil {
 					out.byHost["orpheus.network"] = c
 				}
 			}
@@ -8152,7 +8152,7 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 		if !ok || strings.TrimSpace(key) == "" {
 			continue
 		}
-		client, err := gazellemusic.NewClient("https://"+strings.TrimSpace(host), key)
+		client, err := gazellemusic.NewClient(host, "", key)
 		if err != nil {
 			log.Warn().Err(err).Str("host", host).Msg("[CROSSSEED-GAZELLE] Failed to initialize client")
 			continue
