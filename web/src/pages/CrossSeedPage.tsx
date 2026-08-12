@@ -6,6 +6,7 @@
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
+import { CategoryMappingRulesEditor } from "@/components/crossseed/CategoryMappingRulesEditor"
 import { SeasonPackCategoryRulesEditor } from "@/components/crossseed/SeasonPackCategoryRulesEditor"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -53,6 +54,7 @@ import type {
   CrossSeedRun,
   CrossSeedSearchResult,
   Instance,
+  CategoryMappingRule,
   SeasonPackCategoryRule,
   SeasonPackRun
 } from "@/types"
@@ -92,6 +94,7 @@ interface AutomationFormState {
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
+  categoryMappingRules: CategoryMappingRule[]
   autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
@@ -165,6 +168,7 @@ const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
+  categoryMappingRules: [],
   autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
@@ -1122,6 +1126,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
+        categoryMappingRules: settings.categoryMappingRules ?? [],
         autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
@@ -1226,6 +1231,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
+      categoryMappingRules: settings.categoryMappingRules ?? [],
       autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
@@ -1271,6 +1277,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
+      categoryMappingRules: globalSource.categoryMappingRules,
       autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
@@ -2935,6 +2942,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     id="global-find-individual-episodes"
                     checked={globalSettings.findIndividualEpisodes}
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, findIndividualEpisodes: !!value }))}
+                  />
+                </div>
+                <div className="pt-3 border-t border-border/50">
+                  <CategoryMappingRulesEditor
+                    value={globalSettings.categoryMappingRules}
+                    onChange={rules => setGlobalSettings(prev => ({ ...prev, categoryMappingRules: rules }))}
+                    categoryMetadata={webhookSourceMetadata?.categories ?? {}}
                   />
                 </div>
               </div>

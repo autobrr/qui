@@ -491,6 +491,44 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 	}
 }
 
+// TestRuleContentTypeInfo covers the category mapping rules from discussion
+// #1734: a rule names a content type as a string, and the classification must
+// come out identical to a release that parsed as that type.
+func TestRuleContentTypeInfo(t *testing.T) {
+	tests := []struct {
+		contentType string
+		wantSearch  string
+		wantIsMusic bool
+	}{
+		{contentType: "movie", wantSearch: "movie"},
+		{contentType: "tv", wantSearch: "tvsearch"},
+		{contentType: "music", wantSearch: "music", wantIsMusic: true},
+		{contentType: "audiobook", wantSearch: "music", wantIsMusic: true},
+		{contentType: "book", wantSearch: "book"},
+		{contentType: "comic", wantSearch: "book"},
+		{contentType: "game", wantSearch: "search"},
+		{contentType: "app", wantSearch: "search"},
+		{contentType: "adult"},
+		{contentType: "unknown"},
+		{contentType: ""},
+	}
+
+	for _, tt := range tests {
+		wantOK := tt.wantSearch != ""
+		t.Run("contentType="+tt.contentType, func(t *testing.T) {
+			info, ok := RuleContentTypeInfo(tt.contentType)
+			assert.Equal(t, wantOK, ok)
+			if !wantOK {
+				return
+			}
+			assert.Equal(t, tt.contentType, info.ContentType)
+			assert.Equal(t, tt.wantSearch, info.SearchType)
+			assert.Equal(t, tt.wantIsMusic, info.IsMusic)
+			assert.NotEmpty(t, info.Categories)
+		})
+	}
+}
+
 // TestGameSceneGroupDetection verifies that releases from known game scene groups
 // are correctly detected as games via the rls library's group detection.
 func TestGameSceneGroupDetection(t *testing.T) {

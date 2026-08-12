@@ -231,6 +231,36 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	return classifyRelease(normalizeReleaseTypeForContent(release))
 }
 
+// RuleContentTypeInfo builds the classification a category mapping rule forces.
+// It classifies a synthetic release of the rule's content type, so the result
+// stays identical to a release that parsed as that type. Returns false for
+// content types a rule cannot force. The API handler also uses it to validate
+// incoming rules, so the list of valid content types lives here only.
+func RuleContentTypeInfo(contentType string) (ContentTypeInfo, bool) {
+	var releaseType rls.Type
+	switch contentType {
+	case "movie":
+		releaseType = rls.Movie
+	case "tv":
+		releaseType = rls.Series
+	case "music":
+		releaseType = rls.Music
+	case "audiobook":
+		releaseType = rls.Audiobook
+	case "book":
+		releaseType = rls.Book
+	case "comic":
+		releaseType = rls.Comic
+	case "game":
+		releaseType = rls.Game
+	case "app":
+		releaseType = rls.App
+	default:
+		return ContentTypeInfo{}, false
+	}
+	return classifyRelease(&rls.Release{Type: releaseType}), true
+}
+
 func classifyRelease(release *rls.Release) ContentTypeInfo {
 	var info ContentTypeInfo
 
