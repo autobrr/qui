@@ -94,7 +94,7 @@ func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 			// A rule with an empty category never matches, so the rows that rely on the
 			// file signal keep the settings a nil loader would have produced.
 			settings := models.DefaultCrossSeedAutomationSettings()
-			settings.CategoryMappingRules = []models.CategoryMappingRule{{Category: tt.category, ContentType: "music"}}
+			settings.CategoryMappingRules = []models.CategoryMappingRule{{Categories: []string{tt.category}, ContentType: "music"}}
 
 			ctx := context.Background()
 			db := testdb.NewMigratedSQLite(t, "crossseed-forced-music-query")

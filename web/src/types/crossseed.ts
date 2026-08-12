@@ -149,7 +149,7 @@ export interface SeasonPackCategoryRule {
 }
 
 export interface CategoryMappingRule {
-  category: string
+  categories: string[]
   contentType: string
 }
 

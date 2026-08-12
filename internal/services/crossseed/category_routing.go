@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -89,7 +90,7 @@ func matchCategoryMappingRule(rules []models.CategoryMappingRule, category strin
 		return "", false
 	}
 	for _, rule := range rules {
-		if rule.Category == category {
+		if slices.Contains(rule.Categories, category) {
 			return rule.ContentType, true
 		}
 	}

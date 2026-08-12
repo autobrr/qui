@@ -6787,12 +6787,14 @@ components:
     CategoryMappingRule:
       type: object
       required:
-        - category
+        - categories
         - contentType
       properties:
-        category:
-          type: string
-          description: qBittorrent category name to match. The match is exact and case-sensitive.
+        categories:
+          type: array
+          items:
+            type: string
+          description: qBittorrent category names to match. Each match is exact and case-sensitive. A category claimed by an earlier rule is dropped from later ones.
         contentType:
           type: string
           enum:
@@ -6804,7 +6806,7 @@ components:
             - comic
             - game
             - app
-          description: Content type forced for torrents in the matched category. A matching rule wins over name and file based detection.
+          description: Content type forced for torrents in any of the matched categories. A matching rule wins over name and file based detection.
 
     CrossSeedAutomationSettingsPatch:
       type: object

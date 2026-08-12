@@ -37,12 +37,13 @@ type SeasonPackCategoryRule struct {
 	Category   string `json:"category"`   // qBittorrent category to file the add under
 }
 
-// CategoryMappingRule forces the cross-seed search category for torrents in a
-// qBittorrent category (discussion #1734). The category must match exactly; a
-// matching rule wins over both the name parse and the file-extension signal.
+// CategoryMappingRule forces the cross-seed search category for torrents in any
+// of a set of qBittorrent categories (discussion #1734). A category must match
+// exactly; a matching rule wins over both the name parse and the file-extension
+// signal.
 type CategoryMappingRule struct {
-	Category    string `json:"category"`    // qBittorrent category name, exact match
-	ContentType string `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app
+	Categories  []string `json:"categories"`  // qBittorrent category names, exact match
+	ContentType string   `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app
 }
 
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
@@ -624,6 +625,12 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if err := decodeJSONSlice(categoryMappingRules, &settings.CategoryMappingRules); err != nil {
 		return nil, fmt.Errorf("decode category mapping rules: %w", err)
 	}
+	// A rule written before a rule could carry several categories decodes with
+	// none. It can never match, and its nil list would reach the API as a null
+	// where the schema promises an array, so drop it on read.
+	settings.CategoryMappingRules = slices.DeleteFunc(settings.CategoryMappingRules, func(rule CategoryMappingRule) bool {
+		return len(rule.Categories) == 0
+	})
 
 	if createdAt.Valid {
 		settings.CreatedAt = createdAt.Time

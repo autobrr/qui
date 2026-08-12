@@ -31,7 +31,7 @@ export function CategoryMappingRulesEditor({
   const { t } = useTranslation("crossseed")
 
   const categoryOptions = useMemo<Option[]>(
-    () => buildCategorySelectOptions(categoryMetadata, value.map(rule => rule.category)),
+    () => buildCategorySelectOptions(categoryMetadata, value.flatMap(rule => rule.categories)),
     [categoryMetadata, value]
   )
 
@@ -44,7 +44,7 @@ export function CategoryMappingRulesEditor({
   }
 
   const addRule = () => {
-    onChange([...value, { category: "", contentType: "music" }])
+    onChange([...value, { categories: [], contentType: "music" }])
   }
 
   return (
@@ -60,11 +60,11 @@ export function CategoryMappingRulesEditor({
             <span className="text-xs text-muted-foreground">{t("rules.matching.categoryMapping.whenCategory")}</span>
             <MultiSelect
               options={categoryOptions}
-              selected={rule.category ? [rule.category] : []}
-              onChange={values => updateRule(index, { category: values[0] ?? "" })}
-              onCreateOption={category => updateRule(index, { category })}
+              selected={rule.categories}
+              onChange={categories => updateRule(index, { categories })}
+              onCreateOption={category => updateRule(index, { categories: [...rule.categories, category] })}
               placeholder={t("rules.categories.selectOrTypeCategory")}
-              className="w-[180px]"
+              className="w-[240px]"
               creatable
             />
 

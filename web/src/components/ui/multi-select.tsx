@@ -28,6 +28,18 @@ export interface Option {
   icon?: React.ReactNode
 }
 
+/**
+ * Toggles `item` in `selected`. In single mode a new pick replaces whatever was
+ * there instead of appending, so a caller that stores one string does not keep
+ * the stale first entry and appear to ignore the click.
+ */
+export function nextSelection(selected: string[], item: string, single: boolean): string[] {
+  if (selected.includes(item)) {
+    return selected.filter((i) => i !== item)
+  }
+  return single ? [item] : [...selected, item]
+}
+
 interface MultiSelectProps {
   options: Option[]
   selected: string[]
@@ -40,6 +52,13 @@ interface MultiSelectProps {
   /** Hide the check icon in dropdown items (useful when options have icons) */
   hideCheckIcon?: boolean
   title?: string
+  /**
+   * Hold at most one value. Picking a second option replaces the first instead
+   * of appending, and the popover closes on select. Callers that store a single
+   * string need this: without it the appended value lands at the end of the
+   * array, the caller keeps `selected[0]`, and the click looks ignored.
+   */
+  single?: boolean
 }
 
 export function MultiSelect({
@@ -53,6 +72,7 @@ export function MultiSelect({
   disabled = false,
   hideCheckIcon = false,
   title,
+  single = false,
 }: MultiSelectProps) {
   const { t } = useTranslation("common")
   const [open, setOpen] = React.useState(false)
@@ -67,10 +87,9 @@ export function MultiSelect({
   }
 
   const handleSelect = (item: string) => {
-    if (selectedSet.has(item)) {
-      handleUnselect(item)
-    } else {
-      onChange([...selected, item])
+    onChange(nextSelection(selected, item, single))
+    if (single && !selectedSet.has(item)) {
+      setOpen(false)
     }
     setInputValue("")
   }

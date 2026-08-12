@@ -3114,6 +3114,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
                       className="max-w-sm"
                       creatable
+                      single
                       disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
@@ -3262,6 +3263,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                             placeholder={t("rules.categories.selectOrTypeCategory")}
                             className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
                             creatable
+                            single
                             onCreateOption={value => {
                               setGlobalSettings(prev => ({ ...prev, customCategory: value }))
                               setValidationErrors(prev => ({ ...prev, customCategory: "" }))

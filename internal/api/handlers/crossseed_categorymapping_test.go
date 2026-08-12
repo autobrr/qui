@@ -18,35 +18,52 @@ func TestNormalizeCategoryMappingRules(t *testing.T) {
 		want []models.CategoryMappingRule
 	}{
 		{
-			name: "trims category, trims and lowercases content type",
-			in:   []models.CategoryMappingRule{{Category: " music ", ContentType: " Music "}},
-			want: []models.CategoryMappingRule{{Category: "music", ContentType: "music"}},
+			name: "trims categories, trims and lowercases content type",
+			in:   []models.CategoryMappingRule{{Categories: []string{" music ", " flac"}, ContentType: " Music "}},
+			want: []models.CategoryMappingRule{{Categories: []string{"music", "flac"}, ContentType: "music"}},
 		},
 		{
 			name: "keeps category case, qBittorrent categories are case-sensitive",
-			in:   []models.CategoryMappingRule{{Category: "Music", ContentType: "music"}},
-			want: []models.CategoryMappingRule{{Category: "Music", ContentType: "music"}},
+			in:   []models.CategoryMappingRule{{Categories: []string{"Music"}, ContentType: "music"}},
+			want: []models.CategoryMappingRule{{Categories: []string{"Music"}, ContentType: "music"}},
 		},
 		{
-			name: "drops rules missing a category or content type",
+			name: "drops rules left with no category, and rules with no content type",
 			in: []models.CategoryMappingRule{
-				{Category: "", ContentType: "music"},
-				{Category: "music", ContentType: ""},
+				{Categories: []string{"", "  "}, ContentType: "music"},
+				{Categories: nil, ContentType: "music"},
+				{Categories: []string{"music"}, ContentType: ""},
 			},
 			want: []models.CategoryMappingRule{},
 		},
 		{
 			name: "drops rules with an unrecognized content type",
-			in:   []models.CategoryMappingRule{{Category: "music", ContentType: "podcast"}},
+			in:   []models.CategoryMappingRule{{Categories: []string{"music"}, ContentType: "podcast"}},
 			want: []models.CategoryMappingRule{},
 		},
 		{
-			name: "dedupes on category keeping the first",
+			name: "dedupes a category within one rule",
+			in:   []models.CategoryMappingRule{{Categories: []string{"music", "music"}, ContentType: "music"}},
+			want: []models.CategoryMappingRule{{Categories: []string{"music"}, ContentType: "music"}},
+		},
+		{
+			name: "a category claimed by an earlier rule is dropped from the later one",
 			in: []models.CategoryMappingRule{
-				{Category: "music", ContentType: "music"},
-				{Category: "music", ContentType: "movie"},
+				{Categories: []string{"music", "flac"}, ContentType: "music"},
+				{Categories: []string{"music", "films"}, ContentType: "movie"},
 			},
-			want: []models.CategoryMappingRule{{Category: "music", ContentType: "music"}},
+			want: []models.CategoryMappingRule{
+				{Categories: []string{"music", "flac"}, ContentType: "music"},
+				{Categories: []string{"films"}, ContentType: "movie"},
+			},
+		},
+		{
+			name: "a later rule left empty by deduping is dropped entirely",
+			in: []models.CategoryMappingRule{
+				{Categories: []string{"music"}, ContentType: "music"},
+				{Categories: []string{"music"}, ContentType: "movie"},
+			},
+			want: []models.CategoryMappingRule{{Categories: []string{"music"}, ContentType: "music"}},
 		},
 	}
 

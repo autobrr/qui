@@ -217,9 +217,9 @@ func TestMatchSeasonPackCategoryRule(t *testing.T) {
 
 func TestMatchCategoryMappingRule(t *testing.T) {
 	rules := []models.CategoryMappingRule{
-		{Category: "music", ContentType: "music"},
-		{Category: "music", ContentType: "movie"},
-		{Category: "abooks", ContentType: "audiobook"},
+		{Categories: []string{"music", "flac"}, ContentType: "music"},
+		{Categories: []string{"music"}, ContentType: "movie"},
+		{Categories: []string{"abooks"}, ContentType: "audiobook"},
 	}
 
 	tests := []struct {
@@ -244,7 +244,14 @@ func TestMatchCategoryMappingRule(t *testing.T) {
 			wantMatched: true,
 		},
 		{
-			name:        "second rule category matches",
+			name:        "any category in the same rule matches",
+			rules:       rules,
+			category:    "flac",
+			wantType:    "music",
+			wantMatched: true,
+		},
+		{
+			name:        "later rule category matches",
 			rules:       rules,
 			category:    "abooks",
 			wantType:    "audiobook",
@@ -266,7 +273,7 @@ func TestMatchCategoryMappingRule(t *testing.T) {
 		},
 		{
 			name:        "empty torrent category never matches",
-			rules:       []models.CategoryMappingRule{{Category: "", ContentType: "music"}},
+			rules:       []models.CategoryMappingRule{{Categories: []string{""}, ContentType: "music"}},
 			category:    "",
 			wantType:    "",
 			wantMatched: false,
@@ -288,7 +295,7 @@ func TestContentTypeFromCategoryRule(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				CategoryMappingRules: []models.CategoryMappingRule{
-					{Category: "music", ContentType: "music"},
+					{Categories: []string{"music"}, ContentType: "music"},
 				},
 			}, nil
 		},

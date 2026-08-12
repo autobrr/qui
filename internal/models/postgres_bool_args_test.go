@@ -444,12 +444,12 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 	settings.SeasonPackAutomationEnabled = true
 	settings.AutoResumeMaxDownloadMB = 200
 	settings.RescueTitleMismatches = true
-	settings.CategoryMappingRules = []CategoryMappingRule{{Category: "music", ContentType: "music"}}
+	settings.CategoryMappingRules = []CategoryMappingRule{{Categories: []string{"music", "flac"}, ContentType: "music"}}
 
 	stored, err := store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
 	require.Len(t, insertArgs, 53)
-	require.JSONEq(t, `[{"category":"music","contentType":"music"}]`, insertArgs[20].(string), "category_mapping_rules should keep its column position")
+	require.JSONEq(t, `[{"categories":["music","flac"],"contentType":"music"}]`, insertArgs[20].(string), "category_mapping_rules should keep its column position")
 	require.Equal(t, settings.CategoryMappingRules, stored.CategoryMappingRules, "category_mapping_rules should survive the round trip")
 	require.Equal(t, 200, insertArgs[17], "auto_resume_max_download_mb should keep its column position")
 	require.Equal(t, 200, stored.AutoResumeMaxDownloadMB, "auto_resume_max_download_mb should survive the round trip")

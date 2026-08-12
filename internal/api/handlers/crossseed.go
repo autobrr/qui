@@ -462,31 +462,37 @@ func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []m
 }
 
 // normalizeCategoryMappingRules cleans up incoming category mapping rules: it
-// trims fields, lowercases the content type, drops rules missing a category or
-// carrying an unrecognized content type, and dedupes on category keeping the
-// first match. Category case is kept because qBittorrent categories are
-// case-sensitive.
+// trims fields, lowercases the content type, drops rules with no categories left
+// or an unrecognized content type, and drops a category once it has been claimed
+// by an earlier rule, so the first rule listing it wins. Category case is kept
+// because qBittorrent categories are case-sensitive.
 func normalizeCategoryMappingRules(rules []models.CategoryMappingRule) []models.CategoryMappingRule {
 	normalized := make([]models.CategoryMappingRule, 0, len(rules))
 	seen := make(map[string]struct{}, len(rules))
 	for _, rule := range rules {
-		category := strings.TrimSpace(rule.Category)
-		if category == "" {
-			continue
-		}
-
 		contentType := strings.ToLower(strings.TrimSpace(rule.ContentType))
 		if _, ok := crossseed.RuleContentTypeInfo(contentType); !ok {
 			continue
 		}
 
-		if _, ok := seen[category]; ok {
+		categories := make([]string, 0, len(rule.Categories))
+		for _, category := range rule.Categories {
+			category = strings.TrimSpace(category)
+			if category == "" {
+				continue
+			}
+			if _, ok := seen[category]; ok {
+				continue
+			}
+			seen[category] = struct{}{}
+			categories = append(categories, category)
+		}
+		if len(categories) == 0 {
 			continue
 		}
-		seen[category] = struct{}{}
 
 		normalized = append(normalized, models.CategoryMappingRule{
-			Category:    category,
+			Categories:  categories,
 			ContentType: contentType,
 		})
 	}
