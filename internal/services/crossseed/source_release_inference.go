@@ -98,7 +98,7 @@ func (s *Service) deriveTVReleaseFromFiles(name string, parsed *rls.Release, fil
 	}
 
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(name, parsed, files)
-	contentInfo := DetermineContentType(contentDetectionRelease)
+	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
 	derived := s.selectSourceReleaseForSearch(parsed, contentDetectionRelease, files, contentInfo)
 	if !isTVRelease(derived) {
 		return nil
