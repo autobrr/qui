@@ -172,7 +172,7 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Seeding on Other Instance          | Boolean - a matching torrent is actively seeding on at least one other active instance |
 | Cross-seed Exists on Same Instance | Boolean - another matching torrent exists on this instance                      |
 | Cross-seed Seeding on Same Instance | Boolean - another matching torrent is actively seeding on this instance        |
-| Cross-seed Tags                    | String - the tags on this torrent and all its same-instance cross-seeds combined. Positive operators match when any copy carries a matching tag; NOT operators match when no copy does. Regex runs over the combined tag string |
+| Cross-seed Tags                    | String - the tags on this torrent and all its same-instance cross-seeds combined. Positive operators match when any copy carries a matching tag; NOT operators match when no copy does. Regex runs over the combined tag string. Falls back to the torrent's own tags when no cross-seed member data is available |
 
 #### Filesystem Fields
 
