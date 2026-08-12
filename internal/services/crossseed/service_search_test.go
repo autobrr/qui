@@ -2360,21 +2360,10 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 }
 
 // gazelleTestServer stands in for the real Gazelle APIs so tests never send
-// requests to the live trackers. Registering its host is what lets NewClient
-// accept a loopback base URL: it rejects hosts outside KnownTrackers.
-var gazelleTestServer = func() *httptest.Server {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "unexpected gazelle API call: "+r.URL.Path, http.StatusNotImplemented)
-	}))
-	host := server.Listener.Addr().String()
-	gazellemusic.KnownTrackers[host] = gazellemusic.TrackerSpec{
-		Host:       host,
-		RateLimit:  1000,
-		RatePeriod: 1,
-		SourceFlag: "OPS",
-	}
-	return server
-}()
+// requests to the live trackers.
+var gazelleTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "unexpected gazelle API call: "+r.URL.Path, http.StatusNotImplemented)
+}))
 
 // stubGazelleMatchLookup keeps a test off the real tracker APIs when it builds a
 // client through buildGazelleClientSet, which always points at the live hosts.
@@ -2393,7 +2382,7 @@ func stubGazelleMatchLookup(t *testing.T) {
 // gazelleClientsForTest returns a client set keyed by the real OPS host, because
 // host matching uses that key, but the client itself talks to the test server.
 func gazelleClientsForTest() (*gazelleClientSet, error) {
-	client, err := gazellemusic.NewClient(gazelleTestServer.URL, "ops-key")
+	client, err := gazellemusic.NewClient("orpheus.network", gazelleTestServer.URL, "ops-key")
 	if err != nil {
 		return nil, err
 	}
