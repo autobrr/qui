@@ -6698,7 +6698,9 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	// Special case: file has explicit episode markers → trust it for TV detection
 	// Handles season packs where torrent name has year but files have episode numbers
 	// Only apply when titles match (to avoid unrelated files in wrong folders)
-	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" && sourceContent.ContentType == "movie" {
+	// Music too: series folders like "Show (2006)" parse as music and lose the markers.
+	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" &&
+		(sourceContent.ContentType == "movie" || sourceContent.ContentType == "music") {
 		if largestRelease.Episode > 0 || largestRelease.Series > 0 {
 			log.Debug().
 				Str("torrentName", torrentName).
