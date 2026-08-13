@@ -286,6 +286,8 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		if len(spec.Manifest.Tags) > 0 {
 			options["tags"] = strings.Join(spec.Manifest.Tags, ",")
 		}
+		// Category and tags ride on the add. A post-add SetCategory raced the
+		// sync cache and failed for a torrent qB had accepted (#2259).
 
 		// Pin the captured per-torrent save path so torrents whose on-disk
 		// location diverges from their category (cross-seed hardlinks, manual
@@ -314,20 +316,6 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		}
 		if pinned {
 			pinnedSavePaths++
-		}
-
-		desiredCategory := normalizeCategory(spec.Manifest.Category)
-		if desiredCategory != "" {
-			if err := s.torrentWriter.SetCategory(ctx, instanceID, []string{spec.Manifest.Hash}, desiredCategory); err != nil {
-				appendRestoreError(errs, "set_category", spec.Manifest.Hash, err)
-			}
-		}
-
-		if len(spec.Manifest.Tags) > 0 {
-			tagPayload := strings.Join(spec.Manifest.Tags, ",")
-			if err := s.torrentWriter.SetTags(ctx, instanceID, []string{spec.Manifest.Hash}, tagPayload); err != nil {
-				appendRestoreError(errs, "set_tags", spec.Manifest.Hash, err)
-			}
 		}
 
 		applied.Torrents.Added = append(applied.Torrents.Added, spec.Manifest.Hash)
