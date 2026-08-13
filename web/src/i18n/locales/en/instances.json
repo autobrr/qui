@@ -920,6 +920,7 @@
       "scanTruncated": " (scan was truncated, more files may exist)",
       "viewPreview": "View Preview",
       "recentScans": "Recent Scans",
+      "scannedPaths": "Scanned Paths ({{total}})",
       "zeroOrphans": "0 orphans",
       "deletedStats": "{{deleted}} deleted · {{size}}",
       "partialFailure": "Partial failure - check recent scans",

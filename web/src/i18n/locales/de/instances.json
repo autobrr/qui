@@ -920,6 +920,7 @@
       "scanTruncated": " (Scan wurde gekürzt, möglicherweise existieren weitere Dateien)",
       "viewPreview": "Vorschau anzeigen",
       "recentScans": "Letzte Scans",
+      "scannedPaths": "Gescannte Pfade ({{total}})",
       "zeroOrphans": "0 Orphans",
       "deletedStats": "{{deleted}} gelöscht · {{size}}",
       "partialFailure": "Teilweise fehlgeschlagen – prüfe die letzten Scans",

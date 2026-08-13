@@ -902,6 +902,7 @@
       "scanTruncated": " (스캔이 잘렸으며, 파일이 더 있을 수 있습니다)",
       "viewPreview": "미리 보기",
       "recentScans": "최근 스캔",
+      "scannedPaths": "스캔한 경로 ({{total}})",
       "zeroOrphans": "고아 파일 0개",
       "deletedStats": "{{deleted}}개 삭제됨 · {{size}}",
       "partialFailure": "부분 실패 - 최근 스캔을 확인하세요",
