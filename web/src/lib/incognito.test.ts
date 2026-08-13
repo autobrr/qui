@@ -21,7 +21,7 @@ describe("incognito flavors", () => {
 
   it("serves spreadsheet vocabulary when the theme is active", () => {
     document.documentElement.setAttribute("data-theme", SPREADSHEET_THEME_ID)
-    expect(getLinuxIsoName(HASH)).toMatch(/\.(xlsx|csv|pdf|docx)$/)
+    expect(getLinuxIsoName(HASH)).toMatch(/\.(xlsx|csv|pdf|docx|vsdx)$/)
     expect(getLinuxTrackerDomain(HASH)).toMatch(/corp\.internal$/)
     expect(getLinuxSavePath(HASH)).toMatch(/^\/shares\//)
     expect(getIncognitoTags(true)).toContain("pending review")
