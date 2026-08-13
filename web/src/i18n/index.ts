@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { spreadsheetPostProcessor } from "@/lib/spreadsheet-disguise"
 import i18n, { type ResourceKey, type ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
 
@@ -129,15 +130,22 @@ export const namespaces = [
 // Initialize synchronously with English so i18n.t works the moment this module is
 // imported (lib helpers and tests rely on this). The active language, if not English,
 // falls back to English until its chunk is loaded by initI18n().
-i18n.use(initReactI18next).init({
+i18n.use(initReactI18next).use(spreadsheetPostProcessor).init({
   resources: { en: enResources },
   lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",
   ns: [...namespaces],
+  postProcess: ["spreadsheetDisguise"],
   interpolation: {
     escapeValue: false, // React already escapes
   },
+})
+
+// The Spreadsheet theme swaps a handful of visible strings; a theme switch must
+// re-render translated components for the swap to take effect immediately.
+window.addEventListener("themechange", () => {
+  i18n.emit("languageChanged", i18n.language)
 })
 
 // Ensure the active language's resources are loaded before the app renders, so users
