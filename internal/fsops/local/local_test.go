@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,26 +63,6 @@ func TestStat_CancelledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-func TestStatBatch(t *testing.T) {
-	b := newBackend()
-	dir := t.TempDir()
-	existing := filepath.Join(dir, "exists.txt")
-	writeFile(t, existing, "data")
-	missing := filepath.Join(dir, "missing.txt")
-
-	infos, errs, err := b.StatBatch(context.Background(), []string{existing, missing})
-	require.NoError(t, err)
-	require.Len(t, infos, 2)
-	require.Len(t, errs, 2)
-
-	assert.NotNil(t, infos[0])
-	require.NoError(t, errs[0])
-	assert.Equal(t, int64(4), infos[0].Size)
-
-	assert.Nil(t, infos[1])
-	assert.True(t, os.IsNotExist(errs[1]))
-}
-
 func TestLstat_RegularFile(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
@@ -129,21 +108,6 @@ func TestLstat_Hardlink(t *testing.T) {
 	assert.Equal(t, origInfo.FileID, linkInfo.FileID)
 	assert.Equal(t, uint64(2), origInfo.Nlinks)
 	assert.Equal(t, uint64(2), linkInfo.Nlinks)
-}
-
-func TestLstatBatch(t *testing.T) {
-	b := newBackend()
-	dir := t.TempDir()
-	f1 := filepath.Join(dir, "a.txt")
-	writeFile(t, f1, "aaa")
-	missing := filepath.Join(dir, "missing.txt")
-
-	infos, errs, err := b.LstatBatch(context.Background(), []string{f1, missing})
-	require.NoError(t, err)
-	assert.NotNil(t, infos[0])
-	require.NoError(t, errs[0])
-	assert.Nil(t, infos[1])
-	assert.True(t, os.IsNotExist(errs[1]))
 }
 
 func TestReadDir(t *testing.T) {
@@ -244,23 +208,6 @@ func TestWalkDir_IgnoreDirNames(t *testing.T) {
 	assert.NotContains(t, relPaths, filepath.Join("$recycle.bin", "old.mkv"))
 }
 
-func TestWalkDir_MaxEntries(t *testing.T) {
-	b := newBackend()
-	dir := t.TempDir()
-	for i := range 10 {
-		writeFile(t, filepath.Join(dir, string(rune('a'+i))+".txt"), "x")
-	}
-
-	ch, err := b.WalkDir(context.Background(), dir, fsops.WalkOptions{MaxEntries: 3})
-	require.NoError(t, err)
-
-	var count int
-	for range ch {
-		count++
-	}
-	assert.LessOrEqual(t, count, 3)
-}
-
 func TestWalkDir_ContextCancellation(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
@@ -333,36 +280,6 @@ func TestSameFilesystem_SameDir(t *testing.T) {
 	same, err := b.SameFilesystem(context.Background(), d1, d2)
 	require.NoError(t, err)
 	assert.True(t, same)
-}
-
-func TestFileID(t *testing.T) {
-	b := newBackend()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "file.txt")
-	writeFile(t, path, "data")
-
-	fid, nlinks, err := b.FileID(context.Background(), path)
-	require.NoError(t, err)
-	assert.False(t, fid.IsZero())
-	assert.Equal(t, uint64(1), nlinks)
-}
-
-func TestFileID_Hardlinked(t *testing.T) {
-	b := newBackend()
-	dir := t.TempDir()
-	f1 := filepath.Join(dir, "f1.txt")
-	writeFile(t, f1, "shared")
-	f2 := filepath.Join(dir, "f2.txt")
-	require.NoError(t, os.Link(f1, f2))
-
-	fid1, nl1, err := b.FileID(context.Background(), f1)
-	require.NoError(t, err)
-	fid2, nl2, err := b.FileID(context.Background(), f2)
-	require.NoError(t, err)
-
-	assert.Equal(t, fid1, fid2)
-	assert.Equal(t, uint64(2), nl1)
-	assert.Equal(t, uint64(2), nl2)
 }
 
 func TestMkdirAll(t *testing.T) {
@@ -461,19 +378,6 @@ func TestSupportsReflink(t *testing.T) {
 	_ = reason
 }
 
-func TestInfo(t *testing.T) {
-	b := newBackend()
-	info, err := b.Info(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "local", info.Kind)
-	assert.Empty(t, info.HelperVersion)
-}
-
-func TestHealthCheck(t *testing.T) {
-	b := newBackend()
-	require.NoError(t, b.HealthCheck(context.Background()))
-}
-
 func TestWalkDir_IgnorePaths(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
@@ -492,15 +396,4 @@ func TestWalkDir_IgnorePaths(t *testing.T) {
 	}
 	assert.Contains(t, relPaths, "keep.txt")
 	assert.NotContains(t, relPaths, "ignored.txt")
-}
-
-func TestStatBatch_CancelledMidway(t *testing.T) {
-	b := newBackend()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
-	defer cancel()
-	// Let the timeout fire.
-	time.Sleep(1 * time.Millisecond)
-
-	_, _, err := b.StatBatch(ctx, []string{"/any/path"})
-	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

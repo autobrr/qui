@@ -7,7 +7,6 @@ import (
 	"context"
 	"io/fs"
 
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -30,14 +29,8 @@ func noopErr(ctx context.Context) error {
 func (noopBackend) Stat(ctx context.Context, _ string) (*FileInfo, error) {
 	return nil, noopErr(ctx)
 }
-func (noopBackend) StatBatch(ctx context.Context, _ []string) ([]*FileInfo, []error, error) {
-	return nil, nil, noopErr(ctx)
-}
 func (noopBackend) Lstat(ctx context.Context, _ string) (*LstatInfo, error) {
 	return nil, noopErr(ctx)
-}
-func (noopBackend) LstatBatch(ctx context.Context, _ []string) ([]*LstatInfo, []error, error) {
-	return nil, nil, noopErr(ctx)
 }
 func (noopBackend) ReadDir(ctx context.Context, _ string, _ int) ([]DirEntry, bool, error) {
 	return nil, false, noopErr(ctx)
@@ -50,9 +43,6 @@ func (noopBackend) Statfs(ctx context.Context, _ string) (*StatfsResult, error) 
 }
 func (noopBackend) SameFilesystem(ctx context.Context, _, _ string) (bool, error) {
 	return false, noopErr(ctx)
-}
-func (noopBackend) FileID(ctx context.Context, _ string) (hardlink.FileID, uint64, error) {
-	return hardlink.FileID{}, 0, noopErr(ctx)
 }
 func (noopBackend) MkdirAll(ctx context.Context, _ string, _ fs.FileMode) error {
 	return noopErr(ctx)
@@ -71,10 +61,4 @@ func (noopBackend) RemoveTree(ctx context.Context, _ *TreeCreateResult) error {
 }
 func (noopBackend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
 	return false, "", noopErr(ctx)
-}
-func (noopBackend) Info(context.Context) (*BackendInfo, error) {
-	return &BackendInfo{Kind: "none"}, nil
-}
-func (noopBackend) HealthCheck(ctx context.Context) error {
-	return noopErr(ctx)
 }

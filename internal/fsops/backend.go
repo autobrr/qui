@@ -7,7 +7,6 @@ import (
 	"context"
 	"io/fs"
 
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -25,17 +24,9 @@ type Backend interface {
 	// fs.ErrNotExist if the path does not exist.
 	Stat(ctx context.Context, path string) (*FileInfo, error)
 
-	// StatBatch returns metadata for multiple paths. Per-path errors are in the
-	// []error slice (indexed parallel to paths); a non-nil top-level error means
-	// the entire batch failed.
-	StatBatch(ctx context.Context, paths []string) ([]*FileInfo, []error, error)
-
 	// Lstat is like Stat but does not follow symlinks. Populates FileID and
 	// Nlinks from the underlying inode.
 	Lstat(ctx context.Context, path string) (*LstatInfo, error)
-
-	// LstatBatch is like StatBatch but for Lstat.
-	LstatBatch(ctx context.Context, paths []string) ([]*LstatInfo, []error, error)
 
 	// ReadDir returns directory entries. If maxEntries > 0 the result is
 	// truncated and the bool return is true.
@@ -52,9 +43,6 @@ type Backend interface {
 	// SameFilesystem returns true if both paths reside on the same filesystem
 	// (same device ID on Unix, same volume serial on Windows).
 	SameFilesystem(ctx context.Context, p1, p2 string) (bool, error)
-
-	// FileID returns the unique file identity and link count for path.
-	FileID(ctx context.Context, path string) (hardlink.FileID, uint64, error)
 
 	// --- Write (mutating) ---
 
@@ -87,13 +75,4 @@ type Backend interface {
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
-
-	// --- Diagnostic ---
-
-	// Info returns metadata about this backend (kind, version, capabilities).
-	Info(ctx context.Context) (*BackendInfo, error)
-
-	// HealthCheck returns nil if the backend is operational, or an error
-	// describing the problem.
-	HealthCheck(ctx context.Context) error
 }
