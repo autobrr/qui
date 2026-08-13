@@ -307,12 +307,25 @@ type TorrentSearchResult struct {
 	SearchSourceTitles []string `json:"-"`
 }
 
+// Reasons for TorrentSearchResponse.QueryDegraded. No reason is reported when
+// ARR is not configured or the content type has no ARR lookup: that is normal
+// steady state, not a degradation of this search.
+const (
+	// QueryDegradedARRLookupFailed means the ARR external-ID lookup errored.
+	QueryDegradedARRLookupFailed = "arr_lookup_failed"
+	// QueryDegradedARRNoIDs means ARR responded but returned no usable IDs.
+	QueryDegradedARRNoIDs = "arr_no_ids"
+)
+
 // TorrentSearchResponse bundles the seeded torrent information with potential cross-seed matches.
 type TorrentSearchResponse struct {
 	SourceTorrent TorrentInfo                  `json:"source_torrent"`
 	Results       []TorrentSearchResult        `json:"results"`
 	Cache         *jackett.SearchCacheMetadata `json:"cache,omitempty"`
 	Partial       bool                         `json:"partial,omitempty"`
+	// QueryDegraded is set when the ARR external-ID lookup could not supply IDs
+	// and the Torznab search fell back to a title-only text query.
+	QueryDegraded string `json:"query_degraded,omitempty"`
 	// JobID identifies this search for outcome tracking (cross-seed)
 	JobID uint64 `json:"jobId,omitempty"`
 	// CoveredIndexerIDs lists the Torznab indexers that answered every search

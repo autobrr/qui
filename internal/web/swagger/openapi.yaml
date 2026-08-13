@@ -7631,6 +7631,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedTorrentSearchResult'
+        query_degraded:
+          type: string
+          description: Set when the ARR external-ID lookup could not supply IDs and the search fell back to a title-only text query.
+          enum:
+            - arr_lookup_failed
+            - arr_no_ids
 
     CrossSeedApplySelection:
       type: object

@@ -152,9 +152,24 @@ func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
 	var arrService *arr.Service
 	svc := &Service{arrService: arrService}
 
-	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
+	got, degraded := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
 
 	require.Nil(t, got)
+	require.Empty(t, degraded)
+}
+
+func TestLookupARRExternalIDsNoInstancesIsNotDegraded(t *testing.T) {
+	// A (nil, nil) lookup result means no enabled ARR instance covers the
+	// content type — installs without ARR must not see a degradation banner
+	// on every search.
+	spy := &spyARRLookupService{}
+	svc := &Service{arrService: spy}
+
+	got, degraded := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
+
+	require.True(t, spy.called)
+	require.Nil(t, got)
+	require.Empty(t, degraded)
 }
 
 func TestAutomationTorrentSearchContext(t *testing.T) {
@@ -215,6 +230,7 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 		lookupErr       error
 		wantResult      bool
 		wantCalled      bool
+		wantDegraded    string
 	}{
 		{
 			name:            "movie maps to Radarr",
@@ -254,6 +270,7 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 			wantContentType: arr.ContentTypeMovie,
 			lookupErr:       errors.New("lookup failed"),
 			wantCalled:      true,
+			wantDegraded:    QueryDegradedARRLookupFailed,
 		},
 	}
 
@@ -269,9 +286,10 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 			}
 			svc := &Service{arrService: spy}
 
-			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
+			got, degraded := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
 
 			require.Equal(t, tt.wantCalled, spy.called)
+			require.Equal(t, tt.wantDegraded, degraded)
 			if !tt.wantCalled {
 				require.Nil(t, got)
 				return
@@ -302,12 +320,13 @@ func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
 	}
 	svc := &Service{arrService: spy}
 
-	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
+	got, degraded := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
 
 	require.NotNil(t, got)
 	require.True(t, got.IDs.IsEmpty())
 	require.Equal(t, titles, got.Titles)
 	require.Equal(t, arr.ContentTypeAnime, spy.contentType)
+	require.Equal(t, QueryDegradedARRNoIDs, degraded)
 }
 
 func TestGazelleTargetsForSource(t *testing.T) {
