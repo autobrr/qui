@@ -35,8 +35,8 @@ func (f fakeBackend) Stat(context.Context, string) (*FileInfo, error) {
 	return &FileInfo{}, nil
 }
 func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
-func (f fakeBackend) ReadDir(context.Context, string, int) ([]DirEntry, bool, error) {
-	return nil, false, nil
+func (f fakeBackend) ReadDir(context.Context, string) ([]DirEntry, error) {
+	return nil, nil
 }
 func (f fakeBackend) WalkDir(context.Context, string, WalkOptions) (<-chan WalkEntry, error) {
 	return nil, nil
@@ -109,7 +109,7 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 	_, err = b.Lstat(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
-	_, _, err = b.ReadDir(ctx, "/x", 0)
+	_, err = b.ReadDir(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.WalkDir(ctx, "/x", WalkOptions{})

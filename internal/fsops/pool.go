@@ -27,12 +27,6 @@ type instanceGetter interface {
 
 // NewPool creates a Backend pool backed by the given instance store and local backend.
 func NewPool(store instanceGetter, local Backend) *Pool {
-	if store == nil {
-		panic("fsops.NewPool: instanceStore must not be nil")
-	}
-	if local == nil {
-		panic("fsops.NewPool: local backend must not be nil")
-	}
 	return &Pool{
 		instanceStore: store,
 		local:         local,

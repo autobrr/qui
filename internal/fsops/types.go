@@ -60,8 +60,8 @@ type WalkOptions struct {
 	// (OS/NAS metadata dirs like $RECYCLE.BIN and @eaDir vary in on-disk case).
 	IgnoreDirNames []string
 	IgnorePaths    []string
-	WantFileID     bool
-	WantNlinks     bool
+	// WantFileID populates FileID and Nlinks on regular-file entries.
+	WantFileID bool
 }
 
 // StatfsResult holds filesystem space information.

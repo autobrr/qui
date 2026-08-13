@@ -118,9 +118,8 @@ func TestReadDir(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "b.txt"), "b")
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "subdir"), 0o755))
 
-	entries, truncated, err := b.ReadDir(context.Background(), dir, 0)
+	entries, err := b.ReadDir(context.Background(), dir)
 	require.NoError(t, err)
-	assert.False(t, truncated)
 	assert.Len(t, entries, 3)
 
 	names := make([]string, len(entries))
@@ -130,19 +129,6 @@ func TestReadDir(t *testing.T) {
 	assert.Contains(t, names, "a.txt")
 	assert.Contains(t, names, "b.txt")
 	assert.Contains(t, names, "subdir")
-}
-
-func TestReadDir_Truncated(t *testing.T) {
-	b := newBackend()
-	dir := t.TempDir()
-	for i := range 5 {
-		writeFile(t, filepath.Join(dir, string(rune('a'+i))+".txt"), "x")
-	}
-
-	entries, truncated, err := b.ReadDir(context.Background(), dir, 2)
-	require.NoError(t, err)
-	assert.True(t, truncated)
-	assert.Len(t, entries, 2)
 }
 
 func TestWalkDir_Basic(t *testing.T) {
