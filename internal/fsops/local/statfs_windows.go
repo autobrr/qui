@@ -8,7 +8,6 @@ package local
 import (
 	"context"
 	"fmt"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 
@@ -27,10 +26,7 @@ func (b *Backend) Statfs(ctx context.Context, path string) (*fsops.StatfsResult,
 
 	var freeBytesAvailable, totalBytes, totalFreeBytes uint64
 	if err := windows.GetDiskFreeSpaceEx(
-		pathPtr,
-		(*uint64)(unsafe.Pointer(&freeBytesAvailable)),
-		(*uint64)(unsafe.Pointer(&totalBytes)),
-		(*uint64)(unsafe.Pointer(&totalFreeBytes)),
+		pathPtr, &freeBytesAvailable, &totalBytes, &totalFreeBytes,
 	); err != nil {
 		return nil, fmt.Errorf("GetDiskFreeSpaceEx %s: %w", path, err)
 	}

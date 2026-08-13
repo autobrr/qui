@@ -30,9 +30,8 @@ type Backend interface {
 	// identity-opaque file cannot fail callers that only need metadata.
 	Lstat(ctx context.Context, path string) (*LstatInfo, error)
 
-	// ReadDir returns directory entries. If maxEntries > 0 the result is
-	// truncated and the bool return is true.
-	ReadDir(ctx context.Context, path string, maxEntries int) ([]DirEntry, bool, error)
+	// ReadDir returns directory entries.
+	ReadDir(ctx context.Context, path string) ([]DirEntry, error)
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
 	// The channel is closed when the walk completes, is cancelled via ctx, or

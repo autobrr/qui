@@ -32,8 +32,8 @@ func (noopBackend) Stat(ctx context.Context, _ string) (*FileInfo, error) {
 func (noopBackend) Lstat(ctx context.Context, _ string) (*LstatInfo, error) {
 	return nil, noopErr(ctx)
 }
-func (noopBackend) ReadDir(ctx context.Context, _ string, _ int) ([]DirEntry, bool, error) {
-	return nil, false, noopErr(ctx)
+func (noopBackend) ReadDir(ctx context.Context, _ string) ([]DirEntry, error) {
+	return nil, noopErr(ctx)
 }
 func (noopBackend) WalkDir(ctx context.Context, _ string, _ WalkOptions) (<-chan WalkEntry, error) {
 	return nil, noopErr(ctx)
