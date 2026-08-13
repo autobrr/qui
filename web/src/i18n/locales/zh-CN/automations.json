@@ -44,7 +44,7 @@
     "tooltip": "查找磁盘上未与 qBittorrent 中任何种子关联的文件。需要为每个实例启用本地文件系统访问。",
     "description": "扫描下载目录并识别孤立文件以便清理。",
     "noLocalAccess": "无本地访问权限",
-    "localAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\u201c本地文件系统访问\u201d以使用孤立文件扫描。",
+    "localAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用“本地文件系统访问”以使用孤立文件扫描。",
     "autoCleanupEnabled": "自动清理已启用（不超过 {{maxFiles}} 个文件）",
     "autoCleanupDisabled": "自动清理已禁用",
     "pathsIgnored": "{{count}} 个路径已忽略",
@@ -55,7 +55,7 @@
     "scanTruncated": "（扫描已截断，可能存在更多文件）",
     "viewPreview": "查看预览",
     "recentScans": "最近的扫描",
-    "noScansYet": "尚未运行任何扫描。点击\u201c立即扫描\u201d查找孤立文件。",
+    "noScansYet": "尚未运行任何扫描。点击“立即扫描”查找孤立文件。",
     "partialFailure": "部分失败 - 展开查看详情",
     "partialFailureCheck": "部分失败 - 请查看最近的扫描",
     "copiedToClipboard": "已复制到剪贴板",
@@ -210,6 +210,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "在其他实例做种",
       "EXISTS_ON_SAME_INSTANCE": "辅种存在于同一实例",
       "SEEDING_ON_SAME_INSTANCE": "辅种在同一实例做种",
+      "CROSS_SEED_TAGS": "交叉做种标签",
       "HARDLINK_SCOPE": "硬链接范围"
     },
     "fieldGroups": {
