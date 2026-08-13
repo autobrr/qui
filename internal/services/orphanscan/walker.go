@@ -549,7 +549,7 @@ func discParentIsSafeDiscRoot(parentAbs, marker string, tfm *TorrentFileMap) boo
 
 // isIgnoredPath checks if path matches any ignore prefix with boundary safety.
 // Ensures /data/foo doesn't match /data/foobar (requires separator after prefix).
-// Uses normalizePath for consistent comparison across platforms (handles Windows casing).
+// Uses normalizePath for consistent comparison across platforms.
 func isIgnoredPath(path string, ignorePaths []string) bool {
 	normPath := normalizePath(path)
 	for _, prefix := range ignorePaths {
@@ -644,7 +644,9 @@ func isPathProtectedByIgnorePaths(path string, ignorePaths []string) bool {
 }
 
 // NormalizeIgnorePaths validates and normalizes ignore paths.
-// All paths must be absolute. Uses normalizePath for consistency (Windows casing).
+// All paths must be absolute. The result is stored in settings and shown in the
+// UI, so it keeps the casing the user typed; matching case-folds on both sides
+// (see isIgnoredPath).
 func NormalizeIgnorePaths(paths []string) ([]string, error) {
 	result := make([]string, 0, len(paths))
 	for _, p := range paths {
@@ -652,7 +654,7 @@ func NormalizeIgnorePaths(paths []string) ([]string, error) {
 		if !filepath.IsAbs(cleaned) {
 			return nil, fmt.Errorf("ignore path must be absolute: %s", p)
 		}
-		result = append(result, normalizePath(cleaned))
+		result = append(result, cleanPath(cleaned))
 	}
 	return result, nil
 }

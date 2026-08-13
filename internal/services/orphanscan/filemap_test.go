@@ -5,7 +5,6 @@ package orphanscan
 
 import (
 	"path/filepath"
-	"runtime"
 	"testing"
 	"unicode/utf8"
 )
@@ -63,9 +62,6 @@ func TestNormalizePath_UnicodeCanonicalEquivalence(t *testing.T) {
 
 func TestNormalizePath_InvalidUTF8Preserved(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == goosWindows {
-		t.Skip("windows path handling lower-cases before UTF-8 check")
-	}
 
 	// On Unix, filenames are arbitrary bytes; ensure we don't replace invalid
 	// sequences with U+FFFD during normalization.
@@ -82,17 +78,17 @@ func TestNormalizePath_InvalidUTF8Preserved(t *testing.T) {
 	}
 }
 
-func TestNormalizePath_WindowsCaseInsensitive(t *testing.T) {
+// Case-insensitive filesystems (APFS, NTFS, exFAT, SMB, and Docker bind mounts
+// of them) let qBittorrent report two spellings of one directory. Comparison
+// must fold on every OS, not only on Windows.
+func TestNormalizePath_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != goosWindows {
-		t.Skip("windows-only path normalization")
-	}
-
-	p1 := normalizePath(`L:\movies\Code.8.2019.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTG.mkv`)
-	p2 := normalizePath(`l:\MOVIES\Code.8.2019.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTG.mkv`)
+	sep := string(filepath.Separator)
+	p1 := normalizePath(filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv"))
+	p2 := normalizePath(filepath.Join(sep, "downloads", "cross-seed", "trackername", "show.s01e01.mkv"))
 	if p1 != p2 {
-		t.Fatalf("expected normalized paths equal on windows:\n  %q\n  %q", p1, p2)
+		t.Fatalf("expected normalized paths equal:\n  %q\n  %q", p1, p2)
 	}
 
 	m := NewTorrentFileMap()
@@ -102,15 +98,12 @@ func TestNormalizePath_WindowsCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestFindScanRoot_WindowsCaseInsensitive(t *testing.T) {
+func TestFindScanRoot_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS != goosWindows {
-		t.Skip("windows-only path matching")
-	}
-
-	root := `l:\movies`
-	path := `L:\movies\Code.8.2019.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTG.mkv`
+	sep := string(filepath.Separator)
+	root := filepath.Join(sep, "downloads", "cross-seed", "trackername")
+	path := filepath.Join(sep, "downloads", "cross-seed", "TrackerName", "Show.S01E01.mkv")
 
 	got := findScanRoot(path, []string{root})
 	if got != root {

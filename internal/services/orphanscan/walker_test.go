@@ -664,3 +664,55 @@ func TestWalkScanRoot_UnicodeCanonicalEquivalenceDoesNotFalseOrphan(t *testing.T
 		t.Fatalf("expected no orphans for canonical-equivalent unicode paths, got %d: %v", len(orphans), orphans)
 	}
 }
+
+// On a case-insensitive filesystem qBittorrent can report two save paths that
+// differ only by case for one physical directory. The walker sees one spelling
+// on disk; the owned-file map holds the other. See issue #2314.
+func TestWalkScanRoot_CaseDifferenceDoesNotFalseOrphan(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	trackerDir := filepath.Join(root, "TrackerName")
+	if err := os.MkdirAll(trackerDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	onDisk := filepath.Join(trackerDir, "Show.S01E01.mkv")
+	if err := os.WriteFile(onDisk, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(onDisk, old, old)
+
+	// qBittorrent reports the same file under the other casing of the same dir.
+	tfm := NewTorrentFileMap()
+	tfm.Add(filepath.Join(root, "trackername", "Show.S01E01.mkv"))
+
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans for case-different owned path, got %d: %v", len(orphans), orphans)
+	}
+}
+
+func TestNormalizeIgnorePaths_KeepsUserCasing(t *testing.T) {
+	t.Parallel()
+
+	typed := filepath.Join(t.TempDir(), "downloads", "Keep", "Archive")
+
+	got, err := NormalizeIgnorePaths([]string{typed})
+	if err != nil {
+		t.Fatalf("NormalizeIgnorePaths: %v", err)
+	}
+	if len(got) != 1 || got[0] != typed {
+		t.Fatalf("expected ignore path stored verbatim %q, got %v", typed, got)
+	}
+
+	// Matching still folds, so the differently-cased on-disk path stays protected.
+	other := filepath.Join(strings.ToLower(typed), "movie.mkv")
+	if !isIgnoredPath(other, got) {
+		t.Fatalf("expected %q to be ignored by %q", other, got[0])
+	}
+}

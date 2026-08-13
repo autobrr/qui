@@ -4,7 +4,9 @@
 package orphanscan
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -288,4 +290,64 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
 	assert.Contains(t, result.scanRoots, filepath.Clean(contentRoot))
 	assert.NotContains(t, result.scanRoots, filepath.Dir(categoryRoot))
+}
+
+// Two torrents whose save paths differ only by case name the same physical
+// directory on a case-insensitive filesystem, so both spellings must resolve to
+// the same owned files. See issue #2314.
+func TestBuildFileMapFromTorrents_SavePathsDifferingOnlyByCase(t *testing.T) {
+	t.Parallel()
+
+	categoryRoot := filepath.Join(t.TempDir(), "cross-seed")
+	upper := filepath.Join(categoryRoot, "TrackerName")
+	lower := filepath.Join(categoryRoot, "trackername")
+
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{Hash: "upper", SavePath: upper, ContentPath: filepath.Join(upper, "Show.S01"), State: qbt.TorrentStatePausedUp},
+			{Hash: "lower", SavePath: lower, ContentPath: filepath.Join(lower, "Movie.2024"), State: qbt.TorrentStatePausedUp},
+		},
+		map[string]qbt.TorrentFiles{
+			"upper": {{Name: "Show.S01/Show.S01E01.mkv", Size: 1000}},
+			"lower": {{Name: "Movie.2024/Movie.2024.mkv", Size: 2000}},
+		},
+	)
+	require.NoError(t, err)
+
+	// Each file must be found under either spelling of its directory.
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(lower, "Show.S01", "Show.S01E01.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(upper, "Movie.2024", "Movie.2024.mkv"))))
+}
+
+func TestDedupeCaseVariantRoots(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	upper := filepath.Join(base, "TrackerName")
+	require.NoError(t, os.MkdirAll(upper, 0o755))
+	lower := filepath.Join(base, "trackername")
+
+	if _, err := os.Lstat(lower); err == nil {
+		// Case-insensitive filesystem: one directory, two spellings, walk once.
+		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots([]string{upper, lower}))
+		return
+	}
+
+	// Case-sensitive filesystem: nothing may be dropped, because every spelling
+	// is a directory of its own.
+	require.NoError(t, os.MkdirAll(lower, 0o755))
+	missing := filepath.Join(base, "Gone")
+	roots := []string{upper, lower, missing, strings.ToLower(missing)}
+	assert.Equal(t, roots, dedupeCaseVariantRoots(roots))
+
+	// A symlink whose name is a case variant of its target must not evict the
+	// target: filepath.WalkDir does not follow a symlinked scan root, so the
+	// tree would stop being scanned.
+	linked := filepath.Join(base, "Linked")
+	require.NoError(t, os.MkdirAll(linked, 0o755))
+	link := filepath.Join(base, "linked")
+	if err := os.Symlink(linked, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	assert.Equal(t, []string{link, linked}, dedupeCaseVariantRoots([]string{link, linked}))
 }
