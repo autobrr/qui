@@ -1032,8 +1032,12 @@ func (s *Service) verifyFolderRenameCompleted(ctx context.Context, instanceID in
 	newPrefix := newRoot + "/"
 	deadline := time.Now().Add(verifyTimeout)
 	everVerifiable := false
+	// Force fresh file lists: the pre-rename fetch at the top of alignment has
+	// already primed the cache, and polling that snapshot would never see the
+	// rename land (same reason verifyFileRenameCompleted forces refresh).
+	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
 	for {
-		filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{hash})
+		filesByHash, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, instanceID, []string{hash})
 		if err == nil {
 			if files, ok := filesByHash[canonicalHash]; ok && len(files) > 0 {
 				everVerifiable = true

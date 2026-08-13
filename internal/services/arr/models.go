@@ -348,7 +348,7 @@ func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *Radar
 	if normalized == "" {
 		return nil
 	}
-	var inLibrary, matches []*RadarrMovie
+	var exactInLibrary, exactMatches, inLibrary, matches []*RadarrMovie
 	for i := range movies {
 		movie := &movies[i]
 		if normalizeTitleWords(movie.Title) != normalized && normalizeTitleWords(movie.OriginalTitle) != normalized {
@@ -357,11 +357,25 @@ func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *Radar
 		if !lookupYearMatches(year, movie.Year) {
 			continue
 		}
-		if movie.ID > 0 {
+		switch {
+		case year > 0 && movie.Year == year && movie.ID > 0:
+			exactInLibrary = append(exactInLibrary, movie)
+		case year > 0 && movie.Year == year:
+			exactMatches = append(exactMatches, movie)
+		case movie.ID > 0:
 			inLibrary = append(inLibrary, movie)
-			continue
+		default:
+			matches = append(matches, movie)
 		}
-		matches = append(matches, movie)
+	}
+	// An exact-year candidate always beats a ±1 one: the tolerance exists for
+	// premiere-date drift of the same work, not to let an adjacent-year remake
+	// win on library membership.
+	if len(exactInLibrary) > 0 {
+		return exactInLibrary[0]
+	}
+	if len(exactMatches) > 0 {
+		return exactMatches[0]
 	}
 	if len(inLibrary) == 1 || (len(inLibrary) > 1 && year > 0) {
 		return inLibrary[0]
@@ -381,7 +395,7 @@ func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *Sona
 	if normalized == "" {
 		return nil
 	}
-	var inLibrary, matches []*SonarrSeries
+	var exactInLibrary, exactMatches, inLibrary, matches []*SonarrSeries
 	for i := range series {
 		candidate := &series[i]
 		if normalizeTitleWords(candidate.Title) != normalized {
@@ -390,11 +404,22 @@ func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *Sona
 		if !lookupYearMatches(year, candidate.Year) {
 			continue
 		}
-		if candidate.ID > 0 {
+		switch {
+		case year > 0 && candidate.Year == year && candidate.ID > 0:
+			exactInLibrary = append(exactInLibrary, candidate)
+		case year > 0 && candidate.Year == year:
+			exactMatches = append(exactMatches, candidate)
+		case candidate.ID > 0:
 			inLibrary = append(inLibrary, candidate)
-			continue
+		default:
+			matches = append(matches, candidate)
 		}
-		matches = append(matches, candidate)
+	}
+	if len(exactInLibrary) > 0 {
+		return exactInLibrary[0]
+	}
+	if len(exactMatches) > 0 {
+		return exactMatches[0]
 	}
 	if len(inLibrary) == 1 || (len(inLibrary) > 1 && year > 0) {
 		return inLibrary[0]

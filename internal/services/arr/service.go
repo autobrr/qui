@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -133,6 +134,12 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 
 	result, err := s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances, cacheResult == nil)
 	if err != nil {
+		// Instances unreachable: fall back to the cached IDs that triggered this
+		// re-query (e.g. a legacy entry awaiting title hydration) rather than
+		// discarding known-good data over a transient outage.
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
 		return nil, err
 	}
 	if result.IDs == nil || result.IDs.IsEmpty() {
@@ -230,6 +237,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			continue
 		}
 		result, err := client.ParseTitleLookupResult(ctx, title)
+		parseAnswered := err == nil
 		if err != nil {
 			log.Debug().Err(err).
 				Int("instanceId", instance.ID).
@@ -237,14 +245,17 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 				Str("title", title).
 				Msg("[ARR-LOOKUP] Parse request failed")
 			result = nil
-		} else {
-			anyQueried = true
 		}
 
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
 			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse"), nil
 		}
 
+		// anyQueried gates negative caching and the total-failure error: an
+		// instance counts as queried only when its lookup cycle reached an
+		// authoritative empty answer. A parse-empty followed by a lookup error
+		// is inconclusive — parse-empty is exactly the state the title-lookup
+		// fallback exists to distrust.
 		if lookupTerm != "" {
 			lookupResult, lookupErr := client.LookupByTerm(ctx, lookupTerm, lookupYear)
 			if lookupErr != nil {
@@ -259,6 +270,8 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
 				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, lookupResult, "lookup"), nil
 			}
+		} else if parseAnswered {
+			anyQueried = true
 		}
 
 		log.Debug().
@@ -268,7 +281,13 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			Msg("[ARR-LOOKUP] No IDs returned from instance")
 	}
 
-	if cacheNegative && anyQueried {
+	if !anyQueried {
+		// Every instance failed before giving an authoritative answer: surface
+		// the outage instead of a look-alike "no IDs" result, and cache nothing.
+		return nil, fmt.Errorf("arr lookup: all %d instance(s) failed to answer", len(instances))
+	}
+
+	if cacheNegative {
 		if err := s.cacheStore.Set(ctx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}

@@ -85,6 +85,14 @@ func TestClient_LookupByTerm_Radarr(t *testing.T) {
 			wantTMDbID:   1234,
 		},
 		{
+			name:         "exact year beats adjacent-year in-library candidate",
+			term:         "Solitude",
+			year:         2024,
+			responseCode: http.StatusOK,
+			responseBody: `[{"id": 42, "title": "Solitude", "year": 2023, "tmdbId": 9999}, {"title": "Solitude", "year": 2024, "tmdbId": 1234}]`,
+			wantTMDbID:   1234,
+		},
+		{
 			name:         "normalized title match",
 			term:         "solitude",
 			responseCode: http.StatusOK,
@@ -212,6 +220,26 @@ func TestClient_LookupByTerm_Sonarr(t *testing.T) {
 		require.Nil(t, result)
 	})
 
+	t.Run("exact year beats adjacent-year in-library candidate", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v3/series/lookup" {
+				t.Errorf("unexpected ARR request: %s", r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(`[{"id": 42, "title": "Solitude", "year": 2023, "tvdbId": 9999}, {"title": "Solitude", "year": 2024, "tvdbId": 471000}]`))
+		}))
+		defer server.Close()
+
+		client := NewClient(server.URL, "test-api-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+		result, err := client.LookupByTerm(context.Background(), "Solitude", 2024)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.NotNil(t, result.IDs)
+		assert.Equal(t, 471000, result.IDs.TVDbID)
+	})
+
 	t.Run("no match returns nil", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`[{"title": "Solitude Standing", "tvdbId": 9999}]`))
@@ -288,9 +316,9 @@ func TestService_LookupExternalIDsFallsBackWhenParseFails(t *testing.T) {
 }
 
 func TestService_LookupExternalIDsSkipsNegativeCacheWhenBothLegsFail(t *testing.T) {
-	// A transient ARR outage (parse AND lookup erroring) must not write a
-	// negative cache entry that suppresses ID lookups for the negative TTL
-	// after the instance recovers.
+	// A transient ARR outage (parse AND lookup erroring) must surface as an
+	// error — not a look-alike "no IDs" result — and must not write a negative
+	// cache entry that suppresses ID lookups after the instance recovers.
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
@@ -298,12 +326,37 @@ func TestService_LookupExternalIDsSkipsNegativeCacheWhenBothLegsFail(t *testing.
 	ctx := context.Background()
 	result, err := service.LookupExternalIDs(ctx, yearlessDigitGroupRelease, ContentTypeMovie)
 
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Nil(t, result.IDs)
+	require.Error(t, err)
+	require.Nil(t, result)
 
 	_, err = cacheStore.Get(ctx, models.ComputeTitleHash(yearlessDigitGroupRelease), string(ContentTypeMovie))
 	require.Error(t, err, "no cache entry may be written when no endpoint answered")
+}
+
+func TestService_LookupExternalIDsNoNegativeCacheWhenLookupErrors(t *testing.T) {
+	// Parse answering empty is exactly the state the title-lookup fallback
+	// distrusts, so an erroring fallback leaves the cycle inconclusive: no
+	// negative cache, and the failure is surfaced as an error.
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"movie": null}`))
+		case "/api/v3/movie/lookup":
+			http.Error(w, "boom", http.StatusInternalServerError)
+		default:
+			t.Errorf("unexpected ARR request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+
+	ctx := context.Background()
+	result, err := service.LookupExternalIDs(ctx, yearlessDigitGroupRelease, ContentTypeMovie)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+
+	_, err = cacheStore.Get(ctx, models.ComputeTitleHash(yearlessDigitGroupRelease), string(ContentTypeMovie))
+	require.Error(t, err, "an inconclusive lookup cycle must not negative-cache")
 }
 
 func TestService_LookupExternalIDsCachesNegativeWhenLookupEmpty(t *testing.T) {
