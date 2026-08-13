@@ -123,8 +123,13 @@ func newScanWalker(
 	}
 }
 
+// shouldSkipDuplicate dedups nlink==1 files only: seeing the same FileID twice
+// at nlink==1 means the same file is reachable through a second path (bind
+// mount, mergerfs branch), so the alias must not be treated as an independent
+// orphan (#1212). Hardlinked files (nlink>1) are distinct directory entries and
+// each path is reported.
 func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) bool {
-	if fid.IsZero() || nlinks <= 1 {
+	if fid.IsZero() || nlinks > 1 {
 		return false
 	}
 	if _, exists := w.seenFileIDs[fid]; exists {
