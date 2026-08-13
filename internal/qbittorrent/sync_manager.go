@@ -1505,8 +1505,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		// Get all torrents
 		torrentFilterOptions.Filter = qbt.TorrentFilterAll
-		torrentFilterOptions.Sort = sort
-		torrentFilterOptions.Reverse = (order == "desc")
+		setLibrarySort(&torrentFilterOptions, sort, order)
 
 		filteredTorrents = getTorrents(torrentFilterOptions)
 
@@ -1572,11 +1571,16 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 
 		// Set sorting in the filter options (library handles sorting)
-		torrentFilterOptions.Sort = sort
-		torrentFilterOptions.Reverse = (order == "desc")
+		setLibrarySort(&torrentFilterOptions, sort, order)
 
 		// Use library filtering and sorting
 		filteredTorrents = getTorrents(torrentFilterOptions)
+
+		// Nothing narrowed this request, so counts can share this slice instead of
+		// cloning the library again. Every narrowing step below returns a new one.
+		if requestCoversWholeLibrary(torrentFilterOptions) {
+			allTorrentsForCounts = filteredTorrents
+		}
 
 		if canHydrateTrackerHealth && needsTrackerHealthSorting {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
@@ -1662,10 +1666,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		// Materialized inside this branch on purpose: stream ticks leave
 		// includeCachedCounts false, so hoisting it above cloned every torrent
 		// on every tick and discarded the result.
-		var allTorrents []qbt.Torrent
-		if useManualFiltering {
-			allTorrents = allTorrentsForCounts
-		} else {
+		allTorrents := allTorrentsForCounts
+		if allTorrents == nil {
 			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
 		}
 
@@ -3762,11 +3764,13 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 	}
 
-	// Build a torrent map for O(1) lookups
-	torrentMap := make(map[string]*qbt.Torrent, len(allTorrents))
+	// Build a hash to position map for O(1) lookups. Positions rather than
+	// pointers, because sharedContentPaths is indexed the same way.
+	torrentIndex := make(map[string]int, len(allTorrents))
 	for i := range allTorrents {
-		torrentMap[allTorrents[i].Hash] = &allTorrents[i]
+		torrentIndex[allTorrents[i].Hash] = i
 	}
+	sharedContentPaths := findSharedContentPaths(allTorrents)
 
 	// Process tracker counts using validated tracker mapping if available,
 	// falling back to MainData.Trackers for first request before cache is populated.
@@ -3794,14 +3798,14 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			var stats trackerDomainStats
 			for hash := range hashSet {
 				// Only count if the torrent exists in our current torrent list
-				torrent, exists := torrentMap[hash]
+				idx, exists := torrentIndex[hash]
 				if !exists {
 					continue
 				}
 				if _, skip := hashesToSkip[hash]; skip {
 					continue
 				}
-				stats.add(torrent)
+				stats.add(&allTorrents[idx], sharedContentPaths[idx])
 			}
 
 			if stats.sum.Count == 0 {
@@ -3836,8 +3840,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 		// Count torrents per tracker domain. Several tracker URLs can share a
 		// domain, so the same hash can arrive twice and the map dedupes it.
-		trackerDomainCounts := make(map[string]map[string]*qbt.Torrent) // domain -> hash -> torrent
-		trackerDomainSources := make(map[string]string)                 // domain -> example tracker URL for icon fetching
+		trackerDomainCounts := make(map[string]map[string]int) // domain -> hash -> position in allTorrents
+		trackerDomainSources := make(map[string]string)        // domain -> example tracker URL for icon fetching
 		for trackerURL, torrentHashes := range mainData.Trackers {
 			// Extract domain from tracker URL
 			domain := sm.ExtractDomainFromURL(trackerURL)
@@ -3855,19 +3859,19 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			// Add all torrent hashes for this tracker to the domain's set
 			for _, hash := range torrentHashes {
 				// Only count if the torrent exists in our current torrent list
-				if torrent, exists := torrentMap[hash]; exists {
+				if idx, exists := torrentIndex[hash]; exists {
 					// Validate torrent actually belongs to this tracker domain.
 					// MainData.Trackers can be stale when trackers are modified.
-					if !sm.torrentBelongsToTrackerDomain(torrent, domain) {
+					if !sm.torrentBelongsToTrackerDomain(&allTorrents[idx], domain) {
 						continue
 					}
 					if _, skip := exclusions[domain][hash]; skip {
 						continue
 					}
 					if trackerDomainCounts[domain] == nil {
-						trackerDomainCounts[domain] = make(map[string]*qbt.Torrent)
+						trackerDomainCounts[domain] = make(map[string]int)
 					}
-					trackerDomainCounts[domain][hash] = torrent
+					trackerDomainCounts[domain][hash] = idx
 				}
 			}
 		}
@@ -3887,8 +3891,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			counts.Trackers[domain] = len(hashSet)
 
 			var stats trackerDomainStats
-			for _, torrent := range hashSet {
-				stats.add(torrent)
+			for _, idx := range hashSet {
+				stats.add(&allTorrents[idx], sharedContentPaths[idx])
 			}
 			counts.TrackerTransfers[domain] = stats.totals()
 		}
@@ -3913,22 +3917,23 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	// Process each torrent for other counts (status, categories, tags)
 	for i := range allTorrents {
 		torrent := &allTorrents[i]
+		sharedPath := sharedContentPaths[i]
 
 		// Count statuses
 		sm.countTorrentStatuses(torrent, counts.Status)
 
 		// Category count and size (deduplicated by ContentPath)
-		addStat(categoryStats, torrent.Category, torrent)
+		addStat(categoryStats, torrent.Category, torrent, sharedPath)
 
 		// Tag counts and sizes (deduplicated by ContentPath)
 		if torrent.Tags == "" {
-			addStat(tagStats, "", torrent)
+			addStat(tagStats, "", torrent, sharedPath)
 		} else {
 			torrentTags := strings.SplitSeq(torrent.Tags, ",")
 			for tag := range torrentTags {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
-					addStat(tagStats, tag, torrent)
+					addStat(tagStats, tag, torrent, sharedPath)
 				}
 			}
 		}
@@ -3936,11 +3941,11 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 	for category, stats := range categoryStats {
 		counts.Categories[category] = stats.count
-		counts.CategorySizes[category] = stats.size
+		counts.CategorySizes[category] = stats.size.total()
 	}
 	for tag, stats := range tagStats {
 		counts.Tags[tag] = stats.count
-		counts.TagSizes[tag] = stats.size
+		counts.TagSizes[tag] = stats.size.total()
 	}
 
 	// If subcategories are enabled, aggregate subcategory counts and sizes into parent categories
@@ -6037,66 +6042,122 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 	})
 }
 
+// setLibrarySort asks the library to sort unless qui re-sorts the same field
+// itself further down, which would sort the whole library twice to keep the
+// second result.
+//
+// Only fields whose qui comparator breaks every tie can skip it. "eta",
+// "priority" and "state" fall back to the order they were given, and without a
+// library sort that order comes from a map walk that reshuffles on every sync,
+// so rows would move under the cursor.
+func setLibrarySort(options *qbt.TorrentFilterOptions, sort, order string) {
+	switch sort {
+	case "name", "tracker", "added_on", "last_activity", "completion_on", "seen_complete":
+		return
+	}
+
+	options.Sort = sort
+	options.Reverse = order == "desc"
+}
+
+// requestCoversWholeLibrary reports whether these options ask the library for
+// every torrent. Sidebar counts describe the whole library, so they may only
+// share the result of a request that narrowed nothing.
+func requestCoversWholeLibrary(options qbt.TorrentFilterOptions) bool {
+	return options.Category == "" && options.Tag == "" && options.Filter == qbt.TorrentFilterAll
+}
+
+// findSharedContentPaths marks the torrents whose content path another torrent in
+// the same slice also claims. Only cross-seeds need their size deduplicated, and
+// they are a minority of a library, so marking them once lets every other torrent
+// add its size with no bookkeeping at all. The result is indexed by position, so
+// it belongs to the slice it was built from and does not survive a re-sort.
+func findSharedContentPaths(torrents []qbt.Torrent) []bool {
+	shared := make([]bool, len(torrents))
+	firstAt := make(map[string]int, len(torrents))
+	for i := range torrents {
+		if first, seen := firstAt[torrents[i].ContentPath]; seen {
+			shared[first] = true
+			shared[i] = true
+			continue
+		}
+		firstAt[torrents[i].ContentPath] = i
+	}
+	return shared
+}
+
+// dedupedSize totals torrent sizes while counting each content path once, so
+// cross-seeds of the same data do not inflate a sidebar total. When cross-seeds
+// disagree on the size of a path the largest wins, which keeps the total the same
+// whatever order the torrents arrive in.
+type dedupedSize struct {
+	unshared   int64
+	sizeByPath map[string]int64
+}
+
+func (d *dedupedSize) add(torrent *qbt.Torrent, sharedPath bool) {
+	if !sharedPath {
+		d.unshared += torrent.Size
+		return
+	}
+	if d.sizeByPath == nil {
+		d.sizeByPath = make(map[string]int64)
+	}
+	if torrent.Size > d.sizeByPath[torrent.ContentPath] {
+		d.sizeByPath[torrent.ContentPath] = torrent.Size
+	}
+}
+
+func (d *dedupedSize) total() int64 {
+	total := d.unshared
+	for _, size := range d.sizeByPath {
+		total += size
+	}
+	return total
+}
+
 // countWithSize is the sidebar count and deduplicated size of one category or one
-// tag. Cross-seeds share a ContentPath, so a size counts once per path and the
-// first torrent to claim a path wins. Not interchangeable with trackerDomainStats,
-// which keeps the largest size per path and counts empty paths per torrent.
+// tag. Torrents with no content path share the empty one, so they deduplicate
+// together, which is how the sidebar has always counted them.
 type countWithSize struct {
 	count int
-	size  int64
-	seen  map[string]struct{}
+	size  dedupedSize
 }
 
 // addStat counts a torrent under one category or tag key, hashing that key once.
-func addStat(stats map[string]*countWithSize, key string, torrent *qbt.Torrent) {
+func addStat(stats map[string]*countWithSize, key string, torrent *qbt.Torrent, sharedPath bool) {
 	entry := stats[key]
 	if entry == nil {
-		entry = &countWithSize{seen: map[string]struct{}{}}
+		entry = &countWithSize{}
 		stats[key] = entry
 	}
 
 	entry.count++
-	if _, seen := entry.seen[torrent.ContentPath]; !seen {
-		entry.seen[torrent.ContentPath] = struct{}{}
-		entry.size += torrent.Size
-	}
+	entry.size.add(torrent, sharedPath)
 }
 
 // trackerDomainStats aggregates per-tracker transfer totals as torrents arrive,
 // so the counts path does not build a hash set per domain and then walk it a
-// second time. Size counts once per non-empty content path. Empty content paths
-// are counted per torrent because they are unknown identities, not proof of
-// shared data. When cross-seeds disagree on size for the same content path, the
-// largest size is kept for deterministic totals.
+// second time. Empty content paths are counted per torrent because they are
+// unknown identities, not proof of shared data.
 type trackerDomainStats struct {
-	sum               TrackerTransferStats
-	sizeByContentPath map[string]int64
+	sum  TrackerTransferStats
+	size dedupedSize
 }
 
-func (t *trackerDomainStats) add(torrent *qbt.Torrent) {
+func (t *trackerDomainStats) add(torrent *qbt.Torrent, sharedPath bool) {
 	t.sum.Count++
 	t.sum.Uploaded += torrent.Uploaded
 	t.sum.Downloaded += torrent.Downloaded
 	t.sum.UploadedSession += torrent.UploadedSession
 	t.sum.DownloadedSession += torrent.DownloadedSession
 
-	if torrent.ContentPath == "" {
-		t.sum.TotalSize += torrent.Size
-		return
-	}
-	if t.sizeByContentPath == nil {
-		t.sizeByContentPath = make(map[string]int64)
-	}
-	if torrent.Size > t.sizeByContentPath[torrent.ContentPath] {
-		t.sizeByContentPath[torrent.ContentPath] = torrent.Size
-	}
+	t.size.add(torrent, sharedPath && torrent.ContentPath != "")
 }
 
 func (t *trackerDomainStats) totals() TrackerTransferStats {
 	stats := t.sum
-	for _, size := range t.sizeByContentPath {
-		stats.TotalSize += size
-	}
+	stats.TotalSize += t.size.total()
 	return stats
 }
 
@@ -6107,12 +6168,12 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		Total: len(torrents),
 	}
 
-	// Track seen content paths to deduplicate cross-seed sizes
-	totalSizeSeen := make(map[string]struct{})
-	seedingSizeSeen := make(map[string]struct{})
+	var totalSize, seedingSize dedupedSize
+	sharedContentPaths := findSharedContentPaths(torrents)
 
 	for i := range torrents {
 		torrent := &torrents[i]
+		sharedPath := sharedContentPaths[i]
 
 		// Add speeds and session data (not deduplicated - each torrent has its own)
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
@@ -6121,10 +6182,7 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		stats.TotalUploadData += torrent.UploadedSession
 
 		// Add size (deduplicated by ContentPath)
-		if _, seen := totalSizeSeen[torrent.ContentPath]; !seen {
-			totalSizeSeen[torrent.ContentPath] = struct{}{}
-			stats.TotalSize += torrent.Size
-		}
+		totalSize.add(torrent, sharedPath)
 
 		// Count states and calculate specific sizes
 		switch torrent.State {
@@ -6136,20 +6194,10 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 			stats.TotalRemainingSize += torrent.AmountLeft
 		case qbt.TorrentStateStalledDl, qbt.TorrentStateMetaDl, qbt.TorrentStateQueuedDl, qbt.TorrentStateAllocating:
 			// These are downloading states but not actively downloading
-		case qbt.TorrentStateUploading:
+		case qbt.TorrentStateUploading, qbt.TorrentStateForcedUp:
 			stats.Seeding++
 			// Seeding size deduplicated by ContentPath
-			if _, seen := seedingSizeSeen[torrent.ContentPath]; !seen {
-				seedingSizeSeen[torrent.ContentPath] = struct{}{}
-				stats.TotalSeedingSize += torrent.Size
-			}
-		case qbt.TorrentStateForcedUp:
-			stats.Seeding++
-			// Seeding size deduplicated by ContentPath
-			if _, seen := seedingSizeSeen[torrent.ContentPath]; !seen {
-				seedingSizeSeen[torrent.ContentPath] = struct{}{}
-				stats.TotalSeedingSize += torrent.Size
-			}
+			seedingSize.add(torrent, sharedPath)
 		case qbt.TorrentStateStalledUp, qbt.TorrentStateQueuedUp:
 			// These are seeding states but not actively seeding
 		case qbt.TorrentStatePausedDl, qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedDl, qbt.TorrentStateStoppedUp:
@@ -6160,6 +6208,9 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 			stats.Checking++
 		}
 	}
+
+	stats.TotalSize = totalSize.total()
+	stats.TotalSeedingSize = seedingSize.total()
 
 	return stats
 }

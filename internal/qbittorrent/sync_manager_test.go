@@ -2490,6 +2490,9 @@ func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
 			wantTagSizes:     map[string]int64{},
 		},
 		{
+			// The largest size wins so the total does not depend on the order the
+			// library hands the torrents over, which is a map walk that reshuffles
+			// on every sync.
 			name: "cross seeds sharing a content path count once for size",
 			torrents: []qbt.Torrent{
 				{Hash: "a", Category: "tv", ContentPath: "/data/x", Size: 30},
@@ -2497,9 +2500,9 @@ func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
 				{Hash: "c", Category: "tv", ContentPath: "/data/y", Size: 7},
 			},
 			wantCategories:   map[string]int{"tv": 3},
-			wantCategorySize: map[string]int64{"tv": 37},
+			wantCategorySize: map[string]int64{"tv": 307},
 			wantTags:         map[string]int{"": 3},
-			wantTagSizes:     map[string]int64{"": 37},
+			wantTagSizes:     map[string]int64{"": 307},
 		},
 		{
 			name: "empty content paths dedupe too, unlike tracker sizes",
@@ -2508,9 +2511,9 @@ func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
 				{Hash: "b", Category: "tv", Size: 300},
 			},
 			wantCategories:   map[string]int{"tv": 2},
-			wantCategorySize: map[string]int64{"tv": 30},
+			wantCategorySize: map[string]int64{"tv": 300},
 			wantTags:         map[string]int{"": 2},
-			wantTagSizes:     map[string]int64{"": 30},
+			wantTagSizes:     map[string]int64{"": 300},
 		},
 		{
 			name: "a zero size still creates the size entry",
@@ -2569,6 +2572,84 @@ func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
 			require.Equal(t, tt.wantTags, counts.Tags)
 			require.Equal(t, tt.wantTagSizes, counts.TagSizes)
 		})
+	}
+}
+
+// Sidebar and header sizes must not change when the same library arrives in a
+// different order. go-qbittorrent rebuilds its torrent slice by walking a map, so
+// the order changes on every sync, and a size total that picked the first
+// cross-seed of a content path flickered between syncs.
+func TestSizeTotalsDoNotDependOnTorrentOrder(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", Category: "tv", Tags: "cross-seed", ContentPath: "/data/x", Size: 30, State: qbt.TorrentStateUploading},
+		{Hash: "b", Category: "tv", Tags: "cross-seed", ContentPath: "/data/x", Size: 300, State: qbt.TorrentStateUploading},
+		{Hash: "c", Category: "tv", Tags: "cross-seed", ContentPath: "/data/y", Size: 7, State: qbt.TorrentStateUploading},
+	}
+	reversed := []qbt.Torrent{torrents[2], torrents[1], torrents[0]}
+
+	sm := &SyncManager{}
+	forward, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrents, nil, nil, false, false)
+	backward, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, reversed, nil, nil, false, false)
+
+	require.Equal(t, forward.CategorySizes, backward.CategorySizes)
+	require.Equal(t, forward.TagSizes, backward.TagSizes)
+
+	forwardStats := sm.calculateStats(torrents)
+	backwardStats := sm.calculateStats(reversed)
+
+	require.Equal(t, forwardStats.TotalSize, backwardStats.TotalSize)
+	require.Equal(t, forwardStats.TotalSeedingSize, backwardStats.TotalSeedingSize)
+}
+
+func TestFindSharedContentPaths(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{
+		{ContentPath: "/data/x"},
+		{ContentPath: "/data/alone"},
+		{ContentPath: "/data/x"},
+		{ContentPath: ""},
+		{ContentPath: "/data/x"},
+		{ContentPath: ""},
+	}
+
+	// The first torrent of a shared path must be marked too, not only the later
+	// ones, or its size would be added twice.
+	require.Equal(t, []bool{true, false, true, true, true, true}, findSharedContentPaths(torrents))
+	require.Empty(t, findSharedContentPaths(nil))
+}
+
+// Counts describe the whole library, so they may only share the list request's
+// result when that request asked for everything.
+func TestRequestCoversWholeLibrary(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}))
+	require.True(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Sort: "name", Reverse: true}))
+
+	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Category: "movies"}))
+	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll, Tag: "cross-seed"}))
+	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterCompleted}))
+	require.False(t, requestCoversWholeLibrary(qbt.TorrentFilterOptions{}))
+}
+
+func TestSetLibrarySortSkipsFieldsQuiResortsItself(t *testing.T) {
+	t.Parallel()
+
+	for _, field := range []string{"name", "tracker", "added_on", "last_activity", "completion_on", "seen_complete"} {
+		options := qbt.TorrentFilterOptions{}
+		setLibrarySort(&options, field, "desc")
+		require.Empty(t, options.Sort, field)
+		require.False(t, options.Reverse, field)
+	}
+
+	for _, field := range []string{"eta", "priority", "state", "size", "ratio"} {
+		options := qbt.TorrentFilterOptions{}
+		setLibrarySort(&options, field, "desc")
+		require.Equal(t, field, options.Sort, field)
+		require.True(t, options.Reverse, field)
 	}
 }
 

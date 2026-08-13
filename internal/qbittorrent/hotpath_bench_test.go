@@ -25,7 +25,14 @@ func benchTorrents(count int) []qbt.Torrent {
 		qbt.TorrentStateError, qbt.TorrentStateQueuedUp,
 	}
 	categories := []string{"", "movies", "tv", "music", "tv/anime", "books"}
-	tagSets := []string{"", "cross-seed", "cross-seed, unregistered", "hardlinked, permaseed", "permaseed"}
+	// A real 5630-torrent library averages 4.7 category and tag buckets per torrent.
+	tagSets := []string{
+		"cross-seed, permaseed, hardlinked",
+		"cross-seed, unregistered, permaseed, hardlinked",
+		"permaseed, hardlinked, season-pack",
+		"",
+		"cross-seed, permaseed, hardlinked, season-pack, autobrr",
+	}
 	groups := []string{"GRPA", "GrpB", "grpc", "GROUP-D"}
 	trackers := []string{
 		"https://tracker.example.invalid/announce",
@@ -37,8 +44,14 @@ func benchTorrents(count int) []qbt.Torrent {
 	torrents := make([]qbt.Torrent, count)
 	for i := range torrents {
 		name := fmt.Sprintf("Some.Release.Title.%d.S%02dE%02d.2160p.WEB-DL.DDP5.1.HDR.H.265-%s",
-			i%400, i%12+1, i%24+1, groups[i%len(groups)])
+			i, i%12+1, i%24+1, groups[i%len(groups)])
 		hash := fmt.Sprintf("%040x", rng.Uint64())
+		// In a real library 28% of torrents sit on a content path another torrent
+		// also claims, in groups of about 3. Size totals deduplicate those.
+		contentName := name
+		if i%10 < 3 {
+			contentName = fmt.Sprintf("Some.Release.Title.%d.Shared.Content", i-i%10)
+		}
 		torrents[i] = qbt.Torrent{
 			Hash:              hash,
 			InfohashV1:        hash,
@@ -52,7 +65,7 @@ func benchTorrents(count int) []qbt.Torrent {
 			State:             states[i%len(states)],
 			Category:          categories[i%len(categories)],
 			Tags:              tagSets[i%len(tagSets)],
-			ContentPath:       "/data/torrents/" + name,
+			ContentPath:       "/data/torrents/complete/series/" + contentName,
 			AddedOn:           int64(1600000000 + i*37),
 			LastActivity:      int64(1600000000 + i*53),
 			CompletionOn:      int64(1600000000 + i*61),
