@@ -20,6 +20,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -2273,9 +2274,7 @@ func sortedTagKeys(values map[string]struct{}) []string {
 	for value := range values {
 		result = append(result, value)
 	}
-	slices.SortFunc(result, func(a, b string) int {
-		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
-	})
+	slices.SortFunc(result, stringutils.CompareFold)
 
 	return result
 }
@@ -2742,9 +2741,7 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 		tags = []string{}
 	}
 
-	slices.SortFunc(tags, func(a, b string) int {
-		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
-	})
+	slices.SortFunc(tags, stringutils.CompareFold)
 
 	return tags, nil
 }
@@ -3289,14 +3286,8 @@ func filtersRequireTrackerData(filters FilterOptions) bool {
 }
 
 func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
-	if torrent == nil {
+	if torrent == nil || len(torrent.Trackers) == 0 {
 		return false
-	}
-	if torrent.AddedOn > 0 {
-		addedAt := time.Unix(torrent.AddedOn, 0)
-		if time.Since(addedAt) < time.Hour {
-			return false
-		}
 	}
 
 	var hasWorking bool
@@ -3316,7 +3307,19 @@ func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
 		}
 	}
 
-	return hasUnregistered && !hasWorking
+	if !hasUnregistered || hasWorking {
+		return false
+	}
+
+	// A freshly added torrent can report "unregistered" before the tracker has
+	// acknowledged it, so ignore the first hour. Checked last because reading
+	// the clock costs more than scanning the trackers, and this runs once per
+	// torrent for the whole library.
+	if torrent.AddedOn > 0 && time.Since(time.Unix(torrent.AddedOn, 0)) < time.Hour {
+		return false
+	}
+
+	return true
 }
 
 func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
@@ -3379,7 +3382,9 @@ func (sm *SyncManager) torrentHasTrackerError(torrent *qbt.Torrent) bool {
 }
 
 func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealth {
-	if torrent == nil {
+	// Without tracker data every health check below is false by construction,
+	// and most torrents reach here unhydrated.
+	if torrent == nil || len(torrent.Trackers) == 0 {
 		return ""
 	}
 	if sm.torrentIsUnregistered(torrent) {
@@ -3643,11 +3648,11 @@ func (sm *SyncManager) recordTrackerTransition(client *Client, oldURL, newURL st
 }
 
 // countTorrentStatuses counts torrent statuses efficiently in a single pass
-func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[string]int) {
+func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counts map[string]int) {
 	// Count "all"
 	counts["all"]++
 
-	switch sm.determineTrackerHealth(&torrent) {
+	switch sm.determineTrackerHealth(torrent) {
 	case TrackerHealthUnregistered:
 		counts["unregistered"]++
 	case TrackerHealthDown:
@@ -3686,16 +3691,27 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	}
 
 	// Count other status categories
-	for status, states := range torrentStateCategories {
-		if slices.Contains(states, torrent.State) {
-			// Skip "active", "paused", and "stopped" as we handled them above
-			if status != qbt.TorrentFilterActive && status != qbt.TorrentFilterPaused &&
-				status != qbt.TorrentFilterStopped {
-				counts[string(status)]++
-			}
-		}
+	for _, status := range countableStatusesForState[torrent.State] {
+		counts[status]++
 	}
 }
+
+// countableStatusesForState inverts torrentStateCategories so counting a
+// torrent is one map lookup instead of a scan of every category. "active",
+// "paused" and "stopped" are left out because countTorrentStatuses counts them
+// directly, including their inverses.
+var countableStatusesForState = func() map[qbt.TorrentState][]string {
+	byState := make(map[qbt.TorrentState][]string)
+	for status, states := range torrentStateCategories {
+		if status == qbt.TorrentFilterActive || status == qbt.TorrentFilterPaused || status == qbt.TorrentFilterStopped {
+			continue
+		}
+		for _, state := range states {
+			byState[state] = append(byState[state], string(status))
+		}
+	}
+	return byState
+}()
 
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information.
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent.
@@ -3898,7 +3914,9 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	tagSizeSeen := make(map[string]map[string]struct{})
 
 	// Process each torrent for other counts (status, categories, tags)
-	for _, torrent := range allTorrents {
+	for i := range allTorrents {
+		torrent := &allTorrents[i]
+
 		// Count statuses
 		sm.countTorrentStatuses(torrent, counts.Status)
 
@@ -4477,7 +4495,47 @@ func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID in
 	return enriched
 }
 
+func isSearchSeparator(c byte) bool {
+	switch c {
+	case '.', '_', '-', '[', ']', '(', ')', '{', '}', ' ', '\t', '\n', '\v', '\f', '\r':
+		return true
+	}
+	return false
+}
+
+// normalizeForSearch lower-cases text, turns common torrent separators into
+// spaces and collapses runs of whitespace. Torrent names are effectively always
+// ASCII, so that case gets a single-pass implementation; anything else falls
+// back to the string-rewriting version to keep Unicode folding identical.
 func normalizeForSearch(text string) string {
+	for i := range len(text) {
+		if text[i] >= utf8.RuneSelf {
+			return normalizeForSearchUnicode(text)
+		}
+	}
+
+	var out strings.Builder
+	out.Grow(len(text))
+	pendingSpace := false
+	for i := range len(text) {
+		c := text[i]
+		if isSearchSeparator(c) {
+			pendingSpace = out.Len() > 0
+			continue
+		}
+		if pendingSpace {
+			out.WriteByte(' ')
+			pendingSpace = false
+		}
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		out.WriteByte(c)
+	}
+	return out.String()
+}
+
+func normalizeForSearchUnicode(text string) string {
 	// Replace common torrent separators with spaces
 	replacers := []string{".", "_", "-", "[", "]", "(", ")", "{", "}"}
 	normalized := strings.ToLower(text)
@@ -4486,6 +4544,31 @@ func normalizeForSearch(text string) string {
 	}
 	// Collapse multiple spaces
 	return strings.Join(strings.Fields(normalized), " ")
+}
+
+// isASCIIFolded reports whether s is already what fuzzysearch's
+// normalize+fold transformer would produce: plain lower-case ASCII, so NFD,
+// combining-mark removal, NFC and case folding all collapse to the identity.
+func isASCIIFolded(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf || (s[i] >= 'A' && s[i] <= 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
+// rankFuzzy returns fuzzysearch's match rank, or -1 when target does not match.
+// fuzzy.RankMatchNormalizedFold rebuilds a Unicode transform chain and rewrites
+// both strings on every call, which dominates search over a large library. When
+// both strings are already folded ASCII the transform is a no-op, so the plain
+// RankMatch gives an identical result for free. TestRankFuzzyMatchesLibrary
+// pins that equivalence.
+func rankFuzzy(source, target string, sourceIsFolded bool) int {
+	if sourceIsFolded && isASCIIFolded(target) {
+		return fuzzy.RankMatch(source, target)
+	}
+	return fuzzy.RankMatchNormalizedFold(source, target)
 }
 
 // filterTorrentsBySearch filters torrents by search string with smart matching
@@ -4499,102 +4582,82 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		return sm.filterTorrentsByGlob(torrents, search)
 	}
 
-	type torrentMatch struct {
-		torrent qbt.Torrent
-		score   int
-		method  string // for debugging
-	}
-
-	var matches []torrentMatch
 	searchLower := strings.ToLower(search)
 	searchNormalized := normalizeForSearch(search)
 	searchWords := strings.Fields(searchNormalized)
+	searchIsFolded := isASCIIFolded(searchNormalized)
 
-	for _, torrent := range torrents {
+	// Categories and tags repeat across the whole library, so normalize each
+	// distinct value once instead of once per torrent.
+	normalizedCache := make(map[string]string)
+	normalizeCached := func(value string) string {
+		if value == "" {
+			return ""
+		}
+		if cached, ok := normalizedCache[value]; ok {
+			return cached
+		}
+		normalized := normalizeForSearch(value)
+		normalizedCache[value] = normalized
+		return normalized
+	}
+
+	var matched []int
+	for i := range torrents {
+		torrent := &torrents[i]
+
 		// Method 1: Exact substring match (highest priority)
-		nameLower := strings.ToLower(torrent.Name)
-		categoryLower := strings.ToLower(torrent.Category)
-		tagsLower := strings.ToLower(torrent.Tags)
-		hashLower := strings.ToLower(torrent.Hash)
-		infohashV1Lower := strings.ToLower(torrent.InfohashV1)
-		infohashV2Lower := strings.ToLower(torrent.InfohashV2)
-
-		if strings.Contains(nameLower, searchLower) ||
-			strings.Contains(categoryLower, searchLower) ||
-			strings.Contains(tagsLower, searchLower) ||
-			strings.Contains(hashLower, searchLower) ||
-			strings.Contains(infohashV1Lower, searchLower) ||
-			strings.Contains(infohashV2Lower, searchLower) {
-			matches = append(matches, torrentMatch{
-				torrent: torrent,
-				score:   0, // Best score
-				method:  "exact",
-			})
+		if stringutils.ContainsFold(torrent.Name, searchLower) ||
+			stringutils.ContainsFold(torrent.Category, searchLower) ||
+			stringutils.ContainsFold(torrent.Tags, searchLower) ||
+			stringutils.ContainsFold(torrent.Hash, searchLower) ||
+			stringutils.ContainsFold(torrent.InfohashV1, searchLower) ||
+			stringutils.ContainsFold(torrent.InfohashV2, searchLower) {
+			matched = append(matched, i)
 			continue
 		}
 
 		// Method 2: Normalized match (handles dots, underscores, etc)
 		nameNormalized := normalizeForSearch(torrent.Name)
-		categoryNormalized := normalizeForSearch(torrent.Category)
-		tagsNormalized := normalizeForSearch(torrent.Tags)
+		categoryNormalized := normalizeCached(torrent.Category)
+		tagsNormalized := normalizeCached(torrent.Tags)
 
 		if strings.Contains(nameNormalized, searchNormalized) ||
 			strings.Contains(categoryNormalized, searchNormalized) ||
 			strings.Contains(tagsNormalized, searchNormalized) {
-			matches = append(matches, torrentMatch{
-				torrent: torrent,
-				score:   1,
-				method:  "normalized",
-			})
+			matched = append(matched, i)
 			continue
 		}
 
 		// Method 3: All words present (for multi-word searches)
 		if len(searchWords) > 1 {
-			allFieldsNormalized := fmt.Sprintf("%s %s %s", nameNormalized, categoryNormalized, tagsNormalized)
 			allWordsFound := true
 			for _, word := range searchWords {
-				if !strings.Contains(allFieldsNormalized, word) {
+				if !strings.Contains(nameNormalized, word) &&
+					!strings.Contains(categoryNormalized, word) &&
+					!strings.Contains(tagsNormalized, word) {
 					allWordsFound = false
 					break
 				}
 			}
 			if allWordsFound {
-				matches = append(matches, torrentMatch{
-					torrent: torrent,
-					score:   2,
-					method:  "all-words",
-				})
+				matched = append(matched, i)
 				continue
 			}
 		}
 
 		// Method 4: Fuzzy match only on the normalized name (not the full text)
-		// This prevents matching random letter combinations across the entire text
-		if fuzzy.MatchNormalizedFold(searchNormalized, nameNormalized) {
-			score := fuzzy.RankMatchNormalizedFold(searchNormalized, nameNormalized)
-			// Only accept good fuzzy matches (score < 10 is quite good)
-			if score < 10 {
-				matches = append(matches, torrentMatch{
-					torrent: torrent,
-					score:   3 + score, // Fuzzy matches start at score 3
-					method:  "fuzzy",
-				})
-			}
+		// This prevents matching random letter combinations across the entire text.
+		// Only accept good fuzzy matches (score < 10 is quite good); rankFuzzy
+		// returns -1 when the name does not match at all.
+		if score := rankFuzzy(searchNormalized, nameNormalized, searchIsFolded); score >= 0 && score < 10 {
+			matched = append(matched, i)
 		}
 	}
 
-	// Extract just the torrents
-	filtered := make([]qbt.Torrent, len(matches))
-	for i, match := range matches {
-		filtered[i] = match.torrent
-		if i < 5 { // Log first 5 matches for debugging
-			log.Trace().
-				Str("name", match.torrent.Name).
-				Int("score", match.score).
-				Str("method", match.method).
-				Msg("Search match")
-		}
+	filtered := make([]qbt.Torrent, len(matched))
+	for i, idx := range matched {
+		filtered[i] = torrents[idx]
 	}
 
 	log.Trace().
@@ -4663,6 +4726,21 @@ func (sm *SyncManager) filterTorrentsByGlob(torrents []qbt.Torrent, pattern stri
 	return filtered
 }
 
+// torrentHasAnyTag reports whether the comma-separated tag string contains any
+// of the wanted tags. strings.SplitSeq and TrimSpace both return sub-slices of
+// the original string, so this walks the tags without allocating.
+func torrentHasAnyTag(tags string, wanted map[string]struct{}) bool {
+	if len(wanted) == 0 {
+		return false
+	}
+	for tag := range strings.SplitSeq(tags, ",") {
+		if _, ok := wanted[strings.TrimSpace(tag)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // applyManualFilters applies all filters manually when library filtering is insufficient.
 // Callers hydrate tracker data beforehand when status filters depend on tracker health.
 func (sm *SyncManager) applyManualFilters(
@@ -4688,7 +4766,7 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	useSubcategories bool,
 	cachedHealth *TrackerHealthCounts,
 ) []qbt.Torrent {
-	var filtered []qbt.Torrent
+	var matched []int
 
 	// A bad expression fails identically for every torrent, so record the first
 	// failure and report once after the loop instead of per torrent.
@@ -4725,27 +4803,27 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 		}
 	}
 
-	// Prepare tag filter strings (lower-cased/trimmed) to reuse across torrents (avoid per-torrent allocations)
+	// Prepare tag filter sets so each torrent's tag string is split once,
+	// instead of once per filter tag.
 	includeUntagged := false
-	if len(filters.Tags) > 0 {
-		for _, t := range filters.Tags {
-			if t == "" {
-				includeUntagged = true
-				continue
-			}
+	includeTags := make(map[string]struct{}, len(filters.Tags))
+	for _, t := range filters.Tags {
+		if t == "" {
+			includeUntagged = true
 		}
+		// The empty tag stays in the include set: matching it against an empty
+		// segment of a tag string (e.g. "movies,") is existing behavior.
+		includeTags[t] = struct{}{}
 	}
 
 	excludeUntagged := false
-	excludeTags := make([]string, 0, len(filters.ExcludeTags))
-	if len(filters.ExcludeTags) > 0 {
-		for _, t := range filters.ExcludeTags {
-			if t == "" {
-				excludeUntagged = true
-				continue
-			}
-			excludeTags = append(excludeTags, t)
+	excludeTags := make(map[string]struct{}, len(filters.ExcludeTags))
+	for _, t := range filters.ExcludeTags {
+		if t == "" {
+			excludeUntagged = true
+			continue
 		}
+		excludeTags[t] = struct{}{}
 	}
 
 	// Precompute tracker filter set for O(1) lookups
@@ -4871,7 +4949,9 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 	}
 
 torrentsLoop:
-	for _, torrent := range torrents {
+	for i := range torrents {
+		torrent := &torrents[i]
+
 		if len(hashFilterSet) > 0 {
 			match := false
 			candidates := []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2}
@@ -4931,19 +5011,7 @@ torrentsLoop:
 					continue
 				}
 			} else {
-				tagMatched := false
-				for _, ft := range filters.Tags {
-					for tag := range strings.SplitSeq(torrent.Tags, ",") {
-						if strings.TrimSpace(tag) == ft {
-							tagMatched = true
-							break
-						}
-					}
-					if tagMatched {
-						break
-					}
-				}
-				if !tagMatched {
+				if !torrentHasAnyTag(torrent.Tags, includeTags) {
 					continue
 				}
 			}
@@ -4956,19 +5024,7 @@ torrentsLoop:
 					continue
 				}
 			} else {
-				excluded := false
-				for _, et := range excludeTags {
-					for tag := range strings.SplitSeq(torrent.Tags, ",") {
-						if strings.TrimSpace(tag) == et {
-							excluded = true
-							break
-						}
-					}
-					if excluded {
-						break
-					}
-				}
-				if excluded {
+				if torrentHasAnyTag(torrent.Tags, excludeTags) {
 					continue
 				}
 			}
@@ -5050,7 +5106,11 @@ torrentsLoop:
 		}
 
 		if len(filters.Expr) > 0 && compileErr == nil {
-			result, err := expr.Run(program, torrent)
+			// Programs are compiled against expr.Env(qbt.Torrent{}), so keep
+			// passing a value even though the rest of the loop uses a pointer.
+			// The copy only happens for expression filters, where evaluation
+			// dwarfs it anyway.
+			result, err := expr.Run(program, *torrent)
 			if err != nil {
 				if exprErr == nil {
 					exprErr = err
@@ -5074,7 +5134,15 @@ torrentsLoop:
 		}
 
 		// If we reach here, torrent passed all active filters
-		filtered = append(filtered, torrent)
+		matched = append(matched, i)
+	}
+
+	// Collecting indices first keeps the growth cost on an int slice; the
+	// result is then materialized once at exactly the right size instead of
+	// repeatedly doubling a slice of ~600-byte structs.
+	filtered := make([]qbt.Torrent, len(matched))
+	for pos, idx := range matched {
+		filtered[pos] = torrents[idx]
 	}
 
 	if exprFailures > 0 {
@@ -5265,21 +5333,17 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 }
 
 // matchTorrentStatus checks if a torrent matches a specific status filter
-func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
-	return sm.matchTorrentStatusWithTrackerHealth(torrent, status, nil)
-}
-
 // matchTorrentStatusWithTrackerHealth uses cached tracker-health data only for
 // tracker-health statuses; all qBittorrent state filters keep their normal
 // state-based matching.
-func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent qbt.Torrent, status string, cachedHealth *TrackerHealthCounts) bool {
+func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent, status string, cachedHealth *TrackerHealthCounts) bool {
 	switch strings.ToLower(status) {
 	case "unregistered":
-		return sm.resolveTrackerHealth(&torrent, cachedHealth) == TrackerHealthUnregistered
+		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthUnregistered
 	case "tracker_down":
-		return sm.resolveTrackerHealth(&torrent, cachedHealth) == TrackerHealthDown
+		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthDown
 	case "tracker_error":
-		return sm.resolveTrackerHealth(&torrent, cachedHealth) == TrackerHealthError
+		return sm.resolveTrackerHealth(torrent, cachedHealth) == TrackerHealthError
 	}
 
 	// Handle special cases first
@@ -5310,26 +5374,6 @@ func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent qbt.Torrent, 
 
 	// For everything else, just do direct equality with the string representation
 	return string(torrent.State) == status
-}
-
-// trackerHealthPriorityWithTrackerHealth ranks tracker-health problem states
-// ahead of normal qBittorrent states, using cached health when live tracker data
-// is unavailable.
-func (sm *SyncManager) trackerHealthPriorityWithTrackerHealth(torrent qbt.Torrent, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts) int {
-	if !trackerHealthSupported {
-		return 10
-	}
-
-	switch sm.resolveTrackerHealth(&torrent, cachedHealth) {
-	case TrackerHealthUnregistered:
-		return 0
-	case TrackerHealthDown:
-		return 1
-	case TrackerHealthError:
-		return 2
-	default:
-		return 10
-	}
 }
 
 func stateSortPriority(state qbt.TorrentState) int {
@@ -5367,102 +5411,71 @@ func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torr
 		return
 	}
 
-	type cacheKey struct {
-		hash string
-		name string
-	}
-
 	type statusSortMeta struct {
 		trackerPriority int
 		statePriority   int
 		label           string
+		lowerName       string
 	}
 
-	cache := make(map[cacheKey]statusSortMeta, len(torrents))
-	keyFor := func(t qbt.Torrent) cacheKey {
-		if t.Hash != "" {
-			return cacheKey{hash: t.Hash}
-		}
-		if t.InfohashV1 != "" {
-			return cacheKey{hash: t.InfohashV1}
-		}
-		if t.InfohashV2 != "" {
-			return cacheKey{hash: t.InfohashV2}
-		}
-		return cacheKey{name: t.Name}
-	}
-
-	getMeta := func(t qbt.Torrent) statusSortMeta {
-		key := keyFor(t)
-		if meta, ok := cache[key]; ok {
-			return meta
-		}
+	// Resolve the sort keys once per torrent. The comparator used to do this on
+	// every comparison behind a map cache, which still cost two map lookups and
+	// a lower-cased name per compare.
+	meta := make([]statusSortMeta, len(torrents))
+	for i := range torrents {
+		t := &torrents[i]
 		label := strings.ToLower(string(t.State))
+		priority := 10
 		if trackerHealthSupported {
-			switch sm.resolveTrackerHealth(&t, cachedHealth) {
+			switch sm.resolveTrackerHealth(t, cachedHealth) {
 			case TrackerHealthUnregistered:
-				label = "unregistered"
+				label, priority = "unregistered", 0
 			case TrackerHealthDown:
-				label = "tracker_down"
+				label, priority = "tracker_down", 1
 			case TrackerHealthError:
-				label = "tracker_error"
+				label, priority = "tracker_error", 2
 			}
 		}
-		meta := statusSortMeta{
-			trackerPriority: sm.trackerHealthPriorityWithTrackerHealth(t, trackerHealthSupported, cachedHealth),
+		meta[i] = statusSortMeta{
+			trackerPriority: priority,
 			statePriority:   stateSortPriority(t.State),
 			label:           label,
+			lowerName:       strings.ToLower(t.Name),
 		}
-		cache[key] = meta
-		return meta
 	}
 
-	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
-		metaA := getMeta(a)
-		metaB := getMeta(b)
+	sortByIndex(torrents, func(aIdx, bIdx int) int {
+		metaA := &meta[aIdx]
+		metaB := &meta[bIdx]
 
-		if metaA.trackerPriority != metaB.trackerPriority {
-			cmp := metaA.trackerPriority - metaB.trackerPriority
-			if desc {
-				return -cmp
-			}
-			return cmp
-		}
-
-		if metaA.statePriority != metaB.statePriority {
-			cmp := metaA.statePriority - metaB.statePriority
-			if desc {
-				return -cmp
-			}
-			return cmp
-		}
-
-		if metaA.label != metaB.label {
-			cmp := strings.Compare(metaA.label, metaB.label)
-			if desc {
-				return -cmp
-			}
-			return cmp
-		}
-
-		if a.AddedOn != b.AddedOn {
-			cmp := 0
-			if a.AddedOn > b.AddedOn {
-				cmp = 1
-			} else {
+		cmp := 0
+		switch {
+		case metaA.trackerPriority != metaB.trackerPriority:
+			cmp = metaA.trackerPriority - metaB.trackerPriority
+		case metaA.statePriority != metaB.statePriority:
+			cmp = metaA.statePriority - metaB.statePriority
+		case metaA.label != metaB.label:
+			cmp = strings.Compare(metaA.label, metaB.label)
+		case torrents[aIdx].AddedOn != torrents[bIdx].AddedOn:
+			// AddedOn intentionally sorts newest-first in ascending order.
+			if torrents[aIdx].AddedOn > torrents[bIdx].AddedOn {
 				cmp = -1
+			} else {
+				cmp = 1
 			}
 			if desc {
-				return cmp
+				return -cmp
 			}
-			return -cmp
+			return cmp
+		default:
+			cmp = strings.Compare(metaA.lowerName, metaB.lowerName)
 		}
 
-		nameA := strings.ToLower(a.Name)
-		nameB := strings.ToLower(b.Name)
-		cmp := strings.Compare(nameA, nameB)
 		if desc {
-			return -cmp
+			cmp = -cmp
+		}
+		if cmp == 0 {
+			return aIdx - bIdx
 		}
 		return cmp
 	})
@@ -5537,12 +5550,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		}
 	}
 
-	indices := make([]int, len(torrents))
-	for idx := range indices {
-		indices[idx] = idx
-	}
-
-	compare := func(aIdx, bIdx int) int {
+	sortByIndex(torrents, func(aIdx, bIdx int) int {
 		a := keys[aIdx]
 		b := keys[bIdx]
 
@@ -5584,11 +5592,21 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return -cmp
 		}
 		return cmp
+	})
+}
+
+// sortByIndex sorts items in place by comparing indices instead of the items
+// themselves, so sort keys can be resolved once per item up front instead of on
+// every comparison. It also keeps large elements (qbt.Torrent is ~600 bytes)
+// still while the sort runs. compare must be a total order over indices (add
+// the index itself as the last tiebreak to keep a stable result).
+func sortByIndex[T any](torrents []T, compare func(aIdx, bIdx int) int) {
+	indices := make([]int, len(torrents))
+	for idx := range indices {
+		indices[idx] = idx
 	}
 
-	slices.SortFunc(indices, func(i, j int) int {
-		return compare(i, j)
-	})
+	slices.SortFunc(indices, compare)
 
 	// indices currently maps newPos -> oldPos; invert it to get elementPos -> targetPos,
 	// then apply in-place cycle permutation.
@@ -5633,9 +5651,9 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 
 	compareIdentity := func(a, b CrossInstanceTorrentView) int {
 		return cmp.Or(
-			strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
-			strings.Compare(strings.ToLower(a.Hash), strings.ToLower(b.Hash)),
-			strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+			stringutils.CompareFold(a.Name, b.Name),
+			stringutils.CompareFold(a.Hash, b.Hash),
+			stringutils.CompareFold(a.InstanceName, b.InstanceName),
 			cmp.Compare(a.InstanceID, b.InstanceID),
 		)
 	}
@@ -5650,11 +5668,15 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 		return compareIdentity(a, b)
 	}
 
+	// CrossInstanceTorrentView is small (it holds a pointer to the torrent), so
+	// sorting the slice directly beats sorting an index permutation. The cost
+	// that mattered was strings.ToLower allocating inside the comparator, which
+	// compareFold removes.
 	slices.SortFunc(torrents, func(a, b CrossInstanceTorrentView) int {
 		switch sort {
 		case "name":
 			result := cmp.Or(
-				strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+				stringutils.CompareFold(a.Name, b.Name),
 				strings.Compare(a.Name, b.Name),
 			)
 			if result != 0 {
@@ -5678,7 +5700,7 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.LastActivity / 60 })
 		case "instance":
 			result := cmp.Or(
-				strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+				stringutils.CompareFold(a.InstanceName, b.InstanceName),
 				cmp.Compare(a.InstanceID, b.InstanceID),
 			)
 			if result != 0 {
@@ -5688,7 +5710,7 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 			result := cmp.Or(
 				cmp.Compare(trackerHealthSortPriority(a.TrackerHealth), trackerHealthSortPriority(b.TrackerHealth)),
 				cmp.Compare(stateSortPriority(a.State), stateSortPriority(b.State)),
-				strings.Compare(strings.ToLower(string(a.State)), strings.ToLower(string(b.State))),
+				stringutils.CompareFold(string(a.State), string(b.State)),
 			)
 			if result != 0 {
 				return applyDirection(result)
@@ -5761,11 +5783,11 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 				return applyDirection(result)
 			}
 		case "category":
-			if result := strings.Compare(strings.ToLower(a.Category), strings.ToLower(b.Category)); result != 0 {
+			if result := stringutils.CompareFold(a.Category, b.Category); result != 0 {
 				return applyDirection(result)
 			}
 		case "tags":
-			if result := strings.Compare(strings.ToLower(a.Tags), strings.ToLower(b.Tags)); result != 0 {
+			if result := stringutils.CompareFold(a.Tags, b.Tags); result != 0 {
 				return applyDirection(result)
 			}
 		case "dl_limit":
@@ -5805,7 +5827,7 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 				return applyDirection(result)
 			}
 		case "save_path":
-			if result := strings.Compare(strings.ToLower(a.SavePath), strings.ToLower(b.SavePath)); result != 0 {
+			if result := stringutils.CompareFold(a.SavePath, b.SavePath); result != 0 {
 				return applyDirection(result)
 			}
 		case "completed":
@@ -5821,11 +5843,11 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 				return applyDirection(result)
 			}
 		case "infohash_v1":
-			if result := strings.Compare(strings.ToLower(a.InfohashV1), strings.ToLower(b.InfohashV1)); result != 0 {
+			if result := stringutils.CompareFold(a.InfohashV1, b.InfohashV1); result != 0 {
 				return applyDirection(result)
 			}
 		case "infohash_v2":
-			if result := strings.Compare(strings.ToLower(a.InfohashV2), strings.ToLower(b.InfohashV2)); result != 0 {
+			if result := stringutils.CompareFold(a.InfohashV2, b.InfohashV2); result != 0 {
 				return applyDirection(result)
 			}
 		case "reannounce":
@@ -5908,20 +5930,26 @@ func (sm *SyncManager) sortTorrentsByNameCaseInsensitive(torrents []qbt.Torrent,
 		return
 	}
 
-	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
-		nameA := strings.ToLower(a.Name)
-		nameB := strings.ToLower(b.Name)
+	// Lower-case once per torrent instead of twice per comparison.
+	lowered := make([]string, len(torrents))
+	for i := range torrents {
+		lowered[i] = strings.ToLower(torrents[i].Name)
+	}
 
-		cmp := strings.Compare(nameA, nameB)
+	sortByIndex(torrents, func(aIdx, bIdx int) int {
+		cmp := strings.Compare(lowered[aIdx], lowered[bIdx])
 		if cmp == 0 {
-			cmp = strings.Compare(a.Name, b.Name)
+			cmp = strings.Compare(torrents[aIdx].Name, torrents[bIdx].Name)
 			if cmp == 0 {
-				cmp = strings.Compare(a.Hash, b.Hash)
+				cmp = strings.Compare(torrents[aIdx].Hash, torrents[bIdx].Hash)
 			}
 		}
 
 		if desc {
-			return -cmp
+			cmp = -cmp
+		}
+		if cmp == 0 {
+			return aIdx - bIdx
 		}
 		return cmp
 	})
@@ -5932,20 +5960,24 @@ func (sm *SyncManager) sortTorrentsByNameCaseInsensitive(torrents []qbt.Torrent,
 // Priority 0 means the torrent is not in the queue system (active, seeding, or manually paused)
 // We sort queued torrents (priority 1+) before non-queued torrents (priority 0) for better UX
 func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool) {
-	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
-		if a.Priority == 0 && b.Priority == 0 {
-			return 0
-		}
-		if a.Priority == 0 {
+	sortByIndex(torrents, func(aIdx, bIdx int) int {
+		a, b := &torrents[aIdx], &torrents[bIdx]
+		switch {
+		case a.Priority == 0 && b.Priority == 0:
+			return aIdx - bIdx
+		case a.Priority == 0:
 			return 1
-		}
-		if b.Priority == 0 {
+		case b.Priority == 0:
 			return -1
 		}
+		result := cmp.Compare(b.Priority, a.Priority)
 		if desc {
-			return cmp.Compare(a.Priority, b.Priority)
+			result = -result
 		}
-		return cmp.Compare(b.Priority, a.Priority)
+		if result == 0 {
+			return aIdx - bIdx
+		}
+		return result
 	})
 }
 
@@ -5956,76 +5988,72 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 	const infinityETA int64 = 8640000
 
-	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
-		aIsInfinity := a.ETA == infinityETA
-		bIsInfinity := b.ETA == infinityETA
+	sortByIndex(torrents, func(aIdx, bIdx int) int {
+		a, b := torrents[aIdx].ETA, torrents[bIdx].ETA
+		aIsInfinity := a == infinityETA
+		bIsInfinity := b == infinityETA
 
-		// Both infinity - equal
-		if aIsInfinity && bIsInfinity {
-			return 0
-		}
-
+		switch {
+		case aIsInfinity && bIsInfinity:
+			return aIdx - bIdx
 		// Always place infinity values at the end
-		if aIsInfinity {
+		case aIsInfinity:
 			return 1
-		}
-		if bIsInfinity {
+		case bIsInfinity:
 			return -1
 		}
 
-		// Both are finite values - sort normally
+		result := cmp.Compare(a, b)
 		if desc {
-			// Descending: larger ETA first
-			if a.ETA > b.ETA {
-				return -1
-			}
-			if a.ETA < b.ETA {
-				return 1
-			}
-			return 0
+			result = -result
 		}
-
-		// Ascending: smaller ETA first
-		if a.ETA < b.ETA {
-			return -1
+		if result == 0 {
+			return aIdx - bIdx
 		}
-		if a.ETA > b.ETA {
-			return 1
-		}
-		return 0
-	})
-}
-
-// compareByStateThenName provides deterministic ordering by state priority, name, then hash.
-func compareByStateThenName(a, b qbt.Torrent) int {
-	priorityA := stateSortPriority(a.State)
-	priorityB := stateSortPriority(b.State)
-	if priorityA != priorityB {
-		return cmp.Compare(priorityA, priorityB)
-	}
-
-	nameA := strings.ToLower(a.Name)
-	nameB := strings.ToLower(b.Name)
-	if result := strings.Compare(nameA, nameB); result != 0 {
 		return result
-	}
-
-	return strings.Compare(a.Hash, b.Hash)
+	})
 }
 
 // sortTorrentsByTimestamp sorts torrents by a timestamp field with fallback to state, name, and hash.
 // The getTimestamp function extracts the timestamp value from a torrent.
 // Special values (0 or -1 meaning "never") are treated as infinitely old and sort naturally.
 func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool, getTimestamp func(qbt.Torrent) int64) {
-	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
-		tsA, tsB := getTimestamp(a), getTimestamp(b)
-		if tsA != tsB {
-			if desc {
-				return cmp.Compare(tsB, tsA)
-			}
-			return cmp.Compare(tsA, tsB)
+	// Resolve timestamps, state priorities and lower-cased names once per
+	// torrent rather than on every comparison.
+	type timestampSortKey struct {
+		timestamp     int64
+		statePriority int
+		lowerName     string
+	}
+
+	keys := make([]timestampSortKey, len(torrents))
+	for i := range torrents {
+		keys[i] = timestampSortKey{
+			timestamp:     getTimestamp(torrents[i]),
+			statePriority: stateSortPriority(torrents[i].State),
+			lowerName:     strings.ToLower(torrents[i].Name),
 		}
-		return compareByStateThenName(a, b)
+	}
+
+	sortByIndex(torrents, func(aIdx, bIdx int) int {
+		a, b := &keys[aIdx], &keys[bIdx]
+		if a.timestamp != b.timestamp {
+			if desc {
+				return cmp.Compare(b.timestamp, a.timestamp)
+			}
+			return cmp.Compare(a.timestamp, b.timestamp)
+		}
+
+		if a.statePriority != b.statePriority {
+			return cmp.Compare(a.statePriority, b.statePriority)
+		}
+		if result := strings.Compare(a.lowerName, b.lowerName); result != 0 {
+			return result
+		}
+		if result := strings.Compare(torrents[aIdx].Hash, torrents[bIdx].Hash); result != 0 {
+			return result
+		}
+		return aIdx - bIdx
 	})
 }
 
@@ -6078,7 +6106,9 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 	totalSizeSeen := make(map[string]struct{})
 	seedingSizeSeen := make(map[string]struct{})
 
-	for _, torrent := range torrents {
+	for i := range torrents {
+		torrent := &torrents[i]
+
 		// Add speeds and session data (not deduplicated - each torrent has its own)
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
 		stats.TotalUploadSpeed += int(torrent.UpSpeed)

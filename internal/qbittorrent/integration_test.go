@@ -67,7 +67,7 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		for _, tc := range testCases {
 			count := 0
 			for _, torrent := range torrents {
-				if sm.matchTorrentStatus(torrent, tc.status) {
+				if sm.matchTorrentStatusWithTrackerHealth(&torrent, tc.status, nil) {
 					count++
 				}
 			}
@@ -246,7 +246,7 @@ func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
 		},
 	}
 
-	sm.countTorrentStatuses(torrent, counts)
+	sm.countTorrentStatuses(&torrent, counts)
 
 	assert.Equal(t, 1, counts["all"])
 	assert.Equal(t, 1, counts["unregistered"])

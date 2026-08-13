@@ -2144,7 +2144,10 @@ func TestSortTorrentsByTimestamp_TruncationGroupsSameInterval(t *testing.T) {
 	require.Equal(t, "hash2", torrents[2].Hash, "bucket 1: uploading 'Apple' by state")
 }
 
-func TestCompareByStateThenName(t *testing.T) {
+// Torrents with equal timestamps fall back to state priority, then
+// case-insensitive name, then hash. sortTorrentsByTimestamp resolves those keys
+// up front, so drive the tiebreak through the sort itself.
+func TestSortTorrentsByTimestampTiebreak(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -2154,15 +2157,19 @@ func TestCompareByStateThenName(t *testing.T) {
 		expected int
 	}{
 		{
+			// Hashes deliberately oppose the expected order, so only state
+			// priority can put "a" first.
 			name:     "different states - downloading before uploading",
-			a:        qbt.Torrent{Hash: "a", Name: "Test", State: qbt.TorrentStateDownloading},
-			b:        qbt.Torrent{Hash: "b", Name: "Test", State: qbt.TorrentStateUploading},
+			a:        qbt.Torrent{Hash: "zzz", Name: "Test", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "aaa", Name: "Test", State: qbt.TorrentStateUploading},
 			expected: -1,
 		},
 		{
+			// Hashes oppose the expected order here too, leaving the name as
+			// the only key that can decide it.
 			name:     "same state different names - alphabetical order",
-			a:        qbt.Torrent{Hash: "a", Name: "Apple", State: qbt.TorrentStateDownloading},
-			b:        qbt.Torrent{Hash: "b", Name: "Zebra", State: qbt.TorrentStateDownloading},
+			a:        qbt.Torrent{Hash: "zzz", Name: "Apple", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "aaa", Name: "Zebra", State: qbt.TorrentStateDownloading},
 			expected: -1,
 		},
 		{
@@ -2179,16 +2186,20 @@ func TestCompareByStateThenName(t *testing.T) {
 		},
 	}
 
+	sm := &SyncManager{}
+	sameTimestamp := func(qbt.Torrent) int64 { return 42 }
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := compareByStateThenName(tt.a, tt.b)
-			switch {
-			case tt.expected < 0:
-				require.Negative(t, result, "expected negative result")
-			case tt.expected > 0:
-				require.Positive(t, result, "expected positive result")
-			default:
-				require.Zero(t, result, "expected zero result")
+			// Feed both orderings so the assertion cannot pass by luck.
+			for _, torrents := range [][]qbt.Torrent{{tt.a, tt.b}, {tt.b, tt.a}} {
+				sm.sortTorrentsByTimestamp(torrents, false, sameTimestamp)
+
+				first := tt.a.Hash
+				if tt.expected > 0 {
+					first = tt.b.Hash
+				}
+				require.Equal(t, first, torrents[0].Hash, "expected %q first", first)
 			}
 		})
 	}
