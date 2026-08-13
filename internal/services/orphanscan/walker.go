@@ -273,13 +273,15 @@ func (w *scanWalker) mergeSuppressedUnitsIntoDiscUnits() {
 		return
 	}
 
+	// Do not fold: two real sibling directories that differ only by case would
+	// merge into one on a case-sensitive filesystem.
 	discRoots := make(map[string]string, len(w.discUnitPaths))
 	for du := range w.discUnitPaths {
-		discRoots[normalizePath(du)] = du
+		discRoots[cleanPath(du)] = du
 	}
 
 	for unit, entry := range w.orphanUnits {
-		discUnitPath, ok := containingDiscUnit(normalizePath(unit), discRoots)
+		discUnitPath, ok := containingDiscUnit(cleanPath(unit), discRoots)
 		if !ok {
 			continue
 		}
@@ -397,7 +399,9 @@ func discUnitFromParentMarker(
 	unitCache map[string]discUnitDecision,
 	ignorePaths []string,
 ) (unitPath string, ok bool) {
-	key := normalizePath(candidateAbs) + "|" + markerUpper
+	// Do not fold: the cached decision holds the first caller's absolute path, so
+	// two case-variant sibling directories would share one entry.
+	key := cleanPath(candidateAbs) + "|" + markerUpper
 	if unitCache != nil {
 		if decision, ok := unitCache[key]; ok {
 			if decision.disableGrouping {

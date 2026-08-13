@@ -1181,10 +1181,7 @@ func dedupeCaseVariantRoots(roots []string) []string {
 	seen := make(map[string]fs.FileInfo, len(roots))
 	for _, root := range roots {
 		norm := normalizePath(root)
-		info, err := os.Lstat(root)
-		if err != nil {
-			info = nil
-		}
+		info, _ := os.Lstat(root) // nil FileInfo on error
 
 		if prev, ok := seen[norm]; ok && prev != nil && info != nil && os.SameFile(prev, info) {
 			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that is the same directory as an earlier root")

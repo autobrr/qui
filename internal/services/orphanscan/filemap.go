@@ -126,20 +126,24 @@ func cleanPath(path string) string {
 // container, where qBittorrent can report two save paths that differ only by
 // case for one physical directory.
 //
-// ponytail: an orphan whose path differs from an owned file only by case is no
-// longer detected on a genuinely case-sensitive filesystem. That direction is
-// safe (a missed orphan, never a deleted owned file). Upgrade path if it is
-// ever reported: keep a folded secondary index and confirm hits with
-// os.SameFile.
+// Invalid UTF-8 is folded too. strings.ToLower and encoding/json replace a bad
+// byte the same way, so the fold is what lets a name read from disk match the
+// same name after a round trip through the qBittorrent API. Do not add a
+// utf8.ValidString guard here: an owned file whose name carries a non-UTF-8
+// byte is then reported as an orphan and deleted.
+//
+// ToLower can turn an NFC string into a non-NFC one (H + U+0331 becomes U+1E96),
+// so the folded result is cleaned again.
+//
+// ponytail: names that differ only by case, or only in which invalid bytes they
+// carry, collapse to one key. That direction is safe (a missed orphan, never a
+// deleted owned file). Upgrade path if it is ever reported: keep a folded
+// secondary index and confirm hits with os.SameFile.
 //
 // The result is for comparison only. It must never reach an os.* call or the
 // database, because on a case-sensitive filesystem it can name a different file.
 func normalizePath(path string) string {
-	p := cleanPath(path)
-	if !utf8.ValidString(p) {
-		return p
-	}
-	return cleanPath(strings.ToLower(p))
+	return cleanPath(strings.ToLower(cleanPath(path)))
 }
 
 // canonicalizeHash matches SyncManager's internal hash normalization.
