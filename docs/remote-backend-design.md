@@ -71,7 +71,9 @@ on Windows cannot represent a Linux seedbox's identity in today's struct.
 
 Options: (a) an opaque byte/string identity form in fsops (raised by
 com6056 on #1914); (b) pack remote dev/ino into the Windows struct's
-identifier bytes. To be settled in review of this doc.
+identifier bytes. To be settled in review of this doc. Note that a Windows
+*remote* reports a 16-byte NTFS file ID, which fits neither unix dev/ino
+nor option (b)'s packing — one more argument for the opaque form.
 
 Related guard regardless of representation: FileID comparisons are only
 valid within one backend/host — dev+ino pairs collide across machines, so
@@ -130,6 +132,23 @@ SSH configuration on the instance form; the test flow confirms the host-key
 fingerprint and shows the probed tier. Instances on the SFTP-only tier show
 a degraded-mode indicator naming what's off (hardlink dedup, reflinks).
 
+## Windows Remotes
+
+Not a v1 target, but not special-cased either — the probe handles them for
+free. Win32-OpenSSH's sftp-server covers the core ops (stat, readdir,
+walks, mkdir, remove), so if the basic-op probe passes, the instance gets
+the SFTP-only tier with whatever extensions the server actually advertises
+(`statvfs@openssh.com` and `hardlink@openssh.com` support is
+version-dependent in Win32-OpenSSH — trust the probe, not assumptions; a
+server without the hardlink extension means link-tree cross-seeding is off
+for that instance, and degraded mode says so). The exec tier never lights:
+exec lands in cmd/PowerShell and the GNU-userland probe fails. A PowerShell
+exec dialect (`fsutil file queryfileid`, `fsutil hardlink list`,
+`Get-ChildItem` sweeps) is possible later if demand appears; the opaque
+FileID form keeps that door open. Remote Windows paths surface in
+SFTP's `/C:/...` form and stay slash-delimited at the fsops boundary like
+every other remote path.
+
 ## Rollout
 
 1. Foundation (open): #1914 backend interface, #1915 callsite migration,
@@ -150,4 +169,3 @@ performance wall, #1913 has the protocol design ready.
    `false`, or refuse ops that require the answer?
 3. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
    supported floor there?
-4. Windows remotes: out of scope initially?
