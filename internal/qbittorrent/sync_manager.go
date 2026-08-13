@@ -3665,53 +3665,67 @@ func (sm *SyncManager) recordTrackerTransition(client *Client, oldURL, newURL st
 	client.addTrackerExclusions(oldDomain, hashes)
 }
 
+// statusCounter counts the library per torrent state, which expandInto turns
+// into status keys once. A library has thousands of torrents and about fifteen
+// states, so that is one string map increment per torrent instead of eight.
+type statusCounter struct {
+	byState      map[qbt.TorrentState]int
+	completed    int
+	unregistered int
+	trackerDown  int
+	trackerError int
+}
+
 // countTorrentStatuses counts torrent statuses efficiently in a single pass
-func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counts map[string]int) {
-	// Count "all"
-	counts["all"]++
+func (sm *SyncManager) countTorrentStatuses(torrent *qbt.Torrent, counter *statusCounter) {
+	counter.byState[torrent.State]++
 
 	switch sm.determineTrackerHealth(torrent) {
 	case TrackerHealthUnregistered:
-		counts["unregistered"]++
+		counter.unregistered++
 	case TrackerHealthDown:
-		counts["tracker_down"]++
+		counter.trackerDown++
 	case TrackerHealthError:
-		counts["tracker_error"]++
+		counter.trackerError++
 	}
 
-	// Count "completed"
 	if torrent.Progress == 1 {
-		counts["completed"]++
+		counter.completed++
+	}
+}
+
+// expandInto adds the accumulated counts to the status map.
+func (c *statusCounter) expandInto(counts map[string]int) {
+	for state, count := range c.byState {
+		counts["all"] += count
+
+		if slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], state) {
+			counts["active"] += count
+		} else {
+			counts["inactive"] += count
+		}
+
+		// A torrent is stopped if it is in either the old paused states or the new
+		// stopped ones. Running is the inverse.
+		isPausedOrStopped := slices.Contains(torrentStateCategories[qbt.TorrentFilterPaused], state) ||
+			slices.Contains(torrentStateCategories[qbt.TorrentFilterStopped], state)
+		if isPausedOrStopped {
+			counts["stopped"] += count
+			counts["paused"] += count // For backward compatibility
+		} else {
+			counts["running"] += count
+			counts["resumed"] += count // For backward compatibility
+		}
+
+		for _, status := range countableStatusesForState[state] {
+			counts[status] += count
+		}
 	}
 
-	// Check active states for "active" and "inactive"
-	isActive := slices.Contains(torrentStateCategories[qbt.TorrentFilterActive], torrent.State)
-	if isActive {
-		counts["active"]++
-	} else {
-		counts["inactive"]++
-	}
-
-	// Check stopped/paused states - both old PausedDl/Up and new StoppedDl/Up states
-	pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
-	stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
-
-	// A torrent is considered stopped if it's in either paused or stopped states
-	isPausedOrStopped := slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
-
-	if isPausedOrStopped {
-		counts["stopped"]++
-		counts["paused"]++ // For backward compatibility
-	} else {
-		// Running is the inverse of stopped/paused
-		counts["running"]++
-		counts["resumed"]++ // For backward compatibility
-	}
-
-	// Count other status categories
-	for _, status := range countableStatusesForState[torrent.State] {
-		counts[status]++
-	}
+	counts["completed"] += c.completed
+	counts["unregistered"] += c.unregistered
+	counts["tracker_down"] += c.trackerDown
+	counts["tracker_error"] += c.trackerError
 }
 
 // countableStatusesForState inverts torrentStateCategories so counting a
@@ -3913,6 +3927,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 	categoryStats := make(map[string]*countWithSize)
 	tagStats := make(map[string]*countWithSize)
+	statusCounts := &statusCounter{byState: map[qbt.TorrentState]int{}}
 
 	// Process each torrent for other counts (status, categories, tags)
 	for i := range allTorrents {
@@ -3920,7 +3935,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		sharedPath := sharedContentPaths[i]
 
 		// Count statuses
-		sm.countTorrentStatuses(torrent, counts.Status)
+		sm.countTorrentStatuses(torrent, statusCounts)
 
 		// Category count and size (deduplicated by ContentPath)
 		addStat(categoryStats, torrent.Category, torrent, sharedPath)
@@ -3938,6 +3953,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			}
 		}
 	}
+
+	statusCounts.expandInto(counts.Status)
 
 	for category, stats := range categoryStats {
 		counts.Categories[category] = stats.count

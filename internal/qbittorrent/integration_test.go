@@ -234,6 +234,7 @@ func TestSyncManager_TorrentHasTrackerError(t *testing.T) {
 func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
 	sm := &SyncManager{}
 	counts := map[string]int{}
+	counter := &statusCounter{byState: map[qbt.TorrentState]int{}}
 
 	torrent := qbt.Torrent{
 		Hash:    "hash1",
@@ -246,7 +247,8 @@ func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
 		},
 	}
 
-	sm.countTorrentStatuses(&torrent, counts)
+	sm.countTorrentStatuses(&torrent, counter)
+	counter.expandInto(counts)
 
 	assert.Equal(t, 1, counts["all"])
 	assert.Equal(t, 1, counts["unregistered"])

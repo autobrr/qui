@@ -2621,6 +2621,35 @@ func TestFindSharedContentPaths(t *testing.T) {
 	require.Empty(t, findSharedContentPaths(nil))
 }
 
+// Status counts accumulate per state and are expanded to status keys once, so
+// this pins the whole expanded map rather than one key at a time.
+func TestStatusCountsExpandFromStates(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Hash: "a", State: qbt.TorrentStateUploading, Progress: 1},
+		{Hash: "b", State: qbt.TorrentStateStalledUp, Progress: 1},
+		{Hash: "c", State: qbt.TorrentStateStalledUp, Progress: 1},
+		{Hash: "d", State: qbt.TorrentStateStoppedDl, Progress: 0.5},
+		{Hash: "e", State: qbt.TorrentStatePausedUp, Progress: 1},
+		{Hash: "f", State: qbt.TorrentStateDownloading, Progress: 0.25},
+		{Hash: "g", State: qbt.TorrentStateCheckingUp, Progress: 1},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, torrents, nil, nil, false, false)
+
+	require.Equal(t, map[string]int{
+		"all": 7, "completed": 5,
+		"active": 2, "inactive": 5,
+		"running": 5, "resumed": 5, "stopped": 2, "paused": 2,
+		"downloading": 1, "uploading": 4, "seeding": 4, "stalled": 2,
+		"stalled_uploading": 2, "stalled_downloading": 0,
+		"errored": 0, "checking": 1, "moving": 0,
+		"unregistered": 0, "tracker_down": 0, "tracker_error": 0,
+	}, counts.Status)
+}
+
 // Counts describe the whole library, so they may only share the list request's
 // result when that request asked for everything.
 func TestRequestCoversWholeLibrary(t *testing.T) {
