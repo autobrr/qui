@@ -4,6 +4,7 @@
  */
 
 import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
+import { SPREADSHEET_DOCUMENT_TITLE, SPREADSHEET_THEME_ID } from "@/lib/spreadsheet-disguise";
 import { loadThemeFonts } from "./fontLoader";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
 
@@ -188,6 +189,15 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
 
     root.setAttribute("data-theme", theme.id);
     applyCriticalBackground(root, cssVars);
+  }
+
+  // Spreadsheet disguise: the tab title is a tell. Set/restore it on theme
+  // application so every page (not just those running useTitleBarSpeeds)
+  // carries the boring title.
+  if (theme.id === SPREADSHEET_THEME_ID) {
+    document.title = SPREADSHEET_DOCUMENT_TITLE;
+  } else if (document.title === SPREADSHEET_DOCUMENT_TITLE) {
+    document.title = "qui";
   }
 
   if (ENABLE_THEME_TRANSITIONS && withTransition) {
