@@ -5,6 +5,7 @@ package local
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -211,8 +212,11 @@ func TestWalkDir_IgnoreDirNames(t *testing.T) {
 func TestWalkDir_ContextCancellation(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
-	for i := range 50 {
-		writeFile(t, filepath.Join(dir, string(rune('a'+i%26))+"_"+string(rune('0'+i/26))+".txt"), "x")
+	// More files than the walk channel buffers (64), so the walk cannot
+	// complete before the first receive and cancellation must cut it short.
+	const total = 150
+	for i := range total {
+		writeFile(t, filepath.Join(dir, fmt.Sprintf("f%03d.txt", i)), "x")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -233,8 +237,10 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 	for range ch {
 		count++
 	}
-	// Should have stopped well before 50+1 entries.
-	assert.Less(t, count, 52)
+	// After cancel, at most the buffered entries (64) plus one in-flight
+	// send can still arrive; anything near the full tree means the walk
+	// ignored cancellation.
+	assert.Less(t, count, 100)
 }
 
 func TestWalkDir_NonexistentRoot(t *testing.T) {
@@ -365,6 +371,39 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 	assert.True(t, os.IsNotExist(err))
 	_, err = os.Stat(treeRoot)
 	assert.True(t, os.IsNotExist(err))
+}
+
+func TestHardlinkTree_SkippedExists(t *testing.T) {
+	b := newBackend()
+	dir := t.TempDir()
+	src := filepath.Join(dir, "source", "a.mkv")
+	writeFile(t, src, "video data")
+
+	treeRoot := filepath.Join(dir, "tree")
+	plan := &hardlinktree.TreePlan{
+		RootDir: treeRoot,
+		Files: []hardlinktree.FilePlan{
+			{SourcePath: src, TargetPath: filepath.Join(treeRoot, "a.mkv")},
+		},
+	}
+
+	first, err := b.HardlinkTree(context.Background(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, first.Created)
+	assert.Equal(t, 0, first.SkippedExists)
+
+	// Re-creating the same plan is idempotent: the existing link is skipped
+	// and NOT recorded as this call's work.
+	second, err := b.HardlinkTree(context.Background(), plan)
+	require.NoError(t, err)
+	assert.Equal(t, 0, second.Created)
+	assert.Equal(t, 1, second.SkippedExists)
+	assert.Empty(t, second.Files)
+
+	// Removing the second (empty) result must leave the first call's link alone.
+	require.NoError(t, b.RemoveTree(context.Background(), second))
+	_, err = os.Stat(filepath.Join(treeRoot, "a.mkv"))
+	require.NoError(t, err)
 }
 
 func TestSupportsReflink(t *testing.T) {
