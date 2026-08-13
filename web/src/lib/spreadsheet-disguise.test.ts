@@ -4,14 +4,14 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest"
-import { isSpreadsheetDisguiseActive, SPREADSHEET_THEME_ID, spreadsheetPostProcessor } from "./spreadsheet-disguise"
+import { isSpreadsheetClassicActive, isSpreadsheetDisguiseActive, SPREADSHEET_CLASSIC_THEME_ID, SPREADSHEET_THEME_ID, spreadsheetDocumentTitle, spreadsheetPostProcessor } from "./spreadsheet-disguise"
 
 afterEach(() => {
   document.documentElement.removeAttribute("data-theme")
 })
 
-function activate() {
-  document.documentElement.setAttribute("data-theme", SPREADSHEET_THEME_ID)
+function activate(themeId: string = SPREADSHEET_THEME_ID) {
+  document.documentElement.setAttribute("data-theme", themeId)
 }
 
 describe("isSpreadsheetDisguiseActive", () => {
@@ -21,6 +21,32 @@ describe("isSpreadsheetDisguiseActive", () => {
   it("is true when data-theme is spreadsheet", () => {
     activate()
     expect(isSpreadsheetDisguiseActive()).toBe(true)
+  })
+  it("is true for the classic variant", () => {
+    activate(SPREADSHEET_CLASSIC_THEME_ID)
+    expect(isSpreadsheetDisguiseActive()).toBe(true)
+  })
+})
+
+describe("isSpreadsheetClassicActive", () => {
+  it("is false for the modern variant", () => {
+    activate()
+    expect(isSpreadsheetClassicActive()).toBe(false)
+  })
+  it("is true for the classic variant", () => {
+    activate(SPREADSHEET_CLASSIC_THEME_ID)
+    expect(isSpreadsheetClassicActive()).toBe(true)
+  })
+})
+
+describe("spreadsheetDocumentTitle", () => {
+  it("uses the xlsx title for the modern variant", () => {
+    activate()
+    expect(spreadsheetDocumentTitle()).toBe("Book1.xlsx")
+  })
+  it("uses the xls title for the classic variant", () => {
+    activate(SPREADSHEET_CLASSIC_THEME_ID)
+    expect(spreadsheetDocumentTitle()).toBe("Book1.xls")
   })
 })
 

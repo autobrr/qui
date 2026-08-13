@@ -6,7 +6,7 @@
 import { useEffect } from "react"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeById } from "@/config/themes"
-import { SPREADSHEET_THEME_ID } from "@/lib/spreadsheet-disguise"
+import { SPREADSHEET_THEME_IDS } from "@/lib/spreadsheet-disguise"
 import { getThemeColors } from "@/utils/theme"
 
 export function useDynamicFavicon() {
@@ -34,7 +34,7 @@ export function useDynamicFavicon() {
       // Spreadsheet disguise: a generic green sheet grid instead of the qui
       // logo, so the tab icon doesn't out the app. Deliberately NOT an X or
       // any Microsoft mark.
-      const svg = theme === SPREADSHEET_THEME_ID ? `
+      const svg = SPREADSHEET_THEME_IDS.has(theme) ? `
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32">
           <rect x="1" y="1" width="30" height="30" rx="6" fill="oklch(from ${primaryColor} l c h)" />
           <g stroke="#ffffff" stroke-width="2" stroke-linecap="round">

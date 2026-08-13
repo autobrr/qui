@@ -10,11 +10,28 @@
 import { useSyncExternalStore } from "react"
 
 export const SPREADSHEET_THEME_ID = "spreadsheet"
-export const SPREADSHEET_DOCUMENT_TITLE = "Book1.xlsx"
+export const SPREADSHEET_CLASSIC_THEME_ID = "spreadsheet-classic"
+export const SPREADSHEET_THEME_IDS: ReadonlySet<string> = new Set([SPREADSHEET_THEME_ID, SPREADSHEET_CLASSIC_THEME_ID])
+const SPREADSHEET_DOCUMENT_TITLE = "Book1.xlsx"
+// The classic variant predates the x.
+const SPREADSHEET_CLASSIC_DOCUMENT_TITLE = "Book1.xls"
 
 export function isSpreadsheetDisguiseActive(): boolean {
   return typeof document !== "undefined" &&
-    document.documentElement.getAttribute("data-theme") === SPREADSHEET_THEME_ID
+    SPREADSHEET_THEME_IDS.has(document.documentElement.getAttribute("data-theme") ?? "")
+}
+
+export function isSpreadsheetClassicActive(): boolean {
+  return typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-theme") === SPREADSHEET_CLASSIC_THEME_ID
+}
+
+export function spreadsheetDocumentTitle(): string {
+  return isSpreadsheetClassicActive() ? SPREADSHEET_CLASSIC_DOCUMENT_TITLE : SPREADSHEET_DOCUMENT_TITLE
+}
+
+export function isSpreadsheetDocumentTitle(title: string): boolean {
+  return title === SPREADSHEET_DOCUMENT_TITLE || title === SPREADSHEET_CLASSIC_DOCUMENT_TITLE
 }
 
 function subscribe(callback: () => void): () => void {
@@ -24,6 +41,10 @@ function subscribe(callback: () => void): () => void {
 
 export function useSpreadsheetDisguise(): boolean {
   return useSyncExternalStore(subscribe, isSpreadsheetDisguiseActive)
+}
+
+export function useSpreadsheetClassic(): boolean {
+  return useSyncExternalStore(subscribe, isSpreadsheetClassicActive)
 }
 
 // Passerby-visible strings only (nav, table headers, filter pane, status bar,

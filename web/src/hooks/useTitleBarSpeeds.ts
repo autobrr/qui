@@ -8,7 +8,7 @@ import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useRouteTitle } from "@/hooks/useRouteTitle"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { isSpreadsheetDisguiseActive, SPREADSHEET_DOCUMENT_TITLE, useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
+import { isSpreadsheetDisguiseActive, spreadsheetDocumentTitle, useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import type { TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -149,13 +149,13 @@ export function useTitleBarSpeeds({
     return () => {
       // Avoid leaving a stale route-specific title after this hook unmounts.
       // Read the disguise live so a theme switch before unmount is respected.
-      document.title = isSpreadsheetDisguiseActive() ? SPREADSHEET_DOCUMENT_TITLE : DEFAULT_DOCUMENT_TITLE
+      document.title = isSpreadsheetDisguiseActive() ? spreadsheetDocumentTitle() : DEFAULT_DOCUMENT_TITLE
     }
   }, [])
 
   useEffect(() => {
     if (disguised) {
-      document.title = SPREADSHEET_DOCUMENT_TITLE
+      document.title = spreadsheetDocumentTitle()
       lastSpeedTitleRef.current = null
       return
     }
