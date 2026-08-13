@@ -62,6 +62,7 @@ docs/*
 !docs/CROSS_SEEDING.md
 !docs/architecture.md
 !docs/linting.md
+!docs/remote-backend-design.md
 .mcp_unused.json
 config.toml
 .env
