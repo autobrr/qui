@@ -40,6 +40,11 @@ type LstatInfo struct {
 	FileInfo
 	FileID hardlink.FileID
 	Nlinks uint64
+	// FileIDErr is set when FileID/Nlinks could not be resolved (e.g. a
+	// Windows ACL denial on an otherwise statable file). The rest of the
+	// struct is still valid; callers that need identity must check this
+	// instead of treating the whole stat as failed.
+	FileIDErr error
 }
 
 // WalkEntry is emitted by WalkDir for each filesystem entry encountered.

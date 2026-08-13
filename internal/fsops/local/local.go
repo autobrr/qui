@@ -51,7 +51,7 @@ func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, err
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToLstat(fi, path)
+	return osFileInfoToLstat(fi, path), nil
 }
 
 func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]fsops.DirEntry, bool, error) {
@@ -165,9 +165,10 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 					if (opts.WantFileID || opts.WantNlinks) && fi.Mode().IsRegular() {
 						fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
 						if fidErr != nil {
-							// The caller asked for identity data; an entry without it
-							// must read as unreadable, not as a file with no links.
-							entry.Err = fidErr
+							// Identity failure must not read as an unreadable
+							// entry — that would abort whole scans over one odd
+							// file. Callers that need identity check FileIDErr.
+							entry.FileIDErr = fidErr
 						} else {
 							entry.FileID = fid
 							entry.Nlinks = nlinks
@@ -285,17 +286,21 @@ func osFileInfoToFsops(fi os.FileInfo, path string) *fsops.FileInfo {
 }
 
 // osFileInfoToLstat converts an os.FileInfo from Lstat to an fsops.LstatInfo.
-func osFileInfoToLstat(fi os.FileInfo, path string) (*fsops.LstatInfo, error) {
+// Identity failure degrades to FileIDErr rather than failing the conversion:
+// callers that only want size/mtime keep working, callers that need identity
+// check FileIDErr.
+func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
 		FileInfo: *osFileInfoToFsops(fi, path),
 	}
 	if fi.Mode().IsRegular() {
 		fid, nlinks, err := hardlink.GetFileID(fi, path)
 		if err != nil {
-			return nil, err
+			info.FileIDErr = err
+		} else {
+			info.FileID = fid
+			info.Nlinks = nlinks
 		}
-		info.FileID = fid
-		info.Nlinks = nlinks
 	}
-	return info, nil
+	return info
 }

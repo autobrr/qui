@@ -25,7 +25,9 @@ type Backend interface {
 	Stat(ctx context.Context, path string) (*FileInfo, error)
 
 	// Lstat is like Stat but does not follow symlinks. Populates FileID and
-	// Nlinks from the underlying inode.
+	// Nlinks from the underlying inode; a failure to resolve identity is
+	// reported in LstatInfo.FileIDErr, not as an Lstat error, so one
+	// identity-opaque file cannot fail callers that only need metadata.
 	Lstat(ctx context.Context, path string) (*LstatInfo, error)
 
 	// ReadDir returns directory entries. If maxEntries > 0 the result is
