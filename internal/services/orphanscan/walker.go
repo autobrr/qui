@@ -216,7 +216,6 @@ func walkScanRootWithUnitFilter(
 		IgnoreDirNames: ignoredOrphanDirNames,
 		IgnorePaths:    ignorePaths,
 		WantFileID:     true,
-		WantNlinks:     true,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("walk %s: %w", root, err)
@@ -487,7 +486,7 @@ func discAllowedNames(marker string) (allowedDirs, allowedFiles map[string]struc
 }
 
 func discParentIsPureDiscRoot(ctx context.Context, parentAbs, marker string, backend fsops.Backend) bool {
-	entries, _, err := backend.ReadDir(ctx, parentAbs, 0)
+	entries, err := backend.ReadDir(ctx, parentAbs)
 	if err != nil {
 		return false
 	}
@@ -515,7 +514,7 @@ func discParentIsSafeDiscRoot(ctx context.Context, parentAbs, marker string, tfm
 		return discParentIsPureDiscRoot(ctx, parentAbs, marker, backend)
 	}
 
-	entries, _, err := backend.ReadDir(ctx, parentAbs, 0)
+	entries, err := backend.ReadDir(ctx, parentAbs)
 	if err != nil {
 		return false
 	}

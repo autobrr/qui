@@ -89,7 +89,7 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 	result := &ScanResult{}
 	rootPath = filepath.Clean(rootPath)
 
-	dirEntries, _, err := s.backend.ReadDir(ctx, rootPath, 0)
+	dirEntries, err := s.backend.ReadDir(ctx, rootPath)
 	if err != nil {
 		return nil, fmt.Errorf("read directory %s: %w", rootPath, err)
 	}
@@ -171,7 +171,6 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 	ch, err := s.backend.WalkDir(walkCtx, dirPath, fsops.WalkOptions{
 		SkipHidden: true,
 		WantFileID: true,
-		WantNlinks: true,
 	})
 	if err != nil {
 		cancelWalk()
@@ -289,7 +288,7 @@ func isMediaFile(name string) bool {
 
 // isDiscLayoutRoot checks if a directory is a disc layout root.
 func (s *Scanner) isDiscLayoutRoot(ctx context.Context, dirPath string) bool {
-	entries, _, err := s.backend.ReadDir(ctx, dirPath, 0)
+	entries, err := s.backend.ReadDir(ctx, dirPath)
 	if err != nil {
 		return false
 	}
