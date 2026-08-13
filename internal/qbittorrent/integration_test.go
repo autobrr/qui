@@ -1563,6 +1563,10 @@ func TestSyncManager_ValidatedTrackerMapping_ConcurrentAccess(t *testing.T) {
 						_ = len(mapping.HashToDomains[hash])
 					}
 				}
+
+				for _, hashes := range sm.getAuthoritativeDomainToHashes(1) {
+					_ = len(hashes)
+				}
 			}
 		})
 	}

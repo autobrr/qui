@@ -240,36 +240,22 @@ type TorrentResponse struct {
 	Tags                  []string                   `json:"tags,omitempty"`        // Include tags for sidebar
 	ServerState           *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
 	AppInfo               *AppInfo                   `json:"appInfo,omitempty"`     // Include qBittorrent application info
-	AppPreferences        *qbt.AppPreferences        `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
-	appPreferencesPresent bool
-	UseSubcategories      bool           `json:"useSubcategories"`    // Whether subcategories are enabled
-	HasMore               bool           `json:"hasMore"`             // Whether more pages are available
-	SessionID             string         `json:"sessionId,omitempty"` // Optional session tracking
-	CacheMetadata         *CacheMetadata `json:"cacheMetadata,omitempty"`
+	UseSubcategories      bool                       `json:"useSubcategories"`      // Whether subcategories are enabled
+	HasMore               bool                       `json:"hasMore"`               // Whether more pages are available
+	SessionID             string                     `json:"sessionId,omitempty"`   // Optional session tracking
+	CacheMetadata         *CacheMetadata             `json:"cacheMetadata,omitempty"`
 	// TrackerHealthSupported reports capability even when this response skipped inline tracker hydration.
 	TrackerHealthSupported bool          `json:"trackerHealthSupported"`
 	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
 	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
 	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
+	// AppPreferences is pre-marshaled, so this type needs no MarshalJSON of its
+	// own. It must stay last: that is where the marshaler it replaced put the key.
+	AppPreferences json.RawMessage `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
 }
 
-func (r TorrentResponse) MarshalJSON() ([]byte, error) {
-	type torrentResponseJSON TorrentResponse
-
-	preferencesJSON, err := marshalTorrentResponsePreferences(r.AppPreferences, r.appPreferencesPresent)
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(struct {
-		*torrentResponseJSON
-		AppPreferences json.RawMessage `json:"preferences,omitempty"`
-	}{
-		torrentResponseJSON: (*torrentResponseJSON)(&r),
-		AppPreferences:      preferencesJSON,
-	})
-}
-
+// marshalTorrentResponsePreferences renders the tri-state preferences field: a nil
+// result omits it, "null" clears the stale frontend cache, and a value replaces it.
 func marshalTorrentResponsePreferences(prefs *qbt.AppPreferences, includeNull bool) (json.RawMessage, error) {
 	if prefs != nil {
 		return json.Marshal(prefs)
@@ -898,6 +884,29 @@ func (sm *SyncManager) getAuthoritativeTrackerMapping(instanceID int) *Validated
 		return nil
 	}
 	return mapping
+}
+
+// getAuthoritativeDomainToHashes returns a copy of the domain to hash sets of the
+// hydrated tracker mapping, without the HashToDomains half that counts never read.
+//
+// A nil result means there is no authoritative mapping and the caller must fall
+// back to MainData. A non-nil empty map means the mapping is authoritative and has
+// no domains, which is not the same thing.
+func (sm *SyncManager) getAuthoritativeDomainToHashes(instanceID int) map[string]map[string]struct{} {
+	sm.validatedTrackerMu.RLock()
+	defer sm.validatedTrackerMu.RUnlock()
+
+	original := sm.validatedTrackerMapping[instanceID]
+	if original == nil || original.FallbackOnly {
+		return nil
+	}
+
+	// Deep copy to prevent data races when caller iterates over the maps
+	domainToHashes := make(map[string]map[string]struct{}, len(original.DomainToHashes))
+	for domain, hashes := range original.DomainToHashes {
+		domainToHashes[domain] = maps.Clone(hashes)
+	}
+	return domainToHashes
 }
 
 // setValidatedTrackerMapping stores the validated tracker mapping for an instance.
@@ -1672,7 +1681,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
 	if len(paginatedTorrents) > 0 && canHydrateTrackerHealth {
-		var enrichedLookup map[string]qbt.Torrent
+		var enrichedLookup map[string][]qbt.TorrentTracker
 		for i := range paginatedTorrents {
 			hash := paginatedTorrents[i].Hash
 			if trackers, ok := trackerMap[hash]; ok && len(trackers) > 0 {
@@ -1689,14 +1698,16 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			}
 
 			if enrichedLookup == nil {
-				enrichedLookup = make(map[string]qbt.Torrent, len(enrichedAll))
-				for _, torrent := range enrichedAll {
-					enrichedLookup[torrent.Hash] = torrent
+				// Only the tracker slice is read here, so the map holds that
+				// instead of a copy of every 608-byte torrent struct.
+				enrichedLookup = make(map[string][]qbt.TorrentTracker, len(enrichedAll))
+				for i := range enrichedAll {
+					enrichedLookup[enrichedAll[i].Hash] = enrichedAll[i].Trackers
 				}
 			}
 
-			if torrent, ok := enrichedLookup[hash]; ok && len(torrent.Trackers) > 0 {
-				paginatedTorrents[i].Trackers = torrent.Trackers
+			if trackers, ok := enrichedLookup[hash]; ok && len(trackers) > 0 {
+				paginatedTorrents[i].Trackers = trackers
 			}
 		}
 	}
@@ -1710,9 +1721,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var paginatedViews []TorrentView
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
-		for i, torrent := range paginatedTorrents {
-			view := TorrentView{Torrent: &torrent}
-			if health := sm.resolveTrackerHealth(&torrent, cachedHealth); health != "" {
+		for i := range paginatedTorrents {
+			view := TorrentView{Torrent: &paginatedTorrents[i]}
+			if health := sm.resolveTrackerHealth(&paginatedTorrents[i], cachedHealth); health != "" {
 				view.TrackerHealth = health
 			}
 			paginatedViews[i] = view
@@ -1750,6 +1761,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		appPreferences, appPreferencesPresent = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
 	}
 
+	preferencesJSON, err := marshalTorrentResponsePreferences(appPreferences, appPreferencesPresent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal app preferences: %w", err)
+	}
+
 	response := &TorrentResponse{
 		Torrents:               paginatedViews,
 		Total:                  len(filteredTorrents),
@@ -1760,8 +1776,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Tags:                   tags,        // Include tags for sidebar
 		ServerState:            serverState, // Include server state for Dashboard
 		AppInfo:                appInfo,     // Include application info for frontend consumers
-		AppPreferences:         appPreferences,
-		appPreferencesPresent:  appPreferencesPresent,
+		AppPreferences:         preferencesJSON,
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
 		CacheMetadata:          cacheMetadata,
@@ -1954,10 +1969,11 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	}
 
 	views := make([]CrossInstanceTorrentView, len(torrents))
-	for i, torrent := range torrents {
-		view := &TorrentView{Torrent: &torrent}
+	for i := range torrents {
+		torrent := &torrents[i]
+		view := &TorrentView{Torrent: torrent}
 		// First try to determine health from enriched tracker data
-		if health := sm.determineTrackerHealth(&torrent); health != "" {
+		if health := sm.determineTrackerHealth(torrent); health != "" {
 			view.TrackerHealth = health
 		} else if cachedHealth != nil {
 			// Fall back to cached hash sets if torrent wasn't enriched
@@ -3747,7 +3763,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	// Build a torrent map for O(1) lookups
-	torrentMap := make(map[string]*qbt.Torrent)
+	torrentMap := make(map[string]*qbt.Torrent, len(allTorrents))
 	for i := range allTorrents {
 		torrentMap[allTorrents[i].Hash] = &allTorrents[i]
 	}
@@ -3760,18 +3776,18 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	// Try to use the pre-validated tracker mapping (built in background refresh)
-	var validatedMapping *ValidatedTrackerMapping
+	var domainToHashes map[string]map[string]struct{}
 	if client != nil {
-		validatedMapping = sm.getAuthoritativeTrackerMapping(client.instanceID)
+		domainToHashes = sm.getAuthoritativeDomainToHashes(client.instanceID)
 	}
 
-	if validatedMapping != nil {
+	if domainToHashes != nil {
 		// Count torrents per tracker domain using pre-validated mapping.
 		// DomainToHashes holds a set per domain, so a hash arrives once per
 		// domain and the totals are summed in this pass, pruning empty domains.
 		var domainsToClear []string
-		counts.TrackerTransfers = make(map[string]TrackerTransferStats, len(validatedMapping.DomainToHashes))
-		for domain, hashSet := range validatedMapping.DomainToHashes {
+		counts.TrackerTransfers = make(map[string]TrackerTransferStats, len(domainToHashes))
+		for domain, hashSet := range domainToHashes {
 			// Exclusions are per domain (no need for torrentBelongsToTrackerDomain - already validated)
 			hashesToSkip := exclusions[domain]
 
@@ -3891,11 +3907,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 	}
 
-	// Track seen content paths per category/tag to deduplicate cross-seed sizes.
-	// Cross-seeds share the same ContentPath but have different hashes, so we only
-	// count the size once per unique content path within each category/tag.
-	categorySizeSeen := make(map[string]map[string]struct{})
-	tagSizeSeen := make(map[string]map[string]struct{})
+	categoryStats := make(map[string]*countWithSize)
+	tagStats := make(map[string]*countWithSize)
 
 	// Process each torrent for other counts (status, categories, tags)
 	for i := range allTorrents {
@@ -3905,46 +3918,29 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		sm.countTorrentStatuses(torrent, counts.Status)
 
 		// Category count and size (deduplicated by ContentPath)
-		category := torrent.Category
-		counts.Categories[category]++
-
-		// Only add size if we haven't seen this content path in this category
-		if categorySizeSeen[category] == nil {
-			categorySizeSeen[category] = make(map[string]struct{})
-		}
-		if _, seen := categorySizeSeen[category][torrent.ContentPath]; !seen {
-			categorySizeSeen[category][torrent.ContentPath] = struct{}{}
-			counts.CategorySizes[category] += torrent.Size
-		}
+		addStat(categoryStats, torrent.Category, torrent)
 
 		// Tag counts and sizes (deduplicated by ContentPath)
 		if torrent.Tags == "" {
-			counts.Tags[""]++
-			// Only add size if we haven't seen this content path for untagged
-			if tagSizeSeen[""] == nil {
-				tagSizeSeen[""] = make(map[string]struct{})
-			}
-			if _, seen := tagSizeSeen[""][torrent.ContentPath]; !seen {
-				tagSizeSeen[""][torrent.ContentPath] = struct{}{}
-				counts.TagSizes[""] += torrent.Size
-			}
+			addStat(tagStats, "", torrent)
 		} else {
 			torrentTags := strings.SplitSeq(torrent.Tags, ",")
 			for tag := range torrentTags {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
-					counts.Tags[tag]++
-					// Only add size if we haven't seen this content path for this tag
-					if tagSizeSeen[tag] == nil {
-						tagSizeSeen[tag] = make(map[string]struct{})
-					}
-					if _, seen := tagSizeSeen[tag][torrent.ContentPath]; !seen {
-						tagSizeSeen[tag][torrent.ContentPath] = struct{}{}
-						counts.TagSizes[tag] += torrent.Size
-					}
+					addStat(tagStats, tag, torrent)
 				}
 			}
 		}
+	}
+
+	for category, stats := range categoryStats {
+		counts.Categories[category] = stats.count
+		counts.CategorySizes[category] = stats.size
+	}
+	for tag, stats := range tagStats {
+		counts.Tags[tag] = stats.count
+		counts.TagSizes[tag] = stats.size
 	}
 
 	// If subcategories are enabled, aggregate subcategory counts and sizes into parent categories
@@ -6039,6 +6035,31 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 		}
 		return aIdx - bIdx
 	})
+}
+
+// countWithSize is the sidebar count and deduplicated size of one category or one
+// tag. Cross-seeds share a ContentPath, so a size counts once per path and the
+// first torrent to claim a path wins. Not interchangeable with trackerDomainStats,
+// which keeps the largest size per path and counts empty paths per torrent.
+type countWithSize struct {
+	count int
+	size  int64
+	seen  map[string]struct{}
+}
+
+// addStat counts a torrent under one category or tag key, hashing that key once.
+func addStat(stats map[string]*countWithSize, key string, torrent *qbt.Torrent) {
+	entry := stats[key]
+	if entry == nil {
+		entry = &countWithSize{seen: map[string]struct{}{}}
+		stats[key] = entry
+	}
+
+	entry.count++
+	if _, seen := entry.seen[torrent.ContentPath]; !seen {
+		entry.seen[torrent.ContentPath] = struct{}{}
+		entry.size += torrent.Size
+	}
 }
 
 // trackerDomainStats aggregates per-tracker transfer totals as torrents arrive,

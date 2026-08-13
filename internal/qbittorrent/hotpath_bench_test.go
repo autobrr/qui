@@ -4,6 +4,8 @@
 package qbittorrent
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -172,9 +174,9 @@ func BenchmarkHotCountsWithTrackers(b *testing.B) {
 			mapping.DomainToHashes[domain] = make(map[string]struct{})
 		}
 		mapping.DomainToHashes[domain][hash] = struct{}{}
-		// Production mappings carry one entry per hash here, and
-		// getValidatedTrackerMapping deep copies it on every read, so leaving it
-		// out would understate the cost of the path under test.
+		// Production mappings carry one entry per hash here. The counts path reads
+		// only DomainToHashes, so this half must stay filled for the benchmark to
+		// catch a caller that goes back to copying the whole mapping.
 		mapping.HashToDomains[hash] = map[string]struct{}{domain: {}}
 	}
 
@@ -193,6 +195,42 @@ func BenchmarkHotStats(b *testing.B) {
 
 	for b.Loop() {
 		_ = sm.calculateStats(torrents)
+	}
+}
+
+// --- response encoding ----------------------------------------------------
+
+// BenchmarkHotResponseEncode measures a full page response through the same
+// streaming encoder RespondJSON uses. A custom MarshalJSON on any type in here
+// makes encoding/json build the whole body and then rescan every byte of it to
+// compact the result, which costs more than the counts pass.
+func BenchmarkHotResponseEncode(b *testing.B) {
+	benchSilence(b)
+	sm := &SyncManager{}
+	torrents := benchTorrents(benchSize)
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(b.Context(), nil, torrents, nil, nil, false, false)
+
+	page := torrents[:300]
+	views := make([]TorrentView, len(page))
+	for i := range page {
+		views[i] = TorrentView{Torrent: &page[i]}
+	}
+
+	response := &TorrentResponse{
+		Torrents:       views,
+		Total:          len(torrents),
+		Counts:         counts,
+		Stats:          sm.calculateStats(torrents),
+		HasMore:        true,
+		AppPreferences: json.RawMessage(`{"announce_ip":"203.0.113.7"}`),
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		var buf bytes.Buffer
+		if err := json.NewEncoder(&buf).Encode(response); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 

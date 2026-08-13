@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,40 +31,29 @@ func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		response    TorrentResponse
+		prefs       *qbt.AppPreferences
+		present     bool
 		wantPresent bool
 		wantNull    bool
 	}{
 		{
 			name: "omits preferences when producer has no value and no explicit failure",
-			response: TorrentResponse{
-				Torrents: []TorrentView{},
-			},
 		},
 		{
-			name: "emits null when producer marks fresh failure without cached preferences",
-			response: TorrentResponse{
-				Torrents:              []TorrentView{},
-				appPreferencesPresent: true,
-			},
+			name:        "emits null when producer marks fresh failure without cached preferences",
+			present:     true,
 			wantPresent: true,
 			wantNull:    true,
 		},
 		{
-			name: "emits object when preferences are available",
-			response: TorrentResponse{
-				Torrents:              []TorrentView{},
-				AppPreferences:        &qbt.AppPreferences{AnnounceIP: "203.0.113.7"},
-				appPreferencesPresent: true,
-			},
+			name:        "emits object when preferences are available",
+			prefs:       &qbt.AppPreferences{AnnounceIP: "203.0.113.7"},
+			present:     true,
 			wantPresent: true,
 		},
 		{
-			name: "emits object even when explicit presence flag is false",
-			response: TorrentResponse{
-				Torrents:       []TorrentView{},
-				AppPreferences: &qbt.AppPreferences{AnnounceIP: "203.0.113.8"},
-			},
+			name:        "emits object even when explicit presence flag is false",
+			prefs:       &qbt.AppPreferences{AnnounceIP: "203.0.113.8"},
 			wantPresent: true,
 		},
 	}
@@ -72,7 +62,13 @@ func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			body, err := json.Marshal(tt.response)
+			preferencesJSON, err := marshalTorrentResponsePreferences(tt.prefs, tt.present)
+			require.NoError(t, err)
+
+			body, err := json.Marshal(TorrentResponse{
+				Torrents:       []TorrentView{},
+				AppPreferences: preferencesJSON,
+			})
 			require.NoError(t, err)
 
 			var fields map[string]json.RawMessage
@@ -82,6 +78,10 @@ func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
 			require.Equal(t, tt.wantPresent, ok)
 			if tt.wantPresent {
 				require.Equal(t, tt.wantNull, string(preferences) == "null")
+				// The field is emitted last, which is where the marshaler this
+				// replaced put it. Moving it would change every response body.
+				assert.True(t, strings.HasSuffix(string(body), `"preferences":`+string(preferences)+"}"),
+					"preferences must stay the last key in the response")
 			}
 		})
 	}
@@ -2465,4 +2465,137 @@ func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
 		TotalSize: 50,
 		Count:     1,
 	}, counts.TrackerTransfers["dupe.example"])
+}
+
+// Category and tag counts share one accumulator per key, so this pins the whole
+// contract of that pass: what counts, what dedupes, and how tags are split.
+func TestCategoryAndTagCountsFromTorrents(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		torrents         []qbt.Torrent
+		useSubcategories bool
+		wantCategories   map[string]int
+		wantCategorySize map[string]int64
+		wantTags         map[string]int
+		wantTagSizes     map[string]int64
+	}{
+		{
+			name:             "empty library counts nothing",
+			torrents:         nil,
+			wantCategories:   map[string]int{},
+			wantCategorySize: map[string]int64{},
+			wantTags:         map[string]int{},
+			wantTagSizes:     map[string]int64{},
+		},
+		{
+			name: "cross seeds sharing a content path count once for size",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv", ContentPath: "/data/x", Size: 30},
+				{Hash: "b", Category: "tv", ContentPath: "/data/x", Size: 300},
+				{Hash: "c", Category: "tv", ContentPath: "/data/y", Size: 7},
+			},
+			wantCategories:   map[string]int{"tv": 3},
+			wantCategorySize: map[string]int64{"tv": 37},
+			wantTags:         map[string]int{"": 3},
+			wantTagSizes:     map[string]int64{"": 37},
+		},
+		{
+			name: "empty content paths dedupe too, unlike tracker sizes",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv", Size: 30},
+				{Hash: "b", Category: "tv", Size: 300},
+			},
+			wantCategories:   map[string]int{"tv": 2},
+			wantCategorySize: map[string]int64{"tv": 30},
+			wantTags:         map[string]int{"": 2},
+			wantTagSizes:     map[string]int64{"": 30},
+		},
+		{
+			name: "a zero size still creates the size entry",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv", ContentPath: "/data/x"},
+			},
+			wantCategories:   map[string]int{"tv": 1},
+			wantCategorySize: map[string]int64{"tv": 0},
+			wantTags:         map[string]int{"": 1},
+			wantTagSizes:     map[string]int64{"": 0},
+		},
+		{
+			name: "empty tag segments and padding are ignored",
+			torrents: []qbt.Torrent{
+				{Hash: "a", ContentPath: "/data/x", Size: 5, Tags: "alpha,,beta "},
+				{Hash: "b", ContentPath: "/data/y", Size: 9, Tags: " beta"},
+			},
+			wantCategories:   map[string]int{"": 2},
+			wantCategorySize: map[string]int64{"": 14},
+			wantTags:         map[string]int{"alpha": 1, "beta": 2},
+			wantTagSizes:     map[string]int64{"alpha": 5, "beta": 14},
+		},
+		{
+			name: "a whitespace only tag string lands in no tag bucket",
+			torrents: []qbt.Torrent{
+				{Hash: "a", ContentPath: "/data/x", Size: 5, Tags: " "},
+			},
+			wantCategories:   map[string]int{"": 1},
+			wantCategorySize: map[string]int64{"": 5},
+			wantTags:         map[string]int{},
+			wantTagSizes:     map[string]int64{},
+		},
+		{
+			name: "subcategories roll counts and sizes up to the parent",
+			torrents: []qbt.Torrent{
+				{Hash: "a", Category: "tv/anime", ContentPath: "/data/x", Size: 40},
+				{Hash: "b", Category: "tv", ContentPath: "/data/y", Size: 2},
+			},
+			useSubcategories: true,
+			wantCategories:   map[string]int{"tv/anime": 1, "tv": 2},
+			wantCategorySize: map[string]int64{"tv/anime": 40, "tv": 42},
+			wantTags:         map[string]int{"": 2},
+			wantTagSizes:     map[string]int64{"": 42},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sm := &SyncManager{}
+			counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), nil, tt.torrents, nil, nil, false, tt.useSubcategories)
+
+			require.Equal(t, tt.wantCategories, counts.Categories)
+			require.Equal(t, tt.wantCategorySize, counts.CategorySizes)
+			require.Equal(t, tt.wantTags, counts.Tags)
+			require.Equal(t, tt.wantTagSizes, counts.TagSizes)
+		})
+	}
+}
+
+// An authoritative mapping with no domains must not fall back to MainData, which
+// is why the getter separates a nil result from an empty one.
+func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			3: {
+				HashToDomains:  map[string]map[string]struct{}{},
+				DomainToHashes: map[string]map[string]struct{}{},
+				UpdatedAt:      time.Now(),
+			},
+		},
+	}
+	client := &Client{instanceID: 3}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce", ContentPath: "/data/a", Size: 10},
+	}
+	mainData := &qbt.MainData{Trackers: map[string][]string{
+		"https://tracker.example/announce": {"hash-a"},
+	}}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+
+	require.Empty(t, counts.Trackers)
+	require.Empty(t, counts.TrackerTransfers)
 }
