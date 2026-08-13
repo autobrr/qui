@@ -940,7 +940,8 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 	unsupportedTorrents := []qbt.Torrent{
 		{Hash: "unregistered", Name: "Delta", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "down", Name: "Charlie", State: qbt.TorrentStateDownloading, AddedOn: 100},
-		{Hash: "error", Name: "Bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		// Lower case on purpose: a case sensitive tiebreak would sort this last, not second.
+		{Hash: "error", Name: "bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
 		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
 	}
 	sm.sortTorrentsByStatusWithTrackerHealth(unsupportedTorrents, false, false, cachedHealth)

@@ -5417,12 +5417,9 @@ func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torr
 		trackerPriority int
 		statePriority   int
 		label           string
-		lowerName       string
 	}
 
-	// Resolve the sort keys once per torrent. The comparator used to do this on
-	// every comparison behind a map cache, which still cost two map lookups and
-	// a lower-cased name per compare.
+	// Resolve the sort keys once per torrent.
 	meta := make([]statusSortMeta, len(torrents))
 	for i := range torrents {
 		t := &torrents[i]
@@ -5442,7 +5439,6 @@ func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torr
 			trackerPriority: priority,
 			statePriority:   stateSortPriority(t.State),
 			label:           label,
-			lowerName:       strings.ToLower(t.Name),
 		}
 	}
 
@@ -5470,7 +5466,8 @@ func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torr
 			}
 			return cmp
 		default:
-			cmp = strings.Compare(metaA.lowerName, metaB.lowerName)
+			// Folded on demand: this tie is too rare to justify lower-casing every name.
+			cmp = stringutils.CompareFold(torrents[aIdx].Name, torrents[bIdx].Name)
 		}
 
 		if desc {
@@ -6020,12 +6017,12 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 // The getTimestamp function extracts the timestamp value from a torrent.
 // Special values (0 or -1 meaning "never") are treated as infinitely old and sort naturally.
 func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool, getTimestamp func(qbt.Torrent) int64) {
-	// Resolve timestamps, state priorities and lower-cased names once per
-	// torrent rather than on every comparison.
+	// Resolve timestamps and state priorities once per torrent rather than on
+	// every comparison. The name is not resolved here: the tie it breaks is rare
+	// enough that folding on demand beats lower-casing the whole library.
 	type timestampSortKey struct {
 		timestamp     int64
 		statePriority int
-		lowerName     string
 	}
 
 	keys := make([]timestampSortKey, len(torrents))
@@ -6033,7 +6030,6 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 		keys[i] = timestampSortKey{
 			timestamp:     getTimestamp(torrents[i]),
 			statePriority: stateSortPriority(torrents[i].State),
-			lowerName:     strings.ToLower(torrents[i].Name),
 		}
 	}
 
@@ -6049,7 +6045,7 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 		if a.statePriority != b.statePriority {
 			return cmp.Compare(a.statePriority, b.statePriority)
 		}
-		if result := strings.Compare(a.lowerName, b.lowerName); result != 0 {
+		if result := stringutils.CompareFold(torrents[aIdx].Name, torrents[bIdx].Name); result != 0 {
 			return result
 		}
 		if result := strings.Compare(torrents[aIdx].Hash, torrents[bIdx].Hash); result != 0 {

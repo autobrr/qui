@@ -2179,10 +2179,19 @@ func TestSortTorrentsByTimestampTiebreak(t *testing.T) {
 			expected: -1,
 		},
 		{
-			name:     "case insensitive name comparison",
+			name:     "names equal once folded fall through to the hash",
 			a:        qbt.Torrent{Hash: "a", Name: "APPLE", State: qbt.TorrentStateDownloading},
 			b:        qbt.Torrent{Hash: "b", Name: "apple", State: qbt.TorrentStateDownloading},
-			expected: -1, // same name case-insensitive, fallback to hash
+			expected: -1,
+		},
+		{
+			// A case sensitive comparison puts "BANANA" first, because upper case
+			// sorts below lower case in ASCII. Hashes oppose the folded order too,
+			// so only a folded name comparison gives this result.
+			name:     "folded names order below case sensitive ones",
+			a:        qbt.Torrent{Hash: "zzz", Name: "apple", State: qbt.TorrentStateDownloading},
+			b:        qbt.Torrent{Hash: "aaa", Name: "BANANA", State: qbt.TorrentStateDownloading},
+			expected: -1,
 		},
 	}
 
