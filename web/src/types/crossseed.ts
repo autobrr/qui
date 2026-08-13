@@ -152,6 +152,11 @@ export interface SeasonPackCategoryRule {
   category: string
 }
 
+export interface CategoryMappingRule {
+  categories: string[]
+  contentType: string
+}
+
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
@@ -178,6 +183,8 @@ export interface CrossSeedAutomationSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
+  // Category mapping: force the search category by qBittorrent category
+  categoryMappingRules: CategoryMappingRule[]
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -243,6 +250,8 @@ export interface CrossSeedAutomationSettingsPatch {
   useCustomCategory?: boolean
   customCategory?: string
   runExternalProgramId?: number | null
+  // Category mapping: force the search category by qBittorrent category
+  categoryMappingRules?: CategoryMappingRule[]
   // Source-specific tagging
   rssAutomationTags?: string[]
   seededSearchTags?: string[]

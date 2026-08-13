@@ -6705,7 +6705,9 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	// Special case: file has explicit episode markers → trust it for TV detection
 	// Handles season packs where torrent name has year but files have episode numbers
 	// Only apply when titles match (to avoid unrelated files in wrong folders)
-	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" && sourceContent.ContentType == "movie" {
+	// Music too: series folders like "Show (2006)" parse as music and lose the markers.
+	if contentMismatch && !titleMismatch && fileContent.ContentType == "tv" &&
+		(sourceContent.ContentType == "movie" || sourceContent.ContentType == "music") {
 		if largestRelease.Episode > 0 || largestRelease.Series > 0 {
 			log.Debug().
 				Str("torrentName", torrentName).
@@ -7011,7 +7013,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
 	// Use unified content type detection
-	contentInfo := DetermineContentType(contentDetectionRelease)
+	contentInfo := s.applyCategoryMappingRule(ctx, sourceTorrent, DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles))
 
 	// Detect disc layout
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
@@ -8136,12 +8138,12 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 		out := &gazelleClientSet{byHost: make(map[string]*gazellemusic.Client, 2)}
 		if settings != nil {
 			if key := strings.TrimSpace(settings.RedactedAPIKey); key != "" && !domain.IsRedactedString(key) {
-				if c, err := gazellemusic.NewClient("https://redacted.sh", key); err == nil {
+				if c, err := gazellemusic.NewClient("redacted.sh", "", key); err == nil {
 					out.byHost["redacted.sh"] = c
 				}
 			}
 			if key := strings.TrimSpace(settings.OrpheusAPIKey); key != "" && !domain.IsRedactedString(key) {
-				if c, err := gazellemusic.NewClient("https://orpheus.network", key); err == nil {
+				if c, err := gazellemusic.NewClient("orpheus.network", "", key); err == nil {
 					out.byHost["orpheus.network"] = c
 				}
 			}
@@ -8163,7 +8165,7 @@ func (s *Service) buildGazelleClientSet(ctx context.Context, settings *models.Cr
 		if !ok || strings.TrimSpace(key) == "" {
 			continue
 		}
-		client, err := gazellemusic.NewClient("https://"+strings.TrimSpace(host), key)
+		client, err := gazellemusic.NewClient(host, "", key)
 		if err != nil {
 			log.Warn().Err(err).Str("host", host).Msg("[CROSSSEED-GAZELLE] Failed to initialize client")
 			continue
@@ -8219,7 +8221,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	contentDetectionRelease, _ := s.selectContentDetectionRelease(sourceTorrent.Name, sourceRelease, sourceFiles)
 
 	// Use unified content type detection with expanded categories for search
-	contentInfo := DetermineContentType(contentDetectionRelease)
+	contentInfo := s.applyCategoryMappingRule(ctx, sourceTorrent, DetermineContentTypeWithFiles(contentDetectionRelease, sourceFiles))
 	searchRelease := s.selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease, sourceFiles, contentInfo)
 	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
 	// so later release matching follows the same search mode.
@@ -8304,8 +8306,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	query := strings.TrimSpace(opts.Query)
 	var seasonPtr, episodePtr *int
 	queryRelease := searchRelease
-	if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
-		// For music, create a proper music release object by parsing the torrent name as music
+	if contentInfo.ContentType == "music" {
+		// Keyed on the content type, not the parsed type: the file-extension signal forces music
+		// on releases whose name parsed as tv or movie, and those need the artist/album re-parse
+		// too. Audiobooks are excluded here only; they still take the music query shaping below.
 		queryRelease = ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
 	}
 	if query == "" {
@@ -8564,7 +8568,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		// Add season/episode info for TV content only if not already set by safe query
-		if searchRelease.Series > 0 && searchReq.Season == nil {
+		if !contentInfo.IsMusic && searchRelease.Series > 0 && searchReq.Season == nil {
 			season := searchRelease.Series
 			searchReq.Season = &season
 
@@ -8579,37 +8583,28 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			searchReq.Year = searchRelease.Year
 		}
 
-		// Use the appropriate release object for logging based on content type
-		var logRelease rls.Release
-		if contentInfo.IsMusic && contentDetectionRelease.Type == rls.Music {
-			// For music, create a proper music release object by parsing the torrent name as music
-			logRelease = *ParseMusicReleaseFromTorrentName(sourceRelease, sourceTorrent.Name)
-		} else {
-			logRelease = *searchRelease
-		}
-
 		logEvent := log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Str("contentType", contentInfo.ContentType).
 			Ints("categories", contentInfo.Categories).
-			Int("year", logRelease.Year)
+			Int("year", queryRelease.Year)
 
 		// Show different metadata based on content type
 		if !contentInfo.IsMusic {
 			// For TV/Movies, show series/episode data
 			logEvent = logEvent.
-				Str("releaseType", logRelease.Type.String()).
-				Int("series", logRelease.Series).
-				Int("episode", logRelease.Episode)
+				Str("releaseType", queryRelease.Type.String()).
+				Int("series", queryRelease.Series).
+				Int("episode", queryRelease.Episode)
 		} else {
 			// For music, show music-specific metadata
 			logEvent = logEvent.
 				Str("releaseType", "music").
-				Str("artist", logRelease.Artist).
-				Str("title", logRelease.Title).
-				Str("disc", logRelease.Disc).
-				Str("source", logRelease.Source).
-				Str("group", logRelease.Group)
+				Str("artist", queryRelease.Artist).
+				Str("title", queryRelease.Title).
+				Str("disc", queryRelease.Disc).
+				Str("source", queryRelease.Source).
+				Str("group", queryRelease.Group)
 		}
 
 		logEvent.Msg("[CROSSSEED-SEARCH] Applied RLS-based content type filtering")

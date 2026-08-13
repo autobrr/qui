@@ -6784,6 +6784,30 @@ components:
           type: string
           description: qBittorrent category to file matching season-pack injections under.
 
+    CategoryMappingRule:
+      type: object
+      required:
+        - categories
+        - contentType
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+          description: qBittorrent category names to match. Each match is exact and case-sensitive. A category claimed by an earlier rule is dropped from later ones.
+        contentType:
+          type: string
+          enum:
+            - movie
+            - tv
+            - music
+            - audiobook
+            - book
+            - comic
+            - game
+            - app
+          description: Content type forced for torrents in any of the matched categories. A matching rule wins over name and file based detection.
+
     CrossSeedAutomationSettingsPatch:
       type: object
       properties:
@@ -6917,6 +6941,11 @@ components:
           items:
             $ref: '#/components/schemas/SeasonPackCategoryRule'
           description: Per-quality routing rules that pick a category by release resolution and source. seasonPackCategory is the fallback when no rule matches.
+        categoryMappingRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryMappingRule'
+          description: Rules that force the cross-seed search category for torrents in a qBittorrent category. A matching rule wins over content type detection.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.
@@ -7058,6 +7087,11 @@ components:
           items:
             $ref: '#/components/schemas/SeasonPackCategoryRule'
           description: Per-quality routing rules that pick a category by release resolution and source. seasonPackCategory is the fallback when no rule matches.
+        categoryMappingRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryMappingRule'
+          description: Rules that force the cross-seed search category for torrents in a qBittorrent category. A matching rule wins over content type detection.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.

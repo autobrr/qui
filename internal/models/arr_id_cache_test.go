@@ -106,3 +106,66 @@ func TestArrIDCacheStore_GetReturnsNegativeEntryInNonUTCTimezone(t *testing.T) {
 	require.True(t, entry.IsNegative)
 	require.True(t, entry.ExternalIDs.IsEmpty())
 }
+
+// TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive is the #2300 guard:
+// concurrent lookups of the same title can race, and the slower one may resolve
+// nothing. Its negative write must not replace freshly cached IDs, or every
+// search for that title goes ID-less until the negative TTL expires.
+func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "arr-id-cache-negative-clobber")
+	store := models.NewArrIDCacheStore(db)
+	ids := &models.ExternalIDs{IMDbID: "tt1234567", TMDbID: 42}
+
+	t.Run("negative loses to live positive", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "race", "movie", nil, ids, false, time.Hour))
+		require.NoError(t, store.Set(ctx, "race", "movie", nil, nil, true, time.Hour))
+
+		entry, err := store.Get(ctx, "race", "movie")
+		require.NoError(t, err)
+		require.False(t, entry.IsNegative)
+		require.Equal(t, *ids, entry.ExternalIDs)
+	})
+
+	t.Run("positive replaces negative", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "neg-first", "movie", nil, nil, true, time.Hour))
+		require.NoError(t, store.Set(ctx, "neg-first", "movie", nil, ids, false, time.Hour))
+
+		entry, err := store.Get(ctx, "neg-first", "movie")
+		require.NoError(t, err)
+		require.False(t, entry.IsNegative)
+		require.Equal(t, *ids, entry.ExternalIDs)
+	})
+
+	t.Run("positive refreshes positive", func(t *testing.T) {
+		newer := &models.ExternalIDs{IMDbID: "tt7654321", TMDbID: 7}
+		require.NoError(t, store.Set(ctx, "refresh", "movie", nil, ids, false, time.Hour))
+		require.NoError(t, store.Set(ctx, "refresh", "movie", nil, newer, false, time.Hour))
+
+		entry, err := store.Get(ctx, "refresh", "movie")
+		require.NoError(t, err)
+		require.Equal(t, *newer, entry.ExternalIDs)
+	})
+
+	t.Run("negative replaces expired positive", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "expired", "movie", nil, ids, false, -time.Minute))
+		require.NoError(t, store.Set(ctx, "expired", "movie", nil, nil, true, time.Hour))
+
+		// Get filters expired rows, so read the row state via CountValid semantics:
+		// the negative entry must be the live one.
+		entry, err := store.Get(ctx, "expired", "movie")
+		require.NoError(t, err)
+		require.True(t, entry.IsNegative)
+	})
+
+	t.Run("negative refreshes negative", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "neg-refresh", "movie", nil, nil, true, time.Minute))
+		require.NoError(t, store.Set(ctx, "neg-refresh", "movie", nil, nil, true, time.Hour))
+
+		entry, err := store.Get(ctx, "neg-refresh", "movie")
+		require.NoError(t, err)
+		require.True(t, entry.IsNegative)
+	})
+}

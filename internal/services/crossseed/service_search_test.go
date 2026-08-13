@@ -6,6 +6,8 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -1561,6 +1563,9 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceHashNorm := strings.ToLower(sourceHash)
 
+	// Stub keeps a broken skip from reaching the live tracker.
+	stubGazelleMatchLookup(t)
+
 	svc := &Service{
 		instanceStore:    instanceStore,
 		automationStore:  store,
@@ -1710,6 +1715,9 @@ func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *te
 		Size:     123,
 		Tracker:  "https://orpheus.network/announce",
 	}
+
+	// Stub keeps a broken skip from reaching the live tracker.
+	stubGazelleMatchLookup(t)
 
 	svc := &Service{
 		instanceStore:    instanceStore,
@@ -2370,8 +2378,30 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 	require.False(t, found)
 }
 
+// gazelleTestServer stands in for the real Gazelle APIs so tests never send
+// requests to the live trackers.
+var gazelleTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "unexpected gazelle API call: "+r.URL.Path, http.StatusNotImplemented)
+}))
+
+// stubGazelleMatchLookup keeps a test off the real tracker APIs when it builds a
+// client through buildGazelleClientSet, which always points at the live hosts.
+// Callers must not be parallel: findGazelleMatch is a package variable.
+func stubGazelleMatchLookup(t *testing.T) {
+	t.Helper()
+	prevFindMatch := findGazelleMatch
+	findGazelleMatch = func(context.Context, *gazellemusic.Client, []byte, map[string]int64, int64) (*gazellemusic.Match, error) {
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		findGazelleMatch = prevFindMatch
+	})
+}
+
+// gazelleClientsForTest returns a client set keyed by the real OPS host, because
+// host matching uses that key, but the client itself talks to the test server.
 func gazelleClientsForTest() (*gazelleClientSet, error) {
-	client, err := gazellemusic.NewClient("https://orpheus.network", "ops-key")
+	client, err := gazellemusic.NewClient("orpheus.network", gazelleTestServer.URL, "ops-key")
 	if err != nil {
 		return nil, err
 	}

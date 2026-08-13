@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/assert"
@@ -106,7 +107,7 @@ func TestDetermineContentType(t *testing.T) {
 			name:        "Book",
 			release:     rls.Release{Type: rls.Book, Title: "Test Book"},
 			wantType:    "book",
-			wantCats:    []int{8000},
+			wantCats:    []int{7000, 7010, 7020, 7040, 7050, 7060},
 			wantSearch:  "book",
 			wantCaps:    []string{"book-search"},
 			wantIsMusic: false,
@@ -115,7 +116,7 @@ func TestDetermineContentType(t *testing.T) {
 			name:        "Comic",
 			release:     rls.Release{Type: rls.Comic, Title: "Test Comic"},
 			wantType:    "comic",
-			wantCats:    []int{8000},
+			wantCats:    []int{7000, 7030},
 			wantSearch:  "book",
 			wantCaps:    []string{"book-search"},
 			wantIsMusic: false,
@@ -320,6 +321,210 @@ func TestDetermineContentType(t *testing.T) {
 			assert.Equal(t, tt.wantSearch, result.SearchType)
 			assert.Equal(t, tt.wantCaps, result.RequiredCaps)
 			assert.Equal(t, tt.wantIsMusic, result.IsMusic)
+		})
+	}
+}
+
+// TestDetermineContentTypeWithFiles covers discussion #1734: file extensions
+// are ground truth for the audio/video split, so a byte-weighted extension
+// signal overrides the name-based type when the two disagree.
+func TestDetermineContentTypeWithFiles(t *testing.T) {
+	audioFiles := qbt.TorrentFiles{
+		{Name: "Artist - Album (2019) [FLAC]/01 - Track.flac", Size: 40_000_000},
+		{Name: "Artist - Album (2019) [FLAC]/cover.jpg", Size: 900_000},
+	}
+	videoFiles := qbt.TorrentFiles{
+		{Name: "Release/release.mkv", Size: 8_000_000_000},
+		{Name: "Release/release.nfo", Size: 4_000},
+	}
+
+	tests := []struct {
+		name        string
+		release     rls.Release
+		files       qbt.TorrentFiles
+		wantType    string
+		wantIsMusic bool
+	}{
+		{
+			name:        "audio files force music over a tv parse",
+			release:     rls.Release{Type: rls.Episode, Title: "Test Album", Series: 1, Episode: 1},
+			files:       audioFiles,
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			name:        "audio files force music over a movie parse",
+			release:     rls.Release{Type: rls.Movie, Title: "Test Album", Year: 2019},
+			files:       audioFiles,
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			name:        "audio files force music over an unknown parse",
+			release:     rls.Release{Type: rls.Unknown, Title: "weird_name_2019"},
+			files:       audioFiles,
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			// The music-to-video name rescue must not undo the file signal:
+			// a music parse with a video-looking token stays music when the
+			// bytes are audio.
+			name:        "audio files beat video tokens in the name",
+			release:     rls.Release{Type: rls.Music, Title: "Test Album", Resolution: "1080p"},
+			files:       audioFiles,
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			name:        "video files rewrite a music parse with episode metadata to tv",
+			release:     rls.Release{Type: rls.Music, Title: "Test Show", Series: 2, Episode: 3},
+			files:       videoFiles,
+			wantType:    "tv",
+			wantIsMusic: false,
+		},
+		{
+			name:        "video files rewrite a music parse without episode metadata to movie",
+			release:     rls.Release{Type: rls.Music, Title: "Test Title"},
+			files:       videoFiles,
+			wantType:    "movie",
+			wantIsMusic: false,
+		},
+		{
+			name:        "video files keep a movie parse unchanged",
+			release:     rls.Release{Type: rls.Movie, Title: "Test Movie", Year: 2019},
+			files:       videoFiles,
+			wantType:    "movie",
+			wantIsMusic: false,
+		},
+		{
+			name:        "audio files keep a music parse music",
+			release:     rls.Release{Type: rls.Music, Artist: "Test Artist", Title: "Test Album"},
+			files:       audioFiles,
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			name:        "audio files keep an audiobook parse audiobook",
+			release:     rls.Release{Type: rls.Audiobook, Title: "Test Audiobook"},
+			files:       qbt.TorrentFiles{{Name: "Author - Book/book.m4b", Size: 300_000_000}},
+			wantType:    "audiobook",
+			wantIsMusic: true,
+		},
+		{
+			name:    "video bytes dominate a movie with a soundtrack folder",
+			release: rls.Release{Type: rls.Music, Title: "Test Title"},
+			files: qbt.TorrentFiles{
+				{Name: "Movie/movie.mkv", Size: 8_000_000_000},
+				{Name: "Movie/Soundtrack/01 - theme.mp3", Size: 9_000_000},
+			},
+			wantType:    "movie",
+			wantIsMusic: false,
+		},
+		{
+			// Booklet scans outweigh individual tracks in many lossy releases;
+			// the signal weighs total bytes per class, not the largest file.
+			name:    "audio bytes dominate an album with booklet scans",
+			release: rls.Release{Type: rls.Unknown, Title: "Test Album"},
+			files: qbt.TorrentFiles{
+				{Name: "Album/01.mp3", Size: 9_000_000},
+				{Name: "Album/02.mp3", Size: 9_000_000},
+				{Name: "Album/Scans/booklet.tif", Size: 12_000_000},
+			},
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			// Ties go to the content class, mirroring the RED/OPS gate.
+			name:    "audio wins an exact byte tie",
+			release: rls.Release{Type: rls.Unknown, Title: "Test Album"},
+			files: qbt.TorrentFiles{
+				{Name: "Album/01.flac", Size: 10_000_000},
+				{Name: "Album/booklet.pdf", Size: 10_000_000},
+			},
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			name:    "video wins an exact byte tie",
+			release: rls.Release{Type: rls.Music, Title: "Test Title"},
+			files: qbt.TorrentFiles{
+				{Name: "Release/release.mkv", Size: 10_000_000},
+				{Name: "Release/cover.jpg", Size: 10_000_000},
+			},
+			wantType:    "movie",
+			wantIsMusic: false,
+		},
+		{
+			name:        "uppercase audio extension still counts",
+			release:     rls.Release{Type: rls.Episode, Title: "Test Album", Series: 1},
+			files:       qbt.TorrentFiles{{Name: "Album/01 - Track.FLAC", Size: 40_000_000}},
+			wantType:    "music",
+			wantIsMusic: true,
+		},
+		{
+			name:        "no files falls back to the name-based rescue",
+			release:     rls.Release{Type: rls.Music, Title: "Test Title", Resolution: "1080p"},
+			files:       qbt.TorrentFiles{},
+			wantType:    "movie",
+			wantIsMusic: false,
+		},
+		{
+			name:        "neither class dominant falls back to the name",
+			release:     rls.Release{Type: rls.Book, Title: "Test Book"},
+			files:       qbt.TorrentFiles{{Name: "Author - Book.epub", Size: 2_000_000}},
+			wantType:    "book",
+			wantIsMusic: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DetermineContentTypeWithFiles(&tt.release, tt.files)
+
+			assert.Equal(t, tt.wantType, result.ContentType)
+			assert.Equal(t, tt.wantIsMusic, result.IsMusic)
+			if tt.wantIsMusic {
+				assert.Equal(t, []int{3000}, result.Categories)
+			}
+		})
+	}
+}
+
+// TestRuleContentTypeInfo covers the category mapping rules from discussion
+// #1734: a rule names a content type as a string, and the classification must
+// come out identical to a release that parsed as that type.
+func TestRuleContentTypeInfo(t *testing.T) {
+	tests := []struct {
+		contentType string
+		wantSearch  string
+		wantIsMusic bool
+	}{
+		{contentType: "movie", wantSearch: "movie"},
+		{contentType: "tv", wantSearch: "tvsearch"},
+		{contentType: "music", wantSearch: "music", wantIsMusic: true},
+		{contentType: "audiobook", wantSearch: "music", wantIsMusic: true},
+		{contentType: "book", wantSearch: "book"},
+		{contentType: "comic", wantSearch: "book"},
+		{contentType: "game", wantSearch: "search"},
+		{contentType: "app", wantSearch: "search"},
+		{contentType: "adult"},
+		{contentType: "unknown"},
+		{contentType: ""},
+	}
+
+	for _, tt := range tests {
+		wantOK := tt.wantSearch != ""
+		t.Run("contentType="+tt.contentType, func(t *testing.T) {
+			info, ok := RuleContentTypeInfo(tt.contentType)
+			assert.Equal(t, wantOK, ok)
+			if !wantOK {
+				return
+			}
+			assert.Equal(t, tt.contentType, info.ContentType)
+			assert.Equal(t, tt.wantSearch, info.SearchType)
+			assert.Equal(t, tt.wantIsMusic, info.IsMusic)
+			assert.NotEmpty(t, info.Categories)
 		})
 	}
 }

@@ -287,10 +287,17 @@
       "opsDescription": "用于 orpheus.network 查询。粘贴以替换，清空以移除。"
     },
     "matching": {
-      "title": "匹配行为",
-      "description": "控制种子的匹配方式以及允许的文件差异。",
+      "title": "单集",
+      "description": "你的本地季度合集包可以匹配索引器上的单集种子，让你同时做种两种格式。",
       "crossSeedEpisodes": "从合集包辅种单集",
-      "crossSeedEpisodesDescription": "你的本地季度合集包可以匹配索引器上的单集种子，让你同时做种两种格式。"
+      "categoryMapping": {
+        "title": "搜索分类规则",
+        "description": "为 qBittorrent 分类中的种子强制指定搜索类型。规则优先于基于种子名称和文件的检测。",
+        "whenCategory": "当分类为",
+        "searchAs": "按此类型搜索",
+        "addRule": "添加规则",
+        "removeRule": "移除规则"
+      }
     },
     "safety": {
       "title": "安全与验证",

@@ -287,10 +287,17 @@
       "opsDescription": "orpheus.network 조회에 사용됩니다. 교체하려면 붙여 넣고, 제거하려면 지우세요."
     },
     "matching": {
-      "title": "일치 동작",
-      "description": "토렌트가 일치하는 방식과 허용되는 파일 차이를 제어합니다.",
+      "title": "에피소드",
+      "description": "로컬 시즌 팩이 인덱서의 개별 에피소드 토렌트와 일치하여 두 형식을 모두 시드할 수 있습니다.",
       "crossSeedEpisodes": "팩의 에피소드 cross-seed",
-      "crossSeedEpisodesDescription": "로컬 시즌 팩이 인덱서의 개별 에피소드 토렌트와 일치하여 두 형식을 모두 시드할 수 있습니다."
+      "categoryMapping": {
+        "title": "검색 분류 규칙",
+        "description": "qBittorrent 카테고리의 토렌트에 검색 유형을 강제로 지정합니다. 규칙은 토렌트 이름과 파일 기반 감지보다 우선합니다.",
+        "whenCategory": "카테고리가 다음일 때",
+        "searchAs": "다음으로 검색",
+        "addRule": "규칙 추가",
+        "removeRule": "규칙 제거"
+      }
     },
     "safety": {
       "title": "안전 및 검증",
