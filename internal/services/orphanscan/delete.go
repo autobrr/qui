@@ -27,6 +27,12 @@ const (
 // withinScanRoot checks that target is an absolute path strictly below scanRoot.
 // Comparison is case-folded, because the scan root and the target can carry
 // different casing of the same directory on a case-insensitive filesystem.
+//
+// The fold cannot let a delete escape the scan: target is always a path that a
+// walk of one of the run's scan roots produced, so a match that needs the fold
+// means the file sits under a different spelling of a root that was walked, not
+// under a directory nobody scanned. Only the fence is spelled differently; the
+// path handed to os.Remove is target itself.
 func withinScanRoot(scanRoot, target string) error {
 	if !filepath.IsAbs(target) {
 		return fmt.Errorf("refusing non-absolute path: %s", target)
