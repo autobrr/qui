@@ -231,6 +231,36 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	return classifyRelease(normalizeReleaseTypeForContent(release))
 }
 
+// RuleContentTypeInfo builds the classification a category mapping rule forces.
+// It classifies a synthetic release of the rule's content type, so the result
+// stays identical to a release that parsed as that type. Returns false for
+// content types a rule cannot force. The API handler also uses it to validate
+// incoming rules, so the list of valid content types lives here only.
+func RuleContentTypeInfo(contentType string) (ContentTypeInfo, bool) {
+	var releaseType rls.Type
+	switch contentType {
+	case "movie":
+		releaseType = rls.Movie
+	case "tv":
+		releaseType = rls.Series
+	case "music":
+		releaseType = rls.Music
+	case "audiobook":
+		releaseType = rls.Audiobook
+	case "book":
+		releaseType = rls.Book
+	case "comic":
+		releaseType = rls.Comic
+	case "game":
+		releaseType = rls.Game
+	case "app":
+		releaseType = rls.App
+	default:
+		return ContentTypeInfo{}, false
+	}
+	return classifyRelease(&rls.Release{Type: releaseType}), true
+}
+
 func classifyRelease(release *rls.Release) ContentTypeInfo {
 	var info ContentTypeInfo
 
@@ -288,13 +318,17 @@ func classifyRelease(release *rls.Release) ContentTypeInfo {
 		info.RequiredCaps = []string{"music-search", "audio-search"}
 		info.IsMusic = true
 	case rls.Book:
+		// Books is 7000, not 8000. 8000 is Other, and an indexer that advertises
+		// its caps drops a request for a category it does not carry, so books were
+		// skipped at every book indexer. Torznab derives the search mode from these
+		// categories, so the 7000 range is also what makes the request t=book.
 		info.ContentType = "book"
-		info.Categories = []int{8000} // Books
+		info.Categories = []int{7000, 7010, 7020, 7040, 7050, 7060} // Books, minus comics
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case rls.Comic:
 		info.ContentType = "comic"
-		info.Categories = []int{8000} // Books (comics are under books)
+		info.Categories = []int{7000, 7030} // Books, Books/Comics
 		info.SearchType = "book"
 		info.RequiredCaps = []string{"book-search"}
 	case rls.Game:
