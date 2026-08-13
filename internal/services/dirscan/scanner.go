@@ -167,14 +167,21 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 		IsDisc: s.isDiscLayoutRoot(ctx, dirPath),
 	}
 
-	ch, err := s.backend.WalkDir(ctx, dirPath, fsops.WalkOptions{
+	walkCtx, cancelWalk := context.WithCancel(ctx)
+	ch, err := s.backend.WalkDir(walkCtx, dirPath, fsops.WalkOptions{
 		SkipHidden: true,
 		WantFileID: true,
 		WantNlinks: true,
 	})
 	if err != nil {
+		cancelWalk()
 		return nil, fmt.Errorf("walk directory %s: %w", dirPath, err)
 	}
+	defer func() {
+		cancelWalk()
+		for range ch { //nolint:revive // drain channel to release the walk goroutine
+		}
+	}()
 
 	for entry := range ch {
 		if entry.Err != nil {

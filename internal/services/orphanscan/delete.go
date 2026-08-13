@@ -90,13 +90,20 @@ func validateDeleteTarget(scanRoot, target string) error {
 
 // checkDirContainsInUseFile walks a directory and returns ErrInUse if any file is in the TorrentFileMap.
 func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentFileMap, backend fsops.Backend) error {
-	ch, err := backend.WalkDir(ctx, target, fsops.WalkOptions{})
+	walkCtx, cancelWalk := context.WithCancel(ctx)
+	ch, err := backend.WalkDir(walkCtx, target, fsops.WalkOptions{})
 	if err != nil {
+		cancelWalk()
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("walk directory: %w", err)
 	}
+	defer func() {
+		cancelWalk()
+		for range ch { //nolint:revive // drain channel to release the walk goroutine
+		}
+	}()
 	for entry := range ch {
 		if entry.Err != nil {
 			if errors.Is(entry.Err, fs.ErrNotExist) {
