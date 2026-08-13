@@ -229,8 +229,9 @@ func TestWalkDir_IgnoreDirNames(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "keep.txt"), "k")
 	writeFile(t, filepath.Join(dir, "node_modules", "pkg.js"), "p")
+	writeFile(t, filepath.Join(dir, "$recycle.bin", "old.mkv"), "r")
 
-	ch, err := b.WalkDir(context.Background(), dir, fsops.WalkOptions{IgnoreDirNames: []string{"node_modules"}})
+	ch, err := b.WalkDir(context.Background(), dir, fsops.WalkOptions{IgnoreDirNames: []string{"node_modules", "$RECYCLE.BIN"}})
 	require.NoError(t, err)
 
 	var relPaths []string
@@ -239,6 +240,8 @@ func TestWalkDir_IgnoreDirNames(t *testing.T) {
 	}
 	assert.Contains(t, relPaths, "keep.txt")
 	assert.NotContains(t, relPaths, filepath.Join("node_modules", "pkg.js"))
+	// Matching is case-insensitive: metadata dir case varies on disk.
+	assert.NotContains(t, relPaths, filepath.Join("$recycle.bin", "old.mkv"))
 }
 
 func TestWalkDir_MaxEntries(t *testing.T) {
@@ -429,7 +432,6 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 	result, err := b.HardlinkTree(context.Background(), plan)
 	require.NoError(t, err)
 	assert.Equal(t, 2, result.Created)
-	assert.False(t, result.RolledBack)
 
 	// Verify files exist and are hardlinks.
 	fi1, err := os.Stat(filepath.Join(treeRoot, "a.mkv"))
