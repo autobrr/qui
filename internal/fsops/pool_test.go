@@ -123,7 +123,9 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 
 	require.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
 	require.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
-	require.ErrorIs(t, b.RemoveTree(ctx, nil), ErrNoFilesystemAccess)
+	// A nil handle means nothing to remove — safe on every backend.
+	require.NoError(t, b.RemoveTree(ctx, nil))
+	require.ErrorIs(t, b.RemoveTree(ctx, &TreeCreateResult{Files: []string{"/x"}}), ErrNoFilesystemAccess)
 
 	_, err = b.HardlinkTree(ctx, nil)
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)

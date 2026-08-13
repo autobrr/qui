@@ -56,8 +56,16 @@ func (noopBackend) HardlinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (
 func (noopBackend) ReflinkTree(ctx context.Context, _ *hardlinktree.TreePlan) (*TreeCreateResult, error) {
 	return nil, noopErr(ctx)
 }
-func (noopBackend) RemoveTree(ctx context.Context, _ *TreeCreateResult) error {
-	return noopErr(ctx)
+func (noopBackend) RemoveTree(ctx context.Context, created *TreeCreateResult) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// The interface promises a nil handle is safe: there is nothing to
+	// remove, so a defensive RemoveTree(nil) must not error.
+	if created == nil {
+		return nil
+	}
+	return ErrNoFilesystemAccess
 }
 func (noopBackend) SupportsReflink(ctx context.Context, _ string) (bool, string, error) {
 	return false, "", noopErr(ctx)
