@@ -32,7 +32,6 @@ type DirEntry struct {
 	Name      string
 	IsDir     bool
 	IsSymlink bool
-	Mode      fs.FileMode
 }
 
 // LstatInfo holds metadata from an Lstat call, including hardlink identity.
