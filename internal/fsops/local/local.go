@@ -52,19 +52,13 @@ func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, err
 	return osFileInfoToLstat(fi, path), nil
 }
 
-func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]fsops.DirEntry, bool, error) {
+func (b *Backend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		return nil, false, err
-	}
-
-	truncated := false
-	if maxEntries > 0 && len(entries) > maxEntries {
-		entries = entries[:maxEntries]
-		truncated = true
+		return nil, err
 	}
 
 	result := make([]fsops.DirEntry, 0, len(entries))
@@ -75,7 +69,7 @@ func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]f
 			IsSymlink: e.Type()&os.ModeSymlink != 0,
 		})
 	}
-	return result, truncated, nil
+	return result, nil
 }
 
 func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
@@ -151,7 +145,7 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 					entry.IsDir = fi.IsDir()
 					entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
 
-					if (opts.WantFileID || opts.WantNlinks) && fi.Mode().IsRegular() {
+					if opts.WantFileID && fi.Mode().IsRegular() {
 						fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
 						if fidErr != nil {
 							// Identity failure must not read as an unreadable
