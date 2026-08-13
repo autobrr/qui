@@ -129,7 +129,7 @@ If qui does not fit your setup, these projects offer different approaches:
 - [Flood](https://github.com/jesec/flood) supports qBittorrent and other torrent clients.
 - [qBitController](https://github.com/Bartuzen/qBitController) is a native app for Android, iOS, Linux, macOS, and Windows.
 
-qBittorrent maintains a longer [list of community WebUIs](https://github.com/qbittorrent/qBittorrent/wiki/List-of-known-alternate-WebUIs).
+The qBittorrent wiki includes a longer [list of community WebUIs](https://github.com/qbittorrent/qBittorrent/wiki/List-of-known-alternate-WebUIs).
 
 ## License
 
