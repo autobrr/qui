@@ -32,7 +32,6 @@ type DirEntry struct {
 	Name      string
 	IsDir     bool
 	IsSymlink bool
-	Mode      fs.FileMode
 }
 
 // LstatInfo holds metadata from an Lstat call, including hardlink identity.
@@ -40,6 +39,11 @@ type LstatInfo struct {
 	FileInfo
 	FileID hardlink.FileID
 	Nlinks uint64
+	// FileIDErr is set when FileID/Nlinks could not be resolved (e.g. a
+	// Windows ACL denial on an otherwise statable file). The rest of the
+	// struct is still valid; callers that need identity must check this
+	// instead of treating the whole stat as failed.
+	FileIDErr error
 }
 
 // WalkEntry is emitted by WalkDir for each filesystem entry encountered.
@@ -58,7 +62,6 @@ type WalkOptions struct {
 	IgnorePaths    []string
 	WantFileID     bool
 	WantNlinks     bool
-	MaxEntries     int
 }
 
 // StatfsResult holds filesystem space information.
@@ -69,9 +72,7 @@ type StatfsResult struct {
 
 // RemoveOptions controls the behavior of a Remove call.
 type RemoveOptions struct {
-	Recursive   bool
-	IgnorePaths []string
-	RequestID   string
+	Recursive bool
 }
 
 // TreeCreateResult holds the outcome of a HardlinkTree or ReflinkTree call.
@@ -83,13 +84,4 @@ type TreeCreateResult struct {
 	SkippedExists int
 	Files         []string
 	Dirs          []string
-}
-
-// BackendInfo describes the capabilities of a Backend implementation.
-type BackendInfo struct {
-	Kind          string   // "local", "helper", or "none"
-	HelperVersion string   // empty for local
-	AllowedRoots  []string // empty for local (no restrictions)
-	ReflinkRoots  []string // roots whose FS supports CoW reflinks
-	Capabilities  []string // op capabilities advertised by the helper
 }

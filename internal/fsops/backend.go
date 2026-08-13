@@ -7,15 +7,14 @@ import (
 	"context"
 	"io/fs"
 
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 // Backend abstracts filesystem operations so services work identically against
-// a local filesystem or a remote qui-helper over SSH. The interface mirrors the
-// operations in the design doc §8 and covers exactly the syscall-level ops that
-// qui's services need. Path manipulation (filepath.Clean, filepath.Rel, etc.)
-// is not part of this interface — it stays as direct calls in service code.
+// a local filesystem or a future SSH-backed remote. It covers exactly the
+// syscall-level ops that qui's services need. Path manipulation
+// (filepath.Clean, filepath.Rel, etc.) is not part of this interface — it
+// stays as direct calls in service code.
 //
 // Every method accepts a context.Context and must respect cancellation.
 type Backend interface {
@@ -25,17 +24,11 @@ type Backend interface {
 	// fs.ErrNotExist if the path does not exist.
 	Stat(ctx context.Context, path string) (*FileInfo, error)
 
-	// StatBatch returns metadata for multiple paths. Per-path errors are in the
-	// []error slice (indexed parallel to paths); a non-nil top-level error means
-	// the entire batch failed.
-	StatBatch(ctx context.Context, paths []string) ([]*FileInfo, []error, error)
-
 	// Lstat is like Stat but does not follow symlinks. Populates FileID and
-	// Nlinks from the underlying inode.
+	// Nlinks from the underlying inode; a failure to resolve identity is
+	// reported in LstatInfo.FileIDErr, not as an Lstat error, so one
+	// identity-opaque file cannot fail callers that only need metadata.
 	Lstat(ctx context.Context, path string) (*LstatInfo, error)
-
-	// LstatBatch is like StatBatch but for Lstat.
-	LstatBatch(ctx context.Context, paths []string) ([]*LstatInfo, []error, error)
 
 	// ReadDir returns directory entries. If maxEntries > 0 the result is
 	// truncated and the bool return is true.
@@ -43,7 +36,8 @@ type Backend interface {
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
 	// The channel is closed when the walk completes, is cancelled via ctx, or
-	// hits an unrecoverable error. Callers must drain the channel.
+	// hits an unrecoverable error. Callers must drain the channel or cancel
+	// ctx; abandoning it leaks the walk goroutine.
 	WalkDir(ctx context.Context, root string, opts WalkOptions) (<-chan WalkEntry, error)
 
 	// Statfs returns free/total bytes for the filesystem containing path.
@@ -53,12 +47,11 @@ type Backend interface {
 	// (same device ID on Unix, same volume serial on Windows).
 	SameFilesystem(ctx context.Context, p1, p2 string) (bool, error)
 
-	// FileID returns the unique file identity and link count for path.
-	FileID(ctx context.Context, path string) (hardlink.FileID, uint64, error)
-
 	// --- Write (mutating) ---
 
 	// MkdirAll creates a directory and all parents. Equivalent to os.MkdirAll.
+	// For torrent content and link-tree dirs, pass fsutil.ContentDirMode /
+	// fsutil.LinkTreeBaseDirMode rather than a hand-typed mode (#1704, #2086).
 	MkdirAll(ctx context.Context, path string, perm fs.FileMode) error
 
 	// Remove removes a file or directory. If opts.Recursive is true, removes
@@ -79,7 +72,9 @@ type Backend interface {
 
 	// RemoveTree removes exactly the files and dirs recorded in created —
 	// never the whole plan, which could delete links shared with sibling
-	// torrents (discussion #2282). Safe to call with a nil result.
+	// torrents (discussion #2282). A plan root that already existed before
+	// the create is therefore NOT removed; callers own pruning it. Safe to
+	// call with a nil result.
 	RemoveTree(ctx context.Context, created *TreeCreateResult) error
 
 	// --- Capabilities ---
@@ -87,13 +82,4 @@ type Backend interface {
 	// SupportsReflink returns whether the filesystem at path supports CoW
 	// reflinks. The string return is a human-readable reason when unsupported.
 	SupportsReflink(ctx context.Context, path string) (bool, string, error)
-
-	// --- Diagnostic ---
-
-	// Info returns metadata about this backend (kind, version, capabilities).
-	Info(ctx context.Context) (*BackendInfo, error)
-
-	// HealthCheck returns nil if the backend is operational, or an error
-	// describing the problem.
-	HealthCheck(ctx context.Context) error
 }

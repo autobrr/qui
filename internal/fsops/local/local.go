@@ -8,8 +8,6 @@ package local
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,26 +41,6 @@ func (b *Backend) Stat(ctx context.Context, path string) (*fsops.FileInfo, error
 	return osFileInfoToFsops(fi, path), nil
 }
 
-func (b *Backend) StatBatch(ctx context.Context, paths []string) ([]*fsops.FileInfo, []error, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	infos := make([]*fsops.FileInfo, len(paths))
-	errs := make([]error, len(paths))
-	for i, p := range paths {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		fi, err := os.Stat(p)
-		if err != nil {
-			errs[i] = err
-			continue
-		}
-		infos[i] = osFileInfoToFsops(fi, p)
-	}
-	return infos, errs, nil
-}
-
 func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -71,32 +49,7 @@ func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, err
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToLstat(fi, path)
-}
-
-func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	infos := make([]*fsops.LstatInfo, len(paths))
-	errs := make([]error, len(paths))
-	for i, p := range paths {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		fi, err := os.Lstat(p)
-		if err != nil {
-			errs[i] = err
-			continue
-		}
-		info, err := osFileInfoToLstat(fi, p)
-		if err != nil {
-			errs[i] = err
-			continue
-		}
-		infos[i] = info
-	}
-	return infos, errs, nil
+	return osFileInfoToLstat(fi, path), nil
 }
 
 func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]fsops.DirEntry, bool, error) {
@@ -116,19 +69,10 @@ func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]f
 
 	result := make([]fsops.DirEntry, 0, len(entries))
 	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil {
-			// The entry vanished between ReadDir and Info: a race, not a failure.
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return nil, false, fmt.Errorf("read entry %s: %w", e.Name(), err)
-		}
 		result = append(result, fsops.DirEntry{
 			Name:      e.Name(),
 			IsDir:     e.IsDir(),
 			IsSymlink: e.Type()&os.ModeSymlink != 0,
-			Mode:      info.Mode().Perm(),
 		})
 	}
 	return result, truncated, nil
@@ -146,13 +90,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
-		count := 0
 		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 			if ctx.Err() != nil {
-				return fs.SkipAll
-			}
-
-			if opts.MaxEntries > 0 && count >= opts.MaxEntries {
 				return fs.SkipAll
 			}
 
@@ -215,9 +154,10 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 					if (opts.WantFileID || opts.WantNlinks) && fi.Mode().IsRegular() {
 						fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
 						if fidErr != nil {
-							// The caller asked for identity data; an entry without it
-							// must read as unreadable, not as a file with no links.
-							entry.Err = fidErr
+							// Identity failure must not read as an unreadable
+							// entry — that would abort whole scans over one odd
+							// file. Callers that need identity check FileIDErr.
+							entry.FileIDErr = fidErr
 						} else {
 							entry.FileID = fid
 							entry.Nlinks = nlinks
@@ -228,7 +168,6 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 
 			select {
 			case ch <- entry:
-				count++
 			case <-ctx.Done():
 				return fs.SkipAll
 			}
@@ -256,17 +195,6 @@ func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, erro
 	return fsutil.SameFilesystem(p1, p2)
 }
 
-func (b *Backend) FileID(ctx context.Context, path string) (hardlink.FileID, uint64, error) {
-	if err := ctx.Err(); err != nil {
-		return hardlink.FileID{}, 0, err
-	}
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return hardlink.FileID{}, 0, err
-	}
-	return hardlink.GetFileID(fi, path)
-}
-
 func (b *Backend) MkdirAll(ctx context.Context, path string, perm fs.FileMode) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -279,9 +207,6 @@ func (b *Backend) Remove(ctx context.Context, path string, opts fsops.RemoveOpti
 		return err
 	}
 	if opts.Recursive {
-		if len(opts.IgnorePaths) > 0 {
-			return errors.New("recursive remove with IgnorePaths is not supported by the local backend")
-		}
 		return os.RemoveAll(path)
 	}
 	return os.Remove(path)
@@ -337,14 +262,6 @@ func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, strin
 	return supported, reason, nil
 }
 
-func (b *Backend) Info(_ context.Context) (*fsops.BackendInfo, error) {
-	return &fsops.BackendInfo{Kind: "local"}, nil
-}
-
-func (b *Backend) HealthCheck(_ context.Context) error {
-	return nil
-}
-
 // osFileInfoToFsops converts an os.FileInfo to an fsops.FileInfo.
 func osFileInfoToFsops(fi os.FileInfo, path string) *fsops.FileInfo {
 	return &fsops.FileInfo{
@@ -358,17 +275,21 @@ func osFileInfoToFsops(fi os.FileInfo, path string) *fsops.FileInfo {
 }
 
 // osFileInfoToLstat converts an os.FileInfo from Lstat to an fsops.LstatInfo.
-func osFileInfoToLstat(fi os.FileInfo, path string) (*fsops.LstatInfo, error) {
+// Identity failure degrades to FileIDErr rather than failing the conversion:
+// callers that only want size/mtime keep working, callers that need identity
+// check FileIDErr.
+func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
 		FileInfo: *osFileInfoToFsops(fi, path),
 	}
 	if fi.Mode().IsRegular() {
 		fid, nlinks, err := hardlink.GetFileID(fi, path)
 		if err != nil {
-			return nil, err
+			info.FileIDErr = err
+		} else {
+			info.FileID = fid
+			info.Nlinks = nlinks
 		}
-		info.FileID = fid
-		info.Nlinks = nlinks
 	}
-	return info, nil
+	return info
 }
