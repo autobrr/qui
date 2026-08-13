@@ -3,10 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Incognito mode utilities for disguising torrents as Linux ISOs
+// Incognito mode utilities for disguising torrents as Linux ISOs (default) or as
+// office documents while the Spreadsheet theme is active. getLinux* names are kept
+// as the stable incognito API; each getter picks its vocabulary at call time.
 
 import type { Category } from "@/types"
 import { useEffect, useState } from "react"
+import { isSpreadsheetDisguiseActive } from "./spreadsheet-disguise"
 
 // Linux ISO names for incognito mode
 const linuxIsoNames = [
@@ -59,7 +62,7 @@ const linuxIsoNames = [
 ]
 
 // Linux-themed categories for incognito mode
-export const LINUX_CATEGORIES: Record<string, Category> = {
+const LINUX_CATEGORIES: Record<string, Category> = {
   "distributions": { name: "distributions", savePath: "/home/downloads/distributions" },
   "documentation": { name: "documentation", savePath: "/home/downloads/docs" },
   "source-code": { name: "source-code", savePath: "/home/downloads/source" },
@@ -80,7 +83,7 @@ const LINUX_CATEGORIES_ARRAY = [
 ]
 
 // Linux-themed tags for incognito mode
-export const LINUX_TAGS = [
+const LINUX_TAGS = [
   "stable",
   "lts",
   "bleeding-edge",
@@ -104,7 +107,7 @@ export const LINUX_TAGS = [
 ]
 
 // Linux-themed trackers for incognito mode
-export const LINUX_TRACKERS = [
+const LINUX_TRACKERS = [
   "releases.ubuntu.com",
   "cdimage.debian.org",
   "download.fedoraproject.org",
@@ -182,10 +185,219 @@ const LINUX_FOLDER_NAMES = [
   "checksums",
 ]
 
+interface IncognitoVocab {
+  names: string[]
+  categories: Record<string, Category>
+  categoryKeys: string[]
+  tags: string[]
+  trackers: string[]
+  releaseTeams: string[]
+  releaseNotes: string[]
+  savePaths: string[]
+  folderNames: string[]
+}
+
+const LINUX_VOCAB: IncognitoVocab = {
+  names: linuxIsoNames,
+  categories: LINUX_CATEGORIES,
+  categoryKeys: LINUX_CATEGORIES_ARRAY,
+  tags: LINUX_TAGS,
+  trackers: LINUX_TRACKERS,
+  releaseTeams: LINUX_RELEASE_TEAMS,
+  releaseNotes: LINUX_RELEASE_NOTES,
+  savePaths: LINUX_SAVE_PATHS,
+  folderNames: LINUX_FOLDER_NAMES,
+}
+
+// Spreadsheet flavor: served instead of the linux vocabulary while the
+// Spreadsheet theme is active, so incognito rows read as office documents.
+const SHEET_DOC_NAMES = [
+  "FY26 Vendor Payments - Batch 0412.xlsx",
+  "FY26 Vendor Payments - Batch 0413.xlsx",
+  "Q1 Budget Consolidation v3.xlsx",
+  "Q2 Budget Consolidation v7 FINAL.xlsx",
+  "Q3 Forecast - Draft (do not distribute).xlsx",
+  "AP Aging Report 2026-06.xlsx",
+  "AP Aging Report 2026-07.xlsx",
+  "AR Reconciliation 2026-Q2.xlsx",
+  "Inventory Recount - Warehouse B.xlsx",
+  "Inventory Recount - Warehouse C.xlsx",
+  "Headcount Plan FY27 DRAFT.xlsx",
+  "Travel Expense Reconciliation May.xlsx",
+  "Travel Expense Reconciliation June.xlsx",
+  "Fixed Asset Register 2026.xlsx",
+  "Depreciation Schedule FY26.xlsx",
+  "Payroll Variance Summary 2026-07.xlsx",
+  "Vendor Master Cleanup - Phase 2.xlsx",
+  "PO Backlog Review 2026-08.xlsx",
+  "Contract Renewal Tracker.xlsx",
+  "Capex Requests FY27 Round 1.xlsx",
+  "Opex Run Rate Analysis.xlsx",
+  "Intercompany Eliminations Q2.xlsx",
+  "Trial Balance Export 2026-06-30.csv",
+  "GL Journal Import 2026-07-15.csv",
+  "Bank Statement Import - Operating.csv",
+  "Customer Aging Export 2026-07.csv",
+  "Timesheet Export Week 27.csv",
+  "Facilities Maintenance Log.xlsx",
+  "Insurance Certificates Index.xlsx",
+  "Lease Abstract Summary.docx",
+  "Audit PBC List 2026 Interim.xlsx",
+  "SOX Control Matrix FY26.xlsx",
+  "Board Pack Appendix C - Financials.pdf",
+  "Monthly Close Checklist 2026-07.xlsx",
+  "Accruals Workbook 2026-07.xlsx",
+  "Prepaids Amortization Schedule.xlsx",
+  "Sales Tax Filing Support Q2.xlsx",
+  "Freight Cost Allocation Model.xlsx",
+  "Utilization Dashboard Data.csv",
+  "Vendor W9 Tracker.xlsx",
+]
+
+const SHEET_CATEGORIES: Record<string, Category> = {
+  "Finance": { name: "Finance", savePath: "/shares/finance" },
+  "Procurement": { name: "Procurement", savePath: "/shares/procurement" },
+  "Operations": { name: "Operations", savePath: "/shares/operations" },
+  "HR": { name: "HR", savePath: "/shares/hr" },
+  "Facilities": { name: "Facilities", savePath: "/shares/facilities" },
+  "Compliance": { name: "Compliance", savePath: "/shares/compliance" },
+  "IT Assets": { name: "IT Assets", savePath: "/shares/it-assets" },
+}
+
+const SHEET_TAGS = [
+  "pending review",
+  "approved",
+  "draft",
+  "final",
+  "q1",
+  "q2",
+  "q3",
+  "q4",
+  "fy26",
+  "fy27",
+  "audit",
+  "restricted",
+  "archived",
+  "shared",
+  "monthly close",
+  "board",
+  "reconciled",
+  "needs signoff",
+  "template",
+  "export",
+]
+
+const SHEET_TRACKERS = [
+  "fileserver-01.corp.internal",
+  "fileserver-02.corp.internal",
+  "sharepoint.corp.internal",
+  "dms.corp.internal",
+  "backup-nas.corp.internal",
+  "finance-share.corp.internal",
+  "archive.corp.internal",
+  "sync-gw.corp.internal",
+  "erp-export.corp.internal",
+  "print-scan.corp.internal",
+]
+
+const SHEET_TEAMS = [
+  "Finance Operations",
+  "Accounts Payable",
+  "Accounts Receivable",
+  "FP&A Team",
+  "Procurement Office",
+  "Internal Audit",
+  "Payroll Services",
+  "Corporate Controlling",
+]
+
+const SHEET_NOTES = [
+  "Reviewed by controller 2026-06-30.",
+  "Pending sign-off from FP&A.",
+  "Source data pulled from ERP export 2026-07-01.",
+  "Do not edit, linked to consolidation model.",
+  "Variance over 5% flagged in column K.",
+  "Updated per auditor request, see tab Notes.",
+  "Archived copy; live version on the finance share.",
+  "Figures preliminary until monthly close completes.",
+]
+
+const SHEET_SAVE_PATHS = [
+  "/shares/finance/FY26",
+  "/shares/finance/monthly-close",
+  "/shares/procurement/vendors",
+  "/shares/operations/reports",
+  "/shares/hr/planning",
+  "/shares/facilities/contracts",
+  "/shares/compliance/audit-2026",
+  "/shares/it-assets/inventory",
+  "/shares/archive/2025",
+]
+
+const SHEET_FOLDER_NAMES = [
+  "FY26",
+  "FY25",
+  "Q1",
+  "Q2",
+  "Q3",
+  "Q4",
+  "reports",
+  "exports",
+  "archive",
+  "vendors",
+  "invoices",
+  "receipts",
+  "statements",
+  "reconciliations",
+  "budgets",
+  "forecasts",
+  "templates",
+  "backup",
+  "monthly-close",
+  "audit",
+  "contracts",
+  "approved",
+  "drafts",
+  "final",
+  "working",
+  "shared",
+]
+
+const SHEET_VOCAB: IncognitoVocab = {
+  names: SHEET_DOC_NAMES,
+  categories: SHEET_CATEGORIES,
+  categoryKeys: Object.keys(SHEET_CATEGORIES),
+  tags: SHEET_TAGS,
+  trackers: SHEET_TRACKERS,
+  releaseTeams: SHEET_TEAMS,
+  releaseNotes: SHEET_NOTES,
+  savePaths: SHEET_SAVE_PATHS,
+  folderNames: SHEET_FOLDER_NAMES,
+}
+
+function vocab(): IncognitoVocab {
+  return isSpreadsheetDisguiseActive() ? SHEET_VOCAB : LINUX_VOCAB
+}
+
+// The explicit flag (from useSpreadsheetDisguise) keeps callers' memo
+// dependencies honest instead of hiding the theme read in this module.
+export function getIncognitoCategories(spreadsheetDisguise: boolean): Record<string, Category> {
+  return spreadsheetDisguise ? SHEET_VOCAB.categories : LINUX_VOCAB.categories
+}
+
+export function getIncognitoTags(spreadsheetDisguise: boolean): string[] {
+  return spreadsheetDisguise ? SHEET_VOCAB.tags : LINUX_VOCAB.tags
+}
+
+export function getIncognitoTrackers(spreadsheetDisguise: boolean): string[] {
+  return spreadsheetDisguise ? SHEET_VOCAB.trackers : LINUX_VOCAB.trackers
+}
+
 // Generate deterministic Linux folder name based on hash and depth
 export function getLinuxFolderName(hash: string, depth: number): string {
+  const folderNames = vocab().folderNames
   if (!hash) {
-    return LINUX_FOLDER_NAMES[depth % LINUX_FOLDER_NAMES.length]
+    return folderNames[depth % folderNames.length]
   }
 
   let hashSum = 0
@@ -193,23 +405,25 @@ export function getLinuxFolderName(hash: string, depth: number): string {
     hashSum += hash.charCodeAt(i) * (i + 2)
   }
 
-  const offset = hashSum % LINUX_FOLDER_NAMES.length
-  return LINUX_FOLDER_NAMES[(offset + depth) % LINUX_FOLDER_NAMES.length]
+  const offset = hashSum % folderNames.length
+  return folderNames[(offset + depth) % folderNames.length]
 }
 
 // Generate a deterministic but seemingly random Linux ISO name based on hash
 export function getLinuxIsoName(hash: string): string {
   // Use hash to deterministically select an ISO name
+  const names = vocab().names
   let hashSum = 0
   for (let i = 0; i < hash.length; i++) {
     hashSum += hash.charCodeAt(i)
   }
-  return linuxIsoNames[hashSum % linuxIsoNames.length]
+  return names[hashSum % names.length]
 }
 
 export function getLinuxFileName(hash: string, index: number): string {
+  const names = vocab().names
   if (!hash) {
-    return linuxIsoNames[index % linuxIsoNames.length]
+    return names[index % names.length]
   }
 
   let hashSum = 0
@@ -217,8 +431,8 @@ export function getLinuxFileName(hash: string, index: number): string {
     hashSum += hash.charCodeAt(i) * (i + 3)
   }
 
-  const offset = hashSum % linuxIsoNames.length
-  return linuxIsoNames[(offset + index) % linuxIsoNames.length]
+  const offset = hashSum % names.length
+  return names[(offset + index) % names.length]
 }
 
 // Generate deterministic Linux category based on hash
@@ -229,7 +443,8 @@ export function getLinuxCategory(hash: string): string {
   }
   // 30% chance of no category
   if (hashSum % 10 < 3) return ""
-  return LINUX_CATEGORIES_ARRAY[hashSum % LINUX_CATEGORIES_ARRAY.length]
+  const categoryKeys = vocab().categoryKeys
+  return categoryKeys[hashSum % categoryKeys.length]
 }
 
 // Generate deterministic Linux tags based on hash
@@ -244,12 +459,13 @@ export function getLinuxTags(hash: string): string {
 
   // Generate 1-3 tags
   const numTags = (hashSum % 3) + 1
+  const tagPool = vocab().tags
   const tags: string[] = []
 
   for (let i = 0; i < numTags; i++) {
-    const tagIndex = (hashSum + i * 7) % LINUX_TAGS.length
-    if (!tags.includes(LINUX_TAGS[tagIndex])) {
-      tags.push(LINUX_TAGS[tagIndex])
+    const tagIndex = (hashSum + i * 7) % tagPool.length
+    if (!tags.includes(tagPool[tagIndex])) {
+      tags.push(tagPool[tagIndex])
     }
   }
 
@@ -262,18 +478,20 @@ export function getLinuxSavePath(hash: string): string {
   for (let i = 0; i < Math.min(8, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 3)
   }
-  return LINUX_SAVE_PATHS[hashSum % LINUX_SAVE_PATHS.length]
+  const savePaths = vocab().savePaths
+  return savePaths[hashSum % savePaths.length]
 }
 
 export function getLinuxCreatedBy(hash: string): string {
-  if (!hash) return LINUX_RELEASE_TEAMS[0]
+  const releaseTeams = vocab().releaseTeams
+  if (!hash) return releaseTeams[0]
 
   let hashSum = 0
   for (let i = 0; i < hash.length; i++) {
     hashSum += hash.charCodeAt(i) * (i + 1)
   }
 
-  return LINUX_RELEASE_TEAMS[hashSum % LINUX_RELEASE_TEAMS.length]
+  return releaseTeams[hashSum % releaseTeams.length]
 }
 
 export function getLinuxComment(hash: string): string {
@@ -284,26 +502,29 @@ export function getLinuxComment(hash: string): string {
     hashSum += hash.charCodeAt(i) * (i + 3)
   }
 
-  return `${LINUX_RELEASE_NOTES[hashSum % LINUX_RELEASE_NOTES.length]}`
+  const releaseNotes = vocab().releaseNotes
+  return `${releaseNotes[hashSum % releaseNotes.length]}`
 }
 
 // Helper to compute tracker index from hash
-function getTrackerIndex(hash: string): number {
+function getTrackerIndex(hash: string, trackerCount: number): number {
   let hashSum = 0
   for (let i = 0; i < Math.min(12, hash.length); i++) {
     hashSum += hash.charCodeAt(i) * (i + 4)
   }
-  return hashSum % LINUX_TRACKERS.length
+  return hashSum % trackerCount
 }
 
 // Generate deterministic Linux tracker based on hash
 export function getLinuxTracker(hash: string): string {
-  return `https://${LINUX_TRACKERS[getTrackerIndex(hash)]}/announce`
+  const trackers = vocab().trackers
+  return `https://${trackers[getTrackerIndex(hash, trackers.length)]}/announce`
 }
 
 // Generate deterministic Linux tracker domain based on hash (without URL prefix/suffix)
 export function getLinuxTrackerDomain(hash: string): string {
-  return LINUX_TRACKERS[getTrackerIndex(hash)]
+  const trackers = vocab().trackers
+  return trackers[getTrackerIndex(hash, trackers.length)]
 }
 
 // Generate deterministic count value based on name for UI display
