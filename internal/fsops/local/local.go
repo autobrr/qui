@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -170,9 +171,12 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 				return nil
 			}
 
-			// Skip ignored directory names.
+			// Skip ignored directory names. Case-insensitive: these are OS/NAS
+			// metadata dirs ($RECYCLE.BIN, @eaDir) whose on-disk case varies.
 			if d.IsDir() && path != root {
-				if slices.Contains(opts.IgnoreDirNames, name) {
+				if slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
+					return strings.EqualFold(ignored, name)
+				}) {
 					return filepath.SkipDir
 				}
 			}
@@ -289,7 +293,7 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	}
 	created, err := hardlinktree.Create(plan)
 	if err != nil {
-		return &fsops.TreeCreateResult{RolledBack: true}, err
+		return nil, err
 	}
 	return treeCreateResult(created, plan), nil
 }
@@ -300,7 +304,7 @@ func (b *Backend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) 
 	}
 	created, err := reflinktree.Create(plan)
 	if err != nil {
-		return &fsops.TreeCreateResult{RolledBack: true}, err
+		return nil, err
 	}
 	return treeCreateResult(created, plan), nil
 }

@@ -51,7 +51,9 @@ type WalkEntry struct {
 
 // WalkOptions controls the behavior of a WalkDir call.
 type WalkOptions struct {
-	SkipHidden     bool
+	SkipHidden bool
+	// IgnoreDirNames are directory basenames to skip, matched case-insensitively
+	// (OS/NAS metadata dirs like $RECYCLE.BIN and @eaDir vary in on-disk case).
 	IgnoreDirNames []string
 	IgnorePaths    []string
 	WantFileID     bool
@@ -79,7 +81,6 @@ type RemoveOptions struct {
 type TreeCreateResult struct {
 	Created       int
 	SkippedExists int
-	RolledBack    bool
 	Files         []string
 	Dirs          []string
 }
