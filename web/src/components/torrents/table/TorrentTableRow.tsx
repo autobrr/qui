@@ -47,6 +47,8 @@ export interface TorrentTableRowProps {
   isRowSelected: boolean
   desktopViewMode: TableViewMode
   minTableWidth: number
+  // Spreadsheet theme only: render the row number in a left gutter cell.
+  showRowGutter?: boolean
   // Comparison tokens: cells read column config lazily through `row`, so these
   // exist only to invalidate the memo when table-level display state changes
   // (column set, resize, visibility, order).
@@ -96,6 +98,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   isRowSelected,
   desktopViewMode,
   minTableWidth,
+  showRowGutter,
   menu,
   compact,
   onRowClick,
@@ -150,6 +153,9 @@ export const TorrentTableRow = memo(function TorrentTableRow({
         onClick={(e) => onRowClick(e, row, isSelected, isRowSelected)}
         onContextMenu={() => onRowContextMenu(row, isRowSelected)}
       >
+        {showRowGutter && (
+          <div className="ss-row-gutter" aria-hidden="true">{virtualIndex + 1}</div>
+        )}
         {row.getVisibleCells().map(cell => {
           // Compact columns (tracker_icon, status_icon) use px-0 to match header
           const isCompactColumn = cell.column.id === "tracker_icon" || cell.column.id === "status_icon"
