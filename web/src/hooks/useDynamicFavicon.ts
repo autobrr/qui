@@ -13,6 +13,8 @@ export function useDynamicFavicon() {
   const { theme, variation } = useTheme()
 
   useEffect(() => {
+    let cancelled = false
+
     const updateFavicon = () => {
       const canvas = document.createElement("canvas")
       const size = 32
@@ -72,6 +74,8 @@ export function useDynamicFavicon() {
 
       const img = new Image()
       img.onload = () => {
+        // A theme switch superseded this load.
+        if (cancelled) return
         ctx.clearRect(0, 0, size, size)
         ctx.drawImage(img, 0, 0, size, size)
 
@@ -92,6 +96,9 @@ export function useDynamicFavicon() {
 
     const timeoutId = setTimeout(updateFavicon, 0)
 
-    return () => clearTimeout(timeoutId)
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
   }, [theme, variation])
 }

@@ -231,10 +231,12 @@ export function Header({
   const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
 
   // Keep local state in sync with URL when navigating between instances/routes
+  // or when another writer (the spreadsheet formula bar) changes q.
   useEffect(() => {
-    setSearchValue(routeSearch?.q || "")
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedInstanceId])
+    // Keep in-progress text; the debounce writes back a trimmed q.
+    const routeQuery = routeSearch?.q || ""
+    setSearchValue(prev => (prev.trim() === routeQuery ? prev : routeQuery))
+  }, [selectedInstanceId, routeSearch?.q])
 
   // Update URL search param after debounce
   useEffect(() => {
