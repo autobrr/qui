@@ -1011,11 +1011,6 @@ func planRequiresRenames(sourceFiles, candidateFiles qbt.TorrentFiles) bool {
 	return false
 }
 
-// renameFileWithVerification attempts to rename a file and verifies the rename actually worked.
-// qBittorrent's rename API is async (libtorrent processes it in the background) and can silently
-// fail even when returning 200 OK. This function retries with verification to handle such cases.
-//
-// Timing constants may need adjustment for systems with slow storage or high qBittorrent load.
 // verifyFolderRenameCompleted polls the torrent's file list until paths live
 // under the new root and none remain under the old one — the folder analogue of
 // the file verification's newPathExists && !oldPathExists. qBittorrent's rename
@@ -1063,6 +1058,11 @@ func (s *Service) verifyFolderRenameCompleted(ctx context.Context, instanceID in
 	}
 }
 
+// renameFileWithVerification attempts to rename a file and verifies the rename actually worked.
+// qBittorrent's rename API is async (libtorrent processes it in the background) and can silently
+// fail even when returning 200 OK. This function retries with verification to handle such cases.
+//
+// Timing constants may need adjustment for systems with slow storage or high qBittorrent load.
 func (s *Service) renameFileWithVerification(ctx context.Context, instanceID int, hash, oldPath, newPath string) bool {
 	const maxAttempts = 3
 	const verifyTimeout = 2 * time.Second
