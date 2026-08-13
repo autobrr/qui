@@ -2401,3 +2401,68 @@ func TestTrackerHealthRefreshLevel(t *testing.T) {
 	require.Equal(t, zerolog.DebugLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow-time.Millisecond))
 	require.Equal(t, zerolog.WarnLevel, trackerHealthRefreshLevel(trackerHealthRefreshSlow))
 }
+
+// Totals accumulate per domain, so one domain must not bleed into the next.
+func TestTrackerDomainCountsKeepDomainsSeparate(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			9: {
+				DomainToHashes: map[string]map[string]struct{}{
+					"one.example": {"hash-a": {}, "hash-b": {}},
+					"two.example": {"hash-c": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{instanceID: 9}
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", ContentPath: "/data/a", Size: 100, Uploaded: 10, Downloaded: 5},
+		{Hash: "hash-b", ContentPath: "/data/b", Size: 60, Uploaded: 7, Downloaded: 1},
+		{Hash: "hash-c", ContentPath: "/data/c", Size: 20, Uploaded: 1, Downloaded: 1},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+
+	require.Equal(t, TrackerTransferStats{
+		Uploaded:   17,
+		Downloaded: 6,
+		TotalSize:  160,
+		Count:      2,
+	}, counts.TrackerTransfers["one.example"])
+	require.Equal(t, TrackerTransferStats{
+		Uploaded:   1,
+		Downloaded: 1,
+		TotalSize:  20,
+		Count:      1,
+	}, counts.TrackerTransfers["two.example"])
+}
+
+func TestTrackerDomainCountsDedupeSharedDomainFromMainData(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{instanceID: 11}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://dupe.example/announce", ContentPath: "/data/a", Size: 50, Uploaded: 9},
+	}
+	// Two tracker URLs resolve to one domain, so the same hash arrives twice.
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://dupe.example/announce":      {"hash-a"},
+			"https://dupe.example:443/announce2": {"hash-a"},
+		},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+
+	require.Equal(t, 1, counts.Trackers["dupe.example"])
+	require.Equal(t, TrackerTransferStats{
+		Uploaded:  9,
+		TotalSize: 50,
+		Count:     1,
+	}, counts.TrackerTransfers["dupe.example"])
+}

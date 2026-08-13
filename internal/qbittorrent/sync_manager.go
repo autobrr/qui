@@ -3766,50 +3766,39 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	if validatedMapping != nil {
-		// Count torrents per tracker domain using pre-validated mapping
-		trackerDomainCounts := make(map[string]map[string]bool) // domain -> set of torrent hashes
+		// Count torrents per tracker domain using pre-validated mapping.
+		// DomainToHashes holds a set per domain, so a hash arrives once per
+		// domain and the totals are summed in this pass, pruning empty domains.
+		var domainsToClear []string
+		counts.TrackerTransfers = make(map[string]TrackerTransferStats, len(validatedMapping.DomainToHashes))
 		for domain, hashSet := range validatedMapping.DomainToHashes {
+			// Exclusions are per domain (no need for torrentBelongsToTrackerDomain - already validated)
+			hashesToSkip := exclusions[domain]
+
+			var stats trackerDomainStats
 			for hash := range hashSet {
 				// Only count if the torrent exists in our current torrent list
-				if _, exists := torrentMap[hash]; exists {
-					// Check exclusions (no need for torrentBelongsToTrackerDomain - already validated)
-					if hashesToSkip, ok := exclusions[domain]; ok {
-						if _, skip := hashesToSkip[hash]; skip {
-							continue
-						}
-					}
-					if trackerDomainCounts[domain] == nil {
-						trackerDomainCounts[domain] = make(map[string]bool)
-					}
-					trackerDomainCounts[domain][hash] = true
+				torrent, exists := torrentMap[hash]
+				if !exists {
+					continue
 				}
+				if _, skip := hashesToSkip[hash]; skip {
+					continue
+				}
+				stats.add(torrent)
 			}
-		}
 
-		var domainsToClear []string
-		// Convert sets to counts and aggregate transfer stats, pruning empty domains
-		counts.TrackerTransfers = make(map[string]TrackerTransferStats, len(trackerDomainCounts))
-		for domain, hashSet := range trackerDomainCounts {
-			if len(hashSet) == 0 {
+			if stats.sum.Count == 0 {
 				continue
 			}
-			counts.Trackers[domain] = len(hashSet)
-
-			stats, missingCount := trackerTransferStatsForHashes(hashSet, torrentMap)
-			if missingCount > 0 {
-				log.Trace().
-					Str("domain", domain).
-					Int("missing", missingCount).
-					Int("total", len(hashSet)).
-					Msg("tracker stats aggregation skipped missing torrents")
-			}
-			counts.TrackerTransfers[domain] = stats
+			counts.Trackers[domain] = stats.sum.Count
+			counts.TrackerTransfers[domain] = stats.totals()
 		}
 
 		// If the domain disappeared entirely after exclusions, clear the override so future syncs don't skip it unnecessarily
 		if len(exclusions) > 0 {
 			for domain := range exclusions {
-				if _, exists := trackerDomainCounts[domain]; !exists {
+				if _, exists := counts.Trackers[domain]; !exists {
 					domainsToClear = append(domainsToClear, domain)
 				}
 			}
@@ -3829,9 +3818,10 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			Int("trackerCount", len(mainData.Trackers)).
 			Msg("Using MainData.Trackers for counting (fallback, cache not yet populated)")
 
-		// Count torrents per tracker domain
-		trackerDomainCounts := make(map[string]map[string]bool) // domain -> set of torrent hashes
-		trackerDomainSources := make(map[string]string)         // domain -> example tracker URL for icon fetching
+		// Count torrents per tracker domain. Several tracker URLs can share a
+		// domain, so the same hash can arrive twice and the map dedupes it.
+		trackerDomainCounts := make(map[string]map[string]*qbt.Torrent) // domain -> hash -> torrent
+		trackerDomainSources := make(map[string]string)                 // domain -> example tracker URL for icon fetching
 		for trackerURL, torrentHashes := range mainData.Trackers {
 			// Extract domain from tracker URL
 			domain := sm.ExtractDomainFromURL(trackerURL)
@@ -3855,15 +3845,13 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 					if !sm.torrentBelongsToTrackerDomain(torrent, domain) {
 						continue
 					}
-					if hashesToSkip, ok := exclusions[domain]; ok {
-						if _, skip := hashesToSkip[hash]; skip {
-							continue
-						}
+					if _, skip := exclusions[domain][hash]; skip {
+						continue
 					}
 					if trackerDomainCounts[domain] == nil {
-						trackerDomainCounts[domain] = make(map[string]bool)
+						trackerDomainCounts[domain] = make(map[string]*qbt.Torrent)
 					}
-					trackerDomainCounts[domain][hash] = true
+					trackerDomainCounts[domain][hash] = torrent
 				}
 			}
 		}
@@ -3882,15 +3870,11 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			}
 			counts.Trackers[domain] = len(hashSet)
 
-			stats, missingCount := trackerTransferStatsForHashes(hashSet, torrentMap)
-			if missingCount > 0 {
-				log.Trace().
-					Str("domain", domain).
-					Int("missing", missingCount).
-					Int("total", len(hashSet)).
-					Msg("tracker stats aggregation skipped missing torrents")
+			var stats trackerDomainStats
+			for _, torrent := range hashSet {
+				stats.add(torrent)
 			}
-			counts.TrackerTransfers[domain] = stats
+			counts.TrackerTransfers[domain] = stats.totals()
 		}
 
 		// If the domain disappeared entirely after exclusions, clear the override so future syncs don't skip it unnecessarily
@@ -6057,42 +6041,42 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 	})
 }
 
-// trackerTransferStatsForHashes aggregates per-tracker transfer totals and
-// counts size once per non-empty content path. Empty content paths are counted
-// per torrent because they are unknown identities, not proof of shared data.
-// When cross-seeds disagree on size for the same content path, the largest size
-// is kept for deterministic totals.
-func trackerTransferStatsForHashes(hashSet map[string]bool, torrentMap map[string]*qbt.Torrent) (TrackerTransferStats, int) {
-	stats := TrackerTransferStats{Count: len(hashSet)}
-	sizeByContentPath := make(map[string]int64)
-	missingCount := 0
+// trackerDomainStats aggregates per-tracker transfer totals as torrents arrive,
+// so the counts path does not build a hash set per domain and then walk it a
+// second time. Size counts once per non-empty content path. Empty content paths
+// are counted per torrent because they are unknown identities, not proof of
+// shared data. When cross-seeds disagree on size for the same content path, the
+// largest size is kept for deterministic totals.
+type trackerDomainStats struct {
+	sum               TrackerTransferStats
+	sizeByContentPath map[string]int64
+}
 
-	for hash := range hashSet {
-		torrent, ok := torrentMap[hash]
-		if !ok {
-			missingCount++
-			continue
-		}
+func (t *trackerDomainStats) add(torrent *qbt.Torrent) {
+	t.sum.Count++
+	t.sum.Uploaded += torrent.Uploaded
+	t.sum.Downloaded += torrent.Downloaded
+	t.sum.UploadedSession += torrent.UploadedSession
+	t.sum.DownloadedSession += torrent.DownloadedSession
 
-		stats.Uploaded += torrent.Uploaded
-		stats.Downloaded += torrent.Downloaded
-		stats.UploadedSession += torrent.UploadedSession
-		stats.DownloadedSession += torrent.DownloadedSession
-
-		if torrent.ContentPath == "" {
-			stats.TotalSize += torrent.Size
-			continue
-		}
-		if torrent.Size > sizeByContentPath[torrent.ContentPath] {
-			sizeByContentPath[torrent.ContentPath] = torrent.Size
-		}
+	if torrent.ContentPath == "" {
+		t.sum.TotalSize += torrent.Size
+		return
 	}
+	if t.sizeByContentPath == nil {
+		t.sizeByContentPath = make(map[string]int64)
+	}
+	if torrent.Size > t.sizeByContentPath[torrent.ContentPath] {
+		t.sizeByContentPath[torrent.ContentPath] = torrent.Size
+	}
+}
 
-	for _, size := range sizeByContentPath {
+func (t *trackerDomainStats) totals() TrackerTransferStats {
+	stats := t.sum
+	for _, size := range t.sizeByContentPath {
 		stats.TotalSize += size
 	}
-
-	return stats, missingCount
+	return stats
 }
 
 // calculateStats calculates torrent statistics from a list of torrents.

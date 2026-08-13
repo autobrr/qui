@@ -157,6 +157,35 @@ func BenchmarkHotCounts(b *testing.B) {
 	}
 }
 
+// BenchmarkHotCountsWithTrackers exercises the tracker-domain half of the counts
+// path, which BenchmarkHotCounts skips because it passes a nil client.
+func BenchmarkHotCountsWithTrackers(b *testing.B) {
+	benchSilence(b)
+	torrents := benchTorrents(benchSize)
+
+	mapping := newValidatedTrackerMapping()
+	domains := []string{"tracker.example.invalid", "announce.example.test", "other.example.invalid"}
+	for i := range torrents {
+		domain := domains[i%len(domains)]
+		hash := torrents[i].Hash
+		if mapping.DomainToHashes[domain] == nil {
+			mapping.DomainToHashes[domain] = make(map[string]struct{})
+		}
+		mapping.DomainToHashes[domain][hash] = struct{}{}
+		// Production mappings carry one entry per hash here, and
+		// getValidatedTrackerMapping deep copies it on every read, so leaving it
+		// out would understate the cost of the path under test.
+		mapping.HashToDomains[hash] = map[string]struct{}{domain: {}}
+	}
+
+	sm := &SyncManager{validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping}}
+	client := &Client{instanceID: 1, trackerExclusions: make(map[string]map[string]struct{})}
+
+	for b.Loop() {
+		_, _, _ = sm.calculateCountsFromTorrentsWithTrackers(b.Context(), client, torrents, nil, nil, false, false)
+	}
+}
+
 func BenchmarkHotStats(b *testing.B) {
 	benchSilence(b)
 	sm := &SyncManager{}
