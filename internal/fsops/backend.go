@@ -11,10 +11,10 @@ import (
 )
 
 // Backend abstracts filesystem operations so services work identically against
-// a local filesystem or a remote qui-helper over SSH. The interface mirrors the
-// operations in the design doc §8 and covers exactly the syscall-level ops that
-// qui's services need. Path manipulation (filepath.Clean, filepath.Rel, etc.)
-// is not part of this interface — it stays as direct calls in service code.
+// a local filesystem or a future SSH-backed remote. It covers exactly the
+// syscall-level ops that qui's services need. Path manipulation
+// (filepath.Clean, filepath.Rel, etc.) is not part of this interface — it
+// stays as direct calls in service code.
 //
 // Every method accepts a context.Context and must respect cancellation.
 type Backend interface {
@@ -36,7 +36,8 @@ type Backend interface {
 
 	// WalkDir walks a directory tree and streams entries on the returned channel.
 	// The channel is closed when the walk completes, is cancelled via ctx, or
-	// hits an unrecoverable error. Callers must drain the channel.
+	// hits an unrecoverable error. Callers must drain the channel or cancel
+	// ctx; abandoning it leaks the walk goroutine.
 	WalkDir(ctx context.Context, root string, opts WalkOptions) (<-chan WalkEntry, error)
 
 	// Statfs returns free/total bytes for the filesystem containing path.
@@ -49,6 +50,8 @@ type Backend interface {
 	// --- Write (mutating) ---
 
 	// MkdirAll creates a directory and all parents. Equivalent to os.MkdirAll.
+	// For torrent content and link-tree dirs, pass fsutil.ContentDirMode /
+	// fsutil.LinkTreeBaseDirMode rather than a hand-typed mode (#1704, #2086).
 	MkdirAll(ctx context.Context, path string, perm fs.FileMode) error
 
 	// Remove removes a file or directory. If opts.Recursive is true, removes
@@ -69,7 +72,9 @@ type Backend interface {
 
 	// RemoveTree removes exactly the files and dirs recorded in created —
 	// never the whole plan, which could delete links shared with sibling
-	// torrents (discussion #2282). Safe to call with a nil result.
+	// torrents (discussion #2282). A plan root that already existed before
+	// the create is therefore NOT removed; callers own pruning it. Safe to
+	// call with a nil result.
 	RemoveTree(ctx context.Context, created *TreeCreateResult) error
 
 	// --- Capabilities ---
