@@ -406,7 +406,7 @@ type SyncManager struct {
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 
 	// Backend pool for filesystem operations (managed delete cleanup).
-	backendPool backendPoolGetter
+	backendPool atomic.Value // stores backendPoolGetter interface value
 
 	syncEventSinkMu sync.RWMutex
 	syncEventSink   SyncEventSink
@@ -487,7 +487,17 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 
 // SetBackendPool sets the filesystem backend pool for managed delete cleanup.
 func (sm *SyncManager) SetBackendPool(pool backendPoolGetter) {
-	sm.backendPool = pool
+	sm.backendPool.Store(pool)
+}
+
+// getBackendPool returns the current backend pool in a thread-safe manner.
+// Returns nil if no pool is set.
+func (sm *SyncManager) getBackendPool() backendPoolGetter {
+	v := sm.backendPool.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(backendPoolGetter)
 }
 
 // GetClient returns a client for an instance, creating one if needed
@@ -2624,10 +2634,11 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 		return nil, nil
 	}
 
-	if sm.backendPool == nil {
+	pool := sm.getBackendPool()
+	if pool == nil {
 		return nil, nil
 	}
-	backend, err := sm.backendPool.GetBackend(ctx, instanceID)
+	backend, err := pool.GetBackend(ctx, instanceID)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend, skipping cleanup")
 		return nil, nil
