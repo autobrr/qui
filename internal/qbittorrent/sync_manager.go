@@ -4073,46 +4073,6 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	return counts, trackerMap, allTorrents
 }
 
-// GetTorrentCounts gets all torrent counts for the filter sidebar
-func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
-	client, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
-	if err != nil {
-		return nil, err
-	}
-	if syncManager == nil {
-		return nil, errors.New("sync manager not initialized")
-	}
-
-	// Get all torrents from the same source the table uses (now fresh from sync manager)
-	allTorrents, err := sm.getAllTorrentsForStats(ctx, instanceID, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all torrents for counts: %w", err)
-	}
-
-	log.Trace().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
-
-	// Calculate counts using the shared function - pass mainData for tracker information
-	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
-	supportsSubcategories := client.SupportsSubcategories()
-	subcategoriesAlwaysEnabled := client.SubcategoriesAlwaysEnabled()
-	useSubcategories := resolveUseSubcategories(supportsSubcategories, subcategoriesAlwaysEnabled, mainData, nil)
-	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported, useSubcategories)
-
-	// Don't cache counts separately - they're always derived from the cached torrent data
-	// This ensures sidebar and table are always in sync
-
-	log.Trace().
-		Int("instanceID", instanceID).
-		Int("total", counts.Total).
-		Int("statusCount", len(counts.Status)).
-		Int("categoryCount", len(counts.Categories)).
-		Int("tagCount", len(counts.Tags)).
-		Int("trackerCount", len(counts.Trackers)).
-		Msg("Calculated torrent counts")
-
-	return counts, nil
-}
-
 // Helper methods
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given instance and hashes
@@ -4430,8 +4390,9 @@ func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
 	return false
 }
 
-// getAllTorrentsForStats gets all torrents for stats calculation (with optimistic updates)
-func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID int, _ string) ([]qbt.Torrent, error) {
+// GetAllTorrents returns the current torrent list for an instance without pagination,
+// with optimistic updates applied.
+func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	// Get client and sync manager
 	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
@@ -4534,14 +4495,9 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 		}
 	}
 
-	log.Trace().Int("instanceID", instanceID).Int("torrents", len(torrents)).Msg("getAllTorrentsForStats: Fetched from sync manager with optimistic updates")
+	log.Trace().Int("instanceID", instanceID).Int("torrents", len(torrents)).Msg("GetAllTorrents: Fetched from sync manager with optimistic updates")
 
 	return torrents, nil
-}
-
-// GetAllTorrents returns the current torrent list for an instance without pagination.
-func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
-	return sm.getAllTorrentsForStats(ctx, instanceID, "")
 }
 
 // HydrateTorrentTrackers enriches torrents with per-tracker status/message data when supported.
