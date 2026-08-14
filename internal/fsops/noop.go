@@ -26,7 +26,7 @@ func noopErr(ctx context.Context) error {
 	return ErrNoFilesystemAccess
 }
 
-func (noopBackend) Stat(ctx context.Context, _ string) (*FileInfo, error) {
+func (noopBackend) Stat(ctx context.Context, _ string) (*LstatInfo, error) {
 	return nil, noopErr(ctx)
 }
 func (noopBackend) Lstat(ctx context.Context, _ string) (*LstatInfo, error) {
