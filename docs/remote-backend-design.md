@@ -7,8 +7,9 @@ hits a performance wall).
 
 ## Context and Decision
 
-qui services perform filesystem work through `fsops.Backend` (#1914–#1916).
-Instances running on a different host than qui need a remote implementation.
+#1914 adds `fsops.Backend`; service callsites migrate from direct `os.*`
+calls to it in #1915–#1916. Instances running on a different host than qui
+need a remote implementation.
 
 The prior design deployed a `qui-helper` binary to the remote host and spoke
 NDJSON to it over SSH. **Decision: no deployed agent.** The remote backend
@@ -94,13 +95,30 @@ cross-instance comparisons must check same-backend first.
 - Every exec carries a timeout and honors ctx cancellation; output is
   size-capped.
 
+## Path and Command Safety
+
+- Torrent- and API-derived paths are validated before any SFTP or exec use,
+  under the same boundary rules the local backends enforce: slash-delimited,
+  no leading separator, no `..` component, no drive-letter or UNC form where
+  a relative path is required. Absolute remote paths are permitted only as
+  instance-level roots (e.g. save paths reported by qBittorrent); torrent
+  file names always join beneath one.
+- Exec command lines never interpolate raw paths into a shell string:
+  arguments are strictly quoted, and options are terminated with `--`
+  before any path for `find`, `stat`, `xargs`, `rm`, and `cp`.
+- The remote-backend PR carries tests for traversal payloads, option-like
+  filenames (`-rf`), and shell metacharacters in paths.
+
 ## Security
 
 - Dedicated SSH key per instance; never the user's personal key.
 - Private key stored AES-GCM encrypted with AAD binding (instance id +
   field), same `sessionSecret` pattern as existing credential encryption.
-- Host key verification is TOFU: captured on first connect, enforced after.
-  `InsecureIgnoreHostKey` is forbidden.
+- Host key verification is TOFU with explicit confirmation: the first-seen
+  key is held ephemeral and surfaced as a fingerprint via the ssh-test
+  flow; it is persisted and enforced only after the user confirms it (or
+  it matches a preconfigured fingerprint). No connection is trusted for
+  real operations before that. `InsecureIgnoreHostKey` is forbidden.
 - Recommended `authorized_keys` template stays the tight one:
   `command="internal-sftp",restrict ...` — that key yields the SFTP-only
   tier. Granting exec is the user's explicit choice via a less-restricted
