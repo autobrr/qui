@@ -171,9 +171,13 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			}
 			return nil
 		})
-		// Surface unrecoverable walk errors (permission denied, etc.) as a
-		// final entry so the caller knows the walk did not complete fully.
-		// Context cancellation is not an error — the caller initiated it.
+		// Surface a walk abort as a final entry so the caller knows the walk
+		// did not complete. Per-entry enumeration errors (unreadable
+		// subdirectory, permission denied on a child) are emitted inline
+		// above and do NOT abort the walk, so this fires only when the walk
+		// itself returned an error — in practice the root-stat TOCTOU case,
+		// where the callback propagates walkErr. Context cancellation is not
+		// an error — the caller initiated it.
 		if walkErr != nil && ctx.Err() == nil {
 			entry := fsops.WalkEntry{Err: walkErr}
 			entry.Path = root

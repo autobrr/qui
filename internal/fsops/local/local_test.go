@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -300,6 +301,55 @@ func TestWalkDir_ContextCancellation(t *testing.T) {
 	// send can still arrive; anything near the full tree means the walk
 	// ignored cancellation.
 	assert.Less(t, count, 100)
+}
+
+func TestStatfs_FilePath(t *testing.T) {
+	// The contract is "the filesystem containing path" — a regular file is a
+	// valid argument. unix.Statfs accepts files natively; the Windows
+	// implementation resolves to the containing directory.
+	b := newBackend()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "content.mkv")
+	writeFile(t, file, "data")
+
+	result, err := b.Statfs(context.Background(), file)
+	require.NoError(t, err)
+	assert.Positive(t, result.BytesTotal)
+}
+
+func TestWalkDir_UnreadableSubdirEmitsEntryErrAndContinues(t *testing.T) {
+	// The per-entry Err path is the load-bearing half of the WalkDir error
+	// contract: an unreadable subdirectory must surface as an entry with Err
+	// set while the rest of the walk continues.
+	if runtime.GOOS == "windows" {
+		t.Skip("0o000 permissions are not enforced on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+
+	b := newBackend()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "readable.txt"), "r")
+	locked := filepath.Join(dir, "locked")
+	require.NoError(t, os.Mkdir(locked, 0o700))
+	writeFile(t, filepath.Join(locked, "hidden.txt"), "h")
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	ch, err := b.WalkDir(context.Background(), dir, fsops.WalkOptions{})
+	require.NoError(t, err)
+
+	var errEntries, okPaths []string
+	for e := range ch {
+		if e.Err != nil {
+			errEntries = append(errEntries, e.Path)
+		} else {
+			okPaths = append(okPaths, e.RelPath)
+		}
+	}
+	assert.Contains(t, errEntries, locked, "unreadable dir surfaces as an entry with Err")
+	assert.Contains(t, okPaths, "readable.txt", "walk continues past the unreadable dir")
 }
 
 func TestWalkDir_NonexistentRoot(t *testing.T) {
