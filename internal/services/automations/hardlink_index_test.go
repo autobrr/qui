@@ -218,7 +218,7 @@ func TestAugmentCrossInstanceScope_DeficitWithNoOtherInstances(t *testing.T) {
 	t.Parallel()
 	// Simulate: torrent with one file that has nlink=2, uniquePathCount=1 (deficit).
 	// No other instances available -> cross-scope should fall back to single-instance scope.
-	fid := hardlink.FileID{Dev: 1, Ino: 100}
+	fid := createFile(t, filepath.Join(t.TempDir(), "deficit-file"))
 	tracker := &fileIDTracker{nlink: 2, uniquePathCount: 1} // Deficit: nlink > uniquePathCount
 
 	index := &HardlinkIndex{
@@ -648,7 +648,7 @@ func TestCrossScope_ContextCancellation(t *testing.T) {
 	// (not interfaces), so we can't inject stubs without refactoring Service.
 	// The scan loop's ctx.Err() check is exercised implicitly in production when
 	// the automation runner's context is cancelled mid-scan.
-	fid := hardlink.FileID{Dev: 1, Ino: 999}
+	fid := createFile(t, filepath.Join(t.TempDir(), "cancelled-file"))
 	index := &HardlinkIndex{
 		ScopeByHash: map[string]string{"hash1": HardlinkScopeOutsideQBitTorrent},
 		buildState: &hardlinkBuildState{
@@ -683,7 +683,7 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 	t.Parallel()
 
 	// Torrents with allAccessible=false should not appear in cross-scope.
-	fid := hardlink.FileID{Dev: 1, Ino: 200}
+	fid := createFile(t, filepath.Join(t.TempDir(), "shared-file"))
 	state := &hardlinkBuildState{
 		globalFileIDMap: map[hardlink.FileID]*fileIDTracker{},
 		seenPaths:       make(map[string]struct{}),
@@ -721,6 +721,11 @@ func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 		"\\\\server\\share\\file",
 		"C:/evil.mkv",
 		"c:\\evil.mkv",
+		// Backslash is a legal filename byte on Linux; rewriting it into a
+		// separator invents a path and yields false missing-files verdicts,
+		// so such names are rejected outright (skipped, never "missing").
+		`AC\DC - Back In Black.mkv`,
+		`dir/AC\DC.mkv`,
 	} {
 		if _, ok := buildFullPath("/data", name); ok {
 			t.Errorf("expected %q to be rejected", name)

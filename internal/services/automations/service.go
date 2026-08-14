@@ -5230,13 +5230,17 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 // buildFullPath converts a torrent-internal (slash-delimited) file name into a
 // local filesystem path under basePath. Torrent metadata is untrusted on every
 // OS, so names that are absolute, drive-qualified, UNC, or escape basePath via
-// ".." are rejected in both POSIX and Windows form (ok=false).
+// ".." are rejected in both POSIX and Windows form (ok=false). Names carrying
+// a literal backslash are rejected rather than rewritten: backslash is a legal
+// filename byte on Linux, and inventing a nested path from it makes
+// missing-files flag a file that exists (a skipped file is safe, a false
+// missing-files verdict can fire a destructive rule).
 func buildFullPath(basePath, fileName string) (string, bool) {
-	slashName := strings.ReplaceAll(fileName, `\`, "/")
-	if slashName == "" || strings.HasPrefix(slashName, "/") || hasWindowsDrivePrefix(slashName) {
+	if fileName == "" || strings.ContainsRune(fileName, '\\') ||
+		strings.HasPrefix(fileName, "/") || hasWindowsDrivePrefix(fileName) {
 		return "", false
 	}
-	cleaned := path.Clean(slashName)
+	cleaned := path.Clean(fileName)
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
