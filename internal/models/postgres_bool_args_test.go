@@ -293,7 +293,8 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 	store := NewArrIDCacheStore(q)
 	err := store.Set(context.Background(), "title-hash", "movie", nil, nil, false, time.Hour)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 10)
+	// 10 insert columns plus the now bound in the upsert's expired-row check (#2300).
+	require.Len(t, insertArgs, 11)
 
 	isNegativeArg, ok := insertArgs[8].(int)
 	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[8])
@@ -387,6 +388,7 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			auto_resume_max_download_mb INTEGER NOT NULL DEFAULT 50,
 			use_category_from_indexer INTEGER NOT NULL DEFAULT 0,
 			run_external_program_id INTEGER,
+			category_mapping_rules TEXT NOT NULL DEFAULT '[]',
 			rss_automation_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
 			seeded_search_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
 			completion_search_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
@@ -443,18 +445,21 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 	settings.SeasonPackAutomationEnabled = true
 	settings.AutoResumeMaxDownloadMB = 200
 	settings.RescueTitleMismatches = true
+	settings.CategoryMappingRules = []CategoryMappingRule{{Categories: []string{"music", "flac"}, ContentType: "music"}}
 
 	stored, err := store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 52)
+	require.Len(t, insertArgs, 53)
+	require.JSONEq(t, `[{"categories":["music","flac"],"contentType":"music"}]`, insertArgs[20].(string), "category_mapping_rules should keep its column position")
+	require.Equal(t, settings.CategoryMappingRules, stored.CategoryMappingRules, "category_mapping_rules should survive the round trip")
 	require.Equal(t, 200, insertArgs[17], "auto_resume_max_download_mb should keep its column position")
 	require.Equal(t, 200, stored.AutoResumeMaxDownloadMB, "auto_resume_max_download_mb should survive the round trip")
-	require.Equal(t, 1, insertArgs[35], "rescue_title_mismatches should round-trip as int 1")
+	require.Equal(t, 1, insertArgs[36], "rescue_title_mismatches should round-trip as int 1")
 	require.True(t, stored.RescueTitleMismatches, "rescue_title_mismatches should survive the round trip")
-	require.Equal(t, 1, insertArgs[42], "season_pack_automation_enabled should round-trip as int 1")
+	require.Equal(t, 1, insertArgs[43], "season_pack_automation_enabled should round-trip as int 1")
 	require.True(t, stored.SeasonPackAutomationEnabled, "season_pack_automation_enabled should survive the round trip")
 
-	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 49}
+	boolIndexes := []int{1, 3, 16, 18, 25, 26, 29, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 50}
 	for _, idx := range boolIndexes {
 		_, ok := insertArgs[idx].(int)
 		require.Truef(t, ok, "expected int arg at index %d, got %T", idx, insertArgs[idx])

@@ -22,6 +22,8 @@ export interface TableColumnHeaderProps {
   setColumnFilters: Dispatch<SetStateAction<ColumnFilter[]>>
   minTableWidth: number
   viewMode: ViewMode
+  // Spreadsheet theme only: reserve the blank corner above the row-number gutter.
+  showRowGutter?: boolean
 }
 
 /**
@@ -38,6 +40,7 @@ export function TableColumnHeader({
   setColumnFilters,
   minTableWidth,
   viewMode,
+  showRowGutter,
 }: TableColumnHeaderProps) {
   if (viewMode === "compact") {
     return null
@@ -62,6 +65,7 @@ export function TableColumnHeader({
               strategy={horizontalListSortingStrategy}
             >
               <div className="flex" style={{ minWidth: `${minTableWidth}px` }}>
+                {showRowGutter && <div className="ss-corner" aria-hidden="true" />}
                 {headers.map(header => (
                   <DraggableTableHeader
                     key={header.id}

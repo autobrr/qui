@@ -172,6 +172,7 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Seeding on Other Instance          | Boolean - a matching torrent is actively seeding on at least one other active instance |
 | Cross-seed Exists on Same Instance | Boolean - another matching torrent exists on this instance                      |
 | Cross-seed Seeding on Same Instance | Boolean - another matching torrent is actively seeding on this instance        |
+| Cross-seed Tags                    | String - the tags of this torrent and all of its same-instance cross-seeds as one set. NOT operators match only when no copy has the tag. Same matching rules as **Tags** (see [Tag conditions](#tag-conditions)). With no cross-seeds, qui checks only the torrent's own tags |
 
 #### Filesystem Fields
 

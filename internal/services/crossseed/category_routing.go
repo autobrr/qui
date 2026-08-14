@@ -5,10 +5,12 @@ package crossseed
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -77,6 +79,53 @@ func matchSeasonPackCategoryRule(rules []models.SeasonPackCategoryRule, resoluti
 	}
 
 	return "", false
+}
+
+// matchCategoryMappingRule finds the content type forced for a torrent's
+// qBittorrent category. The comparison is exact because qBittorrent categories
+// are case-sensitive. The first rule in slice order wins. Returns ("", false)
+// when no rule matches or the torrent has no category.
+func matchCategoryMappingRule(rules []models.CategoryMappingRule, category string) (contentType string, matched bool) {
+	if category == "" {
+		return "", false
+	}
+	for _, rule := range rules {
+		if slices.Contains(rule.Categories, category) {
+			return rule.ContentType, true
+		}
+	}
+	return "", false
+}
+
+// contentTypeFromCategoryRule returns the forced content classification when a
+// category mapping rule matches the torrent's qBittorrent category (discussion
+// #1734). A matching rule wins over both the name parse and the file-extension
+// signal. Returns false when settings fail to load or no rule matches.
+func (s *Service) contentTypeFromCategoryRule(ctx context.Context, category string) (ContentTypeInfo, bool) {
+	settings, err := s.GetAutomationSettings(ctx)
+	if err != nil || settings == nil {
+		return ContentTypeInfo{}, false
+	}
+	contentType, matched := matchCategoryMappingRule(settings.CategoryMappingRules, category)
+	if !matched {
+		return ContentTypeInfo{}, false
+	}
+	return RuleContentTypeInfo(contentType)
+}
+
+// applyCategoryMappingRule replaces the detected content classification when a
+// category mapping rule matches the torrent's qBittorrent category.
+func (s *Service) applyCategoryMappingRule(ctx context.Context, torrent *qbt.Torrent, contentInfo ContentTypeInfo) ContentTypeInfo {
+	ruleInfo, matched := s.contentTypeFromCategoryRule(ctx, torrent.Category)
+	if !matched {
+		return contentInfo
+	}
+	log.Debug().
+		Str("torrentName", torrent.Name).
+		Str("category", torrent.Category).
+		Str("contentType", ruleInfo.ContentType).
+		Msg("Category mapping rule overrides content type detection")
+	return ruleInfo
 }
 
 // resolveSeasonPackCategory determines the qBittorrent category for a season pack

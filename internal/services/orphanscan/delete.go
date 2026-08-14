@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
@@ -27,24 +26,38 @@ const (
 	deleteDispositionSkippedIgnored
 )
 
+// withinScanRoot checks that target is an absolute path strictly below scanRoot.
+// Comparison is case-folded, because the scan root and the target can carry
+// different casing of the same directory on a case-insensitive filesystem.
+//
+// The fold cannot let a delete escape the scan: target is always a path that a
+// walk of one of the run's scan roots produced, so a match that needs the fold
+// means the file sits under a different spelling of a root that was walked, not
+// under a directory nobody scanned. Only the fence is spelled differently; the
+// path handed to the backend's Remove is target itself.
+func withinScanRoot(scanRoot, target string) error {
+	if !filepath.IsAbs(target) {
+		return fmt.Errorf("refusing non-absolute path: %s", target)
+	}
+
+	normRoot := normalizePath(scanRoot)
+	normTarget := normalizePath(target)
+
+	if normTarget == normRoot {
+		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
+	}
+	if !isPathUnderNormalized(normTarget, normRoot) {
+		return fmt.Errorf("path escapes scan root: %s", target)
+	}
+	return nil
+}
+
 // safeDeleteFile removes a single file with safety checks.
 // Re-checks TorrentFileMap before deletion to handle torrents added since scan.
 // Never removes directories.
 func safeDeleteFile(ctx context.Context, scanRoot, target string, tfm *TorrentFileMap, backend fsops.Backend) (deleteDisposition, error) {
-	// Must be absolute
-	if !filepath.IsAbs(target) {
-		return 0, fmt.Errorf("refusing non-absolute path: %s", target)
-	}
-
-	// Must not be the scan root itself
-	if filepath.Clean(target) == filepath.Clean(scanRoot) {
-		return 0, fmt.Errorf("refusing to delete scan root: %s", scanRoot)
-	}
-
-	// Must be within scan root (no path traversal)
-	rel, err := filepath.Rel(scanRoot, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return 0, fmt.Errorf("path escapes scan root: %s", target)
+	if err := withinScanRoot(scanRoot, target); err != nil {
+		return 0, err
 	}
 
 	// Re-check: torrent may have been added since scan (skip)
@@ -71,21 +84,6 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, tfm *TorrentFi
 		return 0, err
 	}
 	return deleteDispositionDeleted, nil
-}
-
-// validateDeleteTarget checks that target is a valid deletion candidate.
-func validateDeleteTarget(scanRoot, target string) error {
-	if !filepath.IsAbs(target) {
-		return fmt.Errorf("refusing non-absolute path: %s", target)
-	}
-	if filepath.Clean(target) == filepath.Clean(scanRoot) {
-		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
-	}
-	rel, err := filepath.Rel(scanRoot, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("path escapes scan root: %s", target)
-	}
-	return nil
 }
 
 // checkDirContainsInUseFile walks a directory and returns ErrInUse if any file is in the TorrentFileMap.
@@ -133,7 +131,7 @@ func checkFileInUse(path string, tfm *TorrentFileMap) error {
 // the directory is currently referenced by TorrentFileMap or protected by ignorePaths.
 // Symlinks are never followed.
 func safeDeleteTarget(ctx context.Context, scanRoot, target string, tfm *TorrentFileMap, ignorePaths []string, backend fsops.Backend) (deleteDisposition, error) {
-	if err := validateDeleteTarget(scanRoot, target); err != nil {
+	if err := withinScanRoot(scanRoot, target); err != nil {
 		return 0, err
 	}
 	if len(ignorePaths) > 0 && isPathProtectedByIgnorePaths(target, ignorePaths) {
@@ -189,24 +187,12 @@ func safeDeleteDirectory(ctx context.Context, target string, tfm *TorrentFileMap
 
 // safeDeleteEmptyDir removes a directory only if empty. Never recursive.
 func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) error {
-	// Must be absolute
-	if !filepath.IsAbs(target) {
-		return fmt.Errorf("refusing non-absolute path: %s", target)
-	}
-
-	// Must not be the scan root itself
-	if filepath.Clean(target) == filepath.Clean(scanRoot) {
-		return fmt.Errorf("refusing to delete scan root: %s", scanRoot)
-	}
-
-	// Must be within scan root (no path traversal)
-	rel, err := filepath.Rel(scanRoot, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("path escapes scan root: %s", target)
+	if err := withinScanRoot(scanRoot, target); err != nil {
+		return err
 	}
 
 	// Remove on a directory only succeeds if it's empty
-	err = backend.Remove(ctx, target, fsops.RemoveOptions{})
+	err := backend.Remove(ctx, target, fsops.RemoveOptions{})
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil // Already gone
 	}
@@ -220,10 +206,10 @@ func collectCandidateDirsForCleanup(files []string, scanRoots []string, ignorePa
 		if scanRoot == "" {
 			continue
 		}
-		scanRoot = filepath.Clean(scanRoot)
+		normScanRoot := normalizePath(scanRoot)
 
 		dir := filepath.Clean(filepath.Dir(filePath))
-		for dir != scanRoot {
+		for normalizePath(dir) != normScanRoot {
 			if dir == "." || dir == string(filepath.Separator) {
 				break
 			}

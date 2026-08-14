@@ -108,7 +108,8 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
 	c.viper.SetDefault("logMaxBackups", 10)
-	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("dataDir", "")   // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("backupDir", "") // Empty means <dataDir>/backups
 	c.viper.SetDefault("databaseEngine", "sqlite")
 	c.viper.SetDefault("databaseDsn", "")
 	c.viper.SetDefault("databaseHost", "localhost")
@@ -214,6 +215,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("backupDir", envPrefix+"BACKUP_DIR")
 	c.viper.BindEnv("databaseEngine", envPrefix+"DATABASE_ENGINE")
 	c.bindOrReadFromFile("databaseDsn", envPrefix+"DATABASE_DSN")
 	c.viper.BindEnv("databaseHost", envPrefix+"DATABASE_HOST")
@@ -332,6 +334,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
 
 	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.BackupDir = c.viper.GetString("backupDir")
 	c.Config.DatabaseEngine = c.viper.GetString("databaseEngine")
 	c.Config.DatabaseDSN = c.viper.GetString("databaseDsn")
 	c.Config.DatabaseHost = c.viper.GetString("databaseHost")
@@ -505,6 +508,13 @@ sessionSecret = "{{ .sessionSecret }}"
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Backup directory (default: <dataDir>/backups)
+# Backup manifests, archives and cached .torrent files are stored here.
+# A relative path is resolved against the config directory.
+# If you change this on an existing install, move the contents of
+# <dataDir>/backups into the new directory yourself.
+#backupDir = "/mnt/storage/qui-backups"
 
 # Custom themes directory (default: <config-dir>/themes, auto-created)
 # Drop sideloaded *.css theme files here. Listing requires premium access.
@@ -801,6 +811,20 @@ func (c *AppConfig) GetDataDir() string {
 // SetDataDir sets the data directory (used by CLI flags)
 func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
+}
+
+// GetBackupDir returns the resolved backup root directory.
+// Empty config defaults to <dataDir>/backups; a relative override is resolved
+// against the config directory, an absolute override is used verbatim.
+func (c *AppConfig) GetBackupDir() string {
+	dir := strings.TrimSpace(c.Config.BackupDir)
+	if dir == "" {
+		return filepath.Join(c.dataDir, "backups")
+	}
+	if !filepath.IsAbs(dir) {
+		return filepath.Join(c.GetConfigDir(), dir)
+	}
+	return dir
 }
 
 // GetConfigDir returns the directory containing the config file

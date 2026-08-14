@@ -176,6 +176,27 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.Equal(t, 37, *query.Episode)
 }
 
+func TestSelectContentDetectionRelease_MusicNameKeepsEpisodeMarkersFromFiles(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	sourceName := "Space Badgers From Pluto (2011)"
+	source := svc.releaseCache.Parse(sourceName)
+	require.NotNil(t, source)
+	require.Equal(t, "music", DetermineContentType(source).ContentType,
+		"fixture only exercises the fix while the torrent name classifies as music")
+
+	files := qbt.TorrentFiles{
+		{Name: sourceName + "/Space Badgers from Pluto (2011) - 101 - The Journey Starts [abc123].avi", Size: 1},
+	}
+
+	contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
+	require.True(t, usedFile, "episode markers in the files must win over a music name parse")
+	require.Equal(t, "tv", DetermineContentTypeWithFiles(contentDetectionRelease, files).ContentType)
+}
+
 func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.T) {
 	svc := &Service{
 		releaseCache:     NewReleaseCache(),

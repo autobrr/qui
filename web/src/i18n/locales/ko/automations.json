@@ -210,6 +210,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "다른 인스턴스에서 시딩 중",
       "EXISTS_ON_SAME_INSTANCE": "동일 인스턴스에 Cross-seed 존재",
       "SEEDING_ON_SAME_INSTANCE": "동일 인스턴스에서 Cross-seed 시딩 중",
+      "CROSS_SEED_TAGS": "크로스시드 태그",
       "HARDLINK_SCOPE": "하드링크 범위"
     },
     "fieldGroups": {

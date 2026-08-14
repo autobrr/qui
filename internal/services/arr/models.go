@@ -41,6 +41,7 @@ type SonarrParsedEpisodeInfo struct {
 type SonarrSeries struct {
 	ID              int              `json:"id"`
 	Title           string           `json:"title"`
+	Year            int              `json:"year"`
 	AlternateTitles []AlternateTitle `json:"alternateTitles"`
 	TVDbID          int              `json:"tvdbId"`
 	TVMazeID        int              `json:"tvMazeId"`
@@ -78,6 +79,7 @@ type RadarrParsedMovieInfo struct {
 type RadarrMovie struct {
 	ID              int              `json:"id"`
 	Title           string           `json:"title"`
+	Year            int              `json:"year"`
 	OriginalTitle   string           `json:"originalTitle"`
 	AlternateTitles []AlternateTitle `json:"alternateTitles"`
 	TMDbID          int              `json:"tmdbId"`
@@ -322,6 +324,113 @@ func seasonLookupTitles(series *SonarrSeries, lookupTitle string, season int) []
 		}
 	}
 	return titlesForSeason(series, season)
+}
+
+// lookupYearMatches reports whether a candidate's year is compatible with the
+// release's parsed year. Unknown years on either side cannot disprove a match;
+// ±1 absorbs premiere-date vs release-date drift.
+func lookupYearMatches(releaseYear, candidateYear int) bool {
+	if releaseYear <= 0 || candidateYear <= 0 {
+		return true
+	}
+	diff := releaseYear - candidateYear
+	return diff >= -1 && diff <= 1
+}
+
+// selectRadarrLookupMatch returns the lookup candidate whose title (or original
+// title) matches term after normalization and whose year is compatible with the
+// release's parsed year; nil when none match. Same-title remakes are the wrong-bind
+// hazard here: with a year both sides, the year decides; with no year, prefer the
+// in-library candidate (nonzero id), and refuse an ambiguous multi-candidate set
+// rather than gamble on lookup order — a wrong pick would be cached for 30 days.
+func selectRadarrLookupMatch(term string, year int, movies []RadarrMovie) *RadarrMovie {
+	normalized := normalizeTitleWords(term)
+	if normalized == "" {
+		return nil
+	}
+	var exactInLibrary, exactMatches, inLibrary, matches []*RadarrMovie
+	for i := range movies {
+		movie := &movies[i]
+		if normalizeTitleWords(movie.Title) != normalized && normalizeTitleWords(movie.OriginalTitle) != normalized {
+			continue
+		}
+		if !lookupYearMatches(year, movie.Year) {
+			continue
+		}
+		switch {
+		case year > 0 && movie.Year == year && movie.ID > 0:
+			exactInLibrary = append(exactInLibrary, movie)
+		case year > 0 && movie.Year == year:
+			exactMatches = append(exactMatches, movie)
+		case movie.ID > 0:
+			inLibrary = append(inLibrary, movie)
+		default:
+			matches = append(matches, movie)
+		}
+	}
+	// An exact-year candidate always beats a ±1 one: the tolerance exists for
+	// premiere-date drift of the same work, not to let an adjacent-year remake
+	// win on library membership.
+	if len(exactInLibrary) > 0 {
+		return exactInLibrary[0]
+	}
+	if len(exactMatches) > 0 {
+		return exactMatches[0]
+	}
+	if len(inLibrary) == 1 || (len(inLibrary) > 1 && year > 0) {
+		return inLibrary[0]
+	}
+	if len(inLibrary) > 1 {
+		return nil // two same-title library entries and no year to pick between them
+	}
+	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
+		return matches[0]
+	}
+	return nil
+}
+
+// selectSonarrLookupMatch is selectRadarrLookupMatch for series, matching on title only.
+func selectSonarrLookupMatch(term string, year int, series []SonarrSeries) *SonarrSeries {
+	normalized := normalizeTitleWords(term)
+	if normalized == "" {
+		return nil
+	}
+	var exactInLibrary, exactMatches, inLibrary, matches []*SonarrSeries
+	for i := range series {
+		candidate := &series[i]
+		if normalizeTitleWords(candidate.Title) != normalized {
+			continue
+		}
+		if !lookupYearMatches(year, candidate.Year) {
+			continue
+		}
+		switch {
+		case year > 0 && candidate.Year == year && candidate.ID > 0:
+			exactInLibrary = append(exactInLibrary, candidate)
+		case year > 0 && candidate.Year == year:
+			exactMatches = append(exactMatches, candidate)
+		case candidate.ID > 0:
+			inLibrary = append(inLibrary, candidate)
+		default:
+			matches = append(matches, candidate)
+		}
+	}
+	if len(exactInLibrary) > 0 {
+		return exactInLibrary[0]
+	}
+	if len(exactMatches) > 0 {
+		return exactMatches[0]
+	}
+	if len(inLibrary) == 1 || (len(inLibrary) > 1 && year > 0) {
+		return inLibrary[0]
+	}
+	if len(inLibrary) > 1 {
+		return nil // two same-title library entries and no year to pick between them
+	}
+	if len(matches) == 1 || (len(matches) > 1 && year > 0) {
+		return matches[0]
+	}
+	return nil
 }
 
 // normalizeTitleWords lowercases and reduces a title (or release name) to space-separated

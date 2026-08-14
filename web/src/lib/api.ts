@@ -29,6 +29,7 @@ import type {
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
+  CrossSeedQueryDegradedReason,
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
@@ -1295,6 +1296,7 @@ class ApiClient {
       results?: RawSearchResult[]
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
+      query_degraded?: CrossSeedQueryDegradedReason
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -1351,6 +1353,7 @@ class ApiClient {
       })),
       cache: response.cache,
       partial: response.partial ?? undefined,
+      queryDegraded: response.query_degraded ?? undefined,
     }
   }
 

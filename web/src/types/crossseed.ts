@@ -77,11 +77,15 @@ export interface CrossSeedTorrentSearchResult {
   matchScore: number
 }
 
+/** Set when the ARR external-ID lookup could not supply IDs and the search ran title-only. */
+export type CrossSeedQueryDegradedReason = "arr_lookup_failed" | "arr_no_ids"
+
 export interface CrossSeedTorrentSearchResponse {
   sourceTorrent: CrossSeedTorrentInfo
   results: CrossSeedTorrentSearchResult[]
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
+  queryDegraded?: CrossSeedQueryDegradedReason
 }
 
 export interface CrossSeedTorrentSearchSelection {
@@ -148,6 +152,11 @@ export interface SeasonPackCategoryRule {
   category: string
 }
 
+export interface CategoryMappingRule {
+  categories: string[]
+  contentType: string
+}
+
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
@@ -174,6 +183,8 @@ export interface CrossSeedAutomationSettings {
   useCustomCategory: boolean
   customCategory: string
   runExternalProgramId?: number | null
+  // Category mapping: force the search category by qBittorrent category
+  categoryMappingRules: CategoryMappingRule[]
   // Source-specific tagging
   rssAutomationTags: string[]
   seededSearchTags: string[]
@@ -239,6 +250,8 @@ export interface CrossSeedAutomationSettingsPatch {
   useCustomCategory?: boolean
   customCategory?: string
   runExternalProgramId?: number | null
+  // Category mapping: force the search category by qBittorrent category
+  categoryMappingRules?: CategoryMappingRule[]
   // Source-specific tagging
   rssAutomationTags?: string[]
   seededSearchTags?: string[]

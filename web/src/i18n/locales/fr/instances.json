@@ -914,6 +914,7 @@
       "scanTruncated": " (analyse tronquée, d'autres fichiers peuvent exister)",
       "viewPreview": "Voir l'aperçu",
       "recentScans": "Analyses récentes",
+      "scannedPaths": "Chemins analysés ({{total}})",
       "zeroOrphans": "0 orphelins",
       "deletedStats": "{{deleted}} supprimés · {{size}}",
       "partialFailure": "Échec partiel - vérifier les analyses récentes",

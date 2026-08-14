@@ -18,7 +18,7 @@ import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, 
 import { type ReactNode, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-// Torznab standard category mappings (synced with pkg/gojackett/constants.go)
+// Torznab standard category mappings, from Prowlarr's NewznabStandardCategory.
 const CATEGORY_MAP: Record<string, string> = {
   // Parent categories
   "1000": "Console",
@@ -27,8 +27,8 @@ const CATEGORY_MAP: Record<string, string> = {
   "4000": "PC",
   "5000": "TV",
   "6000": "XXX",
-  "7000": "Other",
-  "8000": "Books",
+  "7000": "Books",
+  "8000": "Other",
   // Movies subcategories
   "2010": "Movies Foreign",
   "2020": "Movies Other",
@@ -37,11 +37,13 @@ const CATEGORY_MAP: Record<string, string> = {
   "2045": "Movies UHD",
   "2050": "Movies BluRay",
   "2060": "Movies 3D",
-  "2070": "Movies Web",
+  "2070": "Movies DVD",
+  "2080": "Movies Web",
+  "2090": "Movies x265",
   // Audio subcategories
   "3010": "Audio MP3",
   "3020": "Audio Video",
-  "3030": "Audiobook",
+  "3030": "Audio Audiobook",
   "3040": "Audio Lossless",
   "3050": "Audio Other",
   "3060": "Audio Foreign",
@@ -49,20 +51,21 @@ const CATEGORY_MAP: Record<string, string> = {
   "4010": "PC 0day",
   "4020": "PC ISO",
   "4030": "PC Mac",
-  "4040": "PC Phone Other",
+  "4040": "PC Mobile Other",
   "4050": "PC Games",
-  "4060": "PC Phone iOS",
-  "4070": "PC Phone Android",
+  "4060": "PC Mobile iOS",
+  "4070": "PC Mobile Android",
   // TV subcategories
   "5010": "TV Web",
   "5020": "TV Foreign",
   "5030": "TV SD",
   "5040": "TV HD",
   "5045": "TV UHD",
+  "5050": "TV Other",
   "5060": "TV Sport",
   "5070": "TV Anime",
   "5080": "TV Documentary",
-  "5090": "TV Other",
+  "5090": "TV x265",
   // XXX subcategories
   "6010": "XXX DVD",
   "6020": "XXX WMV",
@@ -74,16 +77,16 @@ const CATEGORY_MAP: Record<string, string> = {
   "6070": "XXX Other",
   "6080": "XXX SD",
   "6090": "XXX Web",
-  // Other subcategories
-  "7010": "Other Misc",
-  "7020": "Other Hashed",
   // Books subcategories
-  "8010": "Books Mags",
-  "8020": "Books EBook",
-  "8030": "Books Comics",
-  "8040": "Books Technical",
-  "8050": "Books Foreign",
-  "8060": "Books Other",
+  "7010": "Books Mags",
+  "7020": "Books EBook",
+  "7030": "Books Comics",
+  "7040": "Books Technical",
+  "7050": "Books Other",
+  "7060": "Books Foreign",
+  // Other subcategories
+  "8010": "Other Misc",
+  "8020": "Other Hashed",
 }
 
 interface ParamBadge {

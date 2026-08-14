@@ -5,15 +5,12 @@ package orphanscan
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
-
-const goosWindows = "windows"
 
 // TorrentFileMap is a thread-safe set of file paths belonging to torrents.
 type TorrentFileMap struct {
@@ -100,19 +97,16 @@ func (m *TorrentFileMap) MergeFrom(other *TorrentFileMap) int {
 	return added
 }
 
-// normalizePath cleans and normalizes a path for consistent comparison.
+// cleanPath cleans a path without changing its casing.
 // Uses filepath.Clean (OS-specific separators) and NFC unicode normalization to
 // avoid mismatches between canonically-equivalent strings (e.g. composed vs
 // decomposed forms on some platforms).
 // Tradeoff: canonically-equivalent names collapse to one key, so byte-distinct
 // NFC/NFD twins on normalization-sensitive filesystems are treated as one path.
-// On Windows, we also case-fold to lower to match filesystem semantics and
-// avoid false orphans from drive-letter/path casing differences.
-func normalizePath(path string) string {
+// Use this when the result is shown to the user or stored; use normalizePath
+// when the result is only compared against another path.
+func cleanPath(path string) string {
 	p := filepath.Clean(path)
-	if runtime.GOOS == goosWindows {
-		p = strings.ToLower(p)
-	}
 	// On Unix, paths can contain arbitrary bytes (not always valid UTF-8).
 	// Avoid normalizing invalid UTF-8 to prevent replacing bytes with U+FFFD.
 	if !utf8.ValidString(p) {
@@ -122,6 +116,34 @@ func normalizePath(path string) string {
 		p = norm.NFC.String(p)
 	}
 	return p
+}
+
+// normalizePath cleans a path and case-folds it for consistent comparison.
+//
+// Case-folding is unconditional because runtime.GOOS cannot answer whether the
+// scanned filesystem is case-insensitive: macOS APFS and Windows volumes are
+// case-insensitive by default, and Docker bind-mounts them into a Linux
+// container, where qBittorrent can report two save paths that differ only by
+// case for one physical directory.
+//
+// Invalid UTF-8 is folded too. strings.ToLower and encoding/json replace a bad
+// byte the same way, so the fold is what lets a name read from disk match the
+// same name after a round trip through the qBittorrent API. Do not add a
+// utf8.ValidString guard here: an owned file whose name carries a non-UTF-8
+// byte is then reported as an orphan and deleted.
+//
+// ToLower can turn an NFC string into a non-NFC one (H + U+0331 becomes U+1E96),
+// so the folded result is cleaned again.
+//
+// ponytail: names that differ only by case, or only in which invalid bytes they
+// carry, collapse to one key. That direction is safe (a missed orphan, never a
+// deleted owned file). Upgrade path if it is ever reported: keep a folded
+// secondary index and confirm hits with os.SameFile.
+//
+// The result is for comparison only. It must never reach an os.* call or the
+// database, because on a case-sensitive filesystem it can name a different file.
+func normalizePath(path string) string {
+	return cleanPath(strings.ToLower(cleanPath(path)))
 }
 
 // canonicalizeHash matches SyncManager's internal hash normalization.

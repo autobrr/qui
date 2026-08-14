@@ -685,6 +685,8 @@
     "expires": "Vyprší {{time}}",
     "refreshFromIndexers": "Aktualizovat z indexerů",
     "partialResults": "Částečné výsledky - některé indexery neodpověděly",
+    "arrLookupFailed": "Vyhledání ID metadat selhalo - hledáno pouze podle názvu, výsledky mohou být neúplné",
+    "arrNoIds": "Pro tuto release nebyla nalezena žádná ID metadat - hledáno pouze podle názvu",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",

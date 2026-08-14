@@ -90,9 +90,16 @@ export interface CrossSeedDialogProps {
   hasSearched: boolean
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   partial?: boolean
+  queryDegraded?: string
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
   onForceRefresh?: () => void
+}
+
+// Backend TorrentSearchResponse.query_degraded values; unknown values render nothing.
+const queryDegradedMessageKeys: Record<string, string> = {
+  arr_lookup_failed: "crossSeedDialog.arrLookupFailed",
+  arr_no_ids: "crossSeedDialog.arrNoIds",
 }
 
 const CrossSeedDialogComponent = ({
@@ -132,6 +139,7 @@ const CrossSeedDialogComponent = ({
   hasSearched,
   cacheMetadata,
   partial,
+  queryDegraded,
   canForceRefresh,
   refreshCooldownLabel,
   onForceRefresh,
@@ -256,6 +264,12 @@ const CrossSeedDialogComponent = ({
             <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               <span>{t("crossSeedDialog.partialResults")}</span>
+            </div>
+          )}
+          {queryDegraded && queryDegradedMessageKeys[queryDegraded] && (
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-yellow-500">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{t(queryDegradedMessageKeys[queryDegraded])}</span>
             </div>
           )}
         </DialogHeader>
