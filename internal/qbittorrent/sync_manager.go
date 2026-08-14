@@ -1668,21 +1668,21 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if !includeCachedCounts {
 		counts = nil
 	} else {
-		// Counts come from ALL torrents (not filtered) for the sidebar.
-		// Materialized inside this branch on purpose: stream ticks leave
-		// includeCachedCounts false, so hoisting it above cloned every torrent
-		// on every tick and discarded the result.
-		allTorrents := allTorrentsForCounts
-		if allTorrents == nil {
-			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
-		}
+		// Counts come from ALL torrents (not filtered) for the sidebar. Called only
+		// on a counts-cache miss; the clone is the expensive part of a cached request.
+		allTorrents := func() []qbt.Torrent {
+			if len(allTorrentsForCounts) > 0 {
+				return allTorrentsForCounts
+			}
 
-		if len(allTorrents) == 0 {
-			log.Trace().
-				Int("instanceID", instanceID).
-				Bool("useManualFiltering", useManualFiltering).
-				Msg("All torrent list empty when calculating counts; refetching")
-			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
+			torrents := getTorrents(qbt.TorrentFilterOptions{})
+			if len(torrents) == 0 {
+				log.Trace().
+					Int("instanceID", instanceID).
+					Bool("useManualFiltering", useManualFiltering).
+					Msg("All torrent list empty when calculating counts")
+			}
+			return torrents
 		}
 		counts, trackerMap, enrichedAll = sm.cachedCountsForRequest(ctx, client, countsGen, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
@@ -3770,9 +3770,9 @@ type cachedInstanceCounts struct {
 // The cached TorrentCounts is shared between requests, so nothing downstream
 // may write to it. The one writer, the tracker-health overwrite, gets a copied
 // Status map on every hit.
-func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
+func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents func() []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	if client == nil || len(trackerMap) > 0 || !sm.hasAuthoritativeTrackerMapping(client.instanceID) {
-		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
 	// Generations are read before the data they guard (clientGen by the caller,
@@ -3793,10 +3793,12 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 				counts = &withHealth
 			}
 		}
-		return counts, trackerMap, allTorrents
+		// A hit enriched nothing, so it has no enriched library to hand back. The
+		// caller treats that as "no fallback available", which is what it is.
+		return counts, trackerMap, nil
 	}
 
-	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerMap, trackerHealthSupported, useSubcategories)
 
 	client.countsCache.Store(&cachedInstanceCounts{
 		clientGen:        clientGen,

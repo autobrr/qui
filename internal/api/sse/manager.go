@@ -610,6 +610,10 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		RID:        data.Rid,
 		FullUpdate: data.FullUpdate,
 		Timestamp:  time.Now(),
+		// Counts ride the same frame as the rows they describe. Without this the
+		// sidebar only refreshed on the 60s tracker-health tick, so a new torrent
+		// sat in the table for up to a minute before the sidebar counted it.
+		IncludeCounts: true,
 	}
 
 	go m.publishInstance(instanceID, meta)
