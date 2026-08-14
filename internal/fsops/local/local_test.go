@@ -52,17 +52,17 @@ func TestPortableNotExistErrors(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope", "missing.mkv")
 
 	_, err := b.Stat(ctx, missing)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = b.Lstat(ctx, missing)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = b.ReadDir(ctx, missing)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = b.WalkDir(ctx, missing, fsops.WalkOptions{})
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	err = b.Remove(ctx, missing, fsops.RemoveOptions{})
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	_, err = b.Statfs(ctx, missing)
-	assert.ErrorIs(t, err, fs.ErrNotExist)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestStat_FollowsSymlinkIdentity(t *testing.T) {
