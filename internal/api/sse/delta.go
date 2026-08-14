@@ -4,9 +4,9 @@
 package sse
 
 import (
-	"encoding/json"
-	"hash"
+	"encoding/binary"
 	"hash/fnv"
+	"math"
 	"slices"
 	"strconv"
 
@@ -143,60 +143,125 @@ func computeRowDelta[T any](rows []T, keyOf func(T) string, fpOf func(T) uint64,
 	return order, changedIdx, newFP
 }
 
-// maskVolatile zeroes the per-second counters and swarm/peer-count jitter that change
-// on an otherwise-idle torrent every tick. They are excluded from change detection
-// only: on a mostly-idle instance these are the sole fields that move each tick, so
-// hashing them would flag nearly every row as changed and make each "delta" almost
-// as large as a full snapshot (the root cause of the stream saturating an HTTP/2
-// connection). The excluded fields still ride along with their current value whenever
-// a row is sent for a real change (speed, progress, state, ratio, ...); they are just
-// not on their own a reason to resend a row.
-func maskVolatile(t *qbt.Torrent) qbt.Torrent {
-	masked := *t
-	masked.Reannounce = 0
-	masked.TimeActive = 0
-	masked.SeedingTime = 0
-	masked.ETA = 0
-	masked.LastActivity = 0
-	masked.SeenComplete = 0
-	masked.Popularity = 0
-	masked.Availability = 0
-	masked.NumComplete = 0
-	masked.NumIncomplete = 0
-	masked.NumLeechs = 0
-	masked.NumSeeds = 0
-	return masked
+// fpBuf accumulates a row's change-relevant fields as flat bytes so the row is
+// hashed with a single FNV write instead of a JSON encode. Strings carry a length
+// prefix so adjacent fields cannot alias ("ab"+"c" vs "a"+"bc").
+type fpBuf []byte
+
+// fpBufSize covers a typical row (fixed fields plus name and paths); a row with a
+// long magnet URI takes one extra grow.
+const fpBufSize = 1024
+
+func (b *fpBuf) i64(v int64)   { *b = binary.LittleEndian.AppendUint64(*b, uint64(v)) }
+func (b *fpBuf) f64(v float64) { *b = binary.LittleEndian.AppendUint64(*b, math.Float64bits(v)) }
+func (b *fpBuf) str(s string)  { b.i64(int64(len(s))); *b = append(*b, s...) }
+func (b *fpBuf) bit(v bool) {
+	if v {
+		*b = append(*b, 1)
+	} else {
+		*b = append(*b, 0)
+	}
 }
 
-func writeTorrentFingerprint(h hash.Hash64, t *qbt.Torrent) {
+// torrent appends every change-relevant torrent field. The per-second counters and
+// swarm/peer-count jitter that move on an otherwise-idle torrent every tick
+// (Reannounce, TimeActive, SeedingTime, ETA, LastActivity, SeenComplete, Popularity,
+// Availability, NumComplete, NumIncomplete, NumLeechs, NumSeeds) are deliberately
+// left out: on a mostly-idle instance they are the sole fields that change each tick,
+// so including them would flag nearly every row as changed and make each "delta"
+// almost as large as a full snapshot (the root cause of the stream saturating an
+// HTTP/2 connection). The excluded fields still ride along with their current value
+// whenever a row is sent for a real change; they are just not on their own a reason
+// to resend a row. TestTorrentFingerprintCoversEveryField pins this partition, so a
+// go-qbittorrent bump that adds a field fails until the field is categorized here.
+func (b *fpBuf) torrent(t *qbt.Torrent) {
 	if t == nil {
 		return
 	}
-	masked := maskVolatile(t)
-	if encoded, err := json.Marshal(&masked); err == nil {
-		_, _ = h.Write(encoded)
+	b.i64(t.AddedOn)
+	b.i64(t.AmountLeft)
+	b.bit(t.AutoManaged)
+	b.str(t.Category)
+	b.str(t.Comment)
+	b.i64(t.Completed)
+	b.i64(t.CompletionOn)
+	b.str(t.CreatedBy)
+	b.str(t.ContentPath)
+	b.i64(t.DlLimit)
+	b.i64(t.DlSpeed)
+	b.str(t.DownloadPath)
+	b.i64(t.Downloaded)
+	b.i64(t.DownloadedSession)
+	b.bit(t.FirstLastPiecePrio)
+	b.bit(t.ForceStart)
+	b.str(t.Hash)
+	b.str(t.InfohashV1)
+	b.str(t.InfohashV2)
+	b.bit(t.Private)
+	b.str(t.MagnetURI)
+	b.f64(t.MaxRatio)
+	b.i64(t.MaxSeedingTime)
+	b.i64(t.MaxInactiveSeedingTime)
+	b.str(t.Name)
+	b.i64(t.Priority)
+	b.f64(t.Progress)
+	b.f64(t.Ratio)
+	b.f64(t.RatioLimit)
+	b.str(t.SavePath)
+	b.i64(t.SeedingTimeLimit)
+	b.i64(t.InactiveSeedingTimeLimit)
+	b.str(t.ShareLimitAction)
+	b.str(t.ShareLimitsMode)
+	b.bit(t.SequentialDownload)
+	b.i64(t.Size)
+	b.str(string(t.State))
+	b.bit(t.SuperSeeding)
+	b.str(t.Tags)
+	b.i64(t.TotalSize)
+	b.str(t.Tracker)
+	b.i64(t.TrackersCount)
+	b.i64(t.UpLimit)
+	b.i64(t.Uploaded)
+	b.i64(t.UploadedSession)
+	b.i64(t.UpSpeed)
+	b.i64(int64(len(t.Trackers)))
+	for i := range t.Trackers {
+		tr := &t.Trackers[i]
+		b.str(tr.Url)
+		b.i64(int64(tr.Status))
+		b.i64(int64(tr.NumPeers))
+		b.i64(int64(tr.NumSeeds))
+		b.i64(int64(tr.NumLeechers))
+		b.i64(int64(tr.NumDownloaded))
+		b.str(tr.Message)
 	}
+}
+
+func (b fpBuf) sum() uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write(b)
+	return h.Sum64()
 }
 
 // singleRowFingerprint hashes a single-instance row's change-relevant content.
 func singleRowFingerprint(tv qbittorrent.TorrentView) uint64 {
-	h := fnv.New64a()
-	writeTorrentFingerprint(h, tv.Torrent)
-	_, _ = h.Write([]byte(tv.TrackerHealth))
-	return h.Sum64()
+	b := make(fpBuf, 0, fpBufSize)
+	b.torrent(tv.Torrent)
+	b.str(string(tv.TrackerHealth))
+	return b.sum()
 }
 
 // crossRowFingerprint hashes a cross-instance row's change-relevant content,
 // including its instance identity (the same torrent on two instances is two rows).
 func crossRowFingerprint(c qbittorrent.CrossInstanceTorrentView) uint64 {
-	h := fnv.New64a()
+	b := make(fpBuf, 0, fpBufSize)
 	if c.TorrentView != nil {
-		writeTorrentFingerprint(h, c.Torrent)
-		_, _ = h.Write([]byte(c.TrackerHealth))
+		b.torrent(c.Torrent)
+		b.str(string(c.TrackerHealth))
 	}
-	_, _ = h.Write([]byte(strconv.Itoa(c.InstanceID)))
-	_, _ = h.Write([]byte(c.InstanceName))
-	return h.Sum64()
+	b.i64(int64(c.InstanceID))
+	b.str(c.InstanceName)
+	return b.sum()
 }
 
 // subsetRows returns the rows at the given indices, preserving order.
