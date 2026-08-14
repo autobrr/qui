@@ -598,3 +598,127 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 		t.Fatalf("expected pending run unchanged, got %q", pendingRun.Status)
 	}
 }
+
+// A case-insensitive filesystem can hand the deletion flow a target spelled
+// differently from the file map entry and from the scan root it was found under.
+// Neither may lead to deleting an owned file. See issue #2314.
+func TestSafeDeleteTarget_CaseDifferentOwnedFileIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	trackerDir := filepath.Join(root, "trackername")
+	if err := os.MkdirAll(trackerDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	target := filepath.Join(trackerDir, "Show.S01E01.mkv")
+	if err := os.WriteFile(target, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	// Owned under the other casing of the same directory.
+	tfm := NewTorrentFileMap()
+	tfm.Add(filepath.Join(root, "TrackerName", "Show.S01E01.mkv"))
+
+	disp, err := safeDeleteTarget(root, target, tfm, nil)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget file: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected owned file to remain, stat err=%v", err)
+	}
+
+	// Same guard when the target is the directory (recursive delete path).
+	disp, err = safeDeleteTarget(root, trackerDir, tfm, nil)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget dir: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition for directory, got %v", disp)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected owned file to survive directory delete, stat err=%v", err)
+	}
+}
+
+func TestWithinScanRoot_CaseDifferentScanRootDoesNotEscape(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "cross-seed", "TrackerName")
+	target := filepath.Join(base, "cross-seed", "trackername", "Show.S01E01.mkv")
+
+	if err := withinScanRoot(root, target); err != nil {
+		t.Fatalf("expected target inside scan root, got %v", err)
+	}
+	if err := withinScanRoot(root, strings.ToLower(root)); err == nil ||
+		!strings.Contains(err.Error(), "refusing to delete scan root") {
+		t.Fatalf("expected refusal to delete the scan root itself, got %v", err)
+	}
+	outside := filepath.Join(base, "cross-seed", "other", "movie.mkv")
+	if err := withinScanRoot(root, outside); err == nil ||
+		!strings.Contains(err.Error(), "escapes scan root") {
+		t.Fatalf("expected escape error for %q, got %v", outside, err)
+	}
+}
+
+// safeDeleteTarget routes symlinks to safeDeleteSymlink, whose in-use re-check
+// folds case like every other one.
+func TestSafeDeleteSymlink_CaseDifferentOwnedLinkIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	payload := filepath.Join(root, "payload.mkv")
+	if err := os.WriteFile(payload, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	link := filepath.Join(root, "Linked.mkv")
+	if err := os.Symlink(payload, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+	tfm.Add(filepath.Join(root, "linked.mkv"))
+
+	disp, err := safeDeleteTarget(root, link, tfm, nil)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget symlink: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("expected symlink to remain, lstat err=%v", err)
+	}
+
+	// Not owned: the link goes, under its real (unfolded) name.
+	disp, err = safeDeleteTarget(root, link, NewTorrentFileMap(), nil)
+	if err != nil {
+		t.Fatalf("safeDeleteTarget symlink: %v", err)
+	}
+	if disp != deleteDispositionDeleted {
+		t.Fatalf("expected deleted disposition, got %v", disp)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("expected symlink removed, lstat err=%v", err)
+	}
+}
+
+// The empty-directory cleanup walks up from a deleted file to its scan root,
+// which can be spelled differently on a case-insensitive filesystem.
+func TestCollectCandidateDirsForCleanup_CaseDifferentScanRoot(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	scanRoot := filepath.Join(base, "TrackerName")
+	deleted := filepath.Join(base, "trackername", "Show.S01", "Show.S01E01.mkv")
+
+	got := collectCandidateDirsForCleanup([]string{deleted}, []string{scanRoot}, nil)
+
+	want := []string{filepath.Join(base, "trackername", "Show.S01")}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("expected candidate dirs %v, got %v", want, got)
+	}
+}

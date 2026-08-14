@@ -902,6 +902,7 @@
       "scanTruncated": "（扫描已截断，可能还有更多文件）",
       "viewPreview": "查看预览",
       "recentScans": "近期扫描",
+      "scannedPaths": "已扫描路径（{{total}}）",
       "zeroOrphans": "0 个孤立文件",
       "deletedStats": "已删除 {{deleted}} · {{size}}",
       "partialFailure": "部分失败 - 请查看近期扫描",

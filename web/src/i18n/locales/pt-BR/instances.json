@@ -920,6 +920,7 @@
       "scanTruncated": " (varredura incompleta, máximo de itens atingido)",
       "viewPreview": "Ver Detalhes",
       "recentScans": "Escaneamentos Recentes",
+      "scannedPaths": "Caminhos Escaneados ({{total}})",
       "zeroOrphans": "0 órfãos",
       "deletedStats": "{{deleted}} apagados · {{size}}",
       "partialFailure": "Falha parcial - verifique as atividades",

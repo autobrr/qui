@@ -920,6 +920,7 @@
       "scanTruncated": " (scansione troncata, potrebbero esistere altri file)",
       "viewPreview": "Visualizza anteprima",
       "recentScans": "Scansioni recenti",
+      "scannedPaths": "Percorsi analizzati ({{total}})",
       "zeroOrphans": "0 orfani",
       "deletedStats": "{{deleted}} eliminati · {{size}}",
       "partialFailure": "Errore parziale - controlla le scansioni recenti",

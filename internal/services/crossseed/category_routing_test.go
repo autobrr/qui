@@ -4,6 +4,8 @@
 package crossseed
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/moistari/rls"
@@ -210,5 +212,113 @@ func TestMatchSeasonPackCategoryRule(t *testing.T) {
 				t.Errorf("matchSeasonPackCategoryRule() = (%q, %v), want (%q, %v)", gotCat, gotMatched, tt.wantCat, tt.wantMatched)
 			}
 		})
+	}
+}
+
+func TestMatchCategoryMappingRule(t *testing.T) {
+	rules := []models.CategoryMappingRule{
+		{Categories: []string{"music", "flac"}, ContentType: "music"},
+		{Categories: []string{"music"}, ContentType: "movie"},
+		{Categories: []string{"abooks"}, ContentType: "audiobook"},
+	}
+
+	tests := []struct {
+		name        string
+		rules       []models.CategoryMappingRule
+		category    string
+		wantType    string
+		wantMatched bool
+	}{
+		{
+			name:        "empty rules",
+			rules:       nil,
+			category:    "music",
+			wantType:    "",
+			wantMatched: false,
+		},
+		{
+			name:        "exact match, first rule wins on duplicate category",
+			rules:       rules,
+			category:    "music",
+			wantType:    "music",
+			wantMatched: true,
+		},
+		{
+			name:        "any category in the same rule matches",
+			rules:       rules,
+			category:    "flac",
+			wantType:    "music",
+			wantMatched: true,
+		},
+		{
+			name:        "later rule category matches",
+			rules:       rules,
+			category:    "abooks",
+			wantType:    "audiobook",
+			wantMatched: true,
+		},
+		{
+			name:        "unlisted category no match",
+			rules:       rules,
+			category:    "movies",
+			wantType:    "",
+			wantMatched: false,
+		},
+		{
+			name:        "match is case-sensitive like qBittorrent categories",
+			rules:       rules,
+			category:    "Music",
+			wantType:    "",
+			wantMatched: false,
+		},
+		{
+			name:        "empty torrent category never matches",
+			rules:       []models.CategoryMappingRule{{Categories: []string{""}, ContentType: "music"}},
+			category:    "",
+			wantType:    "",
+			wantMatched: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotMatched := matchCategoryMappingRule(tt.rules, tt.category)
+			if gotType != tt.wantType || gotMatched != tt.wantMatched {
+				t.Errorf("matchCategoryMappingRule() = (%q, %v), want (%q, %v)", gotType, gotMatched, tt.wantType, tt.wantMatched)
+			}
+		})
+	}
+}
+
+func TestContentTypeFromCategoryRule(t *testing.T) {
+	svc := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				CategoryMappingRules: []models.CategoryMappingRule{
+					{Categories: []string{"music"}, ContentType: "music"},
+				},
+			}, nil
+		},
+	}
+
+	info, ok := svc.contentTypeFromCategoryRule(context.Background(), "music")
+	if !ok {
+		t.Fatal("expected a match for the mapped category")
+	}
+	if info.ContentType != "music" || !info.IsMusic {
+		t.Errorf("contentTypeFromCategoryRule() = %+v, want music content info", info)
+	}
+
+	if _, ok := svc.contentTypeFromCategoryRule(context.Background(), "movies"); ok {
+		t.Error("expected no match for an unmapped category")
+	}
+
+	errSvc := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return nil, errors.New("settings unavailable")
+		},
+	}
+	if _, ok := errSvc.contentTypeFromCategoryRule(context.Background(), "music"); ok {
+		t.Error("expected no match when settings fail to load")
 	}
 }

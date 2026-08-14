@@ -716,7 +716,7 @@ func (app *Application) runServer() {
 	}
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()}, notificationService)
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()

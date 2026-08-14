@@ -18,6 +18,49 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 Filesystem fallback and disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
 :::
 
+## Search Category Rules
+
+qui reads the torrent name to find the content type. It then corrects that guess with the file extensions inside the torrent. Both signals can be wrong.
+
+A search category rule forces the content type for every torrent in a qBittorrent category. The rule wins over the name and over the file extensions.
+
+The content type decides which Torznab categories qui asks for, and which search mode it uses. It therefore decides which indexers can answer the search.
+
+### When a rule helps
+
+File extensions cannot always correct the name:
+
+- A disc image holds one `.iso` file. This extension is neither audio nor video, so the extensions give no signal and the name decides alone.
+- An ebook is one `.epub` or `.pdf` file. A name such as `Author Name - Book Title (2021)` can parse as music or as a movie.
+
+In both examples the torrent is in a category that you control. A rule on that category gives qui the correct content type.
+
+### Add a rule
+
+1. Open the **Rules** tab on the Cross-Seed page.
+2. Find **Search category rules** in the **Matching behavior** card.
+3. Select **Add rule**.
+4. Select or type one or more qBittorrent categories.
+5. Select the content type in the **search as** list.
+
+The content types are Movie, TV, Music, Audiobook, Book, Comic, Game, and App.
+
+### How rules match
+
+One rule can hold more than one category. A torrent in any of those categories gets the content type of that rule.
+
+The match is exact and case-sensitive, because qBittorrent categories are case-sensitive. A rule for `ebooks` does not match a torrent in `Ebooks`.
+
+If two rules name the same category, the first rule keeps it. When qui saves the settings, it removes that category from the later rule. If this empties the later rule, qui removes that rule.
+
+:::note
+Manual search, Library Scan, and completion search use these rules. RSS, webhooks, and direct apply requests do not use them. Those flows have no qBittorrent source torrent, so they have no category to match. Dir Scan has its own detection and does not use these rules.
+:::
+
+:::note
+Audiobook and Music ask the indexers for the same categories, and both send an artist and an album parameter. Only the text of the search query differs.
+:::
+
 ## Season Pack Threshold
 
 The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr first, then TVDB or TVMaze when Sonarr cannot resolve the release. When torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically when qBittorrent reports progress at or above the season-pack threshold. This is configured in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
@@ -25,6 +68,8 @@ The season-pack webhook uses a separate coverage threshold (default 75%) to deci
 Season-pack matching rules live in **Rules > Season packs** and affect only the season-pack webhook flow.
 
 ## Categories
+
+These modes set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
 
 Choose one of three mutually exclusive category modes:
 

@@ -210,6 +210,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "En partage sur une autre instance",
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed existe sur la même instance",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed en partage sur la même instance",
+      "CROSS_SEED_TAGS": "Tags des cross-seeds",
       "HARDLINK_SCOPE": "Portée du lien physique"
     },
     "fieldGroups": {

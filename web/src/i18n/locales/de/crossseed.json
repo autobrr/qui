@@ -289,10 +289,17 @@
       "opsDescription": "Wird für orpheus.network-Abfragen verwendet. Einfügen zum Ersetzen; leeren zum Entfernen."
     },
     "matching": {
-      "title": "Matching-Verhalten",
-      "description": "Steuere, wie Torrents abgeglichen werden und welche Dateiunterschiede erlaubt sind.",
+      "title": "Episoden",
+      "description": "Deine lokalen Season Packs können einzelne Episoden-Torrents auf Indexern matchen, sodass du beide Formate seeden kannst.",
       "crossSeedEpisodes": "Episoden aus Packs cross-seeden",
-      "crossSeedEpisodesDescription": "Deine lokalen Season Packs können einzelne Episoden-Torrents auf Indexern matchen, sodass du beide Formate seeden kannst."
+      "categoryMapping": {
+        "title": "Suchkategorie-Regeln",
+        "description": "Erzwingt den Suchtyp für Torrents in einer qBittorrent-Kategorie. Eine Regel hat Vorrang vor der Erkennung anhand von Torrent-Name und Dateien.",
+        "whenCategory": "Wenn die Kategorie",
+        "searchAs": "ist, suchen als",
+        "addRule": "Regel hinzufügen",
+        "removeRule": "Regel entfernen"
+      }
     },
     "safety": {
       "title": "Sicherheit & Validierung",

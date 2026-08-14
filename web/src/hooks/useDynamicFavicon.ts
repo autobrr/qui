@@ -6,12 +6,15 @@
 import { useEffect } from "react"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeById } from "@/config/themes"
+import { SPREADSHEET_THEME_IDS } from "@/lib/spreadsheet-disguise"
 import { getThemeColors } from "@/utils/theme"
 
 export function useDynamicFavicon() {
   const { theme, variation } = useTheme()
 
   useEffect(() => {
+    let cancelled = false
+
     const updateFavicon = () => {
       const canvas = document.createElement("canvas")
       const size = 32
@@ -28,7 +31,17 @@ export function useDynamicFavicon() {
       // Use dark mode color
       const primaryColor = getThemeColors(currentTheme, "--primary", "dark")
 
-      const svg = `
+      // Spreadsheet disguise: a generic green sheet grid instead of the qui
+      // logo, so the tab icon doesn't out the app. Deliberately NOT an X or
+      // any Microsoft mark.
+      const svg = SPREADSHEET_THEME_IDS.has(theme) ? `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 32 32">
+          <rect x="1" y="1" width="30" height="30" rx="6" fill="oklch(from ${primaryColor} l c h)" />
+          <g stroke="#ffffff" stroke-width="2" stroke-linecap="round">
+            <path d="M9 11.5h14M9 16h14M9 20.5h14M13 8v16" />
+          </g>
+        </svg>
+      ` : `
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">
           <path
             fill="oklch(from ${primaryColor} l c h)"
@@ -61,6 +74,8 @@ export function useDynamicFavicon() {
 
       const img = new Image()
       img.onload = () => {
+        // A theme switch superseded this load.
+        if (cancelled) return
         ctx.clearRect(0, 0, size, size)
         ctx.drawImage(img, 0, 0, size, size)
 
@@ -81,6 +96,9 @@ export function useDynamicFavicon() {
 
     const timeoutId = setTimeout(updateFavicon, 0)
 
-    return () => clearTimeout(timeoutId)
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
   }, [theme, variation])
 }

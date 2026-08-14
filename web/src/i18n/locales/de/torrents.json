@@ -685,6 +685,8 @@
     "expires": "Läuft ab {{time}}",
     "refreshFromIndexers": "Von Indexern aktualisieren",
     "partialResults": "Teilergebnisse – einige Indexer haben nicht geantwortet",
+    "arrLookupFailed": "Metadaten-ID-Abfrage fehlgeschlagen – nur Titelsuche, Ergebnisse können unvollständig sein",
+    "arrNoIds": "Keine Metadaten-IDs für dieses Release gefunden – nur Titelsuche",
     "searchScope": "Suchbereich",
     "noIndexers": "Keine Torznab-Indexer verfügbar",
     "noIndexersHelp": "Füge in den Einstellungen Torznab-Indexer hinzu oder aktiviere sie, um nach Cross-Seeds zu suchen.",

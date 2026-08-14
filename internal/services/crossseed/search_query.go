@@ -35,7 +35,15 @@ func BuildTorznabQuery(name string, release *rls.Release, isMusic bool) SearchQu
 	if isMusic && baseQuery != "" && release.Artist != "" {
 		baseQuery = release.Artist + " " + baseQuery
 	}
-	return buildSafeSearchQuery(name, release, baseQuery)
+	query := buildSafeSearchQuery(name, release, baseQuery)
+	if isMusic {
+		// Torznab audio searches carry no season or episode. A numeric album title
+		// parses as an episode number ("9" reads as episode 9), which would send
+		// ep=9 to the indexer and drop every result.
+		query.Season = nil
+		query.Episode = nil
+	}
+	return query
 }
 
 // buildSafeSearchQuery constructs a conservative Torznab query for TV/anime when parsing is weak.

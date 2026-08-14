@@ -920,6 +920,7 @@
       "scanTruncated": " (scan byl zkrácen, může existovat více souborů)",
       "viewPreview": "Zobrazit náhled",
       "recentScans": "Nedávné vyhledávání",
+      "scannedPaths": "Prohledané cesty ({{total}})",
       "zeroOrphans": "0 nepárových souborů",
       "deletedStats": "{{deleted}} smazáno · {{size}}",
       "partialFailure": "Částečná chyba - zkontrolujte nedávná vyhledávání",

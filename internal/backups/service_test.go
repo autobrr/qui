@@ -1293,6 +1293,60 @@ func TestDeleteAllRunsRemovesFilesAndToleratesMissingOnes(t *testing.T) {
 	require.Empty(t, runIDs)
 }
 
+func TestCleanupTorrentBlobsDefersWhileRunActive(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-active")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "live.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	// A run in flight has not committed its item rows yet, so its blob reuse
+	// is invisible to the reference count.
+	now := time.Unix(0, 0).UTC()
+	active := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusRunning,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, active))
+
+	svc.cleanupTorrentBlobs(ctx, []*models.BackupItem{{TorrentBlobPath: &blobRelPath}})
+
+	require.FileExists(t, blobAbsPath, "blob deletion must wait while a backup run is active")
+}
+
+func TestCleanupTorrentBlobsKeepsBlobWhenCountsUnavailable(t *testing.T) {
+	db := setupTestBackupDB(t)
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "unknown.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	items := []*models.BackupItem{{TorrentBlobPath: &blobRelPath}}
+
+	// A closed database makes every reference count fail; unknown counts must
+	// keep the blob, not delete it.
+	require.NoError(t, db.Close())
+	svc.cleanupTorrentBlobs(context.Background(), items)
+
+	require.FileExists(t, blobAbsPath)
+}
+
 func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
 	t.Parallel()
 

@@ -6,6 +6,8 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -150,9 +152,24 @@ func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
 	var arrService *arr.Service
 	svc := &Service{arrService: arrService}
 
-	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
+	got, degraded := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
 
 	require.Nil(t, got)
+	require.Empty(t, degraded)
+}
+
+func TestLookupARRExternalIDsNoInstancesIsNotDegraded(t *testing.T) {
+	// A (nil, nil) lookup result means no enabled ARR instance covers the
+	// content type — installs without ARR must not see a degradation banner
+	// on every search.
+	spy := &spyARRLookupService{}
+	svc := &Service{arrService: spy}
+
+	got, degraded := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
+
+	require.True(t, spy.called)
+	require.Nil(t, got)
+	require.Empty(t, degraded)
 }
 
 func TestAutomationTorrentSearchContext(t *testing.T) {
@@ -213,6 +230,7 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 		lookupErr       error
 		wantResult      bool
 		wantCalled      bool
+		wantDegraded    string
 	}{
 		{
 			name:            "movie maps to Radarr",
@@ -252,6 +270,7 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 			wantContentType: arr.ContentTypeMovie,
 			lookupErr:       errors.New("lookup failed"),
 			wantCalled:      true,
+			wantDegraded:    QueryDegradedARRLookupFailed,
 		},
 	}
 
@@ -267,9 +286,10 @@ func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 			}
 			svc := &Service{arrService: spy}
 
-			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
+			got, degraded := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
 
 			require.Equal(t, tt.wantCalled, spy.called)
+			require.Equal(t, tt.wantDegraded, degraded)
 			if !tt.wantCalled {
 				require.Nil(t, got)
 				return
@@ -300,12 +320,13 @@ func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
 	}
 	svc := &Service{arrService: spy}
 
-	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
+	got, degraded := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
 
 	require.NotNil(t, got)
 	require.True(t, got.IDs.IsEmpty())
 	require.Equal(t, titles, got.Titles)
 	require.Equal(t, arr.ContentTypeAnime, spy.contentType)
+	require.Equal(t, QueryDegradedARRNoIDs, degraded)
 }
 
 func TestGazelleTargetsForSource(t *testing.T) {
@@ -1542,6 +1563,9 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
 	sourceHashNorm := strings.ToLower(sourceHash)
 
+	// Stub keeps a broken skip from reaching the live tracker.
+	stubGazelleMatchLookup(t)
+
 	svc := &Service{
 		instanceStore:    instanceStore,
 		automationStore:  store,
@@ -1691,6 +1715,9 @@ func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *te
 		Size:     123,
 		Tracker:  "https://orpheus.network/announce",
 	}
+
+	// Stub keeps a broken skip from reaching the live tracker.
+	stubGazelleMatchLookup(t)
 
 	svc := &Service{
 		instanceStore:    instanceStore,
@@ -2351,8 +2378,30 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 	require.False(t, found)
 }
 
+// gazelleTestServer stands in for the real Gazelle APIs so tests never send
+// requests to the live trackers.
+var gazelleTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "unexpected gazelle API call: "+r.URL.Path, http.StatusNotImplemented)
+}))
+
+// stubGazelleMatchLookup keeps a test off the real tracker APIs when it builds a
+// client through buildGazelleClientSet, which always points at the live hosts.
+// Callers must not be parallel: findGazelleMatch is a package variable.
+func stubGazelleMatchLookup(t *testing.T) {
+	t.Helper()
+	prevFindMatch := findGazelleMatch
+	findGazelleMatch = func(context.Context, *gazellemusic.Client, []byte, map[string]int64, int64) (*gazellemusic.Match, error) {
+		return nil, nil
+	}
+	t.Cleanup(func() {
+		findGazelleMatch = prevFindMatch
+	})
+}
+
+// gazelleClientsForTest returns a client set keyed by the real OPS host, because
+// host matching uses that key, but the client itself talks to the test server.
 func gazelleClientsForTest() (*gazelleClientSet, error) {
-	client, err := gazellemusic.NewClient("https://orpheus.network", "ops-key")
+	client, err := gazellemusic.NewClient("orpheus.network", gazelleTestServer.URL, "ops-key")
 	if err != nil {
 		return nil, err
 	}
