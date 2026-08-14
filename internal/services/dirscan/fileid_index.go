@@ -84,7 +84,9 @@ func collectCompletedTorrentSavePaths(torrents []qbittorrent.CrossInstanceTorren
 func addTorrentFilesToFileIDIndex(ctx context.Context, index map[string]string, hash, savePath string, files qbt.TorrentFiles, backend fsops.Backend) (statErrors int) {
 	for _, file := range files {
 		absPath := filepath.Join(savePath, filepath.FromSlash(file.Name))
-		info, err := backend.Lstat(ctx, absPath)
+		// Stat, not Lstat: symlinked torrent data must index the target's
+		// identity or symlink-farm setups lose already-seeding detection.
+		info, err := backend.Stat(ctx, absPath)
 		if err != nil {
 			statErrors++
 			continue

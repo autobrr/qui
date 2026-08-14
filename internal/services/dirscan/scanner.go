@@ -224,17 +224,13 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 	return searchee, nil
 }
 
-// scanSingleFile creates a searchee for a single file.
+// scanSingleFile creates a searchee for a single file. Stat, not Lstat:
+// root-level symlinked media files are scanned via their target, unlike the
+// directory walk which skips links inside a searchee.
 func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searchee, error) {
-	info, err := s.backend.Lstat(ctx, filePath)
+	info, err := s.backend.Stat(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("stat file %s: %w", filePath, err)
-	}
-
-	// Skip symlinks, matching the directory walk: linked data belongs to
-	// whatever it points at, not to this scan root.
-	if info.IsSymlink {
-		return nil, nil
 	}
 
 	base := filepath.Base(filePath)
