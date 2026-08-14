@@ -254,42 +254,31 @@ type TorrentResponse struct {
 	AppPreferences json.RawMessage `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
 }
 
-// marshalTorrentResponsePreferences renders the tri-state preferences field: a nil
-// result omits it, "null" clears the stale frontend cache, and a value replaces it.
-func marshalTorrentResponsePreferences(prefs *qbt.AppPreferences, includeNull bool) (json.RawMessage, error) {
-	if prefs != nil {
-		return json.Marshal(prefs)
-	}
-	if includeNull {
-		return json.RawMessage("null"), nil
-	}
-	return nil, nil
-}
-
 // torrentResponseAppPreferences resolves the tri-state preferences field for a
-// torrent response. A fresh fetch failure with no cached preferences is
-// represented as an explicit null so consumers can clear stale cached values;
-// cache-only responses omit the field when no cached value exists.
-func torrentResponseAppPreferences(ctx context.Context, client *Client, skipFreshData bool, instanceID int) (*qbt.AppPreferences, bool) {
+// torrent response, already rendered to JSON: a nil result omits it, "null"
+// clears the stale frontend cache, and a value replaces it. A fresh fetch
+// failure with no cached preferences becomes the explicit null; cache-only
+// responses omit the field when no cached value exists.
+func torrentResponseAppPreferences(ctx context.Context, client *Client, skipFreshData bool, instanceID int) (json.RawMessage, error) {
 	if client == nil {
-		return nil, false
+		return nil, nil
 	}
 
 	if skipFreshData {
-		prefs := client.GetCachedAppPreferences()
-		return prefs, prefs != nil
+		return client.cachedAppPreferencesJSON()
 	}
 
-	prefs, err := client.GetAppPreferences(ctx)
-	if err != nil {
+	if _, err := client.GetAppPreferences(ctx); err != nil {
+		// GetAppPreferences serves stale preferences on a failed refresh, so an
+		// error means nothing is cached at all.
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
 			Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
-		return nil, true
+		return json.RawMessage("null"), nil
 	}
 
-	return prefs, true
+	return client.cachedAppPreferencesJSON()
 }
 
 // TorrentStats represents aggregated torrent statistics
@@ -377,9 +366,14 @@ type SyncManager struct {
 	trackerHealthCancel  map[int]context.CancelFunc // cancel funcs for background loops
 	trackerHealthRefresh time.Duration              // refresh interval (default 60s)
 
-	// Validated tracker mapping cache - avoids stale MainData.Trackers entries
+	// Validated tracker mapping cache - avoids stale MainData.Trackers entries.
+	// trackerMappingGen moves on every mapping write, for any instance, so
+	// cached counts can tell whether the mapping they were computed from is
+	// still current. Coarser than per instance, but always safe, and mapping
+	// writes are far rarer than the sync ticks that drive invalidation anyway.
 	validatedTrackerMu      sync.RWMutex
 	validatedTrackerMapping map[int]*ValidatedTrackerMapping
+	trackerMappingGen       atomic.Uint64
 
 	// Tracker customization store for custom display names in sorting
 	trackerCustomizationStore TrackerCustomizationLister
@@ -930,6 +924,7 @@ func newValidatedTrackerMapping() *ValidatedTrackerMapping {
 // store is part of tracker health population.
 func (sm *SyncManager) setValidatedTrackerMappingWithMetrics(instanceID int, mapping *ValidatedTrackerMapping, torrentCount int, started time.Time, source string) {
 	sm.validatedTrackerMu.Lock()
+	sm.trackerMappingGen.Add(1)
 	sm.validatedTrackerMapping[instanceID] = mapping
 	domainCount := 0
 	hashCount := 0
@@ -1100,6 +1095,7 @@ func (sm *SyncManager) updateTrackerMappingForEdit(instanceID int, hash, oldDoma
 	sm.validatedTrackerMu.Lock()
 	defer sm.validatedTrackerMu.Unlock()
 
+	sm.trackerMappingGen.Add(1)
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
@@ -1141,6 +1137,7 @@ func (sm *SyncManager) addHashToTrackerMapping(instanceID int, hash, domain stri
 	sm.validatedTrackerMu.Lock()
 	defer sm.validatedTrackerMu.Unlock()
 
+	sm.trackerMappingGen.Add(1)
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
@@ -1166,6 +1163,7 @@ func (sm *SyncManager) removeHashFromTrackerMapping(instanceID int, hash, domain
 	sm.validatedTrackerMu.Lock()
 	defer sm.validatedTrackerMu.Unlock()
 
+	sm.trackerMappingGen.Add(1)
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
@@ -1193,6 +1191,7 @@ func (sm *SyncManager) removeHashFromAllTrackerMappings(instanceID int, hashes [
 	sm.validatedTrackerMu.Lock()
 	defer sm.validatedTrackerMu.Unlock()
 
+	sm.trackerMappingGen.Add(1)
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
@@ -1509,7 +1508,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		filteredTorrents = getTorrents(torrentFilterOptions)
 
-		// Keep reference to unfiltered torrents for counts (enrichment and filtering return new slices, so no copy needed)
+		// Keep reference to unfiltered torrents for counts. Filtering returns a
+		// new slice whenever it narrows; enrichment only fills Trackers into the
+		// shared backing, which the counts pass reads too.
 		allTorrentsForCounts = filteredTorrents
 
 		// Apply manual filtering for multiple selections
@@ -1678,7 +1679,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				Msg("All torrent list empty when calculating counts; refetching")
 			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
 		}
-		counts, trackerMap, enrichedAll = sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+		counts, trackerMap, enrichedAll = sm.cachedCountsForRequest(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
 	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
@@ -1739,8 +1740,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
 	var appInfo *AppInfo
-	var appPreferences *qbt.AppPreferences
-	var appPreferencesPresent bool
+	var preferencesJSON json.RawMessage
 
 	if syncManager != nil {
 		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
@@ -1760,12 +1760,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			appInfo = info
 		}
 
-		appPreferences, appPreferencesPresent = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
-	}
-
-	preferencesJSON, err := marshalTorrentResponsePreferences(appPreferences, appPreferencesPresent)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal app preferences: %w", err)
+		preferencesJSON, err = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal app preferences: %w", err)
+		}
 	}
 
 	response := &TorrentResponse{
@@ -3745,6 +3743,67 @@ var countableStatusesForState = func() map[qbt.TorrentState][]string {
 	return byState
 }()
 
+// cachedInstanceCounts holds one instance's sidebar counts together with the
+// generation of every input they were computed from.
+type cachedInstanceCounts struct {
+	clientGen        uint64
+	mappingGen       uint64
+	useSubcategories bool
+	counts           *TorrentCounts
+}
+
+// cachedCountsForRequest returns the sidebar counts for a list request, reusing
+// the previous result while nothing that feeds it has changed. The counts pass
+// walks the whole library and produces a byte-identical result for every
+// request between sync ticks, so one computation per tick serves all of them.
+//
+// Requests that carry pre-enriched tracker data compute their own counts: the
+// enrichment feeds tracker-health detection, so their result depends on more
+// than the generations. The MainData fallback branch is never cached either,
+// because it also queues tracker icon fetches.
+//
+// The cached TorrentCounts is shared between requests, so nothing downstream
+// may write to it. The one writer, the tracker-health overwrite, gets a copied
+// Status map on every hit.
+func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
+	if client == nil || len(trackerMap) > 0 || !sm.hasAuthoritativeTrackerMapping(client.instanceID) {
+		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+	}
+
+	// Generations are read before the data, so a write racing this computation
+	// leaves a stored entry whose generations no longer match, never a stale hit.
+	clientGen := client.countsGen.Load()
+	mappingGen := sm.trackerMappingGen.Load()
+
+	if entry := client.countsCache.Load(); entry != nil && entry.clientGen == clientGen && entry.mappingGen == mappingGen && entry.useSubcategories == useSubcategories {
+		counts := entry.counts
+		// The tracker-health cache refreshes on its own schedule, so its three
+		// status keys are layered on at read time instead of frozen at store time.
+		if trackerHealthSupported {
+			if cached := sm.GetTrackerHealthCounts(client.instanceID); cached != nil {
+				withHealth := *counts
+				withHealth.Status = maps.Clone(counts.Status)
+				withHealth.Status["unregistered"] = cached.Unregistered
+				withHealth.Status["tracker_down"] = cached.TrackerDown
+				withHealth.Status["tracker_error"] = cached.TrackerError
+				counts = &withHealth
+			}
+		}
+		return counts, trackerMap, allTorrents
+	}
+
+	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+
+	client.countsCache.Store(&cachedInstanceCounts{
+		clientGen:        clientGen,
+		mappingGen:       mappingGen,
+		useSubcategories: useSubcategories,
+		counts:           counts,
+	})
+
+	return counts, trackerMap, enrichedAll
+}
+
 // calculateCountsFromTorrentsWithTrackers calculates counts using MainData's tracker information.
 // This gives us the REAL tracker-to-torrent mapping from qBittorrent.
 //
@@ -3778,12 +3837,6 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 		}
 	}
 
-	// Build a hash to position map for O(1) lookups. Positions rather than
-	// pointers, because sharedContentPaths is indexed the same way.
-	torrentIndex := make(map[string]int, len(allTorrents))
-	for i := range allTorrents {
-		torrentIndex[allTorrents[i].Hash] = i
-	}
 	sharedContentPaths := findSharedContentPaths(allTorrents)
 
 	// Process tracker counts using validated tracker mapping if available,
@@ -3797,6 +3850,17 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	var domainToHashes map[string]map[string]struct{}
 	if client != nil {
 		domainToHashes = sm.getAuthoritativeDomainToHashes(client.instanceID)
+	}
+
+	// Only the tracker passes look torrents up by hash, so the index is not
+	// built without one. Positions rather than pointers, because
+	// sharedContentPaths is indexed the same way.
+	var torrentIndex map[string]int
+	if domainToHashes != nil || (mainData != nil && mainData.Trackers != nil) {
+		torrentIndex = make(map[string]int, len(allTorrents))
+		for i := range allTorrents {
+			torrentIndex[allTorrents[i].Hash] = i
+		}
 	}
 
 	if domainToHashes != nil {
@@ -4597,6 +4661,12 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 	searchWords := strings.Fields(searchNormalized)
 	searchIsFolded := isASCIIFolded(searchNormalized)
 
+	// Hashes are hex, so a search with any other character cannot match one.
+	// Skipping their three scans per torrent halves the exact-match work.
+	searchCouldBeHash := !strings.ContainsFunc(searchLower, func(r rune) bool {
+		return (r < '0' || r > '9') && (r < 'a' || r > 'f')
+	})
+
 	// Categories and tags repeat across the whole library, so normalize each
 	// distinct value once instead of once per torrent.
 	normalizedCache := make(map[string]string)
@@ -4620,9 +4690,10 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		if stringutils.ContainsFold(torrent.Name, searchLower) ||
 			stringutils.ContainsFold(torrent.Category, searchLower) ||
 			stringutils.ContainsFold(torrent.Tags, searchLower) ||
-			stringutils.ContainsFold(torrent.Hash, searchLower) ||
-			stringutils.ContainsFold(torrent.InfohashV1, searchLower) ||
-			stringutils.ContainsFold(torrent.InfohashV2, searchLower) {
+			(searchCouldBeHash &&
+				(stringutils.ContainsFold(torrent.Hash, searchLower) ||
+					stringutils.ContainsFold(torrent.InfohashV1, searchLower) ||
+					stringutils.ContainsFold(torrent.InfohashV2, searchLower))) {
 			matched = append(matched, i)
 			continue
 		}
@@ -4663,6 +4734,13 @@ func (sm *SyncManager) filterTorrentsBySearch(torrents []qbt.Torrent, search str
 		if score := rankFuzzy(searchNormalized, nameNormalized, searchIsFolded); score >= 0 && score < 10 {
 			matched = append(matched, i)
 		}
+	}
+
+	// Everything matched, so the input already is the result. Skipping the copy
+	// matters while a user types: the first characters match the whole library,
+	// and the copy is the full library again on every keystroke.
+	if len(matched) == len(torrents) {
+		return torrents
 	}
 
 	filtered := make([]qbt.Torrent, len(matched))
@@ -5149,10 +5227,14 @@ torrentsLoop:
 
 	// Collecting indices first keeps the growth cost on an int slice; the
 	// result is then materialized once at exactly the right size instead of
-	// repeatedly doubling a slice of ~600-byte structs.
-	filtered := make([]qbt.Torrent, len(matched))
-	for pos, idx := range matched {
-		filtered[pos] = torrents[idx]
+	// repeatedly doubling a slice of ~600-byte structs. When every torrent
+	// passed, the input already is the result and no copy happens at all.
+	filtered := torrents
+	if len(matched) != len(torrents) {
+		filtered = make([]qbt.Torrent, len(matched))
+		for pos, idx := range matched {
+			filtered[pos] = torrents[idx]
+		}
 	}
 
 	if exprFailures > 0 {
@@ -5427,11 +5509,17 @@ func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torr
 		label           string
 	}
 
-	// Resolve the sort keys once per torrent.
+	// Resolve the sort keys once per torrent. A library holds thousands of
+	// torrents in about fifteen states, so each state's label is lowered once.
+	loweredStates := make(map[qbt.TorrentState]string, 16)
 	meta := make([]statusSortMeta, len(torrents))
 	for i := range torrents {
 		t := &torrents[i]
-		label := strings.ToLower(string(t.State))
+		label, ok := loweredStates[t.State]
+		if !ok {
+			label = strings.ToLower(string(t.State))
+			loweredStates[t.State] = label
+		}
 		priority := 10
 		if trackerHealthSupported {
 			switch sm.resolveTrackerHealth(t, cachedHealth) {
@@ -5482,7 +5570,7 @@ func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torr
 			cmp = -cmp
 		}
 		if cmp == 0 {
-			return aIdx - bIdx
+			return compareHashThenIndex(torrents, aIdx, bIdx)
 		}
 		return cmp
 	})
@@ -5971,7 +6059,7 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 		a, b := &torrents[aIdx], &torrents[bIdx]
 		switch {
 		case a.Priority == 0 && b.Priority == 0:
-			return aIdx - bIdx
+			return compareHashThenIndex(torrents, aIdx, bIdx)
 		case a.Priority == 0:
 			return 1
 		case b.Priority == 0:
@@ -5982,7 +6070,7 @@ func (sm *SyncManager) sortTorrentsByPriority(torrents []qbt.Torrent, desc bool)
 			result = -result
 		}
 		if result == 0 {
-			return aIdx - bIdx
+			return compareHashThenIndex(torrents, aIdx, bIdx)
 		}
 		return result
 	})
@@ -6002,7 +6090,7 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 
 		switch {
 		case aIsInfinity && bIsInfinity:
-			return aIdx - bIdx
+			return compareHashThenIndex(torrents, aIdx, bIdx)
 		// Always place infinity values at the end
 		case aIsInfinity:
 			return 1
@@ -6015,7 +6103,7 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 			result = -result
 		}
 		if result == 0 {
-			return aIdx - bIdx
+			return compareHashThenIndex(torrents, aIdx, bIdx)
 		}
 		return result
 	})
@@ -6056,24 +6144,29 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 		if result := stringutils.CompareFold(torrents[aIdx].Name, torrents[bIdx].Name); result != 0 {
 			return result
 		}
-		if result := strings.Compare(torrents[aIdx].Hash, torrents[bIdx].Hash); result != 0 {
-			return result
-		}
-		return aIdx - bIdx
+		return compareHashThenIndex(torrents, aIdx, bIdx)
 	})
+}
+
+// compareHashThenIndex is the final sort tiebreak: hashes are unique per
+// instance, so ending on them makes a comparator total. Without that, ties
+// would fall back to the order the torrents were given, which comes from a map
+// walk that reshuffles on every sync, and rows would move under the cursor.
+func compareHashThenIndex(torrents []qbt.Torrent, aIdx, bIdx int) int {
+	if result := strings.Compare(torrents[aIdx].Hash, torrents[bIdx].Hash); result != 0 {
+		return result
+	}
+	return aIdx - bIdx
 }
 
 // setLibrarySort asks the library to sort unless qui re-sorts the same field
 // itself further down, which would sort the whole library twice to keep the
-// second result.
-//
-// Only fields whose qui comparator breaks every tie can skip it. "eta",
-// "priority" and "state" fall back to the order they were given, and without a
-// library sort that order comes from a map walk that reshuffles on every sync,
-// so rows would move under the cursor.
+// second result. Every field qui re-sorts skips it: their comparators all end
+// in a hash tiebreak, so they need no pre-established order.
 func setLibrarySort(options *qbt.TorrentFilterOptions, sort, order string) {
 	switch sort {
-	case "name", "tracker", "added_on", "last_activity", "completion_on", "seen_complete":
+	case "name", "tracker", "added_on", "last_activity", "completion_on", "seen_complete",
+		"eta", "priority", "state":
 		return
 	}
 

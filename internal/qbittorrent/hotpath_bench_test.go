@@ -25,13 +25,14 @@ func benchTorrents(count int) []qbt.Torrent {
 		qbt.TorrentStateError, qbt.TorrentStateQueuedUp,
 	}
 	categories := []string{"", "movies", "tv", "music", "tv/anime", "books"}
-	// A real 5630-torrent library averages 4.7 category and tag buckets per torrent.
+	// One category bucket plus 3.8 tag buckets on average, close to the 4.7
+	// buckets per torrent a real 5630-torrent library carries.
 	tagSets := []string{
 		"cross-seed, permaseed, hardlinked",
-		"cross-seed, unregistered, permaseed, hardlinked",
-		"permaseed, hardlinked, season-pack",
+		"cross-seed, unregistered, permaseed, hardlinked, autobrr",
+		"permaseed, hardlinked, season-pack, sonarr",
 		"",
-		"cross-seed, permaseed, hardlinked, season-pack, autobrr",
+		"cross-seed, permaseed, hardlinked, season-pack, autobrr, qui",
 	}
 	groups := []string{"GRPA", "GrpB", "grpc", "GROUP-D"}
 	trackers := []string{
@@ -46,11 +47,10 @@ func benchTorrents(count int) []qbt.Torrent {
 		name := fmt.Sprintf("Some.Release.Title.%d.S%02dE%02d.2160p.WEB-DL.DDP5.1.HDR.H.265-%s",
 			i, i%12+1, i%24+1, groups[i%len(groups)])
 		hash := fmt.Sprintf("%040x", rng.Uint64())
-		// 28% of torrents sit on a content path another torrent also claims, in
-		// groups of about 3, measured on an instance that cross-seeds by hardlink.
-		// Regular cross-seed mode reuses the matched path and pushes that share
-		// much higher, which the counts pass handles too: at 90% shared it is
-		// 1.25x faster than the code it replaced, against 1.85x here.
+		// 3 of 10 torrents sit on a content path another torrent also claims, in
+		// groups of 3, close to the 28% measured on an instance that cross-seeds
+		// by hardlink. Regular cross-seed mode reuses the matched path and pushes
+		// that share much higher; the counts pass stays faster there too.
 		contentName := name
 		if i%10 < 3 {
 			contentName = fmt.Sprintf("Some.Release.Title.%d.Shared.Content", i-i%10)

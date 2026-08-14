@@ -3,7 +3,10 @@
 
 package qbittorrent
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // urlPattern matches http:// and https:// URLs to strip them from tracker messages.
 // This prevents false positives when URLs contain words like "forbidden" or "down"
@@ -100,6 +103,10 @@ func TrackerMessageMatchesUnregistered(message string) bool {
 // URLs are stripped from the message before matching to avoid false positives from
 // torrent names containing words like "forbidden" or "down" in replacement URLs.
 func TrackerMessageMatchesDown(message string) bool {
-	messageWithoutURLs := urlPattern.ReplaceAllString(message, "")
-	return trackerMessageMatches(messageWithoutURLs, trackerDownStatuses)
+	// Only a message with "://" can contain a URL, and almost none do, so the
+	// regex and its per-call allocation are skipped for the rest.
+	if strings.Contains(message, "://") {
+		message = urlPattern.ReplaceAllString(message, "")
+	}
+	return trackerMessageMatches(message, trackerDownStatuses)
 }

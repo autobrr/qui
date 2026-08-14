@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,65 +27,19 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+// The preferences field is tri-state: a nil RawMessage disappears through
+// omitempty, an explicit "null" survives it, and the key stays last.
 func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name        string
-		prefs       *qbt.AppPreferences
-		present     bool
-		wantPresent bool
-		wantNull    bool
-	}{
-		{
-			name: "omits preferences when producer has no value and no explicit failure",
-		},
-		{
-			name:        "emits null when producer marks fresh failure without cached preferences",
-			present:     true,
-			wantPresent: true,
-			wantNull:    true,
-		},
-		{
-			name:        "emits object when preferences are available",
-			prefs:       &qbt.AppPreferences{AnnounceIP: "203.0.113.7"},
-			present:     true,
-			wantPresent: true,
-		},
-		{
-			name:        "emits object even when explicit presence flag is false",
-			prefs:       &qbt.AppPreferences{AnnounceIP: "203.0.113.8"},
-			wantPresent: true,
-		},
-	}
+	body, err := json.Marshal(TorrentResponse{Torrents: []TorrentView{}})
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), `"preferences"`)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			preferencesJSON, err := marshalTorrentResponsePreferences(tt.prefs, tt.present)
-			require.NoError(t, err)
-
-			body, err := json.Marshal(TorrentResponse{
-				Torrents:       []TorrentView{},
-				AppPreferences: preferencesJSON,
-			})
-			require.NoError(t, err)
-
-			var fields map[string]json.RawMessage
-			require.NoError(t, json.Unmarshal(body, &fields))
-
-			preferences, ok := fields["preferences"]
-			require.Equal(t, tt.wantPresent, ok)
-			if tt.wantPresent {
-				require.Equal(t, tt.wantNull, string(preferences) == "null")
-				// The field is emitted last, which is where the marshaler this
-				// replaced put it. Moving it would change every response body.
-				assert.True(t, strings.HasSuffix(string(body), `"preferences":`+string(preferences)+"}"),
-					"preferences must stay the last key in the response")
-			}
-		})
-	}
+	body, err = json.Marshal(TorrentResponse{Torrents: []TorrentView{}, AppPreferences: json.RawMessage("null")})
+	require.NoError(t, err)
+	assert.True(t, strings.HasSuffix(string(body), `"preferences":null}`),
+		"an explicit null must survive omitempty and stay the last key")
 }
 
 func TestTorrentResponseAppPreferencesMarksFreshFailureForNullClear(t *testing.T) {
@@ -97,10 +52,10 @@ func TestTorrentResponseAppPreferencesMarksFreshFailureForNullClear(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	prefs, present := torrentResponseAppPreferences(ctx, client, false, 7)
+	prefs, err := torrentResponseAppPreferences(ctx, client, false, 7)
 
-	require.Nil(t, prefs)
-	require.True(t, present)
+	require.NoError(t, err)
+	require.Equal(t, "null", string(prefs))
 }
 
 func TestTorrentResponseAppPreferencesOmitsCacheOnlyMiss(t *testing.T) {
@@ -111,10 +66,10 @@ func TestTorrentResponseAppPreferencesOmitsCacheOnlyMiss(t *testing.T) {
 		instanceID: 7,
 	}
 
-	prefs, present := torrentResponseAppPreferences(context.Background(), client, true, 7)
+	prefs, err := torrentResponseAppPreferences(context.Background(), client, true, 7)
 
+	require.NoError(t, err)
 	require.Nil(t, prefs)
-	require.False(t, present)
 }
 
 func TestNormalizeConnectionStatus(t *testing.T) {
@@ -2404,6 +2359,77 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
 }
 
+// The counts pass shares the list request's library slice instead of cloning
+// it again, which is only safe while every narrowing step returns a new slice.
+// This pins that invariant end to end, on the prefer=cache path: a searched
+// request must still report sidebar counts for the WHOLE library, and the page
+// must come back sorted although qui skips the library sort for this field.
+func TestGetTorrentsWithFiltersSearchKeepsWholeLibraryCounts(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{
+				"aa11": {"name":"Alpha.One",   "state":"uploading", "added_on": 200, "size": 100, "progress": 1, "category": "alpha"},
+				"bb22": {"name":"Beta.Two",    "state":"uploading", "added_on": 300, "size": 100, "progress": 1, "category": "beta"},
+				"cc33": {"name":"Beta.Three",  "state":"uploading", "added_on": 100, "size": 100, "progress": 1, "category": "beta"}
+			}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	resp, err := sm.GetTorrentsWithFilters(WithSkipFreshData(ctx), inst.ID, 100, 0, "added_on", "asc", "beta", FilterOptions{})
+	require.NoError(t, err)
+
+	require.Equal(t, 2, resp.Total, "the search narrows the page")
+	require.NotNil(t, resp.Counts)
+	require.Equal(t, 3, resp.Counts.Status["all"],
+		"sidebar counts must cover the whole library, not the searched subset")
+	// A narrowing step that compacted the shared slice in place would keep the
+	// length but overwrite the non-matching torrent, so the category counts pin
+	// the CONTENT of the counted library, not just its size.
+	require.Equal(t, 1, resp.Counts.Categories["alpha"],
+		"the torrent the search dropped must still be counted")
+	require.Equal(t, 2, resp.Counts.Categories["beta"])
+
+	// added_on ascending: 100 before 300. The library sort is skipped for this
+	// field, so this only passes when qui's own sort actually ran.
+	require.Len(t, resp.Torrents, 2)
+	require.Equal(t, "Beta.Three", resp.Torrents[0].Name)
+	require.Equal(t, "Beta.Two", resp.Torrents[1].Name)
+}
+
 // A stalled instance must still be visible now that the per-pass start line is
 // gone.
 func TestTrackerHealthRefreshLevel(t *testing.T) {
@@ -2659,6 +2685,96 @@ func TestStatusCountsExpandFromStates(t *testing.T) {
 	}, counts.Status)
 }
 
+// The counts cache serves the previous result while every generation holds, so
+// these tests mutate the library WITHOUT bumping a generation to prove a hit,
+// then bump each generation to prove the entry falls out.
+func TestCachedCountsServedWhileGenerationsHold(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	mapping.DomainToHashes["tracker.example.invalid"] = map[string]struct{}{"aaa": {}}
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+	}
+	client := &Client{instanceID: 1}
+
+	torrents := []qbt.Torrent{
+		{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Category: "movies", Size: 100, ContentPath: "/data/one"},
+		{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Category: "tv", Size: 200, ContentPath: "/data/two"},
+	}
+
+	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, false, false)
+	require.Equal(t, 2, counts.Total)
+	require.Equal(t, 1, counts.Trackers["tracker.example.invalid"])
+
+	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "ccc", Name: "Three", State: qbt.TorrentStateUploading, Size: 300, ContentPath: "/data/three"})
+
+	// No generation moved, so the grown library must NOT be recounted.
+	cached, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, nil, false, false)
+	require.Equal(t, 2, cached.Total, "expected the cached result, not a recount")
+
+	// Each generation invalidates on its own.
+	client.countsGen.Add(1)
+	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, nil, false, false)
+	require.Equal(t, 3, fresh.Total, "a sync tick must invalidate the cache")
+
+	sm.trackerMappingGen.Add(1)
+	fresh, _, _ = sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, false, false)
+	require.Equal(t, 2, fresh.Total, "a tracker mapping write must invalidate the cache")
+
+	// A different subcategory mode is a different result, never a hit.
+	subcats, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, nil, false, true)
+	require.Equal(t, 3, subcats.Total)
+}
+
+func TestCachedCountsBypassedWithEnrichedTrackerData(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+	}
+	client := &Client{instanceID: 1}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, false, false)
+	require.Equal(t, 1, counts.Total)
+
+	// Enriched tracker data feeds tracker-health detection, so such a request
+	// must recount even though no generation moved.
+	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Size: 200})
+	trackerMap := map[string][]qbt.TorrentTracker{"aaa": {{Url: "https://tracker.example.invalid/announce"}}}
+	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, trackerMap, false, false)
+	require.Equal(t, 2, fresh.Total)
+}
+
+func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+		trackerHealthCache:      map[int]*TrackerHealthCounts{},
+	}
+	client := &Client{instanceID: 1, trackerIncludeSupported: true}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	stored, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, true, false)
+	require.Equal(t, 0, stored.Status["unregistered"])
+
+	// The health cache refreshed between requests. The hit must show the new
+	// values on a COPIED status map, leaving the stored entry untouched.
+	sm.trackerHealthMu.Lock()
+	sm.trackerHealthCache[1] = &TrackerHealthCounts{Unregistered: 4, TrackerDown: 2, TrackerError: 1}
+	sm.trackerHealthMu.Unlock()
+
+	layered, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, true, false)
+	require.Equal(t, 4, layered.Status["unregistered"])
+	require.Equal(t, 2, layered.Status["tracker_down"])
+	require.Equal(t, 1, layered.Status["tracker_error"])
+	require.Equal(t, 0, stored.Status["unregistered"], "the stored entry must not be mutated")
+}
+
 // Counts describe the whole library, so they may only share the list request's
 // result when that request asked for everything.
 func TestRequestCoversWholeLibrary(t *testing.T) {
@@ -2676,14 +2792,14 @@ func TestRequestCoversWholeLibrary(t *testing.T) {
 func TestSetLibrarySortSkipsFieldsQuiResortsItself(t *testing.T) {
 	t.Parallel()
 
-	for _, field := range []string{"name", "tracker", "added_on", "last_activity", "completion_on", "seen_complete"} {
+	for _, field := range []string{"name", "tracker", "added_on", "last_activity", "completion_on", "seen_complete", "eta", "priority", "state"} {
 		options := qbt.TorrentFilterOptions{}
 		setLibrarySort(&options, field, "desc")
 		require.Empty(t, options.Sort, field)
 		require.False(t, options.Reverse, field)
 	}
 
-	for _, field := range []string{"eta", "priority", "state", "size", "ratio"} {
+	for _, field := range []string{"size", "ratio", "progress", "dlspeed"} {
 		options := qbt.TorrentFilterOptions{}
 		setLibrarySort(&options, field, "desc")
 		require.Equal(t, field, options.Sort, field)

@@ -1007,13 +1007,14 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	sm := &SyncManager{}
 
 	// Create test torrents with different names and properties using proper qbt.Torrent struct
+	// Hashes are hex like real infohashes; the search fast path relies on that.
 	torrents := []qbt.Torrent{
-		{Name: "Ubuntu.20.04.LTS.Desktop.amd64.iso", Category: "linux", Tags: "ubuntu,desktop", Hash: "hash1"},
-		{Name: "Windows.10.Pro.x64.iso", Category: "windows", Tags: "microsoft,os", Hash: "hash2"},
-		{Name: "ubuntu-20.04-server.iso", Category: "linux", Tags: "ubuntu,server", Hash: "hash3"},
-		{Name: "Movie.2023.1080p.BluRay.x264", Category: "movies", Tags: "action,2023", Hash: "hash4"},
-		{Name: "TV.Show.S01E01.1080p.HDTV.x264", Category: "tv", Tags: "drama,hdtv", Hash: "hash5"},
-		{Name: "Music.Album.2023.FLAC", Category: "music", Tags: "flac,2023", Hash: "hash6"},
+		{Name: "Ubuntu.20.04.LTS.Desktop.amd64.iso", Category: "linux", Tags: "ubuntu,desktop", Hash: "aa11aa11"},
+		{Name: "Windows.10.Pro.x64.iso", Category: "windows", Tags: "microsoft,os", Hash: "bb22bb22"},
+		{Name: "ubuntu-20.04-server.iso", Category: "linux", Tags: "ubuntu,server", Hash: "cc33cc33"},
+		{Name: "Movie.2023.1080p.BluRay.x264", Category: "movies", Tags: "action,2023", Hash: "dd44dd44"},
+		{Name: "TV.Show.S01E01.1080p.HDTV.x264", Category: "tv", Tags: "drama,hdtv", Hash: "ee55ee55"},
+		{Name: "Music.Album.2023.FLAC", Category: "music", Tags: "flac,2023", Hash: "ff66ff66"},
 	}
 
 	t.Run("filterTorrentsBySearch exact match", func(t *testing.T) {
@@ -1045,10 +1046,17 @@ func TestSyncManager_SearchFunctionality(t *testing.T) {
 	})
 
 	t.Run("filterTorrentsBySearch hash match", func(t *testing.T) {
-		results := sm.filterTorrentsBySearch(torrents, "hash4")
+		results := sm.filterTorrentsBySearch(torrents, "dd44")
 
 		assert.Len(t, results, 1, "Should find torrent by hash")
 		assert.Equal(t, "Movie.2023.1080p.BluRay.x264", results[0].Name)
+	})
+
+	t.Run("filterTorrentsBySearch non-hex search skips hash fields", func(t *testing.T) {
+		// "x264" cannot be part of a hex infohash, so the hash fields are not
+		// scanned; the name still matches.
+		results := sm.filterTorrentsBySearch(torrents, "x264")
+		assert.Len(t, results, 2, "Should match names, not hashes")
 	})
 
 	t.Run("filterTorrentsByGlob pattern match", func(t *testing.T) {
