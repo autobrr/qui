@@ -12,9 +12,11 @@ import (
 
 // Backend abstracts filesystem operations so services work identically against
 // a local filesystem or a future SSH-backed remote. It covers exactly the
-// syscall-level ops that qui's services need. Path manipulation
-// (filepath.Clean, filepath.Rel, etc.) is not part of this interface — it
-// stays as direct calls in service code.
+// operations qui's services need: syscall-level primitives (stat, walk,
+// mkdir, remove) plus the high-level tree operations (HardlinkTree,
+// ReflinkTree, RemoveTree) that create-and-rollback as a unit. Path
+// manipulation (filepath.Clean, filepath.Rel, etc.) is not part of this
+// interface — it stays as direct calls in service code.
 //
 // Every method accepts a context.Context and must respect cancellation.
 type Backend interface {
