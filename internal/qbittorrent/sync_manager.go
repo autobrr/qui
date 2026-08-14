@@ -6081,10 +6081,12 @@ func requestCoversWholeLibrary(options qbt.TorrentFilterOptions) bool {
 }
 
 // findSharedContentPaths marks the torrents whose content path another torrent in
-// the same slice also claims. Only cross-seeds need their size deduplicated, and
-// they are a minority of a library, so marking them once lets every other torrent
-// add its size with no bookkeeping at all. The result is indexed by position, so
-// it belongs to the slice it was built from and does not survive a re-sort.
+// the same slice also claims. Only those need their size deduplicated, and they
+// stay a minority even in a library that is mostly cross-seeded, because a
+// cross-seed collides here only when its partner sits in the same instance under
+// the same path. Marking them once lets every other torrent add its size with no
+// bookkeeping at all. The result is indexed by position, so it belongs to the
+// slice it was built from and does not survive a re-sort.
 func findSharedContentPaths(torrents []qbt.Torrent) []bool {
 	shared := make([]bool, len(torrents))
 	firstAt := make(map[string]int, len(torrents))
