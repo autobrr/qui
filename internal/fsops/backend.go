@@ -19,6 +19,12 @@ import (
 // interface — it stays as direct calls in service code.
 //
 // Every method accepts a context.Context and must respect cancellation.
+//
+// Error semantics are portable across implementations: a missing path is
+// reported compatibly with errors.Is(err, fs.ErrNotExist) and a denied one
+// with errors.Is(err, fs.ErrPermission) — from Stat, Lstat, ReadDir,
+// WalkDir (on entries), Remove, and Statfs alike. Remote backends must map
+// their transport's errors onto the same sentinels.
 type Backend interface {
 	// --- Read ---
 

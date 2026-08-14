@@ -42,6 +42,29 @@ func TestStat_ExistingFile(t *testing.T) {
 	assert.False(t, fi.ModTime.IsZero())
 }
 
+func TestPortableNotExistErrors(t *testing.T) {
+	// The Backend contract promises errors.Is(err, fs.ErrNotExist) for
+	// missing paths from every read/mutate method, not just Stat — remote
+	// backends must map onto the same sentinels, so the local backend is
+	// the reference.
+	b := newBackend()
+	ctx := context.Background()
+	missing := filepath.Join(t.TempDir(), "nope", "missing.mkv")
+
+	_, err := b.Stat(ctx, missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = b.Lstat(ctx, missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = b.ReadDir(ctx, missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = b.WalkDir(ctx, missing, fsops.WalkOptions{})
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	err = b.Remove(ctx, missing, fsops.RemoveOptions{})
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = b.Statfs(ctx, missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
 func TestStat_FollowsSymlinkIdentity(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()

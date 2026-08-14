@@ -35,7 +35,12 @@ when identity is requested. Consumers already degrade on zero FileID —
 orphan-scan alias dedup switches off, hardlinked-copy detection reports
 no-evidence, dirscan's FileID index skips the files. Reflinks are
 unsupported (no SFTP equivalent of FICLONE; `copy-data` is a byte copy, not
-CoW). The degraded mode must be surfaced in the UI, not silent.
+CoW). Missing identity also changes hardlink-tree conflict handling: the
+local backend proves an existing target is the same link (`os.SameFile`)
+and skips it idempotently, but SFTP-only cannot verify that, so an
+existing target is always a conflict and fails the create — never a
+silent skip (raised by Audionut on #1914). The degraded mode must be
+surfaced in the UI, not silent.
 
 **SFTP+exec**: identity arrives via `find`/`stat` sweeps, reflink support is
 probed and used, `SameFilesystem` is exact. Full functionality.
@@ -70,21 +75,43 @@ Remote identity is (device, inode) parsed from GNU `find`/`stat` output. But
 Windows builds carry a volume serial plus a 16-byte identifier. A qui host
 on Windows cannot represent a Linux seedbox's identity in today's struct.
 
-**Decision: `hardlink.FileID` becomes an opaque comparable fixed-size form
-(≈`[24]byte`), implemented in the remote-backend PR** (raised by com6056 on
-#1914). Opaque is the only viable shape: unix identity is 16 bytes, Windows
-identity is up to 24, so no packing into the other platform's struct is
-lossless in either direction. The timing follows drop-until-needed —
-`hardlink.FileID` is already shared on develop (crossseed, orphanscan,
-dirscan, automations), so the ripple is the same size now or later, and
-nothing serializes identity until the remote backend exists. Migration
-stays cheap: consumers only use `==`, map keys, and `IsZero()`, all of
-which survive a comparable fixed-size form unchanged (`Bytes()` previews
-it); the churn is per-platform constructors and test literals.
+**Decision: `hardlink.FileID` becomes an opaque, tagged, comparable
+fixed-size form, implemented in the remote-backend PR** (raised by com6056
+on #1914). Opaque is the only viable shape: unix identity is 16 bytes,
+Windows identity is up to 24, so no packing into the other platform's
+struct is lossless in either direction, and the type is already shared
+across develop's consumers, so the ripple is the same size now or later.
+Tagged, because untagged bytes let a unix `dev=1,ino=2` collide with a
+Windows identity in the same space: `struct { kind uint8; raw [24]byte }`,
+kind 0 for no identity, 1 for unix `dev`+`ino` big endian, 2 for a
+Windows volume serial plus the 16-byte file id, 3 for a remote-provided
+blob. Constructors zero the unused tail of `raw` so `==` stays
+well-defined, and `IsZero()` then means "no identity" rather than "a
+backend wrote zeros" (load-bearing: the hardlink index trusts any FileID
+returned without error, so zeroes-as-identity would collapse torrents
+into one delete-safe group). `Bytes()` returns the tagged form: dirscan
+keys its FileID index on `string(FileID.Bytes())` and persists it as
+`dir_scan_files.file_id` under a partial index on
+`(directory_id, file_id)` matched by rename detection, so the encoding
+change ships with a migration (or a read path accepting the legacy
+widths) whenever it lands. Consumer churn is otherwise unchanged: `==`,
+map keys, and `IsZero()` all survive; the churn is per-platform
+constructors and test literals.
 
 Guard regardless of representation: FileID comparisons are only valid
-within one backend/host — identity bytes collide across machines, so
-cross-instance comparisons must check same-backend first.
+within one backend/host, and `==` still compiles cross-host, so
+comparisons go through a helper that takes the backend scope (or the
+scope rides in the value). Remote-sourced identity is always kind 3, even
+when the remote is unix and the bytes are a `dev`/`ino`: it is parsed
+from command output on a host qui does not control, and the tag keeps
+peer-asserted identity type-distinct from kernel-attested identity. Peer
+identity is advisory. It may suppress work (dedup accounting,
+already-seeding skips) but never expands a destructive action:
+automations' delete-expansion groups torrents by a FileID signature and
+deletes the group with files, so on a remote backend that expansion
+degrades to the no-identity behavior. A hostile remote can never reach a
+worse outcome than the SFTP-only tier already produces with no identity
+at all.
 
 ## Exec Conventions
 
@@ -94,6 +121,23 @@ cross-instance comparisons must check same-backend first.
   GNU-only); degrade the affected ops per-tool on BSD remotes.
 - Every exec carries a timeout and honors ctx cancellation; output is
   size-capped.
+
+## Path Domains
+
+Every path handed to a Backend belongs to that backend's filesystem, in
+that filesystem's native form — the interface itself is path-domain
+agnostic. The local backend speaks host paths, so today's callsites using
+host `filepath` are correct by construction. The remote backend speaks
+slash-delimited POSIX paths regardless of the qui host's OS, which means
+host `filepath` must never touch a remote path: on a Windows host,
+`filepath.IsAbs("/data")` is false and `Join` inserts backslashes
+(raised by Audionut on #1914). The remote-backend PR introduces a path
+dialect for backend-owned path manipulation (Join/Dir/Base/IsAbs/Rel);
+the local backend's dialect is the host `filepath`, so existing callsites
+keep their exact behavior, and a Windows-hosted qui operating a unix
+remote becomes correct by construction rather than by luck. Paths from
+qBittorrent's API arrive slash-delimited and stay inside their instance's
+backend domain end to end.
 
 ## Path and Command Safety
 
@@ -106,19 +150,65 @@ cross-instance comparisons must check same-backend first.
 - Exec command lines never interpolate raw paths into a shell string:
   arguments are strictly quoted, and options are terminated with `--`
   before any path for `find`, `stat`, `xargs`, `rm`, and `cp`.
+- Symlink policy for destructive ops: recursion never follows a link, on
+  any tier. A symlinked directory is never descended; the link itself is
+  removed, never the target's contents. `rm -rf --` and the local
+  backend's `os.RemoveAll` both traverse `openat`-style, so they refuse
+  links and are immune to a mid-walk swap. SFTP v3 gets only the first
+  half: no `openat`, no `O_NOFOLLOW`, every path re-resolved server-side,
+  so a swapped ancestor directory can redirect an unlink between the walk
+  and the remove. That race is unfixable over v3; bound it by
+  re-`lstat`ing immediately before each unlink. `RemoveTree` is a path
+  list, not a walk, and takes the same shape per entry: unlink only,
+  directories only when empty.
+- The never-follow rule covers identity as well as traversal: identity
+  feeding a destructive decision comes from `lstat`, so a planted symlink
+  cannot attribute another file's identity to a path inside the tree.
 - The remote-backend PR carries tests for traversal payloads, option-like
-  filenames (`-rf`), and shell metacharacters in paths.
+  filenames (`-rf`), shell metacharacters in paths, and symlinked
+  directories inside a tree marked for recursive removal.
 
 ## Security
 
 - Dedicated SSH key per instance; never the user's personal key.
-- Private key stored AES-GCM encrypted with AAD binding (instance id +
-  field), same `sessionSecret` pattern as existing credential encryption.
+- Private key stored AES-GCM encrypted, keyed from `sessionSecret` like
+  existing credential encryption; the AAD binding (instance id + field)
+  is new here, today's credential stores pass no additional data. The
+  pinned host key is stored under the same AEAD with host and port in its
+  AAD as well: the pin fixes where the key gets used, and encrypting the
+  key alone says nothing about that. A plaintext-column edit redirecting
+  the instance then fails as a decryption error, which is unambiguous
+  tampering, rather than as a host-key mismatch, which is not. The scope
+  is deliberate: this defeats a DB-write attacker and cross-instance
+  transplant, not a stolen data directory (`sessionSecret` sits beside
+  `qui.db` by default) and not rollback to an older row set for the same
+  instance, which needs state outside the DB. Tests cover
+  tampered-ciphertext failing closed rather than falling back to TOFU.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
   it matches a preconfigured fingerprint). No connection is trusted for
   real operations before that. `InsecureIgnoreHostKey` is forbidden.
+- What gets pinned is the marshaled public key and its algorithm, not a
+  display string; later connects constrain `HostKeyAlgorithms` to the
+  pinned type, so a key-type change is a mismatch, never a negotiation
+  accident. Fingerprints render as `SHA256:` for humans only.
+- A host-key change after pinning fails closed: no automatic re-pin, and
+  no fallback to TOFU if the stored pin is missing or unreadable. The
+  mismatch surfaces both fingerprints and both key types behind a
+  confirmation deliberately heavier than first contact, one that names
+  interception as a possible cause and points at out-of-band
+  verification. A legitimate re-key and an interception look identical to
+  qui, so the user makes that call, never the code. On a background
+  reconnect nobody is there to prompt, so a mismatch parks the instance
+  in a needs-reconfirmation state and fails every fsop until a human
+  clears it.
+- The pin belongs to the host, not the credential: deleting SSH
+  credentials keeps the pin, `ssh-test` against a pinned instance routes
+  into the mismatch flow rather than first contact, and editing host or
+  port drops the pin deliberately and requires fresh confirmation. Tests
+  cover mismatch-fails-closed, no re-pin via `ssh-test`, and key-type
+  change.
 - Recommended `authorized_keys` template stays the tight one:
   `command="internal-sftp",restrict ...` — that key yields the SFTP-only
   tier. Granting exec is the user's explicit choice via a less-restricted
