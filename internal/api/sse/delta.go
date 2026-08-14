@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"hash/fnv"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -59,12 +60,16 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 
 	forceFull := !g.baselineSeeded
 
+	countsFP := countsFingerprint(resp.Counts)
+
 	// Advance the baseline before returning so the next tick diffs against this page.
 	prevOrder := g.baselineOrder
 	prevPrefs := g.baselinePrefs
+	prevCounts := g.baselineCounts
 	g.baselineFP = newFP
 	g.baselineOrder = order
 	g.baselinePrefs = resp.AppPreferences
+	g.baselineCounts = countsFP
 	g.baselineSeeded = true
 
 	if forceFull {
@@ -79,6 +84,12 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// ~4.7 KB and edited rarely; the client keeps its cached copy when the field is absent.
 	if bytes.Equal(resp.AppPreferences, prevPrefs) {
 		deltaResp.AppPreferences = nil
+	}
+
+	// Several KB per tick on an instance with many categories, tags and trackers,
+	// and unchanged whenever the library is; the client keeps its cached copy.
+	if countsFP == prevCounts {
+		deltaResp.Counts = nil
 	}
 
 	if isCross {
@@ -100,13 +111,18 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	return &StreamPayload{Type: streamEventDelta, Data: &deltaResp, Delta: delta, Meta: meta}
 }
 
-// seedBaselineIfEmpty primes the delta baseline from a freshly built init snapshot,
-// but only if the group has no baseline yet. Seeding at init makes the client's init
-// snapshot and the server baseline identical, so the very next tick is a clean delta
-// the client applies without drift. A later joiner to an already-seeded group does
-// not re-seed (that would desync existing subscribers); its init may differ slightly
-// from the shared baseline until it reconnects.
-func (g *subscriptionGroup) seedBaselineIfEmpty(opts StreamOptions, resp *qbittorrent.TorrentResponse) {
+// reconcileInitWithBaseline makes a freshly built init snapshot and the group
+// baseline agree, in whichever direction is available.
+//
+// With no baseline yet, the snapshot seeds it, so the client's init and the server
+// baseline are identical and the very next tick is a clean delta the client applies
+// without drift.
+//
+// A later joiner to an already-seeded group must not re-seed (that would desync
+// existing subscribers), so the snapshot takes the edge-triggered fields from the
+// baseline instead. Its rows may still differ slightly from the shared baseline
+// until it reconnects.
+func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *qbittorrent.TorrentResponse) {
 	if resp == nil {
 		return
 	}
@@ -115,6 +131,12 @@ func (g *subscriptionGroup) seedBaselineIfEmpty(opts StreamOptions, resp *qbitto
 	defer g.baselineMu.Unlock()
 
 	if g.baselineSeeded {
+		// Preferences are edge-triggered and there is no periodic keyframe, so an
+		// init built while the preferences cache was empty would leave this joiner
+		// without them until it reconnects. It inherits the baseline instead.
+		if resp.AppPreferences == nil {
+			resp.AppPreferences = g.baselinePrefs
+		}
 		return
 	}
 
@@ -131,6 +153,7 @@ func (g *subscriptionGroup) seedBaselineIfEmpty(opts StreamOptions, resp *qbitto
 	g.baselineFP = fp
 	g.baselineOrder = order
 	g.baselinePrefs = resp.AppPreferences
+	g.baselineCounts = countsFingerprint(resp.Counts)
 	g.baselineSeeded = true
 }
 
@@ -138,13 +161,16 @@ func (g *subscriptionGroup) seedBaselineIfEmpty(opts StreamOptions, resp *qbitto
 // the new ordered key list, the indices of rows that are new or whose change
 // fingerprint differs from base, and the new key->fingerprint map to store as the
 // next baseline.
-func computeRowDelta[T any](rows []T, keyOf func(T) string, fpOf func(T) uint64, base map[string]uint64) (order []string, changedIdx []int, newFP map[string]uint64) {
+func computeRowDelta[T any](rows []T, keyOf func(T) string, fpOf func(*fpBuf, T) uint64, base map[string]uint64) (order []string, changedIdx []int, newFP map[string]uint64) {
 	order = make([]string, len(rows))
 	newFP = make(map[string]uint64, len(rows))
+	// One buffer for the whole page: the hash is consumed per row, so nothing
+	// outlives an iteration.
+	buf := make(fpBuf, 0, fpBufSize)
 	for i := range rows {
 		key := keyOf(rows[i])
 		order[i] = key
-		fp := fpOf(rows[i])
+		fp := fpOf(&buf, rows[i])
 		newFP[key] = fp
 		if old, ok := base[key]; !ok || old != fp {
 			changedIdx = append(changedIdx, i)
@@ -254,8 +280,10 @@ func (b fpBuf) sum() uint64 {
 }
 
 // singleRowFingerprint hashes a single-instance row's change-relevant content.
-func singleRowFingerprint(tv qbittorrent.TorrentView) uint64 {
-	b := make(fpBuf, 0, fpBufSize)
+// The caller owns the buffer so a page of rows hashes with one allocation
+// instead of one per row; it is reset here, so callers may pass a zero fpBuf.
+func singleRowFingerprint(b *fpBuf, tv qbittorrent.TorrentView) uint64 {
+	*b = (*b)[:0]
 	b.torrent(tv.Torrent)
 	b.str(string(tv.TrackerHealth))
 	return b.sum()
@@ -263,14 +291,52 @@ func singleRowFingerprint(tv qbittorrent.TorrentView) uint64 {
 
 // crossRowFingerprint hashes a cross-instance row's change-relevant content,
 // including its instance identity (the same torrent on two instances is two rows).
-func crossRowFingerprint(c qbittorrent.CrossInstanceTorrentView) uint64 {
-	b := make(fpBuf, 0, fpBufSize)
+func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint64 {
+	*b = (*b)[:0]
 	if c.TorrentView != nil {
 		b.torrent(c.Torrent)
 		b.str(string(c.TrackerHealth))
 	}
 	b.i64(int64(c.InstanceID))
 	b.str(c.InstanceName)
+	return b.sum()
+}
+
+// fpSortedMap appends a map in key order so the hash does not follow Go's
+// randomized map iteration order.
+func fpSortedMap[V any](b *fpBuf, m map[string]V, appendValue func(*fpBuf, V)) {
+	b.i64(int64(len(m)))
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		b.str(k)
+		appendValue(b, m[k])
+	}
+}
+
+// countsFingerprint hashes the sidebar counts aggregate. Counts are several KB of
+// JSON on an instance with many categories, tags and trackers, and they only move
+// when the library does, so a tick that leaves them unchanged omits the field the
+// same way it already omits preferences. The client reuses its last same-scope
+// counts snapshot when the field is absent.
+func countsFingerprint(c *qbittorrent.TorrentCounts) uint64 {
+	if c == nil {
+		return 0
+	}
+	b := make(fpBuf, 0, fpBufSize)
+	b.i64(int64(c.Total))
+	fpSortedMap(&b, c.Status, func(b *fpBuf, v int) { b.i64(int64(v)) })
+	fpSortedMap(&b, c.Categories, func(b *fpBuf, v int) { b.i64(int64(v)) })
+	fpSortedMap(&b, c.CategorySizes, func(b *fpBuf, v int64) { b.i64(v) })
+	fpSortedMap(&b, c.Tags, func(b *fpBuf, v int) { b.i64(int64(v)) })
+	fpSortedMap(&b, c.TagSizes, func(b *fpBuf, v int64) { b.i64(v) })
+	fpSortedMap(&b, c.Trackers, func(b *fpBuf, v int) { b.i64(int64(v)) })
+	fpSortedMap(&b, c.TrackerTransfers, func(b *fpBuf, v qbittorrent.TrackerTransferStats) {
+		b.i64(v.Uploaded)
+		b.i64(v.Downloaded)
+		b.i64(v.UploadedSession)
+		b.i64(v.DownloadedSession)
+		b.i64(v.TotalSize)
+		b.i64(int64(v.Count))
+	})
 	return b.sum()
 }
 

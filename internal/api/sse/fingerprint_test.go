@@ -4,6 +4,7 @@
 package sse
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -57,13 +58,13 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 // go-qbittorrent bump adds a field, this fails until the field is added to
 // fpBuf.torrent or to volatileTorrentFields.
 func TestTorrentFingerprintCoversEveryField(t *testing.T) {
-	base := singleRowFingerprint(qbittorrent.TorrentView{Torrent: &qbt.Torrent{}})
+	base := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{}})
 	typ := reflect.TypeFor[qbt.Torrent]()
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		var mutated qbt.Torrent
 		setSampleValue(t, reflect.ValueOf(&mutated).Elem().Field(i))
-		fp := singleRowFingerprint(qbittorrent.TorrentView{Torrent: &mutated})
+		fp := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &mutated})
 		if volatileTorrentFields[field.Name] {
 			require.Equal(t, base, fp, "volatile field %s must not affect the fingerprint", field.Name)
 		} else {
@@ -76,7 +77,7 @@ func TestTorrentFingerprintCoversEveryField(t *testing.T) {
 // inside Torrent.Trackers.
 func TestTrackerFingerprintCoversEveryField(t *testing.T) {
 	row := func(tr qbt.TorrentTracker) uint64 {
-		return singleRowFingerprint(qbittorrent.TorrentView{Torrent: &qbt.Torrent{Trackers: []qbt.TorrentTracker{tr}}})
+		return singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Trackers: []qbt.TorrentTracker{tr}}})
 	}
 	base := row(qbt.TorrentTracker{})
 	typ := reflect.TypeFor[qbt.TorrentTracker]()
@@ -113,14 +114,46 @@ func BenchmarkSingleRowFingerprint(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		singleRowFingerprint(row)
+		singleRowFingerprint(new(fpBuf), row)
+	}
+}
+
+// BenchmarkComputeRowDeltaPage measures a whole page the way a tick does, which
+// is where the fingerprint buffer is reused across rows.
+func BenchmarkComputeRowDeltaPage(b *testing.B) {
+	const pageRows = 300
+	rows := make([]qbittorrent.TorrentView, pageRows)
+	for i := range rows {
+		rows[i] = qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
+				AddedOn:     1700000000 + int64(i),
+				Category:    "tv-sonarr",
+				ContentPath: fmt.Sprintf("/data/torrents/tv/Some.Show.S%02d.1080p.WEB-DL.DDP5.1.H.264-GRP", i%40),
+				SavePath:    "/data/torrents/tv",
+				Hash:        fmt.Sprintf("%040x", i),
+				Name:        fmt.Sprintf("Some.Show.S%02d.1080p.WEB-DL.DDP5.1.H.264-GRP", i%40),
+				Progress:    0.75,
+				Size:        56712345678,
+				State:       qbt.TorrentStateUploading,
+				Tags:        "cross-seed, keep",
+				Tracker:     "https://tracker.example.invalid/announce",
+			},
+			TrackerHealth: "ok",
+		}
+	}
+
+	_, _, base := computeRowDelta(rows, singleRowKey, singleRowFingerprint, nil)
+
+	b.ReportAllocs()
+	for b.Loop() {
+		computeRowDelta(rows, singleRowKey, singleRowFingerprint, base)
 	}
 }
 
 // TestFingerprintDistinguishesNaNRows guards the fix for the old JSON path,
 // where a NaN ratio made json.Marshal fail and every such row hashed as empty.
 func TestFingerprintDistinguishesNaNRows(t *testing.T) {
-	a := singleRowFingerprint(qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "A", Ratio: math.NaN()}})
-	b := singleRowFingerprint(qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "B", Ratio: math.NaN()}})
+	a := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "A", Ratio: math.NaN()}})
+	b := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "B", Ratio: math.NaN()}})
 	require.NotEqual(t, a, b)
 }

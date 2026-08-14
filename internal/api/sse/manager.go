@@ -234,12 +234,14 @@ type subscriptionGroup struct {
 	// processor (processGroup) and guarded by baselineMu against the unrelated init
 	// path. baselineFP maps each row key to its last-broadcast change fingerprint;
 	// baselineOrder is the last-broadcast key order. See buildUpdatePayload.
-	// baselinePrefs is the preferences blob this group last put on the wire, so a
-	// delta can drop the field while it is unchanged.
+	// baselinePrefs is the preferences blob this group last put on the wire, and
+	// baselineCounts the fingerprint of the sidebar counts it last sent, so a delta
+	// can drop either field while it is unchanged.
 	baselineMu     sync.Mutex
 	baselineFP     map[string]uint64
 	baselineOrder  []string
 	baselinePrefs  json.RawMessage
+	baselineCounts uint64
 	baselineSeeded bool
 }
 
@@ -1115,10 +1117,11 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 	}
 
 	// Seed the delta baseline from this init snapshot so the client's first frame and
-	// the server baseline match exactly; the next tick is then a clean delta. No-op if
-	// the group is already seeded (a tick or an earlier joiner got there first).
+	// the server baseline match exactly; the next tick is then a clean delta. When the
+	// group is already seeded (a tick or an earlier joiner got there first) the
+	// snapshot instead inherits the baseline's edge-triggered fields.
 	if payload.Data != nil {
-		group.seedBaselineIfEmpty(group.options, payload.Data)
+		group.reconcileInitWithBaseline(group.options, payload.Data)
 	}
 
 	return m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
