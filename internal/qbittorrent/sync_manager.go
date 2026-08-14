@@ -1767,7 +1767,14 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		preferencesJSON, err = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal app preferences: %w", err)
+			// Preferences are cosmetic, so a marshal failure must not blank the
+			// torrent table and turn every stream frame into an error. Omit the
+			// field and keep the list, the same way the app info fetch above does.
+			log.Error().
+				Err(err).
+				Int("instanceID", instanceID).
+				Msg("Failed to marshal qBittorrent app preferences for torrent stream")
+			preferencesJSON = nil
 		}
 	}
 
@@ -3751,10 +3758,14 @@ var countableStatusesForState = func() map[qbt.TorrentState][]string {
 // cachedInstanceCounts holds one instance's sidebar counts together with the
 // generation of every input they were computed from.
 type cachedInstanceCounts struct {
-	clientGen        uint64
-	mappingGen       uint64
-	useSubcategories bool
-	counts           *TorrentCounts
+	clientGen  uint64
+	mappingGen uint64
+	// trackerHealthSupported belongs to the key because the three tracker-health
+	// status keys are baked into counts at compute time. An entry computed with
+	// health support serves different numbers than one computed without it.
+	trackerHealthSupported bool
+	useSubcategories       bool
+	counts                 *TorrentCounts
 }
 
 // cachedCountsForRequest returns the sidebar counts for a list request, reusing
@@ -3770,16 +3781,19 @@ type cachedInstanceCounts struct {
 // The cached TorrentCounts is shared between requests, so nothing downstream
 // may write to it. The one writer, the tracker-health overwrite, gets a copied
 // Status map on every hit.
+// clientGen must be read by the caller BEFORE it takes the snapshots this counts
+// pass describes. This runs after them, so re-reading here and requiring the two
+// to agree rejects a request whose rows and generation came from different
+// libraries: it neither serves nor stores a cache entry, at the cost of one
+// uncached counts pass.
 func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents func() []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
-	if client == nil || len(trackerMap) > 0 || !sm.hasAuthoritativeTrackerMapping(client.instanceID) {
+	if client == nil || client.countsGen.Load() != clientGen || len(trackerMap) > 0 || !sm.hasAuthoritativeTrackerMapping(client.instanceID) {
 		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
-	// Generations are read before the data they guard (clientGen by the caller,
-	// before its snapshots), so a racing write leaves a mismatched entry, never a stale hit.
 	mappingGen := sm.trackerMappingGen.Load()
 
-	if entry := client.countsCache.Load(); entry != nil && entry.clientGen == clientGen && entry.mappingGen == mappingGen && entry.useSubcategories == useSubcategories {
+	if entry := client.countsCache.Load(); entry != nil && entry.clientGen == clientGen && entry.mappingGen == mappingGen && entry.trackerHealthSupported == trackerHealthSupported && entry.useSubcategories == useSubcategories {
 		counts := entry.counts
 		// The tracker-health cache refreshes on its own schedule, so its three
 		// status keys are layered on at read time instead of frozen at store time.
@@ -3801,10 +3815,11 @@ func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Clien
 	counts, trackerMap, enrichedAll := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents(), mainData, trackerMap, trackerHealthSupported, useSubcategories)
 
 	client.countsCache.Store(&cachedInstanceCounts{
-		clientGen:        clientGen,
-		mappingGen:       mappingGen,
-		useSubcategories: useSubcategories,
-		counts:           counts,
+		clientGen:              clientGen,
+		mappingGen:             mappingGen,
+		trackerHealthSupported: trackerHealthSupported,
+		useSubcategories:       useSubcategories,
+		counts:                 counts,
 	})
 
 	return counts, trackerMap, enrichedAll
@@ -5643,12 +5658,17 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return cmp
 		}
 
-		// Final tiebreaker by hash for determinism
-		cmp := strings.Compare(a.hash, b.hash)
-		if desc {
-			return -cmp
+		// Final tiebreaker by hash, then by index for determinism: a magnet still
+		// fetching metadata has neither tracker nor hash, so every key above
+		// compares equal and the unstable sort would reorder those rows on every
+		// sync.
+		if cmp := strings.Compare(a.hash, b.hash); cmp != 0 {
+			if desc {
+				return -cmp
+			}
+			return cmp
 		}
-		return cmp
+		return aIdx - bIdx
 	})
 }
 

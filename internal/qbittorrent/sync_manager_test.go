@@ -1773,6 +1773,31 @@ func TestSortTorrentsByTracker_NoCustomizations(t *testing.T) {
 	require.Equal(t, "hash1", torrents[2].Hash, "zebra.com should be third")
 }
 
+func TestSortTorrentsByTracker_EqualKeysKeepInputOrder(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	// Magnets still fetching metadata carry no tracker and no hash, so every
+	// sort key above the tiebreak compares equal. slices.SortFunc is unstable,
+	// so without an index tiebreak these rows reshuffle on every sync and drift
+	// under the user's cursor.
+	const pending = 40
+	torrents := make([]qbt.Torrent, 0, pending+1)
+	for i := range pending {
+		torrents = append(torrents, qbt.Torrent{Name: fmt.Sprintf("pending-%02d", i)})
+	}
+	torrents = append(torrents, qbt.Torrent{Hash: "hash1", Tracker: "https://apple.com/announce", Name: "has-tracker"})
+
+	sm.sortTorrentsByTracker(torrents, false)
+
+	require.Equal(t, "has-tracker", torrents[0].Name, "the row with a tracker sorts ahead of the pending ones")
+	for i := range pending {
+		require.Equal(t, fmt.Sprintf("pending-%02d", i), torrents[i+1].Name,
+			"rows whose keys all compare equal must keep their input order")
+	}
+}
+
 func TestSortCrossInstanceTorrentsByTracker_EmptyTrackersGoToEnd(t *testing.T) {
 	t.Parallel()
 
@@ -2359,6 +2384,65 @@ func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing
 		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
 }
 
+// App preferences are a cosmetic ~150-field blob. A failure to render them must
+// not blank the torrent table or turn every stream frame for the instance into an
+// error, so the field is dropped and the list is served.
+func TestGetTorrentsWithFiltersSurvivesUnmarshalablePreferences(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{
+				"aa11": {"name":"Alpha.One", "state":"uploading", "added_on": 200, "size": 100, "progress": 1, "category": "alpha"}
+			}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	// ProxyType is an interface{} because qBittorrent changed its type across
+	// versions, so it is the field that can hold something json.Marshal rejects.
+	client.preferencesMu.Lock()
+	client.preferencesCache = &qbt.AppPreferences{ProxyType: make(chan int)}
+	client.preferencesJSON = nil
+	client.preferencesMu.Unlock()
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	resp, err := sm.GetTorrentsWithFilters(WithSkipFreshData(ctx), inst.ID, 100, 0, "added_on", "asc", "", FilterOptions{})
+	require.NoError(t, err, "unrenderable preferences must not fail the list request")
+	require.Equal(t, 1, resp.Total, "the torrent list is still served")
+	require.Nil(t, resp.AppPreferences, "the unrenderable field is omitted")
+}
+
 // The counts pass shares the list request's library slice instead of cloning
 // it again, which is only safe while every narrowing step returns a new slice.
 // This pins that invariant end to end, on the prefer=cache path: a searched
@@ -2807,6 +2891,66 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	require.Equal(t, 2, layered.Status["tracker_down"])
 	require.Equal(t, 1, layered.Status["tracker_error"])
 	require.Equal(t, 0, stored.Status["unregistered"], "the stored entry must not be mutated")
+}
+
+// TestCachedCountsBypassWhenGenerationMoved pins the guard for a sync landing
+// between the generation read and the request's snapshots: such a request holds
+// rows from one library and a generation from another, so its counts may neither
+// be served from nor stored into the shared cache.
+func TestCachedCountsBypassWhenGenerationMoved(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+	}
+	client := &Client{instanceID: 1}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Size: 200})
+
+	// A sync landed after this request read the generation, so its rows and its
+	// generation describe different libraries. It must not publish those counts
+	// for later requests to read.
+	moved := client.countsGen.Load()
+	client.countsGen.Add(1)
+	stale, _, _ := sm.cachedCountsForRequest(context.Background(), client, moved, staticTorrents(grown), nil, nil, false, false)
+	require.Equal(t, 2, stale.Total)
+	require.Nil(t, client.countsCache.Load(), "a request whose generation moved must not store a cache entry")
+
+	// A request whose generation held stores normally.
+	held := client.countsGen.Load()
+	stored, _, _ := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(torrents), nil, nil, false, false)
+	require.Equal(t, 1, stored.Total)
+	require.NotNil(t, client.countsCache.Load())
+
+	// And a request whose generation moved must recount rather than serve it.
+	client.countsGen.Add(1)
+	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, held, staticTorrents(grown), nil, nil, false, false)
+	require.Equal(t, 2, fresh.Total, "a request whose generation moved must not read the cache")
+}
+
+func TestCachedCountsDoNotCrossTrackerHealthSupport(t *testing.T) {
+	t.Parallel()
+
+	mapping := newValidatedTrackerMapping()
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{1: mapping},
+		trackerHealthCache:      map[int]*TrackerHealthCounts{1: {Unregistered: 4, TrackerDown: 2, TrackerError: 1}},
+	}
+	client := &Client{instanceID: 1, trackerIncludeSupported: true}
+
+	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
+	supported, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, true, false)
+	require.Equal(t, 4, supported.Status["unregistered"], "health support bakes the cached counts in")
+
+	// The capability probe has not resolved yet for this request, so it must see
+	// the per-torrent numbers rather than the health counts baked into the entry
+	// the previous request stored under the same generation.
+	unsupported, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), staticTorrents(torrents), nil, nil, false, false)
+	require.Equal(t, 0, unsupported.Status["unregistered"], "a request without health support must not read baked-in health counts")
+	require.Equal(t, 0, unsupported.Status["tracker_down"])
+	require.Equal(t, 0, unsupported.Status["tracker_error"])
 }
 
 // Counts describe the whole library, so they may only share the list request's
