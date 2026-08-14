@@ -184,6 +184,14 @@ backend domain end to end.
   `qui.db` by default) and not rollback to an older row set for the same
   instance, which needs state outside the DB. Tests cover
   tampered-ciphertext failing closed rather than falling back to TOFU.
+  The motivating deployment is Postgres, where the database can live on a
+  different host from the app and `sessionSecret`: there, a DB-write
+  attacker without app-host access is a realistic position, and the AAD
+  binding is what stops credential transplant and instance redirection.
+  On single-host SQLite the binding is cheap belt-and-suspenders.
+  Mechanically this stays the product's one crypto pattern — the same
+  AES-GCM/`sessionSecret` helpers the existing credential stores use,
+  with an AAD argument those stores simply haven't passed before.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
@@ -228,10 +236,15 @@ lifecycle to manage.
 
 ## Schema
 
-Half of the old design's schema survives: SSH columns on `instances`
-(host, port, user, encrypted private key, host-key fingerprint). No
-helper-deploy columns, no persisted capabilities. `HasFilesystemAccess`
-resolves to local | remote | none. This is the slimmed scope for #1917.
+Half of the old design's schema survives: SSH columns on `instances` —
+host, port, user, the AEAD-encrypted private key (AAD: instance id +
+field), and the pinned host key stored as the marshaled public key plus
+its algorithm under the same AEAD (AAD: instance id + field + host +
+port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
+the mismatch flow both need the full key, and fingerprints are
+display-only (see Security). No helper-deploy columns, no persisted
+capabilities. `HasFilesystemAccess` resolves to local | remote | none.
+This is the slimmed scope for #1917.
 
 ## API
 
