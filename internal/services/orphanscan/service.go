@@ -889,6 +889,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var sawReadOnly bool
 	var sawPermissionDenied bool
 
+	// Resolve the backend once for the whole batch; per-file resolves would
+	// panic on a nil pool and hammer the store for no reason.
+	var deleteBackend fsops.Backend
+	backendErr := errors.New("filesystem backend pool not configured")
+	if s.backendPool != nil {
+		deleteBackend, backendErr = s.backendPool.GetBackend(ctx, instanceID)
+	}
+
 	// Delete files
 	for _, f := range files {
 		if ctx.Err() != nil {
@@ -905,7 +913,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		deleteBackend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
 		if backendErr != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", "backend unavailable")
 			failedDeletes++
@@ -945,26 +952,25 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 	}
 
-	// Clean up empty directories
+	// Clean up empty directories, reusing the batch's backend.
 	var foldersDeleted int
-	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
-	for _, dir := range candidateDirs {
-		if ctx.Err() != nil {
-			break
-		}
+	if backendErr != nil {
+		log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: no backend for empty-dir cleanup")
+	} else {
+		candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
+		for _, dir := range candidateDirs {
+			if ctx.Err() != nil {
+				break
+			}
 
-		scanRoot := findScanRoot(dir, run.ScanPaths)
-		if scanRoot == "" {
-			continue
-		}
+			scanRoot := findScanRoot(dir, run.ScanPaths)
+			if scanRoot == "" {
+				continue
+			}
 
-		cleanupBackend, cleanupErr := s.backendPool.GetBackend(ctx, instanceID)
-		if cleanupErr != nil {
-			log.Warn().Err(cleanupErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend for empty-dir cleanup")
-			continue
-		}
-		if err := safeDeleteEmptyDir(ctx, scanRoot, dir, cleanupBackend); err == nil {
-			foldersDeleted++
+			if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
+				foldersDeleted++
+			}
 		}
 	}
 

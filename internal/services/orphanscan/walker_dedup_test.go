@@ -1,6 +1,10 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+// The FileID literals below spell unix Dev/Ino fields; the scenarios they
+// drive (bind-mount aliases) are unix-only anyway.
+//go:build !windows
+
 package orphanscan
 
 import (
