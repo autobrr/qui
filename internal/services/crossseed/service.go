@@ -1333,14 +1333,16 @@ func forEachLocalTorrentFile(
 }
 
 func resolveLocalTorrentFile(base, name string) (string, bool) {
-	slashName := strings.ReplaceAll(name, `\`, "/")
-	if slashName == "" ||
-		strings.HasPrefix(slashName, "/") ||
-		hasWindowsDrivePrefix(slashName) {
+	// Names carrying a literal backslash are rejected rather than rewritten:
+	// backslash is a legal filename byte on Linux, and inventing a nested
+	// path from it makes the file read as missing while it exists.
+	if name == "" || strings.ContainsRune(name, '\\') ||
+		strings.HasPrefix(name, "/") ||
+		hasWindowsDrivePrefix(name) {
 		return "", false
 	}
 
-	cleanName := path.Clean(slashName)
+	cleanName := path.Clean(name)
 	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") {
 		return "", false
 	}
