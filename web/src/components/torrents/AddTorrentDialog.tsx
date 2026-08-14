@@ -45,7 +45,7 @@ import type { AddTorrentResponse, Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
-import parseTorrent from "parse-torrent"
+import type { Instance as ParsedTorrent } from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDropzone } from "react-dropzone"
@@ -80,8 +80,11 @@ async function parseTorrentFile(file: File): Promise<string | null> {
 
   try {
     const arrayBuffer = await file.arrayBuffer()
+    // Only reached when the user actually hands us a .torrent file, so keep the
+    // parser (and its node polyfills) off the boot path.
+    const { default: parseTorrent } = await import("parse-torrent")
     const parsed = await parseTorrent(new Uint8Array(arrayBuffer))
-    const parsedTorrent = parsed as parseTorrent.Instance & { infoHashV2?: string }
+    const parsedTorrent = parsed as ParsedTorrent & { infoHashV2?: string }
 
     if (!parsedTorrent) {
       return null
