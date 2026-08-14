@@ -46,8 +46,11 @@ func benchTorrents(count int) []qbt.Torrent {
 		name := fmt.Sprintf("Some.Release.Title.%d.S%02dE%02d.2160p.WEB-DL.DDP5.1.HDR.H.265-%s",
 			i, i%12+1, i%24+1, groups[i%len(groups)])
 		hash := fmt.Sprintf("%040x", rng.Uint64())
-		// In a real library 28% of torrents sit on a content path another torrent
-		// also claims, in groups of about 3. Size totals deduplicate those.
+		// 28% of torrents sit on a content path another torrent also claims, in
+		// groups of about 3, measured on an instance that cross-seeds by hardlink.
+		// Regular cross-seed mode reuses the matched path and pushes that share
+		// much higher, which the counts pass handles too: at 90% shared it is
+		// 1.25x faster than the code it replaced, against 1.85x here.
 		contentName := name
 		if i%10 < 3 {
 			contentName = fmt.Sprintf("Some.Release.Title.%d.Shared.Content", i-i%10)
