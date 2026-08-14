@@ -15,9 +15,11 @@ import (
 	localbackend "github.com/autobrr/qui/internal/fsops/local"
 )
 
-// A root-level symlinked file must not become a searchee, matching the
-// directory walk, which already skips symlinks.
-func TestScanDirectory_SkipsRootLevelSymlinks(t *testing.T) {
+// A root-level symlinked media file is scanned via its target (develop
+// parity: scanSingleFile follows the link), carrying the target's size and
+// identity. Symlinks inside a searchee directory are still skipped by the
+// walk.
+func TestScanDirectory_ScansRootLevelSymlinksViaTarget(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink creation requires privileges on Windows")
 	}
@@ -25,12 +27,20 @@ func TestScanDirectory_SkipsRootLevelSymlinks(t *testing.T) {
 	root := t.TempDir()
 	realFile := filepath.Join(root, "Movie.2024.1080p.WEB.x264-GRP.mkv")
 	require.NoError(t, os.WriteFile(realFile, []byte("data"), 0o600))
-	require.NoError(t, os.Symlink(realFile, filepath.Join(root, "Linked.2024.1080p.WEB.x264-GRP.mkv")))
+	linked := filepath.Join(root, "Linked.2024.1080p.WEB.x264-GRP.mkv")
+	require.NoError(t, os.Symlink(realFile, linked))
 
 	scanner := NewScanner(localbackend.NewBackend())
 	result, err := scanner.ScanDirectory(context.Background(), root)
 	require.NoError(t, err)
 
-	require.Len(t, result.Searchees, 1)
-	require.Equal(t, realFile, result.Searchees[0].Path)
+	require.Len(t, result.Searchees, 2)
+	paths := []string{result.Searchees[0].Path, result.Searchees[1].Path}
+	require.Contains(t, paths, realFile)
+	require.Contains(t, paths, linked)
+	for _, s := range result.Searchees {
+		if s.Path == linked {
+			require.Equal(t, int64(4), s.Files[0].Size, "linked searchee carries the target's metadata")
+		}
+	}
 }
