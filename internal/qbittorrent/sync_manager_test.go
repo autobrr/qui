@@ -2703,27 +2703,27 @@ func TestCachedCountsServedWhileGenerationsHold(t *testing.T) {
 		{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Category: "tv", Size: 200, ContentPath: "/data/two"},
 	}
 
-	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, false, false)
+	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), torrents, nil, nil, false, false)
 	require.Equal(t, 2, counts.Total)
 	require.Equal(t, 1, counts.Trackers["tracker.example.invalid"])
 
 	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "ccc", Name: "Three", State: qbt.TorrentStateUploading, Size: 300, ContentPath: "/data/three"})
 
 	// No generation moved, so the grown library must NOT be recounted.
-	cached, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, nil, false, false)
+	cached, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), grown, nil, nil, false, false)
 	require.Equal(t, 2, cached.Total, "expected the cached result, not a recount")
 
 	// Each generation invalidates on its own.
 	client.countsGen.Add(1)
-	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, nil, false, false)
+	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), grown, nil, nil, false, false)
 	require.Equal(t, 3, fresh.Total, "a sync tick must invalidate the cache")
 
 	sm.trackerMappingGen.Add(1)
-	fresh, _, _ = sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, false, false)
+	fresh, _, _ = sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), torrents, nil, nil, false, false)
 	require.Equal(t, 2, fresh.Total, "a tracker mapping write must invalidate the cache")
 
 	// A different subcategory mode is a different result, never a hit.
-	subcats, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, nil, false, true)
+	subcats, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), grown, nil, nil, false, true)
 	require.Equal(t, 3, subcats.Total)
 }
 
@@ -2737,14 +2737,14 @@ func TestCachedCountsBypassedWithEnrichedTrackerData(t *testing.T) {
 	client := &Client{instanceID: 1}
 
 	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
-	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, false, false)
+	counts, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), torrents, nil, nil, false, false)
 	require.Equal(t, 1, counts.Total)
 
 	// Enriched tracker data feeds tracker-health detection, so such a request
 	// must recount even though no generation moved.
 	grown := append(slices.Clone(torrents), qbt.Torrent{Hash: "bbb", Name: "Two", State: qbt.TorrentStateUploading, Size: 200})
 	trackerMap := map[string][]qbt.TorrentTracker{"aaa": {{Url: "https://tracker.example.invalid/announce"}}}
-	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, grown, nil, trackerMap, false, false)
+	fresh, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), grown, nil, trackerMap, false, false)
 	require.Equal(t, 2, fresh.Total)
 }
 
@@ -2759,7 +2759,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	client := &Client{instanceID: 1, trackerIncludeSupported: true}
 
 	torrents := []qbt.Torrent{{Hash: "aaa", Name: "One", State: qbt.TorrentStateDownloading, Size: 100}}
-	stored, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, true, false)
+	stored, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), torrents, nil, nil, true, false)
 	require.Equal(t, 0, stored.Status["unregistered"])
 
 	// The health cache refreshed between requests. The hit must show the new
@@ -2768,7 +2768,7 @@ func TestCachedCountsLayersFreshTrackerHealth(t *testing.T) {
 	sm.trackerHealthCache[1] = &TrackerHealthCounts{Unregistered: 4, TrackerDown: 2, TrackerError: 1}
 	sm.trackerHealthMu.Unlock()
 
-	layered, _, _ := sm.cachedCountsForRequest(context.Background(), client, torrents, nil, nil, true, false)
+	layered, _, _ := sm.cachedCountsForRequest(context.Background(), client, client.countsGen.Load(), torrents, nil, nil, true, false)
 	require.Equal(t, 4, layered.Status["unregistered"])
 	require.Equal(t, 2, layered.Status["tracker_down"])
 	require.Equal(t, 1, layered.Status["tracker_error"])

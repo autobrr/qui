@@ -1374,6 +1374,11 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		return nil, err
 	}
 
+	// Loaded before the mainData and torrent snapshots below: a counts entry is
+	// stored under this generation, so any input that changes after this line
+	// also moves the generation past it and invalidates the entry.
+	countsGen := client.countsGen.Load()
+
 	skipFreshData := shouldSkipFreshData(ctx)
 	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
 	// Tracker-health stream ticks skip inline hydration but still need cached
@@ -1679,7 +1684,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				Msg("All torrent list empty when calculating counts; refetching")
 			allTorrents = getTorrents(qbt.TorrentFilterOptions{})
 		}
-		counts, trackerMap, enrichedAll = sm.cachedCountsForRequest(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
+		counts, trackerMap, enrichedAll = sm.cachedCountsForRequest(ctx, client, countsGen, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
 	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
@@ -3765,14 +3770,13 @@ type cachedInstanceCounts struct {
 // The cached TorrentCounts is shared between requests, so nothing downstream
 // may write to it. The one writer, the tracker-health overwrite, gets a copied
 // Status map on every hit.
-func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
+func (sm *SyncManager) cachedCountsForRequest(ctx context.Context, client *Client, clientGen uint64, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	if client == nil || len(trackerMap) > 0 || !sm.hasAuthoritativeTrackerMapping(client.instanceID) {
 		return sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, trackerMap, trackerHealthSupported, useSubcategories)
 	}
 
-	// Generations are read before the data, so a write racing this computation
-	// leaves a stored entry whose generations no longer match, never a stale hit.
-	clientGen := client.countsGen.Load()
+	// Generations are read before the data they guard (clientGen by the caller,
+	// before its snapshots), so a racing write leaves a mismatched entry, never a stale hit.
 	mappingGen := sm.trackerMappingGen.Load()
 
 	if entry := client.countsCache.Load(); entry != nil && entry.clientGen == clientGen && entry.mappingGen == mappingGen && entry.useSubcategories == useSubcategories {

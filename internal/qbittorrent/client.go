@@ -939,8 +939,9 @@ func (c *Client) addTrackerExclusions(domain string, hashes []string) {
 		return
 	}
 
-	c.countsGen.Add(1)
 	c.mu.Lock()
+	// LIFO: the bump runs after the unlock; the counts path loads the generation before the data it guards.
+	defer c.countsGen.Add(1)
 	defer c.mu.Unlock()
 
 	set, ok := c.trackerExclusions[domain]
@@ -964,8 +965,9 @@ func (c *Client) removeTrackerExclusions(domain string, hashes []string) {
 		return
 	}
 
-	c.countsGen.Add(1)
 	c.mu.Lock()
+	// LIFO: the bump runs after the unlock; the counts path loads the generation before the data it guards.
+	defer c.countsGen.Add(1)
 	defer c.mu.Unlock()
 
 	if len(hashes) == 0 {
@@ -1013,8 +1015,9 @@ func (c *Client) clearTrackerExclusions(domains []string) {
 		return
 	}
 
-	c.countsGen.Add(1)
 	c.mu.Lock()
+	// LIFO: the bump runs after the unlock; the counts path loads the generation before the data it guards.
+	defer c.countsGen.Add(1)
 	defer c.mu.Unlock()
 
 	for _, domain := range domains {
