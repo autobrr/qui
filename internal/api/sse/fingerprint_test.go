@@ -4,6 +4,7 @@
 package sse
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -114,4 +115,12 @@ func BenchmarkSingleRowFingerprint(b *testing.B) {
 	for b.Loop() {
 		singleRowFingerprint(row)
 	}
+}
+
+// TestFingerprintDistinguishesNaNRows guards the fix for the old JSON path,
+// where a NaN ratio made json.Marshal fail and every such row hashed as empty.
+func TestFingerprintDistinguishesNaNRows(t *testing.T) {
+	a := singleRowFingerprint(qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "A", Ratio: math.NaN()}})
+	b := singleRowFingerprint(qbittorrent.TorrentView{Torrent: &qbt.Torrent{Name: "B", Ratio: math.NaN()}})
+	require.NotEqual(t, a, b)
 }
