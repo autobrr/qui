@@ -75,9 +75,6 @@ function extractHashFromMagnet(magnetUrl: string): string | null {
 
 // Parse torrent file and extract info hash
 async function parseTorrentFile(file: File): Promise<string | null> {
-  const timeoutId = window.setTimeout(() => {
-  }, 10000) // 10 second timeout
-
   try {
     const arrayBuffer = await file.arrayBuffer()
     // Only reached when the user actually hands us a .torrent file, so keep the
@@ -86,22 +83,15 @@ async function parseTorrentFile(file: File): Promise<string | null> {
     const parsed = await parseTorrent(new Uint8Array(arrayBuffer))
     const parsedTorrent = parsed as ParsedTorrent & { infoHashV2?: string }
 
-    if (!parsedTorrent) {
-      return null
-    }
-
     const hash = parsedTorrent.infoHash || parsedTorrent.infoHashV2
 
     if (!hash) {
       return null
     }
 
-    const normalized = hash.toLowerCase()
-    return normalized
+    return hash.toLowerCase()
   } catch {
     return null
-  } finally {
-    window.clearTimeout(timeoutId)
   }
 }
 
