@@ -1545,6 +1545,9 @@ func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
 // packDir is the on-disk pack root folder (<RootDir>/<packName>); it is removed only
 // when empty so the parent RootDir (a shared base/tracker/instance dir) is never touched.
 func rollbackSeasonPackTree(ctx context.Context, backend fsops.Backend, created *fsops.TreeCreateResult, packDir string) error {
+	// Rollback must run even when the add failed because the run was
+	// cancelled — otherwise the partial link tree survives on disk.
+	ctx = context.WithoutCancel(ctx)
 	var errs []error
 	if err := backend.RemoveTree(ctx, created); err != nil {
 		errs = append(errs, err)

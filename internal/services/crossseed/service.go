@@ -1030,7 +1030,12 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 
 	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID)
 	if err != nil {
-		// A missing backend carries no hardlink evidence, same as a stat failure.
+		// Unlike a per-file stat failure, a backend outage discards ALL
+		// hardlink evidence for the instance — record it so strict mode
+		// (delete dialogs) fails the check instead of reading "no cross-seeds".
+		if m.verificationErr == nil {
+			m.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", m.sourceInstanceID, err)
+		}
 		return nil
 	}
 
@@ -1093,7 +1098,11 @@ func (s *Service) localLinkedMatchType(
 
 	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID)
 	if err != nil {
-		// A missing backend carries no hardlink evidence, same as a stat failure.
+		// A backend outage discards all evidence for the candidate — record it
+		// so strict mode fails the check instead of reading "no cross-seeds".
+		if matchCtx.verificationErr == nil {
+			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", candidateInstance.ID, err)
+		}
 		return ""
 	}
 
@@ -1106,6 +1115,9 @@ func (s *Service) localLinkedMatchType(
 	}
 	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID)
 	if err != nil {
+		if matchCtx.verificationErr == nil {
+			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", matchCtx.sourceInstanceID, err)
+		}
 		return ""
 	}
 	pairs := pairLocalTorrentFiles(
@@ -14407,8 +14419,9 @@ func (s *Service) processHardlinkMode(
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
 		// Rollback only what this attempt created: the destination can be shared
-		// with an earlier successful add for the same release (discussion #2282)
-		if rollbackErr := backend.RemoveTree(ctx, created); rollbackErr != nil {
+		// with an earlier successful add for the same release (discussion #2282).
+		// WithoutCancel: a cancelled run must still roll back its partial tree.
+		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
@@ -15110,8 +15123,9 @@ func (s *Service) processReflinkMode(
 
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
-		// Rollback only what this attempt created (discussion #2282)
-		if rollbackErr := backend.RemoveTree(ctx, created); rollbackErr != nil {
+		// Rollback only what this attempt created (discussion #2282).
+		// WithoutCancel: a cancelled run must still roll back its partial tree.
+		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
