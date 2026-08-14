@@ -22,14 +22,15 @@ import (
 type Backend interface {
 	// --- Read ---
 
-	// Stat returns metadata for a single path. Returns a non-nil error wrapping
-	// fs.ErrNotExist if the path does not exist.
-	Stat(ctx context.Context, path string) (*FileInfo, error)
+	// Stat returns metadata for a single path, following symlinks — FileID
+	// and Nlinks describe the target, so symlinked torrent data keeps its
+	// identity. Returns a non-nil error wrapping fs.ErrNotExist if the path
+	// does not exist. A failure to resolve identity is reported in
+	// LstatInfo.FileIDErr, not as a Stat error, so one identity-opaque file
+	// cannot fail callers that only need metadata.
+	Stat(ctx context.Context, path string) (*LstatInfo, error)
 
-	// Lstat is like Stat but does not follow symlinks. Populates FileID and
-	// Nlinks from the underlying inode; a failure to resolve identity is
-	// reported in LstatInfo.FileIDErr, not as an Lstat error, so one
-	// identity-opaque file cannot fail callers that only need metadata.
+	// Lstat is like Stat but does not follow symlinks.
 	Lstat(ctx context.Context, path string) (*LstatInfo, error)
 
 	// ReadDir returns directory entries.
@@ -38,7 +39,9 @@ type Backend interface {
 	// WalkDir walks a directory tree and streams entries on the returned channel.
 	// The channel is closed when the walk completes, is cancelled via ctx, or
 	// hits an unrecoverable error. Callers must drain the channel or cancel
-	// ctx; abandoning it leaks the walk goroutine.
+	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
+	// cannot be read are skipped, not emitted — WalkEntry.Err carries only
+	// enumeration-level walk failures.
 	WalkDir(ctx context.Context, root string, opts WalkOptions) (<-chan WalkEntry, error)
 
 	// Statfs returns free/total bytes for the filesystem containing path.

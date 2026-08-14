@@ -30,7 +30,7 @@ func NewBackend() *Backend { return &Backend{} }
 // compile-time check
 var _ fsops.Backend = (*Backend)(nil)
 
-func (b *Backend) Stat(ctx context.Context, path string) (*fsops.FileInfo, error) {
+func (b *Backend) Stat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func (b *Backend) Stat(ctx context.Context, path string) (*fsops.FileInfo, error
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToFsops(fi, path), nil
+	return osFileInfoToLstat(fi, path), nil
 }
 
 func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
@@ -137,25 +137,29 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			} else {
 				fi, err := d.Info()
 				if err != nil {
-					entry.Err = err
-				} else {
-					entry.Size = fi.Size()
-					entry.ModTime = fi.ModTime()
-					entry.Mode = fi.Mode()
-					entry.IsDir = fi.IsDir()
-					entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
+					// An entry that vanished or can't be stat'd is skipped, not
+					// surfaced: consumers (orphanscan, dirscan) skipped such
+					// files pre-migration, and emitting it as Err would read as
+					// a walk failure and abort whole scans. Err stays reserved
+					// for enumeration-level failures.
+					return nil
+				}
+				entry.Size = fi.Size()
+				entry.ModTime = fi.ModTime()
+				entry.Mode = fi.Mode()
+				entry.IsDir = fi.IsDir()
+				entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
 
-					if opts.WantFileID && fi.Mode().IsRegular() {
-						fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
-						if fidErr != nil {
-							// Identity failure must not read as an unreadable
-							// entry — that would abort whole scans over one odd
-							// file. Callers that need identity check FileIDErr.
-							entry.FileIDErr = fidErr
-						} else {
-							entry.FileID = fid
-							entry.Nlinks = nlinks
-						}
+				if opts.WantFileID && fi.Mode().IsRegular() {
+					fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
+					if fidErr != nil {
+						// Identity failure must not read as an unreadable
+						// entry — that would abort whole scans over one odd
+						// file. Callers that need identity check FileIDErr.
+						entry.FileIDErr = fidErr
+					} else {
+						entry.FileID = fid
+						entry.Nlinks = nlinks
 					}
 				}
 			}

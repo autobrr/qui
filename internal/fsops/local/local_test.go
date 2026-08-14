@@ -42,6 +42,30 @@ func TestStat_ExistingFile(t *testing.T) {
 	assert.False(t, fi.ModTime.IsZero())
 }
 
+func TestStat_FollowsSymlinkIdentity(t *testing.T) {
+	b := newBackend()
+	dir := t.TempDir()
+	target := filepath.Join(dir, "data.mkv")
+	writeFile(t, target, "content")
+	link := filepath.Join(dir, "link.mkv")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unsupported: %v", err)
+	}
+
+	viaLink, err := b.Stat(context.Background(), link)
+	require.NoError(t, err)
+	direct, err := b.Stat(context.Background(), target)
+	require.NoError(t, err)
+
+	// Stat follows the link: metadata and identity describe the target, so
+	// symlinked torrent data keeps already-seeding detection.
+	assert.False(t, viaLink.IsSymlink)
+	assert.Equal(t, direct.Size, viaLink.Size)
+	require.NoError(t, viaLink.FileIDErr)
+	assert.False(t, viaLink.FileID.IsZero())
+	assert.Equal(t, direct.FileID, viaLink.FileID)
+}
+
 func TestStat_Directory(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()

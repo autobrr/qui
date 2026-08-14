@@ -31,8 +31,8 @@ func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, er
 // fakeBackend is a minimal Backend for verifying which backend the pool returns.
 type fakeBackend struct{ kind string }
 
-func (f fakeBackend) Stat(context.Context, string) (*FileInfo, error) {
-	return &FileInfo{}, nil
+func (f fakeBackend) Stat(context.Context, string) (*LstatInfo, error) {
+	return &LstatInfo{}, nil
 }
 func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
 func (f fakeBackend) ReadDir(context.Context, string) ([]DirEntry, error) {
