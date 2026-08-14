@@ -62,21 +62,27 @@ requests over the one session, and the exec path fills a batch with a single
 indexing (hundreds of thousands of lstats) survivable. Re-add them in the
 PR that implements this backend.
 
-## File Identity Over the Wire — OPEN QUESTION
+## File Identity Over the Wire — DECIDED
 
 Remote identity is (device, inode) parsed from GNU `find`/`stat` output. But
 `hardlink.FileID` is platform-compiled: unix builds carry `Dev`/`Ino`,
 Windows builds carry a volume serial plus a 16-byte identifier. A qui host
 on Windows cannot represent a Linux seedbox's identity in today's struct.
 
-Options: (a) an opaque byte/string identity form in fsops (raised by
-com6056 on #1914); (b) pack remote dev/ino into the Windows struct's
-identifier bytes. To be settled in review of this doc. Note that a Windows
-*remote* reports a 16-byte NTFS file ID, which fits neither unix dev/ino
-nor option (b)'s packing — one more argument for the opaque form.
+**Decision: `hardlink.FileID` becomes an opaque comparable fixed-size form
+(≈`[24]byte`), implemented in the remote-backend PR** (raised by com6056 on
+#1914). Opaque is the only viable shape: unix identity is 16 bytes, Windows
+identity is up to 24, so no packing into the other platform's struct is
+lossless in either direction. The timing follows drop-until-needed —
+`hardlink.FileID` is already shared on develop (crossseed, orphanscan,
+dirscan, automations), so the ripple is the same size now or later, and
+nothing serializes identity until the remote backend exists. Migration
+stays cheap: consumers only use `==`, map keys, and `IsZero()`, all of
+which survive a comparable fixed-size form unchanged (`Bytes()` previews
+it); the churn is per-platform constructors and test literals.
 
-Related guard regardless of representation: FileID comparisons are only
-valid within one backend/host — dev+ino pairs collide across machines, so
+Guard regardless of representation: FileID comparisons are only valid
+within one backend/host — identity bytes collide across machines, so
 cross-instance comparisons must check same-backend first.
 
 ## Exec Conventions
@@ -164,8 +170,7 @@ performance wall, #1913 has the protocol design ready.
 
 ## Open Questions
 
-1. File identity wire form — option (a) or (b) above.
-2. `SameFilesystem` on SFTP-only when the server zeroes fsids: conservative
+1. `SameFilesystem` on SFTP-only when the server zeroes fsids: conservative
    `false`, or refuse ops that require the answer?
-3. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
+2. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
    supported floor there?
