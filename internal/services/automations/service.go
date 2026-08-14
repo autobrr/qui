@@ -915,10 +915,11 @@ func (s *Service) setupPreviewCrossMatchContext(ctx context.Context, instanceID 
 	needs := CrossMatchNeeds{
 		SameExists:   ConditionUsesField(cond, FieldExistsOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnSameInstance),
 		SameSeeding:  ConditionUsesField(cond, FieldSeedingOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnSameInstance),
+		SameTags:     ConditionUsesField(cond, FieldCrossSeedTags) || sortingConfigUsesField(rule.SortingConfig, FieldCrossSeedTags),
 		OtherExists:  ConditionUsesField(cond, FieldExistsOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnOtherInstance),
 		OtherSeeding: ConditionUsesField(cond, FieldSeedingOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnOtherInstance),
 	}
-	if !needs.SameExists && !needs.SameSeeding && !needs.OtherExists && !needs.OtherSeeding {
+	if !needs.SameExists && !needs.SameSeeding && !needs.SameTags && !needs.OtherExists && !needs.OtherSeeding {
 		return
 	}
 
@@ -2143,10 +2144,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	needs := CrossMatchNeeds{
 		SameExists:   rulesUseCondition(eligibleRules, FieldExistsOnSameInstance),
 		SameSeeding:  rulesUseCondition(eligibleRules, FieldSeedingOnSameInstance),
+		SameTags:     rulesUseCondition(eligibleRules, FieldCrossSeedTags),
 		OtherExists:  rulesUseCondition(eligibleRules, FieldExistsOnOtherInstance),
 		OtherSeeding: rulesUseCondition(eligibleRules, FieldSeedingOnOtherInstance),
 	}
-	if needs.SameExists || needs.SameSeeding || needs.OtherExists || needs.OtherSeeding {
+	if needs.SameExists || needs.SameSeeding || needs.SameTags || needs.OtherExists || needs.OtherSeeding {
 		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
 	}
 
@@ -5096,6 +5098,9 @@ func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatch
 	}
 	if result.SameInstanceSeeding != nil {
 		evalCtx.SameInstanceCrossSeedSeedingHashSet = result.SameInstanceSeeding
+	}
+	if result.SameInstanceTagsByHash != nil {
+		evalCtx.SameInstanceCrossSeedTagsByHash = result.SameInstanceTagsByHash
 	}
 	if result.OtherInstanceExists != nil {
 		evalCtx.CrossInstanceHashSet = result.OtherInstanceExists

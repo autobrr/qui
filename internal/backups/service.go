@@ -14,8 +14,10 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +46,7 @@ var (
 // Config controls background backup scheduling.
 type Config struct {
 	DataDir         string
+	BackupDir       string // backup root; empty means <DataDir>/backups
 	PollInterval    time.Duration
 	WorkerCount     int
 	FailureCooldown time.Duration
@@ -73,6 +76,7 @@ type Service struct {
 	jackettSvc     *jackett.Service
 	notifier       notifications.Notifier
 	cfg            Config
+	root           string // backup root directory; stored paths resolve against it
 	cacheDir       string
 
 	jobs   chan job
@@ -164,9 +168,14 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		cfg.ExportThrottle = 100 * time.Millisecond
 	}
 
+	root := strings.TrimSpace(cfg.BackupDir)
+	if root == "" && strings.TrimSpace(cfg.DataDir) != "" {
+		root = filepath.Join(cfg.DataDir, "backups")
+	}
+
 	cacheDir := ""
-	if strings.TrimSpace(cfg.DataDir) != "" {
-		cacheDir = filepath.Join(cfg.DataDir, "backups", "torrents")
+	if root != "" {
+		cacheDir = filepath.Join(root, "torrents")
 		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to prepare torrent cache directory")
 		} else {
@@ -185,6 +194,7 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		jackettSvc: jackettService,
 		notifier:   notifier,
 		cfg:        cfg,
+		root:       root,
 		cacheDir:   cacheDir,
 		jobs:       make(chan job, cfg.WorkerCount*2),
 		inflight:   make(map[int]int64),
@@ -1172,12 +1182,13 @@ func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
 		log.Warn().Err(err).Msg("Failed to list referenced torrent blobs; skipping cache cleanup")
 		return
 	}
-	// Stored paths are relative to the data dir, with legacy entries relative
-	// to backups/ (see loadCachedTorrent); accept both interpretations.
-	referenced := make(map[string]struct{}, len(refs)*2)
+	// Stored paths carry the legacy "backups/" prefix or not; ResolveBackupPath
+	// maps both forms to the same absolute path under the backup root.
+	referenced := make(map[string]struct{}, len(refs))
 	for _, rel := range refs {
-		referenced[filepath.Join(s.cfg.DataDir, filepath.FromSlash(rel))] = struct{}{}
-		referenced[filepath.Join(s.cfg.DataDir, "backups", filepath.FromSlash(rel))] = struct{}{}
+		if abs := s.ResolveBackupPath(rel); abs != "" {
+			referenced[abs] = struct{}{}
+		}
 	}
 
 	root, err := os.OpenRoot(s.cacheDir)
@@ -1253,13 +1264,12 @@ func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings
 		baseSegment = fmt.Sprintf("instance-%d", instanceID)
 	}
 
-	base := filepath.Join("backups", baseSegment)
-
-	if s.cfg.DataDir == "" {
-		return "", "", errors.New("data directory not configured")
+	if s.root == "" {
+		return "", "", errors.New("backup directory not configured")
 	}
 
-	abs := filepath.Join(s.cfg.DataDir, base)
+	base := filepath.Join("backups", baseSegment)
+	abs := filepath.Join(s.root, baseSegment)
 	return abs, base, nil
 }
 
@@ -1547,12 +1557,18 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		itemsToCleanup = append(itemsToCleanup, runItems...)
 
 		if run.ManifestPath != nil {
-			manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
-			filesToDelete = append(filesToDelete, manifestPath)
+			if abs := s.ResolveBackupPath(*run.ManifestPath); abs != "" {
+				filesToDelete = append(filesToDelete, abs)
+			} else {
+				log.Warn().Str("path", *run.ManifestPath).Msg("Skipping manifest with unresolvable path during cleanup")
+			}
 		}
 		if run.ArchivePath != nil {
-			archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
-			filesToDelete = append(filesToDelete, archivePath)
+			if abs := s.ResolveBackupPath(*run.ArchivePath); abs != "" {
+				filesToDelete = append(filesToDelete, abs)
+			} else {
+				log.Warn().Str("path", *run.ArchivePath).Msg("Skipping archive with unresolvable path during cleanup")
+			}
 		}
 	}
 
@@ -1613,12 +1629,18 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 
 	var filesToDelete []string
 	if run.ManifestPath != nil {
-		manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
-		filesToDelete = append(filesToDelete, manifestPath)
+		if abs := s.ResolveBackupPath(*run.ManifestPath); abs != "" {
+			filesToDelete = append(filesToDelete, abs)
+		} else {
+			log.Warn().Str("path", *run.ManifestPath).Msg("Skipping manifest with unresolvable path during delete")
+		}
 	}
 	if run.ArchivePath != nil {
-		archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
-		filesToDelete = append(filesToDelete, archivePath)
+		if abs := s.ResolveBackupPath(*run.ArchivePath); abs != "" {
+			filesToDelete = append(filesToDelete, abs)
+		} else {
+			log.Warn().Str("path", *run.ArchivePath).Msg("Skipping archive with unresolvable path during delete")
+		}
 	}
 
 	s.deleteFilesParallel(ctx, filesToDelete)
@@ -1711,15 +1733,15 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 // The caller is responsible for cleaning up the temp files after this returns.
 func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, torrentPaths map[string]string) (*models.BackupRun, error) {
 	// Use local variable to avoid mutating shared config (thread-safety)
-	dataDir := s.cfg.DataDir
+	rootDir := s.root
 
-	// Normalize DataDir for Windows Git Bash paths
-	if runtime.GOOS == "windows" && strings.HasPrefix(dataDir, "/c/") {
-		dataDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(dataDir, "/c"), "/", "\\")
-		log.Info().Str("normalizedDataDir", dataDir).Msg("Normalized DataDir for Windows")
+	// Normalize the backup root for Windows Git Bash paths
+	if runtime.GOOS == "windows" && strings.HasPrefix(rootDir, "/c/") {
+		rootDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(rootDir, "/c"), "/", "\\")
+		log.Info().Str("normalizedBackupDir", rootDir).Msg("Normalized backup directory for Windows")
 	}
 
-	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("torrentPaths", len(torrentPaths)).Str("dataDir", dataDir).Msg("Starting manifest import from dir")
+	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("torrentPaths", len(torrentPaths)).Str("backupDir", rootDir).Msg("Starting manifest import from dir")
 
 	var manifest Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
@@ -1807,21 +1829,23 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 
 		if item.TorrentBlob != "" {
 			// Validate blob path to prevent directory traversal
-			rel := filepath.Clean(item.TorrentBlob)
-			if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
+			slashRel := backupRelPath(item.TorrentBlob)
+			if slashRel == "" {
 				log.Warn().Str("hash", item.Hash).Str("blob", item.TorrentBlob).Msg("Ignoring unsafe TorrentBlob path from manifest")
 				items = append(items, backupItem)
 				totalBytes += item.SizeBytes
 				continue
 			}
 
-			backupItem.TorrentBlobPath = &rel
-			absPath := filepath.Join(dataDir, rel)
+			stored := path.Join("backups", slashRel)
+			backupItem.TorrentBlobPath = &stored
+			rel := filepath.FromSlash(slashRel)
+			absPath := filepath.Join(rootDir, rel)
 
 			// Check if torrent file path was provided from temp directory
 			if torrentPaths != nil && item.ArchivePath != "" {
 				if tempPath, ok := torrentPaths[item.ArchivePath]; ok {
-					if err := s.copyTorrentFromTemp(tempPath, dataDir, rel); err == nil {
+					if err := s.copyTorrentFromTemp(tempPath, rootDir, rel); err == nil {
 						if info, statErr := os.Stat(absPath); statErr == nil {
 							totalTorrentFileBytes += info.Size()
 						}
@@ -1872,7 +1896,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		s.progressMu.Unlock()
 		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
 		s.wg.Go(func() {
-			s.downloadMissingTorrents(run.ID, instanceID, dataDir, missing)
+			s.downloadMissingTorrents(run.ID, instanceID, rootDir, missing)
 		})
 	} else {
 		// No missing torrents, mark as completed immediately
@@ -1909,7 +1933,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 
 // copyTorrentFromTemp validates a torrent from the import temp dir and caches
 // it at the final blob location through the same atomic write as live exports.
-func (s *Service) copyTorrentFromTemp(srcPath, dataDir, relPath string) error {
+func (s *Service) copyTorrentFromTemp(srcPath, rootDir, relPath string) error {
 	data, err := os.ReadFile(srcPath)
 	if err != nil {
 		return fmt.Errorf("read temp file: %w", err)
@@ -1922,13 +1946,13 @@ func (s *Service) copyTorrentFromTemp(srcPath, dataDir, relPath string) error {
 		return fmt.Errorf("invalid torrent data: not a bencoded dict")
 	}
 
-	return cacheTorrentBlob(dataDir, relPath, data)
+	return cacheTorrentBlob(rootDir, relPath, data)
 }
 
 // downloadMissingTorrents downloads torrent blobs in the background for
-// imported manifests. dataDir is the import's normalized data directory, the
+// imported manifests. rootDir is the import's normalized backup root, the
 // same root missingTorrent.absPath was built from.
-func (s *Service) downloadMissingTorrents(runID int64, instanceID int, dataDir string, missing []missingTorrent) {
+func (s *Service) downloadMissingTorrents(runID int64, instanceID int, rootDir string, missing []missingTorrent) {
 	if s.reader == nil {
 		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
 		s.markImportComplete(instanceID, runID)
@@ -1968,7 +1992,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, dataDir s
 			ctx = context.Background()
 		}
 		if data, _, _, err := s.reader.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
-			if err := cacheTorrentBlob(dataDir, mt.relPath, data); err == nil {
+			if err := cacheTorrentBlob(rootDir, mt.relPath, data); err == nil {
 				log.Trace().Int("downloaded", successCount+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Successfully cached missing torrent blob")
 				totalTorrentBytes += int64(len(data))
 				successCount++
@@ -2064,9 +2088,31 @@ func (s *Service) markImportComplete(instanceID int, runID int64) {
 	s.emitRunActivity(instanceID, runID)
 }
 
-// DataDir returns the base data directory used for backups.
-func (s *Service) DataDir() string {
-	return s.cfg.DataDir
+// backupRelPath normalizes a stored backup-relative path to a slash form
+// without the legacy "backups/" prefix. Returns "" for unsafe paths:
+// absolute (POSIX or Windows), drive-prefixed, UNC, or containing a ".."
+// path segment.
+func backupRelPath(rel string) string {
+	raw := strings.ReplaceAll(strings.TrimSpace(rel), `\`, "/")
+	if slices.Contains(strings.Split(raw, "/"), "..") {
+		return ""
+	}
+	slash := path.Clean(raw)
+	if slash == "." || strings.HasPrefix(slash, "/") || (len(slash) >= 2 && slash[1] == ':') {
+		return ""
+	}
+	return strings.TrimPrefix(slash, "backups/")
+}
+
+// ResolveBackupPath maps a stored backup-relative path (with or without the
+// legacy "backups/" prefix) to an absolute path under the backup root.
+// Returns "" when no root is configured or the path is unsafe.
+func (s *Service) ResolveBackupPath(rel string) string {
+	slash := backupRelPath(rel)
+	if slash == "" || s.root == "" {
+		return ""
+	}
+	return filepath.Join(s.root, filepath.FromSlash(slash))
 }
 
 type cachedTorrent struct {
@@ -2075,7 +2121,7 @@ type cachedTorrent struct {
 }
 
 func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash string) (*cachedTorrent, error) {
-	if s.cacheDir == "" || strings.TrimSpace(s.cfg.DataDir) == "" {
+	if s.cacheDir == "" {
 		return nil, nil
 	}
 
@@ -2087,23 +2133,20 @@ func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash st
 		return nil, nil
 	}
 
-	absPath := filepath.Join(s.cfg.DataDir, *rel)
+	absPath := s.ResolveBackupPath(*rel)
+	if absPath == "" {
+		return nil, nil
+	}
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			altRel := filepath.ToSlash(filepath.Join("backups", *rel))
-			altAbs := filepath.Join(s.cfg.DataDir, altRel)
-			if altData, altErr := os.ReadFile(altAbs); altErr == nil {
-				return &cachedTorrent{data: altData, relPath: altRel}, nil
-			} else if errors.Is(altErr, os.ErrNotExist) {
-				return nil, nil
-			} else {
-				return nil, altErr
-			}
+			return nil, nil
 		}
 		return nil, err
 	}
 
+	// Keep the stored spelling so rows that share a blob agree on the rel
+	// path; blob refcounts compare these strings.
 	return &cachedTorrent{data: data, relPath: *rel}, nil
 }
 
@@ -2112,63 +2155,66 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		return
 	}
 
+	// Rows can reference the same blob under the canonical "backups/"-prefixed
+	// spelling or the legacy unprefixed one; both resolve to the same file, so
+	// count remaining references across both spellings before deleting.
 	seen := make(map[string]struct{})
-	var uniqueBlobs []string
+	var uniqueBlobs, lookup []string
 
 	for _, item := range items {
 		if item == nil || item.TorrentBlobPath == nil {
 			continue
 		}
 
-		rel := strings.TrimSpace(*item.TorrentBlobPath)
-		if rel == "" {
+		canon := backupRelPath(*item.TorrentBlobPath)
+		if canon == "" {
 			continue
 		}
-		if _, ok := seen[rel]; ok {
+		if _, ok := seen[canon]; ok {
 			continue
 		}
 
-		seen[rel] = struct{}{}
-		uniqueBlobs = append(uniqueBlobs, rel)
+		seen[canon] = struct{}{}
+		uniqueBlobs = append(uniqueBlobs, canon)
+		lookup = append(lookup, canon, "backups/"+canon)
 	}
 
 	if len(uniqueBlobs) == 0 {
 		return
 	}
 
-	// Batch count references for all blobs
-	refCounts, err := s.store.CountBlobReferencesBatch(ctx, uniqueBlobs)
+	// Item rows are committed only at run end, so a live run's blob reuse is
+	// invisible to the refcount, and blobs are content-addressed and shared
+	// across instances. Defer to the startup sweep while any run is active.
+	if active, err := s.store.FindIncompleteRuns(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to check for active backup runs; skipping blob cleanup")
+		return
+	} else if len(active) > 0 {
+		log.Debug().Int("activeRuns", len(active)).Msg("Backup run in progress; deferring blob cleanup to the startup sweep")
+		return
+	}
+
+	refCounts, err := s.store.CountBlobReferencesBatch(ctx, lookup)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to count torrent blob references")
-		// Fall back to individual counts if batch fails
-		refCounts = make(map[string]int)
-		for _, blob := range uniqueBlobs {
-			count, err := s.store.CountBlobReferences(ctx, blob)
-			if err != nil {
-				log.Warn().Err(err).Str("blob", blob).Msg("Failed to count torrent blob references")
-				continue
-			}
-			refCounts[blob] = count
-		}
+		// Unknown counts must keep the blob: deleting on error can lose a file
+		// another run still references. Startup's cleanupOrphanedBlobs sweeps
+		// anything truly unreferenced later.
+		log.Warn().Err(err).Msg("Failed to count torrent blob references; skipping blob cleanup")
+		return
 	}
 
 	var blobsToDelete []string
 
-	for _, rel := range uniqueBlobs {
-		count, exists := refCounts[rel]
-		if !exists {
-			count = 0 // If not in map, assume 0 references
-		}
-		if count > 0 {
+	for _, canon := range uniqueBlobs {
+		if refCounts[canon]+refCounts["backups/"+canon] > 0 {
 			continue
 		}
 
-		if s.cfg.DataDir == "" {
-			log.Warn().Str("blob", rel).Msg("Cannot cleanup torrent blob without data directory")
+		abs := s.ResolveBackupPath(canon)
+		if abs == "" {
+			log.Warn().Str("blob", canon).Msg("Cannot cleanup torrent blob without backup directory")
 			continue
 		}
-
-		abs := filepath.Join(s.cfg.DataDir, rel)
 		blobsToDelete = append(blobsToDelete, abs)
 	}
 

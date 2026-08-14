@@ -136,6 +136,67 @@ func TestCustomThemesDirResolution(t *testing.T) {
 	}
 }
 
+func TestBackupDirResolution(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, tmpDir string) (configPath string, env string, expected string)
+	}{
+		{
+			name: "default_backups_subdir_of_data_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				dataDir := filepath.Join(tmpDir, "data")
+				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", dataDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", filepath.Join(dataDir, "backups")
+			},
+		},
+		{
+			name: "absolute_override_in_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				backupDir := filepath.Join(tmpDir, "backup-storage")
+				content := testConfigContent + fmt.Sprintf("backupDir = %q\n", backupDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", backupDir
+			},
+		},
+		{
+			name: "relative_override_resolved_against_config_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				content := testConfigContent + "backupDir = \"my-backups\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", filepath.Join(tmpDir, "my-backups")
+			},
+		},
+		{
+			name: "env_override",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+				envDir := filepath.Join(tmpDir, "env-backups")
+				return configPath, envDir, envDir
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath, env, expected := tt.prepare(t, tmpDir)
+			if env != "" {
+				t.Setenv(envPrefix+"BACKUP_DIR", env)
+			}
+
+			cfg, err := New(configPath)
+			require.NoError(t, err)
+
+			assert.Equal(t, filepath.Clean(expected), filepath.Clean(cfg.GetBackupDir()))
+		})
+	}
+}
+
 func TestEnsureCustomThemesDirCreatesDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.toml")

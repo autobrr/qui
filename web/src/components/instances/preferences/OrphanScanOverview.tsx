@@ -21,7 +21,7 @@ import {
 } from "@/hooks/useOrphanScan"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import type { Instance, OrphanScanRunStatus } from "@/types"
+import type { Instance, OrphanScanRun, OrphanScanRunStatus } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -57,6 +57,114 @@ function getStatusBadge(status: OrphanScanRunStatus, filesFound: number | undefi
     default:
       return { variant: "outline" as const, className: "", label: status }
   }
+}
+
+// Exported for testing: renders one row of the Recent Scans list. A row expands
+// only when it has something to show, so it stays a plain row otherwise.
+export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
+  const { t } = useTranslation("instances")
+  const statusBadge = getStatusBadge(run.status, run.filesFound, t)
+  const hasError = !!run.errorMessage
+  const hasDetails = hasError || run.scanPaths.length > 0
+
+  // Show warning indicator for completed runs with errors (partial failures)
+  const hasWarning = run.status === "completed" && hasError
+
+  const rowContent = (
+    <div className="p-3 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
+          {statusBadge.label}
+        </Badge>
+        {hasWarning && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t("preferences.orphanScanOverview.partialFailureExpand")}</p>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
+      </div>
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        {statusBadge.label === "Clean" && (
+          <span>{t("preferences.orphanScanOverview.zeroOrphans")}</span>
+        )}
+        {run.status === "completed" && run.filesFound > 0 && (
+          <span>
+            {t("preferences.orphanScanOverview.deletedStats", { deleted: run.filesDeleted, size: formatBytes(run.bytesReclaimed) })}
+          </span>
+        )}
+        {run.startedAt && (
+          <span>{formatRelativeTime(run.startedAt)}</span>
+        )}
+        {hasDetails && (
+          <ChevronDownIcon className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+        )}
+      </div>
+    </div>
+  )
+
+  if (!hasDetails) {
+    return <div>{rowContent}</div>
+  }
+
+  return (
+    <Collapsible className="group">
+      <CollapsibleTrigger className="w-full text-left cursor-pointer hover:bg-muted/50 transition-colors">
+        {rowContent}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-3 pb-3 pt-0 space-y-3">
+          {hasError && (
+            <div className={cn(
+              "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
+              run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
+            )}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100"
+                onClick={() => {
+                  copyTextToClipboard(run.errorMessage ?? "")
+                  toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              {run.errorMessage}
+            </div>
+          )}
+          {run.scanPaths.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t("preferences.orphanScanOverview.scannedPaths", { total: run.scanPaths.length })}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 opacity-60 hover:opacity-100"
+                  onClick={() => {
+                    copyTextToClipboard(run.scanPaths.join("\n"))
+                    toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {/* Roots are one per distinct save path, so a cross-seed link dir can produce hundreds. */}
+              <div className="p-3 rounded-md border bg-muted/40 text-xs font-mono whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                {run.scanPaths.join("\n")}
+              </div>
+            </div>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
 }
 
 function InstanceOrphanScanItem({
@@ -339,83 +447,9 @@ function InstanceOrphanScanItem({
             <div className="space-y-2">
               <h4 className="text-sm font-medium">{t("preferences.orphanScanOverview.recentScans")}</h4>
               <div className="rounded-md border divide-y">
-                {runs.map((run) => {
-                  const statusBadge = getStatusBadge(run.status, run.filesFound, t)
-                  const hasError = !!run.errorMessage
-
-                  // Show warning indicator for completed runs with errors (partial failures)
-                  const hasWarning = run.status === "completed" && hasError
-
-                  const rowContent = (
-                    <div className="p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Badge {...statusBadge} className={cn("text-xs", statusBadge.className)}>
-                          {statusBadge.label}
-                        </Badge>
-                        {hasWarning && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t("preferences.orphanScanOverview.partialFailureExpand")}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        {statusBadge.label === "Clean" && (
-                          <span>{t("preferences.orphanScanOverview.zeroOrphans")}</span>
-                        )}
-                        {run.status === "completed" && run.filesFound > 0 && (
-                          <span>
-                            {t("preferences.orphanScanOverview.deletedStats", { deleted: run.filesDeleted, size: formatBytes(run.bytesReclaimed) })}
-                          </span>
-                        )}
-                        {run.startedAt && (
-                          <span>{formatRelativeTime(run.startedAt)}</span>
-                        )}
-                        {hasError && (
-                          <ChevronDownIcon className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                        )}
-                      </div>
-                    </div>
-                  )
-
-                  if (!hasError) {
-                    return <div key={run.id}>{rowContent}</div>
-                  }
-
-                  return (
-                    <Collapsible key={run.id} className="group">
-                      <CollapsibleTrigger className="w-full text-left cursor-pointer hover:bg-muted/50 transition-colors">
-                        {rowContent}
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="px-3 pb-3 pt-0">
-                          <div className={cn(
-                            "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
-                            run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
-                          )}>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute top-1 right-1 h-7 w-7 opacity-60 hover:opacity-100"
-                              onClick={() => {
-                                copyTextToClipboard(run.errorMessage ?? "")
-                                toast.success(t("preferences.orphanScanOverview.copiedToClipboard"))
-                              }}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                            {run.errorMessage}
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  )
-                })}
+                {runs.map((run) => (
+                  <OrphanScanRunItem key={run.id} run={run} />
+                ))}
               </div>
             </div>
           )}

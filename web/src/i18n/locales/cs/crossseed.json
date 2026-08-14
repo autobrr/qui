@@ -293,10 +293,17 @@
       "opsDescription": "Použito pro orpheus.network hledání. Vložit k nahrazení; vymazat k odstranění."
     },
     "matching": {
-      "title": "Shodovací mechanismus",
-      "description": "Kontrolujte, jak jsou torrenty shodovány a které souborové rozdíly jsou povoleny.",
+      "title": "Epizody",
+      "description": "Vaše místní balíky celých sezón mohou shodovat individualní epizodové torrenty na indexerech, což vám umožní seedovat oba formáty.",
       "crossSeedEpisodes": "Křížové sdílení epizod z balíků",
-      "crossSeedEpisodesDescription": "Vaše místní balíky celých sezón mohou shodovat individualní epizodové torrenty na indexerech, což vám umožní seedovat oba formáty."
+      "categoryMapping": {
+        "title": "Pravidla kategorie vyhledávání",
+        "description": "Vynutí typ vyhledávání pro torrenty v kategorii qBittorrentu. Pravidlo má přednost před detekcí podle názvu torrentu a souborů.",
+        "whenCategory": "Když je kategorie",
+        "searchAs": "hledat jako",
+        "addRule": "Přidat pravidlo",
+        "removeRule": "Odebrat pravidlo"
+      }
     },
     "safety": {
       "title": "Bezpečnost & kontrola",

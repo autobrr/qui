@@ -343,3 +343,37 @@ func TestCrossSeedStore_FeedItems(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), removed)
 }
+
+// A rule stored before a rule could carry several categories decodes with none.
+// It must not reach the API, where a nil list marshals to null and breaks a
+// client that expects the array the schema promises.
+func TestCrossSeedStore_SettingsDropsLegacySingleCategoryRules(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	settings, err := store.GetSettings(ctx)
+	require.NoError(t, err)
+	settings.CategoryMappingRules = []models.CategoryMappingRule{{Categories: []string{"ebooks"}, ContentType: "book"}}
+	_, err = store.UpsertSettings(ctx, settings)
+	require.NoError(t, err)
+
+	// Rewrite the column in the shape the previous release wrote.
+	_, err = db.ExecContext(ctx,
+		`UPDATE cross_seed_settings SET category_mapping_rules = ?`,
+		`[{"category":"ebooks","contentType":"book"},{"categories":["films"],"contentType":"movie"}]`)
+	require.NoError(t, err)
+
+	reloaded, err := store.GetSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []models.CategoryMappingRule{{Categories: []string{"films"}, ContentType: "movie"}}, reloaded.CategoryMappingRules)
+
+	encoded, err := json.Marshal(reloaded.CategoryMappingRules)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "null", "a nil category list would reach the client as null")
+}

@@ -92,7 +92,7 @@ func TestMatchAgainstIndex_ContentPath(t *testing.T) {
 	t.Run("content path match found", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different.Name"}
-		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match by content path")
 		}
@@ -104,7 +104,7 @@ func TestMatchAgainstIndex_ContentPath(t *testing.T) {
 	t.Run("no content path match", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/unique.mkv", SavePath: "/data", Name: "Unique.Name"}
-		matched, _ := svc.matchAgainstIndex(source, idx, false)
+		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if matched {
 			t.Error("expected no match")
 		}
@@ -113,7 +113,7 @@ func TestMatchAgainstIndex_ContentPath(t *testing.T) {
 	t.Run("ambiguous content path equals save path excluded", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data", SavePath: "/data", Name: "Unique.Name"}
-		matched, _ := svc.matchAgainstIndex(source, idx, false)
+		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if matched {
 			t.Error("expected no match for ambiguous content path")
 		}
@@ -132,7 +132,7 @@ func TestMatchAgainstIndex_ExactName(t *testing.T) {
 	t.Run("exact name match", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/different/content", SavePath: "/different", Name: "Movie.2024.1080p.BluRay"}
-		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match by exact name")
 		}
@@ -144,7 +144,7 @@ func TestMatchAgainstIndex_ExactName(t *testing.T) {
 	t.Run("case insensitive name match", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/different/content", SavePath: "/different", Name: "movie.2024.1080p.bluray"}
-		matched, _ := svc.matchAgainstIndex(source, idx, false)
+		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected case-insensitive name match")
 		}
@@ -164,7 +164,7 @@ func TestMatchAgainstIndex_ReleaseMetadata(t *testing.T) {
 		t.Parallel()
 		// Same title, year, resolution, source, codec, group — different content path and hash
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/other/b", SavePath: "/other", Name: "Movie.2024.1080p.BluRay.x264-GROUP"}
-		matched, _ := svc.matchAgainstIndex(source, idx, false)
+		matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match by release metadata")
 		}
@@ -194,7 +194,7 @@ func TestMatchAgainstIndex_ReleaseMetadataTraceLogsRejection(t *testing.T) {
 		Name:        "Movie.2024.1080p.BluRay.x264-OTHER",
 	}
 
-	matched, _ := svc.matchAgainstIndex(source, idx, false)
+	matched, _, _ := svc.matchAgainstIndex(source, idx, false, false)
 	if matched {
 		t.Fatal("expected group mismatch to reject release metadata candidate")
 	}
@@ -223,7 +223,7 @@ func TestMatchAgainstIndex_ExcludeSelf(t *testing.T) {
 	t.Run("self excluded by hash", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "aaa", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
-		matched, _ := svc.matchAgainstIndex(source, idx, true)
+		matched, _, _ := svc.matchAgainstIndex(source, idx, true, false)
 		if matched {
 			t.Error("expected no match when excluding self")
 		}
@@ -232,7 +232,7 @@ func TestMatchAgainstIndex_ExcludeSelf(t *testing.T) {
 	t.Run("different hash not excluded", func(t *testing.T) {
 		t.Parallel()
 		source := &qbt.Torrent{Hash: "bbb", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
-		matched, _ := svc.matchAgainstIndex(source, idx, true)
+		matched, _, _ := svc.matchAgainstIndex(source, idx, true, false)
 		if !matched {
 			t.Error("expected match for different hash")
 		}
@@ -250,7 +250,7 @@ func TestMatchAgainstIndex_SeedingDetection(t *testing.T) {
 		}
 		idx := svc.buildIndexFromViews(views, true)
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different"}
-		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match")
 		}
@@ -266,7 +266,7 @@ func TestMatchAgainstIndex_SeedingDetection(t *testing.T) {
 		}
 		idx := svc.buildIndexFromViews(views, true)
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different"}
-		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match")
 		}
@@ -283,7 +283,7 @@ func TestMatchAgainstIndex_SeedingDetection(t *testing.T) {
 		}
 		idx := svc.buildIndexFromViews(views, true)
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Different"}
-		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match")
 		}
@@ -302,7 +302,7 @@ func TestMatchAgainstIndex_SeedingDetection(t *testing.T) {
 		}
 		idx := svc.buildIndexFromViews(views, true)
 		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024.1080p.BluRay.x264"}
-		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, false, false)
 		if !matched {
 			t.Error("expected match")
 		}
@@ -374,7 +374,7 @@ func TestSameInstanceMatchingEndToEnd(t *testing.T) {
 
 		// aaa should match bbb (same content path, different hash)
 		source := views[0].Torrent
-		matched, seeding := svc.matchAgainstIndex(source, idx, true)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
 		if !matched {
 			t.Error("expected aaa to match (bbb has same content path)")
 		}
@@ -384,7 +384,7 @@ func TestSameInstanceMatchingEndToEnd(t *testing.T) {
 
 		// bbb should match aaa
 		source = views[1].Torrent
-		matched, seeding = svc.matchAgainstIndex(source, idx, true)
+		matched, seeding, _ = svc.matchAgainstIndex(source, idx, true, false)
 		if !matched {
 			t.Error("expected bbb to match (aaa has same content path)")
 		}
@@ -394,7 +394,7 @@ func TestSameInstanceMatchingEndToEnd(t *testing.T) {
 
 		// ccc should not match (different content path, unique name)
 		source = views[2].Torrent
-		matched, _ = svc.matchAgainstIndex(source, idx, true)
+		matched, _, _ = svc.matchAgainstIndex(source, idx, true, false)
 		if matched {
 			t.Error("expected ccc to NOT match")
 		}
@@ -409,7 +409,7 @@ func TestSameInstanceMatchingEndToEnd(t *testing.T) {
 		idx := svc.buildIndexFromViews(views, true)
 
 		source := views[0].Torrent
-		matched, seeding := svc.matchAgainstIndex(source, idx, true)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
 		if !matched {
 			t.Error("expected match by name")
 		}
@@ -429,7 +429,7 @@ func TestSameInstanceMatchingEndToEnd(t *testing.T) {
 
 		for i, hash := range []string{"aaa", "bbb", "ccc"} {
 			source := views[i].Torrent
-			matched, seeding := svc.matchAgainstIndex(source, idx, true)
+			matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
 			if !matched {
 				t.Errorf("expected %s to match", hash)
 			}
@@ -448,12 +448,106 @@ func TestSameInstanceMatchingEndToEnd(t *testing.T) {
 		idx := svc.buildIndexFromViews(views, true)
 
 		source := views[0].Torrent
-		matched, seeding := svc.matchAgainstIndex(source, idx, true)
+		matched, seeding, _ := svc.matchAgainstIndex(source, idx, true, false)
 		if !matched {
 			t.Error("expected match")
 		}
 		if seeding {
 			t.Error("expected not seeding (both paused)")
+		}
+	})
+}
+
+func makeTaggedView(hash, name, contentPath, savePath, tags string) qbittorrent.CrossInstanceTorrentView {
+	view := makeView(hash, name, contentPath, savePath, 1.0, qbt.TorrentStateUploading)
+	view.Tags = tags
+	return view
+}
+
+func TestMatchAgainstIndex_MemberTags(t *testing.T) {
+	t.Parallel()
+	svc := newTestService()
+
+	t.Run("tags collected per strategy", func(t *testing.T) {
+		t.Parallel()
+		views := []qbittorrent.CrossInstanceTorrentView{
+			// Matches by content path only.
+			makeTaggedView("aaa", "Different.Name.2024", "/data/movie.mkv", "/data", "path-tag"),
+			// Matches by exact name only.
+			makeTaggedView("bbb", "Movie.2024.1080p.BluRay.x264-GROUP", "/other/a", "/other", "name-tag, extra"),
+			// Matches by release metadata only (same release, different name casing dodged via distinct path/name).
+			makeTaggedView("ccc", "Movie.2024.1080p.BLURAY.x264-GROUP", "/other/b", "/other", "release-tag"),
+		}
+		idx := svc.buildIndexFromViews(views, false)
+
+		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024.1080p.BluRay.x264-GROUP"}
+		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, true)
+		if !matched {
+			t.Fatal("expected match")
+		}
+		// ccc matches by BOTH name (case-insensitive) and release; it must appear once.
+		want := []string{"name-tag, extra", "path-tag", "release-tag"}
+		if len(memberTags) != len(want) {
+			t.Fatalf("expected %d tag strings, got %v", len(want), memberTags)
+		}
+		for i, w := range want {
+			if memberTags[i] != w {
+				t.Errorf("expected sorted memberTags[%d]=%q, got %q", i, w, memberTags[i])
+			}
+		}
+	})
+
+	t.Run("self excluded and untagged member contributes nothing", func(t *testing.T) {
+		t.Parallel()
+		views := []qbittorrent.CrossInstanceTorrentView{
+			makeTaggedView("aaa", "Movie.2024", "/data/movie.mkv", "/data", "self-tag"),
+			makeTaggedView("bbb", "Movie.2024", "/data/movie.mkv", "/data", ""),
+		}
+		idx := svc.buildIndexFromViews(views, false)
+
+		source := &qbt.Torrent{Hash: "aaa", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
+		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, true)
+		if !matched {
+			t.Fatal("expected match against bbb")
+		}
+		if len(memberTags) != 0 {
+			t.Errorf("expected no member tags (self excluded, bbb untagged), got %v", memberTags)
+		}
+	})
+
+	t.Run("collectTags false returns nil", func(t *testing.T) {
+		t.Parallel()
+		views := []qbittorrent.CrossInstanceTorrentView{
+			makeTaggedView("aaa", "Movie.2024", "/data/movie.mkv", "/data", "some-tag"),
+		}
+		idx := svc.buildIndexFromViews(views, false)
+
+		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024"}
+		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, false)
+		if !matched {
+			t.Fatal("expected match")
+		}
+		if memberTags != nil {
+			t.Errorf("expected nil member tags when collectTags is false, got %v", memberTags)
+		}
+	})
+
+	t.Run("ambiguous content path member yields no tags", func(t *testing.T) {
+		t.Parallel()
+		views := []qbittorrent.CrossInstanceTorrentView{
+			// ContentPath == SavePath: dropped from the content-path index; name is
+			// unique and release title differs, so no strategy matches it.
+			makeTaggedView("aaa", "Flat.Layout.Torrent", "/data", "/data", "ambiguous-tag"),
+		}
+		idx := svc.buildIndexFromViews(views, false)
+
+		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data", SavePath: "/data", Name: "Unrelated.Release.2020"}
+		matched, _, memberTags := svc.matchAgainstIndex(source, idx, true, true)
+		if matched {
+			t.Fatal("expected no match for ambiguous content path")
+		}
+		if len(memberTags) != 0 {
+			t.Errorf("expected no member tags, got %v", memberTags)
 		}
 	})
 }

@@ -114,6 +114,7 @@ export function SeasonPackCategoryRulesEditor({
               placeholder={t("rules.categories.selectOrTypeCategory")}
               className="w-[180px]"
               creatable
+              single
               disabled={disabled}
             />
 

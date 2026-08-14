@@ -279,6 +279,7 @@ describe("api.crossseed contract", () => {
             ],
             cache: { hit: true },
             partial: true,
+            query_degraded: "arr_lookup_failed",
           })
         )
       )
@@ -315,6 +316,7 @@ describe("api.crossseed contract", () => {
       ])
       expect(result.cache).toEqual({ hit: true })
       expect(result.partial).toBe(true)
+      expect(result.queryDegraded).toBe("arr_lookup_failed")
     })
 
     it("falls back source name to trimmed query and match_score to 0 when absent", async () => {
@@ -354,6 +356,23 @@ describe("api.crossseed contract", () => {
       expect(result.results[0].infoUrl).toBeUndefined()
       // partial absent -> undefined
       expect(result.partial).toBeUndefined()
+      expect(result.queryDegraded).toBeUndefined()
+    })
+
+    it("maps the arr_no_ids degradation reason", async () => {
+      server.use(
+        http.post("*/api/cross-seed/torrents/:instanceId/:hash/search", () =>
+          HttpResponse.json({
+            source_torrent: null,
+            results: [],
+            query_degraded: "arr_no_ids",
+          })
+        )
+      )
+
+      const result = await api.searchCrossSeedTorrent(1, "abc")
+
+      expect(result.queryDegraded).toBe("arr_no_ids")
     })
   })
 

@@ -7,9 +7,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/moistari/rls"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
@@ -131,6 +134,12 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 
 	result, err := s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances, cacheResult == nil)
 	if err != nil {
+		// Instances unreachable: fall back to the cached IDs that triggered this
+		// re-query (e.g. a legacy entry awaiting title hydration) rather than
+		// discarding known-good data over a transient outage.
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
 		return nil, err
 	}
 	if result.IDs == nil || result.IDs.IsEmpty() {
@@ -215,24 +224,54 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 
 func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, cacheNegative bool) (*ExternalIDsResult, error) {
 	anyQueried := false
+	// Parse mis-reads some names (e.g. a yearless title whose group tag ends in
+	// digits parses with a bogus year), so when it yields no IDs, retry as a plain
+	// title search against the instance's lookup endpoint. The rls year (when the
+	// name carries one) disambiguates same-title remakes among lookup candidates.
+	parsedRelease := rls.ParseString(title)
+	lookupTerm := strings.TrimSpace(parsedRelease.Title)
+	lookupYear := parsedRelease.Year
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
 		if client == nil {
 			continue
 		}
 		result, err := client.ParseTitleLookupResult(ctx, title)
+		parseAnswered := err == nil
 		if err != nil {
 			log.Debug().Err(err).
 				Int("instanceId", instance.ID).
 				Str("instanceName", instance.Name).
 				Str("title", title).
 				Msg("[ARR-LOOKUP] Parse request failed")
-			continue
+			result = nil
 		}
 
-		anyQueried = true
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
 			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse"), nil
+		}
+
+		// anyQueried gates negative caching and the total-failure error: an
+		// instance counts as queried only when its lookup cycle reached an
+		// authoritative empty answer. A parse-empty followed by a lookup error
+		// is inconclusive — parse-empty is exactly the state the title-lookup
+		// fallback exists to distrust.
+		if lookupTerm != "" {
+			lookupResult, lookupErr := client.LookupByTerm(ctx, lookupTerm, lookupYear)
+			if lookupErr != nil {
+				log.Debug().Err(lookupErr).
+					Int("instanceId", instance.ID).
+					Str("instanceName", instance.Name).
+					Str("term", lookupTerm).
+					Msg("[ARR-LOOKUP] Title lookup failed")
+				continue
+			}
+			anyQueried = true
+			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
+				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, lookupResult, "lookup"), nil
+			}
+		} else if parseAnswered {
+			anyQueried = true
 		}
 
 		log.Debug().
@@ -242,7 +281,13 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			Msg("[ARR-LOOKUP] No IDs returned from instance")
 	}
 
-	if cacheNegative && anyQueried {
+	if !anyQueried {
+		// Every instance failed before giving an authoritative answer: surface
+		// the outage instead of a look-alike "no IDs" result, and cache nothing.
+		return nil, fmt.Errorf("arr lookup: all %d instance(s) failed to answer", len(instances))
+	}
+
+	if cacheNegative {
 		if err := s.cacheStore.Set(ctx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}

@@ -37,6 +37,15 @@ type SeasonPackCategoryRule struct {
 	Category   string `json:"category"`   // qBittorrent category to file the add under
 }
 
+// CategoryMappingRule forces the cross-seed search category for torrents in any
+// of a set of qBittorrent categories (discussion #1734). A category must match
+// exactly; a matching rule wins over both the name parse and the file-extension
+// signal.
+type CategoryMappingRule struct {
+	Categories  []string `json:"categories"`  // qBittorrent category names, exact match
+	ContentType string   `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app
+}
+
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
 // Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
@@ -68,6 +77,10 @@ type CrossSeedAutomationSettings struct {
 	AutoResumeMaxDownloadMB int  `json:"autoResumeMaxDownloadMb"` // Max missing data (MiB) to still auto-resume a new cross-seed; 0 = only complete torrents (default: 50)
 	UseCategoryFromIndexer  bool `json:"useCategoryFromIndexer"`  // Use indexer name as category for cross-seeds
 	RunExternalProgramID    *int `json:"runExternalProgramId"`    // Optional external program to run after successful cross-seed injection
+
+	// Category mapping rules force the search category for torrents in a
+	// qBittorrent category; a matching rule wins over content type detection.
+	CategoryMappingRules []CategoryMappingRule `json:"categoryMappingRules"`
 
 	// Source-specific tagging: tags applied based on how the cross-seed was discovered.
 	// Each defaults to ["cross-seed"]. Users can add source-specific tags like "rss", "seeded-search", etc.
@@ -158,6 +171,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		AutoResumeMaxDownloadMB:        DefaultAutoResumeMaxDownloadMB,
 		UseCategoryFromIndexer:         false, // Default to false - don't override categories by default
 		RunExternalProgramID:           nil,   // No external program by default
+		CategoryMappingRules:           []CategoryMappingRule{},
 		// Source-specific tagging defaults - all sources default to ["cross-seed"]
 		RSSAutomationTags:    []string{"cross-seed"},
 		SeededSearchTags:     []string{"cross-seed"},
@@ -434,6 +448,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       find_individual_episodes,
 		       auto_resume_max_download_mb,
 		       use_category_from_indexer, run_external_program_id,
+		       category_mapping_rules,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
 		       webhook_tags, inherit_source_tags,
 		       use_cross_category_affix, category_affix_mode, category_affix,
@@ -471,6 +486,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var seasonPackAutomationEnabled int
 	var seasonPackTags, seasonPackCategory sql.NullString
 	var seasonPackCategoryRules sql.NullString
+	var categoryMappingRules sql.NullString
 	var seasonPackTVDBAPIKeyEncrypted, seasonPackTVDBPINEncrypted sql.NullString
 	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
@@ -496,6 +512,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.AutoResumeMaxDownloadMB,
 		&useCategoryFromIndexer,
 		&runExternalProgramID,
+		&categoryMappingRules,
 		&rssAutomationTags,
 		&seededSearchTags,
 		&completionSearchTags,
@@ -602,9 +619,18 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if seasonPackCategory.Valid {
 		settings.SeasonPackCategory = seasonPackCategory.String
 	}
-	if err := decodeSeasonPackCategoryRules(seasonPackCategoryRules, &settings.SeasonPackCategoryRules); err != nil {
+	if err := decodeJSONSlice(seasonPackCategoryRules, &settings.SeasonPackCategoryRules); err != nil {
 		return nil, fmt.Errorf("decode season pack category rules: %w", err)
 	}
+	if err := decodeJSONSlice(categoryMappingRules, &settings.CategoryMappingRules); err != nil {
+		return nil, fmt.Errorf("decode category mapping rules: %w", err)
+	}
+	// A rule written before a rule could carry several categories decodes with
+	// none. It can never match, and its nil list would reach the API as a null
+	// where the schema promises an array, so drop it on read.
+	settings.CategoryMappingRules = slices.DeleteFunc(settings.CategoryMappingRules, func(rule CategoryMappingRule) bool {
+		return len(rule.Categories) == 0
+	})
 
 	if createdAt.Valid {
 		settings.CreatedAt = createdAt.Time
@@ -806,9 +832,13 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode season pack tags: %w", err)
 	}
-	seasonPackCategoryRules, err := encodeSeasonPackCategoryRules(settings.SeasonPackCategoryRules)
+	seasonPackCategoryRules, err := encodeJSONSlice(settings.SeasonPackCategoryRules)
 	if err != nil {
 		return nil, fmt.Errorf("encode season pack category rules: %w", err)
+	}
+	categoryMappingRules, err := encodeJSONSlice(settings.CategoryMappingRules)
+	if err != nil {
+		return nil, fmt.Errorf("encode category mapping rules: %w", err)
 	}
 
 	var existingRedactedEncrypted string
@@ -921,6 +951,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			find_individual_episodes,
 			auto_resume_max_download_mb,
 			use_category_from_indexer, run_external_program_id,
+			category_mapping_rules,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
 			webhook_tags, inherit_source_tags,
 			use_cross_category_affix, category_affix_mode, category_affix,
@@ -935,7 +966,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -957,6 +988,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			auto_resume_max_download_mb = excluded.auto_resume_max_download_mb,
 			use_category_from_indexer = excluded.use_category_from_indexer,
 			run_external_program_id = excluded.run_external_program_id,
+			category_mapping_rules = excluded.category_mapping_rules,
 			rss_automation_tags = excluded.rss_automation_tags,
 			seeded_search_tags = excluded.seeded_search_tags,
 			completion_search_tags = excluded.completion_search_tags,
@@ -1023,6 +1055,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.AutoResumeMaxDownloadMB,
 		BoolToSQLite(settings.UseCategoryFromIndexer),
 		runExternalProgramID,
+		categoryMappingRules,
 		rssAutomationTags,
 		seededSearchTags,
 		completionSearchTags,
@@ -1957,23 +1990,23 @@ func decodeStringSliceWithDefault(src sql.NullString, dest *[]string, defaultVal
 	return nil
 }
 
-func encodeSeasonPackCategoryRules(rules []SeasonPackCategoryRule) (string, error) {
-	if rules == nil {
-		rules = []SeasonPackCategoryRule{}
+func encodeJSONSlice[T any](items []T) (string, error) {
+	if items == nil {
+		items = []T{}
 	}
-	data, err := json.Marshal(rules)
+	data, err := json.Marshal(items)
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
 }
 
-func decodeSeasonPackCategoryRules(src sql.NullString, dest *[]SeasonPackCategoryRule) error {
+func decodeJSONSlice[T any](src sql.NullString, dest *[]T) error {
 	if !src.Valid || src.String == "" {
-		*dest = []SeasonPackCategoryRule{}
+		*dest = []T{}
 		return nil
 	}
-	var tmp []SeasonPackCategoryRule
+	var tmp []T
 	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
 		return err
 	}

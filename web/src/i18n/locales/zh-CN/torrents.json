@@ -637,6 +637,8 @@
     "expires": "过期 {{time}}",
     "refreshFromIndexers": "从索引器刷新",
     "partialResults": "部分结果：部分索引器未响应",
+    "arrLookupFailed": "元数据 ID 查询失败：仅按标题搜索，结果可能不完整",
+    "arrNoIds": "未找到该资源的元数据 ID：仅按标题搜索",
     "searchScope": "搜索范围",
     "noIndexers": "没有可用的 Torznab 索引器",
     "noIndexersHelp": "在设置中添加或启用 Torznab 索引器以搜索辅种。",
