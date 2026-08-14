@@ -7,8 +7,8 @@ hits a performance wall).
 
 ## Context and Decision
 
-#1914 adds `fsops.Backend`; service callsites migrate from direct `os.*`
-calls to it in #1915–#1916. Instances running on a different host than qui
+PR #1914 adds `fsops.Backend`; service callsites migrate from direct
+`os.*` calls to it in #1915–#1916. Instances running on a different host than qui
 need a remote implementation.
 
 The prior design deployed a `qui-helper` binary to the remote host and spoke
@@ -28,8 +28,12 @@ the key's own restrictions — not qui configuration — pick the trade-off.
 ## Capability Tiers
 
 **SFTP-only** (key restricted to `internal-sftp`): stat, lstat, readdir,
-walks, mkdir, remove, free space (`statvfs@openssh.com`), and hardlink-tree
-creation (`hardlink@openssh.com`) all work. SFTP v3 attrs carry no inode or
+walks, mkdir, and remove always work; free space and hardlink-tree
+creation depend on the `statvfs@openssh.com` and `hardlink@openssh.com`
+extensions, which the connect probe tracks independently — an operation
+whose extension the server does not advertise returns an explicit
+unsupported error and appears in the capability report, rather than the
+tier being assumed to include it. SFTP v3 attrs carry no inode or
 nlink, so file identity is unavailable: `Lstat`/`WalkDir` set `FileIDErr`
 when identity is requested. Consumers already degrade on zero FileID —
 orphan-scan alias dedup switches off, hardlinked-copy detection reports
@@ -43,7 +47,16 @@ silent skip (raised by Audionut on #1914). The degraded mode must be
 surfaced in the UI, not silent.
 
 **SFTP+exec**: identity arrives via `find`/`stat` sweeps, reflink support is
-probed and used, `SameFilesystem` is exact. Full functionality.
+probed and used, `SameFilesystem` is exact. "Full functionality" means
+every operation has either a supported SFTP extension or an exec
+fallback — the probe verifies that per operation, it is not implied by
+the tier label.
+
+`SameFilesystem` with unusable fsids (servers that report zeroes, no exec
+fallback): returns an explicit error, never a guess in either direction.
+Both migrated callers (season-pack base-dir selection, dirscan link-tree
+placement) already treat the error as "don't hardlink" and fall back to
+non-link strategies, which is the safe degradation.
 
 ## Operation Mapping
 
@@ -291,7 +304,5 @@ performance wall, #1913 has the protocol design ready.
 
 ## Open Questions
 
-1. `SameFilesystem` on SFTP-only when the server zeroes fsids: conservative
-   `false`, or refuse ops that require the answer?
-2. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
+1. BSD/macOS remotes: which exec probes degrade, and is SFTP-only the
    supported floor there?
