@@ -25,9 +25,16 @@ var foldSamples = []string{
 	"Æbler.Og.Pærer",
 	"Ünïcödé Ñämé",
 	"cross-seed, unregistered, permaseed",
+	"k",
+	"ß",
+	"ss",
+	"İ",
 }
 
-var foldNeedles = []string{"", "s01", "S01", "release", "ø", "æbler", "  ", "grpa", "nomatch", "a"}
+// The Kelvin sign and capital sharp s lower-case to FEWER bytes ("k", "ß"),
+// and the dotted capital I to MORE ("i" plus a combining dot), so they catch
+// any byte-length arithmetic that runs before the non-ASCII fallback.
+var foldNeedles = []string{"", "s01", "S01", "release", "ø", "æbler", "  ", "grpa", "nomatch", "a", "K", "ẞ", "İ"}
 
 func TestContainsFoldMatchesLowerContains(t *testing.T) {
 	for _, haystack := range foldSamples {

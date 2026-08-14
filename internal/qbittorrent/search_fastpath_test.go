@@ -31,6 +31,8 @@ var searchFastPathSamples = []string{
 	"Bjørnen.Sover.2019.1080p",            // non-ASCII
 	"Æbler.Og.Pærer",                      // non-ASCII
 	"Ünïcödé Ñämé",                        // non-ASCII with marks
+	"Amélie",                              // accented, one byte longer than its
+	"Amelie",                              // unaccented twin: Rank refuses the pair, Match folds first
 	"tab\tand\nnewline",                   // whitespace variants
 	"...leading.separators",               // separator run at the start
 	"trailing.separators...",              // separator run at the end
@@ -52,10 +54,15 @@ func TestRankFuzzyMatchesLibrary(t *testing.T) {
 
 		for _, rawTarget := range searchFastPathSamples {
 			target := normalizeForSearch(rawTarget)
-			assert.Equal(t,
-				fuzzy.RankMatchNormalizedFold(source, target),
-				rankFuzzy(source, target, folded),
-				"source %q target %q", source, target)
+			rank := rankFuzzy(source, target, folded)
+
+			// Membership must match the fold-first Match; see rankFuzzy.
+			assert.Equal(t, fuzzy.MatchNormalizedFold(source, target), rank >= 0,
+				"membership for source %q target %q", source, target)
+
+			if libRank := fuzzy.RankMatchNormalizedFold(source, target); libRank >= 0 {
+				assert.Equal(t, libRank, rank, "source %q target %q", source, target)
+			}
 		}
 	}
 }

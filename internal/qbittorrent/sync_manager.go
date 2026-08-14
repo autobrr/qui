@@ -4570,7 +4570,15 @@ func rankFuzzy(source, target string, sourceIsFolded bool) int {
 	if sourceIsFolded && isASCIIFolded(target) {
 		return fuzzy.RankMatch(source, target)
 	}
-	return fuzzy.RankMatchNormalizedFold(source, target)
+	if rank := fuzzy.RankMatchNormalizedFold(source, target); rank >= 0 {
+		return rank
+	}
+	// Rank refuses a source with more BYTES than the target before folding, so
+	// the fold-first Match decides membership.
+	if fuzzy.MatchNormalizedFold(source, target) {
+		return 0
+	}
+	return -1
 }
 
 // filterTorrentsBySearch filters torrents by search string with smart matching

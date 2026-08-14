@@ -39,11 +39,12 @@ func ContainsFold(s, sub string) bool {
 	if sub == "" {
 		return true
 	}
-	if len(sub) > len(s) {
-		return false
-	}
 	if !isASCII(s) || !isASCII(sub) {
 		return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
+	}
+	// Only sound for ASCII: ToLower can change a non-ASCII string's byte length.
+	if len(sub) > len(s) {
+		return false
 	}
 
 	first := lowerASCII(sub[0])
@@ -67,13 +68,14 @@ func ContainsFold(s, sub string) bool {
 
 // HasPrefixFold reports whether s starts with prefix, case-insensitively.
 func HasPrefixFold(s, prefix string) bool {
+	if !isASCII(s) || !isASCII(prefix) {
+		return strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix))
+	}
+	// Only sound for ASCII: ToLower can change a non-ASCII string's byte length.
 	if len(prefix) > len(s) {
 		return false
 	}
 	for i := range len(prefix) {
-		if s[i] >= utf8.RuneSelf || prefix[i] >= utf8.RuneSelf {
-			return strings.HasPrefix(strings.ToLower(s), strings.ToLower(prefix))
-		}
 		if lowerASCII(s[i]) != lowerASCII(prefix[i]) {
 			return false
 		}
@@ -83,14 +85,15 @@ func HasPrefixFold(s, prefix string) bool {
 
 // HasSuffixFold reports whether s ends with suffix, case-insensitively.
 func HasSuffixFold(s, suffix string) bool {
+	if !isASCII(s) || !isASCII(suffix) {
+		return strings.HasSuffix(strings.ToLower(s), strings.ToLower(suffix))
+	}
+	// Only sound for ASCII: ToLower can change a non-ASCII string's byte length.
 	if len(suffix) > len(s) {
 		return false
 	}
 	offset := len(s) - len(suffix)
 	for i := range len(suffix) {
-		if s[offset+i] >= utf8.RuneSelf || suffix[i] >= utf8.RuneSelf {
-			return strings.HasSuffix(strings.ToLower(s), strings.ToLower(suffix))
-		}
 		if lowerASCII(s[offset+i]) != lowerASCII(suffix[i]) {
 			return false
 		}
