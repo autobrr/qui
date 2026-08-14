@@ -10,11 +10,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
+	"testing"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -28,8 +31,33 @@ var sharedTransport = func() *http.Transport {
 	t.MaxIdleConnsPerHost = 10
 	t.IdleConnTimeout = 90 * time.Second
 	t.ForceAttemptHTTP2 = true
+	if testing.Testing() {
+		blockLiveTrackerDials(t)
+	}
 	return t
 }()
+
+// blockLiveTrackerDials stops the test suite from reaching a real tracker.
+// The tracker APIs are rate limited per account, so a stray call from a test
+// spends the maintainer's budget on every run. Callers log a failed lookup as a
+// warning and carry on, so a returned error would keep the test green: this
+// panics instead, which no caller can swallow.
+func blockLiveTrackerDials(t *http.Transport) {
+	t.Proxy = nil // an HTTP_PROXY on the test process would route around the check below
+	dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+	// Control receives the address after DNS resolution, so a host name is
+	// already an IP here and needs no separate lookup.
+	dialer.Control = func(_, address string, _ syscall.RawConn) error {
+		if host, _, err := net.SplitHostPort(address); err == nil {
+			if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+				return nil
+			}
+		}
+		panic("gazellemusic: test tried to dial a live tracker at " + address +
+			" (give NewClient a test server baseURL, or stub the lookup)")
+	}
+	t.DialContext = dialer.DialContext
+}
 
 // sharedLimiters ensures we don't create one rate limiter per qBittorrent instance/client.
 // Rate limits are per tracker host and must be shared across the whole qui process.
@@ -160,23 +188,26 @@ func sharedLimiterForTracker(spec TrackerSpec) (*rate.Limiter, error) {
 	return actual.(*rate.Limiter), nil
 }
 
-func NewClient(serverURL, apiKey string) (*Client, error) {
-	parsed, err := url.Parse(serverURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid server URL: %w", err)
-	}
-	host := parsed.Host
+// NewClient builds a client for one of the KnownTrackers. trackerHost is the
+// tracker's identity: it selects the rate limit and the source flag. baseURL is
+// the address to talk to, and is empty outside tests, where it means the
+// tracker's own site.
+func NewClient(trackerHost, baseURL, apiKey string) (*Client, error) {
+	host := strings.ToLower(strings.TrimSpace(trackerHost))
 	spec, ok := KnownTrackers[host]
 	if !ok {
-		return nil, fmt.Errorf("unsupported gazelle host: %s", host)
+		return nil, fmt.Errorf("unsupported gazelle host: %s", trackerHost)
 	}
 	limiter, err := sharedLimiterForTracker(spec)
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "https://" + host
+	}
 
 	return &Client{
-		baseURL: serverURL,
+		baseURL: baseURL,
 		apiKey:  apiKey,
 		httpClient: &http.Client{
 			Timeout:   30 * time.Second,

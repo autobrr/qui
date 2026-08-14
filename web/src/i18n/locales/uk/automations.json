@@ -206,6 +206,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "Роздається в іншому екземплярі",
       "EXISTS_ON_SAME_INSTANCE": "Крос-сід існує в тому ж екземплярі",
       "SEEDING_ON_SAME_INSTANCE": "Крос-сід роздається в тому ж екземплярі",
+      "CROSS_SEED_TAGS": "Теги крос-сідів",
       "HARDLINK_SCOPE": "Область жорстких посилань",
       "TRACKER_STATUS": "Статус трекера",
       "TRACKER_MESSAGE": "Повідомлення трекера",

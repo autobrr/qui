@@ -6,6 +6,7 @@
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
+import { CategoryMappingRulesEditor } from "@/components/crossseed/CategoryMappingRulesEditor"
 import { SeasonPackCategoryRulesEditor } from "@/components/crossseed/SeasonPackCategoryRulesEditor"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -53,6 +54,7 @@ import type {
   CrossSeedRun,
   CrossSeedSearchResult,
   Instance,
+  CategoryMappingRule,
   SeasonPackCategoryRule,
   SeasonPackRun
 } from "@/types"
@@ -92,6 +94,7 @@ interface AutomationFormState {
 // Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
 interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
+  categoryMappingRules: CategoryMappingRule[]
   autoResumeMaxDownloadMb: number
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
@@ -165,6 +168,7 @@ const DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB = 50
 
 const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
+  categoryMappingRules: [],
   autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
@@ -1122,6 +1126,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
+        categoryMappingRules: settings.categoryMappingRules ?? [],
         autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
@@ -1226,6 +1231,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
+      categoryMappingRules: settings.categoryMappingRules ?? [],
       autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
@@ -1271,6 +1277,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
+      categoryMappingRules: globalSource.categoryMappingRules,
       autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
@@ -2920,23 +2927,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
-              {/* Matching behavior */}
+              {/* Search category rules */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
-                  <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
+                  <p className="text-sm font-medium leading-none">{t("rules.matching.categoryMapping.title")}</p>
+                  <p className="text-xs text-muted-foreground">{t("rules.matching.categoryMapping.description")}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
-                    <FieldHelp>{t("rules.matching.crossSeedEpisodesDescription")}</FieldHelp>
-                  </div>
-                  <Switch
-                    id="global-find-individual-episodes"
-                    checked={globalSettings.findIndividualEpisodes}
-                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, findIndividualEpisodes: !!value }))}
-                  />
-                </div>
+                <CategoryMappingRulesEditor
+                  value={globalSettings.categoryMappingRules}
+                  onChange={rules => setGlobalSettings(prev => ({ ...prev, categoryMappingRules: rules }))}
+                  categoryMetadata={webhookSourceMetadata?.categories ?? {}}
+                />
               </div>
 
               {/* Season packs */}
@@ -3100,6 +3101,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       placeholder={globalSettings.seasonPackEnabled || globalSettings.seasonPackAutomationEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
                       className="max-w-sm"
                       creatable
+                      single
                       disabled={!globalSettings.seasonPackEnabled && !globalSettings.seasonPackAutomationEnabled}
                     />
                   </div>
@@ -3152,6 +3154,22 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     id="skip-piece-boundary-check"
                     checked={!globalSettings.skipPieceBoundarySafetyCheck}
                     onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipPieceBoundarySafetyCheck: !value }))}
+                  />
+                </div>
+              </div>
+
+              {/* Episodes */}
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">{t("rules.matching.title")}</p>
+                  <p className="text-xs text-muted-foreground">{t("rules.matching.description")}</p>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="global-find-individual-episodes" className="font-medium">{t("rules.matching.crossSeedEpisodes")}</Label>
+                  <Switch
+                    id="global-find-individual-episodes"
+                    checked={globalSettings.findIndividualEpisodes}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, findIndividualEpisodes: !!value }))}
                   />
                 </div>
               </div>
@@ -3248,6 +3266,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                             placeholder={t("rules.categories.selectOrTypeCategory")}
                             className={`mt-2 max-w-xs ${validationErrors.customCategory ? "border-destructive" : ""}`}
                             creatable
+                            single
                             onCreateOption={value => {
                               setGlobalSettings(prev => ({ ...prev, customCategory: value }))
                               setValidationErrors(prev => ({ ...prev, customCategory: "" }))

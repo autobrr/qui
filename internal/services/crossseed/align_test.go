@@ -543,9 +543,10 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			// Files with different normalized keys are extras even if sizes match.
-			// a.mkv and x.mkv have different normalized keys, so they don't match.
-			name: "different normalized keys same size - has extras",
+			// Renamed content matches when each file is the sole candidate of its
+			// size: same policy as the rename plan and link modes (#2272). Ambiguous
+			// same-size buckets and ignored sidecars still count as extras (below).
+			name: "different normalized keys same size - sole candidate matches",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/a.mkv", Size: 1000},
 				{Name: "Movie/b.mkv", Size: 2000},
@@ -554,7 +555,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/x.mkv", Size: 1000},
 				{Name: "Movie/y.mkv", Size: 2000},
 			},
-			expectedResult: true, // a.mkv ≠ x.mkv, b.mkv ≠ y.mkv by normalized key
+			expectedResult: false, // each pairs by unique size via the size-only fallback
 		},
 		{
 			name: "candidate has more files than source - no extras",

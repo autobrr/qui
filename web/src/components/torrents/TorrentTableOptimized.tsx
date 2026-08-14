@@ -75,6 +75,7 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
 import { cn } from "@/lib/utils"
 import type {
@@ -298,6 +299,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
+
+  // Spreadsheet theme: row numbers down the left edge, with a blank corner cell
+  // in the header. Stacked (compact) rows have no column grid to number.
+  const showRowGutter = useSpreadsheetDisguise() && desktopViewMode !== "compact"
 
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
@@ -1562,6 +1567,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 setColumnFilters={setColumnFilters}
                 minTableWidth={minTableWidth}
                 viewMode={desktopViewMode}
+                showRowGutter={showRowGutter}
               />
 
               {/* Body */}
@@ -1605,6 +1611,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       isRowSelected={isRowSelected}
                       desktopViewMode={desktopViewMode as TableViewMode}
                       minTableWidth={minTableWidth}
+                      showRowGutter={showRowGutter}
                       columns={columns}
                       columnSizing={columnSizing}
                       columnVisibility={columnVisibility}

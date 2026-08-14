@@ -210,6 +210,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "Semeando em Outra Instância",
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed Existe na Mesma Instância",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed Semeando na Mesma Instância",
+      "CROSS_SEED_TAGS": "Tags de cross-seed",
       "HARDLINK_SCOPE": "Escopo de Hardlink"
     },
     "fieldGroups": {

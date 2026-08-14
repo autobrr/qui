@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"sort"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
@@ -18,6 +19,7 @@ import (
 type CrossMatchNeeds struct {
 	SameExists   bool
 	SameSeeding  bool
+	SameTags     bool
 	OtherExists  bool
 	OtherSeeding bool
 }
@@ -28,11 +30,16 @@ type CrossMatchResult struct {
 	SameInstanceSeeding  map[string]struct{}
 	OtherInstanceExists  map[string]struct{}
 	OtherInstanceSeeding map[string]struct{}
+	// SameInstanceTagsByHash maps a source hash to the sorted raw Tags strings of
+	// its same-instance cross-seed matches (self excluded). A hash is present only
+	// when at least one match carries a non-empty tag string.
+	SameInstanceTagsByHash map[string][]string
 }
 
 // candidateEntry holds pre-computed data for a candidate torrent.
 type candidateEntry struct {
 	hash    string
+	tags    string
 	seeding bool
 }
 
@@ -57,7 +64,7 @@ type matchIndex struct {
 // All data comes from the SyncManager cache — no API calls to qBittorrent.
 func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult {
 	result := &CrossMatchResult{}
-	needsSame := needs.SameExists || needs.SameSeeding
+	needsSame := needs.SameExists || needs.SameSeeding || needs.SameTags
 	needsOther := needs.OtherExists || needs.OtherSeeding
 
 	if !needsSame && !needsOther {
@@ -79,15 +86,21 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 			if needs.SameSeeding {
 				result.SameInstanceSeeding = make(map[string]struct{})
 			}
+			if needs.SameTags {
+				result.SameInstanceTagsByHash = make(map[string][]string)
+			}
 			for i := range currentTorrents {
 				if ctx.Err() != nil {
 					break
 				}
 				source := currentTorrents[i].Torrent
-				if matched, matchSeeding := s.matchAgainstIndex(source, sameIdx, true); matched {
+				if matched, matchSeeding, memberTags := s.matchAgainstIndex(source, sameIdx, true, needs.SameTags); matched {
 					result.SameInstanceExists[source.Hash] = struct{}{}
 					if needs.SameSeeding && matchSeeding {
 						result.SameInstanceSeeding[source.Hash] = struct{}{}
+					}
+					if needs.SameTags && len(memberTags) > 0 {
+						result.SameInstanceTagsByHash[source.Hash] = memberTags
 					}
 				}
 			}
@@ -113,7 +126,7 @@ func (s *Service) BuildCrossMatchSets(ctx context.Context, currentInstanceID int
 					break
 				}
 				source := currentTorrents[i].Torrent
-				if matched, matchSeeding := s.matchAgainstIndex(source, otherIdx, false); matched {
+				if matched, matchSeeding, _ := s.matchAgainstIndex(source, otherIdx, false, false); matched {
 					result.OtherInstanceExists[source.Hash] = struct{}{}
 					if needs.OtherSeeding && matchSeeding {
 						result.OtherInstanceSeeding[source.Hash] = struct{}{}
@@ -186,6 +199,7 @@ func (s *Service) buildOtherInstanceIndex(ctx context.Context, instances []*mode
 func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorrentView, needsSeeding bool) {
 	entry := candidateEntry{
 		hash:    normalizeHash(view.Hash),
+		tags:    view.Tags,
 		seeding: needsSeeding && isTorrentViewSeeding(view),
 	}
 
@@ -218,9 +232,32 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 // matchAgainstIndex checks if a source torrent matches any candidate in the index.
 // When excludeSelf is true, candidates with the same hash as the source are skipped
 // (used for same-instance matching where the source torrent is in the index).
-// Returns (matched, anyMatchSeeding).
-func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, excludeSelf bool) (matched bool, matchSeeding bool) {
+// When collectTags is true, the non-empty raw Tags strings of every distinct match
+// are returned sorted; a candidate matching via several strategies counts once.
+// Returns (matched, anyMatchSeeding, memberTags).
+func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, excludeSelf, collectTags bool) (matched bool, matchSeeding bool, memberTags []string) {
 	sourceHash := normalizeHash(source.Hash)
+
+	var seen map[string]struct{}
+	if collectTags {
+		seen = make(map[string]struct{})
+	}
+	record := func(c candidateEntry) {
+		matched = true
+		if c.seeding {
+			matchSeeding = true
+		}
+		if !collectTags {
+			return
+		}
+		if _, dup := seen[c.hash]; dup {
+			return
+		}
+		seen[c.hash] = struct{}{}
+		if c.tags != "" {
+			memberTags = append(memberTags, c.tags)
+		}
+	}
 
 	// Strategy 1: Content path match (non-ambiguous)
 	contentPath := normalizePathForComparison(source.ContentPath)
@@ -231,10 +268,7 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 				if excludeSelf && c.hash == sourceHash {
 					continue
 				}
-				matched = true
-				if c.seeding {
-					matchSeeding = true
-				}
+				record(c)
 			}
 		}
 	}
@@ -247,10 +281,7 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 				if excludeSelf && c.hash == sourceHash {
 					continue
 				}
-				matched = true
-				if c.seeding {
-					matchSeeding = true
-				}
+				record(c)
 			}
 		}
 	}
@@ -277,16 +308,14 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 					"crossseed: release metadata candidate evaluated",
 				)
 				if match {
-					matched = true
-					if c.seeding {
-						matchSeeding = true
-					}
+					record(c.candidateEntry)
 				}
 			}
 		}
 	}
 
-	return matched, matchSeeding
+	sort.Strings(memberTags)
+	return matched, matchSeeding, memberTags
 }
 
 // isTorrentViewSeeding checks if a CrossInstanceTorrentView is in a seeding state.

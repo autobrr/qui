@@ -8,6 +8,7 @@ import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useRouteTitle } from "@/hooks/useRouteTitle"
 import { api } from "@/lib/api"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { isSpreadsheetDisguiseActive, spreadsheetDocumentTitle, useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import type { TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -62,6 +63,7 @@ export function useTitleBarSpeeds({
   backgroundSpeeds: backgroundSpeedsOverride,
 }: UseTitleBarSpeedsOptions) {
   const [speedUnit] = useSpeedUnits()
+  const disguised = useSpreadsheetDisguise()
   const baseTitle = useRouteTitle()
   const lastSpeedTitleRef = useRef<string | null>(null)
   const lastBackgroundSpeedsRef = useRef<{ dl: number; up: number } | null>(null)
@@ -117,9 +119,7 @@ export function useTitleBarSpeeds({
   )
   const backgroundSpeeds = backgroundSpeedsOverride ??
     (
-      shouldUseFallbackPolling
-        ? (backgroundSpeedsQuery ?? streamSpeeds)
-        : (streamSpeeds ?? backgroundSpeedsQuery)
+      shouldUseFallbackPolling? (backgroundSpeedsQuery ?? streamSpeeds): (streamSpeeds ?? backgroundSpeedsQuery)
     )
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
   const effectiveSpeeds = isHiddenDelayed? (backgroundSpeeds ?? cachedBackgroundSpeeds): (isForegroundStale? (cachedBackgroundSpeeds ?? backgroundSpeeds): (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
@@ -148,11 +148,18 @@ export function useTitleBarSpeeds({
   useEffect(() => {
     return () => {
       // Avoid leaving a stale route-specific title after this hook unmounts.
-      document.title = DEFAULT_DOCUMENT_TITLE
+      // Read the disguise live so a theme switch before unmount is respected.
+      document.title = isSpreadsheetDisguiseActive() ? spreadsheetDocumentTitle() : DEFAULT_DOCUMENT_TITLE
     }
   }, [])
 
   useEffect(() => {
+    if (disguised) {
+      document.title = spreadsheetDocumentTitle()
+      lastSpeedTitleRef.current = null
+      return
+    }
+
     if (!enabled) {
       document.title = baseTitle
       return
@@ -184,5 +191,5 @@ export function useTitleBarSpeeds({
       document.title = nextTitle
       lastSpeedTitleRef.current = nextTitle
     }
-  }, [baseTitle, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
+  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
 }

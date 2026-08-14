@@ -10,6 +10,12 @@ qui can take scheduled or ad-hoc snapshots of a qBittorrent instance. Each snaps
 
 If you manage multiple instances, the Backups page also includes **Save changes to all instances** so you can copy the current backup schedule/settings to every compatible instance in one step.
 
+## Backup Storage
+
+qui writes backup snapshots to `<dataDir>/backups` by default. Set `backupDir` in `config.toml`, or the `QUI__BACKUP_DIR` environment variable, to store them somewhere else. A backup on the same drive as the live database does not protect you against a drive failure. Point `backupDir` at separate storage, such as a redundant array or a network share.
+
+If you change `backupDir` on an existing install, stop qui and move the contents of `<dataDir>/backups` into the new directory. Until you move the files, old backup runs cannot restore, and their downloads are incomplete.
+
 ## Restore Modes
 
 Once backups are enabled for an instance the backlog UI exposes a **Restore** action for each run. Restores support three distinct modes:

@@ -127,11 +127,15 @@ func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string
 }
 
 // SetWithTitles creates or updates a cache entry with known ARR title aliases.
+// A negative write never replaces a live positive row: concurrent lookups of the
+// same title can race, and a slower no-ID result must not hide freshly resolved
+// IDs for the negative TTL (#2300). Positive writes always win.
 func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, isNegative bool, ttl time.Duration) error {
 	// Store expires_at in UTC so the bound-UTC comparisons in Get/CleanupExpired/
 	// CountValid are timezone-independent. Without .UTC() the value carries the
 	// process-local offset and the cache silently misses in non-UTC zones (#1961).
-	expiresAt := time.Now().Add(ttl).UTC()
+	now := time.Now().UTC()
+	expiresAt := now.Add(ttl)
 
 	// Prepare nullable values
 	var imdbID, titlesJSON *string
@@ -173,9 +177,12 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 			is_negative = excluded.is_negative,
 			cached_at = CURRENT_TIMESTAMP,
 			expires_at = excluded.expires_at
+		WHERE excluded.is_negative = 0
+			OR arr_id_cache.is_negative = 1
+			OR arr_id_cache.expires_at <= ?
 	`
 
-	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON, BoolToSQLite(isNegative), expiresAt)
+	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON, BoolToSQLite(isNegative), expiresAt, now)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}

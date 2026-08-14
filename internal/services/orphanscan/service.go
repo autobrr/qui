@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
 	"path"
@@ -1159,6 +1160,42 @@ func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []st
 	return filtered
 }
 
+// dedupeCaseVariantRoots drops a scan root when an earlier root differs from it
+// only by case AND both name the same directory on disk, which is what a
+// case-insensitive filesystem gives us when qBittorrent reports two spellings of
+// one save path (issue #2314). Without the os.SameFile confirmation this would
+// silently stop scanning a second, genuinely different directory on a
+// case-sensitive filesystem.
+// Roots are compared in the given order; the first spelling wins.
+//
+// os.Lstat, never os.Stat: a symlink that differs from its target only by case
+// would look like the same directory through os.Stat, and dropping the real
+// directory in favour of the symlink would scan nothing at all, because
+// filepath.WalkDir does not follow a symlinked root.
+func dedupeCaseVariantRoots(roots []string) []string {
+	if len(roots) < 2 {
+		return roots
+	}
+
+	kept := make([]string, 0, len(roots))
+	seen := make(map[string]fs.FileInfo, len(roots))
+	for _, root := range roots {
+		norm := normalizePath(root)
+		info, _ := os.Lstat(root) // nil FileInfo on error
+
+		if prev, ok := seen[norm]; ok && prev != nil && info != nil && os.SameFile(prev, info) {
+			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that is the same directory as an earlier root")
+			continue
+		}
+
+		kept = append(kept, root)
+		if _, ok := seen[norm]; !ok {
+			seen[norm] = info
+		}
+	}
+	return kept
+}
+
 func addAbsoluteScanRoot(scanRoots map[string]struct{}, root string) {
 	root = filepath.Clean(root)
 	if root == "" || !filepath.IsAbs(root) {
@@ -1285,7 +1322,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	}
 
 	skippedRootList := sortedRoots(skippedRoots)
-	scanRootList := filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList)
+	scanRootList := dedupeCaseVariantRoots(filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList))
 
 	return &buildFileMapResult{
 		fileMap:      tfm,
