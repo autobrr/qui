@@ -4,6 +4,7 @@
 package sse
 
 import (
+	"bytes"
 	"encoding/binary"
 	"hash/fnv"
 	"math"
@@ -60,8 +61,10 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 
 	// Advance the baseline before returning so the next tick diffs against this page.
 	prevOrder := g.baselineOrder
+	prevPrefs := g.baselinePrefs
 	g.baselineFP = newFP
 	g.baselineOrder = order
+	g.baselinePrefs = resp.AppPreferences
 	g.baselineSeeded = true
 
 	if forceFull {
@@ -72,6 +75,12 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// replaces the row slice with just the added/changed rows. Aggregate pointers are
 	// shared read-only.
 	deltaResp := *resp
+
+	// ~4.7 KB and edited rarely; the client keeps its cached copy when the field is absent.
+	if bytes.Equal(resp.AppPreferences, prevPrefs) {
+		deltaResp.AppPreferences = nil
+	}
+
 	if isCross {
 		deltaResp.CrossInstanceTorrents = subsetRows(resp.CrossInstanceTorrents, changedIdx)
 		deltaResp.Torrents = nil
@@ -121,6 +130,7 @@ func (g *subscriptionGroup) seedBaselineIfEmpty(opts StreamOptions, resp *qbitto
 
 	g.baselineFP = fp
 	g.baselineOrder = order
+	g.baselinePrefs = resp.AppPreferences
 	g.baselineSeeded = true
 }
 

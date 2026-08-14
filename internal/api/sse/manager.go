@@ -234,9 +234,12 @@ type subscriptionGroup struct {
 	// processor (processGroup) and guarded by baselineMu against the unrelated init
 	// path. baselineFP maps each row key to its last-broadcast change fingerprint;
 	// baselineOrder is the last-broadcast key order. See buildUpdatePayload.
+	// baselinePrefs is the preferences blob this group last put on the wire, so a
+	// delta can drop the field while it is unchanged.
 	baselineMu     sync.Mutex
 	baselineFP     map[string]uint64
 	baselineOrder  []string
+	baselinePrefs  json.RawMessage
 	baselineSeeded bool
 }
 
