@@ -115,9 +115,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	// same untouched stream, so sizes collide across groups; group is the only
 	// name field that encodes that. Enforced only when both sides carry one: a
 	// missing group is absence of evidence, and recheck decides at apply.
-	sourceIdentity := normalizedGroupSiteIdentity(s, input.SourceRelease)
-	candidateIdentity := normalizedGroupSiteIdentity(s, input.CandidateRelease)
-	if sourceIdentity != "" && candidateIdentity != "" && sourceIdentity != candidateIdentity {
+	if groupIdentitiesConflict(s, input.SourceRelease, input.CandidateRelease) {
 		decision.RejectReason = "group mismatch"
 		return decision
 	}
@@ -126,16 +124,22 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	decision.Class = searchCandidateClassSizeGroup
 	decision.SourceTitles = slices.Clone(input.SourceTitles)
 	decision.Score, decision.MatchReason = evaluateReleaseMatch(input.SourceRelease, input.CandidateRelease)
-	if decision.Score <= 0 {
-		decision.Score = 1
-	}
+	decision.Score = max(decision.Score, 1)
+	decision.MatchReason = "size+group; " + decision.MatchReason
 	if decision.SizeEvidence.matches() {
 		decision.Score += sizeEvidenceStrictScoreBonus
-		decision.MatchReason = decision.SizeEvidence.matchReason() + "; size+group; " + decision.MatchReason
-	} else {
-		decision.MatchReason = "size+group; " + decision.MatchReason
+		decision.MatchReason = decision.SizeEvidence.matchReason() + "; " + decision.MatchReason
 	}
 	return decision
+}
+
+// groupIdentitiesConflict reports whether source and candidate both carry a
+// group/site identity and those identities differ. A missing identity on
+// either side is absence of evidence, not a conflict.
+func groupIdentitiesConflict(s *Service, source, candidate *rls.Release) bool {
+	sourceIdentity := normalizedGroupSiteIdentity(s, source)
+	candidateIdentity := normalizedGroupSiteIdentity(s, candidate)
+	return sourceIdentity != "" && candidateIdentity != "" && sourceIdentity != candidateIdentity
 }
 
 // classifySearchCandidateLegacy is the pre-size-group cascade: strict release

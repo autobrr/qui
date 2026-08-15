@@ -4508,9 +4508,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 						}
 						titleRescueHash = hashKey
 					case req.SearchDecisionClass == searchCandidateClassSizeGroup:
-						sourceIdentity := normalizedGroupSiteIdentity(s, sourceRelease)
-						candidateIdentity := normalizedGroupSiteIdentity(s, targetRelease)
-						if sourceIdentity != "" && candidateIdentity != "" && sourceIdentity != candidateIdentity {
+						if groupIdentitiesConflict(s, sourceRelease, targetRelease) {
 							continue
 						}
 					case req.SearchDecisionClass == searchCandidateClassExactSizeFallback:
@@ -9194,6 +9192,8 @@ type scoredTorrentSearchResult struct {
 
 func searchCandidateClassPriority(class searchCandidateClass) int {
 	switch class {
+	case searchCandidateClassSizeGroup:
+		return 4
 	case searchCandidateClassStrict:
 		return 4
 	case searchCandidateClassWebSourceRelabel:

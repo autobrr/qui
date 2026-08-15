@@ -15,9 +15,9 @@ import (
 
 // TestSearchResultUsable covers the per-result usability decision that drives the
 // alternate connector pass's indexer scoping: a result is usable only when it
-// would survive the match loop's release/size filtering. Junk hits (different
-// show, or a relabel outside tolerance, or a size mismatch) are NOT usable, so
-// their indexer stays eligible for the alternate-spelling re-query.
+// would survive the match loop's video gates (size tolerance, then group
+// agreement). Junk hits (different group, or a size mismatch) are NOT usable,
+// so their indexer stays eligible for the alternate-spelling re-query.
 func TestSearchResultUsable(t *testing.T) {
 	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 

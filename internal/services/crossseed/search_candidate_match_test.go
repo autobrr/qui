@@ -275,8 +275,6 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Contains(t, decision.MatchReason, "relaxed collection")
 }
 
-// Calls classifySearchCandidateLegacy directly; see the comment on
-// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -303,9 +301,6 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	require.Equal(t, searchSizeEvidenceNone, decision.SizeEvidence)
 }
 
-// Calls classifySearchCandidateLegacy directly; title rescue no longer exists
-// on the video path (title never gates video), but the cascade still runs for
-// music. See the comment on TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -351,8 +346,6 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 // Field case: the user's own movie re-uploaded as a bare .mkv, byte-identical,
 // listing retitled with a "cdn-" prefix and the -GROUP tag dropped. The rescue
 // probe must tolerate the absent group; the strict matcher must not.
-// Calls classifySearchCandidateLegacy directly; see the comment on
-// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -508,8 +501,6 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Empty(t, rejected.SourceTitles)
 }
 
-// Calls classifySearchCandidateLegacy directly; see the comment on
-// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	sourceName := "Example.Show.S01.2160p.ATV.WEB-DL.HDR.H.265-NTb"
@@ -547,10 +538,6 @@ func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 	}
 }
 
-// Calls classifySearchCandidateLegacy directly; the per-field identity gates
-// (title/season/resolution/checksum) it pins are gone from the video path,
-// which now checks only size and group. See the comment on
-// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
@@ -595,9 +582,6 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 	}
 }
 
-// Calls classifySearchCandidateLegacy directly; date identity is no longer
-// checked on the video path. See the comment on
-// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
@@ -669,11 +653,6 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 	}
 }
 
-// Calls classifySearchCandidateLegacy directly; episode/season-pack pairing
-// and content-type identity are no longer checked on the video path (a
-// season-pack candidate against an episode source now fails only if size or
-// group disagrees; apply's file validation catches what search no longer
-// does). See the comment on TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
@@ -1220,12 +1199,10 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 	require.Equal(t, skippedRecheckMessage, result.Message)
 }
 
-// Calls classifySearchCandidateLegacy directly; the rest of the test exercises
-// FindCandidates apply-side scoping (SearchRelaxedDifferences must be
-// search-recorded, not just present, and file-level validation must still
+// Exercises FindCandidates apply-side scoping (SearchRelaxedDifferences must
+// be search-recorded, not just present, and file-level validation must still
 // reject an incompatible pack), which Task 1 never touched and which is still
-// live for the classes that carry those fields. See the comment on
-// TestClassifySearchCandidateExactSizeFallback.
+// live for the classes that carry those fields.
 func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *testing.T) {
 	const (
 		instanceID    = 1
@@ -1351,13 +1328,8 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
 }
 
-// TestFindCandidatesSizeGroupHonorsGroupGate exercises the apply-side
-// search-origin prefilter's size-group case (Task 3): a search-origin
-// pairing whose release match fails on season alone (the AB season-stamp
-// bug: existing torrent mislabeled S02, target is S01) must still survive
-// when the class is size-group and the group identity agrees, and must
-// still drop when the groups differ. File-level validation (the S01E01 file
-// under the existing torrent) stays authoritative below this gate.
+// The size-group class must honor the group gate at apply; file validation
+// stays authoritative.
 func TestFindCandidatesSizeGroupHonorsGroupGate(t *testing.T) {
 	const (
 		instanceID   = 1
