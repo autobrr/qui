@@ -48,6 +48,12 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 		f.SetBool(true)
 	case reflect.Slice:
 		f.Set(reflect.Append(f, reflect.New(f.Type().Elem()).Elem()))
+	case reflect.Map:
+		// One entry with a zero value: fpSortedMap hashes the length and key, so
+		// the entry alone must move the fingerprint.
+		m := reflect.MakeMap(f.Type())
+		m.SetMapIndex(reflect.ValueOf("x"), reflect.New(f.Type().Elem()).Elem())
+		f.Set(m)
 	default:
 		t.Fatalf("field kind %s not handled; extend setSampleValue", f.Kind())
 	}
@@ -73,19 +79,46 @@ func TestTorrentFingerprintCoversEveryField(t *testing.T) {
 	}
 }
 
+// assertEveryFieldHashed proves fp reacts to every field of T: a fingerprint
+// with no coverage guard fails silently, because the delta stream drops a field
+// whose hash holds and no periodic keyframe corrects the client.
+func assertEveryFieldHashed[T any](t *testing.T, hint string, fp func(T) uint64) {
+	var zero T
+	base := fp(zero)
+	typ := reflect.TypeFor[T]()
+	for i := 0; i < typ.NumField(); i++ {
+		var mutated T
+		setSampleValue(t, reflect.ValueOf(&mutated).Elem().Field(i))
+		require.NotEqual(t, base, fp(mutated), "%s.%s must change the fingerprint; %s", typ.Name(), typ.Field(i).Name, hint)
+	}
+}
+
 // TestTrackerFingerprintCoversEveryField does the same for the per-tracker rows
 // inside Torrent.Trackers.
 func TestTrackerFingerprintCoversEveryField(t *testing.T) {
-	row := func(tr qbt.TorrentTracker) uint64 {
+	assertEveryFieldHashed(t, "add it to the Trackers loop in fpBuf.torrent", func(tr qbt.TorrentTracker) uint64 {
 		return singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{Trackers: []qbt.TorrentTracker{tr}}})
-	}
-	base := row(qbt.TorrentTracker{})
-	typ := reflect.TypeFor[qbt.TorrentTracker]()
-	for i := 0; i < typ.NumField(); i++ {
-		var mutated qbt.TorrentTracker
-		setSampleValue(t, reflect.ValueOf(&mutated).Elem().Field(i))
-		require.NotEqual(t, base, row(mutated), "tracker field %s must change the fingerprint; add it to the Trackers loop in fpBuf.torrent", typ.Field(i).Name)
-	}
+	})
+}
+
+// TestCountsFingerprintCoversEveryField proves the counts fingerprint reacts to
+// every TorrentCounts field, the way the row fingerprint is already guarded.
+func TestCountsFingerprintCoversEveryField(t *testing.T) {
+	assertEveryFieldHashed(t, "add it to countsFingerprint", func(c qbittorrent.TorrentCounts) uint64 {
+		return countsFingerprint(&c)
+	})
+}
+
+// TestTrackerTransferStatsFingerprintCoversEveryField does the same for the
+// per-domain transfer stats nested inside TorrentCounts.TrackerTransfers. The
+// map sample in the counts test only proves the map key is hashed, not the
+// struct fields of its values.
+func TestTrackerTransferStatsFingerprintCoversEveryField(t *testing.T) {
+	assertEveryFieldHashed(t, "add it to countsFingerprint's TrackerTransfers loop", func(s qbittorrent.TrackerTransferStats) uint64 {
+		return countsFingerprint(&qbittorrent.TorrentCounts{
+			TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": s},
+		})
+	})
 }
 
 func BenchmarkSingleRowFingerprint(b *testing.B) {
