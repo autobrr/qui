@@ -69,7 +69,6 @@
     "portInfo": ". 포트: {{port}}",
     "connectionStatus": "qBittorrent 연결 상태: {{status}}",
     "streamStatus": {
-      "live": "라이브 스트림 연결됨",
       "cached": "새로 고치는 동안 캐시된 대시보드 스냅샷 표시",
       "fallback": "대시보드 통계 새로 고침 중",
       "error": "스트림 문제; 대체 새로 고침 사용 중"

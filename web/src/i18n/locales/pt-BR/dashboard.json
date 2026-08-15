@@ -69,7 +69,6 @@
     "portInfo": ". Porta: {{port}}",
     "connectionStatus": "Status da conexão do qBittorrent: {{status}}",
     "streamStatus": {
-      "live": "Transmissão ao vivo conectada",
       "cached": "Mostrando snapshot em cache enquanto atualiza",
       "fallback": "Atualizando estatísticas do painel",
       "error": "Erro na transmissão; usando atualização reserva"

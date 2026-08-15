@@ -826,17 +826,12 @@ function InstanceCard({
           iconClassName: "text-muted-foreground",
           tooltip: t("instanceCard.streamStatus.fallback"),
         }
-      case "live":
-        return {
-          Icon: Zap,
-          iconClassName: "text-green-500",
-          tooltip: t("instanceCard.streamStatus.live"),
-        }
+      // "live" is the healthy path and needs no badge; the cases above all warn
+      // that the numbers are not fresh, which is the only reason to spend the space
       default:
         return null
     }
   })()
-  const DashboardDataStatusIcon = dashboardDataStatus?.Icon
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -859,22 +854,22 @@ function InstanceCard({
               className="flex items-center gap-2 hover:underline overflow-hidden flex-1 min-w-0"
             >
               <CardTitle
-                className="text-lg truncate min-w-0 max-w-[100px] sm:max-w-[130px] md:max-w-[160px] lg:max-w-[190px]"
+                className="text-lg truncate min-w-0"
                 title={instance.name}
               >
                 {instance.name}
               </CardTitle>
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
-            <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
-              {dashboardDataStatus && DashboardDataStatusIcon && (
+            <div className="flex items-center gap-1 justify-end shrink-0 sm:min-w-[4.5rem]">
+              {dashboardDataStatus && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
                       aria-label={dashboardDataStatus.tooltip}
                       className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${dashboardDataStatus.iconClassName}`}
                     >
-                      <DashboardDataStatusIcon className="h-4 w-4" aria-hidden="true" />
+                      <dashboardDataStatus.Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -897,14 +892,14 @@ function InstanceCard({
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                         setShowSpeedLimitDialog(true)
                       }}
                       disabled={isToggling}
-                      className="h-8 w-8 p-0 shrink-0"
+                      className="size-11 sm:size-8 shrink-0"
                     >
                       {altSpeedEnabled ? (
                         <Turtle className="h-4 w-4 text-orange-600" />
@@ -1006,7 +1001,9 @@ function InstanceCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0`}
+                // the icon stays small so the host line stays one line; the pseudo-element
+                // carries the 44px tap target on phones, over non-interactive neighbours
+                className={`${!isFirstLoad ? "h-4 w-4" : "h-5 w-5"} p-0 ${isFirstLoad ? "hover:bg-muted/50" : ""} shrink-0 relative max-sm:before:absolute max-sm:before:-inset-x-3.5 max-sm:before:-top-6 max-sm:before:-bottom-1 max-sm:before:content-['']`}
                 onClick={(e) => {
                   if (isFirstLoad) {
                     e.preventDefault()
@@ -1363,11 +1360,32 @@ interface GlobalAllTimeStatsProps {
   onCollapsedChange: (collapsed: boolean) => void
 }
 
+type DrawerMetric = { label: string; value: string; color?: string }
+
+// shared by the tracker and server-stats detail drawers
+function MetricGrid({ metrics, className }: { metrics: DrawerMetric[]; className?: string }) {
+  return (
+    <div className={`grid grid-cols-2 gap-x-4 gap-y-3 px-4 ${className}`}>
+      {metrics.map(({ label, value, color }) => (
+        <div key={label} className="flex items-baseline justify-between gap-2 border-b pb-1.5">
+          <span className="truncate text-xs text-muted-foreground">{label}</span>
+          <span className="shrink-0 text-sm font-semibold tabular-nums" style={color ? { color } : undefined}>{value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const alltimeRatio = (serverState: ServerState | null) =>
+  serverState?.alltime_dl ? (serverState.alltime_ul || 0) / serverState.alltime_dl : 0
+
 function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: GlobalAllTimeStatsProps) {
   const { t } = useTranslation("dashboard")
   // Accordion value is "server-stats" when expanded, "" when collapsed
   const accordionValue = isCollapsed ? "" : "server-stats"
   const setAccordionValue = (value: string) => onCollapsedChange(value === "")
+  // mobile detail drawer, keyed by id so the numbers stay live while it is open
+  const [detailsInstanceId, setDetailsInstanceId] = useState<number | null>(null)
 
   const globalStats = useMemo(() => {
     // Calculate server stats
@@ -1394,6 +1412,9 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
 
   // Apply color grading to ratio
   const ratioColor = getRatioColor(globalStats.globalRatio)
+
+  const reportingInstances = statsData.filter(({ serverState }) => serverState?.alltime_dl || serverState?.alltime_ul)
+  const detailsInstance = reportingInstances.find(({ instance }) => instance.id === detailsInstanceId)
 
   // Don't show if no data
   if (globalStats.alltimeDl === 0 && globalStats.alltimeUl === 0) {
@@ -1431,14 +1452,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                     {globalStats.globalRatio.toFixed(2)}
                   </span>
                 </div>
-                {globalStats.totalPeers > 0 && (
-                  <div>
-                    <span className="text-xs text-muted-foreground">{t("serverStats.peers")} </span>
-                    <span className="font-semibold tabular-nums inline-block min-w-[3rem] text-right">
-                      {globalStats.totalPeers}
-                    </span>
-                  </div>
-                )}
+                {/* peers omitted: a fourth value wraps the summary onto a second line */}
               </div>
             </div>
           </div>
@@ -1480,7 +1494,40 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
           </div>
         </AccordionTrigger>
         <AccordionContent className="px-0 pb-0">
-          <Table>
+          {/* Mobile row list: the desktop table is six columns wide and only two of them
+              fit on a phone, so it scrolls sideways with nothing to say that it does */}
+          <div className="sm:hidden divide-y">
+            {reportingInstances.map(({ instance, serverState }) => {
+              const instanceRatio = alltimeRatio(serverState)
+
+              return (
+                <button
+                  key={instance.id}
+                  type="button"
+                  onClick={() => setDetailsInstanceId(instance.id)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{instance.name}</div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                      <span className="flex shrink-0 items-center gap-0.5">
+                        <ChevronDown className="h-3 w-3" />{formatBytes(serverState?.alltime_dl || 0)}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-0.5">
+                        <ChevronUp className="h-3 w-3" />{formatBytes(serverState?.alltime_ul || 0)}
+                      </span>
+                      <span className="shrink-0" style={{ color: getRatioColor(instanceRatio) }}>
+                        {instanceRatio.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  <MoreVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              )
+            })}
+          </div>
+
+          <Table className="hidden sm:table">
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="text-center">{t("serverStats.tableHeaders.instance")}</TableHead>
@@ -1505,44 +1552,70 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                   </div>
                 </TableHead>
                 <TableHead className="text-center">{t("serverStats.tableHeaders.ratio")}</TableHead>
-                <TableHead className="text-center hidden sm:table-cell">{t("serverStats.tableHeaders.peers")}</TableHead>
+                <TableHead className="text-center">{t("serverStats.tableHeaders.peers")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {statsData
-                .filter(({ serverState }) => serverState?.alltime_dl || serverState?.alltime_ul)
-                .map(({ instance, serverState }) => {
-                  const instanceRatio = serverState?.alltime_dl ? (serverState.alltime_ul || 0) / serverState.alltime_dl : 0
-                  const instanceRatioColor = getRatioColor(instanceRatio)
+              {reportingInstances.map(({ instance, serverState }) => {
+                const instanceRatio = alltimeRatio(serverState)
+                const instanceRatioColor = getRatioColor(instanceRatio)
 
-                  return (
-                    <TableRow key={instance.id}>
-                      <TableCell className="text-center font-medium">{instance.name}</TableCell>
-                      <TableCell className="text-center font-semibold">
-                        {formatBytes(serverState?.alltime_dl || 0)}
-                      </TableCell>
-                      <TableCell className="text-center font-semibold">
-                        {formatBytes(serverState?.dl_info_data || 0)}
-                      </TableCell>
-                      <TableCell className="text-center font-semibold">
-                        {formatBytes(serverState?.alltime_ul || 0)}
-                      </TableCell>
-                      <TableCell className="text-center font-semibold">
-                        {formatBytes(serverState?.up_info_data || 0)}
-                      </TableCell>
-                      <TableCell className="text-center font-semibold" style={{ color: instanceRatioColor }}>
-                        {instanceRatio.toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-center font-semibold hidden sm:table-cell">
-                        {serverState?.total_peer_connections !== undefined ? (serverState.total_peer_connections || 0) : "-"}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                return (
+                  <TableRow key={instance.id}>
+                    <TableCell className="text-center font-medium">{instance.name}</TableCell>
+                    <TableCell className="text-center font-semibold">
+                      {formatBytes(serverState?.alltime_dl || 0)}
+                    </TableCell>
+                    <TableCell className="text-center font-semibold">
+                      {formatBytes(serverState?.dl_info_data || 0)}
+                    </TableCell>
+                    <TableCell className="text-center font-semibold">
+                      {formatBytes(serverState?.alltime_ul || 0)}
+                    </TableCell>
+                    <TableCell className="text-center font-semibold">
+                      {formatBytes(serverState?.up_info_data || 0)}
+                    </TableCell>
+                    <TableCell className="text-center font-semibold" style={{ color: instanceRatioColor }}>
+                      {instanceRatio.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-center font-semibold">
+                      {serverState?.total_peer_connections ?? "-"}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </AccordionContent>
       </AccordionItem>
+
+      {/* Mobile detail drawer: the columns the row has no room for */}
+      <Drawer open={Boolean(detailsInstance)} onOpenChange={(open) => !open && setDetailsInstanceId(null)}>
+        <DrawerContent>
+          {detailsInstance && (() => {
+            const { instance, serverState } = detailsInstance
+            const instanceRatio = alltimeRatio(serverState)
+            const metrics: DrawerMetric[] = [
+              { label: t("serverStats.tableHeaders.downloaded"), value: formatBytes(serverState?.alltime_dl || 0) },
+              { label: t("serverStats.tableHeaders.downloadedSession"), value: formatBytes(serverState?.dl_info_data || 0) },
+              { label: t("serverStats.tableHeaders.uploaded"), value: formatBytes(serverState?.alltime_ul || 0) },
+              { label: t("serverStats.tableHeaders.uploadedSession"), value: formatBytes(serverState?.up_info_data || 0) },
+              { label: t("serverStats.tableHeaders.ratio"), value: instanceRatio.toFixed(2), color: getRatioColor(instanceRatio) },
+              { label: t("serverStats.tableHeaders.peers"), value: serverState?.total_peer_connections !== undefined ? String(serverState.total_peer_connections || 0) : "-" },
+            ]
+
+            return (
+              <>
+                <DrawerHeader className="text-left">
+                  <DrawerTitle className="truncate">{instance.name}</DrawerTitle>
+                  <DrawerDescription className="sr-only">{t("serverStats.title")}</DrawerDescription>
+                </DrawerHeader>
+                <MetricGrid metrics={metrics} className="pb-6" />
+              </>
+            )
+          })()}
+        </DrawerContent>
+      </Drawer>
     </Accordion>
   )
 }
@@ -2758,7 +2831,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             const hasCustomization = Boolean(customizationId)
             const canMergeIntoGroup = hasCustomization && selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId)
             const closeAnd = (action: () => void) => () => { setDetailsDomain(null); action() }
-            const metrics: { label: string; value: string; color?: string }[] = [
+            const metrics: DrawerMetric[] = [
               { label: t("trackerBreakdown.tableHeaders.uploaded"), value: formatBytes(uploaded) },
               { label: t("trackerBreakdown.tableHeaders.uploadedSession"), value: formatBytes(uploadedSession) },
               { label: t("trackerBreakdown.tableHeaders.downloaded"), value: formatBytes(downloaded) },
@@ -2776,14 +2849,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   <DrawerTitle className="truncate">{displayValue}</DrawerTitle>
                   <DrawerDescription className="truncate">{subtitle}</DrawerDescription>
                 </DrawerHeader>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 pb-2">
-                  {metrics.map(({ label, value, color }) => (
-                    <div key={label} className="flex items-baseline justify-between gap-2 border-b pb-1.5">
-                      <span className="truncate text-xs text-muted-foreground">{label}</span>
-                      <span className="shrink-0 text-sm font-semibold tabular-nums" style={color ? { color } : undefined}>{value}</span>
-                    </div>
-                  ))}
-                </div>
+                <MetricGrid metrics={metrics} className="pb-2" />
                 <DrawerFooter>
                   {canMergeIntoGroup ? (
                     <Button className="h-11" onClick={closeAnd(() => handleMergeIntoGroup(customizationId!))}>
