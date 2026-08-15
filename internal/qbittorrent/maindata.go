@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 )
@@ -106,6 +107,18 @@ func mainDataServerState(data *qbt.MainData) *qbt.ServerState {
 
 	stateCopy := data.ServerState
 	return &stateCopy
+}
+
+// mainDataModeForRequest picks the read mode for a list request. Only a zero
+// lastSync means "never synced", and that cold cache still takes the checked
+// read so the first request fills it. A nil tracker map is not the same signal:
+// a synced instance can simply have no trackers.
+func mainDataModeForRequest(skipFreshData bool, lastSync time.Time) mainDataReadMode {
+	if skipFreshData && !lastSync.IsZero() {
+		return mainDataReadCached
+	}
+
+	return mainDataRead
 }
 
 // resolveMainData assembles only the three fields qui reads. GetData and

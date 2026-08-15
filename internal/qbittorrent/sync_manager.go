@@ -1394,15 +1394,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	needsTrackerHealthSorting := canHydrateTrackerHealth && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
-	var mainData *qbt.MainData
-	if skipFreshData {
-		mainData = resolveMainData(syncManager, mainDataReadCached)
-		if mainData.Trackers == nil {
-			mainData = resolveMainData(syncManager, mainDataRead)
-		}
-	} else {
-		mainData = resolveMainData(syncManager, mainDataRead)
-	}
+	mainData := resolveMainData(syncManager, mainDataModeForRequest(skipFreshData, syncManager.LastSyncTime()))
 
 	// Choose torrent getter based on freshness preference
 	// Use a wrapper for GetTorrentsUnchecked to fall back to GetTorrents if cache is empty

@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,31 @@ func TestMainDataServerStateCopiesState(t *testing.T) {
 
 	mainData.ServerState.DlInfoSpeed = 2048
 	require.Equal(t, int64(1024), state.DlInfoSpeed)
+}
+
+func TestMainDataModeForRequest(t *testing.T) {
+	t.Parallel()
+
+	synced := time.Unix(1700000000, 0)
+
+	tests := []struct {
+		name          string
+		skipFreshData bool
+		lastSync      time.Time
+		want          mainDataReadMode
+	}{
+		{name: "cached read once synced", skipFreshData: true, lastSync: synced, want: mainDataReadCached},
+		{name: "cold cache still reads checked", skipFreshData: true, want: mainDataRead},
+		{name: "fresh data requested", lastSync: synced, want: mainDataRead},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, mainDataModeForRequest(tt.skipFreshData, tt.lastSync))
+		})
+	}
 }
 
 func TestResolveMainDataPicksTrackerGetterByMode(t *testing.T) {
