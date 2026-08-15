@@ -212,7 +212,7 @@ export const ThemeToggle: React.FC = () => {
 
         {/* Theme Selection */}
         <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.theme")}</div>
-        <div className="max-h-[calc(var(--radix-dropdown-menu-content-available-height)-16rem)] overflow-y-auto overscroll-contain pr-1">
+        <div className="max-h-[max(8rem,calc(var(--radix-dropdown-menu-content-available-height)-16rem))] overflow-y-auto overscroll-contain pr-1">
           {sortedThemes.map((theme) => {
             const isPremium = isThemePremium(theme.id);
             const isLocked = isPremium && !canSwitchPremium;
