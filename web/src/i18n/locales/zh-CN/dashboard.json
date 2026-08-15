@@ -84,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "概览",
     "instances": "实例",
     "connected": "已连接",
     "torrents": "种子",

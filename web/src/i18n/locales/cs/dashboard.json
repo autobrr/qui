@@ -84,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "Přehled",
     "instances": "Instance",
     "connected": "Připojené",
     "torrents": "Torrenty",

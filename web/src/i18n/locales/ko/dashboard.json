@@ -84,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "개요",
     "instances": "인스턴스",
     "connected": "연결됨",
     "torrents": "토렌트",

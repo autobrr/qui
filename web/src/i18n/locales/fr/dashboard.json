@@ -84,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "Aperçu",
     "instances": "Instances",
     "connected": "Connecté",
     "torrents": "Torrents",

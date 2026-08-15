@@ -84,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "Огляд",
     "instances": "Екземпляри",
     "connected": "Підключено",
     "torrents": "Торенти",

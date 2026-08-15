@@ -1240,53 +1240,26 @@ function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
   const [speedUnit] = useSpeedUnits()
 
   return (
-    <Card className="sm:hidden">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium">{t("mobileOverview.title")}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-3">
-          {/* Instances */}
-          <div className="space-y-1">
+    <Card className="sm:hidden px-4 py-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        {[
+          { Icon: HardDrive, label: t("mobileOverview.instances"), value: `${globalStats.connected}/${globalStats.total}`, caption: t("mobileOverview.connected") },
+          { Icon: Activity, label: t("mobileOverview.torrents"), value: String(globalStats.totalTorrents), caption: t("mobileOverview.activeCount", { count: globalStats.activeTorrents }) },
+          { Icon: Download, label: t("mobileOverview.download"), value: formatSpeedWithUnit(globalStats.totalDownload, speedUnit), caption: t("mobileOverview.activeCount", { count: globalStats.downloadingTorrents }) },
+          { Icon: Upload, label: t("mobileOverview.upload"), value: formatSpeedWithUnit(globalStats.totalUpload, speedUnit), caption: t("mobileOverview.activeCount", { count: globalStats.seedingTorrents }) },
+        ].map(({ Icon, label, value, caption }) => (
+          <div key={label} className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{t("mobileOverview.instances")}</span>
+              <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-xs text-muted-foreground">{label}</span>
             </div>
-            <div className="text-xl font-bold">{globalStats.connected}/{globalStats.total}</div>
-            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.connected")}</p>
-          </div>
-
-          {/* Torrents */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{t("mobileOverview.torrents")}</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="shrink-0 whitespace-nowrap text-lg font-bold tabular-nums">{value}</span>
+              <span className="truncate text-[10px] text-muted-foreground">{caption}</span>
             </div>
-            <div className="text-xl font-bold">{globalStats.totalTorrents}</div>
-            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.activeCount", { count: globalStats.activeTorrents })}</p>
           </div>
-
-          {/* Download */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <Download className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{t("mobileOverview.download")}</span>
-            </div>
-            <div className="text-xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
-            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.activeCount", { count: globalStats.downloadingTorrents })}</p>
-          </div>
-
-          {/* Upload */}
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
-              <Upload className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">{t("mobileOverview.upload")}</span>
-            </div>
-            <div className="text-xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
-            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.activeCount", { count: globalStats.seedingTorrents })}</p>
-          </div>
-        </div>
-      </CardContent>
+        ))}
+      </div>
     </Card>
   )
 }

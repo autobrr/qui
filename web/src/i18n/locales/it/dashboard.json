@@ -84,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "Panoramica",
     "instances": "Istanze",
     "connected": "Connesso",
     "torrents": "Torrent",
