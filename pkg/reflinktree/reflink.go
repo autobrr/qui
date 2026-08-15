@@ -40,12 +40,6 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 		return nil, errors.New("plan has no files")
 	}
 
-	// Check reflink support before creating any files
-	supported, reason := SupportsReflink(plan.RootDir)
-	if !supported {
-		return nil, fmt.Errorf("%w: %s", ErrReflinkUnsupported, reason)
-	}
-
 	// Track created items for rollback
 	created := &hardlinktree.Created{}
 
@@ -63,6 +57,13 @@ func Create(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
 	created.Dirs = append(created.Dirs, rootDirs...)
 	if err != nil {
 		return nil, rollbackOnError(fmt.Errorf("create root directory %s: %w", plan.RootDir, err))
+	}
+
+	// Check reflink support after tracking the root directory. SupportsReflink
+	// creates the directory, which would otherwise hide it from rollback.
+	supported, reason := SupportsReflink(plan.RootDir)
+	if !supported {
+		return nil, rollbackOnError(fmt.Errorf("%w: %s", ErrReflinkUnsupported, reason))
 	}
 
 	// Process each file in the plan
