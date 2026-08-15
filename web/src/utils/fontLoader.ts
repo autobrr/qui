@@ -78,10 +78,3 @@ export async function loadThemeFonts(theme: {
   // Load all fonts
   await Promise.all(Array.from(fontsToLoad).map(loadFont));
 }
-
-// Preload common fonts on app start
-export async function preloadCommonFonts(): Promise<void> {
-  // Load the most common fonts to improve initial load
-  const commonFonts = ["Inter", "JetBrains Mono"];
-  await Promise.all(commonFonts.map(loadFont));
-}
