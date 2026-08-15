@@ -335,6 +335,13 @@ type ValidatedTrackerMapping struct {
 	DomainToHashes map[string]map[string]struct{} // domain -> set of hashes
 	UpdatedAt      time.Time
 	FallbackOnly   bool
+
+	// domainSnapshot memoizes the DomainToHashes copy that
+	// getAuthoritativeDomainToHashes hands to counts passes, with the mapping
+	// generation it was copied from. Guarded by validatedTrackerMu; shared
+	// read-only between callers of the same generation.
+	domainSnapshot    map[string]map[string]struct{}
+	domainSnapshotGen uint64
 }
 
 // TrackerCustomizationLister provides access to tracker customizations for sorting.
@@ -717,11 +724,12 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents,
 	sm.trackerHealthCache[instanceID] = counts
 	sm.trackerHealthMu.Unlock()
 
-	sm.setValidatedTrackerMappingWithMetrics(instanceID, mapping, len(torrents), started, "hydrated")
-
 	// Queue icon fetches for discovered tracker domains. We do this here (in the
 	// background refresh) so icons get fetched even when API requests use the
-	// validated mapping path (which doesn't walk MainData.Trackers).
+	// validated mapping path (which doesn't walk MainData.Trackers). Read the
+	// mapping before publishing it: once stored, concurrent tracker edits mutate
+	// these maps under validatedTrackerMu, and an unlocked iteration here would
+	// race them (concurrent map read and write is a runtime fatal).
 	for domain := range mapping.DomainToHashes {
 		trackericons.QueueFetch(domain, "")
 	}
@@ -738,6 +746,8 @@ func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents,
 		Int("totalTorrents", len(torrents)).
 		Dur("elapsed", elapsed).
 		Msg("Refreshed tracker health counts and validated tracker mapping")
+
+	sm.setValidatedTrackerMappingWithMetrics(instanceID, mapping, len(torrents), started, "hydrated")
 	return true
 }
 
@@ -882,24 +892,39 @@ func (sm *SyncManager) getAuthoritativeTrackerMapping(instanceID int) *Validated
 
 // getAuthoritativeDomainToHashes returns a copy of the domain to hash sets of the
 // hydrated tracker mapping, without the HashToDomains half that counts never read.
+// The copy is memoized per mapping generation: counts recompute on every sync
+// tick while mapping writes are rare, so without the memo each tick rebuilt a
+// library-sized map only to read it once. Callers must treat it as read-only.
+//
+// The write lock, not the read lock, so the generation cannot move under the
+// copy (every generation bump happens under this lock) and the snapshot can be
+// stored in the same critical section. The copy this serializes is exactly the
+// once-per-generation work the memo makes rare.
 //
 // A nil result means there is no authoritative mapping and the caller must fall
 // back to MainData. A non-nil empty map means the mapping is authoritative and has
 // no domains, which is not the same thing.
 func (sm *SyncManager) getAuthoritativeDomainToHashes(instanceID int) map[string]map[string]struct{} {
-	sm.validatedTrackerMu.RLock()
-	defer sm.validatedTrackerMu.RUnlock()
+	sm.validatedTrackerMu.Lock()
+	defer sm.validatedTrackerMu.Unlock()
 
 	original := sm.validatedTrackerMapping[instanceID]
 	if original == nil || original.FallbackOnly {
 		return nil
 	}
 
-	// Deep copy to prevent data races when caller iterates over the maps
+	gen := sm.trackerMappingGen.Load()
+	if original.domainSnapshot != nil && original.domainSnapshotGen == gen {
+		return original.domainSnapshot
+	}
+
+	// Deep copy so callers can iterate without holding the lock.
 	domainToHashes := make(map[string]map[string]struct{}, len(original.DomainToHashes))
 	for domain, hashes := range original.DomainToHashes {
 		domainToHashes[domain] = maps.Clone(hashes)
 	}
+	original.domainSnapshot = domainToHashes
+	original.domainSnapshotGen = gen
 	return domainToHashes
 }
 

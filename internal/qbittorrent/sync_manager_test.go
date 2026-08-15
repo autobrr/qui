@@ -11,6 +11,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -3011,4 +3012,30 @@ func TestEmptyAuthoritativeMappingDoesNotFallBackToMainData(t *testing.T) {
 
 	require.Empty(t, counts.Trackers)
 	require.Empty(t, counts.TrackerTransfers)
+}
+
+// TestGetAuthoritativeDomainToHashesMemoizesPerGeneration pins the per-generation
+// memo: counts recompute every sync tick, so without it each tick deep-copied a
+// library-sized map that no mapping write had touched.
+func TestGetAuthoritativeDomainToHashesMemoizesPerGeneration(t *testing.T) {
+	sm := NewSyncManager(nil, nil)
+	sm.setValidatedTrackerMapping(1, &ValidatedTrackerMapping{
+		HashToDomains:  map[string]map[string]struct{}{"h1": {"tracker.example.invalid": {}}},
+		DomainToHashes: map[string]map[string]struct{}{"tracker.example.invalid": {"h1": {}}},
+	})
+
+	first := sm.getAuthoritativeDomainToHashes(1)
+	require.Contains(t, first["tracker.example.invalid"], "h1")
+
+	second := sm.getAuthoritativeDomainToHashes(1)
+	require.Equal(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(second).Pointer(),
+		"the same generation must share one snapshot instead of re-copying")
+
+	// A mapping write bumps the generation, so the memo must not serve the old copy.
+	sm.removeHashFromTrackerMapping(1, "h1", "tracker.example.invalid")
+	third := sm.getAuthoritativeDomainToHashes(1)
+	require.NotEqual(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(third).Pointer(),
+		"a mapping write must invalidate the snapshot")
+	require.NotContains(t, third, "tracker.example.invalid",
+		"the fresh snapshot must reflect the removal")
 }
