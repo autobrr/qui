@@ -70,6 +70,11 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	g.baselineOrder = order
 	g.baselinePrefs = resp.AppPreferences
 	g.baselineCounts = countsFP
+	// A tick without counts (a cross-instance page where no member contributed
+	// any) must not wipe the snapshot reconcileInitWithBaseline hands to joiners.
+	if resp.Counts != nil {
+		g.baselineCountsData = resp.Counts
+	}
 	g.baselineSeeded = true
 
 	if forceFull {
@@ -137,6 +142,12 @@ func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *
 		if resp.AppPreferences == nil {
 			resp.AppPreferences = g.baselinePrefs
 		}
+		// Counts are edge-triggered the same way: init metas never set
+		// IncludeCounts, so without this backfill a joiner whose REST bootstrap
+		// failed would show zero sidebar counts until the library next changes.
+		if resp.Counts == nil {
+			resp.Counts = g.baselineCountsData
+		}
 		return
 	}
 
@@ -154,6 +165,7 @@ func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *
 	g.baselineOrder = order
 	g.baselinePrefs = resp.AppPreferences
 	g.baselineCounts = countsFingerprint(resp.Counts)
+	g.baselineCountsData = resp.Counts
 	g.baselineSeeded = true
 }
 
