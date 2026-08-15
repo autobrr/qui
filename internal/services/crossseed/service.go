@@ -8907,6 +8907,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Str("decisionClass", string(decision.Class)).
 			Str("strictMismatchReason", decision.StrictMismatchReason).
 			Strs("relaxedDifferences", decision.RelaxedDifferences).
+			// Empty group fields on a size-group accept mean the candidate
+			// matched on bytes alone; a blank next to a name that visibly
+			// carries a group is a parse failure worth reporting.
+			Str("sourceGroup", normalizedGroupSiteIdentity(s, searchRelease)).
+			Str("candidateGroup", normalizedGroupSiteIdentity(s, candidateRelease)).
 			Msg("[CROSSSEED-SEARCH] Candidate accepted")
 
 		scored = append(scored, scoredTorrentSearchResult{
