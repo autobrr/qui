@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -19,16 +20,26 @@ func (p testServerStateProvider) GetServerStateUnchecked() qbt.ServerState {
 }
 
 type testMainDataProvider struct {
-	checkedData   *qbt.MainData
-	uncheckedData *qbt.MainData
+	checkedTrackers   map[string][]string
+	uncheckedTrackers map[string][]string
+	categories        map[string]qbt.Category
+	state             qbt.ServerState
 }
 
-func (p testMainDataProvider) GetData() *qbt.MainData {
-	return p.checkedData
+func (p testMainDataProvider) GetTrackers() map[string][]string {
+	return p.checkedTrackers
 }
 
-func (p testMainDataProvider) GetDataUnchecked() *qbt.MainData {
-	return p.uncheckedData
+func (p testMainDataProvider) GetTrackersUnchecked() map[string][]string {
+	return p.uncheckedTrackers
+}
+
+func (p testMainDataProvider) GetCategoriesUnchecked() map[string]qbt.Category {
+	return p.categories
+}
+
+func (p testMainDataProvider) GetServerStateUnchecked() qbt.ServerState {
+	return p.state
 }
 
 func TestMainDataServerStateCopiesState(t *testing.T) {
@@ -49,40 +60,65 @@ func TestMainDataServerStateCopiesState(t *testing.T) {
 	require.Equal(t, int64(1024), state.DlInfoSpeed)
 }
 
-func TestResolveMainDataUsesUncheckedSnapshotForCachedReads(t *testing.T) {
+func TestMainDataModeForRequest(t *testing.T) {
 	t.Parallel()
 
-	cached := &qbt.MainData{
-		ServerState: qbt.ServerState{ConnectionStatus: "cached"},
-	}
-	checked := &qbt.MainData{
-		ServerState: qbt.ServerState{ConnectionStatus: "checked"},
+	synced := time.Unix(1700000000, 0)
+
+	tests := []struct {
+		name          string
+		skipFreshData bool
+		lastSync      time.Time
+		want          mainDataReadMode
+	}{
+		{name: "cached read once synced", skipFreshData: true, lastSync: synced, want: mainDataReadCached},
+		{name: "cold cache still reads checked", skipFreshData: true, want: mainDataRead},
+		{name: "fresh data requested", lastSync: synced, want: mainDataRead},
 	}
 
-	got := resolveMainData(testMainDataProvider{
-		checkedData:   checked,
-		uncheckedData: cached,
-	}, mainDataReadCached)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.Same(t, cached, got)
+			require.Equal(t, tt.want, mainDataModeForRequest(tt.skipFreshData, tt.lastSync))
+		})
+	}
 }
 
-func TestResolveMainDataUsesCheckedSnapshotForDefaultReads(t *testing.T) {
+func TestResolveMainDataPicksTrackerGetterByMode(t *testing.T) {
 	t.Parallel()
 
-	cached := &qbt.MainData{
-		ServerState: qbt.ServerState{ConnectionStatus: "cached"},
-	}
-	checked := &qbt.MainData{
-		ServerState: qbt.ServerState{ConnectionStatus: "checked"},
+	provider := testMainDataProvider{
+		checkedTrackers:   map[string][]string{"checked": {"abc123"}},
+		uncheckedTrackers: map[string][]string{"unchecked": {"def456"}},
+		categories:        map[string]qbt.Category{"movies": {Name: "movies", SavePath: "/movies"}},
+		state:             qbt.ServerState{ConnectionStatus: "connected"},
 	}
 
-	got := resolveMainData(testMainDataProvider{
-		checkedData:   checked,
-		uncheckedData: cached,
-	}, mainDataRead)
+	tests := []struct {
+		name string
+		mode mainDataReadMode
+		want string
+	}{
+		{name: "cached reads skip the freshness check", mode: mainDataReadCached, want: "unchecked"},
+		{name: "fresh reads already synced", mode: mainDataReadFresh, want: "unchecked"},
+		{name: "default reads ensure freshness", mode: mainDataRead, want: "checked"},
+	}
 
-	require.Same(t, checked, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := resolveMainData(provider, tt.mode)
+			require.NotNil(t, got)
+			require.Contains(t, got.Trackers, tt.want)
+			require.Contains(t, got.Categories, "movies")
+			require.Equal(t, "connected", got.ServerState.ConnectionStatus)
+
+			// Never populated: cloning it is the cost this assembly avoids.
+			require.Nil(t, got.Torrents)
+		})
+	}
 }
 
 func TestResolveServerStatePrefersSnapshotFallback(t *testing.T) {
