@@ -1351,6 +1351,71 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
 }
 
+// TestFindCandidatesSizeGroupHonorsGroupGate exercises the apply-side
+// search-origin prefilter's size-group case (Task 3): a search-origin
+// pairing whose release match fails on season alone (the AB season-stamp
+// bug: existing torrent mislabeled S02, target is S01) must still survive
+// when the class is size-group and the group identity agrees, and must
+// still drop when the groups differ. File-level validation (the S01E01 file
+// under the existing torrent) stays authoritative below this gate.
+func TestFindCandidatesSizeGroupHonorsGroupGate(t *testing.T) {
+	const (
+		instanceID   = 1
+		targetName   = "[KIRI] Azure Compass S01 [Blu-ray][MKV][h264][1080p Remux][FLAC 2.0][Dual Audio][Softsubs (KIRI)]"
+		existingHash = "existing"
+		torrentSize  = int64(71_052_546_722)
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	newService := func(existingName string) *Service {
+		existing := qbt.Torrent{Hash: existingHash, Name: existingName, Size: torrentSize, Progress: 1}
+		files := map[string]qbt.TorrentFiles{
+			existingHash: {
+				{Name: "Azure.Compass.S01E01.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI.mkv", Size: torrentSize},
+			},
+		}
+		return &Service{
+			instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+			syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+			releaseCache:     NewReleaseCache(),
+			stringNormalizer: stringutils.NewDefaultNormalizer(),
+		}
+	}
+	sizeGroupRequest := &FindCandidatesRequest{
+		TorrentName:            targetName,
+		TargetInstanceIDs:      []int{instanceID},
+		SearchDecisionClass:    searchCandidateClassSizeGroup,
+		SearchSourceInstanceID: instanceID,
+		SearchSourceHash:       existingHash,
+	}
+
+	// Same group: the season-stamp mismatch survives the prefilter because
+	// normalizedGroupSiteIdentity agrees on both sides.
+	sameGroupName := "Azure.Compass.S02.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI"
+	sameGroupService := newService(sameGroupName)
+
+	direct, err := sameGroupService.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       targetName,
+		TargetInstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.Empty(t, direct.Candidates, "direct requests must retain strict release matching")
+
+	sameGroupResponse, err := sameGroupService.FindCandidates(context.Background(), sizeGroupRequest)
+	require.NoError(t, err)
+	require.Len(t, sameGroupResponse.Candidates, 1)
+	require.Len(t, sameGroupResponse.Candidates[0].Torrents, 1)
+	require.Equal(t, existingHash, sameGroupResponse.Candidates[0].Torrents[0].Hash)
+
+	// Different group: the same season mismatch must not survive.
+	differentGroupName := "Azure.Compass.S02.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-OTHERGRP"
+	differentGroupService := newService(differentGroupName)
+
+	differentGroupResponse, err := differentGroupService.FindCandidates(context.Background(), sizeGroupRequest)
+	require.NoError(t, err)
+	require.Empty(t, differentGroupResponse.Candidates, "size-group class must still enforce the group gate")
+}
+
 func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	const (
 		instanceID    = 1

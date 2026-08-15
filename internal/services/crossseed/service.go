@@ -4507,6 +4507,12 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 							continue
 						}
 						titleRescueHash = hashKey
+					case req.SearchDecisionClass == searchCandidateClassSizeGroup:
+						sourceIdentity := normalizedGroupSiteIdentity(s, sourceRelease)
+						candidateIdentity := normalizedGroupSiteIdentity(s, targetRelease)
+						if sourceIdentity != "" && candidateIdentity != "" && sourceIdentity != candidateIdentity {
+							continue
+						}
 					case req.SearchDecisionClass == searchCandidateClassExactSizeFallback:
 						fallbackInput := searchCandidateInput{
 							SourceRelease:          sourceRelease,
