@@ -210,7 +210,8 @@ func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T
 	files := qbt.TorrentFiles{{Name: sourceName + "/" + sourceName + ".mkv", Size: sourceSize}}
 
 	source := svc.releaseCache.Parse(sourceName)
-	contentDetectionRelease, _ := svc.selectContentDetectionRelease(sourceName, source, files)
+	contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
+	require.True(t, usedFile, "must use the file: a sourceRelease fallback also has an empty group")
 	require.Empty(t, contentDetectionRelease.Group, "repeated folder name must not invent a group")
 
 	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
