@@ -1502,5 +1502,10 @@
     "failedToUpdatePriorities": "更新文件优先级失败",
     "failedToRenameFile": "重命名文件失败",
     "failedToRenameFolder": "重命名文件夹失败"
+  },
+  "detailCache": {
+    "showingCached": "显示缓存数据（{{age}}）",
+    "failedToLoad": "加载失败",
+    "retry": "重试"
   }
 }

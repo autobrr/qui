@@ -166,6 +166,7 @@
       "loadingFallback": "Loading...",
       "errorFallback": "Failed to load settings. Please try again.",
       "retry": "Retry",
+      "cachedNotice": "Showing cached settings ({{age}}) — qBittorrent did not respond in time.",
       "deleteDialog": {
         "title": "Delete Instance",
         "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",

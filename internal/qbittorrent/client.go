@@ -97,15 +97,24 @@ type Client struct {
 	preferencesCache     *qbt.AppPreferences
 	preferencesFetchedAt time.Time
 	preferencesMu        sync.RWMutex
-	syncEventSink        SyncEventSink
-	completionMu         sync.Mutex
-	completionState      map[string]bool
-	completionHandler    TorrentCompletionHandler
-	completionInit       bool
-	addedMu              sync.Mutex
-	addedState           map[string]struct{}
-	addedHandler         TorrentAddedHandler
-	addedInit            bool
+
+	// altSpeedMode caches the last successfully observed alternative-speed-limits
+	// mode so the API can serve a last-known-good value when a live qBittorrent
+	// call times out or errors. altSpeedFetched distinguishes "false" from "never
+	// fetched".
+	altSpeedMode      bool
+	altSpeedFetched   bool
+	altSpeedFetchedAt time.Time
+	altSpeedMu        sync.RWMutex
+	syncEventSink     SyncEventSink
+	completionMu      sync.Mutex
+	completionState   map[string]bool
+	completionHandler TorrentCompletionHandler
+	completionInit    bool
+	addedMu           sync.Mutex
+	addedState        map[string]struct{}
+	addedHandler      TorrentAddedHandler
+	addedInit         bool
 
 	// activeTaskCount caches the number of running/queued torrent-creation tasks.
 	// It is refreshed at most once per activeTaskCountTTL with single-flight, so the

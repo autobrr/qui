@@ -140,6 +140,21 @@ import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./
 
 const API_BASE = getApiBaseUrl()
 
+// The backend sets X-Qui-Cached-At (RFC3339 UTC) only when it serves a cached value
+// after a live qBittorrent call fails. Returns the parsed Date, or null when the
+// header is absent (fresh response) or unparseable.
+const CACHED_AT_HEADER = "X-Qui-Cached-At"
+
+function parseCachedAtHeader(response: Response): Date | null {
+  const raw = response.headers.get(CACHED_AT_HEADER)
+  if (!raw) {
+    return null
+  }
+
+  const parsed = new Date(raw)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<number, string> | undefined => {
   if (!excluded) {
     return undefined
@@ -440,6 +455,16 @@ class ApiClient {
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
+    const { data } = await this.requestWithResponse<T>(endpoint, options)
+    return data
+  }
+
+  // Like request(), but also returns the raw Response so callers can read response
+  // headers (e.g. the X-Qui-Cached-At staleness header on graceful-degradation reads).
+  private async requestWithResponse<T>(
+    endpoint: string,
+    options?: RequestInit
+  ): Promise<{ data: T; response: Response }> {
     const response = await ssoSafeFetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers: {
@@ -456,10 +481,10 @@ class ApiClient {
 
     // Handle empty responses (like 204 No Content)
     if (response.status === 204 || response.headers.get("content-length") === "0") {
-      return undefined as T
+      return { data: undefined as T, response }
     }
 
-    return response.json()
+    return { data: await response.json(), response }
   }
 
   private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
@@ -2024,6 +2049,19 @@ class ApiClient {
   // Preferences endpoints
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
+  }
+
+  // Same data as getInstancePreferences, but also surfaces the X-Qui-Cached-At
+  // staleness header (RFC3339). cachedAt is non-null only when the backend served a
+  // cached value after a live qBittorrent call failed/timed out; a fresh live
+  // response leaves the header unset, so cachedAt is null.
+  async getInstancePreferencesWithMeta(
+    instanceId: number
+  ): Promise<{ preferences: AppPreferences; cachedAt: Date | null }> {
+    const { data, response } = await this.requestWithResponse<AppPreferences>(
+      `/instances/${instanceId}/preferences`
+    )
+    return { preferences: data, cachedAt: parseCachedAtHeader(response) }
   }
 
   async updateInstancePreferences(

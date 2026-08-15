@@ -7,12 +7,27 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
+
+// cachedAtHeader signals that the response body was served from a last-known-good
+// cache rather than a fresh live qBittorrent call. Its value is the cache fetch
+// time formatted as RFC3339 in UTC. It is set only when serving stale data.
+const cachedAtHeader = "X-Qui-Cached-At"
+
+// setCachedAtHeader stamps the staleness header with the given fetch time in
+// RFC3339 UTC. A zero fetchedAt leaves the header unset.
+func setCachedAtHeader(w http.ResponseWriter, fetchedAt time.Time) {
+	if fetchedAt.IsZero() {
+		return
+	}
+	w.Header().Set(cachedAtHeader, fetchedAt.UTC().Format(time.RFC3339))
+}
 
 type PreferencesHandler struct {
 	syncManager *qbittorrent.SyncManager
@@ -44,6 +59,25 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 		if respondIfInstanceDisabled(w, err, instanceID, "preferences:get") {
 			return
 		}
+
+		// Graceful degradation: serve the last-known-good cached preferences when the
+		// live call fails, signalling staleness via the X-Qui-Cached-At header. Use an
+		// offline client lookup so an unreachable/slow qBittorrent does not trigger
+		// another doomed live health-check round trip (issue #2052).
+		if client, clientErr := h.syncManager.GetClientOffline(r.Context(), instanceID); clientErr == nil {
+			if cached, fetchedAt := client.GetCachedAppPreferencesSnapshot(); cached != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Serving cached app preferences after live fetch failed")
+
+				setCachedAtHeader(w, fetchedAt)
+				w.Header().Set("Content-Type", "application/json")
+				if encodeErr := json.NewEncoder(w).Encode(cached); encodeErr != nil {
+					log.Error().Err(encodeErr).Int("instanceID", instanceID).Msg("Failed to encode cached preferences response")
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
+				return
+			}
+		}
+
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get app preferences")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -123,6 +157,25 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 		if respondIfInstanceDisabled(w, err, instanceID, "preferences:getAltSpeeds") {
 			return
 		}
+
+		// Graceful degradation: serve the last-known-good alternative-speed-limits mode
+		// when the live call fails, signalling staleness via the X-Qui-Cached-At header.
+		// Use an offline client lookup so an unreachable/slow qBittorrent does not trigger
+		// another doomed live health-check round trip (issue #2052).
+		if client, clientErr := h.syncManager.GetClientOffline(r.Context(), instanceID); clientErr == nil {
+			if cached, fetchedAt, ok := client.GetCachedAlternativeSpeedLimitsModeSnapshot(); ok {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Serving cached alternative speed limits mode after live fetch failed")
+
+				setCachedAtHeader(w, fetchedAt)
+				w.Header().Set("Content-Type", "application/json")
+				if encodeErr := json.NewEncoder(w).Encode(map[string]bool{"enabled": cached}); encodeErr != nil {
+					log.Error().Err(encodeErr).Int("instanceID", instanceID).Msg("Failed to encode cached alternative speed limits mode response")
+					http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+				}
+				return
+			}
+		}
+
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get alternative speed limits mode")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

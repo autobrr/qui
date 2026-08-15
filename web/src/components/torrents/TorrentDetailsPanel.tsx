@@ -30,6 +30,7 @@ import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
+import { resolveQueryFreshness } from "@/lib/stale-query"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -38,7 +39,7 @@ import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
-import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
+import { CachedDataBadge, CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
 import { TorrentFileTree } from "./TorrentFileTree"
@@ -62,7 +63,24 @@ function isTabValue(value: string): value is TabValue {
   return TAB_VALUES.includes(value as TabValue)
 }
 
+interface TabErrorBlockProps {
+  message: string
+  retryLabel: string
+  onRetry: () => void
+}
 
+// Shown when a tab query fails with no cached data on hand (cold error), instead of
+// an endless spinner or a silently empty panel.
+function TabErrorBlock({ message, retryLabel, onRetry }: TabErrorBlockProps) {
+  return (
+    <div className="flex flex-col items-center justify-center h-32 gap-3 text-sm text-muted-foreground">
+      <p>{message}</p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        {retryLabel}
+      </Button>
+    </div>
+  )
+}
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
   const { t } = useTranslation("torrents")
@@ -199,7 +217,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   }, [streamState.connected, streamState.error])
 
   // Fetch torrent properties
-  const { data: properties, isLoading: loadingProperties } = useQuery({
+  const {
+    data: properties,
+    isLoading: loadingProperties,
+    isError: propertiesError,
+    dataUpdatedAt: propertiesUpdatedAt,
+    refetch: refetchProperties,
+  } = useQuery({
     queryKey: ["torrent-properties", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentProperties(instanceId, torrent!.hash),
     enabled: !!torrent && isReady,
@@ -250,7 +274,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   }, [matchingTorrentsKeys])
 
   // Fetch torrent trackers
-  const { data: trackers, isLoading: loadingTrackers } = useQuery({
+  const {
+    data: trackers,
+    isLoading: loadingTrackers,
+    isError: trackersError,
+    dataUpdatedAt: trackersUpdatedAt,
+    refetch: refetchTrackers,
+  } = useQuery({
     queryKey: ["torrent-trackers", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentTrackers(instanceId, torrent!.hash),
     enabled: !!torrent && isReady, // Fetch immediately, don't wait for tab
@@ -287,7 +317,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   // Bypass cache during recheck so progress bars update in real-time
   const currentState = displayTorrent?.state
   const isChecking = !!currentState && ["checkingDL", "checkingUP", "checkingResumeData"].includes(currentState)
-  const { data: files, isLoading: loadingFiles } = useQuery({
+  const {
+    data: files,
+    isLoading: loadingFiles,
+    isError: filesError,
+    dataUpdatedAt: filesUpdatedAt,
+    refetch: refetchFiles,
+  } = useQuery({
     queryKey: ["torrent-files", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentFiles(instanceId, torrent!.hash, { refresh: isChecking }),
     enabled: !!torrent && isReady && isContentTabActive,
@@ -472,7 +508,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const isPeersTabActive = activeTab === "peers"
   const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
 
-  const { data: peersData, isLoading: loadingPeers } = useQuery<SortedPeersResponse>({
+  const {
+    data: peersData,
+    isLoading: loadingPeers,
+    isError: peersError,
+    dataUpdatedAt: peersUpdatedAt,
+    refetch: refetchPeers,
+  } = useQuery<SortedPeersResponse>({
     queryKey: peersQueryKey,
     queryFn: () => api.getTorrentPeers(instanceId, torrent!.hash),
     enabled: !!torrent && isReady && isPeersTabActive,
@@ -488,7 +530,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Fetch web seeds (HTTP sources) - always fetch to determine if tab should be shown
-  const { data: webseedsData, isLoading: loadingWebseeds } = useQuery({
+  const {
+    data: webseedsData,
+    isLoading: loadingWebseeds,
+    isError: webseedsError,
+    dataUpdatedAt: webseedsUpdatedAt,
+    refetch: refetchWebseeds,
+  } = useQuery({
     queryKey: ["torrent-webseeds", instanceId, torrent?.hash],
     queryFn: () => api.getTorrentWebSeeds(instanceId, torrent!.hash),
     enabled: !!torrent && isReady,
@@ -497,12 +545,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
-  useEffect(() => {
-    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
-      setActiveTab("general")
-    }
-  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+  // Fall back to the general tab only on a confirmed empty successful load
+  // (e.g. switching to a torrent without web seeds). While loading or on a
+  // cold-error we keep the webseeds tab so its loading/retry UI stays reachable
+  // instead of silently hiding the failure. Derived during render so the tab is
+  // hidden immediately without an extra state-sync render, and the persisted tab
+  // preference is left intact for torrents that do have web seeds.
+  const effectiveActiveTab = activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds && !webseedsError ? "general" : activeTab
 
   // Add peers mutation
   const addPeersMutation = useMutation({
@@ -835,6 +884,16 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   if (!torrent) return null
 
+  // Derive per-tab freshness so we can keep showing cached rows with a staleness
+  // badge when a live qBittorrent call fails, and fall back to an explicit error +
+  // retry instead of an infinite spinner when there is no cached data at all.
+  const now = Date.now()
+  const propertiesFreshness = resolveQueryFreshness({ hasData: properties !== undefined, isError: propertiesError, dataUpdatedAt: propertiesUpdatedAt, now })
+  const trackersFreshness = resolveQueryFreshness({ hasData: trackers !== undefined, isError: trackersError, dataUpdatedAt: trackersUpdatedAt, now })
+  const peersFreshness = resolveQueryFreshness({ hasData: peersData !== undefined, isError: peersError, dataUpdatedAt: peersUpdatedAt, now })
+  const filesFreshness = resolveQueryFreshness({ hasData: files !== undefined, isError: filesError, dataUpdatedAt: filesUpdatedAt, now })
+  const webseedsFreshness = resolveQueryFreshness({ hasData: webseedsData !== undefined, isError: webseedsError, dataUpdatedAt: webseedsUpdatedAt, now })
+
   const displayCreatedBy = incognitoMode && properties?.created_by ? getLinuxCreatedBy(torrent.hash) : properties?.created_by
   const displayComment = incognitoMode && properties?.comment ? getLinuxComment(torrent.hash) : properties?.comment
   const displayInfohashV1 = incognitoMode && resolvedInfohashV1 ? incognitoHash : resolvedInfohashV1
@@ -868,7 +927,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={effectiveActiveTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b flex items-center">
           <div className="flex-1 overflow-x-auto scroll-smooth">
             <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -881,7 +940,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <TabsTrigger value="peers" className="text-xs shrink-0">
                 {t("detailsPanel.tabs.peers")}
               </TabsTrigger>
-              {hasWebseeds && (
+              {(hasWebseeds || webseedsError) && (
                 <TabsTrigger value="webseeds" className="text-xs shrink-0">
                   {t("detailsPanel.tabs.httpSources")}
                 </TabsTrigger>
@@ -909,8 +968,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
         <div className="flex-1 min-h-0 overflow-hidden">
-          <TabsContent value="general" className="m-0 h-full">
-            {isHorizontal ? (
+          <TabsContent value="general" className="m-0 h-full relative">
+            {propertiesFreshness.state === "stale" && (
+              <div className="absolute right-3 top-2 z-10">
+                <CachedDataBadge updatedAt={propertiesUpdatedAt} />
+              </div>
+            )}
+            {propertiesFreshness.state === "cold-error" ? (
+              <TabErrorBlock
+                message={t("detailCache.failedToLoad")}
+                retryLabel={t("detailCache.retry")}
+                onRetry={() => { void refetchProperties() }}
+              />
+            ) : isHorizontal ? (
               <GeneralTabHorizontal
                 instanceId={instanceId}
                 torrent={displayTorrent!}
@@ -1214,8 +1284,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             )}
           </TabsContent>
 
-          <TabsContent value="trackers" className="m-0 h-full">
-            {isHorizontal ? (
+          <TabsContent value="trackers" className="m-0 h-full relative">
+            {trackersFreshness.state === "stale" && (
+              <div className="absolute right-3 top-2 z-10">
+                <CachedDataBadge updatedAt={trackersUpdatedAt} />
+              </div>
+            )}
+            {trackersFreshness.state === "cold-error" ? (
+              <TabErrorBlock
+                message={t("detailCache.failedToLoad")}
+                retryLabel={t("detailCache.retry")}
+                onRetry={() => { void refetchTrackers() }}
+              />
+            ) : isHorizontal ? (
               <TrackersTable
                 trackers={trackers}
                 loading={loadingTrackers}
@@ -1315,8 +1396,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             )}
           </TabsContent>
 
-          <TabsContent value="peers" className="m-0 h-full">
-            {isHorizontal ? (
+          <TabsContent value="peers" className="m-0 h-full relative">
+            {peersFreshness.state === "stale" && (
+              <div className="absolute right-3 top-2 z-10">
+                <CachedDataBadge updatedAt={peersUpdatedAt} />
+              </div>
+            )}
+            {peersFreshness.state === "cold-error" ? (
+              <TabErrorBlock
+                message={t("detailCache.failedToLoad")}
+                retryLabel={t("detailCache.retry")}
+                onRetry={() => { void refetchPeers() }}
+              />
+            ) : isHorizontal ? (
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs">
                   <span className="text-muted-foreground">
@@ -1547,8 +1639,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             )}
           </TabsContent>
 
-          <TabsContent value="webseeds" className="m-0 h-full">
-            {isHorizontal ? (
+          <TabsContent value="webseeds" className="m-0 h-full relative">
+            {webseedsFreshness.state === "stale" && (
+              <div className="absolute right-3 top-2 z-10">
+                <CachedDataBadge updatedAt={webseedsUpdatedAt} />
+              </div>
+            )}
+            {webseedsFreshness.state === "cold-error" ? (
+              <TabErrorBlock
+                message={t("detailCache.failedToLoad")}
+                retryLabel={t("detailCache.retry")}
+                onRetry={() => { void refetchWebseeds() }}
+              />
+            ) : isHorizontal ? (
               <WebSeedsTable
                 webseeds={webseedsData}
                 loading={loadingWebseeds}
@@ -1605,8 +1708,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             )}
           </TabsContent>
 
-          <TabsContent value="content" className="m-0 h-full flex flex-col overflow-hidden">
-            {isHorizontal ? (
+          <TabsContent value="content" className="m-0 h-full flex flex-col overflow-hidden relative">
+            {filesFreshness.state === "stale" && (
+              <div className="absolute right-3 top-2 z-10">
+                <CachedDataBadge updatedAt={filesUpdatedAt} />
+              </div>
+            )}
+            {filesFreshness.state === "cold-error" ? (
+              <TabErrorBlock
+                message={t("detailCache.failedToLoad")}
+                retryLabel={t("detailCache.retry")}
+                onRetry={() => { void refetchFiles() }}
+              />
+            ) : isHorizontal ? (
               <TorrentFileTable
                 files={files}
                 loading={loadingFiles}

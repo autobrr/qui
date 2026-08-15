@@ -166,6 +166,7 @@
       "loadingFallback": "Chargement...",
       "errorFallback": "Échec du chargement des paramètres. Veuillez réessayer.",
       "retry": "Réessayer",
+      "cachedNotice": "Affichage des paramètres en cache ({{age}}) — qBittorrent n'a pas répondu à temps.",
       "deleteDialog": {
         "title": "Supprimer l'instance",
         "description": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",

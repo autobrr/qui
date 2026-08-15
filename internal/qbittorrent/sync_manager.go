@@ -484,6 +484,17 @@ func (sm *SyncManager) GetClient(ctx context.Context, instanceID int) (*Client, 
 	return sm.clientPool.GetClient(ctx, instanceID)
 }
 
+// GetClientOffline returns an existing client for an instance without triggering a
+// live health check. Use this when serving last-known-good cached data after a live
+// fetch failed, so an unreachable/slow qBittorrent does not incur another doomed
+// network round trip.
+func (sm *SyncManager) GetClientOffline(ctx context.Context, instanceID int) (*Client, error) {
+	if sm == nil || sm.clientPool == nil {
+		return nil, errors.New("client pool unavailable")
+	}
+	return sm.clientPool.GetClientOffline(ctx, instanceID)
+}
+
 // getFilesManager returns the current files manager in a thread-safe manner
 // Returns nil if no files manager is set
 func (sm *SyncManager) getFilesManager() FilesManager {
@@ -6553,7 +6564,7 @@ func (sm *SyncManager) GetAlternativeSpeedLimitsMode(ctx context.Context, instan
 		return false, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	enabled, err := client.GetAlternativeSpeedLimitsModeCtx(ctx)
+	enabled, err := client.GetAlternativeSpeedLimitsMode(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get alternative speed limits mode: %w", err)
 	}

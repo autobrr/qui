@@ -1502,5 +1502,10 @@
     "failedToUpdatePriorities": "파일 우선순위를 업데이트하지 못했습니다",
     "failedToRenameFile": "파일 이름을 변경하지 못했습니다",
     "failedToRenameFolder": "폴더 이름을 변경하지 못했습니다"
+  },
+  "detailCache": {
+    "showingCached": "캐시된 데이터 표시 중 ({{age}})",
+    "failedToLoad": "불러오기 실패",
+    "retry": "다시 시도"
   }
 }
