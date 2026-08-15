@@ -23,6 +23,9 @@ const (
 	// replaced only the soft release-attribute checks rejected by strict matching.
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
 	searchCandidateClassTitleRescue       searchCandidateClass = "title-rescue"
+	// searchCandidateClassSizeGroup means the video path admitted the candidate
+	// on size tolerance plus group/site identity alone; see classifySearchCandidate.
+	searchCandidateClassSizeGroup searchCandidateClass = "size-group"
 )
 
 // searchSizeEvidence describes size evidence available before a candidate
@@ -77,13 +80,68 @@ const (
 )
 
 // classifySearchCandidate applies the shared search-only admission rules.
-// Exact-size fallback requires positive byte-for-byte size equality plus strict
-// title, TV structure, resolution, group/site, checksum, artist, and date
-// identity. It may relax descriptive attributes such as source, collection,
-// HDR, codec, or bit depth. Apply later uses the private decision class only to
-// skip its duplicate release prefilter; normal torrent-file validation remains
-// authoritative.
+// Music keeps the full legacy cascade (strict / web-source relabel / title
+// rescue / exact-size fallback): its release names are unreliable enough that
+// the extra identity checks earn their keep. Video collapses to two gates:
+// size tolerance, then group/site identity enforced only when both sides
+// carry one. Title, season/episode, resolution, and checksum no longer gate
+// video — WEB-DL/remux bytes are the same stream regardless of release-name
+// noise, and group is the one name field that still tells same-source apart
+// from re-encoded-elsewhere. Apply later uses the private decision class only
+// to skip its duplicate release prefilter; normal torrent-file validation
+// remains authoritative.
 func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
+	if DetermineContentType(input.SourceRelease).IsMusic {
+		return s.classifySearchCandidateLegacy(input)
+	}
+
+	decision := searchCandidateDecision{
+		Class:        searchCandidateClassRejected,
+		SizeEvidence: classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
+	}
+
+	// Episode-from-pack searches compare an episode against a pack total; the
+	// size gate cannot apply. Apply's file validation decides.
+	ignoreSizeCheck := input.FindIndividualEpisodes &&
+		isTVSeasonPack(input.SourceRelease) && isTVEpisode(input.CandidateRelease)
+
+	if !ignoreSizeCheck && !s.isSizeWithinTolerance(input.SourceSize, input.CandidateSize, input.TolerancePercent) {
+		decision.RejectReason = "size mismatch"
+		decision.SizeRejected = true
+		return decision
+	}
+
+	// The one identity gate. WEB-DLs and remuxes from different groups are the
+	// same untouched stream, so sizes collide across groups; group is the only
+	// name field that encodes that. Enforced only when both sides carry one: a
+	// missing group is absence of evidence, and recheck decides at apply.
+	sourceIdentity := normalizedGroupSiteIdentity(s, input.SourceRelease)
+	candidateIdentity := normalizedGroupSiteIdentity(s, input.CandidateRelease)
+	if sourceIdentity != "" && candidateIdentity != "" && sourceIdentity != candidateIdentity {
+		decision.RejectReason = "group mismatch"
+		return decision
+	}
+
+	decision.Accepted = true
+	decision.Class = searchCandidateClassSizeGroup
+	decision.SourceTitles = slices.Clone(input.SourceTitles)
+	decision.Score, decision.MatchReason = evaluateReleaseMatch(input.SourceRelease, input.CandidateRelease)
+	if decision.Score <= 0 {
+		decision.Score = 1
+	}
+	if decision.SizeEvidence.matches() {
+		decision.Score += sizeEvidenceStrictScoreBonus
+		decision.MatchReason = decision.SizeEvidence.matchReason() + "; size+group; " + decision.MatchReason
+	} else {
+		decision.MatchReason = "size+group; " + decision.MatchReason
+	}
+	return decision
+}
+
+// classifySearchCandidateLegacy is the pre-size-group cascade: strict release
+// match, web-source relabel, title rescue, then exact-size fallback with hard
+// identity gates. Music routes here; see classifySearchCandidate.
+func (s *Service) classifySearchCandidateLegacy(input searchCandidateInput) searchCandidateDecision {
 	decision := searchCandidateDecision{
 		Class:        searchCandidateClassRejected,
 		SizeEvidence: classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),

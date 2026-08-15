@@ -24,7 +24,7 @@ func TestSearchResultUsable(t *testing.T) {
 	const (
 		webripDotted  = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEBRip.DD2.0.x264-NTb"
 		webdlDotted   = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
-		otherShow     = "Law.and.Order.Organized.Crime.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
+		otherGroup    = "Law.and.Order.Organized.Crime.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-XYZ"
 		episodeDotted = "Law.and.Order.Special.Victims.Unit.S05E03.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
 		size          = int64(115_682_424_111)
 	)
@@ -64,16 +64,22 @@ func TestSearchResultUsable(t *testing.T) {
 			want: false,
 		},
 		{
-			name:       "different show is not usable (indexer stays eligible for re-query)",
-			sourceName: webripDotted, candidateName: otherShow,
+			// Video no longer gates on title, only size and group: a same-size,
+			// different-group result is what stays unusable (indexer stays
+			// eligible for re-query), not a merely different title.
+			name:       "different group is not usable (indexer stays eligible for re-query)",
+			sourceName: webripDotted, candidateName: otherGroup,
 			sourceSize: size, candidateSize: size, tolerance: 5,
 			want: false,
 		},
 		{
-			name:       "title rescue does not stop safer re-query passes",
+			// Title no longer gates video, so there is no separate "rescue" tier
+			// of weaker confidence for a title mismatch: same size and group is
+			// usable outright, same as an exact title match.
+			name:       "different title with matching size and group is usable",
 			sourceName: webdlDotted, candidateName: "Different.Title.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb",
 			sourceSize: size, candidateSize: size, tolerance: 5,
-			want: false,
+			want: true,
 		},
 		{
 			// findIndividualEpisodes makes a season-pack source match an individual
@@ -87,15 +93,16 @@ func TestSearchResultUsable(t *testing.T) {
 			want:                   true,
 		},
 		{
-			// Reverse pairing: a season-pack candidate against a single-episode source
-			// is a forbidden cross-seed even under findIndividualEpisodes. Sizes are
-			// equal (within tolerance) and the show/season match, so the ONLY thing
-			// that makes this not usable is the season-pack-from-episode rejection.
-			name:       "season pack candidate against episode source is rejected (pairing rule)",
+			// Reverse pairing: a season-pack candidate against a single-episode
+			// source. The video path no longer runs the season-pack-from-episode
+			// pairing rule at search time (Task 1); sizes are equal here so the
+			// size gate does not catch it either, so search now calls it usable.
+			// Apply's file validation is the backstop that still rejects the pair.
+			name:       "season pack candidate against episode source is usable at search time (pairing rule moved to apply)",
 			sourceName: episodeDotted, candidateName: webdlDotted,
 			sourceSize: size, candidateSize: size, tolerance: 5,
 			findIndividualEpisodes: true,
-			want:                   false,
+			want:                   true,
 		},
 	}
 
@@ -157,7 +164,10 @@ func TestShouldRunTitleFallbackForRescueOnly(t *testing.T) {
 
 	require.True(t, service.shouldRunTitleFallback(nil, &source, sourceName, size, nil, 5, false, false))
 	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, false))
-	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, true))
+	// Title no longer gates video: a retitled same-group, same-size result is a
+	// direct size-group accept, not a weaker "rescue" tier, so it already
+	// counts as a usable result and no fallback pass is needed.
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, true))
 	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, &source, sourceName, size, nil, 5, false, true))
 	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, &source, sourceName, size, nil, 5, false, true))
 }

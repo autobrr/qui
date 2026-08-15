@@ -27,6 +27,107 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+// TestClassifySearchCandidate_SizeGroup pins the video classifier to size
+// tolerance plus group/site identity, replacing the old strict/relabel/rescue
+// cascade for non-music sources (title, season, episode, and resolution no
+// longer gate a match; a missing group on either side is absence of evidence,
+// not a rejection).
+func TestClassifySearchCandidate_SizeGroup(t *testing.T) {
+	svc := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	parse := func(name string) *rls.Release {
+		r := rls.ParseString(name)
+		return &r
+	}
+
+	tests := []struct {
+		name          string
+		source        string
+		candidate     string
+		sourceSize    int64
+		candidateSize int64
+		wantAccepted  bool
+		wantReason    string
+	}{
+		{
+			// The AB season-stamp bug: byte-identical, same group, wrong season label.
+			name:          "season label mismatch accepted on exact size and same group",
+			source:        "Azure.Compass.S02.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI",
+			candidate:     "[KIRI] Azure Compass S01 [Blu-ray][MKV][h264][1080p Remux][FLAC 2.0][Dual Audio][Softsubs (KIRI)]",
+			sourceSize:    71_052_546_722,
+			candidateSize: 71_052_546_722,
+			wantAccepted:  true,
+		},
+		{
+			// The absolute-numbering bug: same group, renumbered episode.
+			name:          "episode renumbering accepted on exact size and same group",
+			source:        "[FanSubs] Azure Compass - 171 (1080p) [0A043BA1]",
+			candidate:     "Azure Compass S00E23 1080p CR WEB-DL AAC 2.0 H.264-FanSubs",
+			sourceSize:    1_424_466_789,
+			candidateSize: 1_424_466_789,
+			wantAccepted:  true,
+		},
+		{
+			// The scary WEB-DL case: same bytes, different group. Must stay dead.
+			name:          "same size different group rejected",
+			source:        "Azure.Compass.2024.1080p.AMZN.WEB-DL.DDP5.1.H.264-KIRI",
+			candidate:     "Azure.Compass.2024.1080p.AMZN.WEB-DL.DDP5.1.H.264-OTHERGRP",
+			sourceSize:    4_581_505_024,
+			candidateSize: 4_581_505_024,
+			wantAccepted:  false,
+			wantReason:    "group mismatch",
+		},
+		{
+			// Absence of evidence passes to recheck.
+			name:          "missing group on one side accepted",
+			source:        "AZURE_COMPASS_DISC",
+			candidate:     "Azure.Compass.2024.NTSC.DVD5-KIRI",
+			sourceSize:    4_581_505_024,
+			candidateSize: 4_581_505_024,
+			wantAccepted:  true,
+		},
+		{
+			name:          "size outside tolerance rejected",
+			source:        "Azure.Compass.2024.1080p.BluRay.x264-KIRI",
+			candidate:     "Azure.Compass.2024.1080p.BluRay.x264-KIRI",
+			sourceSize:    10_000_000_000,
+			candidateSize: 4_000_000_000,
+			wantAccepted:  false,
+			wantReason:    "size mismatch",
+		},
+		{
+			// Title no longer gates video.
+			name:          "different title accepted on exact size and same group",
+			source:        "Sora.no.Azure.Compass.S01.1080p.BluRay.x264-KIRI",
+			candidate:     "Azure.Compass.First.Voyage.S01.1080p.BluRay.x264-KIRI",
+			sourceSize:    20_000_000_000,
+			candidateSize: 20_000_000_000,
+			wantAccepted:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := svc.classifySearchCandidate(searchCandidateInput{
+				SourceRelease:    parse(tt.source),
+				CandidateRelease: parse(tt.candidate),
+				SourceName:       tt.source,
+				CandidateName:    tt.candidate,
+				SourceSize:       tt.sourceSize,
+				CandidateSize:    tt.candidateSize,
+				TolerancePercent: 5,
+			})
+			require.Equal(t, tt.wantAccepted, decision.Accepted)
+			if tt.wantReason != "" {
+				require.Equal(t, tt.wantReason, decision.RejectReason)
+			}
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassSizeGroup, decision.Class)
+			}
+		})
+	}
+}
+
 func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 	// Bracket-anime pack names carry no season token, so the raw name parses as
 	// non-TV. Search matched these via file-derived TV structure; the apply
@@ -135,6 +236,10 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 	})
 }
 
+// Calls classifySearchCandidateLegacy directly: video no longer reaches the
+// exact-size-fallback cascade (Task 1 collapses it to size+group), but the
+// cascade itself is unchanged and still runs for music, so this test now
+// exercises it directly instead of through the routing wrapper.
 func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -151,7 +256,7 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.False(t, strict)
 	require.NotEmpty(t, strictReason)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 		SourceRelease:    &source,
 		CandidateRelease: &candidate,
 		SourceName:       sourceName,
@@ -170,6 +275,8 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Contains(t, decision.MatchReason, "relaxed collection")
 }
 
+// Calls classifySearchCandidateLegacy directly; see the comment on
+// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -181,7 +288,7 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
+	decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 		SourceRelease:    &source,
 		CandidateRelease: &candidate,
 		SourceName:       sourceName,
@@ -196,6 +303,9 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	require.Equal(t, searchSizeEvidenceNone, decision.SizeEvidence)
 }
 
+// Calls classifySearchCandidateLegacy directly; title rescue no longer exists
+// on the video path (title never gates video), but the cascade still runs for
+// music. See the comment on TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -216,24 +326,24 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 		RescueTitleMismatches: true,
 	}
 
-	decision := service.classifySearchCandidate(input)
+	decision := service.classifySearchCandidateLegacy(input)
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
 	require.Equal(t, "Title rescue · full check required", decision.MatchReason)
 
 	input.RescueTitleMismatches = false
-	require.False(t, service.classifySearchCandidate(input).Accepted)
+	require.False(t, service.classifySearchCandidateLegacy(input).Accepted)
 
 	input.RescueTitleMismatches = true
 	input.CandidateSize--
-	require.False(t, service.classifySearchCandidate(input).Accepted)
+	require.False(t, service.classifySearchCandidateLegacy(input).Accepted)
 
 	input.CandidateSize = size
 	differentGroup := candidate
 	differentGroup.Group = "OTHER"
 	input.CandidateRelease = &differentGroup
-	rejected := service.classifySearchCandidate(input)
+	rejected := service.classifySearchCandidateLegacy(input)
 	require.False(t, rejected.Accepted)
 	require.Equal(t, "group mismatch", rejected.RejectReason)
 }
@@ -241,6 +351,8 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 // Field case: the user's own movie re-uploaded as a bare .mkv, byte-identical,
 // listing retitled with a "cdn-" prefix and the -GROUP tag dropped. The rescue
 // probe must tolerate the absent group; the strict matcher must not.
+// Calls classifySearchCandidateLegacy directly; see the comment on
+// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -264,7 +376,7 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 		RescueTitleMismatches: true,
 	}
 
-	decision := service.classifySearchCandidate(input)
+	decision := service.classifySearchCandidateLegacy(input)
 	require.True(t, decision.Accepted, "reject reason: %s", decision.RejectReason)
 	require.Equal(t, searchCandidateClassTitleRescue, decision.Class)
 	require.Equal(t, "title mismatch", decision.StrictMismatchReason)
@@ -344,7 +456,7 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 		TolerancePercent: 5,
 	})
 	require.True(t, decision.Accepted)
-	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.Equal(t, searchCandidateClassSizeGroup, decision.Class)
 	require.Equal(t, []string{"Money Heist"}, decision.SourceTitles)
 
 	// The decision owns the title lineage it accepted; later mutations of the ARR
@@ -377,21 +489,27 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchSourceTitles)
 	require.Equal(t, []string{"collection"}, service.getCachedSearchResults(1, "source").results[0].SearchRelaxedDifferences)
 
+	// Title no longer gates video, so a rejection now needs a group mismatch
+	// instead of an unrelated ARR title.
+	const groupMismatchName = "Money.Heist.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-FLUX"
+	groupMismatchCandidate := rls.ParseString(groupMismatchName)
 	rejected := service.classifySearchCandidate(searchCandidateInput{
 		SourceRelease:    &source,
-		CandidateRelease: &candidate,
+		CandidateRelease: &groupMismatchCandidate,
 		SourceName:       sourceName,
-		CandidateName:    candidateName,
+		CandidateName:    groupMismatchName,
 		SourceTitles:     []string{"Unrelated Show"},
 		SourceSize:       100,
 		CandidateSize:    101,
 		TolerancePercent: 5,
 	})
 	require.False(t, rejected.Accepted)
-	require.Equal(t, "title mismatch", rejected.RejectReason)
+	require.Equal(t, "group mismatch", rejected.RejectReason)
 	require.Empty(t, rejected.SourceTitles)
 }
 
+// Calls classifySearchCandidateLegacy directly; see the comment on
+// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	sourceName := "Example.Show.S01.2160p.ATV.WEB-DL.HDR.H.265-NTb"
@@ -414,7 +532,7 @@ func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 				SourceRelease:    &source,
 				CandidateRelease: &candidate,
 				SourceName:       sourceName,
@@ -429,6 +547,10 @@ func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 	}
 }
 
+// Calls classifySearchCandidateLegacy directly; the per-field identity gates
+// (title/season/resolution/checksum) it pins are gone from the video path,
+// which now checks only size and group. See the comment on
+// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
@@ -458,7 +580,7 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 				source.Sum = "AAAAAAAA"
 			}
 			test.mutate(&candidate)
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 				SourceRelease:    &source,
 				CandidateRelease: &candidate,
 				SourceName:       source.Title,
@@ -473,6 +595,9 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 	}
 }
 
+// Calls classifySearchCandidateLegacy directly; date identity is no longer
+// checked on the video path. See the comment on
+// TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
@@ -524,7 +649,7 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 			source.Year, source.Month, source.Day = test.sourceYear, test.sourceMonth, test.sourceDay
 			candidate.Year, candidate.Month, candidate.Day = test.candidateYear, test.candidateMonth, test.candidateDay
 
-			decision := service.classifySearchCandidate(searchCandidateInput{
+			decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 				SourceRelease:    &source,
 				CandidateRelease: &candidate,
 				SourceName:       source.Title,
@@ -544,6 +669,11 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 	}
 }
 
+// Calls classifySearchCandidateLegacy directly; episode/season-pack pairing
+// and content-type identity are no longer checked on the video path (a
+// season-pack candidate against an episode source now fails only if size or
+// group disagrees; apply's file validation catches what search no longer
+// does). See the comment on TestClassifySearchCandidateExactSizeFallback.
 func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
@@ -551,7 +681,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	t.Run("different episode", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 			SourceRelease:    &source,
 			CandidateRelease: &candidate,
 			SourceName:       source.Title,
@@ -567,7 +697,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	t.Run("forbidden season pack from episode", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01.2160p.ATVP.WEB-DL.H.265-NTb")
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 			SourceRelease:          &source,
 			CandidateRelease:       &candidate,
 			SourceName:             source.Title,
@@ -586,7 +716,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 		candidate := source
 		candidate.Type = rls.Music
 		candidate.Collection = "ATVP"
-		decision := service.classifySearchCandidate(searchCandidateInput{
+		decision := service.classifySearchCandidateLegacy(searchCandidateInput{
 			SourceRelease:    &source,
 			CandidateRelease: &candidate,
 			SourceName:       source.Title,
@@ -1090,131 +1220,6 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 	require.Equal(t, skippedRecheckMessage, result.Message)
 }
 
-func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *testing.T) {
-	const (
-		instanceID    = 1
-		torrentSize   = int64(94_329_473_840)
-		targetName    = "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb"
-		existingName  = "Example.Show.2024.S01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb"
-		existingHash  = "existing"
-		unrelatedHash = "unrelated"
-	)
-	instance := &models.Instance{ID: instanceID, Name: "main"}
-	existing := qbt.Torrent{
-		Hash: existingHash,
-		Name: existingName,
-		// Search already established exact size. Apply must not replace that
-		// evidence with a new comparison against downloaded metainfo.
-		Size:     torrentSize + 1,
-		Progress: 1,
-	}
-	unrelated := existing
-	unrelated.Hash = unrelatedHash
-	files := map[string]qbt.TorrentFiles{
-		existingHash: {
-			{
-				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
-				Size: torrentSize,
-			},
-		},
-		unrelatedHash: {
-			{
-				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
-				Size: torrentSize,
-			},
-		},
-	}
-	service := &Service{
-		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
-		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing, unrelated}, files),
-		releaseCache:     NewReleaseCache(),
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-	}
-	sourceRelease := rls.ParseString(existingName)
-	targetRelease := rls.ParseString(targetName)
-	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &sourceRelease,
-		CandidateRelease: &targetRelease,
-		SourceName:       existingName,
-		CandidateName:    targetName,
-		SourceSize:       torrentSize,
-		CandidateSize:    torrentSize,
-		TolerancePercent: 5,
-	})
-	require.True(t, decision.Accepted)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Equal(t, "hdr mismatch", decision.StrictMismatchReason)
-	require.ElementsMatch(t, []string{"collection", "hdr"}, decision.RelaxedDifferences)
-
-	fallbackRequest := func() *FindCandidatesRequest {
-		return &FindCandidatesRequest{
-			TorrentName:                targetName,
-			TargetInstanceIDs:          []int{instanceID},
-			SearchDecisionClass:        decision.Class,
-			SearchSourceInstanceID:     instanceID,
-			SearchSourceHash:           existingHash,
-			SearchStrictMismatchReason: decision.StrictMismatchReason,
-			SearchRelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
-		}
-	}
-
-	directResponse, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:       targetName,
-		TargetInstanceIDs: []int{instanceID},
-	})
-	require.NoError(t, err)
-	require.Empty(t, directResponse.Candidates, "direct requests must retain strict release matching")
-
-	fallbackResponse, err := service.FindCandidates(context.Background(), fallbackRequest())
-	require.NoError(t, err)
-	require.Len(t, fallbackResponse.Candidates, 1)
-	require.Len(t, fallbackResponse.Candidates[0].Torrents, 1)
-	require.Equal(t, existingHash, fallbackResponse.Candidates[0].Torrents[0].Hash)
-	require.NotEmpty(t, fallbackResponse.Candidates[0].MatchType)
-
-	unrecordedDifferenceRequest := fallbackRequest()
-	// The live strict mismatch for this pair is "hdr"; recording only an
-	// unrelated relaxation must keep the apply stage strict.
-	unrecordedDifferenceRequest.SearchRelaxedDifferences = []string{"collection"}
-	unrecordedDifferenceResponse, err := service.FindCandidates(context.Background(), unrecordedDifferenceRequest)
-	require.NoError(t, err)
-	require.Empty(t, unrecordedDifferenceResponse.Candidates, "fallback must retain the search-recorded relaxation")
-
-	for name, hardMismatchTitle := range map[string]string{
-		"title":      "Different.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
-		"season":     "Example.Show.2024.S02.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
-		"episode":    "Example.Show.2024.S01E02.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
-		"resolution": "Example.Show.2024.S01.1080p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
-		"group":      "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-FLUX",
-	} {
-		t.Run("retains strict "+name, func(t *testing.T) {
-			request := fallbackRequest()
-			request.TorrentName = hardMismatchTitle
-			response, findErr := service.FindCandidates(context.Background(), request)
-			require.NoError(t, findErr)
-			require.Empty(t, response.Candidates)
-		})
-	}
-
-	incompatibleFiles := map[string]qbt.TorrentFiles{
-		existingHash: {
-			{
-				Name: "Example.Show.2024.S02E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
-				Size: torrentSize,
-			},
-		},
-	}
-	incompatibleService := &Service{
-		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
-		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, incompatibleFiles),
-		releaseCache:     NewReleaseCache(),
-		stringNormalizer: stringutils.NewDefaultNormalizer(),
-	}
-	incompatibleResponse, err := incompatibleService.FindCandidates(context.Background(), fallbackRequest())
-	require.NoError(t, err)
-	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
-}
-
 func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	const (
 		instanceID    = 1
@@ -1424,14 +1429,18 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		return response
 	}
 
-	emptyResponse := search([]string{"Unrelated Show"})
-	require.Empty(t, emptyResponse.Results)
-	require.Equal(t, QueryDegradedARRNoIDs, emptyResponse.QueryDegraded, "empty-ID ARR result must flag the title-only query")
+	// Video no longer gates on title (Task 1: collapse to size+group), so an
+	// unrelated ARR alias no longer empties the result: matching size and
+	// group still admit the candidate. QueryDegraded still flags the
+	// title-only query regardless, since ARR returned no IDs either way.
+	unrelatedTitleResponse := search([]string{"Unrelated Show"})
+	require.Len(t, unrelatedTitleResponse.Results, 1)
+	require.Equal(t, QueryDegradedARRNoIDs, unrelatedTitleResponse.QueryDegraded, "empty-ID ARR result must flag the title-only query")
 	response := search(aliases)
 	require.Len(t, response.Results, 1)
 	require.Equal(t, QueryDegradedARRNoIDs, response.QueryDegraded)
 	match := response.Results[0]
-	require.Equal(t, searchCandidateClassStrict, match.SearchDecisionClass)
+	require.Equal(t, searchCandidateClassSizeGroup, match.SearchDecisionClass)
 	require.Equal(t, aliases, match.SearchSourceTitles)
 
 	t.Run("manual apply", func(t *testing.T) {
