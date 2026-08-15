@@ -133,13 +133,40 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	return decision
 }
 
-// groupIdentitiesConflict reports whether source and candidate both carry a
-// group/site identity and those identities differ. A missing identity on
-// either side is absence of evidence, not a conflict.
+// groupIdentitiesConflict reports whether source and candidate both carry
+// group/site evidence with no agreement between them. Each side contributes
+// its normalized Group and Site as a set, and any overlap counts as
+// agreement: bracket-anime names put the fansub group in Site while rls can
+// invent a Group from a stray trailing tag ("[Batch]"), so requiring a
+// single collapsed identity to match rejects torrents that visibly agree on
+// the real group. A side with no evidence at all never conflicts.
 func groupIdentitiesConflict(s *Service, source, candidate *rls.Release) bool {
-	sourceIdentity := normalizedGroupSiteIdentity(s, source)
-	candidateIdentity := normalizedGroupSiteIdentity(s, candidate)
-	return sourceIdentity != "" && candidateIdentity != "" && sourceIdentity != candidateIdentity
+	sourceIdentities := normalizedGroupSiteIdentities(s, source)
+	candidateIdentities := normalizedGroupSiteIdentities(s, candidate)
+	if len(sourceIdentities) == 0 || len(candidateIdentities) == 0 {
+		return false
+	}
+	for _, identity := range sourceIdentities {
+		if slices.Contains(candidateIdentities, identity) {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizedGroupSiteIdentities(s *Service, release *rls.Release) []string {
+	if release == nil {
+		return nil
+	}
+	normalizer := normalizerForService(s)
+	identities := make([]string, 0, 2)
+	if group := normalizer.Normalize(release.Group); group != "" {
+		identities = append(identities, group)
+	}
+	if site := normalizer.Normalize(release.Site); site != "" {
+		identities = append(identities, site)
+	}
+	return identities
 }
 
 // classifySearchCandidateLegacy is the pre-size-group cascade: strict release
@@ -391,14 +418,10 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 }
 
 func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {
-	if release == nil {
-		return ""
+	if identities := normalizedGroupSiteIdentities(s, release); len(identities) > 0 {
+		return identities[0]
 	}
-	normalizer := normalizerForService(s)
-	if group := normalizer.Normalize(release.Group); group != "" {
-		return group
-	}
-	return normalizer.Normalize(release.Site)
+	return ""
 }
 
 func softMetadataDifferences(source, candidate *rls.Release) []string {

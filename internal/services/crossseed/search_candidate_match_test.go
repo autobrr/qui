@@ -104,6 +104,17 @@ func TestClassifySearchCandidate_SizeGroup(t *testing.T) {
 			candidateSize: 20_000_000_000,
 			wantAccepted:  true,
 		},
+		{
+			// rls invents Group "Batch" from the trailing tag while the real
+			// fansub group sits in Site on both sides. The identity sets
+			// overlap on the site, so this must not count as a group conflict.
+			name:          "invented bracket tag group tolerated when sites agree",
+			source:        "[KIRI] Azure Compass S3 (1080p)",
+			candidate:     "[KIRI] Azure Compass S3 (01-12) (1080p) [Batch]",
+			sourceSize:    17_607_234_680,
+			candidateSize: 17_607_234_680,
+			wantAccepted:  true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1386,6 +1397,53 @@ func TestFindCandidatesSizeGroupHonorsGroupGate(t *testing.T) {
 	differentGroupResponse, err := differentGroupService.FindCandidates(context.Background(), sizeGroupRequest)
 	require.NoError(t, err)
 	require.Empty(t, differentGroupResponse.Candidates, "size-group class must still enforce the group gate")
+}
+
+// The downloaded torrent's real name can parse to an invented Group ("[Batch]")
+// that the Torznab title never carried, while the real fansub group sits in
+// Site on both sides. Apply must judge the identity sets, not a collapsed
+// single identity, or the pairing search accepted dies here silently.
+func TestFindCandidatesSizeGroupToleratesInventedBatchGroup(t *testing.T) {
+	const (
+		instanceID = 1
+		targetName = "[KIRI] Azure Compass S3 (01-12) (1080p) [Batch]"
+		sourceName = "[KIRI] Azure Compass S3 (1080p)"
+		sourceHash = "sourcehash"
+		size       = int64(17_607_234_680)
+	)
+
+	target := rls.ParseString(targetName)
+	source := rls.ParseString(sourceName)
+	require.Equal(t, "Batch", target.Group, "fixture must reproduce the invented-group parse")
+	require.Equal(t, "KIRI", target.Site)
+	require.Empty(t, source.Group)
+	require.Equal(t, "KIRI", source.Site)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: size, Progress: 1}
+	files := map[string]qbt.TorrentFiles{
+		sourceHash: {
+			{Name: sourceName + "/[KIRI] Azure Compass - 25 (1080p) [AAA11111].mkv", Size: size / 2},
+			{Name: sourceName + "/[KIRI] Azure Compass - 26 (1080p) [BBB22222].mkv", Size: size - size/2},
+		},
+	}
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:            targetName,
+		TargetInstanceIDs:      []int{instanceID},
+		SearchDecisionClass:    searchCandidateClassSizeGroup,
+		SearchSourceInstanceID: instanceID,
+		SearchSourceHash:       sourceHash,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Candidates, 1, "site overlap must survive the invented Group")
+	require.Equal(t, sourceHash, resp.Candidates[0].Torrents[0].Hash)
 }
 
 func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {

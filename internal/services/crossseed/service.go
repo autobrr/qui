@@ -4509,6 +4509,14 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 						titleRescueHash = hashKey
 					case req.SearchDecisionClass == searchCandidateClassSizeGroup:
 						if groupIdentitiesConflict(s, sourceRelease, targetRelease) {
+							// The downloaded torrent's real name can parse to a
+							// different group than the Torznab title search judged.
+							log.Debug().
+								Str("targetTitle", req.TorrentName).
+								Str("existingTorrent", torrent.Name).
+								Strs("sourceGroups", normalizedGroupSiteIdentities(s, sourceRelease)).
+								Strs("candidateGroups", normalizedGroupSiteIdentities(s, targetRelease)).
+								Msg("[CROSSSEED] Size-group pairing dropped at apply: group mismatch")
 							continue
 						}
 					case req.SearchDecisionClass == searchCandidateClassExactSizeFallback:
@@ -8910,8 +8918,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			// Empty group fields on a size-group accept mean the candidate
 			// matched on bytes alone; a blank next to a name that visibly
 			// carries a group is a parse failure worth reporting.
-			Str("sourceGroup", normalizedGroupSiteIdentity(s, searchRelease)).
-			Str("candidateGroup", normalizedGroupSiteIdentity(s, candidateRelease)).
+			Strs("sourceGroups", normalizedGroupSiteIdentities(s, searchRelease)).
+			Strs("candidateGroups", normalizedGroupSiteIdentities(s, candidateRelease)).
 			Msg("[CROSSSEED-SEARCH] Candidate accepted")
 
 		scored = append(scored, scoredTorrentSearchResult{
