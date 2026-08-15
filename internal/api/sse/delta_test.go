@@ -322,6 +322,38 @@ func TestInitInheritsBaselinePreferences(t *testing.T) {
 		"an init with its own preferences must not inherit the baseline")
 }
 
+// TestInitInheritsBaselineCounts pins the counts twin of the preferences backfill:
+// init metas never set IncludeCounts, and ticks only resend counts on change with
+// no periodic keyframe, so a joiner to a seeded group whose REST bootstrap failed
+// would otherwise show zero sidebar counts until the library next changes.
+func TestInitInheritsBaselineCounts(t *testing.T) {
+	counts := &qbittorrent.TorrentCounts{Status: map[string]int{"all": 3}, Total: 3}
+
+	g := &subscriptionGroup{}
+	opts := StreamOptions{InstanceIDs: []int{1}}
+	seeded := singleResp(tv("a", "A"))
+	seeded.Counts = counts
+	g.buildUpdatePayload(opts, seeded, &StreamMeta{})
+
+	// A later init built without counts inherits the retained snapshot.
+	joiner := singleResp(tv("a", "A"))
+	require.Nil(t, joiner.Counts)
+	g.reconcileInitWithBaseline(opts, joiner)
+	require.Equal(t, counts, joiner.Counts, "the init must inherit the baseline counts")
+
+	// A tick without counts must not wipe the retained snapshot.
+	g.buildUpdatePayload(opts, singleResp(tv("a", "A-renamed")), &StreamMeta{})
+	late := singleResp(tv("a", "A-renamed"))
+	g.reconcileInitWithBaseline(opts, late)
+	require.Equal(t, counts, late.Counts, "a counts-free tick must not clear the retained snapshot")
+
+	// An init that carries its own counts keeps them untouched.
+	own := singleResp(tv("a", "A-renamed"))
+	own.Counts = &qbittorrent.TorrentCounts{Status: map[string]int{"all": 9}, Total: 9}
+	g.reconcileInitWithBaseline(opts, own)
+	require.Equal(t, 9, own.Counts.Total, "an init with its own counts must not inherit the baseline")
+}
+
 // TestCountsFingerprintIgnoresMapOrder guards against hashing Go's randomized map
 // iteration order, which would resend counts on every tick and defeat the dedup.
 func TestCountsFingerprintIgnoresMapOrder(t *testing.T) {

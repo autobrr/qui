@@ -237,12 +237,13 @@ type subscriptionGroup struct {
 	// baselinePrefs is the preferences blob this group last put on the wire, and
 	// baselineCounts the fingerprint of the sidebar counts it last sent, so a delta
 	// can drop either field while it is unchanged.
-	baselineMu     sync.Mutex
-	baselineFP     map[string]uint64
-	baselineOrder  []string
-	baselinePrefs  json.RawMessage
-	baselineCounts uint64
-	baselineSeeded bool
+	baselineMu         sync.Mutex
+	baselineFP         map[string]uint64
+	baselineOrder      []string
+	baselinePrefs      json.RawMessage
+	baselineCounts     uint64
+	baselineCountsData *qbittorrent.TorrentCounts // retained for the init backfill, see reconcileInitWithBaseline
+	baselineSeeded     bool
 }
 
 type syncLoopState struct {
