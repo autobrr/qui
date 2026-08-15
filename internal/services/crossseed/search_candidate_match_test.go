@@ -1615,3 +1615,25 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 		require.Equal(t, QueryDegradedARRLookupFailed, errResponse.QueryDegraded)
 	})
 }
+
+func TestClassifySearchCandidate_MusicKeepsLegacyGates(t *testing.T) {
+	svc := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	src := rls.ParseString("Azure Ensemble - Compass Songs (2019) [FLAC]")
+	cand := rls.ParseString("Different Artist - Other Album (2019) [FLAC]")
+
+	decision := svc.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &src,
+		CandidateRelease: &cand,
+		SourceName:       "Azure Ensemble - Compass Songs (2019) [FLAC]",
+		CandidateName:    "Different Artist - Other Album (2019) [FLAC]",
+		SourceSize:       400_000_000,
+		CandidateSize:    400_000_000,
+		TolerancePercent: 5,
+	})
+
+	// Same size, but music routes through the legacy cascade, which rejects
+	// on identity. If this starts passing size+group, the routing broke.
+	require.False(t, decision.Accepted)
+	require.NotEqual(t, searchCandidateClassSizeGroup, decision.Class)
+}
