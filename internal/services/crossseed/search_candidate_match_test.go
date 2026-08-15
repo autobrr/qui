@@ -1220,6 +1220,137 @@ func TestTitleRescueSkipRecheckStopsBeforeFileLoading(t *testing.T) {
 	require.Equal(t, skippedRecheckMessage, result.Message)
 }
 
+// Calls classifySearchCandidateLegacy directly; the rest of the test exercises
+// FindCandidates apply-side scoping (SearchRelaxedDifferences must be
+// search-recorded, not just present, and file-level validation must still
+// reject an incompatible pack), which Task 1 never touched and which is still
+// live for the classes that carry those fields. See the comment on
+// TestClassifySearchCandidateExactSizeFallback.
+func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *testing.T) {
+	const (
+		instanceID    = 1
+		torrentSize   = int64(94_329_473_840)
+		targetName    = "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb"
+		existingName  = "Example.Show.2024.S01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb"
+		existingHash  = "existing"
+		unrelatedHash = "unrelated"
+	)
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{
+		Hash: existingHash,
+		Name: existingName,
+		// Search already established exact size. Apply must not replace that
+		// evidence with a new comparison against downloaded metainfo.
+		Size:     torrentSize + 1,
+		Progress: 1,
+	}
+	unrelated := existing
+	unrelated.Hash = unrelatedHash
+	files := map[string]qbt.TorrentFiles{
+		existingHash: {
+			{
+				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
+				Size: torrentSize,
+			},
+		},
+		unrelatedHash: {
+			{
+				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
+				Size: torrentSize,
+			},
+		},
+	}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing, unrelated}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	sourceRelease := rls.ParseString(existingName)
+	targetRelease := rls.ParseString(targetName)
+	decision := service.classifySearchCandidateLegacy(searchCandidateInput{
+		SourceRelease:    &sourceRelease,
+		CandidateRelease: &targetRelease,
+		SourceName:       existingName,
+		CandidateName:    targetName,
+		SourceSize:       torrentSize,
+		CandidateSize:    torrentSize,
+		TolerancePercent: 5,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, "hdr mismatch", decision.StrictMismatchReason)
+	require.ElementsMatch(t, []string{"collection", "hdr"}, decision.RelaxedDifferences)
+
+	fallbackRequest := func() *FindCandidatesRequest {
+		return &FindCandidatesRequest{
+			TorrentName:                targetName,
+			TargetInstanceIDs:          []int{instanceID},
+			SearchDecisionClass:        decision.Class,
+			SearchSourceInstanceID:     instanceID,
+			SearchSourceHash:           existingHash,
+			SearchStrictMismatchReason: decision.StrictMismatchReason,
+			SearchRelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
+		}
+	}
+
+	directResponse, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       targetName,
+		TargetInstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.Empty(t, directResponse.Candidates, "direct requests must retain strict release matching")
+
+	fallbackResponse, err := service.FindCandidates(context.Background(), fallbackRequest())
+	require.NoError(t, err)
+	require.Len(t, fallbackResponse.Candidates, 1)
+	require.Len(t, fallbackResponse.Candidates[0].Torrents, 1)
+	require.Equal(t, existingHash, fallbackResponse.Candidates[0].Torrents[0].Hash)
+	require.NotEmpty(t, fallbackResponse.Candidates[0].MatchType)
+
+	unrecordedDifferenceRequest := fallbackRequest()
+	// The live strict mismatch for this pair is "hdr"; recording only an
+	// unrelated relaxation must keep the apply stage strict.
+	unrecordedDifferenceRequest.SearchRelaxedDifferences = []string{"collection"}
+	unrecordedDifferenceResponse, err := service.FindCandidates(context.Background(), unrecordedDifferenceRequest)
+	require.NoError(t, err)
+	require.Empty(t, unrecordedDifferenceResponse.Candidates, "fallback must retain the search-recorded relaxation")
+
+	for name, hardMismatchTitle := range map[string]string{
+		"title":      "Different.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"season":     "Example.Show.2024.S02.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"episode":    "Example.Show.2024.S01E02.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"resolution": "Example.Show.2024.S01.1080p.ATVP.WEB-DL.DV.HDR10+.H.265-NTb",
+		"group":      "Example.Show.2024.S01.2160p.ATVP.WEB-DL.DV.HDR10+.H.265-FLUX",
+	} {
+		t.Run("retains strict "+name, func(t *testing.T) {
+			request := fallbackRequest()
+			request.TorrentName = hardMismatchTitle
+			response, findErr := service.FindCandidates(context.Background(), request)
+			require.NoError(t, findErr)
+			require.Empty(t, response.Candidates)
+		})
+	}
+
+	incompatibleFiles := map[string]qbt.TorrentFiles{
+		existingHash: {
+			{
+				Name: "Example.Show.2024.S02E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
+				Size: torrentSize,
+			},
+		},
+	}
+	incompatibleService := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, incompatibleFiles),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	incompatibleResponse, err := incompatibleService.FindCandidates(context.Background(), fallbackRequest())
+	require.NoError(t, err)
+	require.Empty(t, incompatibleResponse.Candidates, "fallback must not bypass file-level release validation")
+}
+
 func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 	const (
 		instanceID    = 1
