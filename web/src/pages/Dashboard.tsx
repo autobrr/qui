@@ -3067,7 +3067,7 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full sm:w-auto">
+        <Button variant="outline" size="sm" className="h-11 w-full sm:h-8 sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           {t("quickActions.addTorrent")}
           <ChevronDown className="h-3 w-3 ml-1" />
@@ -3197,7 +3197,21 @@ export function Dashboard() {
     <div className="container mx-auto p-4 sm:p-6">
       {/* Header with Actions */}
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">{t("title")}</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl sm:text-3xl font-bold">{t("title")}</h1>
+          {/* on phones the two rare actions ride the title row, which is otherwise dead
+              space, so only the primary action costs a row of its own below */}
+          {instances && instances.length > 0 && (
+            <div className="flex items-center gap-1 sm:hidden">
+              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
+                <Button variant="outline" size="icon" className="size-11" aria-label={t("addInstance")}>
+                  <HardDrive className="h-4 w-4" />
+                </Button>
+              </Link>
+              <DashboardSettingsDialog iconOnly />
+            </div>
+          )}
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
           <p className="text-muted-foreground">
             {t("description")}
@@ -3205,13 +3219,15 @@ export function Dashboard() {
           {instances && instances.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               <QuickActionsDropdown statsData={statsData} />
-              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="w-full sm:w-auto">
-                <Button variant="outline" size="sm" className="w-full sm:w-auto">
+              <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="hidden sm:block">
+                <Button variant="outline" size="sm">
                   <HardDrive className="h-4 w-4 mr-2" />
                   {t("addInstance")}
                 </Button>
               </Link>
-              <DashboardSettingsDialog />
+              <div className="hidden sm:block">
+                <DashboardSettingsDialog />
+              </div>
             </div>
           )}
         </div>
