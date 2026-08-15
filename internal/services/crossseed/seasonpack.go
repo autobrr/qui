@@ -82,6 +82,7 @@ type seasonPackLocalFile struct {
 type seasonPackPlanBuild struct {
 	plan              *hardlinktree.TreePlan
 	created           *fsops.TreeCreateResult // what the link creator actually made; rollback removes only this
+	backend           fsops.Backend           // the backend that created the tree; rollback must not re-resolve on a possibly-cancelled ctx
 	packDir           string                  // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
 	linkedBytes       int64
@@ -425,10 +426,20 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		opts["tags"] = strings.Join(tags, ",")
 	}
 	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, torrentBytes, opts); err != nil {
-		if backend, backendErr := s.getBackendForInstance(ctx, inst.ID); backendErr != nil {
-			log.Warn().Err(backendErr).Str("torrentName", req.TorrentName).Msg("season pack: no backend to rollback after add failure")
-		} else if rollbackErr := rollbackSeasonPackTree(ctx, backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
-			log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
+		// Roll back with the backend that created the tree: a fresh resolve on
+		// the live ctx fails when the run was cancelled, silently skipping
+		// rollback (same shape as dirscan's linkBackend threading).
+		backend := planBuild.backend
+		if backend == nil {
+			var backendErr error
+			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID); backendErr != nil {
+				log.Warn().Err(backendErr).Str("torrentName", req.TorrentName).Msg("season pack: no backend to rollback after add failure")
+			}
+		}
+		if backend != nil {
+			if rollbackErr := rollbackSeasonPackTree(ctx, backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
+				log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
+			}
 		}
 		s.recordApplyRun(ctx, req.TorrentName, "add_failed", err.Error(), winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, linkMode)
 		return &SeasonPackApplyResponse{Reason: "add_failed", Message: "failed to add torrent to qbittorrent"}, nil
@@ -560,6 +571,7 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 	planBuild.created = created
+	planBuild.backend = backend
 
 	return planBuild, prep.torrentBytes, episodes, nil
 }

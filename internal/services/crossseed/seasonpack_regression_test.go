@@ -93,6 +93,27 @@ func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
 	require.DirExists(t, rootDir)
 }
 
+func TestRollbackSeasonPackTree_RunsUnderCancelledContext(t *testing.T) {
+	// A cancelled run must still roll back its partial tree — the fsops
+	// methods early-return on ctx.Err(), so this pins the WithoutCancel
+	// wrapping inside rollbackSeasonPackTree.
+	rootDir := filepath.Join(t.TempDir(), "pack")
+	plannedFile := filepath.Join(rootDir, "Show.S01E01.1080p.WEB.x264-GRP.mkv")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.WriteFile(plannedFile, []byte("planned"), 0o600))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := rollbackSeasonPackTree(ctx, local.NewBackend(), &fsops.TreeCreateResult{
+		Files: []string{plannedFile},
+	}, rootDir)
+
+	require.NoError(t, err)
+	require.NoFileExists(t, plannedFile)
+	require.NoDirExists(t, rootDir)
+}
+
 func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 	localRelease := rls.ParseString("Show.S01E01.1080p.WEB.x264-GRP")
 	packRelease := rls.ParseString("Show.S01.1080p.WEB.x264-GRP")
