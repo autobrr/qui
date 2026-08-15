@@ -153,6 +153,8 @@
     "mergeIntoGroup": "Spojit do skupiny",
     "addToMerge": "Přidat do spojení",
     "rename": "Přejmenovat",
+    "edit": "Editovat",
+    "delete": "Smazat",
     "pagination": {
       "range": "{{start}}-{{end}} z {{total}} trackerů",
       "previous": "Předchozí",

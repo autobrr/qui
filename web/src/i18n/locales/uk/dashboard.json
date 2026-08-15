@@ -153,6 +153,8 @@
     "mergeIntoGroup": "Об'єднати в групу",
     "addToMerge": "Додати до об'єднання",
     "rename": "Перейменувати",
+    "edit": "Редагувати",
+    "delete": "Видалити",
     "pagination": {
       "range": "{{start}}-{{end}} з {{total}} трекерів",
       "previous": "Попередня",

@@ -24,6 +24,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle
+} from "@/components/ui/drawer"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -73,7 +81,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Database, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Database, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, MoreVertical, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -2234,6 +2242,34 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     return `${efficiency.toFixed(2)}x`
   }
 
+  const formatBuffer = (uploaded: number, downloaded: number): string => {
+    const buffer = uploaded - downloaded
+    return `${buffer >= 0 ? "+" : "-"}${formatBytes(Math.abs(buffer))}`
+  }
+
+  // mobile detail drawer, keyed by domain so the numbers stay live while it is open
+  const [detailsDomain, setDetailsDomain] = useState<string | null>(null)
+  const detailsTracker = sortedTrackerStats.find(tracker => tracker.domain === detailsDomain)
+
+  // the mobile row always shows uploaded, downloaded and ratio; the sorted metric replaces
+  // the trailing count when it is none of those, so the order never rests on a hidden number
+  const sortedMetric = (tracker: ProcessedTrackerStats): string | null => {
+    switch (sortColumn) {
+      case "uploadedSession":
+        return formatBytes(tracker.uploadedSession)
+      case "downloadedSession":
+        return formatBytes(tracker.downloadedSession)
+      case "buffer":
+        return formatBuffer(tracker.uploaded, tracker.downloaded)
+      case "size":
+        return formatBytes(tracker.totalSize)
+      case "performance":
+        return formatEfficiency(tracker.uploaded, tracker.totalSize)
+      default:
+        return null
+    }
+  }
+
   // don't show if no tracker data
   if (sortedTrackerStats.length === 0) {
     return null
@@ -2299,10 +2335,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           </AccordionTrigger>
           <AccordionContent className="px-0 pb-0">
             {/* Mobile Sort Dropdown and Import/Export */}
-            <div className="sm:hidden px-4 py-3 border-b flex items-center gap-2">
+            <div className="sm:hidden px-4 py-2 border-b flex items-center gap-2">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="flex-1 justify-between">
+                  <Button variant="outline" className="h-11 flex-1 justify-between">
                     <span className="flex items-center gap-2 text-xs">
                       {t("trackerBreakdown.sort", { column: t(`trackerBreakdown.sortOptions.${sortColumn === "count" ? "torrents" : sortColumn === "performance" ? "seeded" : sortColumn}`) })}
                     </span>
@@ -2321,25 +2357,26 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                   <DropdownMenuItem onClick={() => handleSort("performance")}>{t("trackerBreakdown.sortOptions.seeded")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
+              <Button variant="ghost" size="icon" className="size-11" onClick={openImportDialog} aria-label={t("trackerBreakdown.importTooltip")}>
                 <Download className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon"
+                className="size-11"
                 onClick={handleExport}
                 disabled={!customizations || customizations.length === 0}
-                className="h-8 px-2"
+                aria-label={t("trackerBreakdown.exportTooltip")}
               >
                 <Upload className="h-4 w-4" />
               </Button>
             </div>
 
 
-            {/* Mobile Card Layout */}
-            <div className="sm:hidden px-4 space-y-2 py-3">
+            {/* Mobile row list */}
+            <div className="sm:hidden divide-y">
               {paginatedTrackerStats.map((tracker) => {
-                const { domain, displayName, originalDomains, uploaded, downloaded, uploadedSession, downloadedSession, totalSize, count, customizationId } = tracker
+                const { domain, displayName, originalDomains, uploaded, downloaded, count, customizationId } = tracker
                 const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
                 const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
                 const iconDomain = incognitoMode ? getLinuxTrackerDomain(domain) : domain
@@ -2347,164 +2384,55 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 const isGroupSelected = selectedGroupId === customizationId
                 const isMerged = originalDomains.length > 1
                 const hasCustomization = Boolean(customizationId)
+                const showCheckbox = !hasCustomization || selectedGroupId === null || isGroupSelected
+                const extraMetric = sortedMetric(tracker)
 
                 return (
-                  <Card key={displayName} className={`overflow-hidden ${isSelected || isGroupSelected ? "ring-2 ring-primary" : ""}`}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {hasCustomization ? (
-                          // Show group checkbox if no group selected or the group selected
-                            (selectedGroupId === null || isGroupSelected) && (
-                              <Checkbox
-                                checked={isGroupSelected}
-                                onCheckedChange={() => toggleGroupSelection(customizationId!)}
-                                className="shrink-0"
-                              />
-                            )
-                          ) : (
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleSelection(domain)}
-                              className="shrink-0"
-                            />
-                          )}
-                          <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="font-medium truncate text-sm cursor-default">
-                                {displayValue}
-                              </span>
-                            </TooltipTrigger>
-                            {(isMerged || (hasCustomization && displayName !== domain)) && (
-                              <TooltipContent>
-                                <p className="text-xs">
-                                  {isMerged ? t("trackerBreakdown.mergedFrom", { domains: originalDomains.join(", ") }) : t("trackerBreakdown.original", { domain })}
-                                </p>
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
-                          {isMerged && <Link2 className="h-3 w-3 text-muted-foreground shrink-0" />}
-                        </div>
+                  <div
+                    key={displayName}
+                    className={`flex items-center ${isSelected || isGroupSelected ? "bg-primary/5" : ""}`}
+                  >
+                    {/* reserves the width when the checkbox is hidden, so rows stay aligned */}
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center">
+                      {showCheckbox && (
+                        <Checkbox
+                          checked={hasCustomization ? isGroupSelected : isSelected}
+                          onCheckedChange={() => hasCustomization ? toggleGroupSelection(customizationId!) : toggleSelection(domain)}
+                          // the box is 16px; the pseudo-element grows the tap target to fill the 44px cell
+                          className="relative before:absolute before:-inset-3.5 before:content-['']"
+                        />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsDomain(domain)}
+                      className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-3 text-left"
+                    >
+                      <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
-                          {hasCustomization && customizationId ? (
-                          // Show group merge if domains selected and if no other group is selected
-                            selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId) ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => { e.stopPropagation(); handleMergeIntoGroup(customizationId) }}
-                              >
-                                <Link2 className="h-3 w-3 text-primary" />
-                              </Button>
-                            ) : (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); openEditDialog(customizationId, displayName, originalDomains) }}
-                                >
-                                  <Pencil className="h-3 w-3 text-muted-foreground" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 w-6 p-0"
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteCustomization(customizationId) }}
-                                >
-                                  <Trash2 className="h-3 w-3 text-muted-foreground" />
-                                </Button>
-                              </>
-                            )
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (selectedGroupId) {
-                                  handleMergeIntoGroup(selectedGroupId, domain)
-                                } else {
-                                  openRenameDialog(domain)
-                                }
-                              }}
-                            >
-                              {selectedGroupId || selectedDomains.size > 0 ? (
-                                <Link2 className="h-3 w-3 text-primary" />
-                              ) : (
-                                <Pencil className="h-3 w-3 text-muted-foreground" />
-                              )}
-                            </Button>
-                          )}
-                          <Badge variant="secondary" className="shrink-0 text-xs">
-                            {count}
-                          </Badge>
+                          <span className="truncate text-sm font-medium">{displayValue}</span>
+                          {isMerged && <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />}
                         </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* Uploaded */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <ChevronUp className="h-3 w-3" />
-                            <span>{t("trackerBreakdown.tableHeaders.uploaded")}</span>
-                          </div>
-                          <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
-                        </div>
-
-                        {/* Uploaded Session */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <ChevronUp className="h-3 w-3" />
-                            <span>{t("trackerBreakdown.tableHeaders.uploadedSession")}</span>
-                          </div>
-                          <div className="font-semibold text-sm">{formatBytes(uploadedSession)}</div>
-                        </div>
-
-                        {/* Downloaded */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <ChevronDown className="h-3 w-3" />
-                            <span>{t("trackerBreakdown.tableHeaders.downloaded")}</span>
-                          </div>
-                          <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
-                        </div>
-
-                        {/* Downloaded Session */}
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <ChevronDown className="h-3 w-3" />
-                            <span>{t("trackerBreakdown.tableHeaders.downloadedSession")}</span>
-                          </div>
-                          <div className="font-semibold text-sm">{formatBytes(downloadedSession)}</div>
-                        </div>
-
-                        {/* Ratio */}
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">{t("trackerBreakdown.tableHeaders.ratio")}</div>
-                          <div className="font-semibold text-sm" style={{ color: ratioColor }}>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+                          <span className="flex shrink-0 items-center gap-0.5">
+                            <ChevronUp className="h-3 w-3" />{formatBytes(uploaded)}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-0.5">
+                            <ChevronDown className="h-3 w-3" />{formatBytes(downloaded)}
+                          </span>
+                          <span className="shrink-0" style={{ color: ratioColor }}>
                             {isInfinite ? "∞" : ratio.toFixed(2)}
-                          </div>
-                        </div>
-
-                        {/* Size */}
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">{t("trackerBreakdown.tableHeaders.size")}</div>
-                          <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
-                        </div>
-
-                        {/* Seeded */}
-                        <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">{t("trackerBreakdown.tableHeaders.seeded")}</div>
-                          <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
+                          </span>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                      {/* torrent count, or the sorted metric when it is not on the line above */}
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {extraMetric ?? count}
+                      </span>
+                      <MoreVertical className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  </div>
                 )
               })}
             </div>
@@ -2767,7 +2695,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                           className={buffer < 0 ? "text-destructive" : ""}
                           style={buffer >= 0 ? { color: "oklch(0.7040 0.1910 142)" } : undefined}
                         >
-                          {buffer >= 0 ? "+" : "-"}{formatBytes(Math.abs(buffer))}
+                          {formatBuffer(uploaded, downloaded)}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
@@ -2815,6 +2743,80 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+
+      {/* Mobile detail drawer: full metrics and the row actions that no longer fit inline */}
+      <Drawer open={Boolean(detailsTracker)} onOpenChange={(open) => !open && setDetailsDomain(null)}>
+        <DrawerContent>
+          {detailsTracker && (() => {
+            const { domain, displayName, originalDomains, uploaded, downloaded, uploadedSession, downloadedSession, totalSize, count, customizationId } = detailsTracker
+            const { isInfinite, ratio, color: ratioColor } = getTrackerRatioDisplay(uploaded, downloaded)
+            const displayValue = incognitoMode ? getLinuxTrackerDomain(displayName) : displayName
+            const isMerged = originalDomains.length > 1
+            const maskedDomains = incognitoMode ? originalDomains.map(getLinuxTrackerDomain) : originalDomains
+            // only worth a line when it says something the title does not
+            const subtitle = isMerged ? t("trackerBreakdown.mergedFrom", { domains: maskedDomains.join(", ") }) : displayName !== domain ? t("trackerBreakdown.original", { domain: maskedDomains[0] }) : ""
+            const hasCustomization = Boolean(customizationId)
+            const canMergeIntoGroup = hasCustomization && selectedDomains.size > 0 && !(selectedGroupId !== null && selectedGroupId !== customizationId)
+            const closeAnd = (action: () => void) => () => { setDetailsDomain(null); action() }
+            const metrics: { label: string; value: string; color?: string }[] = [
+              { label: t("trackerBreakdown.tableHeaders.uploaded"), value: formatBytes(uploaded) },
+              { label: t("trackerBreakdown.tableHeaders.uploadedSession"), value: formatBytes(uploadedSession) },
+              { label: t("trackerBreakdown.tableHeaders.downloaded"), value: formatBytes(downloaded) },
+              { label: t("trackerBreakdown.tableHeaders.downloadedSession"), value: formatBytes(downloadedSession) },
+              { label: t("trackerBreakdown.tableHeaders.ratio"), value: isInfinite ? "∞" : ratio.toFixed(2), color: ratioColor },
+              { label: t("trackerBreakdown.tableHeaders.buffer"), value: formatBuffer(uploaded, downloaded) },
+              { label: t("trackerBreakdown.tableHeaders.torrents"), value: String(count) },
+              { label: t("trackerBreakdown.tableHeaders.size"), value: formatBytes(totalSize) },
+              { label: t("trackerBreakdown.tableHeaders.seeded"), value: formatEfficiency(uploaded, totalSize) },
+            ]
+
+            return (
+              <>
+                <DrawerHeader className="text-left">
+                  <DrawerTitle className="truncate">{displayValue}</DrawerTitle>
+                  <DrawerDescription className="truncate">{subtitle}</DrawerDescription>
+                </DrawerHeader>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 pb-2">
+                  {metrics.map(({ label, value, color }) => (
+                    <div key={label} className="flex items-baseline justify-between gap-2 border-b pb-1.5">
+                      <span className="truncate text-xs text-muted-foreground">{label}</span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums" style={color ? { color } : undefined}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+                <DrawerFooter>
+                  {canMergeIntoGroup ? (
+                    <Button className="h-11" onClick={closeAnd(() => handleMergeIntoGroup(customizationId!))}>
+                      <Link2 className="h-4 w-4" />
+                      {t("trackerBreakdown.mergeTooltip")}
+                    </Button>
+                  ) : hasCustomization && customizationId ? (
+                    <>
+                      <Button variant="outline" className="h-11" onClick={closeAnd(() => openEditDialog(customizationId, displayName, originalDomains))}>
+                        <Pencil className="h-4 w-4" />
+                        {t("trackerBreakdown.edit")}
+                      </Button>
+                      <Button variant="outline" className="h-11 text-destructive" onClick={closeAnd(() => handleDeleteCustomization(customizationId))}>
+                        <Trash2 className="h-4 w-4" />
+                        {t("trackerBreakdown.delete")}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="h-11"
+                      onClick={closeAnd(() => selectedGroupId ? handleMergeIntoGroup(selectedGroupId, domain) : openRenameDialog(domain))}
+                    >
+                      {selectedGroupId ? <Link2 className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+                      {selectedGroupId ? t("trackerBreakdown.mergeIntoGroup") : selectedDomains.size > 0 ? t("trackerBreakdown.addToMerge") : t("trackerBreakdown.rename")}
+                    </Button>
+                  )}
+                </DrawerFooter>
+              </>
+            )
+          })()}
+        </DrawerContent>
+      </Drawer>
 
       {/* Customize Dialog (Rename/Merge/Edit) */}
       <Dialog open={showCustomizeDialog} onOpenChange={(open) => !open && closeCustomizeDialog()}>

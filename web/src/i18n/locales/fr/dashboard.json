@@ -153,6 +153,8 @@
     "mergeIntoGroup": "Fusionner dans le groupe",
     "addToMerge": "Ajouter à la fusion",
     "rename": "Renommer",
+    "edit": "Modifier",
+    "delete": "Supprimer",
     "pagination": {
       "range": "{{start}}-{{end}} sur {{total}} trackers",
       "previous": "Précédent",

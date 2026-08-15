@@ -153,6 +153,8 @@
     "mergeIntoGroup": "合并到分组",
     "addToMerge": "添加到合并",
     "rename": "重命名",
+    "edit": "编辑",
+    "delete": "删除",
     "pagination": {
       "range": "第 {{start}}-{{end}} 项，共 {{total}} 个 Tracker",
       "previous": "上一页",

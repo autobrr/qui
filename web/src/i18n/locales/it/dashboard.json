@@ -153,6 +153,8 @@
     "mergeIntoGroup": "Unisci nel gruppo",
     "addToMerge": "Aggiungi all'unione",
     "rename": "Rinomina",
+    "edit": "Modifica",
+    "delete": "Elimina",
     "pagination": {
       "range": "{{start}}-{{end}} di {{total}} tracker",
       "previous": "Precedente",
