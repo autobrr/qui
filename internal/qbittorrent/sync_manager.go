@@ -600,7 +600,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	// Get all torrents from the sync manager
 	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 	if !supportsTrackerInclude {
-		sm.seedValidatedTrackerMappingFromMainData(instanceID, torrents, syncManager.GetDataUnchecked(), started)
+		sm.seedValidatedTrackerMappingFromMainData(instanceID, torrents, resolveMainData(syncManager, mainDataReadCached), started)
 		log.Trace().
 			Int("instanceID", instanceID).
 			Bool("supportsTrackerInclude", false).
@@ -631,7 +631,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
-	sm.seedFallbackTrackerMappingFromMainData(instanceID, torrents, syncManager.GetDataUnchecked(), started)
+	sm.seedFallbackTrackerMappingFromMainData(instanceID, torrents, resolveMainData(syncManager, mainDataReadCached), started)
 
 	// Enrich torrents with tracker data
 	enriched, _, remaining := sm.enrichTorrentsWithTrackerData(refreshCtx, client, torrents, nil)
@@ -1396,12 +1396,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Get MainData for tracker filtering (if needed)
 	var mainData *qbt.MainData
 	if skipFreshData {
-		mainData = syncManager.GetDataUnchecked()
-		if mainData == nil {
-			mainData = syncManager.GetData()
+		mainData = resolveMainData(syncManager, mainDataReadCached)
+		if mainData.Trackers == nil {
+			mainData = resolveMainData(syncManager, mainDataRead)
 		}
 	} else {
-		mainData = syncManager.GetData()
+		mainData = resolveMainData(syncManager, mainDataRead)
 	}
 
 	// Choose torrent getter based on freshness preference
@@ -3861,7 +3861,8 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	sharedContentPaths := findSharedContentPaths(allTorrents)
 
 	// Process tracker counts using validated tracker mapping if available,
-	// falling back to MainData.Trackers for first request before cache is populated.
+	// falling back to MainData.Trackers otherwise. That fallback is permanent
+	// below qBittorrent 5.1 and on instances whose hydration keeps failing.
 	var exclusions map[string]map[string]struct{}
 	if client != nil {
 		exclusions = client.getTrackerExclusionsCopy()
@@ -3932,10 +3933,11 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			client.clearTrackerExclusions(domainsToClear)
 		}
 	} else if mainData != nil && mainData.Trackers != nil {
-		// Fallback: Use MainData.Trackers with validation (first request before cache populated)
+		// Fallback: MainData.Trackers. Permanent below qBittorrent 5.1 and on
+		// instances whose tracker hydration keeps failing, not just a cold start.
 		log.Trace().
 			Int("trackerCount", len(mainData.Trackers)).
-			Msg("Using MainData.Trackers for counting (fallback, cache not yet populated)")
+			Msg("Using MainData.Trackers for counting (fallback, no authoritative mapping)")
 
 		// Count torrents per tracker domain. Several tracker URLs can share a
 		// domain, so the same hash can arrive twice and the map dedupes it.
@@ -4947,7 +4949,8 @@ func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
 				}
 			}
 		} else if mainData != nil && mainData.Trackers != nil {
-			// Fallback: Use MainData.Trackers with validation (first request before cache populated)
+			// Fallback: MainData.Trackers. Permanent below qBittorrent 5.1 and on
+			// instances whose tracker hydration keeps failing, not just a cold start.
 			// Build torrentMap for O(1) lookups to validate tracker membership
 			torrentMap := make(map[string]*qbt.Torrent, len(torrents))
 			for i := range torrents {
@@ -6773,15 +6776,15 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 		return nil, err
 	}
 
-	mainData := syncManager.GetData()
-	if mainData == nil || mainData.Trackers == nil {
+	trackers := syncManager.GetTrackers()
+	if trackers == nil {
 		return make(map[string]string), nil
 	}
 
 	// Map of domain -> example tracker URL
 	trackerMap := make(map[string]string)
 
-	for trackerURL, hashes := range mainData.Trackers {
+	for trackerURL, hashes := range trackers {
 		domain := sm.ExtractDomainFromURL(trackerURL)
 		if domain == "" || domain == "Unknown" {
 			continue
