@@ -197,6 +197,38 @@ func TestSelectContentDetectionRelease_MusicNameKeepsEpisodeMarkersFromFiles(t *
 	require.Equal(t, "tv", DetermineContentTypeWithFiles(contentDetectionRelease, files).ContentType)
 }
 
+// Regression: parsing the full torrent-relative path invented a group and hard-rejected
+// byte-identical candidates with "group/site mismatch". See selectContentDetectionRelease.
+func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	const sourceName = "[FanSubs] Azure Compass - 1168 (1080p) [0A043BA1]"
+	const sourceSize = 1414363469
+	files := qbt.TorrentFiles{{Name: sourceName + "/" + sourceName + ".mkv", Size: sourceSize}}
+
+	source := svc.releaseCache.Parse(sourceName)
+	contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
+	require.True(t, usedFile, "must use the file: a sourceRelease fallback also has an empty group")
+	require.Empty(t, contentDetectionRelease.Group, "repeated folder name must not invent a group")
+
+	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
+	searchRelease := svc.selectSourceReleaseForSearch(source, contentDetectionRelease, files, contentInfo)
+
+	const candidateName = sourceName + ".mkv"
+	ok, reason := svc.validateExactSizeSearchIdentity(searchCandidateInput{
+		SourceRelease:    searchRelease,
+		CandidateRelease: svc.releaseCache.Parse(candidateName),
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       sourceSize,
+		CandidateSize:    sourceSize,
+	})
+	require.True(t, ok, "byte-identical candidate rejected: %s", reason)
+}
+
 func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.T) {
 	svc := &Service{
 		releaseCache:     NewReleaseCache(),
@@ -207,15 +239,16 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 	source := svc.releaseCache.Parse(sourceName)
 	require.NotNil(t, source)
 
+	// File names must share the torrent title or content detection discards them as unrelated.
 	files := qbt.TorrentFiles{
 		{
 			Name: "Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA/" +
-				"[ALPHA] Aoi Gear no Meiro Tansaku S2 - 01 (720p) [11111111].mkv",
+				"[BETA] Silver Gear Labyrinth S2 - 01 (720p) [11111111].mkv",
 			Size: 1,
 		},
 		{
 			Name: "Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA/" +
-				"[ALPHA] Aoi Gear no Meiro Tansaku S2 - 02 (720p) [22222222].mkv",
+				"[BETA] Silver Gear Labyrinth S2 - 02 (720p) [22222222].mkv",
 			Size: 2,
 		},
 	}
@@ -232,7 +265,7 @@ func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.
 	require.Equal(t, source.Group, searchRelease.Group)
 	require.Equal(t, source.Site, searchRelease.Site)
 	require.Equal(t, source.Sum, searchRelease.Sum)
-	require.NotEqual(t, contentDetectionRelease.Group, searchRelease.Group)
+	require.NotEqual(t, contentDetectionRelease.Site, searchRelease.Site)
 	require.NotEqual(t, contentDetectionRelease.Sum, searchRelease.Sum)
 
 	candidate := svc.releaseCache.Parse("Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA")
