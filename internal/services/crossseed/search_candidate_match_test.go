@@ -196,6 +196,60 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	require.Equal(t, searchSizeEvidenceNone, decision.SizeEvidence)
 }
 
+// Anime torrent names carry a CRC32 tag that indexer titles routinely drop, so
+// one side alone holding a checksum is absence of evidence. Two checksums that
+// disagree stay fatal; TestClassifySearchCandidateExactSizeHardIdentity pins that.
+func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
+		candidateName = "[KIRI] Azure Compass - 1157 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Episode 1157]"
+		size          = int64(1_424_466_789)
+	)
+	source := rls.ParseString(sourceName)
+	candidate := rls.ParseString(candidateName)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       size,
+		CandidateSize:    size,
+		TolerancePercent: 5,
+	})
+
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Contains(t, decision.RelaxedDifferences, "checksum")
+}
+
+// The checksum tolerance belongs to the exact-size fallback alone. This fails if
+// it is ever widened into validateGroupSiteAndChecksum, where strict matching
+// would inherit it.
+func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
+		candidateName = "[KIRI] Azure Compass - 1157 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Episode 1157]"
+	)
+	source := rls.ParseString(sourceName)
+	candidate := rls.ParseString(candidateName)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		SourceRelease:    &source,
+		CandidateRelease: &candidate,
+		SourceName:       sourceName,
+		CandidateName:    candidateName,
+		SourceSize:       1_424_466_789,
+		CandidateSize:    1_424_466_788,
+		TolerancePercent: 5,
+	})
+
+	require.False(t, decision.Accepted)
+	require.Equal(t, "checksum mismatch", decision.RejectReason)
+}
+
 func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (

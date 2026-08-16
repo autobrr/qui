@@ -273,9 +273,12 @@ func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (b
 		return false, "group/site mismatch"
 	}
 
+	// A CRC32 tag rides on the anime file name, and indexer titles routinely drop
+	// it, so one side alone carrying a checksum is absence of evidence. Two tags
+	// that disagree still prove different files.
 	sourceSum := normalizer.Normalize(source.Sum)
 	candidateSum := normalizer.Normalize(candidate.Sum)
-	if (sourceSum != "" || candidateSum != "") && sourceSum != candidateSum {
+	if sourceSum != "" && candidateSum != "" && sourceSum != candidateSum {
 		return false, "checksum mismatch"
 	}
 
@@ -316,7 +319,7 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	reason = strings.TrimSuffix(reason, " mismatch")
 	difference := strings.ReplaceAll(reason, " ", "-")
 	switch difference {
-	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture":
+	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum":
 		return difference, true
 	}
 
@@ -345,7 +348,7 @@ func softMetadataDifferences(source, candidate *rls.Release) []string {
 	}
 
 	normalizer := normalizerForService(nil)
-	differences := make([]string, 0, 12)
+	var differences []string
 	add := func(name, sourceValue, candidateValue string) {
 		if sourceValue != candidateValue && !slices.Contains(differences, name) {
 			differences = append(differences, name)
@@ -366,6 +369,7 @@ func softMetadataDifferences(source, candidate *rls.Release) []string {
 	add("disc", normalizer.Normalize(source.Disc), normalizer.Normalize(candidate.Disc))
 	add("platform", normalizer.Normalize(source.Platform), normalizer.Normalize(candidate.Platform))
 	add("architecture", normalizer.Normalize(source.Arch), normalizer.Normalize(candidate.Arch))
+	add("checksum", normalizer.Normalize(source.Sum), normalizer.Normalize(candidate.Sum))
 	if compatible, _ := checkVariantsCompatible(source, candidate); !compatible {
 		differences = append(differences, "variant")
 	}
