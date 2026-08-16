@@ -65,7 +65,7 @@ import {
   resolveDashboardTorrentCounts,
   shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
-import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatBytesOrFallback, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
   DashboardSettings,
@@ -1140,11 +1140,11 @@ function InstanceCard({
                 </div>
               </div>
 
-              {serverState?.free_space_on_disk !== undefined && (
+              {serverState && (
                 <div className="flex items-center gap-2 text-xs mt-1 sm:mt-2">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <span className="text-muted-foreground">{t("instanceCard.freeSpace")}</span>
-                  <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
+                  <span className="ml-auto font-medium truncate">{formatBytesOrFallback(serverState.free_space_on_disk, t("common:status.unknown"))}</span>
                 </div>
               )}
 
