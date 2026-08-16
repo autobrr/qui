@@ -21,7 +21,8 @@ const (
 	searchCandidateClassStrict           searchCandidateClass = "strict"
 	searchCandidateClassWebSourceRelabel searchCandidateClass = "web-source-relabel"
 	// searchCandidateClassExactSizeFallback means positive exact byte equality
-	// replaced only the soft release-attribute checks rejected by strict matching.
+	// replaced a relaxable check rejected by strict matching: a release attribute,
+	// or a season or episode number that keeps the same pack-or-episode shape.
 	searchCandidateClassExactSizeFallback searchCandidateClass = "exact-size-fallback"
 	searchCandidateClassTitleRescue       searchCandidateClass = "title-rescue"
 )

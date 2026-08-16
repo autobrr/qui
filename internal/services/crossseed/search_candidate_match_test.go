@@ -733,8 +733,9 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	const size = int64(94_329_473_840)
 
 	// Episode numbering is relaxable on equal bytes because indexers renumber it,
-	// so this pairing is admitted and recorded. Recording it is what forces the
-	// recheck at apply; see TestProcessCrossSeedCandidateVerifiesRelaxedStructure.
+	// so this pairing is admitted and recorded. The recorded difference is a
+	// report; the strict rejection it overrode is what forces the recheck at
+	// apply. See TestProcessCrossSeedCandidateVerifiesRelaxedStructure.
 	t.Run("different episode is relaxed and recorded", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")

@@ -4456,10 +4456,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// them. Handing them to every candidate would let the new torrent's own
 			// alias set satisfy the title overlap for unrelated torrents, so the
 			// aliases ride along only for the search-source torrent itself, mirroring
-			// the exact-size relaxation below. Exact-size provenance may relax only
-			// the recorded soft differences for the specific torrent whose
-			// qBittorrent size supplied the search evidence. File matching and later
-			// safety checks still run.
+			// the exact-size relaxation below. Exact-size provenance relaxes only
+			// for the specific torrent whose qBittorrent size supplied the search
+			// evidence. File matching and later safety checks still run.
 			var candidateAliasTitles []string
 			if len(req.SearchSourceTitles) > 0 && req.SearchSourceInstanceID == instanceID {
 				if sourceHash := normalizeHash(req.SearchSourceHash); sourceHash != "" && normalizeHash(torrent.Hash) == sourceHash {
@@ -4689,8 +4688,8 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 	}
 
 	// Carry private search provenance into candidate discovery. Source identity
-	// and recorded soft differences constrain the release-prefilter relaxation;
-	// existing file and apply safety checks still run normally.
+	// and the strict rejection that was overridden constrain the release-prefilter
+	// relaxation; existing file and apply safety checks still run normally.
 	findReq := &FindCandidatesRequest{
 		TorrentName:                meta.Name,
 		TargetRelease:              sourceRelease,
@@ -8849,8 +8848,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	for _, res := range searchResults {
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		// Search has only the source torrent's full size and Torznab's advertised
-		// candidate size. Positive exact equality may replace soft release metadata;
-		// the downloaded torrent is inspected later by the normal apply pipeline.
+		// candidate size. Positive exact equality may replace a relaxable release
+		// or structure check; the downloaded torrent is inspected later by the
+		// normal apply pipeline.
 		decision := s.classifySearchCandidate(searchCandidateInput{
 			SourceRelease:          searchRelease,
 			CandidateRelease:       candidateRelease,
