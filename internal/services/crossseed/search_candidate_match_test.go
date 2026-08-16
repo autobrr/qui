@@ -54,12 +54,13 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	}
 
 	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:              targetName,
-		TargetInstanceIDs:        []int{instanceID},
-		SearchDecisionClass:      searchCandidateClassExactSizeFallback,
-		SearchSourceInstanceID:   instanceID,
-		SearchSourceHash:         sourceHash,
-		SearchRelaxedDifferences: []string{"season"},
+		TorrentName:                targetName,
+		TargetInstanceIDs:          []int{instanceID},
+		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+		SearchSourceInstanceID:     instanceID,
+		SearchSourceHash:           sourceHash,
+		SearchStrictMismatchReason: "season mismatch",
+		SearchRelaxedDifferences:   []string{"season"},
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1, "relaxed season pairing must survive the name-derived match gate")

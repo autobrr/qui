@@ -740,8 +740,9 @@ func TestProcessHardlinkMode_RelaxedStructureWaitsForFullRecheck(t *testing.T) {
 		"",
 		"Renamed",
 		&CrossSeedRequest{
-			SearchDecisionClass:      searchCandidateClassExactSizeFallback,
-			SearchRelaxedDifferences: []string{"season"},
+			SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+			SearchStrictMismatchReason: "season mismatch",
+			SearchRelaxedDifferences:   []string{"season"},
 		},
 		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Original")},
 		"size",

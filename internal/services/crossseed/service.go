@@ -4414,7 +4414,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		// relaxed. Bind that bypass to the one torrent that supplied the size
 		// evidence and let file-level validation at apply decide.
 		structureRelaxedHash := ""
-		if searchRelaxedStructure(req.SearchRelaxedDifferences) && req.SearchSourceInstanceID == instanceID {
+		if searchRelaxedStructure(req.SearchStrictMismatchReason) && req.SearchSourceInstanceID == instanceID {
 			structureRelaxedHash = normalizeHash(req.SearchSourceHash)
 		}
 
@@ -5084,7 +5084,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 	// A title rescue or a season/episode-relaxed pairing is admitted on evidence
 	// file sizes cannot confirm, so it only lands behind a full hash check.
-	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchRelaxedDifferences)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchStrictMismatchReason)
 	if verifyBeforeSeed && req.SkipRecheck {
 		result.Status = "skipped_recheck"
 		result.Message = skippedRecheckMessage
@@ -5827,6 +5827,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine if we need to wait for verification and resume at threshold:
+	// - verifyBeforeSeed: a title rescue or a relaxed season/episode must be hashed first
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	// - linkFallbackRequiresFullRecheck: regular-mode fallback was forced paused and must be rechecked
@@ -14120,9 +14121,10 @@ func (s *Service) processHardlinkMode(
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToLink)
-	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchRelaxedDifferences)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchStrictMismatchReason)
 
-	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
+	// Early guard: if SkipRecheck is enabled and we have extras, or the match must
+	// be verified first, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
 		return hardlinkModeResult{
 			Used:    true,
@@ -14405,7 +14407,8 @@ func (s *Service) processHardlinkMode(
 		statusMsg += addPolicy.StatusSuffix()
 	}
 
-	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
+	// Handle recheck and auto-resume when extras exist, or disc layout or the
+	// search decision requires verification
 	if hasExtras || addPolicy.DiscLayout || verifyBeforeSeed {
 		recheckHashes := []string{torrentHash}
 		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
@@ -14805,9 +14808,10 @@ func (s *Service) processReflinkMode(
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToClone)
-	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchRelaxedDifferences)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchStrictMismatchReason)
 
-	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
+	// Early guard: if SkipRecheck is enabled and we have extras, or the match must
+	// be verified first, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
 		return reflinkModeResult{
 			Used:    true,
@@ -15102,7 +15106,8 @@ func (s *Service) processReflinkMode(
 		statusMsg += addPolicy.StatusSuffix()
 	}
 
-	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
+	// Handle recheck and auto-resume when extras exist, or disc layout or the
+	// search decision requires verification
 	if hasExtras || addPolicy.DiscLayout || verifyBeforeSeed {
 		recheckHashes := []string{torrentHash}
 		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {

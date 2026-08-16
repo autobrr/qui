@@ -345,12 +345,19 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	return "", false
 }
 
-// searchRelaxedStructure reports whether a search decision retired a season or
-// episode difference. Equal file sizes cannot confirm which episode a torrent
-// holds, so those pairings must be hashed before they seed.
-func searchRelaxedStructure(relaxedDifferences []string) bool {
-	return slices.Contains(relaxedDifferences, "season") ||
-		slices.Contains(relaxedDifferences, "episode")
+// searchRelaxedStructure reports whether the strict rejection a search decision
+// overrode was the season or episode number itself. Equal file sizes cannot
+// confirm which episode a torrent holds, so those pairings must be hashed before
+// they seed. It keys on the causal rejection rather than the recorded difference
+// list, which also holds numbers strict matching never objected to: an
+// episode-from-pack pairing records an episode delta while being rejected for
+// something else entirely.
+func searchRelaxedStructure(strictMismatchReason string) bool {
+	switch strings.ToLower(strings.TrimSpace(strictMismatchReason)) {
+	case seasonMismatchReason, episodeMismatchReason:
+		return true
+	}
+	return false
 }
 
 func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {
@@ -364,10 +371,11 @@ func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {
 	return normalizer.Normalize(release.Site)
 }
 
-// recordedReleaseDifferences lists every field the two releases disagree on.
-// Most are descriptive, but season, episode and checksum are not: they decide
-// whether the add must be hashed before it seeds, so a new entry here is never
-// automatically safe to relax.
+// recordedReleaseDifferences lists every field the two releases disagree on. The
+// list records differences, it does not judge them: an entry here only permits
+// the exact-size fallback to override the one strict rejection that names the
+// same field. Whether the add must be hashed first is decided by that rejection,
+// in searchRelaxedStructure.
 func recordedReleaseDifferences(source, candidate *rls.Release) []string {
 	if source == nil || candidate == nil {
 		return nil

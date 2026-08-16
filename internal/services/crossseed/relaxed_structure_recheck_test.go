@@ -29,9 +29,10 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedStructure(t *testing.T) {
 	newRequest := func() *CrossSeedRequest {
 		startPaused := false
 		return &CrossSeedRequest{
-			StartPaused:              &startPaused,
-			SearchDecisionClass:      searchCandidateClassExactSizeFallback,
-			SearchRelaxedDifferences: []string{"season"},
+			StartPaused:                &startPaused,
+			SearchDecisionClass:        searchCandidateClassExactSizeFallback,
+			SearchStrictMismatchReason: "season mismatch",
+			SearchRelaxedDifferences:   []string{"season"},
 		}
 	}
 
@@ -56,6 +57,7 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedStructure(t *testing.T) {
 
 	t.Run("relaxed episode is dropped when rechecks are disabled", func(t *testing.T) {
 		req := newRequest()
+		req.SearchStrictMismatchReason = "episode mismatch"
 		req.SearchRelaxedDifferences = []string{"episode"}
 		req.SkipRecheck = true
 
@@ -66,9 +68,12 @@ func TestProcessCrossSeedCandidateVerifiesRelaxedStructure(t *testing.T) {
 		require.Empty(t, sync.addTorrentOpts, "the torrent must never be added")
 	})
 
+	// An episode-from-pack pairing records an episode delta strict matching never
+	// objected to. Only the causal rejection may demand a hash check.
 	t.Run("soft relaxations keep the unverified fast path", func(t *testing.T) {
 		req := newRequest()
-		req.SearchRelaxedDifferences = []string{"codec", "hdr"}
+		req.SearchStrictMismatchReason = "codec mismatch"
+		req.SearchRelaxedDifferences = []string{"codec", "episode"}
 
 		result, sync := run(t, req)
 
