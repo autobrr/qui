@@ -4487,15 +4487,42 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			if isSearchSource {
 				candidateAliasTitles = searchDecision.SourceTitles
 			}
+			fallbackInput := searchCandidateInput{
+				Source:                 targetSide,
+				Candidate:              sourceSide,
+				CandidateTitles:        candidateAliasTitles,
+				FindIndividualEpisodes: req.FindIndividualEpisodes,
+			}
+			replaysExactDecision := isSearchSource &&
+				(searchDecision.Class == searchCandidateClassExactSizeFallback ||
+					searchDecision.StrictChecksumReplay)
+			if replaysExactDecision {
+				if ok, _ := s.searchCandidateMetadataConsistent(
+					searchDecision.SearchCandidateName,
+					targetSide,
+					searchDecision.RelaxedDifferences,
+					searchDecision.SourceTitles,
+					req.FindIndividualEpisodes,
+				); !ok {
+					continue
+				}
+			}
 			releasesMatch, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(
-				targetRelease,
-				sourceSide.release,
-				req.TorrentName,
-				torrent.Name,
-				nil,
-				candidateAliasTitles,
+				fallbackInput.Source.release,
+				fallbackInput.Candidate.release,
+				fallbackInput.Source.rawName,
+				fallbackInput.Candidate.rawName,
+				fallbackInput.SourceTitles,
+				fallbackInput.CandidateTitles,
 				req.FindIndividualEpisodes,
 			)
+			replaysStrictChecksum := isSearchSource &&
+				searchDecision.Class == searchCandidateClassStrict &&
+				searchDecision.StrictChecksumReplay
+			if !releasesMatch && replaysStrictChecksum && s.oneSidedChecksumIsOnlyStrictDifference(fallbackInput) {
+				releasesMatch = true
+				mismatchReason = ""
+			}
 			replaysGroupFallback := isSearchSource &&
 				searchDecision.Class == searchCandidateClassExactSizeFallback &&
 				slices.Contains(searchDecision.RelaxedDifferences, "group")
@@ -4522,13 +4549,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					if !searchRelaxationAuthorizesCurrentReason(searchDecision.StrictMismatchReason, mismatchReason) {
 						continue
 					}
-					fallbackInput := searchCandidateInput{
-						Source:                 sourceSide,
-						Candidate:              targetSide,
-						SourceTitles:           searchDecision.SourceTitles,
-						FindIndividualEpisodes: req.FindIndividualEpisodes,
-					}
-					if ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
+					if _, ok, _ := s.validateExactSizeFallback(fallbackInput, mismatchReason, searchDecision.RelaxedDifferences); !ok {
 						continue
 					}
 					if searchRelaxedStructure(mismatchReason) {
@@ -6257,11 +6278,19 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return *satisfiedResult
 	}
 
-	isChecking := state == qbt.TorrentStateCheckingUp ||
-		state == qbt.TorrentStateCheckingDl ||
-		state == qbt.TorrentStateCheckingResumeData
+	isPieceChecking := state == qbt.TorrentStateCheckingUp ||
+		state == qbt.TorrentStateCheckingDl
+	isChecking := isPieceChecking || state == qbt.TorrentStateCheckingResumeData
 	if isChecking {
-		req.sawChecking = true
+		// checkingResumeData validates qBittorrent's saved state during startup.
+		// It keeps this worker waiting, but it does not prove that a requested
+		// piece hash check ran. It also breaks continuity with any piece-check
+		// state observed before qBittorrent restarted.
+		if isPieceChecking {
+			req.sawChecking = true
+		} else if req.verificationRequired {
+			req.sawChecking = false
+		}
 		req.readyPolls = 0
 		req.resumeConfirmedPolls = 0
 		// A recheck can reveal missing data a pre-check forgiveness pass never

@@ -726,6 +726,26 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 func requireVerificationPendingWaitsForObservedFullCheck(t *testing.T, service *Service, queued *pendingResume) {
 	t.Helper()
 
+	resumeDataCheck := *queued
+	keep := service.processPendingRecheckResume(resumeDataCheck.instanceID, resumeDataCheck.hash, &resumeDataCheck, qbt.Torrent{
+		Hash:       resumeDataCheck.hash,
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStateCheckingResumeData,
+	})
+	require.True(t, keep)
+	require.False(t, resumeDataCheck.sawChecking, "resume-data validation does not prove a full piece check ran")
+	for range recheckResumeStablePolls {
+		keep = service.processPendingRecheckResume(resumeDataCheck.instanceID, resumeDataCheck.hash, &resumeDataCheck, qbt.Torrent{
+			Hash:       resumeDataCheck.hash,
+			Progress:   1,
+			AmountLeft: 0,
+			State:      qbt.TorrentStatePausedUp,
+		})
+		require.True(t, keep, "completion after resume-data validation must not trigger resume")
+		require.Zero(t, resumeDataCheck.resumeAttempts)
+	}
+
 	preCheck := *queued
 	for range recheckResumeStablePolls {
 		keep := service.processPendingRecheckResume(preCheck.instanceID, preCheck.hash, &preCheck, qbt.Torrent{
@@ -749,9 +769,31 @@ func requireVerificationPendingWaitsForObservedFullCheck(t *testing.T, service *
 		require.True(t, pending.sawChecking, "the live checking state must arm verification completion")
 	}
 
+	interrupted := *queued
+	observeChecking(&interrupted)
+	keep = service.processPendingRecheckResume(interrupted.instanceID, interrupted.hash, &interrupted, qbt.Torrent{
+		Hash:       interrupted.hash,
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStateCheckingResumeData,
+	})
+	require.True(t, keep)
+	require.False(t, interrupted.sawChecking,
+		"resume-data validation must invalidate a piece check interrupted by qBittorrent restart")
+	for range recheckResumeStablePolls {
+		keep = service.processPendingRecheckResume(interrupted.instanceID, interrupted.hash, &interrupted, qbt.Torrent{
+			Hash:       interrupted.hash,
+			Progress:   1,
+			AmountLeft: 0,
+			State:      qbt.TorrentStatePausedUp,
+		})
+		require.True(t, keep, "an interrupted verification must wait for a new piece-check transition")
+		require.Zero(t, interrupted.resumeAttempts)
+	}
+
 	belowFull := *queued
 	observeChecking(&belowFull)
-	keep := service.processPendingRecheckResume(belowFull.instanceID, belowFull.hash, &belowFull, qbt.Torrent{
+	keep = service.processPendingRecheckResume(belowFull.instanceID, belowFull.hash, &belowFull, qbt.Torrent{
 		Hash:       belowFull.hash,
 		Progress:   0.99,
 		AmountLeft: 0,

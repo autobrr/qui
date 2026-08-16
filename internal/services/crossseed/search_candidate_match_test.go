@@ -257,10 +257,10 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
 	require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
-	require.Contains(t, decision.RelaxedDifferences, "collection")
-	require.Contains(t, decision.RelaxedDifferences, "hdr")
+	require.Equal(t, []string{"hdr"}, decision.RelaxedDifferences,
+		"only strict rejections become apply-time authority")
 	require.Contains(t, decision.MatchReason, "exact reported size")
-	require.Contains(t, decision.MatchReason, "relaxed collection")
+	require.Contains(t, decision.MatchReason, "relaxed hdr")
 }
 
 func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
@@ -313,16 +313,134 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	require.Contains(t, decision.RelaxedDifferences, "checksum")
 }
 
-// Search and apply call the asymmetric checksum gate in opposite directions.
-// Exact-size evidence must preserve the one-sided-checksum decision when the
-// local source omits the CRC but the searched and downloaded torrent carries it.
-func TestFindCandidatesReplaysReverseOneSidedChecksum(t *testing.T) {
+func TestClassifySearchCandidateExactChecksumKeepsExistingStrictMatch(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP"
+		candidateName = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP[A1B2C3D4]"
+		size          = int64(1_000_000)
+	)
+	source := rls.ParseString(sourceName)
+	candidate := rls.ParseString(candidateName)
+
+	strict, reason := service.releasesMatchWithReasonAndNames(
+		&source, &candidate, sourceName, candidateName, false,
+	)
+	require.True(t, strict, "candidate-only metadata already passes strict search matching: %s", reason)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: &source, rawName: sourceName},
+		Candidate:     namedRelease{release: &candidate, rawName: candidateName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+
+	require.True(t, decision.Accepted, "exact size must not make a strict match worse: %s", decision.RejectReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class,
+		"candidate-only checksum metadata must keep strict search ranking")
+	require.Empty(t, decision.StrictMismatchReason)
+	require.True(t, decision.StrictChecksumReplay)
+	require.Empty(t, decision.RelaxedDifferences)
+	require.Contains(t, decision.MatchReason, "strict metadata")
+}
+
+func TestFindCandidatesReplaysSourceChecksumWithoutGroup(t *testing.T) {
 	const (
 		instanceID     = 1
-		sourceHash     = "existing-without-checksum"
-		existingName   = "[KIRI] Azure Compass - 1157 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Episode 1157]"
-		downloadedName = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
-		size           = int64(1_424_466_789)
+		sourceHash     = "existing-checksum-without-group"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.H.264[A1B2C3D4]"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.H.264"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	downloadedRelease := service.releaseCache.Parse(downloadedName)
+	require.Empty(t, existingRelease.Group)
+	require.Empty(t, downloadedRelease.Group)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.False(t, decision.StrictChecksumReplay)
+	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"a one-sided checksum is missing evidence even when neither title has a group")
+}
+
+func TestFindCandidatesSourceChecksumReplayRejectsDownloadedGroup(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-checksum-without-group"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.H.264[A1B2C3D4]"
+		searchedName   = "Example.Show.S01E01.1080p.WEB-DL.H.264"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.H.264-EVIL"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates,
+		"checksum replay must not authorize a group added after search")
+}
+
+func TestFindCandidatesReplaysStrictCandidateOnlyChecksumMetadata(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-without-tags"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP[A1B2C3D4]"
+		size           = int64(1_000_000)
 	)
 
 	instance := &models.Instance{ID: instanceID, Name: "main"}
@@ -345,33 +463,13 @@ func TestFindCandidatesReplaysReverseOneSidedChecksum(t *testing.T) {
 
 	existingRelease := service.releaseCache.Parse(existingName)
 	downloadedRelease := service.releaseCache.Parse(downloadedName)
-	require.Empty(t, existingRelease.Sum)
-	require.NotEmpty(t, downloadedRelease.Sum)
-
-	strict, reason := service.releasesMatchWithReasonAndNames(
-		existingRelease, downloadedRelease, existingName, downloadedName, false,
-	)
-	require.True(t, strict, "the baseline direction accepts a candidate-only checksum: %s", reason)
-	reverseStrict, reverseReason := service.releasesMatchWithReasonAndNames(
-		downloadedRelease, existingRelease, downloadedName, existingName, false,
-	)
-	require.False(t, reverseStrict)
-	require.Equal(t, "checksum mismatch", reverseReason)
-
 	decision := service.classifySearchCandidate(searchCandidateInput{
 		Source:        namedRelease{release: existingRelease, rawName: existingName},
 		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
 		SourceSize:    size,
 		CandidateSize: size,
 	})
-	require.True(t, decision.Accepted)
-	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
-	require.Equal(t, "checksum mismatch", decision.StrictMismatchReason)
-	require.Contains(t, decision.RelaxedDifferences, "checksum")
-	require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
-	require.NotEmpty(t, service.getMatchTypeFromTitle(
-		downloadedName, existingName, downloadedRelease, existingRelease, existingFiles,
-	), "the fixture must pass file validation once the release gate is replayed")
+	require.True(t, decision.Accepted, decision.RejectReason)
 
 	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
 		TorrentName:       downloadedName,
@@ -380,7 +478,570 @@ func TestFindCandidatesReplaysReverseOneSidedChecksum(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1,
-		"apply must preserve search's exact-size one-sided-checksum decision in the reverse direction")
+		"apply must preserve the bound strict search match when only the downloaded side adds metadata")
+}
+
+func TestFindCandidatesStrictChecksumReplayRejectsAdvertisedGroupDrift(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-with-group"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP"
+		searchedName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP[A1B2C3D4]"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.H.264-EVIL[A1B2C3D4]"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.True(t, decision.StrictChecksumReplay)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates,
+		"checksum replay must not authorize a downloaded group that differs from the listing")
+}
+
+func TestFindCandidatesChecksumReplayRejectsNewUnrecordedDifference(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-without-checksum"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP"
+		searchedName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP[A1B2C3D4]"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.H.265-GRP[A1B2C3D4]"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.True(t, decision.StrictChecksumReplay)
+	require.Empty(t, decision.RelaxedDifferences)
+
+	downloadedRelease := service.releaseCache.Parse(downloadedName)
+	reverseMatch, reverseReason := service.releasesMatchWithReasonAndNames(
+		downloadedRelease, existingRelease, downloadedName, existingName, false,
+	)
+	require.False(t, reverseMatch)
+	require.Equal(t, checksumMismatchReason, reverseReason,
+		"the reverse comparison would hide the new codec difference behind the checksum")
+	originalMatch, originalReason := service.releasesMatchWithReasonAndNames(
+		existingRelease, downloadedRelease, existingName, downloadedName, false,
+	)
+	require.False(t, originalMatch)
+	require.Equal(t, "codec mismatch", originalReason)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates, "a recorded checksum cannot authorize a new codec difference")
+}
+
+func TestFindCandidatesRejectsAdvertisedCodecDrift(t *testing.T) {
+	const (
+		instanceID = 1
+		size       = int64(1_000_000)
+	)
+
+	tests := []struct {
+		name           string
+		existingName   string
+		searchedName   string
+		downloadedName string
+	}{
+		{
+			name:           "ordinary exact fallback",
+			existingName:   "Example.Show.S01E01.1080p.AMZN.WEB-DL-GRP",
+			searchedName:   "Example.Show.S01E01.1080p.NF.WEB-DL.H.264-GRP",
+			downloadedName: "Example.Show.S01E01.1080p.NF.WEB-DL.H.265-GRP",
+		},
+		{
+			name:           "downloaded side carried checksum",
+			existingName:   "Example.Show.S01E01.1080p.WEB-DL-GRP",
+			searchedName:   "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP[A1B2C3D4]",
+			downloadedName: "Example.Show.S01E01.1080p.WEB-DL.H.265-GRP[A1B2C3D4]",
+		},
+		{
+			name:           "existing side carried checksum",
+			existingName:   "Example.Show.S01E01.1080p.WEB-DL-GRP[A1B2C3D4]",
+			searchedName:   "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP",
+			downloadedName: "Example.Show.S01E01.1080p.WEB-DL.H.265-GRP",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceHash := "source-" + strings.ReplaceAll(tt.name, " ", "-")
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{
+				Hash:      sourceHash,
+				Name:      tt.existingName,
+				Size:      size,
+				TotalSize: size,
+				Progress:  1,
+			}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+					sourceHash: {{Name: tt.existingName + ".mkv", Size: size}},
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+
+			existingRelease := service.releaseCache.Parse(tt.existingName)
+			searchedRelease := service.releaseCache.Parse(tt.searchedName)
+			require.Empty(t, existingRelease.Codec)
+			require.NotEmpty(t, searchedRelease.Codec)
+			decision := service.classifySearchCandidate(searchCandidateInput{
+				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
+				Candidate:     namedRelease{release: searchedRelease, rawName: tt.searchedName},
+				SourceSize:    size,
+				CandidateSize: size,
+			})
+			require.True(t, decision.Accepted, decision.RejectReason)
+
+			response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+				TorrentName:       tt.downloadedName,
+				TargetInstanceIDs: []int{instanceID},
+				SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+			})
+			require.NoError(t, err)
+			require.Empty(t, response.Candidates,
+				"the downloaded torrent changed a codec the tracker had advertised")
+		})
+	}
+}
+
+func TestFindCandidatesAdvertisedMetadataUsesSourceAliases(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-alias-title"
+		existingName   = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.H.264-NTb"
+		searchedName   = "Money.Heist.S01E01.1080p.NF.WEB-DL.H.264-NTb[A1B2C3D4]"
+		downloadedName = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.H.264-NTb[A1B2C3D4]"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: existingName + ".mkv", Size: size}},
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceTitles:  []string{"Money Heist"},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassStrict, decision.Class)
+	require.True(t, decision.StrictChecksumReplay)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"the downloaded source title remains valid through the cached ARR alias")
+}
+
+func TestFindCandidatesSourceChecksumReplayRejectsNewUnrecordedDifference(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-with-checksum"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP[A1B2C3D4]"
+		searchedName   = "Example.Show.S01E01.1080p.WEB-DL.H.264-GRP"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.H.265-GRP"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+
+	downloadedRelease := service.releaseCache.Parse(downloadedName)
+	originalMatch, originalReason := service.releasesMatchWithReasonAndNames(
+		existingRelease, downloadedRelease, existingName, downloadedName, false,
+	)
+	require.False(t, originalMatch)
+	require.Equal(t, checksumMismatchReason, originalReason,
+		"the search-orientation comparison would hide the new codec difference behind the checksum")
+	reverseMatch, reverseReason := service.releasesMatchWithReasonAndNames(
+		downloadedRelease, existingRelease, downloadedName, existingName, false,
+	)
+	require.False(t, reverseMatch)
+	require.Equal(t, "codec mismatch", reverseReason)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates, "a recorded checksum cannot authorize a new codec difference")
+}
+
+func TestFindCandidatesRecordedDifferenceCannotHideNewDifference(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-amzn"
+		existingName   = "Example.Show.S01E01.1080p.AMZN.WEB-DL.H.264-GRP"
+		searchedName   = "Example.Show.S01E01.1080p.NF.WEB-DL.H.264-GRP"
+		downloadedName = "Example.Show.S01E01.1080p.NF.WEB-DL.H.265-GRP"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, []string{"collection"}, decision.RelaxedDifferences)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates,
+		"a recorded collection difference cannot authorize a new codec difference")
+}
+
+func TestFindCandidatesMissingMetadataDoesNotAuthorizeLaterConflict(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-with-codec"
+		existingName   = "Example.Show.S01E01.1080p.AMZN.WEB-DL.H.264-GRP"
+		searchedName   = "Example.Show.S01E01.1080p.NF.WEB-DL-GRP"
+		downloadedName = "Example.Show.S01E01.1080p.NF.WEB-DL.H.265-GRP"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	searchedRelease := service.releaseCache.Parse(searchedName)
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: searchedRelease, rawName: searchedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, []string{"collection"}, decision.RelaxedDifferences,
+		"an omitted codec is not a strict rejection and must not become replay authority")
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Empty(t, response.Candidates,
+		"a codec omitted by the search title cannot authorize a conflicting downloaded codec")
+}
+
+func TestValidateExactSizeFallbackKeepsOverlappingVariantAuthority(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	source := &rls.Release{
+		Title:      "Example Show",
+		Resolution: "1080p",
+		Group:      "GRP",
+		Series:     1,
+		Episode:    1,
+		Collection: "IMAX",
+	}
+	searched := *source
+	searched.Collection = "NF"
+	input := searchCandidateInput{
+		Source:    namedRelease{release: source},
+		Candidate: namedRelease{release: &searched},
+	}
+
+	observed := service.observedReleaseDifferences(input.Source, input.Candidate)
+	require.ElementsMatch(t, []string{"collection", "variant"}, observed)
+	used, ok, reason := service.validateExactSizeFallback(input, "collection mismatch", observed)
+	require.True(t, ok, reason)
+	require.ElementsMatch(t, []string{"collection", "variant"}, used,
+		"normalizing the shared Collection field must not hide the independent IMAX rule")
+
+	downloaded := searched
+	downloaded.Collection = ""
+	input.Candidate.release = &downloaded
+	used, ok, reason = service.validateExactSizeFallback(input, "IMAX", used)
+	require.True(t, ok, reason)
+	require.Equal(t, []string{"variant"}, used,
+		"apply may spend the variant authority that search independently established")
+}
+
+func TestObservedReleaseDifferencesCoversStrictCollectionMismatch(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	source := &rls.Release{
+		Title:      "Example Show",
+		Resolution: "1080p",
+		Group:      "GRP",
+		Series:     1,
+		Episode:    1,
+		Collection: "NF",
+		Subtitle:   "AMZN",
+	}
+	candidate := *source
+	candidate.Collection = "NF AMZN"
+	candidate.Subtitle = ""
+	input := searchCandidateInput{
+		Source:    namedRelease{release: source},
+		Candidate: namedRelease{release: &candidate},
+	}
+
+	strict, reason := service.releasesMatchWithReason(source, &candidate, false)
+	require.False(t, strict)
+	require.Equal(t, "collection mismatch", reason)
+
+	observed := service.observedReleaseDifferences(input.Source, input.Candidate)
+	require.Contains(t, observed, "collection",
+		"the observation key must use the same Collection field as strict matching")
+	used, ok, reason := service.validateExactSizeFallback(input, reason, observed)
+	require.True(t, ok, reason)
+	require.Equal(t, []string{"collection"}, used)
+}
+
+func TestFindCandidatesReplaysDirectionalVariantMismatch(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-imax"
+		existingName   = "Example.Show.S01E01.1080p.WEB-DL.IMAX.H.264-GRP"
+		downloadedName = "Example.Show.S01E01.1080p.WEB-DL.HYBRID.H.264-GRP"
+		size           = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, TotalSize: size, Progress: 1}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	downloadedRelease := service.releaseCache.Parse(downloadedName)
+	searchMatch, searchReason := service.releasesMatchWithReason(existingRelease, downloadedRelease, false)
+	require.False(t, searchMatch)
+	require.Equal(t, "IMAX", searchReason)
+	applyMatch, applyReason := service.releasesMatchWithReason(downloadedRelease, existingRelease, false)
+	require.False(t, applyMatch)
+	require.Equal(t, "HYBRID", applyReason)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, []string{"variant"}, decision.RelaxedDifferences)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"apply must replay a recorded variant when the reverse comparison reports its other label")
+}
+
+// Search and apply call the asymmetric checksum gate in opposite directions.
+// Exact-size evidence must preserve a one-sided-checksum decision whichever
+// release carries the CRC.
+func TestFindCandidatesReplaysOneSidedChecksumBothDirections(t *testing.T) {
+	const (
+		instanceID   = 1
+		checksumName = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
+		plainName    = "[KIRI] Azure Compass - 1157 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Episode 1157]"
+		size         = int64(1_424_466_789)
+	)
+
+	for _, tt := range []struct {
+		name           string
+		existingName   string
+		downloadedName string
+		searchStrict   bool
+	}{
+		{name: "downloaded torrent carries checksum", existingName: plainName, downloadedName: checksumName, searchStrict: true},
+		{name: "existing torrent carries checksum", existingName: checksumName, downloadedName: plainName},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sourceHash := "existing-" + strings.ReplaceAll(tt.name, " ", "-")
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			existing := qbt.Torrent{
+				Hash:      sourceHash,
+				Name:      tt.existingName,
+				Size:      size,
+				TotalSize: size,
+				Progress:  1,
+			}
+			existingFiles := qbt.TorrentFiles{{Name: tt.existingName + ".mkv", Size: size}}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+					sourceHash: existingFiles,
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+
+			existingRelease := service.releaseCache.Parse(tt.existingName)
+			downloadedRelease := service.releaseCache.Parse(tt.downloadedName)
+			require.NotEqual(t, existingRelease.Sum == "", downloadedRelease.Sum == "")
+
+			strict, reason := service.releasesMatchWithReasonAndNames(
+				existingRelease, downloadedRelease, tt.existingName, tt.downloadedName, false,
+			)
+			require.Equal(t, tt.searchStrict, strict, reason)
+			if !strict {
+				require.Equal(t, checksumMismatchReason, reason)
+			}
+
+			decision := service.classifySearchCandidate(searchCandidateInput{
+				Source:        namedRelease{release: existingRelease, rawName: tt.existingName},
+				Candidate:     namedRelease{release: downloadedRelease, rawName: tt.downloadedName},
+				SourceSize:    size,
+				CandidateSize: size,
+			})
+			require.True(t, decision.Accepted)
+			if tt.searchStrict {
+				require.Equal(t, searchCandidateClassStrict, decision.Class)
+				require.True(t, decision.StrictChecksumReplay)
+				require.Empty(t, decision.StrictMismatchReason)
+				require.Empty(t, decision.RelaxedDifferences)
+			} else {
+				require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+				require.False(t, decision.StrictChecksumReplay)
+				require.Equal(t, checksumMismatchReason, decision.StrictMismatchReason)
+				require.Equal(t, []string{"checksum"}, decision.RelaxedDifferences)
+			}
+			require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
+			require.NotEmpty(t, service.getMatchTypeFromTitle(
+				tt.downloadedName, tt.existingName, downloadedRelease, existingRelease, existingFiles,
+			), "the fixture must pass file validation once the release gate is replayed")
+
+			response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+				TorrentName:       tt.downloadedName,
+				TargetInstanceIDs: []int{instanceID},
+				SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+			})
+			require.NoError(t, err)
+			require.Len(t, response.Candidates, 1,
+				"apply must preserve search's exact-size one-sided-checksum decision")
+		})
+	}
 }
 
 // The checksum tolerance belongs to the exact-size fallback alone. This fails if
@@ -679,6 +1340,8 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	require.Zero(t, duplicateFiltered)
 	require.Len(t, results, 1)
 	require.Equal(t, []string{"Money Heist"}, results[0].SearchDecision.SourceTitles)
+	require.Equal(t, candidateName, results[0].SearchDecision.SearchCandidateName)
+	results[0].SearchDecision.StrictChecksumReplay = true
 	results[0].SearchDecision.RelaxedDifferences = []string{"collection"}
 
 	service.cacheSearchResults(1, "source", results)
@@ -687,6 +1350,8 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	cached := service.getCachedSearchResults(1, "source")
 	require.NotNil(t, cached)
 	require.Equal(t, []string{"Money Heist"}, cached.results[0].SearchDecision.SourceTitles)
+	require.Equal(t, candidateName, cached.results[0].SearchDecision.SearchCandidateName)
+	require.True(t, cached.results[0].SearchDecision.StrictChecksumReplay)
 	require.Equal(t, []string{"collection"}, cached.results[0].SearchDecision.RelaxedDifferences)
 	cached.results[0].SearchDecision.SourceTitles[0] = "mutated after cache read"
 	cached.results[0].SearchDecision.RelaxedDifferences[0] = "mutated after cache read"
@@ -1470,7 +2135,7 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
 	require.Equal(t, "hdr mismatch", decision.StrictMismatchReason)
-	require.ElementsMatch(t, []string{"collection", "hdr"}, decision.RelaxedDifferences)
+	require.Equal(t, []string{"hdr"}, decision.RelaxedDifferences)
 
 	fallbackRequest := func() *FindCandidatesRequest {
 		return &FindCandidatesRequest{

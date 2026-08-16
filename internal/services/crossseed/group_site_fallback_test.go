@@ -210,7 +210,7 @@ func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
 			sourceSide := namedRelease{release: source, rawName: tt.source}
 			targetSide := namedRelease{release: target, rawName: tt.target}
 			require.False(t, svc.crossFieldGroupSiteFallback(sourceSide, targetSide))
-			require.NotContains(t, svc.recordedReleaseDifferences(sourceSide, targetSide), "group")
+			require.NotContains(t, svc.observedReleaseDifferences(sourceSide, targetSide), "group")
 
 			decision := classifyGroupPair(svc, tt.source, tt.target, fansubPackSize, fansubPackSize)
 			require.False(t, decision.Accepted, "class: %s", decision.Class)
@@ -301,7 +301,7 @@ func TestGroupSiteFallback_IgnoresRepeatedFansubTag(t *testing.T) {
 	repeatedSide := namedRelease{release: repeated, rawName: fansubRepeatedTag}
 	taggedSide := namedRelease{release: tagged, rawName: fansubTaggedPack}
 	require.False(t, svc.crossFieldGroupSiteFallback(repeatedSide, taggedSide))
-	require.NotContains(t, svc.recordedReleaseDifferences(repeatedSide, taggedSide), "group")
+	require.NotContains(t, svc.observedReleaseDifferences(repeatedSide, taggedSide), "group")
 
 	// The pairing still matches, on the codec the two names actually differ by.
 	decision := classifyGroupPair(svc, fansubRepeatedTag, fansubTaggedPack, fansubPackSize, fansubPackSize)
