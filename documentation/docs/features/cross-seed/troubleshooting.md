@@ -22,6 +22,16 @@ qui uses strict matching to ensure cross-seeds have identical files. Both releas
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
 
+Some discovery methods can use an exact reported byte count when strict release matching rejects an approved metadata difference.
+
+Interactive Torznab search, Library Scan, and completion search share this rule. RSS uses the title and byte count from the feed before its one download.
+
+The autobrr `/check` endpoint uses `.Size` without fetching the torrent file. The value can be exact, rounded, or `0`.
+
+If autobrr sends `0`, qui uses a narrow name-only preflight. The `/apply` endpoint calculates the actual size and repeats the match against live sources.
+
+An exact reported size is evidence, not byte verification. qui still checks the downloaded torrent metadata, files, layout, and piece boundaries.
+
 ### Season pack vs episodes
 
 By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
@@ -132,9 +142,15 @@ For partial-in-pack, size-based, renamed, or otherwise non-perfect matches, qui 
 
 ### 4. Exact-size identity fallback
 
-Sometimes two names describe the same bytes differently. One name can use a different season or episode number. A fansub name can also split its release-group identity across two parsed fields.
+Sometimes two names describe the same bytes differently. One name can use a different codec, source, season, or episode number.
 
-If the reported total sizes are exactly equal, qui can download these candidates for verification. It adds a matched torrent paused and starts a full recheck. It resumes only after qBittorrent reaches 100%. If **Skip recheck** is enabled, qui skips the match instead.
+A fansub name can also split its release-group identity across two parsed fields. Exact positive reported sizes let qui consider these approved differences.
+
+Title, season, episode, and split release-group differences require verification. qui adds these torrents paused and resumes them only after a 100% recheck.
+
+Soft differences, such as codec, source, HDR, edition, or one-sided checksum data, can keep the normal fast path after all safety checks.
+
+If **Skip recheck** is enabled, qui skips only decisions that require verification. RSS and autobrr reject these decisions before their planned download.
 
 ### Auto-resume behavior
 

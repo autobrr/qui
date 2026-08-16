@@ -464,6 +464,9 @@ type WebhookCheckResponse struct {
 // AutobrrApplyRequest represents autobrr pushing a torrent directly to qui for application.
 type AutobrrApplyRequest struct {
 	TorrentData string `json:"torrentData"`
+	// TorrentName is the original announcement name. It is distinct from the
+	// downloaded metainfo info.name used for replay validation.
+	TorrentName string `json:"torrentName,omitempty"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
 	InstanceIDs  []int    `json:"instanceIds,omitempty"`
 	Category     string   `json:"category,omitempty"`

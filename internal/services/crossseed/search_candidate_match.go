@@ -115,12 +115,17 @@ func (provenance searchDecisionProvenance) clone() searchDecisionProvenance {
 func (provenance searchDecisionProvenance) bindSource(instanceID int, hash string) searchDecisionProvenance {
 	bound := provenance.clone()
 	bound.SourceInstanceID = instanceID
-	bound.SourceHash = hash
+	bound.SourceHash = normalizeHash(hash)
 	return bound
 }
 
 func (provenance searchDecisionProvenance) admitted() bool {
 	return provenance.Class != "" && provenance.Class != searchCandidateClassRejected
+}
+
+func searchDecisionRequiresVerification(decision searchDecisionProvenance) bool {
+	return decision.Class == searchCandidateClassTitleRescue ||
+		searchRelaxationRequiresVerification(decision.StrictMismatchReason)
 }
 
 // Score bands mirror the explicit sorter: positive size evidence outranks the

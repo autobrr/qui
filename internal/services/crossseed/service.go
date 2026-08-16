@@ -256,6 +256,16 @@ type automationContext struct {
 	candidateCache map[string]*FindCandidatesResponse
 }
 
+// boundAnnouncementMatch carries the private announcement decision only as far
+// as the exact source that supplied its size evidence. It must never be reused
+// for another source with a similar parsed release name.
+type boundAnnouncementMatch struct {
+	instanceID   int
+	instanceName string
+	torrent      qbt.Torrent
+	decision     searchDecisionProvenance
+}
+
 const (
 	searchResultCacheTTL                  = 5 * time.Minute
 	indexerDomainCacheTTL                 = 1 * time.Minute
@@ -3828,6 +3838,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	}
 
 	candidateCount := len(candidatesResp.Candidates)
+	var boundMatches []boundAnnouncementMatch
 	// Season packs with same-title episodes in the library have no direct
 	// candidates but can still be assembled by the diversion inside CrossSeed,
 	// so they must proceed to download instead of skipping.
@@ -3848,6 +3859,14 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
 	if candidateCount == 0 && !seasonPackDivertible {
+		boundMatches, err = s.findRSSAnnouncementMatches(ctx, result, settings, autoCtx)
+		if err != nil {
+			run.TorrentsFailed++
+			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("find RSS announcement matches: %w", err)
+		}
+		candidateCount = len(boundMatches)
+	}
+	if candidateCount == 0 && !seasonPackDivertible {
 		run.TorrentsSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
@@ -3857,6 +3876,27 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 			Message:      "No matching torrents for " + result.Title,
 		})
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
+	}
+	if settings.SkipRecheck && len(boundMatches) > 0 {
+		allowed := boundMatches[:0]
+		for _, match := range boundMatches {
+			if !searchDecisionRequiresVerification(match.decision) {
+				allowed = append(allowed, match)
+			}
+		}
+		boundMatches = allowed
+		candidateCount = len(boundMatches)
+		if candidateCount == 0 {
+			run.TorrentsSkipped++
+			run.Results = append(run.Results, models.CrossSeedRunResult{
+				InstanceName: result.Indexer,
+				IndexerName:  result.Indexer,
+				Success:      false,
+				Status:       "skipped_recheck",
+				Message:      "RSS exact-size match requires a recheck but SkipRecheck is enabled",
+			})
+			return models.CrossSeedFeedItemStatusSkipped, nil, nil
+		}
 	}
 
 	run.CandidatesFound++
@@ -3877,6 +3917,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		return models.CrossSeedFeedItemStatusSkipped, nil, nil
 	}
 
+	precheckCandidates := candidatesResp.Candidates
+	if len(boundMatches) > 0 {
+		precheckCandidates = boundRSSPrecheckCandidates(boundMatches)
+	}
+
 	// Optimization: If RSS feed provides infohash, check if torrent already exists
 	// on ALL candidate instances before downloading. This avoids unnecessary downloads
 	// when the exact torrent (by hash) is already present - commonly happens when
@@ -3885,7 +3930,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		allExist := true
 		var existingResults []models.CrossSeedRunResult
 
-		for _, candidate := range candidatesResp.Candidates {
+		for _, candidate := range precheckCandidates {
 			existing, exists, hashErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, []string{result.InfoHashV1})
 			if hashErr != nil {
 				// Context cancellation should propagate, not trigger fallback
@@ -3942,7 +3987,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		allExist := true
 		var existingResults []models.CrossSeedRunResult
 
-		for _, candidate := range candidatesResp.Candidates {
+		for _, candidate := range precheckCandidates {
 			// Check for context cancellation before processing each candidate
 			if ctx.Err() != nil {
 				run.TorrentsFailed++
@@ -4005,35 +4050,23 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	}
 
 	encodedTorrent := base64.StdEncoding.EncodeToString(torrentBytes)
-	startPaused := settings.StartPaused
-
-	skipIfExists := true
-	req := &CrossSeedRequest{
-		TorrentData:                  encodedTorrent,
-		TargetInstanceIDs:            append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                         append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:            settings.InheritSourceTags,
-		SkipIfExists:                 &skipIfExists,
-		IndexerName:                  sourceIndexer,
-		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
-		SkipAutoResume:               settings.SkipAutoResumeRSS,
-		SkipRecheck:                  settings.SkipRecheck,
-		SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
-		// Pass RSS source filters so CrossSeed respects them when finding candidates
-		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
-		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
-		SourceFilterExcludeCategories: append([]string(nil), settings.RSSSourceExcludeCategories...),
-		SourceFilterExcludeTags:       append([]string(nil), settings.RSSSourceExcludeTags...),
-	}
-	if settings.Category != nil {
-		req.Category = *settings.Category
-	}
-	req.StartPaused = &startPaused
-
-	resp, err := s.invokeCrossSeed(ctx, req)
-	if err != nil {
-		run.TorrentsFailed++
-		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", err)
+	var (
+		resp      *CrossSeedResponse
+		invokeErr error
+	)
+	if len(boundMatches) == 0 {
+		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings))
+		if invokeErr != nil {
+			run.TorrentsFailed++
+			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", invokeErr)
+		}
+	} else {
+		resp, invokeErr = s.invokeBoundAnnouncementMatches(ctx, boundMatches, func(source boundAnnouncementMatch) *CrossSeedRequest {
+			req := s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings)
+			req.TargetInstanceIDs = []int{source.instanceID}
+			req.SearchDecision = source.decision
+			return req
+		})
 	}
 
 	var infoHash *string
@@ -4106,7 +4139,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		itemStatus = models.CrossSeedFeedItemStatusSkipped
 	}
 
-	return itemStatus, infoHash, nil
+	return itemStatus, infoHash, invokeErr
 }
 
 func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult, status models.CrossSeedFeedItemStatus, runID int64, infoHash *string) {
@@ -4249,6 +4282,205 @@ func (s *Service) buildAutomationSnapshots(ctx context.Context, targetInstanceID
 	}
 
 	return snapshots
+}
+
+func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett.SearchResult, settings *models.CrossSeedAutomationSettings, autoCtx *automationContext) ([]boundAnnouncementMatch, error) {
+	if result.Size <= 0 || settings == nil {
+		return nil, nil
+	}
+
+	candidate := namedRelease{release: s.releaseCache.Parse(result.Title), rawName: result.Title}
+	snapshots := (*automationSnapshots)(nil)
+	if autoCtx != nil {
+		snapshots = autoCtx.snapshots
+	}
+	if snapshots == nil {
+		snapshots = s.buildAutomationSnapshots(ctx, settings.TargetInstanceIDs, settings)
+	}
+	if snapshots == nil {
+		return nil, nil
+	}
+
+	instanceIDs := make([]int, 0, len(snapshots.instances))
+	for instanceID := range snapshots.instances {
+		instanceIDs = append(instanceIDs, instanceID)
+	}
+	sort.Ints(instanceIDs)
+
+	matches := make([]boundAnnouncementMatch, 0, len(instanceIDs))
+	for _, instanceID := range instanceIDs {
+		snapshot := snapshots.instances[instanceID]
+		if snapshot == nil || snapshot.instance == nil {
+			continue
+		}
+		for i := range snapshot.torrents {
+			torrent := &snapshot.torrents[i]
+			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) || !matchesRSSSourceFilters(torrent, settings) {
+				continue
+			}
+			if sourceSize := searchSourceSize(torrent); sourceSize <= 0 || sourceSize != result.Size {
+				continue
+			}
+
+			decision := s.classifyAnnouncementSource(ctx, snapshot.instance.ID, torrent, candidate, result.Size, announcementMatchPolicy{
+				findIndividualEpisodes: settings.FindIndividualEpisodes,
+				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
+				allowUnknownSize:       false,
+			})
+			if !decision.replayable || !decision.decision.Accepted {
+				continue
+			}
+
+			match := boundAnnouncementMatch{
+				instanceID:   snapshot.instance.ID,
+				instanceName: snapshot.instance.Name,
+				torrent:      *torrent,
+				decision:     decision.decision.provenance().bindSource(snapshot.instance.ID, torrent.Hash),
+			}
+			matches = append(matches, match)
+		}
+	}
+	sortBoundAnnouncementMatches(matches)
+
+	return matches, nil
+}
+
+func (s *Service) newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer string, settings *models.CrossSeedAutomationSettings) *CrossSeedRequest {
+	startPaused := settings.StartPaused
+	skipIfExists := true
+	req := &CrossSeedRequest{
+		TorrentData:                   encodedTorrent,
+		TargetInstanceIDs:             append([]int(nil), settings.TargetInstanceIDs...),
+		Tags:                          append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags:             settings.InheritSourceTags,
+		SkipIfExists:                  &skipIfExists,
+		IndexerName:                   sourceIndexer,
+		FindIndividualEpisodes:        settings.FindIndividualEpisodes,
+		SkipAutoResume:                settings.SkipAutoResumeRSS,
+		SkipRecheck:                   settings.SkipRecheck,
+		SkipPieceBoundarySafetyCheck:  settings.SkipPieceBoundarySafetyCheck,
+		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
+		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
+		SourceFilterExcludeCategories: append([]string(nil), settings.RSSSourceExcludeCategories...),
+		SourceFilterExcludeTags:       append([]string(nil), settings.RSSSourceExcludeTags...),
+		StartPaused:                   &startPaused,
+	}
+	if settings.Category != nil {
+		req.Category = *settings.Category
+	}
+	return req
+}
+
+func boundRSSPrecheckCandidates(matches []boundAnnouncementMatch) []CrossSeedCandidate {
+	candidates := make([]CrossSeedCandidate, 0, len(matches))
+	for _, match := range matches {
+		if len(candidates) == 0 || candidates[len(candidates)-1].InstanceID != match.instanceID {
+			candidates = append(candidates, CrossSeedCandidate{
+				InstanceID:   match.instanceID,
+				InstanceName: match.instanceName,
+			})
+		}
+		last := &candidates[len(candidates)-1]
+		last.Torrents = append(last.Torrents, match.torrent)
+	}
+	return candidates
+}
+
+func (s *Service) invokeBoundAnnouncementMatches(ctx context.Context, matches []boundAnnouncementMatch, requestBuilder func(boundAnnouncementMatch) *CrossSeedRequest) (*CrossSeedResponse, error) {
+	merged := &CrossSeedResponse{}
+	var remainingErrors []error
+
+	for start := 0; start < len(matches); {
+		match := matches[start]
+		end := start + 1
+		for end < len(matches) && matches[end].instanceID == match.instanceID {
+			end++
+		}
+
+		var (
+			finalResponse *CrossSeedResponse
+			attemptErrors []error
+			terminal      bool
+		)
+		for _, source := range matches[start:end] {
+			req := requestBuilder(source)
+
+			response, err := s.invokeCrossSeed(ctx, req)
+			if err != nil {
+				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: %w", source.instanceID, normalizeHash(source.torrent.Hash), err))
+				continue
+			}
+			if response == nil {
+				attemptErrors = append(attemptErrors, fmt.Errorf("instance %d source %s: cross-seed returned no response", source.instanceID, normalizeHash(source.torrent.Hash)))
+				continue
+			}
+
+			finalResponse = response
+			if boundAnnouncementResponseTerminal(response) {
+				terminal = true
+				break
+			}
+		}
+
+		if finalResponse != nil && (terminal || len(attemptErrors) == 0) {
+			mergeCrossSeedResponses(merged, finalResponse)
+			if terminal && len(attemptErrors) > 0 {
+				log.Warn().Err(errors.Join(attemptErrors...)).Int("instanceID", match.instanceID).Str("instanceName", match.instanceName).Msg("Earlier bound source attempts failed before a terminal result")
+			}
+		} else {
+			instanceErr := errors.Join(attemptErrors...)
+			if instanceErr == nil {
+				instanceErr = fmt.Errorf("instance %d had no bound source response", match.instanceID)
+			}
+			merged.Results = append(merged.Results, InstanceCrossSeedResult{
+				InstanceID:   match.instanceID,
+				InstanceName: match.instanceName,
+				Status:       "error",
+				Message:      instanceErr.Error(),
+			})
+			remainingErrors = append(remainingErrors, instanceErr)
+		}
+
+		start = end
+	}
+
+	return merged, errors.Join(remainingErrors...)
+}
+
+func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
+	if response.Success {
+		return true
+	}
+	for _, result := range response.Results {
+		if result.Success || result.Status == "exists" {
+			return true
+		}
+	}
+	return false
+}
+
+func mergeCrossSeedResponses(destination, source *CrossSeedResponse) {
+	destination.Success = destination.Success || source.Success
+	destination.titleRescueUsed = destination.titleRescueUsed || source.titleRescueUsed
+	if destination.TorrentInfo == nil && source.TorrentInfo != nil {
+		destination.TorrentInfo = source.TorrentInfo
+	}
+	destination.Results = append(destination.Results, source.Results...)
+}
+
+func sortBoundAnnouncementMatches(matches []boundAnnouncementMatch) {
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].instanceID != matches[j].instanceID {
+			return matches[i].instanceID < matches[j].instanceID
+		}
+		if iPriority, jPriority := searchCandidateClassPriority(matches[i].decision.Class), searchCandidateClassPriority(matches[j].decision.Class); iPriority != jPriority {
+			return iPriority > jPriority
+		}
+		if iHash, jHash := normalizeHash(matches[i].torrent.Hash), normalizeHash(matches[j].torrent.Hash); iHash != jHash {
+			return iHash < jHash
+		}
+		return matches[i].torrent.Name < matches[j].torrent.Name
+	})
 }
 
 func (s *Service) automationCacheKey(name string, findIndividual bool) string {
@@ -4826,8 +5058,7 @@ func requestRequiresSearchVerification(req *CrossSeedRequest) bool {
 	if req == nil {
 		return false
 	}
-	return req.SearchDecision.Class == searchCandidateClassTitleRescue ||
-		searchRelaxationRequiresVerification(req.SearchDecision.StrictMismatchReason)
+	return searchDecisionRequiresVerification(req.SearchDecision)
 }
 
 func requestHasSearchDecision(req *CrossSeedRequest) bool {
@@ -4969,9 +5200,22 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		crossReq.SourceFilterExcludeTags = append([]string(nil), settings.WebhookSourceExcludeTags...)
 	}
 
-	resp, err := s.invokeCrossSeed(ctx, crossReq)
+	var (
+		resp *CrossSeedResponse
+		err  error
+	)
+	if req.TorrentName == "" {
+		// Keep the legacy path byte-for-byte compatible for clients that do not
+		// send announcement provenance.
+		resp, err = s.invokeCrossSeed(ctx, crossReq)
+	} else {
+		resp, err = s.applyAutobrrAnnouncement(ctx, req.TorrentName, crossReq, settings)
+	}
 	if err != nil {
-		return nil, err
+		if resp == nil || !resp.Success {
+			return nil, err
+		}
+		log.Warn().Err(err).Msg("AutobrrApply completed with partial instance errors")
 	}
 
 	log.Debug().
@@ -4992,6 +5236,91 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	}
 
 	return resp, nil
+}
+
+func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName string, baseRequest *CrossSeedRequest, settings *models.CrossSeedAutomationSettings) (*CrossSeedResponse, error) {
+	torrentBytes, err := s.decodeTorrentData(baseRequest.TorrentData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode autobrr torrent data: %w", err)
+	}
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse autobrr torrent data: %w", err)
+	}
+	if meta.Info == nil || meta.Info.TotalLength() <= 0 {
+		return &CrossSeedResponse{}, nil
+	}
+
+	instances, err := s.resolveInstances(ctx, baseRequest.TargetInstanceIDs)
+	if err != nil {
+		return nil, err
+	}
+	matches := s.findAutobrrAnnouncementMatches(ctx, announcedName, meta.Info.TotalLength(), instances, baseRequest, settings)
+	if len(matches) == 0 {
+		return &CrossSeedResponse{}, nil
+	}
+
+	return s.invokeBoundAnnouncementMatches(ctx, matches, func(match boundAnnouncementMatch) *CrossSeedRequest {
+		request := *baseRequest
+		request.TargetInstanceIDs = []int{match.instanceID}
+		request.SearchDecision = match.decision
+		return &request
+	})
+}
+
+func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedName string, actualSize int64, instances []*models.Instance, request *CrossSeedRequest, settings *models.CrossSeedAutomationSettings) []boundAnnouncementMatch {
+	candidate := namedRelease{release: s.releaseCache.Parse(announcedName), rawName: announcedName}
+	matches := make([]boundAnnouncementMatch, 0, len(instances))
+	for _, instance := range instances {
+		torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("Failed to get torrents while planning autobrr apply")
+			continue
+		}
+		for _, torrentView := range torrents {
+			if torrentView.Torrent == nil {
+				continue
+			}
+			torrent := torrentView.Torrent
+			if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
+				continue
+			}
+			if settings != nil && !matchesWebhookSourceFilters(torrent, settings) {
+				continue
+			}
+
+			sourceSize := searchSourceSize(torrent)
+			if sourceSize <= 0 {
+				continue
+			}
+			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, candidate, actualSize, announcementMatchPolicy{
+				findIndividualEpisodes: request.FindIndividualEpisodes,
+				rescueTitleMismatches:  settings != nil && settings.RescueTitleMismatches && !request.SkipRecheck,
+				allowUnknownSize:       false,
+				skipRecheck:            request.SkipRecheck,
+			})
+			if !decision.replayable || !decision.decision.Accepted {
+				continue
+			}
+			if decision.decision.Class != searchCandidateClassStrict &&
+				decision.decision.Class != searchCandidateClassWebSourceRelabel && sourceSize != actualSize {
+				continue
+			}
+			provenance := decision.decision.provenance()
+			if request.SkipRecheck && searchDecisionRequiresVerification(provenance) {
+				continue
+			}
+			matches = append(matches, boundAnnouncementMatch{
+				instanceID:   instance.ID,
+				instanceName: instance.Name,
+				torrent:      *torrent,
+				decision:     provenance.bindSource(instance.ID, torrent.Hash),
+			})
+		}
+	}
+
+	sortBoundAnnouncementMatches(matches)
+	return matches
 }
 
 func (s *Service) invokeCrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -13330,8 +13659,10 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 
 	requestedInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
 
-	// Parse the incoming release using rls - this extracts all metadata from the torrent name
+	// Parse the incoming release using rls - this extracts all metadata from the torrent name.
+	// The name remains request-local advisory input; check results never retain a decision.
 	incomingRelease := s.releaseCache.Parse(req.TorrentName)
+	announcedCandidate := namedRelease{release: incomingRelease, rawName: req.TorrentName}
 
 	// Get automation settings for default matching behavior.
 	settings, err := s.GetAutomationSettings(ctx)
@@ -13460,50 +13791,36 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 					continue
 				}
 			}
-			// Parse the existing torrent's release info
-			existingRelease := s.releaseCache.Parse(torrent.Name)
-
-			// Reject forbidden pairing: season pack (incoming) vs single episode (existing).
-			if reject, _ := rejectSeasonPackFromEpisode(incomingRelease, existingRelease, findIndividualEpisodes); reject {
+			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announcedCandidate, int64(req.Size), announcementMatchPolicy{
+				findIndividualEpisodes: findIndividualEpisodes,
+				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
+				allowUnknownSize:       req.Size == 0,
+				skipRecheck:            settings.SkipRecheck,
+			})
+			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
+				continue
+			}
+			if settings.SkipRecheck && searchDecisionRequiresVerification(decision.decision.provenance()) {
 				continue
 			}
 
-			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
-				continue
-			}
-
-			// Determine match type
 			matchType := "metadata"
 			var sizeDiff float64
-
-			if req.Size > 0 && torrent.Size > 0 {
-				// Calculate size difference percentage
-				if torrent.Size > 0 {
-					diff := math.Abs(float64(req.Size) - float64(torrent.Size))
-					sizeDiff = (diff / float64(torrent.Size)) * 100.0
-				}
-
-				// Check if size is within tolerance
-				if s.isSizeWithinTolerance(int64(req.Size), torrent.Size, defaultSizeMismatchTolerancePercent) {
-					if sizeDiff < 0.1 {
-						matchType = "exact"
-					} else {
-						matchType = "size"
-					}
-				} else {
-					// Size is outside tolerance, skip this match
-					log.Debug().
-						Str("incomingName", req.TorrentName).
-						Str("existingName", torrent.Name).
-						Uint64("incomingSize", req.Size).
-						Int64("existingSize", torrent.Size).
-						Float64("sizeDiff", sizeDiff).
-						Float64("tolerance", defaultSizeMismatchTolerancePercent).
-						Msg("Skipping match due to size mismatch")
+			if req.Size > 0 {
+				sourceSize := searchSourceSize(torrent)
+				if sourceSize <= 0 {
 					continue
+				}
+				diff := math.Abs(float64(req.Size) - float64(sourceSize))
+				sizeDiff = (diff / float64(sourceSize)) * 100.0
+				if int64(req.Size) == sourceSize {
+					matchType = "exact"
+				} else {
+					matchType = "size"
 				}
 			}
 
+			existingRelease := s.releaseCache.Parse(torrent.Name)
 			matchScore, matchReasons := evaluateReleaseMatch(incomingRelease, existingRelease)
 
 			log.Debug().
