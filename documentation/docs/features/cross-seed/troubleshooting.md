@@ -130,12 +130,18 @@ These fallback torrents are treated like disc-based content: they are added paus
 
 For partial-in-pack, size-based, renamed, or otherwise non-perfect matches, qui also runs piece-boundary protection before the fallback add. This check is always enforced for link-mode fallback, even when **Skip piece boundary safety check** is enabled for regular reuse mode. If the check fails, qui skips the torrent before adding it to qBittorrent.
 
+### 4. Exact-size identity fallback
+
+Sometimes two names describe the same bytes differently. One name can use a different season or episode number. A fansub name can also split its release-group identity across two parsed fields.
+
+If the reported total sizes are exactly equal, qui can download these candidates for verification. It adds a matched torrent paused and starts a full recheck. It resumes only after qBittorrent reaches 100%. If **Skip recheck** is enabled, qui skips the match instead.
+
 ### Auto-resume behavior
 
 - After the recheck, qui auto-resumes only when the missing data is at or below **Max auto-start download** (default: 50 MiB)
 - When only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes anyway, up to 200 MiB
 - Torrents that miss more data stay paused for manual investigation
-- Filesystem fallback and disc-layout torrents require 100% completion before auto-resume
+- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
 - Configure via **Max auto-start download** in Rules
 
 ## Hardlink mode failed
@@ -169,7 +175,7 @@ The umask only applies to directories qui creates from now on. Directories that 
 
 ## Hardlink/reflink cross-seed shows "missing files"
 
-When hardlink or reflink mode creates every file needed by the incoming torrent, qui adds it with hash checking skipped and starts it immediately. No automatic recheck is triggered because there are no missing extras for qBittorrent to discover.
+When hardlink or reflink mode creates every file needed by the incoming torrent, qui usually adds it with hash checking skipped and starts it immediately. Title rescue and exact-size season, episode, or release-group matches are exceptions. qui adds those torrents paused and requires a full recheck because their names did not prove that the releases are identical.
 
 If qBittorrent still marks the torrent as `missing files`, the new torrent file most likely does not fully match the existing source/candidate files, even though qui matched them by name and size. Review the matching torrent group on the tracker/s before resuming or rechecking the torrent, as one of the copies has corrupted hash/es.
 - **Hardlink mode**: Resuming the torrent will overwrite the bad hashes for that torrent, corrupting the existing torrent/s with the other piece hash/es.

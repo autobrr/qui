@@ -43,7 +43,8 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, Progress: 1}
 	files := map[string]qbt.TorrentFiles{
 		sourceHash: {
-			{Name: existingName + "/Azure.Compass.S02E01.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI.mkv", Size: size},
+			{Name: existingName + "/Azure.Compass.S02E01.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI.mkv", Size: size/2 + 1},
+			{Name: existingName + "/Azure.Compass.S02E02.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI.mkv", Size: size - (size/2 + 1)},
 		},
 	}
 	svc := &Service{
@@ -54,17 +55,65 @@ func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
 	}
 
 	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
-		TorrentName:                targetName,
-		TargetInstanceIDs:          []int{instanceID},
-		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
-		SearchSourceInstanceID:     instanceID,
-		SearchSourceHash:           sourceHash,
-		SearchStrictMismatchReason: "season mismatch",
-		SearchRelaxedDifferences:   []string{"season"},
+		TorrentName:       targetName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassExactSizeFallback,
+			SourceInstanceID:     instanceID,
+			SourceHash:           sourceHash,
+			StrictMismatchReason: "season mismatch",
+			RelaxedDifferences:   []string{"season"},
+		},
 	})
 	require.NoError(t, err)
 	require.Len(t, response.Candidates, 1, "relaxed season pairing must survive the name-derived match gate")
 	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+}
+
+func TestFindCandidatesReplaysReverseOneSidedChecksumWithWebRelabel(t *testing.T) {
+	const (
+		instanceID    = 1
+		sourceHash    = "existing-no-crc"
+		sourceName    = "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI"
+		candidateName = "Azure.Compass.S01E01.1080p.WEBRip.H.264-KIRI [A1B2C3D4]"
+		size          = int64(1_000_000)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+	files := qbt.TorrentFiles{{Name: sourceName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{sourceHash: files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := service.releaseCache.Parse(sourceName)
+	candidate := service.releaseCache.Parse(candidateName)
+	require.Empty(t, source.Sum)
+	require.NotEmpty(t, candidate.Sum)
+	require.NotEqual(t, source.Source, candidate.Source)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:           namedRelease{release: source, rawName: sourceName},
+		Candidate:        namedRelease{release: candidate, rawName: candidateName},
+		SourceSize:       size,
+		CandidateSize:    size,
+		TolerancePercent: 5,
+	})
+	require.True(t, decision.Accepted, decision.RejectReason)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, sourceMismatchReason, decision.StrictMismatchReason)
+	require.ElementsMatch(t, []string{"source", "checksum"}, decision.RelaxedDifferences)
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       candidateName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"the exact-size checksum decision must survive the apply direction reversal")
 }
 
 func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
@@ -110,11 +159,13 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 		require.Empty(t, direct.Candidates)
 
 		response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
-			TorrentName:            targetName,
-			TargetInstanceIDs:      []int{instanceID},
-			SearchDecisionClass:    searchCandidateClassStrict,
-			SearchSourceInstanceID: instanceID,
-			SearchSourceHash:       sourceHash,
+			TorrentName:       targetName,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:            searchCandidateClassStrict,
+				SourceInstanceID: instanceID,
+				SourceHash:       sourceHash,
+			},
 		})
 		require.NoError(t, err)
 		require.Len(t, response.Candidates, 1)
@@ -137,13 +188,15 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 		service := newService(existing, files)
 
 		response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
-			TorrentName:                targetName,
-			TargetInstanceIDs:          []int{instanceID},
-			SearchDecisionClass:        searchCandidateClassExactSizeFallback,
-			SearchSourceInstanceID:     instanceID,
-			SearchSourceHash:           sourceHash,
-			SearchStrictMismatchReason: "hdr mismatch",
-			SearchRelaxedDifferences:   []string{"codec", "hdr"},
+			TorrentName:       targetName,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:                searchCandidateClassExactSizeFallback,
+				SourceInstanceID:     instanceID,
+				SourceHash:           sourceHash,
+				StrictMismatchReason: "hdr mismatch",
+				RelaxedDifferences:   []string{"codec", "hdr"},
+			},
 		})
 		require.NoError(t, err)
 		require.Len(t, response.Candidates, 1)
@@ -162,13 +215,15 @@ func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 		service := newService(existing, files)
 
 		response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
-			TorrentName:                "Different Show S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
-			TargetInstanceIDs:          []int{instanceID},
-			SearchDecisionClass:        searchCandidateClassExactSizeFallback,
-			SearchSourceInstanceID:     instanceID,
-			SearchSourceHash:           sourceHash,
-			SearchStrictMismatchReason: "hdr mismatch",
-			SearchRelaxedDifferences:   []string{"codec", "hdr"},
+			TorrentName:       "Different Show S01 JAPANESE 1080p BluRay Opus 2.0 x265-smol",
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:                searchCandidateClassExactSizeFallback,
+				SourceInstanceID:     instanceID,
+				SourceHash:           sourceHash,
+				StrictMismatchReason: "hdr mismatch",
+				RelaxedDifferences:   []string{"codec", "hdr"},
+			},
 		})
 		require.NoError(t, err)
 		require.Empty(t, response.Candidates)
@@ -192,10 +247,8 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.NotEmpty(t, strictReason)
 
 	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &source,
-		CandidateRelease: &candidate,
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
+		Source:           namedRelease{release: &source, rawName: sourceName},
+		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       size,
 		CandidateSize:    size,
 		TolerancePercent: 5,
@@ -206,7 +259,7 @@ func TestClassifySearchCandidateExactSizeFallback(t *testing.T) {
 	require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
 	require.Contains(t, decision.RelaxedDifferences, "collection")
 	require.Contains(t, decision.RelaxedDifferences, "hdr")
-	require.Contains(t, decision.MatchReason, "exact byte size")
+	require.Contains(t, decision.MatchReason, "exact reported size")
 	require.Contains(t, decision.MatchReason, "relaxed collection")
 }
 
@@ -222,10 +275,8 @@ func TestClassifySearchCandidateRejectsNonExactSizeFallback(t *testing.T) {
 	candidate := rls.ParseString(candidateName)
 
 	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &source,
-		CandidateRelease: &candidate,
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
+		Source:           namedRelease{release: &source, rawName: sourceName},
+		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       sourceSize,
 		CandidateSize:    candidateSize,
 		TolerancePercent: 5,
@@ -250,10 +301,8 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	candidate := rls.ParseString(candidateName)
 
 	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &source,
-		CandidateRelease: &candidate,
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
+		Source:           namedRelease{release: &source, rawName: sourceName},
+		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:       size,
 		CandidateSize:    size,
 		TolerancePercent: 5,
@@ -262,6 +311,76 @@ func TestClassifySearchCandidateOneSidedChecksum(t *testing.T) {
 	require.True(t, decision.Accepted)
 	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
 	require.Contains(t, decision.RelaxedDifferences, "checksum")
+}
+
+// Search and apply call the asymmetric checksum gate in opposite directions.
+// Exact-size evidence must preserve the one-sided-checksum decision when the
+// local source omits the CRC but the searched and downloaded torrent carries it.
+func TestFindCandidatesReplaysReverseOneSidedChecksum(t *testing.T) {
+	const (
+		instanceID     = 1
+		sourceHash     = "existing-without-checksum"
+		existingName   = "[KIRI] Azure Compass - 1157 [Web][MKV][h264][1080p][AAC 2.0][Softsubs (KIRI)][Episode 1157]"
+		downloadedName = "[KIRI] Azure Compass - 1157 (1080p) [A1B2C3D4]"
+		size           = int64(1_424_466_789)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{
+		Hash:      sourceHash,
+		Name:      existingName,
+		Size:      size,
+		TotalSize: size,
+		Progress:  1,
+	}
+	existingFiles := qbt.TorrentFiles{{Name: existingName + ".mkv", Size: size}}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{
+			sourceHash: existingFiles,
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	existingRelease := service.releaseCache.Parse(existingName)
+	downloadedRelease := service.releaseCache.Parse(downloadedName)
+	require.Empty(t, existingRelease.Sum)
+	require.NotEmpty(t, downloadedRelease.Sum)
+
+	strict, reason := service.releasesMatchWithReasonAndNames(
+		existingRelease, downloadedRelease, existingName, downloadedName, false,
+	)
+	require.True(t, strict, "the baseline direction accepts a candidate-only checksum: %s", reason)
+	reverseStrict, reverseReason := service.releasesMatchWithReasonAndNames(
+		downloadedRelease, existingRelease, downloadedName, existingName, false,
+	)
+	require.False(t, reverseStrict)
+	require.Equal(t, "checksum mismatch", reverseReason)
+
+	decision := service.classifySearchCandidate(searchCandidateInput{
+		Source:        namedRelease{release: existingRelease, rawName: existingName},
+		Candidate:     namedRelease{release: downloadedRelease, rawName: downloadedName},
+		SourceSize:    size,
+		CandidateSize: size,
+	})
+	require.True(t, decision.Accepted)
+	require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+	require.Equal(t, "checksum mismatch", decision.StrictMismatchReason)
+	require.Contains(t, decision.RelaxedDifferences, "checksum")
+	require.Equal(t, searchSizeEvidenceExact, decision.SizeEvidence)
+	require.NotEmpty(t, service.getMatchTypeFromTitle(
+		downloadedName, existingName, downloadedRelease, existingRelease, existingFiles,
+	), "the fixture must pass file validation once the release gate is replayed")
+
+	response, err := service.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       downloadedName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision:    decision.provenance().bindSource(instanceID, sourceHash),
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1,
+		"apply must preserve search's exact-size one-sided-checksum decision in the reverse direction")
 }
 
 // The checksum tolerance belongs to the exact-size fallback alone. This fails if
@@ -276,22 +395,45 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 
-	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &source,
-		CandidateRelease: &candidate,
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
-		SourceSize:       1_424_466_789,
-		CandidateSize:    1_424_466_788,
-		TolerancePercent: 5,
-	})
+	for _, tt := range []struct {
+		name      string
+		source    namedRelease
+		candidate namedRelease
+		accepted  bool
+	}{
+		{
+			name:      "source carries checksum",
+			source:    namedRelease{release: &source, rawName: sourceName},
+			candidate: namedRelease{release: &candidate, rawName: candidateName},
+		},
+		{
+			name:      "candidate carries checksum",
+			source:    namedRelease{release: &candidate, rawName: candidateName},
+			candidate: namedRelease{release: &source, rawName: sourceName},
+			accepted:  true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			decision := service.classifySearchCandidate(searchCandidateInput{
+				Source:           tt.source,
+				Candidate:        tt.candidate,
+				SourceSize:       1_424_466_789,
+				CandidateSize:    1_424_466_788,
+				TolerancePercent: 5,
+			})
 
-	require.False(t, decision.Accepted)
-	require.Equal(t, "checksum mismatch", decision.RejectReason)
+			require.Equal(t, tt.accepted, decision.Accepted)
+			if tt.accepted {
+				require.Equal(t, searchCandidateClassStrict, decision.Class)
+				return
+			}
+			require.Equal(t, "checksum mismatch", decision.RejectReason)
+		})
+	}
 }
 
-// A tracker with one entry per cour stamps S01 on every season, so a byte-equal
-// pack can carry the wrong season label. Equal bytes plus the identity checks
+// A tracker with one entry per cour stamps S01 on every season, so an equal-size
+// pack can carry the wrong season label. Equal reported size plus identity checks
 // outrank the label, but only for the pairing they cover.
 func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
@@ -319,10 +461,8 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 			candidate := rls.ParseString(candidateName)
 
 			decision := service.classifySearchCandidate(searchCandidateInput{
-				SourceRelease:    &source,
-				CandidateRelease: &candidate,
-				SourceName:       tt.source,
-				CandidateName:    candidateName,
+				Source:           namedRelease{release: &source, rawName: tt.source},
+				Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 				SourceSize:       tt.sourceSize,
 				CandidateSize:    tt.candidateSize,
 				TolerancePercent: 5,
@@ -366,10 +506,8 @@ func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) 
 			candidate := rls.ParseString(tt.candidate)
 
 			decision := service.classifySearchCandidate(searchCandidateInput{
-				SourceRelease:          &source,
-				CandidateRelease:       &candidate,
-				SourceName:             tt.source,
-				CandidateName:          tt.candidate,
+				Source:                 namedRelease{release: &source, rawName: tt.source},
+				Candidate:              namedRelease{release: &candidate, rawName: tt.candidate},
 				SourceSize:             size,
 				CandidateSize:          size,
 				TolerancePercent:       5,
@@ -391,10 +529,8 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	source := rls.ParseString(sourceName)
 	candidate := rls.ParseString(candidateName)
 	input := searchCandidateInput{
-		SourceRelease:         &source,
-		CandidateRelease:      &candidate,
-		SourceName:            sourceName,
-		CandidateName:         candidateName,
+		Source:                namedRelease{release: &source, rawName: sourceName},
+		Candidate:             namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:            size,
 		CandidateSize:         size,
 		TolerancePercent:      5,
@@ -417,7 +553,7 @@ func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	input.CandidateSize = size
 	differentGroup := candidate
 	differentGroup.Group = "OTHER"
-	input.CandidateRelease = &differentGroup
+	input.Candidate.release = &differentGroup
 	rejected := service.classifySearchCandidate(input)
 	require.False(t, rejected.Accepted)
 	require.Equal(t, "group mismatch", rejected.RejectReason)
@@ -439,10 +575,8 @@ func TestClassifySearchCandidateTitleRescueToleratesBareFileCandidate(t *testing
 	require.Empty(t, candidate.Group, "bare-file candidate must parse without a group for this regression to mean anything")
 
 	input := searchCandidateInput{
-		SourceRelease:         &source,
-		CandidateRelease:      &candidate,
-		SourceName:            sourceName,
-		CandidateName:         candidateName,
+		Source:                namedRelease{release: &source, rawName: sourceName},
+		Candidate:             namedRelease{release: &candidate, rawName: candidateName},
 		SourceSize:            size,
 		CandidateSize:         size,
 		TolerancePercent:      5,
@@ -519,10 +653,8 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 	sourceTitles := []string{"Money Heist"}
 
 	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &source,
-		CandidateRelease: &candidate,
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
+		Source:           namedRelease{release: &source, rawName: sourceName},
+		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceTitles:     sourceTitles,
 		SourceSize:       100,
 		CandidateSize:    101,
@@ -539,34 +671,31 @@ func TestSearchCandidateARRSourceTitlesSurviveResultCache(t *testing.T) {
 
 	results, duplicateFiltered, err := service.buildTorrentSearchResults(context.Background(), 1, "source", []scoredTorrentSearchResult{
 		{
-			result:       jackett.SearchResult{Title: candidateName},
-			class:        decision.Class,
-			sourceTitles: decision.SourceTitles,
+			result:     jackett.SearchResult{Title: candidateName},
+			provenance: decision.provenance(),
 		},
 	}, 1)
 	require.NoError(t, err)
 	require.Zero(t, duplicateFiltered)
 	require.Len(t, results, 1)
-	require.Equal(t, []string{"Money Heist"}, results[0].SearchSourceTitles)
-	results[0].SearchRelaxedDifferences = []string{"collection"}
+	require.Equal(t, []string{"Money Heist"}, results[0].SearchDecision.SourceTitles)
+	results[0].SearchDecision.RelaxedDifferences = []string{"collection"}
 
 	service.cacheSearchResults(1, "source", results)
-	results[0].SearchSourceTitles[0] = "mutated after cache write"
-	results[0].SearchRelaxedDifferences[0] = "mutated after cache write"
+	results[0].SearchDecision.SourceTitles[0] = "mutated after cache write"
+	results[0].SearchDecision.RelaxedDifferences[0] = "mutated after cache write"
 	cached := service.getCachedSearchResults(1, "source")
 	require.NotNil(t, cached)
-	require.Equal(t, []string{"Money Heist"}, cached.results[0].SearchSourceTitles)
-	require.Equal(t, []string{"collection"}, cached.results[0].SearchRelaxedDifferences)
-	cached.results[0].SearchSourceTitles[0] = "mutated after cache read"
-	cached.results[0].SearchRelaxedDifferences[0] = "mutated after cache read"
-	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchSourceTitles)
-	require.Equal(t, []string{"collection"}, service.getCachedSearchResults(1, "source").results[0].SearchRelaxedDifferences)
+	require.Equal(t, []string{"Money Heist"}, cached.results[0].SearchDecision.SourceTitles)
+	require.Equal(t, []string{"collection"}, cached.results[0].SearchDecision.RelaxedDifferences)
+	cached.results[0].SearchDecision.SourceTitles[0] = "mutated after cache read"
+	cached.results[0].SearchDecision.RelaxedDifferences[0] = "mutated after cache read"
+	require.Equal(t, []string{"Money Heist"}, service.getCachedSearchResults(1, "source").results[0].SearchDecision.SourceTitles)
+	require.Equal(t, []string{"collection"}, service.getCachedSearchResults(1, "source").results[0].SearchDecision.RelaxedDifferences)
 
 	rejected := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &source,
-		CandidateRelease: &candidate,
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
+		Source:           namedRelease{release: &source, rawName: sourceName},
+		Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 		SourceTitles:     []string{"Unrelated Show"},
 		SourceSize:       100,
 		CandidateSize:    101,
@@ -600,10 +729,8 @@ func TestClassifySearchCandidateExactSizePreconditions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			decision := service.classifySearchCandidate(searchCandidateInput{
-				SourceRelease:    &source,
-				CandidateRelease: &candidate,
-				SourceName:       sourceName,
-				CandidateName:    candidateName,
+				Source:           namedRelease{release: &source, rawName: sourceName},
+				Candidate:        namedRelease{release: &candidate, rawName: candidateName},
 				SourceSize:       test.sourceSize,
 				CandidateSize:    test.candidateSize,
 				TolerancePercent: 5,
@@ -643,10 +770,8 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 			}
 			test.mutate(&candidate)
 			decision := service.classifySearchCandidate(searchCandidateInput{
-				SourceRelease:    &source,
-				CandidateRelease: &candidate,
-				SourceName:       source.Title,
-				CandidateName:    candidate.Title,
+				Source:           namedRelease{release: &source, rawName: source.Title},
+				Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 				SourceSize:       size,
 				CandidateSize:    size,
 				TolerancePercent: 5,
@@ -709,10 +834,8 @@ func TestClassifySearchCandidateExactSizeDateIdentity(t *testing.T) {
 			candidate.Year, candidate.Month, candidate.Day = test.candidateYear, test.candidateMonth, test.candidateDay
 
 			decision := service.classifySearchCandidate(searchCandidateInput{
-				SourceRelease:    &source,
-				CandidateRelease: &candidate,
-				SourceName:       source.Title,
-				CandidateName:    candidate.Title,
+				Source:           namedRelease{release: &source, rawName: source.Title},
+				Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 				SourceSize:       size,
 				CandidateSize:    size,
 				TolerancePercent: 5,
@@ -732,7 +855,7 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
 
-	// Episode numbering is relaxable on equal bytes because indexers renumber it,
+	// Episode numbering is relaxable on equal reported size because indexers renumber it,
 	// so this pairing is admitted and recorded. The recorded difference is a
 	// report; the strict rejection it overrode is what forces the recheck at
 	// apply. See TestProcessCrossSeedCandidateVerifiesRelaxedStructure.
@@ -740,10 +863,8 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")
 		decision := service.classifySearchCandidate(searchCandidateInput{
-			SourceRelease:    &source,
-			CandidateRelease: &candidate,
-			SourceName:       source.Title,
-			CandidateName:    candidate.Title,
+			Source:           namedRelease{release: &source, rawName: source.Title},
+			Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:       size,
 			CandidateSize:    size,
 			TolerancePercent: 5,
@@ -757,10 +878,8 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01.2160p.ATVP.WEB-DL.H.265-NTb")
 		decision := service.classifySearchCandidate(searchCandidateInput{
-			SourceRelease:          &source,
-			CandidateRelease:       &candidate,
-			SourceName:             source.Title,
-			CandidateName:          candidate.Title,
+			Source:                 namedRelease{release: &source, rawName: source.Title},
+			Candidate:              namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:             size,
 			CandidateSize:          size,
 			TolerancePercent:       5,
@@ -776,10 +895,8 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 		candidate.Type = rls.Music
 		candidate.Collection = "ATVP"
 		decision := service.classifySearchCandidate(searchCandidateInput{
-			SourceRelease:    &source,
-			CandidateRelease: &candidate,
-			SourceName:       source.Title,
-			CandidateName:    candidate.Title,
+			Source:           namedRelease{release: &source, rawName: source.Title},
+			Candidate:        namedRelease{release: &candidate, rawName: candidate.Title},
 			SourceSize:       size,
 			CandidateSize:    size,
 			TolerancePercent: 5,
@@ -791,11 +908,13 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 
 func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	resultBytes, err := json.Marshal(TorrentSearchResult{
-		Title:                      "candidate",
-		SearchDecisionClass:        searchCandidateClassTitleRescue,
-		SearchStrictMismatchReason: "secret mismatch",
-		SearchRelaxedDifferences:   []string{"secret difference"},
-		SearchSourceTitles:         []string{"ARR secret result alias"},
+		Title: "candidate",
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassTitleRescue,
+			StrictMismatchReason: "secret mismatch",
+			RelaxedDifferences:   []string{"secret difference"},
+			SourceTitles:         []string{"ARR secret result alias"},
+		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(resultBytes), "title-rescue")
@@ -804,12 +923,14 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 	require.NotContains(t, string(resultBytes), "ARR secret result alias")
 
 	requestBytes, err := json.Marshal(CrossSeedRequest{
-		SearchDecisionClass:        searchCandidateClassTitleRescue,
-		SearchSourceInstanceID:     12345,
-		SearchSourceHash:           "secret source hash",
-		SearchStrictMismatchReason: "secret request mismatch",
-		SearchRelaxedDifferences:   []string{"secret request difference"},
-		SearchSourceTitles:         []string{"ARR secret request alias"},
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassTitleRescue,
+			SourceInstanceID:     12345,
+			SourceHash:           "secret source hash",
+			StrictMismatchReason: "secret request mismatch",
+			RelaxedDifferences:   []string{"secret request difference"},
+			SourceTitles:         []string{"ARR secret request alias"},
+		},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, string(requestBytes), "title-rescue")
@@ -836,9 +957,9 @@ func TestSearchCandidateInternalMetadataIsNotJSON(t *testing.T) {
 func TestSortScoredTorrentSearchResultsSizeEvidencePriority(t *testing.T) {
 	now := time.Now()
 	items := []scoredTorrentSearchResult{
-		{result: jackett.SearchResult{Title: "tolerance", Seeders: 100, PublishDate: now}, score: 10, class: searchCandidateClassStrict},
-		{result: jackett.SearchResult{Title: "fallback", Seeders: 1, PublishDate: now.Add(-time.Hour)}, score: 2, sizeEvidence: searchSizeEvidenceExact, class: searchCandidateClassExactSizeFallback},
-		{result: jackett.SearchResult{Title: "strict", Seeders: 0, PublishDate: now.Add(-2 * time.Hour)}, score: 1, sizeEvidence: searchSizeEvidenceExact, class: searchCandidateClassStrict},
+		{result: jackett.SearchResult{Title: "tolerance", Seeders: 100, PublishDate: now}, score: 10, provenance: searchDecisionProvenance{Class: searchCandidateClassStrict}},
+		{result: jackett.SearchResult{Title: "fallback", Seeders: 1, PublishDate: now.Add(-time.Hour)}, score: 2, sizeEvidence: searchSizeEvidenceExact, provenance: searchDecisionProvenance{Class: searchCandidateClassExactSizeFallback}},
+		{result: jackett.SearchResult{Title: "strict", Seeders: 0, PublishDate: now.Add(-2 * time.Hour)}, score: 1, sizeEvidence: searchSizeEvidenceExact, provenance: searchDecisionProvenance{Class: searchCandidateClassStrict}},
 	}
 
 	sortScoredTorrentSearchResults(items)
@@ -852,8 +973,8 @@ func TestSortScoredTorrentSearchResultsSizeEvidencePriority(t *testing.T) {
 
 func TestSortScoredTorrentSearchResultsKeepsTitleRescueAfterNormalMatches(t *testing.T) {
 	items := []scoredTorrentSearchResult{
-		{result: jackett.SearchResult{Title: "rescue"}, sizeEvidence: searchSizeEvidenceExact, class: searchCandidateClassTitleRescue},
-		{result: jackett.SearchResult{Title: "normal"}, class: searchCandidateClassStrict},
+		{result: jackett.SearchResult{Title: "rescue"}, sizeEvidence: searchSizeEvidenceExact, provenance: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{result: jackett.SearchResult{Title: "normal"}, provenance: searchDecisionProvenance{Class: searchCandidateClassStrict}},
 	}
 
 	sortScoredTorrentSearchResults(items)
@@ -863,11 +984,11 @@ func TestSortScoredTorrentSearchResultsKeepsTitleRescueAfterNormalMatches(t *tes
 
 func TestSelectTitleRescueAttemptsSpreadsAcrossIndexers(t *testing.T) {
 	results := []TorrentSearchResult{
-		{Title: "one-a", IndexerID: 1, SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "one-b", IndexerID: 1, SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "two-a", IndexerID: 2, SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "three-a", IndexerID: 3, SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "four-a", IndexerID: 4, SearchDecisionClass: searchCandidateClassTitleRescue},
+		{Title: "one-a", IndexerID: 1, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "one-b", IndexerID: 1, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "two-a", IndexerID: 2, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "three-a", IndexerID: 3, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "four-a", IndexerID: 4, SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
 	}
 
 	selected := selectTitleRescueAttempts(results, map[int]struct{}{3: {}}, 3)
@@ -886,11 +1007,11 @@ func TestAttemptTitleRescueResultsSkipsKnownDuplicatesAndBackfills(t *testing.T)
 	}, nil)
 	service := &Service{syncManager: syncManager}
 	results := []TorrentSearchResult{
-		{Title: "one-duplicate", IndexerID: 1, InfoHashV1: "already-present", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "one-backup", IndexerID: 1, InfoHashV1: "hash-b", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "two", IndexerID: 2, InfoHashV1: "hash-c", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "three", IndexerID: 3, InfoHashV1: "hash-d", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "four", IndexerID: 4, InfoHashV1: "hash-e", SearchDecisionClass: searchCandidateClassTitleRescue},
+		{Title: "one-duplicate", IndexerID: 1, InfoHashV1: "already-present", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "one-backup", IndexerID: 1, InfoHashV1: "hash-b", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "two", IndexerID: 2, InfoHashV1: "hash-c", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "three", IndexerID: 3, InfoHashV1: "hash-d", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "four", IndexerID: 4, InfoHashV1: "hash-e", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
 	}
 	var attempted []string
 
@@ -904,11 +1025,11 @@ func TestAttemptTitleRescueResultsSkipsKnownDuplicatesAndBackfills(t *testing.T)
 
 func TestLimitTitleRescueResultsDoesNotLimitNormalResults(t *testing.T) {
 	results := []TorrentSearchResult{
-		{Title: "normal", SearchDecisionClass: searchCandidateClassStrict},
-		{Title: "rescue-1", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "rescue-2", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "rescue-3", SearchDecisionClass: searchCandidateClassTitleRescue},
-		{Title: "rescue-4", SearchDecisionClass: searchCandidateClassTitleRescue},
+		{Title: "normal", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassStrict}},
+		{Title: "rescue-1", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "rescue-2", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "rescue-3", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
+		{Title: "rescue-4", SearchDecision: searchDecisionProvenance{Class: searchCandidateClassTitleRescue}},
 	}
 
 	limited := limitTitleRescueResults(results, 3)
@@ -943,12 +1064,14 @@ func TestApplyTorrentSearchResultsLimitsTitleRescueAttemptsPerSearch(t *testing.
 		},
 	}
 	result := TorrentSearchResult{
-		Indexer:                    "Indexer",
-		IndexerID:                  7,
-		Title:                      "candidate",
-		DownloadURL:                "https://example.invalid/candidate.torrent",
-		SearchDecisionClass:        searchCandidateClassTitleRescue,
-		SearchStrictMismatchReason: "title mismatch",
+		Indexer:     "Indexer",
+		IndexerID:   7,
+		Title:       "candidate",
+		DownloadURL: "https://example.invalid/candidate.torrent",
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassTitleRescue,
+			StrictMismatchReason: "title mismatch",
+		},
 	}
 	duplicate := result
 	duplicate.Title = "duplicate"
@@ -1026,12 +1149,14 @@ func TestApplyTorrentSearchResultsBlocksTitleRescueWhenSkipRecheck(t *testing.T)
 		},
 	}
 	result := TorrentSearchResult{
-		Indexer:                    "Indexer",
-		IndexerID:                  7,
-		Title:                      "candidate",
-		DownloadURL:                "https://example.invalid/candidate.torrent",
-		SearchDecisionClass:        searchCandidateClassTitleRescue,
-		SearchStrictMismatchReason: "title mismatch",
+		Indexer:     "Indexer",
+		IndexerID:   7,
+		Title:       "candidate",
+		DownloadURL: "https://example.invalid/candidate.torrent",
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassTitleRescue,
+			StrictMismatchReason: "title mismatch",
+		},
 	}
 	service.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{result})
 	selection := TorrentSearchSelection{
@@ -1070,21 +1195,21 @@ func TestDeduplicateScoredTorrentSearchResultsKeepsBestClassificationAndKeylessR
 				Title: "guid-tolerance",
 				GUID:  "shared-guid",
 			},
-			score: 10,
-			class: searchCandidateClassStrict,
+			score:      10,
+			provenance: searchDecisionProvenance{Class: searchCandidateClassStrict},
 		},
 		{
 			result: jackett.SearchResult{
 				Title:       "url-tolerance",
 				DownloadURL: "https://example.invalid/shared.torrent",
 			},
-			score: 10,
-			class: searchCandidateClassStrict,
+			score:      10,
+			provenance: searchDecisionProvenance{Class: searchCandidateClassStrict},
 		},
 		{
-			result: jackett.SearchResult{Title: "keyless-one"},
-			score:  1,
-			class:  searchCandidateClassStrict,
+			result:     jackett.SearchResult{Title: "keyless-one"},
+			score:      1,
+			provenance: searchDecisionProvenance{Class: searchCandidateClassStrict},
 		},
 		{
 			result: jackett.SearchResult{
@@ -1093,7 +1218,7 @@ func TestDeduplicateScoredTorrentSearchResultsKeepsBestClassificationAndKeylessR
 			},
 			score:        2,
 			sizeEvidence: searchSizeEvidenceExact,
-			class:        searchCandidateClassExactSizeFallback,
+			provenance:   searchDecisionProvenance{Class: searchCandidateClassExactSizeFallback},
 		},
 		{
 			result: jackett.SearchResult{
@@ -1102,12 +1227,12 @@ func TestDeduplicateScoredTorrentSearchResultsKeepsBestClassificationAndKeylessR
 			},
 			score:        2,
 			sizeEvidence: searchSizeEvidenceExact,
-			class:        searchCandidateClassExactSizeFallback,
+			provenance:   searchDecisionProvenance{Class: searchCandidateClassExactSizeFallback},
 		},
 		{
-			result: jackett.SearchResult{Title: "keyless-two"},
-			score:  1,
-			class:  searchCandidateClassStrict,
+			result:     jackett.SearchResult{Title: "keyless-two"},
+			score:      1,
+			provenance: searchDecisionProvenance{Class: searchCandidateClassStrict},
 		},
 	}
 
@@ -1137,15 +1262,17 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	}
 	state := &searchRunState{opts: SearchRunOptions{InstanceID: 1}}
 	match := TorrentSearchResult{
-		Indexer:                    "Indexer",
-		IndexerID:                  7,
-		Title:                      "candidate",
-		DownloadURL:                "https://example.invalid/candidate.torrent",
-		Size:                       size,
-		SearchDecisionClass:        searchCandidateClassExactSizeFallback,
-		SearchStrictMismatchReason: "collection mismatch",
-		SearchRelaxedDifferences:   []string{"collection"},
-		SearchSourceTitles:         sourceTitles,
+		Indexer:     "Indexer",
+		IndexerID:   7,
+		Title:       "candidate",
+		DownloadURL: "https://example.invalid/candidate.torrent",
+		Size:        size,
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassExactSizeFallback,
+			StrictMismatchReason: "collection mismatch",
+			RelaxedDifferences:   []string{"collection"},
+			SourceTitles:         sourceTitles,
+		},
 	}
 
 	result, err := service.executeCrossSeedSearchAttempt(
@@ -1159,12 +1286,12 @@ func TestExecuteCrossSeedSearchAttemptPropagatesExactSizeDecision(t *testing.T) 
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedSearchResultStatusAdded, result.Status)
 	require.NotNil(t, captured)
-	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecisionClass)
-	require.Equal(t, 1, captured.SearchSourceInstanceID)
-	require.Equal(t, "source", captured.SearchSourceHash)
-	require.Equal(t, "collection mismatch", captured.SearchStrictMismatchReason)
-	require.Equal(t, []string{"collection"}, captured.SearchRelaxedDifferences)
-	require.Equal(t, sourceTitles, captured.SearchSourceTitles)
+	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
+	require.Equal(t, 1, captured.SearchDecision.SourceInstanceID)
+	require.Equal(t, "source", captured.SearchDecision.SourceHash)
+	require.Equal(t, "collection mismatch", captured.SearchDecision.StrictMismatchReason)
+	require.Equal(t, []string{"collection"}, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, sourceTitles, captured.SearchDecision.SourceTitles)
 }
 
 func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *testing.T) {
@@ -1173,7 +1300,7 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 			return []byte("torrent"), nil
 		},
 		crossSeedInvoker: func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
-			require.Equal(t, searchCandidateClassTitleRescue, request.SearchDecisionClass)
+			require.Equal(t, searchCandidateClassTitleRescue, request.SearchDecision.Class)
 			return &CrossSeedResponse{Success: true, titleRescueUsed: true}, nil
 		},
 	}
@@ -1183,12 +1310,14 @@ func TestExecuteCrossSeedSearchAttemptReportsPendingTitleRescueVerification(t *t
 		&searchRunState{opts: SearchRunOptions{InstanceID: 1}},
 		&qbt.Torrent{Hash: "source", Name: "source"},
 		TorrentSearchResult{
-			Indexer:                    "Indexer",
-			IndexerID:                  7,
-			Title:                      "candidate",
-			DownloadURL:                "https://example.invalid/candidate.torrent",
-			SearchDecisionClass:        searchCandidateClassTitleRescue,
-			SearchStrictMismatchReason: "title mismatch",
+			Indexer:     "Indexer",
+			IndexerID:   7,
+			Title:       "candidate",
+			DownloadURL: "https://example.invalid/candidate.torrent",
+			SearchDecision: searchDecisionProvenance{
+				Class:                searchCandidateClassTitleRescue,
+				StrictMismatchReason: "title mismatch",
+			},
 		},
 		time.Now(),
 	)
@@ -1227,12 +1356,14 @@ func TestFindCandidatesTitleRescueIsBoundToSearchSource(t *testing.T) {
 	require.Empty(t, direct.Candidates)
 
 	request := &FindCandidatesRequest{
-		TorrentName:                targetName,
-		TargetInstanceIDs:          []int{instanceID},
-		SearchDecisionClass:        searchCandidateClassTitleRescue,
-		SearchSourceInstanceID:     instanceID,
-		SearchSourceHash:           sourceHash,
-		SearchStrictMismatchReason: "title mismatch",
+		TorrentName:       targetName,
+		TargetInstanceIDs: []int{instanceID},
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassTitleRescue,
+			SourceInstanceID:     instanceID,
+			SourceHash:           sourceHash,
+			StrictMismatchReason: "title mismatch",
+		},
 	}
 	rescued, err := service.FindCandidates(context.Background(), request)
 	require.NoError(t, err)
@@ -1241,7 +1372,7 @@ func TestFindCandidatesTitleRescueIsBoundToSearchSource(t *testing.T) {
 	require.Len(t, rescued.Candidates[0].Torrents, 1)
 	require.Equal(t, sourceHash, rescued.Candidates[0].Torrents[0].Hash)
 
-	request.SearchSourceHash = "missing"
+	request.SearchDecision.SourceHash = "missing"
 	rejected, err := service.FindCandidates(context.Background(), request)
 	require.NoError(t, err)
 	require.Empty(t, rejected.Candidates)
@@ -1303,13 +1434,21 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 		existingHash: {
 			{
 				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
-				Size: torrentSize,
+				Size: torrentSize/2 + 1,
+			},
+			{
+				Name: "Example.Show.2024.S01E02.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
+				Size: torrentSize - (torrentSize/2 + 1),
 			},
 		},
 		unrelatedHash: {
 			{
 				Name: "Example.Show.2024.S01E01.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
-				Size: torrentSize,
+				Size: torrentSize/2 + 1,
+			},
+			{
+				Name: "Example.Show.2024.S01E02.2160p.ATV.WEB-DL.DV.HDR.H.265-NTb.mkv",
+				Size: torrentSize - (torrentSize/2 + 1),
 			},
 		},
 	}
@@ -1322,10 +1461,8 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	sourceRelease := rls.ParseString(existingName)
 	targetRelease := rls.ParseString(targetName)
 	decision := service.classifySearchCandidate(searchCandidateInput{
-		SourceRelease:    &sourceRelease,
-		CandidateRelease: &targetRelease,
-		SourceName:       existingName,
-		CandidateName:    targetName,
+		Source:           namedRelease{release: &sourceRelease, rawName: existingName},
+		Candidate:        namedRelease{release: &targetRelease, rawName: targetName},
 		SourceSize:       torrentSize,
 		CandidateSize:    torrentSize,
 		TolerancePercent: 5,
@@ -1337,13 +1474,15 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 
 	fallbackRequest := func() *FindCandidatesRequest {
 		return &FindCandidatesRequest{
-			TorrentName:                targetName,
-			TargetInstanceIDs:          []int{instanceID},
-			SearchDecisionClass:        decision.Class,
-			SearchSourceInstanceID:     instanceID,
-			SearchSourceHash:           existingHash,
-			SearchStrictMismatchReason: decision.StrictMismatchReason,
-			SearchRelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
+			TorrentName:       targetName,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:                decision.Class,
+				SourceInstanceID:     instanceID,
+				SourceHash:           existingHash,
+				StrictMismatchReason: decision.StrictMismatchReason,
+				RelaxedDifferences:   append([]string(nil), decision.RelaxedDifferences...),
+			},
 		}
 	}
 
@@ -1364,7 +1503,7 @@ func TestFindCandidatesExactSizeFallbackIsScopedAndContinuesToFileValidation(t *
 	unrecordedDifferenceRequest := fallbackRequest()
 	// The live strict mismatch for this pair is "hdr"; recording only an
 	// unrelated relaxation must keep the apply stage strict.
-	unrecordedDifferenceRequest.SearchRelaxedDifferences = []string{"collection"}
+	unrecordedDifferenceRequest.SearchDecision.RelaxedDifferences = []string{"collection"}
 	unrecordedDifferenceResponse, err := service.FindCandidates(context.Background(), unrecordedDifferenceRequest)
 	require.NoError(t, err)
 	require.Empty(t, unrecordedDifferenceResponse.Candidates, "fallback must retain the search-recorded relaxation")
@@ -1430,11 +1569,14 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 
 	request := func(hash string) *FindCandidatesRequest {
 		return &FindCandidatesRequest{
-			TorrentName:            targetName,
-			TargetInstanceIDs:      []int{instanceID},
-			SearchSourceInstanceID: instanceID,
-			SearchSourceHash:       hash,
-			SearchSourceTitles:     []string{"Money Heist"},
+			TorrentName:       targetName,
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:            searchCandidateClassStrict,
+				SourceInstanceID: instanceID,
+				SourceHash:       hash,
+				SourceTitles:     []string{"Money Heist"},
+			},
 		}
 	}
 
@@ -1462,7 +1604,7 @@ func TestFindCandidatesScopesSearchSourceAliasesToSourceTorrent(t *testing.T) {
 
 	// A matching hash on the wrong instance attaches nothing either.
 	wrongInstance := request(sourceHash)
-	wrongInstance.SearchSourceInstanceID = instanceID + 1
+	wrongInstance.SearchDecision.SourceInstanceID = instanceID + 1
 	response, err = service.FindCandidates(context.Background(), wrongInstance)
 	require.NoError(t, err)
 	require.Empty(t, response.Candidates)
@@ -1499,12 +1641,14 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 
 	apply := func(sourceTitles []string) *CrossSeedResponse {
 		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
-			TorrentData:            base64.StdEncoding.EncodeToString(torrentData),
-			TargetInstanceIDs:      []int{instanceID},
-			SearchDecisionClass:    searchCandidateClassStrict,
-			SearchSourceInstanceID: instanceID,
-			SearchSourceHash:       existingHash,
-			SearchSourceTitles:     sourceTitles,
+			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:            searchCandidateClassStrict,
+				SourceInstanceID: instanceID,
+				SourceHash:       existingHash,
+				SourceTitles:     sourceTitles,
+			},
 		})
 		require.NoError(t, applyErr)
 		require.Len(t, response.Results, 1)
@@ -1620,8 +1764,8 @@ func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	require.Len(t, response.Results, 1)
 	require.Equal(t, QueryDegradedARRNoIDs, response.QueryDegraded)
 	match := response.Results[0]
-	require.Equal(t, searchCandidateClassStrict, match.SearchDecisionClass)
-	require.Equal(t, aliases, match.SearchSourceTitles)
+	require.Equal(t, searchCandidateClassStrict, match.SearchDecision.Class)
+	require.Equal(t, aliases, match.SearchDecision.SourceTitles)
 
 	t.Run("manual apply", func(t *testing.T) {
 		applyResponse, applyErr := service.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{

@@ -183,12 +183,13 @@ func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
 // named constant rather than an inline literal.
 const titleMismatchReason = "title mismatch"
 
-// seasonMismatchReason and episodeMismatchReason are the two structure
+// seasonMismatchReason, episodeMismatchReason and groupMismatchReason are the
 // rejections the exact-size fallback may override, and overriding one forces a
 // hash check before the add seeds. Callers key off these exact values.
 const (
 	seasonMismatchReason  = "season mismatch"
 	episodeMismatchReason = "episode mismatch"
+	groupMismatchReason   = "group mismatch"
 )
 
 func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
@@ -438,10 +439,10 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, t
 		switch {
 		case candidateGroupIdentity == "":
 			if !tolerateMissingCandidateTags {
-				return false, "group mismatch"
+				return false, groupMismatchReason
 			}
 		case sourceGroup != candidateGroupIdentity:
-			return false, "group mismatch"
+			return false, groupMismatchReason
 		}
 	}
 	// If source has no group, we don't care about candidate's group

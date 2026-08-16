@@ -22,6 +22,7 @@ type rootlessSavePathSyncManager struct {
 	files        map[string]qbt.TorrentFiles
 	props        map[string]*qbt.TorrentProperties
 	addedOptions map[string]string
+	bulkActions  []string
 }
 
 func (m *rootlessSavePathSyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -73,7 +74,10 @@ func (m *rootlessSavePathSyncManager) AddTorrent(_ context.Context, _ int, _ []b
 	return nil, nil
 }
 
-func (*rootlessSavePathSyncManager) BulkAction(context.Context, int, []string, string) error {
+func (m *rootlessSavePathSyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
+	for _, hash := range hashes {
+		m.bulkActions = append(m.bulkActions, action+":"+normalizeHash(hash))
+	}
 	return nil
 }
 
