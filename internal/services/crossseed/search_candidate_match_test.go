@@ -338,6 +338,48 @@ func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
 	}
 }
 
+// validateTVStructure reports a season mismatch before it compares pack against
+// episode, so a differing season would otherwise skip the shape check. Only a
+// like-for-like shape may retire a season or episode number.
+func TestClassifySearchCandidateKeepsTVShapeHardWhenNumbersDiffer(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const size = int64(20_000_000_000)
+
+	tests := []struct {
+		name         string
+		source       string
+		candidate    string
+		findEpisodes bool
+		wantAccepted bool
+	}{
+		{name: "pack against a different season episode", source: "Example.Show.S01.1080p.WEB-DL.H.264-GRP", candidate: "Example.Show.S02E05.1080p.WEB-DL.H.264-GRP"},
+		{name: "episode against a different season pack", source: "Example.Show.S01E05.1080p.WEB-DL.H.264-GRP", candidate: "Example.Show.S02.1080p.WEB-DL.H.264-GRP"},
+		{name: "pack against a different season episode while finding episodes", source: "Example.Show.S01.1080p.WEB-DL.H.264-GRP", candidate: "Example.Show.S02E05.1080p.WEB-DL.H.264-GRP", findEpisodes: true},
+		{name: "episode against an episode of another season", source: "Example.Show.S01E05.1080p.WEB-DL.H.264-GRP", candidate: "Example.Show.S02E05.1080p.WEB-DL.H.264-GRP"},
+		{name: "pack against a pack of another season", source: "Example.Show.S01.1080p.WEB-DL.H.264-GRP", candidate: "Example.Show.S02.1080p.WEB-DL.H.264-GRP", wantAccepted: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := rls.ParseString(tt.source)
+			candidate := rls.ParseString(tt.candidate)
+
+			decision := service.classifySearchCandidate(searchCandidateInput{
+				SourceRelease:          &source,
+				CandidateRelease:       &candidate,
+				SourceName:             tt.source,
+				CandidateName:          tt.candidate,
+				SourceSize:             size,
+				CandidateSize:          size,
+				TolerancePercent:       5,
+				FindIndividualEpisodes: tt.findEpisodes,
+			})
+
+			require.Equal(t, tt.wantAccepted, decision.Accepted, "reject reason: %s", decision.RejectReason)
+		})
+	}
+}
+
 func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (

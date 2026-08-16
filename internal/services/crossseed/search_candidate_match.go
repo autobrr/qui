@@ -318,11 +318,22 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	difference := strings.ReplaceAll(reason, " ", "-")
 	// Season and episode are the identity fields indexers rewrite: a tracker with
 	// one entry per cour stamps S01 on every season, and absolute numbering meets
-	// renumbered candidates. The shape rules around them (TV against non-TV, pack
-	// against episode) are not relaxable and keep rejecting through the strict
-	// mismatch reason.
+	// renumbered candidates. Only a like-for-like shape may retire that number.
+	// validateTVStructure reports a season mismatch BEFORE it compares pack
+	// against episode, so without these guards a differing season would skip the
+	// shape check entirely.
 	switch difference {
-	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum", "season", "episode":
+	case "season":
+		if isTVSeasonPack(input.SourceRelease) && isTVSeasonPack(input.CandidateRelease) {
+			return difference, true
+		}
+		return "", false
+	case "episode":
+		if isTVEpisode(input.SourceRelease) && isTVEpisode(input.CandidateRelease) {
+			return difference, true
+		}
+		return "", false
+	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum":
 		return difference, true
 	}
 

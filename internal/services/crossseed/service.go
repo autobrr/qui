@@ -5174,6 +5174,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Force recheck is automatic (no user setting):
 	//  - Disc-layout torrents always trigger a recheck after injection
 	//  - Recheck-required matches (alignment/extras) trigger a recheck when SkipRecheck is OFF
+	//  - Title rescues and season/episode-relaxed matches always verify before seeding
 	forceRecheck := verifyBeforeSeed || addPolicy.DiscLayout || (!req.SkipRecheck && (requiresAlignment || hasExtraFiles))
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
@@ -14339,6 +14340,7 @@ func (s *Service) processHardlinkMode(
 	// Handle skip_checking and pause behavior based on extras:
 	// - No extras: skip_checking=true, start immediately (100% complete)
 	// - With extras: skip_checking=true, add paused, then recheck to find missing pieces
+	// - Verify-before-seed matches (title rescue, relaxed season/episode): same as extras
 	// - Disc layout: policy will override to paused via ApplyToAddOptions
 	options["skip_checking"] = "true"
 	switch {
@@ -15033,6 +15035,7 @@ func (s *Service) processReflinkMode(
 	// Handle skip_checking and pause behavior based on extras:
 	// - No extras: skip_checking=true, start immediately (100% complete)
 	// - With extras: skip_checking=true, add paused, then recheck to find missing pieces
+	// - Verify-before-seed matches (title rescue, relaxed season/episode): same as extras
 	// - Disc layout: policy will override to paused via ApplyToAddOptions
 	options["skip_checking"] = "true"
 	switch {
