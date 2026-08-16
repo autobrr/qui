@@ -250,6 +250,55 @@ func TestClassifySearchCandidateKeepsChecksumGateWithoutExactSize(t *testing.T) 
 	require.Equal(t, "checksum mismatch", decision.RejectReason)
 }
 
+// A tracker with one entry per cour stamps S01 on every season, so a byte-equal
+// pack can carry the wrong season label. Equal bytes plus the identity checks
+// outrank the label, but only for the pairing they cover.
+func TestClassifySearchCandidateRelaxesSeasonOnExactSize(t *testing.T) {
+	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	const (
+		sourceName    = "Azure.Compass.S02.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI"
+		candidateName = "[KIRI] Azure Compass S01 [Blu-ray][MKV][h264][1080p Remux][FLAC 2.0][Dual Audio][Softsubs (KIRI)]"
+		size          = int64(71_052_546_722)
+	)
+
+	tests := []struct {
+		name          string
+		source        string
+		sourceSize    int64
+		candidateSize int64
+		wantAccepted  bool
+		wantReason    string
+	}{
+		{name: "same show relaxes the season label", source: sourceName, sourceSize: size, candidateSize: size, wantAccepted: true},
+		{name: "tolerance without exact size keeps the season gate", source: sourceName, sourceSize: size, candidateSize: size - 1, wantReason: "season mismatch"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := rls.ParseString(tt.source)
+			candidate := rls.ParseString(candidateName)
+
+			decision := service.classifySearchCandidate(searchCandidateInput{
+				SourceRelease:    &source,
+				CandidateRelease: &candidate,
+				SourceName:       tt.source,
+				CandidateName:    candidateName,
+				SourceSize:       tt.sourceSize,
+				CandidateSize:    tt.candidateSize,
+				TolerancePercent: 5,
+			})
+
+			require.Equal(t, tt.wantAccepted, decision.Accepted)
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+				require.Contains(t, decision.RelaxedDifferences, "season")
+				return
+			}
+			require.Equal(t, tt.wantReason, decision.RejectReason)
+		})
+	}
+}
+
 func TestClassifySearchCandidateTitleRescue(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const (
@@ -494,7 +543,6 @@ func TestClassifySearchCandidateExactSizeHardIdentity(t *testing.T) {
 		reason string
 	}{
 		{name: "different title", mutate: func(r *rls.Release) { r.Title = "Different Show" }, reason: "title mismatch"},
-		{name: "different season", mutate: func(r *rls.Release) { r.Series++ }, reason: "season mismatch"},
 		{name: "missing resolution", mutate: func(r *rls.Release) { r.Resolution = "" }, reason: "resolution mismatch"},
 		{name: "different resolution", mutate: func(r *rls.Release) { r.Resolution = "1080p" }, reason: "resolution mismatch"},
 		{name: "missing group", mutate: func(r *rls.Release) { r.Group = ""; r.Site = "" }, reason: "group/site mismatch"},
@@ -602,7 +650,10 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 	service := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 	const size = int64(94_329_473_840)
 
-	t.Run("different episode", func(t *testing.T) {
+	// Episode numbering is relaxable on equal bytes because indexers renumber it,
+	// so this pairing is admitted and recorded. Recording it is what forces the
+	// recheck at apply; see TestProcessCrossSeedCandidateVerifiesRelaxedStructure.
+	t.Run("different episode is relaxed and recorded", func(t *testing.T) {
 		source := rls.ParseString("Example.Show.S01E01.2160p.ATV.WEB-DL.H.265-NTb")
 		candidate := rls.ParseString("Example.Show.S01E02.2160p.ATVP.WEB-DL.H.265-NTb")
 		decision := service.classifySearchCandidate(searchCandidateInput{
@@ -614,8 +665,9 @@ func TestClassifySearchCandidateExactSizeTVAndContentIdentity(t *testing.T) {
 			CandidateSize:    size,
 			TolerancePercent: 5,
 		})
-		require.False(t, decision.Accepted)
-		require.Equal(t, "episode mismatch", decision.RejectReason)
+		require.True(t, decision.Accepted)
+		require.Equal(t, searchCandidateClassExactSizeFallback, decision.Class)
+		require.Contains(t, decision.RelaxedDifferences, "episode")
 	})
 
 	t.Run("forbidden season pack from episode", func(t *testing.T) {

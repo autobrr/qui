@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/moistari/rls"
@@ -77,10 +78,11 @@ const (
 )
 
 // classifySearchCandidate applies the shared search-only admission rules.
-// Exact-size fallback requires positive byte-for-byte size equality plus strict
-// title, TV structure, resolution, group/site, checksum, artist, and date
-// identity. It may relax descriptive attributes such as source, collection,
-// HDR, codec, or bit depth. Apply later uses the private decision class only to
+// Exact-size fallback requires equal reported sizes plus strict title,
+// resolution, group/site, checksum, artist, and date identity, and the TV shape
+// rules around packs and episodes. It may relax descriptive attributes such as
+// source, collection, HDR, codec, or bit depth, and the season and episode
+// numbers that indexers rewrite. Apply later uses the private decision class to
 // skip its duplicate release prefilter; normal torrent-file validation remains
 // authoritative.
 func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
@@ -176,7 +178,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 		decision.MatchReason = "Title rescue · full check required"
 	case searchCandidateClassExactSizeFallback:
 		decision.Score += sizeEvidenceFallbackScoreBonus
-		decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict title/season/resolution/group"
+		decision.MatchReason = decision.SizeEvidence.matchReason() + "; strict title/resolution/group"
 		if len(decision.RelaxedDifferences) > 0 {
 			decision.MatchReason += "; relaxed " + strings.Join(decision.RelaxedDifferences, ",")
 		}
@@ -244,7 +246,6 @@ func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (b
 		return false, "missing parsed release"
 	}
 
-	isTV := isTVRelease(source) || isTVRelease(candidate)
 	if ok, reason := s.validateTitleArtistAndDates(
 		source,
 		candidate,
@@ -252,11 +253,8 @@ func (s *Service) validateExactSizeSearchIdentity(input searchCandidateInput) (b
 		input.CandidateName,
 		input.SourceTitles,
 		input.CandidateTitles,
-		isTV,
+		isTVRelease(source) || isTVRelease(candidate),
 	); !ok {
-		return false, reason
-	}
-	if ok, reason := validateTVStructure(source, candidate, input.FindIndividualEpisodes, isTV); !ok {
 		return false, reason
 	}
 
@@ -318,8 +316,13 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	reason := strings.ToLower(strings.TrimSpace(mismatchReason))
 	reason = strings.TrimSuffix(reason, " mismatch")
 	difference := strings.ReplaceAll(reason, " ", "-")
+	// Season and episode are the identity fields indexers rewrite: a tracker with
+	// one entry per cour stamps S01 on every season, and absolute numbering meets
+	// renumbered candidates. The shape rules around them (TV against non-TV, pack
+	// against episode) are not relaxable and keep rejecting through the strict
+	// mismatch reason.
 	switch difference {
-	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum":
+	case "source", "collection", "codec", "hdr", "bit-depth", "cut", "edition", "language", "version", "disc", "platform", "architecture", "checksum", "season", "episode":
 		return difference, true
 	}
 
@@ -329,6 +332,15 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	}
 
 	return "", false
+}
+
+// searchRelaxedStructure reports whether the search decision that admitted this
+// apply retired a season or episode difference. Equal file sizes cannot confirm
+// which episode a torrent holds, so those adds must be hashed before they seed.
+func searchRelaxedStructure(req *CrossSeedRequest) bool {
+	return req != nil &&
+		(slices.Contains(req.SearchRelaxedDifferences, "season") ||
+			slices.Contains(req.SearchRelaxedDifferences, "episode"))
 }
 
 func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {
@@ -370,6 +382,8 @@ func softMetadataDifferences(source, candidate *rls.Release) []string {
 	add("platform", normalizer.Normalize(source.Platform), normalizer.Normalize(candidate.Platform))
 	add("architecture", normalizer.Normalize(source.Arch), normalizer.Normalize(candidate.Arch))
 	add("checksum", normalizer.Normalize(source.Sum), normalizer.Normalize(candidate.Sum))
+	add("season", strconv.Itoa(source.Series), strconv.Itoa(candidate.Series))
+	add("episode", strconv.Itoa(source.Episode), strconv.Itoa(candidate.Episode))
 	if compatible, _ := checkVariantsCompatible(source, candidate); !compatible {
 		differences = append(differences, "variant")
 	}

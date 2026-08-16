@@ -5070,7 +5070,10 @@ func (s *Service) processCrossSeedCandidate(
 
 		return result
 	}
-	if candidate.titleRescue && req.SkipRecheck {
+	// A title rescue or a season/episode-relaxed pairing is admitted on evidence
+	// file sizes cannot confirm, so it only lands behind a full hash check.
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req)
+	if verifyBeforeSeed && req.SkipRecheck {
 		result.Status = "skipped_recheck"
 		result.Message = skippedRecheckMessage
 		return result
@@ -5110,7 +5113,7 @@ func (s *Service) processCrossSeedCandidate(
 	if req.StartPaused != nil {
 		startPaused = *req.StartPaused
 	}
-	if candidate.titleRescue {
+	if verifyBeforeSeed {
 		startPaused = true
 	}
 	if startPaused {
@@ -5159,7 +5162,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Force recheck is automatic (no user setting):
 	//  - Disc-layout torrents always trigger a recheck after injection
 	//  - Recheck-required matches (alignment/extras) trigger a recheck when SkipRecheck is OFF
-	forceRecheck := candidate.titleRescue || addPolicy.DiscLayout || (!req.SkipRecheck && (requiresAlignment || hasExtraFiles))
+	forceRecheck := verifyBeforeSeed || addPolicy.DiscLayout || (!req.SkipRecheck && (requiresAlignment || hasExtraFiles))
 
 	// Determine mode selection: reflink vs hardlink vs reuse.
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
@@ -5816,7 +5819,7 @@ func (s *Service) processCrossSeedCandidate(
 	// - linkFallbackRequiresFullRecheck: regular-mode fallback was forced paused and must be rechecked
 	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded &&
 		(!req.SkipRecheck || !renameOnlyAlignment)
-	needsRecheck := candidate.titleRescue || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
+	needsRecheck := verifyBeforeSeed || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
 
 	if needsRecheck {
 		recheckHashes := []string{torrentHash}
@@ -5859,7 +5862,7 @@ func (s *Service) processCrossSeedCandidate(
 				Bool("forceRecheck", forceRecheck).
 				Msg("Queuing torrent for recheck resume")
 			queueErr := error(nil)
-			if candidate.titleRescue || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck {
+			if verifyBeforeSeed || addPolicy.DiscLayout || linkFallbackRequiresFullRecheck {
 				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false)
 			} else {
 				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false)
@@ -14104,9 +14107,10 @@ func (s *Service) processHardlinkMode(
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToLink)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req)
 
 	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
-	if req.SkipRecheck && (hasExtras || candidate.titleRescue) {
+	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
 		return hardlinkModeResult{
 			Used:    true,
 			Success: false,
@@ -14326,7 +14330,7 @@ func (s *Service) processHardlinkMode(
 	// - Disc layout: policy will override to paused via ApplyToAddOptions
 	options["skip_checking"] = "true"
 	switch {
-	case hasExtras || candidate.titleRescue:
+	case hasExtras || verifyBeforeSeed:
 		// With extras or title rescue: add paused, then trigger recheck.
 		options["stopped"] = "true"
 		options["paused"] = "true"
@@ -14388,7 +14392,7 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
-	if hasExtras || addPolicy.DiscLayout || candidate.titleRescue {
+	if hasExtras || addPolicy.DiscLayout || verifyBeforeSeed {
 		recheckHashes := []string{torrentHash}
 		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
 			recheckHashes = append(recheckHashes, torrentHashV2)
@@ -14427,7 +14431,7 @@ func (s *Service) processHardlinkMode(
 				Int("extraFiles", len(sourceFiles)-len(candidateTorrentFilesToLink)).
 				Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
 			queueErr := error(nil)
-			if addPolicy.DiscLayout || candidate.titleRescue {
+			if addPolicy.DiscLayout || verifyBeforeSeed {
 				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
 			} else {
 				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, false)
@@ -14787,9 +14791,10 @@ func (s *Service) processReflinkMode(
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToClone)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req)
 
 	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
-	if req.SkipRecheck && (hasExtras || candidate.titleRescue) {
+	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
 		return reflinkModeResult{
 			Used:    true,
 			Success: false,
@@ -15019,7 +15024,7 @@ func (s *Service) processReflinkMode(
 	// - Disc layout: policy will override to paused via ApplyToAddOptions
 	options["skip_checking"] = "true"
 	switch {
-	case hasExtras || candidate.titleRescue:
+	case hasExtras || verifyBeforeSeed:
 		// With extras or title rescue: add paused, then trigger recheck.
 		options["stopped"] = "true"
 		options["paused"] = "true"
@@ -15083,7 +15088,7 @@ func (s *Service) processReflinkMode(
 	}
 
 	// Handle recheck and auto-resume when extras exist, or disc layout requires verification
-	if hasExtras || addPolicy.DiscLayout || candidate.titleRescue {
+	if hasExtras || addPolicy.DiscLayout || verifyBeforeSeed {
 		recheckHashes := []string{torrentHash}
 		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
 			recheckHashes = append(recheckHashes, torrentHashV2)
@@ -15122,7 +15127,7 @@ func (s *Service) processReflinkMode(
 				Int("missingFiles", totalFiles-clonedFiles).
 				Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
 			queueErr := error(nil)
-			if addPolicy.DiscLayout || candidate.titleRescue {
+			if addPolicy.DiscLayout || verifyBeforeSeed {
 				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
 			} else {
 				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, true)
