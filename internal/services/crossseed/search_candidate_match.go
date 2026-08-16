@@ -136,7 +136,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 			return decision
 		}
 	case decision.SizeEvidence.matches():
-		relaxedDifferences := softMetadataDifferences(input.SourceRelease, input.CandidateRelease)
+		relaxedDifferences := recordedReleaseDifferences(input.SourceRelease, input.CandidateRelease)
 		if ok, reason := s.validateExactSizeFallback(input, mismatchReason, relaxedDifferences); ok {
 			class = searchCandidateClassExactSizeFallback
 			decision.RelaxedDifferences = relaxedDifferences
@@ -364,7 +364,11 @@ func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {
 	return normalizer.Normalize(release.Site)
 }
 
-func softMetadataDifferences(source, candidate *rls.Release) []string {
+// recordedReleaseDifferences lists every field the two releases disagree on.
+// Most are descriptive, but season, episode and checksum are not: they decide
+// whether the add must be hashed before it seeds, so a new entry here is never
+// automatically safe to relax.
+func recordedReleaseDifferences(source, candidate *rls.Release) []string {
 	if source == nil || candidate == nil {
 		return nil
 	}
