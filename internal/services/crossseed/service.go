@@ -4409,6 +4409,15 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		candidateHashes := make([]string, 0, len(torrents))
 		titleRescueHash := ""
 
+		// getMatchTypeFromTitle builds season and episode keys from the existing
+		// torrent's file names, which is exactly the label the search decision
+		// relaxed. Bind that bypass to the one torrent that supplied the size
+		// evidence and let file-level validation at apply decide.
+		structureRelaxedHash := ""
+		if searchRelaxedStructure(req.SearchRelaxedDifferences) && req.SearchSourceInstanceID == instanceID {
+			structureRelaxedHash = normalizeHash(req.SearchSourceHash)
+		}
+
 		// Pre-filter torrents before loading files to reduce downstream work
 		for _, torrent := range torrents {
 			// Only complete torrents can provide data
@@ -4570,6 +4579,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// This handles: single episode in season pack, season pack containing episodes, etc.
 			candidateRelease := s.releaseCache.Parse(torrent.Name)
 			matchType := s.getMatchTypeFromTitle(req.TorrentName, torrent.Name, targetRelease, candidateRelease, candidateFiles)
+			if matchType == "" && hashKey == structureRelaxedHash {
+				matchType = "size"
+			}
 			if matchType == "" && hashKey != titleRescueHash {
 				continue
 			}
@@ -5072,7 +5084,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 	// A title rescue or a season/episode-relaxed pairing is admitted on evidence
 	// file sizes cannot confirm, so it only lands behind a full hash check.
-	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchRelaxedDifferences)
 	if verifyBeforeSeed && req.SkipRecheck {
 		result.Status = "skipped_recheck"
 		result.Message = skippedRecheckMessage
@@ -14107,7 +14119,7 @@ func (s *Service) processHardlinkMode(
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToLink)
-	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchRelaxedDifferences)
 
 	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {
@@ -14791,7 +14803,7 @@ func (s *Service) processReflinkMode(
 	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
 	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToClone)
-	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req)
+	verifyBeforeSeed := candidate.titleRescue || searchRelaxedStructure(req.SearchRelaxedDifferences)
 
 	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
 	if req.SkipRecheck && (hasExtras || verifyBeforeSeed) {

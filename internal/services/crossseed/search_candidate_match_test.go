@@ -27,6 +27,45 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+// The existing torrent's files carry the season the search decision relaxed, so
+// the name-derived match gate rejects the pairing the release prefilter just
+// admitted. The bound source torrent must reach file-level validation instead.
+func TestFindCandidatesRelaxedSeasonReachesFileValidation(t *testing.T) {
+	const (
+		instanceID   = 1
+		sourceHash   = "existing"
+		existingName = "Azure.Compass.S02.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI"
+		targetName   = "[KIRI] Azure Compass S01 [Blu-ray][MKV][h264][1080p Remux][FLAC 2.0][Dual Audio][Softsubs (KIRI)]"
+		size         = int64(71_052_546_722)
+	)
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{Hash: sourceHash, Name: existingName, Size: size, Progress: 1}
+	files := map[string]qbt.TorrentFiles{
+		sourceHash: {
+			{Name: existingName + "/Azure.Compass.S02E01.1080p.BluRay.REMUX.AVC.DUAL.FLAC2.0-KIRI.mkv", Size: size},
+		},
+	}
+	svc := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:              targetName,
+		TargetInstanceIDs:        []int{instanceID},
+		SearchDecisionClass:      searchCandidateClassExactSizeFallback,
+		SearchSourceInstanceID:   instanceID,
+		SearchSourceHash:         sourceHash,
+		SearchRelaxedDifferences: []string{"season"},
+	})
+	require.NoError(t, err)
+	require.Len(t, response.Candidates, 1, "relaxed season pairing must survive the name-derived match gate")
+	require.Equal(t, sourceHash, response.Candidates[0].Torrents[0].Hash)
+}
+
 func TestFindCandidatesSearchSourceUsesFileDerivedTVStructure(t *testing.T) {
 	// Bracket-anime pack names carry no season token, so the raw name parses as
 	// non-TV. Search matched these via file-derived TV structure; the apply

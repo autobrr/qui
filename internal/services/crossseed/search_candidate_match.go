@@ -334,13 +334,12 @@ func exactSizeRelaxedDifferenceForReason(input searchCandidateInput, mismatchRea
 	return "", false
 }
 
-// searchRelaxedStructure reports whether the search decision that admitted this
-// apply retired a season or episode difference. Equal file sizes cannot confirm
-// which episode a torrent holds, so those adds must be hashed before they seed.
-func searchRelaxedStructure(req *CrossSeedRequest) bool {
-	return req != nil &&
-		(slices.Contains(req.SearchRelaxedDifferences, "season") ||
-			slices.Contains(req.SearchRelaxedDifferences, "episode"))
+// searchRelaxedStructure reports whether a search decision retired a season or
+// episode difference. Equal file sizes cannot confirm which episode a torrent
+// holds, so those pairings must be hashed before they seed.
+func searchRelaxedStructure(relaxedDifferences []string) bool {
+	return slices.Contains(relaxedDifferences, "season") ||
+		slices.Contains(relaxedDifferences, "episode")
 }
 
 func normalizedGroupSiteIdentity(s *Service, release *rls.Release) string {
