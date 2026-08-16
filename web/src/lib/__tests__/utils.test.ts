@@ -53,14 +53,8 @@ describe("joinPath", () => {
 })
 
 describe("formatBytesOrFallback", () => {
-  it.each([
-    { value: undefined, label: "missing" },
-    { value: Number.NaN, label: "NaN" },
-    { value: Number.POSITIVE_INFINITY, label: "positive infinity" },
-    { value: Number.NEGATIVE_INFINITY, label: "negative infinity" },
-    { value: -1, label: "negative" },
-  ])("returns the fallback for an unavailable $label byte value", ({ value }) => {
-    expect(formatBytesOrFallback(value, "Unknown")).toBe("Unknown")
+  it("returns the fallback for a negative byte value", () => {
+    expect(formatBytesOrFallback(-1, "Unknown")).toBe("Unknown")
   })
 
   it.each([

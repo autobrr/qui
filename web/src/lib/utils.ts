@@ -20,8 +20,8 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
-export function formatBytesOrFallback(bytes: number | undefined, fallback: string): string {
-  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return fallback
+export function formatBytesOrFallback(bytes: number, fallback: string): string {
+  if (bytes < 0) return fallback
 
   return formatBytes(bytes)
 }
