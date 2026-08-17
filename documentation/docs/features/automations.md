@@ -534,7 +534,7 @@ Delete actions can specify a `groupId` to expand the deletion to all torrents in
 When a torrent matches the rule, the system finds other torrents that point to the same downloaded files (cross-seeds/duplicates) and deletes them together. This is useful when you want to fully remove content and all its cross-seeded copies at once.
 
 - **Safe expansion**: If qui can't safely confirm another torrent uses the same files, it won't be included in the deletion.
-- **File lists decide, not paths**: qui compares the file list of each candidate with the file list of the matched torrent. Torrents that share only the folder, for example a pack whose top folder is `Season 2`, keep their files and stay in the client.
+- **File lists decide, not paths**: qui includes a candidate only when at least 90% of the smaller torrent's bytes use the same file locations. A torrent that shares only the folder, such as a pack with a top folder named `Season 2`, keeps its files and stays in the client. If overlap is above zero but below 90%, qui skips the entire deletion group.
 - **Safety-first**: If verification can't complete for any reason, the entire group is skipped rather than risking broken torrents.
 - **Preview**: The delete preview shows all torrents that would be deleted, with cross-seeds marked.
 
