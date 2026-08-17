@@ -19,7 +19,7 @@ import { TORRENT_ACTIONS } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { getLinuxIsoName, getLinuxSavePath, useIncognitoMode } from "@/lib/incognito"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import type { TorrentFieldName } from "@/lib/torrent-field-request"
+import type { TorrentFieldName, TorrentFieldSelection } from "@/lib/torrent-field-request"
 import { getToggleSelectionState, getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
@@ -89,7 +89,7 @@ export interface TorrentContextMenuProps {
   onFilterChange?: (filters: TorrentFilters) => void
   onFetchTorrentField?: (
     field: TorrentFieldName,
-    selection?: { hashes: string[]; targets: Array<{ instanceId: number; hash: string }> }
+    selection?: TorrentFieldSelection
   ) => Promise<string[]>
 }
 
