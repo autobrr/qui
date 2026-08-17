@@ -148,11 +148,13 @@ qui then repeats the match against the current local sources. The original `torr
 
 Clients that omit `torrentName` keep the legacy strict apply behavior. These clients cannot use the new reported-size fallback.
 
-Title, season, episode, and split release-group fallbacks require a full qBittorrent piece check. qui adds these torrents paused and resumes them only at 100%.
+qui can set `skip_checking=true` when it adds a torrent. This option skips only qBittorrent's automatic add-time check.
+
+Title, season, episode, and split release-group fallbacks still require an explicit full piece check. qui keeps these torrents paused, starts the check, and resumes them only at 100%.
 
 Soft differences, such as codec, source, HDR, edition, or one-sided checksum data, keep the normal fast path after all file and layout checks.
 
-Cross-seeded torrents are added paused with `skip_checking=true`. qui then applies the [Max auto-start download](./rules.md#max-auto-start-download) rule.
+On the normal fast path, qui applies the [Max auto-start download](./rules.md#max-auto-start-download) rule.
 
 The normal rule includes a 200 MiB exception when only ignorable files are missing. Torrents above the permitted limit stay paused for review.
 

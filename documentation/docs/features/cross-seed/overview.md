@@ -45,7 +45,9 @@ Scheduled polling of tracker RSS feeds. Configure in the **Auto** tab on the Cro
 - **Target instances** - Which qBittorrent instances receive cross-seeds
 - **Target indexers** - Limit to specific indexers or use all enabled ones
 
-RSS automation processes the full feed from every enabled indexer on each run. It compares each feed title and byte count with eligible local torrents.
+RSS automation processes the full feed from each selected target indexer on each run. If no target indexers are selected, it uses all enabled indexers.
+
+It compares each feed title and byte count with eligible local torrents.
 
 This comparison happens before the one intended torrent-file download. RSS does not fetch extra torrent files to measure candidates.
 
