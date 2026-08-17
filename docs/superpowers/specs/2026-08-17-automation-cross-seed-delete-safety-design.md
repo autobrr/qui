@@ -18,6 +18,8 @@ qBittorrent file names are relative to each torrent's save path. The same disk f
 
 The overlap calculation will compare normalized paths built from each torrent's save path and file name. If two files resolve to the same path, their shared bytes equal the smaller expected size. The existing 90% threshold remains unchanged.
 
+The resolver will build the trigger's path index once. It will then scan each candidate file list against that index. It will not rebuild the trigger index for each candidate.
+
 This rule handles a normal qBittorrent layout difference. For example, these values identify the same file:
 
 - Save path `/downloads`, file name `Season 2/01.mkv`
@@ -33,7 +35,7 @@ Each direct match can therefore resolve its own file group. Execution will conti
 
 ## Free-Space Projection
 
-The service will fetch the required file lists once before it evaluates a free-space rule that uses include-cross-seeds mode. The batch result will remain in the evaluation context for that automation cycle.
+The service will fetch the required file lists once before it evaluates a free-space rule that uses include-cross-seeds mode. It will fetch only torrents in shared-content-path groups. The batch result will remain in the evaluation context for that automation cycle.
 
 Each free-space rule will also keep a set of confirmed cross-seed hashes that already contribute to projected space. The projection code will resolve a trigger with the cached file lists:
 
@@ -43,6 +45,12 @@ Each free-space rule will also keep a set of confirmed cross-seed hashes that al
 - Zero-overlap members do not enter the set. They can contribute later as independent direct matches.
 
 The existing hardlink signature set continues to deduplicate hardlinked copies across different content paths. Other delete modes keep their current projection behavior.
+
+## Performance
+
+Unique-content-path torrents require no file-list fetch or overlap map. A shared-path group requires one batch fetch and one trigger index per resolved direct match.
+
+The service will allocate the confirmed-hash set only for free-space rules that use include-cross-seeds mode. All new file data and indices remain local to one automation cycle. The change adds no persistent cache, global map, or group graph.
 
 ## Error Handling
 
