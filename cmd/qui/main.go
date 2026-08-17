@@ -692,6 +692,8 @@ func (app *Application) runServer() {
 		automationCancel()
 		crossSeedService.StopAutomation()
 	}()
+	partialPoolCtx, partialPoolCancel := context.WithCancel(context.Background())
+	partialPoolDone := make(chan struct{})
 
 	reannounceCtx, reannounceCancel := context.WithCancel(context.Background())
 	defer reannounceCancel()
@@ -829,6 +831,10 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		go func() {
+			defer close(partialPoolDone)
+			crossSeedService.RunPartialPoolCoordinator(partialPoolCtx)
+		}()
 	case err := <-errorChannel:
 		log.Fatal().Err(err).Msg("failed to start HTTP server")
 	}
@@ -881,6 +887,12 @@ func (app *Application) runServer() {
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	partialPoolCancel()
+	select {
+	case <-partialPoolDone:
+	case <-ctx.Done():
+		log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+	}
 
 	if err := httpServer.Shutdown(ctx); err != nil {
 		//log.Fatal().Err(err).Msg("Server forced to shutdown")

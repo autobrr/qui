@@ -142,13 +142,14 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(source, data, 0o600))   //nolint:gosec // Path is under verified test temp directory.
 	require.NoError(t, os.WriteFile(copyPath, data, 0o600)) //nolint:gosec // Path is under verified test temp directory.
-	require.NoError(t, reflinktree.Create(&hardlinktree.TreePlan{
+	_, err = reflinktree.Create(&hardlinktree.TreePlan{
 		RootDir: dir,
 		Files: []hardlinktree.FilePlan{{
 			SourcePath: source,
 			TargetPath: clone,
 		}},
-	}))
+	})
+	require.NoError(t, err)
 
 	shared, err := FilesShareAllocation(source, clone)
 	require.NoError(t, err)

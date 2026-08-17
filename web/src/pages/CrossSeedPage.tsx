@@ -46,6 +46,7 @@ import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { buildPooledCompletionPatch } from "@/lib/crossseed-settings"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
@@ -96,6 +97,7 @@ interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   categoryMappingRules: CategoryMappingRule[]
   autoResumeMaxDownloadMb: number
+  pooledPartialCompletionEnabled: boolean
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -170,6 +172,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   categoryMappingRules: [],
   autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
+  pooledPartialCompletionEnabled: false,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -875,6 +878,54 @@ export function TitleRescueSetting({ checked, disabled = false, onCheckedChange 
   )
 }
 
+/** Renders pooled partial completion and its shared post-recheck byte budget. */
+export function PooledCompletionSetting({
+  checked,
+  autoResumeMaxDownloadMb,
+  onCheckedChange,
+  onAutoResumeMaxDownloadMbChange,
+}: {
+  checked: boolean
+  autoResumeMaxDownloadMb: number
+  onCheckedChange: (checked: boolean) => void
+  onAutoResumeMaxDownloadMbChange: (value: number) => void
+}) {
+  const { t } = useTranslation("crossseed")
+
+  return (
+    <div className="space-y-4 pt-3 border-t border-border/50">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="pooled-partial-completion" className="font-medium">
+            {t("rules.postInjection.pooledPartialCompletion")}
+          </Label>
+          <FieldHelp>{t("rules.postInjection.pooledPartialCompletionDescription")}</FieldHelp>
+        </div>
+        <Switch
+          id="pooled-partial-completion"
+          checked={checked}
+          onCheckedChange={value => onCheckedChange(!!value)}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+          <FieldHelp>{t("rules.postInjection.maxAutoResumeDownloadDescription")}</FieldHelp>
+        </div>
+        <Input
+          id="global-auto-resume-max-download"
+          type="number"
+          min="0"
+          step="1"
+          value={autoResumeMaxDownloadMb}
+          onChange={event => onAutoResumeMaxDownloadMbChange(parseNonNegativeInt(event.target.value))}
+        />
+      </div>
+    </div>
+  )
+}
+
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
@@ -1128,6 +1179,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         categoryMappingRules: settings.categoryMappingRules ?? [],
         autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
+        pooledPartialCompletionEnabled: settings.pooledPartialCompletionEnabled ?? false,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1233,6 +1285,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       findIndividualEpisodes: settings.findIndividualEpisodes,
       categoryMappingRules: settings.categoryMappingRules ?? [],
       autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
+      pooledPartialCompletionEnabled: settings.pooledPartialCompletionEnabled ?? false,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1278,7 +1331,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       categoryMappingRules: globalSource.categoryMappingRules,
-      autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
+      ...buildPooledCompletionPatch(globalSource.pooledPartialCompletionEnabled, globalSource.autoResumeMaxDownloadMb),
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
       categoryAffixMode: globalSource.categoryAffixMode,
@@ -3453,23 +3506,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   </div>
                 </div>
 
-                <div className="space-y-2 pt-3 border-t border-border/50">
-                  <div className="flex items-center gap-1.5">
-                    <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
-                    <FieldHelp>{t("rules.postInjection.maxAutoResumeDownloadDescription")}</FieldHelp>
-                  </div>
-                  <Input
-                    id="global-auto-resume-max-download"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={globalSettings.autoResumeMaxDownloadMb}
-                    onChange={event => setGlobalSettings(prev => ({
-                      ...prev,
-                      autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value),
-                    }))}
-                  />
-                </div>
+                <PooledCompletionSetting
+                  checked={globalSettings.pooledPartialCompletionEnabled}
+                  autoResumeMaxDownloadMb={globalSettings.autoResumeMaxDownloadMb}
+                  onCheckedChange={pooledPartialCompletionEnabled => setGlobalSettings(prev => ({ ...prev, pooledPartialCompletionEnabled }))}
+                  onAutoResumeMaxDownloadMbChange={autoResumeMaxDownloadMb => setGlobalSettings(prev => ({ ...prev, autoResumeMaxDownloadMb }))}
+                />
 
                 <div className="space-y-2 pt-3 border-t border-border/50">
                   <Label htmlFor="global-external-program">{t("rules.postInjection.externalProgram")}</Label>

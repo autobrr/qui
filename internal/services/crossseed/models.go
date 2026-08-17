@@ -78,6 +78,9 @@ type CrossSeedRequest struct {
 	// was compared with the selected search result.
 	SearchSourceInstanceID int    `json:"-"`
 	SearchSourceHash       string `json:"-"`
+	// ReportedSeeders is the indexer-reported count captured at admission.
+	// Direct add paths leave it at zero.
+	ReportedSeeders int `json:"-"`
 	// SearchStrictMismatchReason and SearchRelaxedDifferences preserve the exact
 	// metadata relaxation admitted during search.
 	SearchStrictMismatchReason string   `json:"-"`
