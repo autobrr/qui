@@ -115,6 +115,74 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 	}, response.Values)
 }
 
+// TestGetTorrentField_MagnetURIExplicitHashes pins magnet values through the
+// explicit-hash field path. List payloads no longer carry magnet_uri (issue
+// #2328), so this endpoint is the only source for the copy-magnet action.
+func TestGetTorrentField_MagnetURIExplicitHashes(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa"},
+			{Name: "Beta", Hash: "bbb", MagnetURI: "magnet:?xt=urn:btih:bbb"},
+			{Name: "Gamma", Hash: "ccc", MagnetURI: "magnet:?xt=urn:btih:ccc"},
+		},
+	})
+
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
+		"field":  "magnet_uri",
+		"hashes": []string{"aaa", "ccc"},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetTorrentField(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var response quiqbt.TorrentFieldResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.ElementsMatch(t, []string{
+		"magnet:?xt=urn:btih:aaa",
+		"magnet:?xt=urn:btih:ccc",
+	}, response.Values)
+}
+
+// TestGetTorrentField_MagnetURICrossInstanceFilterScope pins magnet values
+// through the cross-instance filter-scope field path, the third MagnetURI
+// read site (issue #2328).
+func TestGetTorrentField_MagnetURICrossInstanceFilterScope(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa"},
+		},
+		"beta": {
+			{Name: "Beta", Hash: "bbb", MagnetURI: "magnet:?xt=urn:btih:bbb"},
+			{Name: "Gamma", Hash: "ccc"},
+		},
+	})
+
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
+		"field":       "magnet_uri",
+		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetTorrentField(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var response quiqbt.TorrentFieldResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.ElementsMatch(t, []string{
+		"magnet:?xt=urn:btih:aaa",
+		"magnet:?xt=urn:btih:bbb",
+	}, response.Values)
+}
+
 func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
 	handler, release := createStaleCrossInstanceReadHarness(t)
 	defer release()

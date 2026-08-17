@@ -424,7 +424,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -482,7 +482,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				continue
 			}
 
-			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
+			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
 			}
