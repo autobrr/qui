@@ -1018,7 +1018,20 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cpIndex := buildContentPathIndex(torrents)
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode, scoreByHash, cpIndex)
+		return s.previewDeleteIncludeCrossSeeds(
+			rule,
+			torrents,
+			evalCtx,
+			hardlinkIndex,
+			cfg.limit,
+			cfg.offset,
+			eligibleMode,
+			scoreByHash,
+			cpIndex,
+			func(hashes []string) (map[string]qbt.TorrentFiles, error) {
+				return s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+			},
+		)
 	}
 
 	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash, cpIndex)
@@ -1304,19 +1317,19 @@ func (s *Service) previewDeleteStandard(
 }
 
 // crossSeedExpansionState tracks state during cross-seed preview expansion.
+type torrentFilesFetcher func(hashes []string) (map[string]qbt.TorrentFiles, error)
+
 type crossSeedExpansionState struct {
-	expandedSet           map[string]struct{}
-	crossSeedSet          map[string]struct{}
-	hardlinkCopySet       map[string]struct{}
-	processedContentPaths map[string]struct{}
+	expandedSet     map[string]struct{}
+	crossSeedSet    map[string]struct{}
+	hardlinkCopySet map[string]struct{}
 }
 
 func newCrossSeedExpansionState() *crossSeedExpansionState {
 	return &crossSeedExpansionState{
-		expandedSet:           make(map[string]struct{}),
-		crossSeedSet:          make(map[string]struct{}),
-		hardlinkCopySet:       make(map[string]struct{}),
-		processedContentPaths: make(map[string]struct{}),
+		expandedSet:     make(map[string]struct{}),
+		crossSeedSet:    make(map[string]struct{}),
+		hardlinkCopySet: make(map[string]struct{}),
 	}
 }
 
@@ -1324,17 +1337,6 @@ func newCrossSeedExpansionState() *crossSeedExpansionState {
 func (s *crossSeedExpansionState) isAlreadyExpanded(hash string) bool {
 	_, included := s.expandedSet[hash]
 	return included
-}
-
-// isContentPathProcessed returns true if the content path was already processed.
-func (s *crossSeedExpansionState) isContentPathProcessed(contentPath string) bool {
-	_, processed := s.processedContentPaths[contentPath]
-	return processed
-}
-
-// markContentPathProcessed marks a content path as processed.
-func (s *crossSeedExpansionState) markContentPathProcessed(contentPath string) {
-	s.processedContentPaths[contentPath] = struct{}{}
 }
 
 // addHardlinkCopies adds hardlink copies to the expanded set.
@@ -1356,8 +1358,6 @@ func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex
 // When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
 // If IncludeHardlinks is enabled, also expands with hardlink copies (same physical files).
 func (s *Service) previewDeleteIncludeCrossSeeds(
-	ctx context.Context,
-	instanceID int,
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -1366,6 +1366,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	eligibleMode bool,
 	scoreByHash map[string]float64,
 	cpIndex contentPathIndex,
+	fetchFiles torrentFilesFetcher,
 ) (*PreviewResult, error) {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 		return &PreviewResult{Examples: make([]PreviewTorrent, 0)}, nil
@@ -1387,15 +1388,9 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		contentPath := normalizePath(torrent.ContentPath)
-		if state.isContentPathProcessed(contentPath) {
-			continue
-		}
-
 		crossSeedGroup := findCrossSeedGroup(*torrent, cpIndex)
-		state.markContentPathProcessed(contentPath)
 
-		if !s.expandGroupForPreview(ctx, instanceID, torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet) {
+		if !expandGroupForPreview(torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet, fetchFiles) {
 			continue
 		}
 
@@ -1478,14 +1473,13 @@ func (s *Service) buildCrossSeedPreviewResult(
 
 // expandGroupForPreview expands a trigger torrent with its verified cross-seed group.
 // Returns true if the group was added, false if the whole group must be skipped.
-func (s *Service) expandGroupForPreview(
-	ctx context.Context,
-	instanceID int,
+func expandGroupForPreview(
 	trigger *qbt.Torrent,
 	crossSeedGroup []qbt.Torrent,
 	expandedSet, crossSeedSet map[string]struct{},
+	fetchFiles torrentFilesFetcher,
 ) bool {
-	verifiedHashes, ok := s.resolveCrossSeedGroup(ctx, instanceID, *trigger, crossSeedGroup, expandedSet)
+	verifiedHashes, ok := crossSeedGroupMembers(*trigger, crossSeedGroup, expandedSet, fetchFiles)
 	if !ok {
 		return false
 	}

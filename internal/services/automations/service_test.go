@@ -1301,6 +1301,60 @@ func TestIsContentPathAmbiguous(t *testing.T) {
 // crossSeedGroupMembers tests
 // -----------------------------------------------------------------------------
 
+func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{syncManager: sm}
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "first",
+			Tags:        "delete-me",
+			SavePath:    "/downloads",
+			ContentPath: "/downloads/shared",
+		},
+		{
+			Hash:        "second",
+			Tags:        "delete-me",
+			SavePath:    "/downloads",
+			ContentPath: "/downloads/shared",
+		},
+	}
+	rule := &models.Automation{
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFilesIncludeCrossSeeds,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "delete-me",
+				},
+			},
+		},
+	}
+	filesByHash := map[string]qbt.TorrentFiles{
+		"first":  {{Name: "shared/first.mkv", Size: 1_000}},
+		"second": {{Name: "shared/second.mkv", Size: 1_000}},
+	}
+
+	result, err := s.previewDeleteIncludeCrossSeeds(
+		rule,
+		torrents,
+		&EvalContext{},
+		nil,
+		10,
+		0,
+		true,
+		nil,
+		buildContentPathIndex(torrents),
+		func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.TotalMatches)
+	assert.Zero(t, result.CrossSeedCount)
+}
+
 func TestCrossSeedGroupMembers(t *testing.T) {
 	// Two unrelated packs whose payload folder is a bare "Season 2", so qBittorrent
 	// reports the same content path for both while they hold different files.
