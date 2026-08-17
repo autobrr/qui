@@ -169,6 +169,7 @@ func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, pool.Members[0].Status)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, pool.Members[0].Files[0].Status)
+	require.Equal(t, "synthetic verification failure", pool.Members[0].Files[0].LastError)
 }
 
 func TestPartialPoolPropagationPersistsPauseIntent(t *testing.T) {
