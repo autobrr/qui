@@ -244,6 +244,8 @@ func TestSelectContentDetectionRelease_DiscLayout(t *testing.T) {
 			{Name: "Signal Voyagers S02/VIDEO_TS/VTS_01_1.VOB", Size: 1},
 			{Name: "Signal Voyagers S02/extras/misleading.mp3", Size: 10_000},
 		}
+		require.Equal(t, "tv", DetermineContentTypeWithFiles(source, files).ContentType,
+			"disc classification must normalize explicit TV metadata without relying on the selector")
 
 		contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(source.Title, source, files)
 
