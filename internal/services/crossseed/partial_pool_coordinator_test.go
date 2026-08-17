@@ -112,6 +112,42 @@ func TestPartialPoolPostRecheckVerdictModeSafety(t *testing.T) {
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, status)
 	status, _ = partialPoolPostRecheckVerdict(reflinkMember, reflinkSnapshot, 10, normalizerForService(nil))
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, status)
+
+	discReflinkMember := partialPoolTestMember(3, 1, "disc-reflink", 0, partialPoolTestFile{"Synthetic.Release/BDMV/STREAM/00001.m2ts", 100})
+	discReflinkMember.Mode = models.CrossSeedPartialPoolModeReflink
+	discReflinkMember.Files[0].MaterializedAtAdd = true
+	discReflinkMember.Files[0].Status = models.CrossSeedPartialPoolFileStatusPresent
+	discReflinkSnapshot := partialPoolTestSnapshot(discReflinkMember, 25)
+	discReflinkSnapshot.files[0].Progress = 0.75
+	discReflinkSnapshot.fileByIndex[0] = discReflinkSnapshot.files[0]
+
+	status, _ = partialPoolPostRecheckVerdict(discReflinkMember, discReflinkSnapshot, 50, normalizerForService(nil))
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, status, "disc reflinks may repair missing bytes within budget")
+	status, _ = partialPoolPostRecheckVerdict(discReflinkMember, discReflinkSnapshot, 10, normalizerForService(nil))
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, status)
+}
+
+func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	pool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+		instanceID,
+		"source",
+		models.CrossSeedPartialPoolModeHardlink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	))
+	require.NoError(t, err)
+
+	service := &Service{automationStore: store}
+	observed := service.observePartialPoolMembers(t.Context(), pool, map[int]partialPoolTorrentInventory{
+		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
+	})
+	require.Empty(t, observed)
+
+	_, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.Error(t, err, "the last missing member removes its empty pool")
 }
 
 func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {

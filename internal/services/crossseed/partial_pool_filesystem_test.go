@@ -143,6 +143,34 @@ func TestPartialPoolReflinkVerificationFailureKeepsTargetForRepair(t *testing.T)
 	require.FileExists(t, targetPath)
 }
 
+func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+		instanceID,
+		"source",
+		models.CrossSeedPartialPoolModeHardlink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusRechecking,
+		models.CrossSeedPartialPoolFileStatusVerifying,
+		nil,
+	))
+	require.NoError(t, err)
+
+	service := &Service{
+		automationStore: store,
+		partialPoolCreated: map[int64]*hardlinktree.Created{
+			member.Files[0].ID: {},
+		},
+	}
+	service.markPartialPoolPropagationManual(t.Context(), member, member.Files[0], "synthetic verification failure")
+	require.NotContains(t, service.partialPoolCreated, member.Files[0].ID)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, pool.Members[0].Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, pool.Members[0].Files[0].Status)
+}
+
 func TestPartialPoolPropagationPersistsPauseIntent(t *testing.T) {
 	ctx := context.Background()
 	store, instanceID := newPartialPoolFilesystemStore(t)

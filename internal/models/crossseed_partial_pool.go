@@ -327,8 +327,14 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 
 	seenIndexes := make(map[int]struct{}, len(registration.Files))
 	for _, file := range registration.Files {
-		if file.FileIndex < 0 || file.RelativePath == "" || file.SizeBytes < 0 {
-			return nil, nil, fmt.Errorf("invalid partial pool file index %d", file.FileIndex)
+		if file.FileIndex < 0 {
+			return nil, nil, fmt.Errorf("partial pool file index must be non-negative: %d", file.FileIndex)
+		}
+		if file.RelativePath == "" {
+			return nil, nil, errors.New("partial pool file relative path is required")
+		}
+		if file.SizeBytes < 0 {
+			return nil, nil, fmt.Errorf("partial pool file size must be non-negative: %d", file.SizeBytes)
 		}
 		if _, exists := seenIndexes[file.FileIndex]; exists {
 			return nil, nil, fmt.Errorf("duplicate partial pool file index %d", file.FileIndex)

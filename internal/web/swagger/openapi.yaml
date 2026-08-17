@@ -6853,7 +6853,6 @@ components:
           description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
         pooledPartialCompletionEnabled:
           type: boolean
-          default: false
           description: Coordinate one downloader per related pool for partial hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean

@@ -1484,6 +1484,7 @@ func (s *Service) partialPoolMemberModeEnabled(ctx context.Context, member *mode
 
 func (s *Service) markPartialPoolPropagationManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, file *models.CrossSeedPartialPoolMemberFile, reason string) {
 	s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason})
+	delete(s.partialPoolCreated, file.ID)
 	s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
 	member.Status = models.CrossSeedPartialPoolMemberStatusManual
 }

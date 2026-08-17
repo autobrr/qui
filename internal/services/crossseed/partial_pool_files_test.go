@@ -4,6 +4,8 @@
 package crossseed
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -129,4 +131,22 @@ func TestPartialPoolFilesPairPolicy(t *testing.T) {
 	uniqueTarget := &models.CrossSeedPartialPoolMember{Files: []*models.CrossSeedPartialPoolMemberFile{{RelativePath: "Other/unique.nfo", SizeBytes: 5}}}
 	require.True(t, partialPoolFilesPair(uniqueSource, uniqueTarget, uniqueSource.Files[0], uniqueTarget.Files[0]), "unique basename")
 	require.False(t, partialPoolFilesPair(uniqueSource, uniqueTarget, &models.CrossSeedPartialPoolMemberFile{RelativePath: "zero", SizeBytes: 0}, &models.CrossSeedPartialPoolMemberFile{RelativePath: "zero", SizeBytes: 0}), "zero length")
+}
+
+func TestValidatePartialPoolPathInsideRootRejectsExistingSymlinkTarget(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	target := filepath.Join(outside, "video.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("synthetic payload"), 0o600))
+
+	linkDir := filepath.Join(root, "Synthetic.Release")
+	require.NoError(t, os.MkdirAll(linkDir, 0o755))
+	link := filepath.Join(linkDir, "video.mkv")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	err := validatePartialPoolPathInsideRoot(root, link)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "escapes through symlink or reparse point")
 }

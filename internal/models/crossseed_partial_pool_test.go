@@ -5,6 +5,7 @@ package models_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -29,7 +30,8 @@ func newPartialPoolTestStore(t *testing.T) (*models.CrossSeedStore, *models.Inst
 	return store, instanceStore, first.ID, second.ID
 }
 
-func partialPoolRegistration(instanceID, sourceInstanceID int, torrentKey, v1, v2, sourceKey string) models.CrossSeedPartialPoolRegistration {
+func partialPoolRegistration(t *testing.T, instanceID, sourceInstanceID int, torrentKey, v1, v2, sourceKey string) models.CrossSeedPartialPoolRegistration {
+	t.Helper()
 	return models.CrossSeedPartialPoolRegistration{
 		SourceInstanceID:  sourceInstanceID,
 		SourceTorrentKey:  sourceKey,
@@ -43,7 +45,7 @@ func partialPoolRegistration(instanceID, sourceInstanceID int, torrentKey, v1, v
 			InfoHashV1:      v1,
 			InfoHashV2:      v2,
 			Mode:            models.CrossSeedPartialPoolModeHardlink,
-			RootPath:        `C:\cross-seeds\pool`,
+			RootPath:        filepath.Join(t.TempDir(), "pool"),
 			ReportedSeeders: 12,
 			Status:          models.CrossSeedPartialPoolMemberStatusVerifying,
 			MissingBytes:    200,
@@ -59,7 +61,7 @@ func TestCrossSeedPartialPoolRegistrationIsAliasIdempotent(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	ctx := context.Background()
 
-	registration := partialPoolRegistration(secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE")
+	registration := partialPoolRegistration(t, secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE")
 	pool, member, err := store.RegisterPartialPoolMember(ctx, registration)
 	require.NoError(t, err)
 	require.NotNil(t, member)
@@ -82,10 +84,10 @@ func TestCrossSeedPartialPoolInheritsOriginalSource(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	ctx := context.Background()
 
-	firstPool, firstMember, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(firstID, firstID, "member-one", "member-one", "", "original-source"))
+	firstPool, firstMember, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, firstID, "member-one", "member-one", "", "original-source"))
 	require.NoError(t, err)
 
-	registration := partialPoolRegistration(secondID, secondID, "member-two", "member-two", "", "new-source")
+	registration := partialPoolRegistration(t, secondID, secondID, "member-two", "member-two", "", "new-source")
 	registration.SourceInstanceID = firstID
 	registration.SourceTorrentKey = "member-one"
 	registration.SourceAliases = []string{"MEMBER-ONE"}
@@ -104,7 +106,7 @@ func TestCrossSeedPartialPoolInheritsOriginalSource(t *testing.T) {
 func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	ctx := context.Background()
-	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(secondID, firstID, "member", "member-v1", "member-v2", "source"))
+	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member-v1", "member-v2", "source"))
 	require.NoError(t, err)
 
 	zero := int64(0)
@@ -127,7 +129,7 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	require.Equal(t, int64(321), *reloaded.Members[0].LastDownloadedBytes)
 	require.WithinDuration(t, now, *reloaded.Members[0].LastProgressAt, time.Second)
 
-	_, other, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(firstID, secondID, "other", "other", "", "member"))
+	_, other, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, secondID, "other", "other", "", "member"))
 	require.NoError(t, err)
 	changed, err = store.TransitionPartialPoolMember(ctx, other.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 	require.NoError(t, err)
@@ -163,9 +165,9 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 func TestCrossSeedPartialPoolRemovalPreservesOtherMembers(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	ctx := context.Background()
-	pool, firstMember, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(firstID, firstID, "one", "one", "", "source"))
+	pool, firstMember, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, firstID, "one", "one", "", "source"))
 	require.NoError(t, err)
-	secondRegistration := partialPoolRegistration(secondID, firstID, "two", "two", "", "one")
+	secondRegistration := partialPoolRegistration(t, secondID, firstID, "two", "two", "", "one")
 	secondRegistration.SourceAliases = []string{"one"}
 	_, secondMember, err := store.RegisterPartialPoolMember(ctx, secondRegistration)
 	require.NoError(t, err)
@@ -183,7 +185,7 @@ func TestCrossSeedPartialPoolRemovalPreservesOtherMembers(t *testing.T) {
 
 func TestCrossSeedPartialPoolRegistrationRollsBackAtomically(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
-	registration := partialPoolRegistration(secondID, firstID, "member", "member", "", "source")
+	registration := partialPoolRegistration(t, secondID, firstID, "member", "member", "", "source")
 	registration.Files[1].FileIndex = registration.Files[0].FileIndex
 
 	_, _, err := store.RegisterPartialPoolMember(t.Context(), registration)
@@ -193,12 +195,47 @@ func TestCrossSeedPartialPoolRegistrationRollsBackAtomically(t *testing.T) {
 	require.Empty(t, pools)
 }
 
+func TestCrossSeedPartialPoolRegistrationReportsInvalidFileField(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*models.CrossSeedPartialPoolMemberFile)
+		message string
+	}{
+		{
+			name:    "negative index",
+			mutate:  func(file *models.CrossSeedPartialPoolMemberFile) { file.FileIndex = -1 },
+			message: "partial pool file index must be non-negative: -1",
+		},
+		{
+			name:    "empty path",
+			mutate:  func(file *models.CrossSeedPartialPoolMemberFile) { file.RelativePath = "" },
+			message: "partial pool file relative path is required",
+		},
+		{
+			name:    "negative size",
+			mutate:  func(file *models.CrossSeedPartialPoolMemberFile) { file.SizeBytes = -1 },
+			message: "partial pool file size must be non-negative: -1",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store, _, firstID, secondID := newPartialPoolTestStore(t)
+			registration := partialPoolRegistration(t, secondID, firstID, "member", "member", "", "source")
+			test.mutate(&registration.Files[0])
+
+			_, _, err := store.RegisterPartialPoolMember(t.Context(), registration)
+			require.EqualError(t, err, test.message)
+		})
+	}
+}
+
 func TestCrossSeedPartialPoolInstanceCascadePreservesOtherMembers(t *testing.T) {
 	store, instanceStore, firstID, secondID := newPartialPoolTestStore(t)
 	ctx := t.Context()
-	pool, _, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(firstID, firstID, "one", "one", "", "source"))
+	pool, _, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, firstID, "one", "one", "", "source"))
 	require.NoError(t, err)
-	registration := partialPoolRegistration(secondID, firstID, "two", "two", "", "one")
+	registration := partialPoolRegistration(t, secondID, firstID, "two", "two", "", "one")
 	registration.SourceAliases = []string{"one"}
 	_, secondMember, err := store.RegisterPartialPoolMember(ctx, registration)
 	require.NoError(t, err)

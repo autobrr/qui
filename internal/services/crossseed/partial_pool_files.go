@@ -259,6 +259,8 @@ func partialPoolLocalPath(member *models.CrossSeedPartialPoolMember, file *model
 	return target, nil
 }
 
+// validatePartialPoolPathInsideRoot rejects lexical and symlink/reparse-point
+// escapes for existing and not-yet-created targets.
 func validatePartialPoolPathInsideRoot(root, target string) error {
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
@@ -278,6 +280,16 @@ func validatePartialPoolPathInsideRoot(root, target string) error {
 			return fmt.Errorf("resolve partial pool root: %w", err)
 		}
 		resolvedRoot = rootAbs
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(targetAbs)
+	if err == nil {
+		if err := pathInside(resolvedRoot, resolvedTarget); err != nil {
+			return fmt.Errorf("partial pool path escapes through symlink or reparse point: %w", err)
+		}
+		return nil
+	}
+	if !os.IsNotExist(err) {
+		return fmt.Errorf("resolve partial pool target: %w", err)
 	}
 	existing := filepath.Dir(targetAbs)
 	var suffix []string
@@ -303,7 +315,7 @@ func validatePartialPoolPathInsideRoot(root, target string) error {
 	for i := len(suffix) - 1; i >= 0; i-- {
 		resolvedExisting = filepath.Join(resolvedExisting, suffix[i])
 	}
-	resolvedTarget := filepath.Join(resolvedExisting, filepath.Base(targetAbs))
+	resolvedTarget = filepath.Join(resolvedExisting, filepath.Base(targetAbs))
 	if err := pathInside(resolvedRoot, resolvedTarget); err != nil {
 		return fmt.Errorf("partial pool path escapes through symlink or reparse point: %w", err)
 	}
