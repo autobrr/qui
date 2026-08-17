@@ -298,12 +298,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		// SSE responses must never be compressed. The compressor's writer buffers
-		// until MinSize (delaying event flushes) and lacks Unwrap(), which prevents
-		// the stream handler from clearing the server WriteTimeout via
-		// http.NewResponseController. Bypass compression for event-stream requests
-		// (EventSource always sends Accept: text/event-stream), covering /stream and
-		// the RSS /events endpoint without coupling to specific paths.
+		// SSE responses must never go through this compressor. Its writer buffers
+		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
+		// cuts the stream handler's http.NewResponseController off from the socket
+		// and silently disables the per-write deadline that evicts stalled clients.
+		// Bypass compression for event-stream requests (EventSource always sends
+		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
+		// without coupling to specific paths. /api/stream compresses itself instead:
+		// see gzipSessionWriter in internal/api/sse.
 		r.Use(func(next http.Handler) http.Handler {
 			compressed := compressor(next)
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
