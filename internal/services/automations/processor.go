@@ -890,6 +890,11 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 		return
 	}
 
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
+		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, cpIndex)
+		return
+	}
+
 	// First, check hardlink signature dedupe (if enabled and using include-cross-seeds mode).
 	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
 	// whole hardlink group via expansion; this avoids affecting other delete modes.
@@ -923,6 +928,38 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	// This is a new torrent, so we add the file size to the cumulative space to clear
 	evalCtx.SpaceToClear += torrent.Size
 	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
+}
+
+func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, cpIndex contentPathIndex) {
+	if _, counted := evalCtx.CrossSeedHashesToClear[torrent.Hash]; counted {
+		return
+	}
+
+	verifiedHashes, ok := crossSeedGroupMembers(
+		torrent,
+		findCrossSeedGroup(torrent, cpIndex),
+		evalCtx.CrossSeedHashesToClear,
+		func(_ []string) (map[string]qbt.TorrentFiles, error) {
+			return evalCtx.CrossSeedFilesByHash, nil
+		},
+	)
+	if !ok {
+		return
+	}
+	for _, hash := range verifiedHashes {
+		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
+	}
+
+	if evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		if signature := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; signature != "" {
+			if _, counted := evalCtx.HardlinkSignaturesToClear[signature]; counted {
+				return
+			}
+			evalCtx.HardlinkSignaturesToClear[signature] = struct{}{}
+		}
+	}
+
+	evalCtx.SpaceToClear += torrent.Size
 }
 
 // CalculateScore computes the weighted score for a torrent based on configuration.

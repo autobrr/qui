@@ -959,6 +959,9 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 	}
 	evalCtx.FreeSpace = freeSpace
 	evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
+	if ruleUsesIncludeCrossSeedsFreeSpace(rule) {
+		evalCtx.CrossSeedHashesToClear = make(map[string]struct{})
+	}
 	return nil
 }
 
@@ -1018,6 +1021,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	cpIndex := buildContentPathIndex(torrents)
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
+		s.loadCrossSeedFiles(ctx, instanceID, cpIndex, evalCtx)
 		return s.previewDeleteIncludeCrossSeeds(
 			rule,
 			torrents,
@@ -1028,9 +1032,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 			eligibleMode,
 			scoreByHash,
 			cpIndex,
-			func(hashes []string) (map[string]qbt.TorrentFiles, error) {
-				return s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-			},
+			cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
 		)
 	}
 
@@ -2115,12 +2117,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 			ruleKey := GetFreeSpaceRuleKey(r)
 			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
-			evalCtx.FreeSpaceStates[ruleKey] = &FreeSpaceSourceState{
+			state := &FreeSpaceSourceState{
 				FreeSpace:                 freeSpaceBySourceKey[sourceKey],
 				SpaceToClear:              0,
 				FilesToClear:              make(map[crossSeedKey]struct{}),
 				HardlinkSignaturesToClear: make(map[string]struct{}),
 			}
+			if ruleUsesIncludeCrossSeedsFreeSpace(r) {
+				state.CrossSeedHashesToClear = make(map[string]struct{})
+			}
+			evalCtx.FreeSpaceStates[ruleKey] = state
 		}
 
 		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
@@ -2128,6 +2134,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
 			evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
 		}
+	}
+
+	if rulesUseIncludeCrossSeedsDelete(eligibleRules) {
+		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
 	// Load tracker display names when needed by tagging OR by TRACKER conditions.
@@ -2298,7 +2308,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				// A shared ContentPath is not proof of shared data, so every member is
 				// verified against the trigger's file list before it is deleted.
 				crossSeedGroup := findCrossSeedGroup(torrent, cpIndex)
-				verifiedHashes, ok := s.resolveCrossSeedGroup(ctx, instanceID, torrent, crossSeedGroup, includedCrossSeedHashes)
+				verifiedHashes, ok := crossSeedGroupMembers(
+					torrent,
+					crossSeedGroup,
+					includedCrossSeedHashes,
+					cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
+				)
 				if !ok {
 					// Skip this torrent entirely - don't delete trigger or cross-seeds
 					continue
@@ -4547,6 +4562,40 @@ func buildContentPathIndex(torrents []qbt.Torrent) contentPathIndex {
 	return idx
 }
 
+func sharedContentPathHashes(idx contentPathIndex) []string {
+	var hashes []string
+	for _, group := range idx {
+		if len(group) < 2 {
+			continue
+		}
+		for _, torrent := range group {
+			hashes = append(hashes, torrent.Hash)
+		}
+	}
+	slices.Sort(hashes)
+	return hashes
+}
+
+func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, cpIndex contentPathIndex, evalCtx *EvalContext) {
+	hashes := sharedContentPathHashes(cpIndex)
+	if len(hashes) == 0 {
+		return
+	}
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	evalCtx.CrossSeedFilesByHash = filesByHash
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: some cross-seed files could not be loaded")
+	}
+}
+
+func cachedTorrentFilesFetcher(filesByHash map[string]qbt.TorrentFiles) torrentFilesFetcher {
+	return func(_ []string) (map[string]qbt.TorrentFiles, error) {
+		return filesByHash, nil
+	}
+}
+
 // detectCrossSeeds checks if any other torrent shares the same ContentPath,
 // indicating they are cross-seeds sharing the same data files.
 func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
@@ -4700,13 +4749,6 @@ func crossSeedGroupMembers(
 		}
 	}
 	return verified, true
-}
-
-// resolveCrossSeedGroup runs crossSeedGroupMembers against live qBittorrent file lists.
-func (s *Service) resolveCrossSeedGroup(ctx context.Context, instanceID int, trigger qbt.Torrent, group []qbt.Torrent, alreadyIncludedHashes map[string]struct{}) ([]string, bool) {
-	return crossSeedGroupMembers(trigger, group, alreadyIncludedHashes, func(hashes []string) (map[string]qbt.TorrentFiles, error) {
-		return s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-	})
 }
 
 // verifyFileOverlap checks if two torrents share at least minOverlapPercent of their files.
@@ -5033,6 +5075,22 @@ func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
 		}
 	}
 	return false
+}
+
+func ruleUsesIncludeCrossSeedsDelete(rule *models.Automation) bool {
+	if rule == nil || rule.Conditions == nil {
+		return false
+	}
+	deleteAction := rule.Conditions.Delete
+	return deleteAction != nil && deleteAction.Enabled && deleteAction.Mode == DeleteModeWithFilesIncludeCrossSeeds
+}
+
+func ruleUsesIncludeCrossSeedsFreeSpace(rule *models.Automation) bool {
+	return ruleUsesIncludeCrossSeedsDelete(rule) && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace)
+}
+
+func rulesUseIncludeCrossSeedsDelete(rules []*models.Automation) bool {
+	return slices.ContainsFunc(rules, ruleUsesIncludeCrossSeedsDelete)
 }
 
 // buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.

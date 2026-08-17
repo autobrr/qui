@@ -1171,6 +1171,73 @@ func TestProcessTorrents_FreeSpaceConditionWithCrossSeeds(t *testing.T) {
 	require.True(t, hasC, "expected torrent3 to be deleted")
 }
 
+func TestProcessTorrents_IncludeCrossSeedsFreeSpaceProjection(t *testing.T) {
+	const torrentSize = int64(10_000)
+
+	tests := []struct {
+		name        string
+		sharedFiles map[string]qbt.TorrentFiles
+		wantHashes  map[string]struct{}
+	}{
+		{
+			name: "unrelated torrents sharing a content path count separately",
+			sharedFiles: map[string]qbt.TorrentFiles{
+				"a": {{Name: "shared/first.mkv", Size: torrentSize}},
+				"b": {{Name: "shared/second.mkv", Size: torrentSize}},
+			},
+			wantHashes: map[string]struct{}{"a": {}, "b": {}},
+		},
+		{
+			name: "real cross-seeds count shared files once",
+			sharedFiles: map[string]qbt.TorrentFiles{
+				"a": {{Name: "shared/movie.mkv", Size: torrentSize}},
+				"b": {{Name: "shared/movie.mkv", Size: torrentSize}},
+			},
+			wantHashes: map[string]struct{}{"a": {}, "b": {}, "c": {}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{Hash: "a", Name: "first", Size: torrentSize, SavePath: "/data", ContentPath: "/data/shared"},
+				{Hash: "b", Name: "second", Size: torrentSize, SavePath: "/data", ContentPath: "/data/shared"},
+				{Hash: "c", Name: "independent", Size: torrentSize, SavePath: "/data", ContentPath: "/data/other"},
+			}
+			rule := &models.Automation{
+				ID:             1,
+				Enabled:        true,
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						Mode:    DeleteModeWithFilesIncludeCrossSeeds,
+						Condition: &models.RuleCondition{
+							Field:    models.FieldFreeSpace,
+							Operator: models.OperatorLessThan,
+							Value:    "20000",
+						},
+					},
+				},
+			}
+			evalCtx := &EvalContext{
+				FilesToClear:           make(map[crossSeedKey]struct{}),
+				CrossSeedHashesToClear: make(map[string]struct{}),
+				CrossSeedFilesByHash:   tc.sharedFiles,
+			}
+
+			states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+			gotHashes := make(map[string]struct{}, len(states))
+			for hash := range states {
+				gotHashes[hash] = struct{}{}
+			}
+
+			require.Equal(t, tc.wantHashes, gotHashes)
+			require.Equal(t, int64(20_000), evalCtx.SpaceToClear)
+		})
+	}
+}
+
 func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
