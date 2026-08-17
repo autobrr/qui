@@ -218,6 +218,22 @@ func TestGroupSiteFallback_RejectsWithoutCrossFieldEvidence(t *testing.T) {
 	}
 }
 
+func TestGroupSiteFallback_RejectsImpossiblePublicFieldsCheaply(t *testing.T) {
+	svc := newGroupFallbackService()
+	source := namedRelease{release: svc.releaseCache.Parse(fansubBracketPack), rawName: fansubBracketPack}
+	target := namedRelease{release: svc.releaseCache.Parse(otherFansubTagged), rawName: otherFansubTagged}
+
+	var matched bool
+	allocations := testing.AllocsPerRun(100, func() {
+		matched = svc.crossFieldGroupSiteFallback(source, target)
+	})
+
+	require.False(t, matched)
+	// Public Group/Site fields already disprove this pairing. Detailed tag
+	// provenance is reserved for pairs whose public fields can form the rescue.
+	require.Less(t, allocations, 40.0)
+}
+
 // namedRelease can carry enriched fields whose origin is outside the release's
 // own tags. The split Group must still be traceable to Text in either recorded
 // origin; an unexplained value cannot buy an exact-size relaxation.

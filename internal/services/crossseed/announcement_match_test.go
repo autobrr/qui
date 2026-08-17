@@ -199,6 +199,34 @@ func TestClassifyAnnouncementSourceUnknownSizePreflight(t *testing.T) {
 	}
 }
 
+func TestClassifyWebhookAnnouncementSourceUnknownSizeRejectsUnrelatedTitleCheaply(t *testing.T) {
+	const sourceName = "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI"
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: 1_000_000, TotalSize: 1_000_000, Progress: 1}
+	candidateName := "Different.Voyage.S01E05.1080p.WEB-DL.H.264-KIRI"
+	candidate := namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName}
+	ctx := context.Background()
+	policy := announcementMatchPolicy{allowUnknownSize: true}
+
+	var got announcementCandidateDecision
+	controlAllocations := testing.AllocsPerRun(100, func() {
+		svc.classifyWebhookAnnouncementSource(ctx, 1, &source, candidate, source.TotalSize-1, policy)
+	})
+	allocations := testing.AllocsPerRun(100, func() {
+		got = svc.classifyWebhookAnnouncementSource(ctx, 1, &source, candidate, 0, policy)
+	})
+
+	require.False(t, got.decision.Accepted)
+	require.False(t, got.replayable)
+	// Unknown size adds one hard-identity check to the same title rejection.
+	// Collecting every relaxed difference adds substantially more work.
+	require.LessOrEqual(t, allocations, controlAllocations+6)
+}
+
 // TestUnknownSizePreflightDecisionAllowlist catches a future classifier
 // relaxation becoming an unknown-size download recommendation by default.
 func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {

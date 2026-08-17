@@ -218,36 +218,37 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 			return decision
 		}
 	case decision.SizeEvidence.matches():
-		observedDifferences := s.observedReleaseDifferences(input.Source, input.Candidate)
 		// A one-sided CRC is missing evidence in either direction. If equalizing it
 		// makes the ordinary strict matcher pass, preserve that decision without
 		// imposing the fallback-only requirement for a non-empty group identity.
-		checksumOnlyAccepted := checksumOnlyFallback && slices.Contains(observedDifferences, "checksum")
-		fallbackAccepted := checksumOnlyAccepted
 		var relaxedDifferences []string
-		if checksumOnlyAccepted {
+		if checksumOnlyFallback {
 			relaxedDifferences = []string{"checksum"}
-		}
-		rejectReason := mismatchReason
-		if !fallbackAccepted {
-			relaxedDifferences, fallbackAccepted, rejectReason = s.validateExactSizeFallback(
+		} else {
+			if ok, reason := s.validateExactSizeSearchIdentity(input); !ok {
+				decision.RejectReason = reason
+				return decision
+			}
+			observedDifferences := s.observedReleaseDifferences(input.Source, input.Candidate)
+			var fallbackAccepted bool
+			var rejectReason string
+			relaxedDifferences, fallbackAccepted, rejectReason = s.replayRelaxedDifferences(
 				input,
 				mismatchReason,
 				observedDifferences,
 			)
+			if !fallbackAccepted {
+				decision.RejectReason = rejectReason
+				return decision
+			}
 		}
-		if fallbackAccepted {
-			if exactOneSidedChecksum && !slices.Contains(relaxedDifferences, "checksum") {
-				relaxedDifferences = append(relaxedDifferences, "checksum")
-			}
-			class = searchCandidateClassExactSizeFallback
-			decision.RelaxedDifferences = relaxedDifferences
-			if slices.Contains(relaxedDifferences, "group") {
-				decision.GroupFallbackIdentity, _ = s.crossFieldGroupSiteFallbackIdentity(input.Source, input.Candidate)
-			}
-		} else {
-			decision.RejectReason = rejectReason
-			return decision
+		if exactOneSidedChecksum && !slices.Contains(relaxedDifferences, "checksum") {
+			relaxedDifferences = append(relaxedDifferences, "checksum")
+		}
+		class = searchCandidateClassExactSizeFallback
+		decision.RelaxedDifferences = relaxedDifferences
+		if slices.Contains(relaxedDifferences, "group") {
+			decision.GroupFallbackIdentity, _ = s.crossFieldGroupSiteFallbackIdentity(input.Source, input.Candidate)
 		}
 	default:
 		decision.RejectReason = mismatchReason
@@ -821,9 +822,15 @@ func (s *Service) splitGroupSiteMatchesTaggedGroup(split, tagged namedRelease) b
 	// nothing was ever rejected for.
 	splitGroup := normalizer.Normalize(split.release.Group)
 	splitSite := normalizer.Normalize(split.release.Site)
+	taggedGroup := normalizer.Normalize(tagged.release.Group)
+	taggedSite := normalizer.Normalize(tagged.release.Site)
+	if splitGroup == "" || splitSite == "" || splitGroup == splitSite ||
+		taggedGroup != splitSite || taggedSite != "" {
+		return false
+	}
+
 	splitProvenance := s.groupTagProvenance(split)
-	if splitGroup == "" || splitGroup == splitSite ||
-		!splitProvenance.fallbackGroups.contains(splitGroup) ||
+	if !splitProvenance.fallbackGroups.contains(splitGroup) ||
 		splitProvenance.explicitGroups.contains(splitGroup) ||
 		!splitProvenance.explicitGroups.onlyContains(splitSite) {
 		return false
@@ -831,10 +838,6 @@ func (s *Service) splitGroupSiteMatchesTaggedGroup(split, tagged namedRelease) b
 
 	// The tagged side must spell that same site name as a real group tag, and
 	// carry no label of its own to confuse it with.
-	if normalizer.Normalize(tagged.release.Group) != splitSite ||
-		normalizer.Normalize(tagged.release.Site) != "" {
-		return false
-	}
 	taggedProvenance := s.groupTagProvenance(tagged)
 	return taggedProvenance.explicitGroups.contains(splitSite) &&
 		taggedProvenance.explicitGroups.onlyContains(splitSite)
