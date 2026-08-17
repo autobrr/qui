@@ -197,6 +197,55 @@ func TestSelectContentDetectionRelease_MusicNameKeepsEpisodeMarkersFromFiles(t *
 	require.Equal(t, "tv", DetermineContentTypeWithFiles(contentDetectionRelease, files).ContentType)
 }
 
+func TestSelectContentDetectionRelease_DiscLayout(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	const sourceName = "Space Badgers From Pluto (2011)"
+	tests := []struct {
+		name string
+		file string
+	}{
+		{
+			name: "BDMV",
+			file: sourceName + "/BDMV/STREAM/00000.m2ts",
+		},
+		{
+			name: "VIDEO_TS",
+			file: sourceName + "/VIDEO_TS/VTS_01_1.VOB",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := svc.releaseCache.Parse(sourceName)
+			require.Equal(t, rls.Music, source.Type,
+				"fixture only exercises the fix while the torrent name classifies as music")
+
+			files := qbt.TorrentFiles{{Name: tt.file, Size: 1}}
+			contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
+
+			require.False(t, usedFile, "disc layout must bypass largest-file parsing")
+			require.Equal(t, "movie", DetermineContentType(contentDetectionRelease).ContentType)
+			require.NotSame(t, source, contentDetectionRelease, "disc classification must not mutate the cached parse")
+			require.Equal(t, rls.Music, source.Type, "disc classification must not mutate the cached parse")
+		})
+	}
+
+	t.Run("keeps explicit TV structure", func(t *testing.T) {
+		source := &rls.Release{Type: rls.Series, Title: "Signal Voyagers", Series: 2}
+		files := qbt.TorrentFiles{{Name: "Signal Voyagers S02/VIDEO_TS/VTS_01_1.VOB", Size: 1}}
+
+		contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(source.Title, source, files)
+
+		require.False(t, usedFile, "disc layout must bypass largest-file parsing")
+		require.NotSame(t, source, contentDetectionRelease, "disc classification must not mutate the cached parse")
+		require.Equal(t, "tv", DetermineContentType(contentDetectionRelease).ContentType)
+	})
+}
+
 // Regression: parsing the full torrent-relative path invented a group and hard-rejected
 // byte-identical candidates with "group/site mismatch". See selectContentDetectionRelease.
 func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T) {
