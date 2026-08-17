@@ -105,6 +105,35 @@ func TestStreamStaysPlainWithoutGzip(t *testing.T) {
 	}
 }
 
+// TestGzipNegotiationReadsRepeatedHeaderLines guards the Values-not-Get call site:
+// Go keeps repeated Accept-Encoding field lines separate, so Header.Get would read
+// only "br" here and the client would silently lose compression.
+func TestGzipNegotiationReadsRepeatedHeaderLines(t *testing.T) {
+	store, cleanup := newTestInstanceStore(t)
+	defer cleanup()
+
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+	srv := startStreamServer(t, manager)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet,
+		srv.URL+"/stream?streams="+streamsQuery(t, streamPayload(instanceID, "stream-two-headers")), nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Add("Accept-Encoding", "br")
+	req.Header.Add("Accept-Encoding", "gzip")
+
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"),
+		"gzip on a second Accept-Encoding line must still be honoured")
+}
+
 func TestAcceptsGzip(t *testing.T) {
 	tests := []struct {
 		header string

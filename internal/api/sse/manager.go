@@ -819,7 +819,8 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	// Compress the session when the client advertises gzip; the shared middleware
 	// cannot (see gzipSessionWriter).
 	sessionWriter := http.ResponseWriter(sw)
-	if acceptsGzip(r.Header.Get("Accept-Encoding")) {
+	// Values, not Get: Accept-Encoding may arrive as several field lines.
+	if acceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
 		sessionWriter = newGzipSessionWriter(sw)
