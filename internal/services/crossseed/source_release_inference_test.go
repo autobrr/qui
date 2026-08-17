@@ -235,13 +235,14 @@ func TestSelectContentDetectionRelease_DiscLayout(t *testing.T) {
 	}
 
 	t.Run("keeps explicit TV structure", func(t *testing.T) {
-		source := &rls.Release{Type: rls.Series, Title: "Signal Voyagers", Series: 2}
+		source := &rls.Release{Type: rls.Music, Title: "Signal Voyagers", Series: 2}
 		files := qbt.TorrentFiles{{Name: "Signal Voyagers S02/VIDEO_TS/VTS_01_1.VOB", Size: 1}}
 
 		contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(source.Title, source, files)
 
 		require.False(t, usedFile, "disc layout must bypass largest-file parsing")
 		require.NotSame(t, source, contentDetectionRelease, "disc classification must not mutate the cached parse")
+		require.Equal(t, rls.Music, source.Type, "disc classification must not mutate the cached parse")
 		require.Equal(t, "tv", DetermineContentType(contentDetectionRelease).ContentType)
 	})
 }
