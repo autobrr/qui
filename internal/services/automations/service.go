@@ -7,6 +7,7 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path"
@@ -1475,37 +1476,8 @@ func (s *Service) buildCrossSeedPreviewResult(
 	return result
 }
 
-// verifyGroupForPreview validates an ambiguous cross-seed group for preview.
-// Returns (true, hashes) if all verifications pass, (false, nil) if any fail.
-// Safety: if ANY verification fails, the entire group should be skipped.
-func (s *Service) verifyGroupForPreview(
-	ctx context.Context,
-	instanceID int,
-	trigger *qbt.Torrent,
-	crossSeedGroup []qbt.Torrent,
-	alreadyIncluded map[string]struct{},
-) (ok bool, hashes []string) {
-	verifiedHashes := []string{trigger.Hash}
-	for i := range crossSeedGroup {
-		other := &crossSeedGroup[i]
-		if other.Hash == trigger.Hash {
-			continue
-		}
-		if _, exists := alreadyIncluded[other.Hash]; exists {
-			continue
-		}
-		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, *trigger, *other, minFileOverlapPercent)
-		if err != nil || !hasOverlap {
-			// Any failure means skip the entire group
-			return false, nil
-		}
-		verifiedHashes = append(verifiedHashes, other.Hash)
-	}
-	return true, verifiedHashes
-}
-
-// expandGroupForPreview expands a trigger torrent with its cross-seed group for preview.
-// Returns true if group was added, false if skipped (e.g., verification failure).
+// expandGroupForPreview expands a trigger torrent with its verified cross-seed group.
+// Returns true if the group was added, false if the whole group must be skipped.
 func (s *Service) expandGroupForPreview(
 	ctx context.Context,
 	instanceID int,
@@ -1513,32 +1485,8 @@ func (s *Service) expandGroupForPreview(
 	crossSeedGroup []qbt.Torrent,
 	expandedSet, crossSeedSet map[string]struct{},
 ) bool {
-	// No cross-seeds, just add the trigger
-	if len(crossSeedGroup) <= 1 {
-		expandedSet[trigger.Hash] = struct{}{}
-		return true
-	}
-
-	// Ambiguous group requires verification
-	if isContentPathAmbiguous(*trigger) {
-		return s.expandAmbiguousGroup(ctx, instanceID, trigger, crossSeedGroup, expandedSet, crossSeedSet)
-	}
-
-	// Unambiguous group - include all cross-seeds
-	expandUnambiguousCrossSeeds(trigger, crossSeedGroup, expandedSet, crossSeedSet)
-	return true
-}
-
-// expandAmbiguousGroup verifies and expands an ambiguous cross-seed group.
-func (s *Service) expandAmbiguousGroup(
-	ctx context.Context,
-	instanceID int,
-	trigger *qbt.Torrent,
-	crossSeedGroup []qbt.Torrent,
-	expandedSet, crossSeedSet map[string]struct{},
-) bool {
-	valid, verifiedHashes := s.verifyGroupForPreview(ctx, instanceID, trigger, crossSeedGroup, expandedSet)
-	if !valid {
+	verifiedHashes, ok := s.resolveCrossSeedGroup(ctx, instanceID, *trigger, crossSeedGroup, expandedSet)
+	if !ok {
 		return false
 	}
 	for _, h := range verifiedHashes {
@@ -1548,22 +1496,6 @@ func (s *Service) expandAmbiguousGroup(
 		}
 	}
 	return true
-}
-
-// expandUnambiguousCrossSeeds adds all cross-seeds from an unambiguous group.
-func expandUnambiguousCrossSeeds(trigger *qbt.Torrent, crossSeedGroup []qbt.Torrent, expandedSet, crossSeedSet map[string]struct{}) {
-	expandedSet[trigger.Hash] = struct{}{}
-	for i := range crossSeedGroup {
-		other := &crossSeedGroup[i]
-		if other.Hash == trigger.Hash {
-			continue
-		}
-		if _, exists := expandedSet[other.Hash]; exists {
-			continue
-		}
-		expandedSet[other.Hash] = struct{}{}
-		crossSeedSet[other.Hash] = struct{}{}
-	}
 }
 
 // categoryPreviewState tracks state during category preview processing.
@@ -2369,77 +2301,26 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 			switch deleteMode {
 			case DeleteModeWithFilesIncludeCrossSeeds:
-				// Find all cross-seeds sharing the same ContentPath
+				// A shared ContentPath is not proof of shared data, so every member is
+				// verified against the trigger's file list before it is deleted.
 				crossSeedGroup := findCrossSeedGroup(torrent, cpIndex)
-				if len(crossSeedGroup) <= 1 {
-					// No cross-seeds, just delete this torrent
-					hashesToDelete = []string{hash}
-					actualMode = DeleteModeWithFiles
-					logMsg = logMsgRemoveTorrentWithFiles
-					keepingFiles = false
-				} else if isContentPathAmbiguous(torrent) {
-					// ContentPath is ambiguous (equals SavePath), need to verify file overlap for ALL members.
-					// Safety: if ANY verification fails, skip the entire group to avoid leaving broken torrents.
-					verifiedHashes := []string{hash}
-					skipGroup := false
-					for _, other := range crossSeedGroup {
-						if other.Hash == hash {
-							continue
-						}
-						// Skip if already processed in a previous iteration
-						if _, processed := includedCrossSeedHashes[other.Hash]; processed {
-							continue
-						}
-						hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, other, minFileOverlapPercent)
-						if err != nil {
-							log.Warn().Err(err).
-								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
-								Str("hash", hash).Str("otherHash", other.Hash).
-								Msg("automations: skipping entire group due to verification error")
-							skipGroup = true
-							break
-						}
-						if !hasOverlap {
-							log.Warn().
-								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
-								Str("hash", hash).Str("otherHash", other.Hash).
-								Msg("automations: skipping entire group due to low file overlap")
-							skipGroup = true
-							break
-						}
-						verifiedHashes = append(verifiedHashes, other.Hash)
-					}
-					if skipGroup {
-						// Skip this torrent entirely - don't delete trigger or cross-seeds
-						continue
-					}
-					// All verified - mark cross-seeds and proceed
-					for _, h := range verifiedHashes {
-						if h != hash {
-							includedCrossSeedHashes[h] = struct{}{}
-						}
-					}
-					hashesToDelete = verifiedHashes
-					actualMode = DeleteModeWithFiles
-					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
-					keepingFiles = false
-				} else {
-					// ContentPath is unambiguous, include all cross-seeds
-					hashesToDelete = make([]string, 0, len(crossSeedGroup))
-					for _, t := range crossSeedGroup {
-						// Skip if already processed in a previous iteration
-						if _, processed := includedCrossSeedHashes[t.Hash]; processed {
-							continue
-						}
-						hashesToDelete = append(hashesToDelete, t.Hash)
-						if t.Hash != hash {
-							includedCrossSeedHashes[t.Hash] = struct{}{}
-						}
-					}
-					actualMode = DeleteModeWithFiles
-					logMsg = "automations: removing torrent with files (include cross-seeds)"
-					keepingFiles = false
+				verifiedHashes, ok := s.resolveCrossSeedGroup(ctx, instanceID, torrent, crossSeedGroup, includedCrossSeedHashes)
+				if !ok {
+					// Skip this torrent entirely - don't delete trigger or cross-seeds
+					continue
 				}
+				for _, h := range verifiedHashes {
+					if h != hash {
+						includedCrossSeedHashes[h] = struct{}{}
+					}
+				}
+				hashesToDelete = verifiedHashes
+				actualMode = DeleteModeWithFiles
+				logMsg = logMsgRemoveTorrentWithFiles
+				if len(verifiedHashes) > 1 {
+					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
+				}
+				keepingFiles = false
 
 				// Expand with hardlink copies if enabled (O(1) lookup via cached index)
 				if state.deleteIncludeHardlinks && hardlinkIndex != nil {
@@ -4715,10 +4596,101 @@ type fileOverlapKey struct {
 }
 
 // minFileOverlapPercent is the minimum percentage of file overlap required
-// to consider two torrents as sharing the same files when ContentPath is ambiguous.
+// to consider two torrents as sharing the same files.
 // 90% tolerates small differences (extra NFO/sample/metadata files) while preventing
-// accidental grouping of unrelated torrents that happen to share the same SavePath.
+// accidental grouping of unrelated torrents that happen to share the same path.
 const minFileOverlapPercent = 90
+
+// overlapUnknown is returned when the overlap between two file lists cannot be
+// computed, for example when one of the lists is empty or has no bytes.
+const overlapUnknown = -1
+
+// fileOverlapPercent returns how much of the smaller torrent, in bytes, is also
+// present in the other torrent. Files are matched on normalized name plus size.
+// Returns overlapUnknown when the comparison is not possible.
+func fileOverlapPercent(files1, files2 qbt.TorrentFiles) int64 {
+	if len(files1) == 0 || len(files2) == 0 {
+		return overlapUnknown
+	}
+
+	fileSet1 := make(map[fileOverlapKey]struct{}, len(files1))
+	var totalBytes1 int64
+	for _, f := range files1 {
+		fileSet1[fileOverlapKey{name: normalizePath(f.Name), size: f.Size}] = struct{}{}
+		totalBytes1 += f.Size
+	}
+
+	var totalBytes2, matchedBytes int64
+	for _, f := range files2 {
+		totalBytes2 += f.Size
+		if _, exists := fileSet1[fileOverlapKey{name: normalizePath(f.Name), size: f.Size}]; exists {
+			matchedBytes += f.Size
+		}
+	}
+
+	smallerBytes := min(totalBytes1, totalBytes2)
+	if smallerBytes <= 0 {
+		return overlapUnknown
+	}
+	return (matchedBytes * 100) / smallerBytes
+}
+
+// crossSeedGroupMembers returns the members of a shared-ContentPath group that hold the
+// same data as the trigger and are therefore safe to delete with it.
+//
+// A shared ContentPath only proves the torrents write into the same directory: unrelated
+// packs whose payload folder carries the same name (a bare "Season 2" root) all report the
+// same path. Members that share no file are dropped, the trigger is still deleted. Partial
+// overlap or unreadable files abort the group, because the delete would break data another
+// torrent needs.
+func crossSeedGroupMembers(trigger qbt.Torrent, group []qbt.Torrent, skip map[string]struct{}, files func(hashes []string) (map[string]qbt.TorrentFiles, error)) ([]string, bool) {
+	candidates := make([]string, 0, len(group))
+	for _, other := range group {
+		if other.Hash == trigger.Hash {
+			continue
+		}
+		if _, processed := skip[other.Hash]; processed {
+			continue
+		}
+		candidates = append(candidates, other.Hash)
+	}
+	if len(candidates) == 0 {
+		return []string{trigger.Hash}, true
+	}
+
+	filesByHash, err := files(append(candidates, trigger.Hash))
+	if err != nil {
+		log.Warn().Err(err).Str("hash", trigger.Hash).
+			Msg("automations: skipping cross-seed group, could not read its files")
+		return nil, false
+	}
+
+	verified := []string{trigger.Hash}
+	for _, hash := range candidates {
+		percent := fileOverlapPercent(filesByHash[trigger.Hash], filesByHash[hash])
+		switch {
+		case percent >= minFileOverlapPercent:
+			verified = append(verified, hash)
+		case percent == 0:
+			// Same directory, different content: not a cross-seed of the trigger.
+			log.Debug().Str("hash", trigger.Hash).Str("otherHash", hash).
+				Str("contentPath", trigger.ContentPath).
+				Msg("automations: excluding torrent that shares the content path but no files")
+		default:
+			log.Warn().Str("hash", trigger.Hash).Str("otherHash", hash).Int64("overlapPercent", percent).
+				Msg("automations: skipping entire group due to partial file overlap")
+			return nil, false
+		}
+	}
+	return verified, true
+}
+
+// resolveCrossSeedGroup runs crossSeedGroupMembers against live qBittorrent file lists.
+func (s *Service) resolveCrossSeedGroup(ctx context.Context, instanceID int, trigger qbt.Torrent, group []qbt.Torrent, skip map[string]struct{}) ([]string, bool) {
+	return crossSeedGroupMembers(trigger, group, skip, func(hashes []string) (map[string]qbt.TorrentFiles, error) {
+		return s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	})
+}
 
 // verifyFileOverlap checks if two torrents share at least minOverlapPercent of their files.
 // Returns true if verification passes, false if not enough overlap or verification failed.
@@ -4738,48 +4710,14 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 		return false, err
 	}
 
-	files1, ok1 := filesByHash[torrent1.Hash]
-	files2, ok2 := filesByHash[torrent2.Hash]
-	if !ok1 || !ok2 || len(files1) == 0 || len(files2) == 0 {
-		return false, fmt.Errorf("missing file lists for torrents")
-	}
-
-	// Build set of file keys from first torrent and compute total bytes
-	fileSet1 := make(map[fileOverlapKey]struct{}, len(files1))
-	var totalBytes1 int64
-	for _, f := range files1 {
-		key := fileOverlapKey{
-			name: normalizePath(f.Name),
-			size: f.Size,
-		}
-		fileSet1[key] = struct{}{}
-		totalBytes1 += f.Size
-	}
-
-	// Compute total bytes for second torrent and sum matched bytes
-	var totalBytes2, matchedBytes int64
-	for _, f := range files2 {
-		totalBytes2 += f.Size
-		key := fileOverlapKey{
-			name: normalizePath(f.Name),
-			size: f.Size,
-		}
-		if _, exists := fileSet1[key]; exists {
-			matchedBytes += f.Size
-		}
-	}
-
-	// Calculate overlap percentage based on bytes of the smaller torrent
-	smallerBytes := min(totalBytes2, totalBytes1)
-	if smallerBytes == 0 {
-		return false, fmt.Errorf("cannot compute overlap: zero-size torrents")
-	}
-
 	if minOverlapPercent <= 0 {
 		minOverlapPercent = minFileOverlapPercent
 	}
-	overlapPercent := (matchedBytes * 100) / smallerBytes
-	return overlapPercent >= int64(minOverlapPercent), nil
+	percent := fileOverlapPercent(filesByHash[torrent1.Hash], filesByHash[torrent2.Hash])
+	if percent == overlapUnknown {
+		return false, errors.New("cannot compute overlap: missing or zero-size file lists")
+	}
+	return percent >= int64(minOverlapPercent), nil
 }
 
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied

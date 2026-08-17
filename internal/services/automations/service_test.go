@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -1291,6 +1292,121 @@ func TestIsContentPathAmbiguous(t *testing.T) {
 				SavePath:    tc.savePath,
 			}
 			got := isContentPathAmbiguous(torrent)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// crossSeedGroupMembers tests
+// -----------------------------------------------------------------------------
+
+func TestCrossSeedGroupMembers(t *testing.T) {
+	// Two unrelated packs whose payload folder is a bare "Season 2", so qBittorrent
+	// reports the same content path for both while they hold different files.
+	trigger := qbt.Torrent{
+		Hash:        "trigger",
+		Name:        "[Subs] Silver Lantern Chronicle S2 (BD 1080p)",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+	stranger := qbt.Torrent{
+		Hash:        "stranger",
+		Name:        "[Subs] Paper Crane Detective S2 (BD 1080p)",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+	crossSeed := qbt.Torrent{
+		Hash:        "crossseed",
+		Name:        "Silver.Lantern.Chronicle.S02.1080p.BluRay-GRPB",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+
+	// Ten equal episodes, so a swapped file moves the overlap by exactly 10%.
+	episodes := func(title string, shared int) qbt.TorrentFiles {
+		files := make(qbt.TorrentFiles, 0, 10)
+		for i := 1; i <= 10; i++ {
+			name := fmt.Sprintf("Season 2/%s - %02d.mkv", title, i)
+			if i > shared {
+				name = fmt.Sprintf("Season 2/%s - %02d (v2).mkv", title, i)
+			}
+			files = append(files, qbt.TorrentFile{Name: name, Size: 1_000_000_000})
+		}
+		return files
+	}
+	triggerFiles := episodes("Silver Lantern Chronicle", 10)
+	strangerFiles := episodes("Paper Crane Detective", 10)
+	thresholdFiles := episodes("Silver Lantern Chronicle", 9)
+	partialFiles := episodes("Silver Lantern Chronicle", 5)
+
+	tests := []struct {
+		scenario string
+		group    []qbt.Torrent
+		skip     map[string]struct{}
+		files    map[string]qbt.TorrentFiles
+		filesErr error
+		want     []string
+		wantOK   bool
+	}{
+		{
+			scenario: "torrent sharing only the directory is dropped, trigger still deleted",
+			group:    []qbt.Torrent{trigger, stranger},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "stranger": strangerFiles},
+			want:     []string{"trigger"},
+			wantOK:   true,
+		},
+		{
+			scenario: "real cross-seed is deleted with the trigger",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": triggerFiles},
+			want:     []string{"trigger", "crossseed"},
+			wantOK:   true,
+		},
+		{
+			scenario: "cross-seed on the overlap threshold is still deleted",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": thresholdFiles},
+			want:     []string{"trigger", "crossseed"},
+			wantOK:   true,
+		},
+		{
+			scenario: "partial overlap skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": partialFiles},
+			wantOK:   false,
+		},
+		{
+			scenario: "missing file list skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles},
+			wantOK:   false,
+		},
+		{
+			scenario: "fetch error skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			filesErr: assert.AnError,
+			wantOK:   false,
+		},
+		{
+			scenario: "members already queued elsewhere are ignored",
+			group:    []qbt.Torrent{trigger, stranger},
+			skip:     map[string]struct{}{"stranger": {}},
+			files:    map[string]qbt.TorrentFiles{},
+			want:     []string{"trigger"},
+			wantOK:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.scenario, func(t *testing.T) {
+			got, ok := crossSeedGroupMembers(trigger, tc.group, tc.skip, func(_ []string) (map[string]qbt.TorrentFiles, error) {
+				if tc.filesErr != nil {
+					return nil, tc.filesErr
+				}
+				return tc.files, nil
+			})
+			assert.Equal(t, tc.wantOK, ok)
 			assert.Equal(t, tc.want, got)
 		})
 	}
