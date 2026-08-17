@@ -224,11 +224,15 @@ func TestSelectContentDetectionRelease_DiscLayout(t *testing.T) {
 			require.Equal(t, rls.Music, source.Type,
 				"fixture only exercises the fix while the torrent name classifies as music")
 
-			files := qbt.TorrentFiles{{Name: tt.file, Size: 1}}
+			files := qbt.TorrentFiles{
+				{Name: tt.file, Size: 1},
+				{Name: sourceName + "/extras/misleading.mp3", Size: 10_000},
+			}
 			contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
 
 			require.False(t, usedFile, "disc layout must bypass largest-file parsing")
-			require.Equal(t, "movie", DetermineContentType(contentDetectionRelease).ContentType)
+			require.Equal(t, "movie", DetermineContentTypeWithFiles(contentDetectionRelease, files).ContentType,
+				"dominant audio must not override the authoritative disc classification")
 			require.NotSame(t, source, contentDetectionRelease, "disc classification must not mutate the cached parse")
 			require.Equal(t, rls.Music, source.Type, "disc classification must not mutate the cached parse")
 		})
@@ -236,15 +240,43 @@ func TestSelectContentDetectionRelease_DiscLayout(t *testing.T) {
 
 	t.Run("keeps explicit TV structure", func(t *testing.T) {
 		source := &rls.Release{Type: rls.Music, Title: "Signal Voyagers", Series: 2}
-		files := qbt.TorrentFiles{{Name: "Signal Voyagers S02/VIDEO_TS/VTS_01_1.VOB", Size: 1}}
+		files := qbt.TorrentFiles{
+			{Name: "Signal Voyagers S02/VIDEO_TS/VTS_01_1.VOB", Size: 1},
+			{Name: "Signal Voyagers S02/extras/misleading.mp3", Size: 10_000},
+		}
 
 		contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(source.Title, source, files)
 
 		require.False(t, usedFile, "disc layout must bypass largest-file parsing")
 		require.NotSame(t, source, contentDetectionRelease, "disc classification must not mutate the cached parse")
 		require.Equal(t, rls.Music, source.Type, "disc classification must not mutate the cached parse")
-		require.Equal(t, "tv", DetermineContentType(contentDetectionRelease).ContentType)
+		require.Equal(t, "tv", DetermineContentTypeWithFiles(contentDetectionRelease, files).ContentType,
+			"dominant audio must not override explicit TV structure")
 	})
+}
+
+func TestDiscLayoutDominantAudioKeepsTVSearchShape(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	const sourceName = "Signal.Voyagers.S02E03.DVDR"
+	source := &rls.Release{Type: rls.Episode, Title: "Signal Voyagers", Series: 2, Episode: 3}
+	files := qbt.TorrentFiles{
+		{Name: sourceName + "/VIDEO_TS/VTS_01_1.VOB", Size: 1},
+		{Name: sourceName + "/extras/misleading.mp3", Size: 10_000},
+	}
+
+	contentDetectionRelease, usedFile := svc.selectContentDetectionRelease(sourceName, source, files)
+	require.False(t, usedFile)
+
+	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
+	require.Equal(t, "tv", contentInfo.ContentType)
+	searchRelease := svc.selectSourceReleaseForSearch(source, contentDetectionRelease, files, contentInfo)
+	query := BuildTorznabQuery(sourceName, searchRelease, contentInfo.IsMusic)
+	require.NotNil(t, query.Episode)
+	require.Equal(t, 3, *query.Episode)
 }
 
 // Regression: parsing the full torrent-relative path invented a group and hard-rejected
