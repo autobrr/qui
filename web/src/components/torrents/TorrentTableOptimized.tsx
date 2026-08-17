@@ -32,7 +32,7 @@ import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
-import { formatBytes } from "@/lib/utils"
+import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -1838,7 +1838,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         <TooltipTrigger asChild>
                           <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
                             <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
-                            <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
+                            <span className="ml-auto font-medium truncate">{formatBytesOrFallback(effectiveServerState.free_space_on_disk, t("common:status.unknown"))}</span>
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>{t("statusBar.freeSpace")}</TooltipContent>
