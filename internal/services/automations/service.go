@@ -4588,11 +4588,10 @@ func findCrossSeedGroup(target qbt.Torrent, idx contentPathIndex) []qbt.Torrent 
 	return idx[p]
 }
 
-// fileOverlapKey represents a unique file identity for overlap comparison.
-// Uses lowercase normalized path + size to identify matching files.
-type fileOverlapKey struct {
-	name string // normalized lowercase path
-	size int64
+// fileOverlapIndex records the trigger's files by their resolved on-disk path.
+type fileOverlapIndex struct {
+	sizeByPath map[string]int64
+	totalBytes int64
 }
 
 // minFileOverlapPercent is the minimum percentage of file overlap required
@@ -4605,30 +4604,43 @@ const minFileOverlapPercent = 90
 // computed, for example when one of the lists is empty or has no bytes.
 const overlapUnknown = -1
 
-// fileOverlapPercent returns how much of the smaller torrent, in bytes, is also
-// present in the other torrent. Files are matched on normalized name plus size.
-// Returns overlapUnknown when the comparison is not possible.
-func fileOverlapPercent(files1, files2 qbt.TorrentFiles) int64 {
-	if len(files1) == 0 || len(files2) == 0 {
+func resolvedTorrentFilePath(torrent qbt.Torrent, fileName string) string {
+	savePath := normalizePath(torrent.SavePath)
+	relativePath := strings.TrimPrefix(normalizePath(fileName), "/")
+	if savePath == "" {
+		return relativePath
+	}
+	if relativePath == "" {
+		return savePath
+	}
+	return savePath + "/" + relativePath
+}
+
+func buildFileOverlapIndex(torrent qbt.Torrent, files qbt.TorrentFiles) fileOverlapIndex {
+	index := fileOverlapIndex{sizeByPath: make(map[string]int64, len(files))}
+	for _, file := range files {
+		index.sizeByPath[resolvedTorrentFilePath(torrent, file.Name)] = file.Size
+		index.totalBytes += file.Size
+	}
+	return index
+}
+
+// fileOverlapPercent returns how much of the smaller torrent, in bytes, resolves
+// to the same on-disk paths. Returns overlapUnknown when comparison is not possible.
+func fileOverlapPercent(triggerFiles fileOverlapIndex, candidate qbt.Torrent, candidateFiles qbt.TorrentFiles) int64 {
+	if len(triggerFiles.sizeByPath) == 0 || len(candidateFiles) == 0 {
 		return overlapUnknown
 	}
 
-	fileSet1 := make(map[fileOverlapKey]struct{}, len(files1))
-	var totalBytes1 int64
-	for _, f := range files1 {
-		fileSet1[fileOverlapKey{name: normalizePath(f.Name), size: f.Size}] = struct{}{}
-		totalBytes1 += f.Size
-	}
-
-	var totalBytes2, matchedBytes int64
-	for _, f := range files2 {
-		totalBytes2 += f.Size
-		if _, exists := fileSet1[fileOverlapKey{name: normalizePath(f.Name), size: f.Size}]; exists {
-			matchedBytes += f.Size
+	var candidateBytes, matchedBytes int64
+	for _, file := range candidateFiles {
+		candidateBytes += file.Size
+		if triggerSize, exists := triggerFiles.sizeByPath[resolvedTorrentFilePath(candidate, file.Name)]; exists {
+			matchedBytes += min(triggerSize, file.Size)
 		}
 	}
 
-	smallerBytes := min(totalBytes1, totalBytes2)
+	smallerBytes := min(triggerFiles.totalBytes, candidateBytes)
 	if smallerBytes <= 0 {
 		return overlapUnknown
 	}
@@ -4643,41 +4655,52 @@ func fileOverlapPercent(files1, files2 qbt.TorrentFiles) int64 {
 // same path. Members that share no file are dropped, the trigger is still deleted. Partial
 // overlap or unreadable files abort the group, because the delete would break data another
 // torrent needs.
-func crossSeedGroupMembers(trigger qbt.Torrent, group []qbt.Torrent, skip map[string]struct{}, files func(hashes []string) (map[string]qbt.TorrentFiles, error)) ([]string, bool) {
-	candidates := make([]string, 0, len(group))
+func crossSeedGroupMembers(
+	trigger qbt.Torrent,
+	group []qbt.Torrent,
+	alreadyIncludedHashes map[string]struct{},
+	fetchFiles func(hashes []string) (map[string]qbt.TorrentFiles, error),
+) ([]string, bool) {
+	candidates := make([]qbt.Torrent, 0, len(group))
 	for _, other := range group {
 		if other.Hash == trigger.Hash {
 			continue
 		}
-		if _, processed := skip[other.Hash]; processed {
+		if _, processed := alreadyIncludedHashes[other.Hash]; processed {
 			continue
 		}
-		candidates = append(candidates, other.Hash)
+		candidates = append(candidates, other)
 	}
 	if len(candidates) == 0 {
 		return []string{trigger.Hash}, true
 	}
 
-	filesByHash, err := files(append(candidates, trigger.Hash))
+	hashes := make([]string, 0, len(candidates)+1)
+	hashes = append(hashes, trigger.Hash)
+	for _, candidate := range candidates {
+		hashes = append(hashes, candidate.Hash)
+	}
+	filesByHash, err := fetchFiles(hashes)
 	if err != nil {
 		log.Warn().Err(err).Str("hash", trigger.Hash).
 			Msg("automations: skipping cross-seed group, could not read its files")
 		return nil, false
 	}
 
+	triggerFiles := buildFileOverlapIndex(trigger, filesByHash[trigger.Hash])
 	verified := []string{trigger.Hash}
-	for _, hash := range candidates {
-		percent := fileOverlapPercent(filesByHash[trigger.Hash], filesByHash[hash])
+	for _, candidate := range candidates {
+		percent := fileOverlapPercent(triggerFiles, candidate, filesByHash[candidate.Hash])
 		switch {
 		case percent >= minFileOverlapPercent:
-			verified = append(verified, hash)
+			verified = append(verified, candidate.Hash)
 		case percent == 0:
 			// Same directory, different content: not a cross-seed of the trigger.
-			log.Debug().Str("hash", trigger.Hash).Str("otherHash", hash).
+			log.Debug().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).
 				Str("contentPath", trigger.ContentPath).
 				Msg("automations: excluding torrent that shares the content path but no files")
 		default:
-			log.Warn().Str("hash", trigger.Hash).Str("otherHash", hash).Int64("overlapPercent", percent).
+			log.Warn().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).Int64("overlapPercent", percent).
 				Msg("automations: skipping entire group due to partial file overlap")
 			return nil, false
 		}
@@ -4686,8 +4709,8 @@ func crossSeedGroupMembers(trigger qbt.Torrent, group []qbt.Torrent, skip map[st
 }
 
 // resolveCrossSeedGroup runs crossSeedGroupMembers against live qBittorrent file lists.
-func (s *Service) resolveCrossSeedGroup(ctx context.Context, instanceID int, trigger qbt.Torrent, group []qbt.Torrent, skip map[string]struct{}) ([]string, bool) {
-	return crossSeedGroupMembers(trigger, group, skip, func(hashes []string) (map[string]qbt.TorrentFiles, error) {
+func (s *Service) resolveCrossSeedGroup(ctx context.Context, instanceID int, trigger qbt.Torrent, group []qbt.Torrent, alreadyIncludedHashes map[string]struct{}) ([]string, bool) {
+	return crossSeedGroupMembers(trigger, group, alreadyIncludedHashes, func(hashes []string) (map[string]qbt.TorrentFiles, error) {
 		return s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	})
 }
@@ -4713,7 +4736,7 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 	if minOverlapPercent <= 0 {
 		minOverlapPercent = minFileOverlapPercent
 	}
-	percent := fileOverlapPercent(filesByHash[torrent1.Hash], filesByHash[torrent2.Hash])
+	percent := fileOverlapPercent(buildFileOverlapIndex(torrent1, filesByHash[torrent1.Hash]), torrent2, filesByHash[torrent2.Hash])
 	if percent == overlapUnknown {
 		return false, errors.New("cannot compute overlap: missing or zero-size file lists")
 	}

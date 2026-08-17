@@ -1410,6 +1410,33 @@ func TestCrossSeedGroupMembers(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+
+	t.Run("different layouts resolving to the same file are grouped", func(t *testing.T) {
+		layoutTrigger := qbt.Torrent{
+			Hash:        "layout-trigger",
+			ContentPath: "/downloads/Season 2",
+			SavePath:    "/downloads",
+		}
+		layoutCrossSeed := qbt.Torrent{
+			Hash:        "layout-crossseed",
+			ContentPath: "/downloads/Season 2",
+			SavePath:    "/downloads/Season 2",
+		}
+		filesByHash := map[string]qbt.TorrentFiles{
+			layoutTrigger.Hash:   {{Name: "Season 2/01.mkv", Size: 1_000_000_000}},
+			layoutCrossSeed.Hash: {{Name: "01.mkv", Size: 1_000_000_000}},
+		}
+
+		got, ok := crossSeedGroupMembers(
+			layoutTrigger,
+			[]qbt.Torrent{layoutTrigger, layoutCrossSeed},
+			nil,
+			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+		)
+
+		assert.True(t, ok)
+		assert.Equal(t, []string{layoutTrigger.Hash, layoutCrossSeed.Hash}, got)
+	})
 }
 
 // -----------------------------------------------------------------------------
