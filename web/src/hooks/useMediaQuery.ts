@@ -42,7 +42,7 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
-const PHONE_LANDSCAPE = "(pointer: coarse) and (orientation: landscape) and (max-width: 1023px) and (max-height: 500px)"
+export const PHONE_LANDSCAPE = "(pointer: coarse) and (orientation: landscape) and (max-width: 1023px) and (max-height: 500px)"
 
 /**
  * Returns true when the viewport is phone-sized: narrower than the md
