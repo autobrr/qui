@@ -246,7 +246,7 @@ export function MobileFooterNav() {
         "phone-land:static phone-land:order-first phone-land:w-20 phone-land:border-t-0 phone-land:border-r",
         !isFooterVisible && "translate-y-full phone-land:translate-y-0"
       )}
-      style={{ paddingBottom: "env(safe-area-inset-bottom)", paddingLeft: "env(safe-area-inset-left)" }}
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className={cn("flex items-center justify-around h-16 phone-land:h-full phone-land:flex-col phone-land:py-2")}>
         {/* Dashboard */}
