@@ -135,7 +135,7 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Tracker message | Per-tracker status message; use `nil` for an empty message (requires qBittorrent 5.1+)                       |
 | Comment         | Torrent comment field                                         |
 
-Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
+Note: if you have [Tracker Customizations](./tracker-customizations.md) configured (Dashboard → **Tracker Breakdown**), the **Tracker** condition can match the display name in addition to the raw URL/domain.
 
 #### Mode Fields
 
@@ -568,7 +568,7 @@ Options:
 
 - **Managed / Replace in Client** - `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
 - **Use Tracker as Tag** - Derive tag from tracker domain
-- **Use Display Name** - Use tracker customization display name instead of raw domain
+- **Use Display Name** - Use the [tracker customization](./tracker-customizations.md) display name instead of the raw domain
 
 Behavior reference:
 
@@ -617,7 +617,7 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 | `.Hash`                | Info hash                                                                                |
 | `.Category`            | qBittorrent category                                                                     |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
-| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
+| `.Tracker`             | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 **Template function:**
 
@@ -631,7 +631,11 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By category: `/data/{{.Category}}` → e.g. `/data/movies`
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
-- By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
+- By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
+
+:::note
+For `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition, or a tag action with **Use Tracker as Tag** and **Use Display Name** enabled. Without one of those, `.Tracker` falls back to the tracker domain and your folders are named after the domain instead.
+:::
 
 ### Auto Management
 
@@ -722,7 +726,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Hash`                | Info hash                                                                                |
 | `.Category`            | qBittorrent category (on source instance)                                                |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
-| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
+| `.Tracker`             | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 | Function   | Description                                                                 |
 | ---------- | --------------------------------------------------------------------------- |

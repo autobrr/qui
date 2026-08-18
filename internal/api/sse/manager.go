@@ -816,13 +816,23 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	sw := newBufferedSessionWriter(w, rc, streamWriteTimeout, cancel)
 	defer sw.Close() // stop the drain goroutine on disconnect/return
 
+	// Compress the session when the client advertises gzip; the shared middleware
+	// cannot (see gzipSessionWriter).
+	sessionWriter := http.ResponseWriter(sw)
+	// Values, not Get: Accept-Encoding may arrive as several field lines.
+	if acceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+		sessionWriter = newGzipSessionWriter(sw)
+	}
+
 	// Expose the session writer to onSession so it can switch to buffered mode
 	// after writing the init snapshot synchronously (see enableBuffering).
 	ctx = context.WithValue(ctx, sessionWriterContextKey, sw)
 	req := r.WithContext(ctx)
 
 	// ServeHTTP blocks until the client disconnects.
-	m.server.ServeHTTP(sw, req)
+	m.server.ServeHTTP(sessionWriter, req)
 }
 
 // maxQueuedMessages bounds how many flushed SSE messages a single session may

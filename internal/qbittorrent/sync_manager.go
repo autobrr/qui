@@ -187,6 +187,12 @@ const (
 // Uses pointer embedding to avoid unnecessary copies of the large qbt.Torrent struct.
 type TorrentView struct {
 	*qbt.Torrent
+	// MagnetURI shadows the promoted qbt.Torrent field so magnet_uri never
+	// reaches list/SSE JSON (issue #2328: 13% of the list payload, only the
+	// copy-magnet action reads it, and that fetches on demand). *struct{}
+	// instead of string so any promoted read fails to compile instead of
+	// silently returning ""; readers must go through .Torrent.MagnetURI.
+	MagnetURI     *struct{}     `json:"magnet_uri,omitempty"`
 	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
 }
 
@@ -1911,7 +1917,7 @@ func (sm *SyncManager) GetTorrentField(
 		case "tags":
 			v = t.Tags
 		case "magnet_uri":
-			v = strings.TrimSpace(t.MagnetURI)
+			v = strings.TrimSpace(t.Torrent.MagnetURI)
 		}
 		if field == "tags" || v != "" {
 			values = append(values, v)

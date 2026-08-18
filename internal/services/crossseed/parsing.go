@@ -204,13 +204,21 @@ func dominantFileContent(files qbt.TorrentFiles) rls.Type {
 // DetermineContentTypeWithFiles classifies a release like DetermineContentType,
 // but first corrects the parsed type with the byte-weighted extension signal
 // from the torrent's files (discussion #1734). Release names often defeat the
-// rls parser, music names most of all, but file extensions are ground truth:
-// audio bytes force the music classification, and video bytes pull a music
-// parse back to tv or movie. The tv/movie split stays with the name-based
-// parse. Without files, or when neither class dominates, the name decides,
-// except for a disc layout, which classifies as a movie when the name gives
-// nothing.
+// rls parser, music names most of all. A recognized disc layout is authoritative
+// video content and preserves explicit TV structure. Otherwise, audio bytes
+// force the music classification, and video bytes pull a music parse back to tv
+// or movie. The tv/movie split stays with the name-based parse. Without files,
+// or when neither class dominates, the name decides.
 func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles) ContentTypeInfo {
+	if isDisc, _ := isDiscLayoutTorrent(files); isDisc {
+		if isTVRelease(release) {
+			return classifyReleaseAs(release, rls.Series)
+		}
+		if movieInfo, ok := RuleContentTypeInfo("movie"); ok {
+			return movieInfo
+		}
+	}
+
 	dominant := dominantFileContent(files)
 	if dominant == rls.Music {
 		if release.Type != rls.Music && release.Type != rls.Audiobook {
@@ -226,19 +234,7 @@ func DetermineContentTypeWithFiles(release *rls.Release, files qbt.TorrentFiles)
 		return classifyRelease(demoteMusicToVideo(release))
 	}
 
-	info := DetermineContentType(release)
-	if info.ContentType == "unknown" {
-		// A disc rip holds no release name in its files (VIDEO_TS/VTS_01_1.VOB),
-		// and its folder often carries no year or resolution either, so the name
-		// alone classifies as unknown and the search goes out with no categories
-		// (#2336). The layout itself proves the content is video.
-		if isDisc, _ := isDiscLayoutTorrent(files); isDisc {
-			if movieInfo, ok := RuleContentTypeInfo("movie"); ok {
-				return movieInfo
-			}
-		}
-	}
-	return info
+	return DetermineContentType(release)
 }
 
 // DetermineContentType analyzes a release and returns comprehensive content type information
@@ -277,6 +273,10 @@ func RuleContentTypeInfo(contentType string) (ContentTypeInfo, bool) {
 }
 
 func classifyRelease(release *rls.Release) ContentTypeInfo {
+	return classifyReleaseAs(release, release.Type)
+}
+
+func classifyReleaseAs(release *rls.Release, releaseType rls.Type) ContentTypeInfo {
 	var info ContentTypeInfo
 
 	// Apply stacked parsing for clarity and to avoid false-positives
@@ -309,7 +309,7 @@ func classifyRelease(release *rls.Release) ContentTypeInfo {
 		return info
 	}
 
-	switch release.Type {
+	switch releaseType {
 	case rls.Movie:
 		info.ContentType = "movie"
 		info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080} // Movies
@@ -356,7 +356,7 @@ func classifyRelease(release *rls.Release) ContentTypeInfo {
 		info.Categories = []int{4000} // PC
 		info.SearchType = "search"
 		info.RequiredCaps = []string{}
-	default:
+	case rls.Unknown, rls.Education, rls.Magazine:
 		// Fallback logic based on series/episode/year detection for unknown types
 		if release.Series > 0 || release.Episode > 0 {
 			info.ContentType = "tv"

@@ -1746,12 +1746,13 @@ paths:
               properties:
                 field:
                   type: string
-                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents.
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents. `magnet_uri` is only available here; torrent list responses omit it.
                   enum:
                     - name
                     - hash
                     - full_path
                     - tags
+                    - magnet_uri
                 sort:
                   type: string
                   description: Sort field. Defaults to added_on.

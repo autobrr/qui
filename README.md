@@ -34,19 +34,6 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
-### macOS Container
-First, install Container from the official source: https://github.com/apple/container/releases
-Second, create the /config and /downloads folders where you would like them.
-Third, run the command below:
-
-```bash
-container run -d \
-  -p 7476:7476 \
-  -v $(pwd)/config:/config \
-  -v $(pwd)/downloads:/downloads \
-  ghcr.io/autobrr/qui:latest
-```
-
 ## Features
 
 - **Single Binary**: No dependencies, just download and run
