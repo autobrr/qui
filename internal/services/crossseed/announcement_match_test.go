@@ -227,6 +227,30 @@ func TestClassifyWebhookAnnouncementSourceUnknownSizeRejectsUnrelatedTitleCheapl
 	require.LessOrEqual(t, allocations, controlAllocations+6)
 }
 
+func TestClassifyWebhookAnnouncementSourceNonexactRequiresStrictMatch(t *testing.T) {
+	const sourceName = "Azure.Compass.S01E05.1080p.WEB-DL.H.264-KIRI"
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: 1_000_000, TotalSize: 1_000_000, Progress: 1}
+	candidateName := "Azure.Compass.S01E05.1080p.WEBRip.H.264-KIRI"
+	candidate := namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName}
+
+	got := svc.classifyWebhookAnnouncementSource(
+		context.Background(),
+		1,
+		&source,
+		candidate,
+		source.TotalSize+500,
+		announcementMatchPolicy{},
+	)
+
+	require.False(t, got.decision.Accepted)
+	require.True(t, got.replayable)
+}
+
 // TestUnknownSizePreflightDecisionAllowlist catches a future classifier
 // relaxation becoming an unknown-size download recommendation by default.
 func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {

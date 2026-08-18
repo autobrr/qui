@@ -4758,6 +4758,12 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			replaysGroupFallback := isSearchSource &&
 				searchDecision.Class == searchCandidateClassExactSizeFallback &&
 				slices.Contains(searchDecision.RelaxedDifferences, "group")
+			replaysRelaxedDecision := replaysExactDecision || isSearchSource &&
+				(searchDecision.Class == searchCandidateClassTitleRescue ||
+					searchDecision.Class == searchCandidateClassWebSourceRelabel)
+			if replaysRelaxedDecision && !s.explicitGroupsAgree(sourceSide, targetSide) {
+				continue
+			}
 			if replaysGroupFallback &&
 				(!s.explicitGroupsFitFallbackIdentity(sourceSide, searchDecision.GroupFallbackIdentity) ||
 					!s.explicitGroupsFitFallbackIdentity(targetSide, searchDecision.GroupFallbackIdentity)) {
@@ -5300,10 +5306,6 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				skipRecheck:            request.SkipRecheck,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
-				continue
-			}
-			if decision.decision.Class != searchCandidateClassStrict &&
-				decision.decision.Class != searchCandidateClassWebSourceRelabel && sourceSize != actualSize {
 				continue
 			}
 			provenance := decision.decision.provenance()

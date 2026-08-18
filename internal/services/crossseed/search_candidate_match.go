@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -912,6 +913,12 @@ func (s *Service) groupTagProvenance(side namedRelease) groupTagProvenance {
 		add(releases.DefaultParser.Parse(side.rawName))
 	}
 	return provenance
+}
+
+func (s *Service) explicitGroupsAgree(left, right namedRelease) bool {
+	groups := s.groupTagProvenance(left).explicitGroups
+	maps.Copy(groups, s.groupTagProvenance(right).explicitGroups)
+	return len(groups) <= 1
 }
 
 // explicitGroupsFitFallbackIdentity rejects a file/raw-name group that differs

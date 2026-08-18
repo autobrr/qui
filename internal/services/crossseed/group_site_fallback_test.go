@@ -1131,4 +1131,57 @@ func TestFindCandidates_GroupFallbackPreservesSelectedFileProvenance(t *testing.
 			})
 		}
 	})
+
+	t.Run("non-group fallback still checks selected-file conflicts", func(t *testing.T) {
+		const targetName = "Azure.Compass.S01.1080p.WEBRip.AAC2.0.H.264-KIRI"
+		existingFiles := qbt.TorrentFiles{
+			{Name: "Azure.Compass.S01E01.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize/2 + 1},
+			{Name: "Azure.Compass.S01E02.1080p.WEB-DL.H.264-KIRI.mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+		}
+		for _, tt := range []struct {
+			fileGroup   string
+			wantMatches int
+		}{
+			{fileGroup: "FoV"},
+			{fileGroup: "KIRI", wantMatches: 1},
+		} {
+			t.Run(tt.fileGroup, func(t *testing.T) {
+				targetFiles := qbt.TorrentFiles{
+					{Name: "Azure.Compass.S01E01.1080p.WEBRip.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize/2 + 1},
+					{Name: "Azure.Compass.S01E02.1080p.WEBRip.H.264-" + tt.fileGroup + ".mkv", Size: fansubPackSize - (fansubPackSize/2 + 1)},
+				}
+				svc := &Service{
+					instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+					syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+						Hash: sourceHash, Name: fansubTaggedPack, Size: fansubPackSize, Progress: 1,
+					}}, map[string]qbt.TorrentFiles{sourceHash: existingFiles}),
+					releaseCache:     NewReleaseCache(),
+					stringNormalizer: stringutils.NewDefaultNormalizer(),
+				}
+				target := svc.applyTargetReleaseViewFromFiles(
+					targetName,
+					svc.releaseCache.Parse(targetName),
+					targetFiles,
+					true,
+				)
+				require.Equal(t, "KIRI", target.release.Group)
+				require.True(t, releaseHasGroupTag(target.tagOrigin, tt.fileGroup))
+
+				response, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+					TorrentName:       targetName,
+					TargetRelease:     target,
+					TargetInstanceIDs: []int{instanceID},
+					SearchDecision: searchDecisionProvenance{
+						Class:                searchCandidateClassExactSizeFallback,
+						SourceInstanceID:     instanceID,
+						SourceHash:           sourceHash,
+						StrictMismatchReason: sourceMismatchReason,
+						RelaxedDifferences:   []string{"source"},
+					},
+				})
+				require.NoError(t, err)
+				require.Len(t, response.Candidates, tt.wantMatches)
+			})
+		}
+	})
 }

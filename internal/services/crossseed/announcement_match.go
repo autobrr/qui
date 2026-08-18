@@ -65,6 +65,11 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	}
 
 	decision := s.classifySearchCandidate(s.announcementRawSearchInput(source, candidate, candidateSize, policy))
+	if decision.Accepted && decision.Class != searchCandidateClassStrict {
+		decision.Accepted = false
+		decision.Class = searchCandidateClassRejected
+		decision.RejectReason = "nonexact size requires strict match"
+	}
 	return announcementCandidateDecision{decision: decision, replayable: true}
 }
 
