@@ -50,10 +50,10 @@
  * short landscape (a rotated phone). Must stay the exact complement of
  * useIsMobile() in hooks/useMediaQuery.ts.
  */
-@custom-variant desk (@media (min-width: 768px) and (not ((pointer: coarse) and (max-height: 500px))));
+@custom-variant desk (@media (min-width: 768px) and (not ((pointer: coarse) and (orientation: landscape) and (max-width: 1023px) and (max-height: 500px))));
 
 /* Touch device in short landscape. Must match useIsPhoneLandscape(). */
-@custom-variant phone-land (@media (pointer: coarse) and (max-height: 500px));
+@custom-variant phone-land (@media (pointer: coarse) and (orientation: landscape) and (max-width: 1023px) and (max-height: 500px));
 
 :root {
   --background: oklch(1 0 0);
