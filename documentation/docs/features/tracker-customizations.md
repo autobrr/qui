@@ -31,7 +31,9 @@ Trackers that announce on several domains can be combined into a single entry:
 2. Click the link icon on one of the selected rows (**Merge selected trackers into this group**).
 3. Enter the **Display Name** for the merged entry and save.
 
-In the merge dialog you can untick individual domains so they are not counted in Dashboard statistics. Use this when the same torrents are reachable through more than one domain and would otherwise be counted twice.
+In the merge dialog, the first domain is the **Primary** one and always counts toward Dashboard statistics. Every other domain in the group starts excluded — tick its checkbox to add its stats to the group total.
+
+This is deliberate: when the same torrents are reachable through more than one domain of the same tracker, including all of them would count those torrents twice. Only tick a secondary domain when it carries torrents the primary domain does not.
 
 To add another domain to an existing group later, select the domain and click the link icon on the group's row.
 
@@ -58,10 +60,10 @@ The **Tracker Breakdown** header has import and export buttons.
 }
 ```
 
-`includedInStats` is optional; when omitted, every domain in the entry counts toward Dashboard statistics.
+`includedInStats` is optional and lists the **secondary** domains that count toward Dashboard statistics. The primary domain (`domains[0]`) is always counted and does not need to be listed. When `includedInStats` is omitted, only the primary domain counts.
 
 ## Where Display Names Are Used
 
 - **Dashboard** statistics and tracker breakdown.
-- **[Automations](./automations.md)**: the `Tracker` condition matches the display name in addition to the raw URL/domain, tag actions can tag by display name via **Use Display Name**, and the `.Tracker` template variable resolves to it.
+- **[Automations](./automations.md)**: the `Tracker` condition matches the display name in addition to the raw URL/domain, tag actions can tag by display name via **Use Display Name**, and the `.Tracker` template variable resolves to it (only when the rule also uses a **Tracker** condition or a **Use Tracker as Tag** + **Use Display Name** tag action; otherwise `.Tracker` falls back to the raw domain).
 - **[Cross-seed link directories](./cross-seed/link-directories.md)**: the `by-tracker` preset uses the display name for folder names.
