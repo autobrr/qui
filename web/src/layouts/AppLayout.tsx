@@ -63,7 +63,7 @@ function AppLayoutContent() {
         <main className={cn(
           "flex-1 overflow-y-auto transition-[padding] duration-300",
           isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
-          "lg:pb-0"
+          "lg:pb-0 phone-land:pb-0"
         )}>
           <Outlet />
         </main>

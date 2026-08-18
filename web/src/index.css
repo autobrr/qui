@@ -45,6 +45,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Desktop layout boundary: at least md wide, but not a touch device in
+ * short landscape (a rotated phone). Must stay the exact complement of
+ * useIsMobile() in hooks/useMediaQuery.ts.
+ */
+@custom-variant desk (@media (min-width: 768px) and (not ((pointer: coarse) and (max-height: 500px))));
+
+/* Touch device in short landscape. Must match useIsPhoneLandscape(). */
+@custom-variant phone-land (@media (pointer: coarse) and (max-height: 500px));
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.1450 0 0);

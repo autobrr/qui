@@ -25,6 +25,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { isThemePremium, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
+import { useIsPhoneLandscape } from "@/hooks/useMediaQuery"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
@@ -115,6 +116,7 @@ export function MobileFooterNav() {
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { isFooterVisible } = useMobileScroll()
+  const isPhoneLandscape = useIsPhoneLandscape()
   const { viewMode, setViewMode } = usePersistedCompactViewState("compact", MOBILE_VIEW_MODES)
   const { currentMode, currentTheme } = useThemeChange()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
@@ -241,11 +243,12 @@ export function MobileFooterNav() {
         "fixed bottom-0 left-0 right-0 z-40 lg:hidden",
         "bg-background/80 backdrop-blur-md border-t border-border/50",
         "transition-transform duration-300",
-        !isFooterVisible && "translate-y-full"
+        "phone-land:static phone-land:order-first phone-land:w-20 phone-land:border-t-0 phone-land:border-r",
+        !isFooterVisible && "translate-y-full phone-land:translate-y-0"
       )}
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      style={{ paddingBottom: "env(safe-area-inset-bottom)", paddingLeft: "env(safe-area-inset-left)" }}
     >
-      <div className="flex items-center justify-around h-16">
+      <div className={cn("flex items-center justify-around h-16 phone-land:h-full phone-land:flex-col phone-land:py-2")}>
         {/* Dashboard */}
         <Link
           to="/dashboard"
@@ -292,7 +295,7 @@ export function MobileFooterNav() {
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
+            <DropdownMenuContent align="center" side={isPhoneLandscape ? "right" : "top"} className="w-56 mb-2">
               <DropdownMenuLabel>{t("mobileNav.qbittorrentClients")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {activeInstances.length > 0 ? (
@@ -423,7 +426,7 @@ export function MobileFooterNav() {
               <span className="truncate">{t("mobileNav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
+          <DropdownMenuContent align="end" side={isPhoneLandscape ? "right" : "top"} className="mb-2 w-56">
             {updateInfo && (
               <>
                 <DropdownMenuItem asChild>

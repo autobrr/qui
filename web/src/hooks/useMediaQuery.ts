@@ -42,9 +42,18 @@ export function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
+const PHONE_LANDSCAPE = "(pointer: coarse) and (max-height: 500px)"
+
 /**
- * Returns true when viewport is mobile-sized (< 768px / md breakpoint).
+ * Returns true when the viewport is phone-sized: narrower than the md
+ * breakpoint, or a touch device in short landscape. Must stay the exact
+ * complement of the `desk` custom variant in index.css.
  */
 export function useIsMobile(): boolean {
-  return useMediaQuery("(max-width: 767px)")
+  return useMediaQuery(`(max-width: 767px), (${PHONE_LANDSCAPE})`)
+}
+
+/** Touch device in short landscape. Must match `phone-land` in index.css. */
+export function useIsPhoneLandscape(): boolean {
+  return useMediaQuery(PHONE_LANDSCAPE)
 }
