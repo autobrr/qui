@@ -634,7 +634,7 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
 
 :::note
-`.Tracker` only resolves to a [tracker customization](./tracker-customizations.md) display name when the rule also uses a **Tracker** condition, or a tag action with **Use Tracker as Tag** + **Use Display Name**. Otherwise it falls back to the tracker domain.
+For `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition, or a tag action with **Use Tracker as Tag** and **Use Display Name** enabled. Without one of those, `.Tracker` falls back to the tracker domain and your folders are named after the domain instead.
 :::
 
 ### Auto Management

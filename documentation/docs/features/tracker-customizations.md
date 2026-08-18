@@ -8,7 +8,7 @@ description: Give trackers friendly display names and merge multiple announce do
 
 qui identifies trackers by their announce domain (`tracker.example.com`). A tracker customization maps one or more domains to a friendly display name (`MyTracker`), which qui then uses in place of the raw domain.
 
-Customizations are global — they apply to every instance, not per instance.
+Display names apply across all your instances — you only set them up once.
 
 ## Where to Find It
 
@@ -31,9 +31,9 @@ Trackers that announce on several domains can be combined into a single entry:
 2. Click the link icon on one of the selected rows (**Merge selected trackers into this group**).
 3. Enter the **Display Name** for the merged entry and save.
 
-In the merge dialog, the first domain is the **Primary** one and always counts toward Dashboard statistics. Every other domain in the group starts excluded — tick its checkbox to add its stats to the group total.
+The merge dialog marks the first domain **Primary**. Its torrents always count toward the group's Dashboard statistics. The other domains start unticked and do not count until you tick them.
 
-This is deliberate: when the same torrents are reachable through more than one domain of the same tracker, including all of them would count those torrents twice. Only tick a secondary domain when it carries torrents the primary domain does not.
+That default avoids double-counting. Trackers often announce the same torrents on several domains, so counting every domain would count those torrents twice and inflate your upload and ratio figures. Tick a domain only if it holds torrents the primary one doesn't.
 
 To add another domain to an existing group later, select the domain and click the link icon on the group's row.
 
@@ -54,16 +54,16 @@ The **Tracker Breakdown** header has import and export buttons.
     {
       "displayName": "MyTracker",
       "domains": ["tracker.example.com", "tracker2.example.com"],
-      "includedInStats": ["tracker.example.com"]
+      "includedInStats": ["tracker2.example.com"]
     }
   ]
 }
 ```
 
-`includedInStats` is optional and lists the **secondary** domains that count toward Dashboard statistics. The primary domain (`domains[0]`) is always counted and does not need to be listed. When `includedInStats` is omitted, only the primary domain counts.
+The first entry in `domains` is the primary one and always counts toward Dashboard statistics. `includedInStats` is optional and lists any of the other domains you also want counted; leave it out and only the primary domain counts.
 
 ## Where Display Names Are Used
 
 - **Dashboard** statistics and tracker breakdown.
-- **[Automations](./automations.md)**: the `Tracker` condition matches the display name in addition to the raw URL/domain, tag actions can tag by display name via **Use Display Name**, and the `.Tracker` template variable resolves to it (only when the rule also uses a **Tracker** condition or a **Use Tracker as Tag** + **Use Display Name** tag action; otherwise `.Tracker` falls back to the raw domain).
+- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and move paths can use it via `{{.Tracker}}`.
 - **[Cross-seed link directories](./cross-seed/link-directories.md)**: the `by-tracker` preset uses the display name for folder names.
