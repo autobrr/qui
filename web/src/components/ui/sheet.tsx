@@ -78,8 +78,11 @@ function SheetContent({
           className,
           // Safe-area insets last so call-site `p-0` cannot strip them.
           // Sheets are fixed overlays, so body safe-area padding never applies.
-          side === "right" && "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]",
-          side === "left" && "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]",
+          // phone-land: iOS swallows touches in ~20px at the top edge in
+          // landscape for system gestures, and env(safe-area-inset-top) is 0
+          // there, so full-height sheets need an explicit buffer.
+          side === "right" && "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)] phone-land:pt-5",
+          side === "left" && "pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] phone-land:pt-5",
           side === "bottom" && "pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
         )}
         {...props}
