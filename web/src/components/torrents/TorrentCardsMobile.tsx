@@ -2850,7 +2850,7 @@ export function TorrentCardsMobile({
           className={cn(
             "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
             "transition-transform duration-300",
-            "bottom-[calc(4rem+env(safe-area-inset-bottom))] phone-land:bottom-0 phone-land:left-[calc(5rem+env(safe-area-inset-left))] phone-land:pb-[env(safe-area-inset-bottom)] phone-land:pr-[env(safe-area-inset-right)]",
+            "bottom-[calc(4rem+env(safe-area-inset-bottom))] phone-land:bottom-0 phone-land:left-[calc(5rem+env(safe-area-inset-left))] phone-land:pb-[env(safe-area-inset-bottom)]",
             !isFooterVisible && "translate-y-[calc(100%+4rem+env(safe-area-inset-bottom))] phone-land:translate-y-[calc(100%+env(safe-area-inset-bottom))]"
           )}
         >

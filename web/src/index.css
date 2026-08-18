@@ -249,6 +249,10 @@
     padding-top: env(safe-area-inset-top) !important;
     padding-left: env(safe-area-inset-left) !important;
     padding-right: env(safe-area-inset-right) !important;
+    /* landscape: the user picks the camera side, don't reserve the right inset */
+    @variant phone-land {
+      padding-right: 0 !important;
+    }
   }
 
   /* Apply font families from theme */

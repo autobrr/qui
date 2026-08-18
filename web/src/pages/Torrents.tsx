@@ -600,7 +600,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         >
           <SheetContent
             side="right"
-            className="w-full p-0 gap-0"
+            className="w-full p-0 gap-0 pl-[env(safe-area-inset-left)]"
             hideClose
           >
             <SheetHeader className="sr-only">
