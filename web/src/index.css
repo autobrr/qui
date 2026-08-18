@@ -244,10 +244,11 @@
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
     font-family: var(--font-sans);
-    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav) */
-    padding-top: env(safe-area-inset-top);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav).
+       !important: react-remove-scroll zeroes body padding while a Radix modal is open. */
+    padding-top: env(safe-area-inset-top) !important;
+    padding-left: env(safe-area-inset-left) !important;
+    padding-right: env(safe-area-inset-right) !important;
   }
 
   /* Apply font families from theme */
