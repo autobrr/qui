@@ -459,12 +459,13 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
 			return
 		}
-		if response.PartialResults && req.Field == "tags" {
-			log.Error().
-				Int("instanceID", instanceID).
+		// A truncated value list behind a 200 reads as complete, so partial aggregates fail for every field.
+		if response.PartialResults {
+			log.Warn().
 				Str("field", req.Field).
-				Msg("Cross-instance torrent field returned partial results for tag baseline")
-			RespondError(w, http.StatusServiceUnavailable, "Failed to resolve the full tag baseline")
+				Ints("instanceIDs", req.InstanceIDs).
+				Msg("Cross-instance torrent field returned partial results")
+			RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
 			return
 		}
 

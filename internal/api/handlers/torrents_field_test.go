@@ -183,6 +183,35 @@ func TestGetTorrentField_MagnetURICrossInstanceFilterScope(t *testing.T) {
 	}, response.Values)
 }
 
+// TestGetTorrentField_CrossInstancePartialResultsRejected pins the filter-scope
+// partial guard for non-tags fields: a truncated magnet list behind a 200 would
+// read as complete, so a failed instance must fail the whole request.
+func TestGetTorrentField_CrossInstancePartialResultsRejected(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa"},
+		},
+	})
+
+	// A second instance with no pool client and an unreachable address: its
+	// per-instance fetch errors, which marks the cross-instance aggregate partial.
+	broken, err := instanceStore.Create(context.Background(), "beta", "http://127.0.0.1:1", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
+		"field":       "magnet_uri",
+		"instanceIds": []int{instanceIDs["alpha"], broken.ID},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetTorrentField(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+}
+
 func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
 	handler, release := createStaleCrossInstanceReadHarness(t)
 	defer release()
