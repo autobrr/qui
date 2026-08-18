@@ -32,6 +32,13 @@ var volatileTorrentFields = map[string]bool{
 	"NumSeeds":      true,
 }
 
+// payloadOmittedTorrentFields are skipped for a different reason than jitter:
+// TorrentView shadows them out of the serialized payload (issue #2328), so a
+// change to one has nothing to update client-side and must not resend a row.
+var payloadOmittedTorrentFields = map[string]bool{
+	"MagnetURI": true,
+}
+
 // setSampleValue writes a non-zero value of the field's kind so a hashed field
 // must move the fingerprint. New field kinds in go-qbittorrent fail loudly here.
 func setSampleValue(t *testing.T, f reflect.Value) {
@@ -60,9 +67,9 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 }
 
 // TestTorrentFingerprintCoversEveryField proves the fingerprint reacts to every
-// non-volatile qbt.Torrent field and ignores every volatile one. When a
-// go-qbittorrent bump adds a field, this fails until the field is added to
-// fpBuf.torrent or to volatileTorrentFields.
+// hashed qbt.Torrent field and ignores every volatile or payload-omitted one.
+// When a go-qbittorrent bump adds a field, this fails until the field is added
+// to fpBuf.torrent, volatileTorrentFields, or payloadOmittedTorrentFields.
 func TestTorrentFingerprintCoversEveryField(t *testing.T) {
 	base := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{}})
 	typ := reflect.TypeFor[qbt.Torrent]()
@@ -71,12 +78,27 @@ func TestTorrentFingerprintCoversEveryField(t *testing.T) {
 		var mutated qbt.Torrent
 		setSampleValue(t, reflect.ValueOf(&mutated).Elem().Field(i))
 		fp := singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &mutated})
-		if volatileTorrentFields[field.Name] {
+		switch {
+		case volatileTorrentFields[field.Name]:
 			require.Equal(t, base, fp, "volatile field %s must not affect the fingerprint", field.Name)
-		} else {
-			require.NotEqual(t, base, fp, "field %s must change the fingerprint; add it to fpBuf.torrent or volatileTorrentFields", field.Name)
+		case payloadOmittedTorrentFields[field.Name]:
+			require.Equal(t, base, fp, "payload-omitted field %s must not affect the fingerprint", field.Name)
+		default:
+			require.NotEqual(t, base, fp, "field %s must change the fingerprint; add it to fpBuf.torrent, volatileTorrentFields, or payloadOmittedTorrentFields", field.Name)
 		}
 	}
+}
+
+// TestMagnetOnlyChangeDoesNotResendRow pins the payload-omitted rule end to end:
+// magnet_uri no longer serializes in list/SSE rows, so a magnet-only change must
+// not flag the row as changed.
+func TestMagnetOnlyChangeDoesNotResendRow(t *testing.T) {
+	before := []qbittorrent.TorrentView{{Torrent: &qbt.Torrent{Hash: "aaa", Name: "Alpha"}}}
+	after := []qbittorrent.TorrentView{{Torrent: &qbt.Torrent{Hash: "aaa", Name: "Alpha", MagnetURI: "magnet:?xt=urn:btih:aaa"}}}
+
+	_, _, baseFP := computeRowDelta(before, singleRowKey, singleRowFingerprint, nil)
+	_, changed, _ := computeRowDelta(after, singleRowKey, singleRowFingerprint, baseFP)
+	require.Empty(t, changed, "magnet-only change must not resend the row")
 }
 
 // assertEveryFieldHashed proves fp reacts to every field of T: a fingerprint

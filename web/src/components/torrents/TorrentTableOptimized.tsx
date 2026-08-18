@@ -77,6 +77,7 @@ import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
+import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -443,7 +444,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isAllInstancesView = instanceId <= 0
 
   // Memoized so the `?? []` fallback cannot mint a fresh array per render:
-  // these feed fetchAllTorrentField, whose identity anchors the shared row
+  // these feed fetchTorrentField, whose identity anchors the shared row
   // menu bundle.
   const effectiveIncludedCategories = useMemo(
     () => filters?.expandedCategories ?? filters?.categories ?? [],
@@ -981,9 +982,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     filters,
   })
 
-  // Callback for context menu to fetch field for matching torrents
-  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path" | "magnet_uri"): Promise<string[]> => {
-    const response = await api.getTorrentField(instanceId, field, {
+  // Callback for context menu to fetch field values on demand: explicit
+  // selection when given, otherwise the active filter scope (select-all).
+  const fetchTorrentField = useCallback(async (
+    field: TorrentFieldName,
+    selection?: TorrentFieldSelection
+  ): Promise<string[]> => {
+    const scope: TorrentFieldScope = {
+      isCrossInstance: isCrossInstanceEndpoint ?? false,
+      instanceIds,
       sort: activeSortField,
       order: activeSortOrder,
       search: effectiveSearch,
@@ -1001,9 +1008,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         expr: combinedFiltersExpr || undefined,
       },
       excludeHashes: selectAllExcludeHashes,
-      excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-      instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-    })
+      excludeTargets: selectAllExcludedTargets,
+    }
+    const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
   }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
@@ -1315,8 +1322,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onCrossSeedSearch,
     isCrossSeedSearching,
     onFilterChange,
-    onFetchAllField: fetchAllTorrentField,
-  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchAllTorrentField])
+    onFetchTorrentField: fetchTorrentField,
+  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
