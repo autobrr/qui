@@ -876,35 +876,34 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b flex items-center">
-          <div className="flex-1 overflow-x-auto scroll-smooth">
-            <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <TabsTrigger value="general" className="text-xs shrink-0">
-                {t("detailsPanel.tabs.general")}
+          {/* phone-land: 44px targets, kept clear of the top corners iOS claims for Control/Notification Center */}
+          <TabsList className="flex-1 min-w-0 justify-start rounded-none h-8 phone-land:h-11 bg-background px-4 sm:px-2 phone-land:pl-6 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <TabsTrigger value="general" className="text-xs shrink-0">
+              {t("detailsPanel.tabs.general")}
+            </TabsTrigger>
+            <TabsTrigger value="trackers" className="text-xs shrink-0">
+              {t("detailsPanel.tabs.trackers")}
+            </TabsTrigger>
+            <TabsTrigger value="peers" className="text-xs shrink-0">
+              {t("detailsPanel.tabs.peers")}
+            </TabsTrigger>
+            {hasWebseeds && (
+              <TabsTrigger value="webseeds" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.httpSources")}
               </TabsTrigger>
-              <TabsTrigger value="trackers" className="text-xs shrink-0">
-                {t("detailsPanel.tabs.trackers")}
-              </TabsTrigger>
-              <TabsTrigger value="peers" className="text-xs shrink-0">
-                {t("detailsPanel.tabs.peers")}
-              </TabsTrigger>
-              {hasWebseeds && (
-                <TabsTrigger value="webseeds" className="text-xs shrink-0">
-                  {t("detailsPanel.tabs.httpSources")}
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="content" className="text-xs shrink-0">
-                {t("detailsPanel.tabs.content")}
-              </TabsTrigger>
-              <TabsTrigger value="crossseed" className="text-xs shrink-0">
-                {t("detailsPanel.tabs.crossSeed")}
-              </TabsTrigger>
-            </TabsList>
-          </div>
+            )}
+            <TabsTrigger value="content" className="text-xs shrink-0">
+              {t("detailsPanel.tabs.content")}
+            </TabsTrigger>
+            <TabsTrigger value="crossseed" className="text-xs shrink-0">
+              {t("detailsPanel.tabs.crossSeed")}
+            </TabsTrigger>
+          </TabsList>
           {onClose && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-10 shrink-0 rounded-none"
+              className="h-8 w-10 shrink-0 rounded-none phone-land:h-11 phone-land:w-14 phone-land:mr-3"
               onClick={onClose}
               aria-label={t("detailsPanel.closePanel")}
             >
