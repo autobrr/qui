@@ -6907,7 +6907,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
@@ -7056,7 +7056,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           default: false

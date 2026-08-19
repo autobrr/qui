@@ -128,6 +128,12 @@ func TestPartialPoolPostRecheckVerdictModeSafety(t *testing.T) {
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, status)
 }
 
+func TestPartialPoolAdmissionRequiresCompleteByMode(t *testing.T) {
+	require.True(t, partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeHardlink, false, true))
+	require.False(t, partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeReflink, false, true))
+	require.True(t, partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeReflink, true, true))
+}
+
 func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	pool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(

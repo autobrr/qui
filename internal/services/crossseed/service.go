@@ -14726,7 +14726,8 @@ func (s *Service) processHardlinkMode(
 		return handleError(fmt.Sprintf("Failed to build hardlink plan: %v", err))
 	}
 	addPolicy := PolicyForSourceFiles(sourceFiles)
-	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, verifyBeforeSeed || addPolicy.DiscLayout)
+	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req,
+		partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeHardlink, verifyBeforeSeed, addPolicy.DiscLayout))
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
 	if pooledCompletion {
@@ -15477,7 +15478,8 @@ func (s *Service) processReflinkMode(
 		return handleMaterializationError(fmt.Sprintf("Failed to build reflink plan: %v", err))
 	}
 	addPolicy := PolicyForSourceFiles(sourceFiles)
-	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, verifyBeforeSeed || addPolicy.DiscLayout)
+	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req,
+		partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeReflink, verifyBeforeSeed, addPolicy.DiscLayout))
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
 	if pooledCompletion {

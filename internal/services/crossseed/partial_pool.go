@@ -60,6 +60,12 @@ func (s *Service) signalPartialPoolWake(wake partialPoolWake) {
 	}
 }
 
+// partialPoolAdmissionRequiresComplete preserves the zero-budget hardlink gate
+// while allowing disc-layout reflinks to repair missing data within budget.
+func partialPoolAdmissionRequiresComplete(mode string, verifyBeforeSeed, discLayout bool) bool {
+	return verifyBeforeSeed || (mode == models.CrossSeedPartialPoolModeHardlink && discLayout)
+}
+
 func (s *Service) partialPoolAdmissionEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
 	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
 		req.SkipRecheck || req.SkipAutoResume || !instance.HasLocalFilesystemAccess {
