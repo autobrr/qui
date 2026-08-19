@@ -60,8 +60,8 @@ func (s *Service) signalPartialPoolWake(wake partialPoolWake) {
 	}
 }
 
-func (s *Service) partialPoolAdmissionEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, titleRescue bool) bool {
-	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || titleRescue ||
+func (s *Service) partialPoolAdmissionEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
+	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
 		req.SkipRecheck || req.SkipAutoResume || !instance.HasLocalFilesystemAccess {
 		return false
 	}
@@ -179,9 +179,9 @@ func (s *Service) registerPartialPoolAdmission(
 	sourceInstanceID := 0
 	sourceKey := ""
 	var sourceAliases []string
-	if req.SearchSourceInstanceID > 0 && normalizeHash(req.SearchSourceHash) != "" {
-		sourceInstanceID = req.SearchSourceInstanceID
-		sourceKey = normalizeHash(req.SearchSourceHash)
+	if req.SearchDecision.SourceInstanceID > 0 && normalizeHash(req.SearchDecision.SourceHash) != "" {
+		sourceInstanceID = req.SearchDecision.SourceInstanceID
+		sourceKey = normalizeHash(req.SearchDecision.SourceHash)
 		sourceAliases = []string{sourceKey}
 		if sourceTorrent, sourceFound, sourceErr := s.syncManager.HasTorrentByAnyHash(ctx, sourceInstanceID, sourceAliases); sourceErr == nil && sourceFound {
 			sourceKey = partialPoolCanonicalTorrentKey(sourceTorrent)

@@ -307,7 +307,7 @@
       "rescueTitleMismatches": "Recuperar títulos divergentes",
       "rescueTitleMismatchesDescription": "Tente no total até três resultados com tamanho exato por busca de origem, entre todos os indexadores. O qui verifica todos os dados antes de iniciar o torrent. Ignorar reverificação desativa esta regra.",
       "skipRecheck": "Ignorar correspondências que exigem reverificação",
-      "skipRecheckDescription": "Ignora correspondências que precisam de alinhamento de renomeação, arquivos extras ou layouts de disco (BDMV/VIDEO_TS). Quando desligado, essas correspondências são forçadas a serem reverificadas por padrão.",
+      "skipRecheckDescription": "Ignora correspondências que exigem reverificação por causa de caminhos renomeados, arquivos extras ou ausentes, fallback do modo hardlink/reflink ou layouts de disco (BDMV/VIDEO_TS). Também ignora correspondências de tamanho exato que dependem de dados diferentes de temporada, episódio ou grupo de release. Quando esta opção está desativada, o qui adiciona essas correspondências pausadas e faz a reverificação.",
       "pieceBoundaryDisabled": "Verificação de segurança de limite de peça atualmente desativada",
       "pieceBoundaryEnabled": "Verificação de segurança de limite de peça ativada",
       "pieceBoundaryDisabledDescription": "Permitir correspondências mesmo que os arquivos extras compartilhem peças com o conteúdo. Pode corromper arquivos semeados existentes se o conteúdo for diferente. Considere o modo reflink.",

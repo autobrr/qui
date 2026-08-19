@@ -77,33 +77,81 @@ func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release)
 	return &merged
 }
 
-// deriveSearchSourceTVRelease recovers TV structure from a torrent's files the
-// same way search does, for names that parse as non-TV (bracket-anime packs
-// carry season/episode markers only in file names). Returns nil when the files
-// don't establish a TV release, so callers keep the raw parse.
-func (s *Service) deriveSearchSourceTVRelease(ctx context.Context, instanceID int, hash, name string, parsed *rls.Release) *rls.Release {
-	files, err := s.getTorrentFilesCached(ctx, instanceID, hash)
+// deriveSearchSourceRelease recovers the same category-aware public view and
+// selected-file provenance used by search.
+func (s *Service) deriveSearchSourceRelease(ctx context.Context, instanceID int, torrent *qbt.Torrent, parsed *rls.Release) namedRelease {
+	view := namedRelease{release: parsed, rawName: torrent.Name}
+	files, err := s.getTorrentFilesCached(ctx, instanceID, torrent.Hash)
 	if err != nil {
-		return nil
+		return view
 	}
-	return s.deriveTVReleaseFromFiles(name, parsed, files)
+	return s.searchSourceReleaseViewFromFiles(ctx, torrent, parsed, files)
 }
 
-// deriveTVReleaseFromFiles is the file-list core of deriveSearchSourceTVRelease
-// for callers that already hold the files (e.g. apply, which has the incoming
-// torrent's metainfo). Returns nil when the files don't establish a TV release.
-func (s *Service) deriveTVReleaseFromFiles(name string, parsed *rls.Release, files qbt.TorrentFiles) *rls.Release {
+// searchSourceReleaseViewFromFiles reconstructs the existing torrent view used
+// by search and cached-decision replay. Category routing is part of that view,
+// so both stages derive the same TV structure.
+func (s *Service) searchSourceReleaseViewFromFiles(ctx context.Context, torrent *qbt.Torrent, parsed *rls.Release, files qbt.TorrentFiles) namedRelease {
+	view, _ := s.searchSourceReleaseViewAndContentInfo(ctx, torrent, parsed, files)
+	return view
+}
+
+func (s *Service) searchSourceReleaseViewAndContentInfo(ctx context.Context, torrent *qbt.Torrent, parsed *rls.Release, files qbt.TorrentFiles) (namedRelease, ContentTypeInfo) {
+	contentDetectionRelease, usedFile := s.selectContentDetectionRelease(torrent.Name, parsed, files)
+	contentInfo := s.applyCategoryMappingRule(ctx, torrent, DetermineContentTypeWithFiles(contentDetectionRelease, files))
+	view := s.buildReleaseView(torrent.Name, parsed, contentDetectionRelease, usedFile, files, contentInfo, releaseViewPolicy{
+		useDerivedTV: true,
+	})
+	return view, contentInfo
+}
+
+// applyTargetReleaseViewFromFiles builds the downloaded candidate's view. A
+// cached search may need file-derived TV structure, but an explicit info.name
+// group remains authoritative and selected-file tags stay as veto evidence.
+func (s *Service) applyTargetReleaseViewFromFiles(name string, parsed *rls.Release, files qbt.TorrentFiles, replaySearch bool) namedRelease {
+	contentDetectionRelease, usedFile := s.selectContentDetectionRelease(name, parsed, files)
+	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
+	return s.buildReleaseView(name, parsed, contentDetectionRelease, usedFile, files, contentInfo, releaseViewPolicy{
+		useDerivedTV:             !isTVRelease(parsed) || replaySearch,
+		preserveExplicitRawGroup: true,
+	})
+}
+
+type releaseViewPolicy struct {
+	useDerivedTV             bool
+	preserveExplicitRawGroup bool
+}
+
+func (s *Service) buildReleaseView(
+	name string,
+	parsed *rls.Release,
+	contentDetectionRelease *rls.Release,
+	usedFile bool,
+	files qbt.TorrentFiles,
+	contentInfo ContentTypeInfo,
+	policy releaseViewPolicy,
+) namedRelease {
+	view := namedRelease{release: parsed, rawName: name}
 	if len(files) == 0 {
-		return nil
+		return view
 	}
 
-	contentDetectionRelease, _ := s.selectContentDetectionRelease(name, parsed, files)
-	contentInfo := DetermineContentTypeWithFiles(contentDetectionRelease, files)
-	derived := s.selectSourceReleaseForSearch(parsed, contentDetectionRelease, files, contentInfo)
-	if !isTVRelease(derived) {
-		return nil
+	if usedFile {
+		view.tagOrigin = contentDetectionRelease
 	}
-	return derived
+	derived := s.selectSourceReleaseForSearch(parsed, contentDetectionRelease, files, contentInfo)
+	if !policy.useDerivedTV || !isTVRelease(derived) {
+		return view
+	}
+	if policy.preserveExplicitRawGroup && releaseHasExplicitGroupTag(parsed) {
+		preservedIdentity := *derived
+		preservedIdentity.Group = parsed.Group
+		preservedIdentity.Site = parsed.Site
+		view.release = &preservedIdentity
+		return view
+	}
+	view.release = derived
+	return view
 }
 
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {

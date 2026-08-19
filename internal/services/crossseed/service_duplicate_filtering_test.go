@@ -419,7 +419,7 @@ func TestBuildTorrentSearchResultsKeepsDuplicateRejectedByContentPrefilter(t *te
 	require.Equal(t, existing.Name, results[0].Title)
 	require.Equal(t, duplicateHash, results[0].InfoHashV1)
 
-	scored[0].class = searchCandidateClassTitleRescue
+	scored[0].provenance.Class = searchCandidateClassTitleRescue
 	results, duplicateFiltered, err = svc.buildTorrentSearchResults(context.Background(), instanceID, sourceHash, scored, 10)
 	require.NoError(t, err)
 	require.Equal(t, 1, duplicateFiltered)

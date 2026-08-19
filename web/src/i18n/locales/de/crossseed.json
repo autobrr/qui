@@ -307,7 +307,7 @@
       "rescueTitleMismatches": "Abweichende Titel retten",
       "rescueTitleMismatchesDescription": "Versuche pro Quellsuche insgesamt bis zu drei Ergebnisse mit exakt gleicher Größe aus allen Indexern. qui prüft alle Daten, bevor der Torrent startet. Recheck überspringen schaltet diese Regel aus.",
       "skipRecheck": "Matches überspringen, die eine Neuprüfung erfordern",
-      "skipRecheckDescription": "Matches überspringen, die eine Umbenennungs-Anpassung, zusätzliche Dateien oder Disc-Layouts (BDMV/VIDEO_TS) erfordern. Ist dies AUS, werden solche Matches standardmäßig zwangsweise neu geprüft.",
+      "skipRecheckDescription": "Matches überspringen, die wegen umbenannter Pfade, zusätzlicher oder fehlender Dateien, eines Fallbacks aus dem Hardlink-/Reflink-Modus oder Disc-Layouts (BDMV/VIDEO_TS) eine Neuprüfung benötigen. Dies gilt auch für Matches mit exakt gleicher Größe, die auf abweichenden Season-, Episoden- oder Release-Group-Angaben beruhen. Ist diese Option deaktiviert, fügt qui diese Matches pausiert hinzu und prüft sie erneut.",
       "pieceBoundaryDisabled": "Piece-Grenzen-Sicherheitsprüfung derzeit deaktiviert",
       "pieceBoundaryEnabled": "Piece-Grenzen-Sicherheitsprüfung aktiviert",
       "pieceBoundaryDisabledDescription": "Matches auch dann zulassen, wenn zusätzliche Dateien Pieces mit Inhalten teilen. Kann vorhandene geseedete Dateien beschädigen, falls sich Inhalte unterscheiden. Ziehe stattdessen den Reflink-Modus in Betracht.",

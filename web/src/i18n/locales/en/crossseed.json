@@ -307,7 +307,7 @@
       "rescueTitleMismatches": "Rescue title mismatches",
       "rescueTitleMismatchesDescription": "Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. A rescue that fails still counts as a download on your tracker. Skip recheck turns this off.",
       "skipRecheck": "Skip recheck-required matches",
-      "skipRecheckDescription": "Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.",
+      "skipRecheckDescription": "Skip matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, or disc layouts (BDMV/VIDEO_TS). This also skips exact-size matches that rely on different season, episode, or release-group details. When this option is off, qui adds these matches paused and rechecks them.",
       "pieceBoundaryDisabled": "Piece boundary safety check currently disabled",
       "pieceBoundaryEnabled": "Piece boundary safety check enabled",
       "pieceBoundaryDisabledDescription": "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead.",

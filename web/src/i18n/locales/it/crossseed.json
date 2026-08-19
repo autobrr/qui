@@ -307,7 +307,7 @@
       "rescueTitleMismatches": "Recupera titoli non corrispondenti",
       "rescueTitleMismatchesDescription": "Prova in totale fino a tre risultati di dimensione esatta per ogni ricerca sorgente, su tutti gli indicizzatori. qui controlla tutti i dati prima di avviare il torrent. Salta ricontrollo disattiva questa regola.",
       "skipRecheck": "Ignora le corrispondenze che richiedono la riverifica",
-      "skipRecheckDescription": "Ignora le corrispondenze che richiedono allineamento dei rinomini, file aggiuntivi o strutture di disco (BDMV/VIDEO_TS). Quando è disattivato, queste corrispondenze vengono riverificate forzatamente per impostazione predefinita.",
+      "skipRecheckDescription": "Ignora le corrispondenze che richiedono una riverifica a causa di percorsi rinominati, file aggiuntivi o mancanti, ripiego dalla modalità hardlink/reflink o strutture di disco (BDMV/VIDEO_TS). Ignora anche le corrispondenze con dimensione esatta basate su dati diversi relativi a stagione, episodio o gruppo di release. Quando questa opzione è disattivata, qui aggiunge queste corrispondenze in pausa e le riverifica.",
       "pieceBoundaryDisabled": "Verifica di sicurezza dei confini dei pezzi attualmente disabilitata",
       "pieceBoundaryEnabled": "Verifica di sicurezza dei confini dei pezzi abilitata",
       "pieceBoundaryDisabledDescription": "Consenti le corrispondenze anche se i file aggiuntivi condividono pezzi con il contenuto. Può corrompere i file esistenti in distribuzione se il contenuto differisce. Considera invece la modalità reflink.",

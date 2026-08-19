@@ -183,6 +183,16 @@ func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
 // named constant rather than an inline literal.
 const titleMismatchReason = "title mismatch"
 
+// These are rejections the exact-size fallback carries into apply. The
+// structural and group reasons force a hash check before the add seeds. Callers
+// key off these exact values.
+const (
+	seasonMismatchReason   = "season mismatch"
+	episodeMismatchReason  = "episode mismatch"
+	groupMismatchReason    = "group mismatch"
+	checksumMismatchReason = "checksum mismatch"
+)
+
 func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
@@ -387,7 +397,7 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	}
 
 	if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
-		return false, "season mismatch"
+		return false, seasonMismatchReason
 	}
 
 	if !findIndividualEpisodes {
@@ -398,7 +408,7 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 
 		// If both are individual episodes, episodes must match
 		if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-			return false, "episode mismatch"
+			return false, episodeMismatchReason
 		}
 		return true, ""
 	}
@@ -406,7 +416,7 @@ func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes,
 	// Flexible matching: allow season packs to match individual episodes.
 	// But individual episodes still need exact episode matching.
 	if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-		return false, "episode mismatch"
+		return false, episodeMismatchReason
 	}
 
 	return true, ""
@@ -430,10 +440,10 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, t
 		switch {
 		case candidateGroupIdentity == "":
 			if !tolerateMissingCandidateTags {
-				return false, "group mismatch"
+				return false, groupMismatchReason
 			}
 		case sourceGroup != candidateGroupIdentity:
-			return false, "group mismatch"
+			return false, groupMismatchReason
 		}
 	}
 	// If source has no group, we don't care about candidate's group
@@ -461,10 +471,10 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release, t
 		switch {
 		case candidateSum == "":
 			if !tolerateMissingCandidateTags {
-				return false, "checksum mismatch"
+				return false, checksumMismatchReason
 			}
 		case sourceSum != candidateSum:
-			return false, "checksum mismatch"
+			return false, checksumMismatchReason
 		}
 	}
 

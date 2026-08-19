@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	qbt "github.com/autobrr/go-qbittorrent"
-	"github.com/moistari/rls"
 
 	"github.com/autobrr/qui/internal/services/jackett"
 )
@@ -51,7 +50,8 @@ type CrossSeedRequest struct {
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
-	// SkipRecheck skips matches that would require a manual recheck (rename alignment or extra files).
+	// SkipRecheck skips matches that require a recheck because of file layout or
+	// an exact-size season, episode, title, or release-group relaxation.
 	SkipRecheck bool `json:"skip_recheck,omitempty"`
 	// SkipPieceBoundarySafetyCheck bypasses the piece boundary safety check that prevents
 	// corruption when extra files share pieces with content. Risky: may corrupt existing seeded data.
@@ -70,23 +70,12 @@ type CrossSeedRequest struct {
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	// Internal-only, not exposed via JSON API.
 	SourceFilterExcludeTags []string `json:"-"`
-	// SearchDecisionClass records the private search classification that admitted
-	// this torrent. Only cached search results may set it; exact-size provenance
-	// bypasses only the duplicate apply-stage release prefilter.
-	SearchDecisionClass searchCandidateClass `json:"-"`
-	// SearchSourceInstanceID and SearchSourceHash identify the torrent whose size
-	// was compared with the selected search result.
-	SearchSourceInstanceID int    `json:"-"`
-	SearchSourceHash       string `json:"-"`
+	// SearchDecision is private provenance carried only by cached search results.
+	// It binds apply to the source torrent and every relaxation search admitted.
+	SearchDecision searchDecisionProvenance `json:"-"`
 	// ReportedSeeders is the indexer-reported count captured at admission.
 	// Direct add paths leave it at zero.
 	ReportedSeeders int `json:"-"`
-	// SearchStrictMismatchReason and SearchRelaxedDifferences preserve the exact
-	// metadata relaxation admitted during search.
-	SearchStrictMismatchReason string   `json:"-"`
-	SearchRelaxedDifferences   []string `json:"-"`
-	// SearchSourceTitles preserves ARR aliases used to admit the cached search result.
-	SearchSourceTitles []string `json:"-"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -163,11 +152,9 @@ type TorrentFile struct {
 type FindCandidatesRequest struct {
 	// TorrentName is the title/name of the torrent you want to add (just a string, torrent doesn't exist yet)
 	TorrentName string `json:"torrent_name"`
-	// TargetRelease optionally overrides the release parsed from TorrentName.
-	// Apply file-derives TV structure from the incoming torrent's metainfo
-	// (bracket-anime pack names parse as non-TV, structure lives in file names),
-	// so candidate matching sees the same structure search matched with.
-	TargetRelease *rls.Release `json:"-"`
+	// TargetRelease keeps the public release fields, raw name, and selected-file
+	// tag provenance together so apply cannot accidentally drop one origin.
+	TargetRelease namedRelease `json:"-"`
 	// SourceIndexer optionally records where the request originated (e.g., automation feed indexer)
 	SourceIndexer string `json:"source_indexer,omitempty"`
 	// TargetInstanceIDs specifies which instances to search for EXISTING torrents with matching files
@@ -193,17 +180,9 @@ type FindCandidatesRequest struct {
 	SourceFilterExcludeCategories []string `json:"-"`
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	SourceFilterExcludeTags []string `json:"-"`
-	// SearchDecisionClass and source identity bind an exact-size search decision
-	// to the one existing torrent that supplied the size evidence.
-	SearchDecisionClass    searchCandidateClass `json:"-"`
-	SearchSourceInstanceID int                  `json:"-"`
-	SearchSourceHash       string               `json:"-"`
-	// SearchStrictMismatchReason and SearchRelaxedDifferences limit the apply-stage
-	// bypass to metadata differences explicitly admitted during search.
-	SearchStrictMismatchReason string   `json:"-"`
-	SearchRelaxedDifferences   []string `json:"-"`
-	// SearchSourceTitles are ARR aliases for the existing torrent that originated the search.
-	SearchSourceTitles []string `json:"-"`
+	// SearchDecision binds a cached decision to the source torrent and limits
+	// apply replay to exactly the relaxations search admitted.
+	SearchDecision searchDecisionProvenance `json:"-"`
 }
 
 // FindCandidatesResponse represents potential cross-seed candidates
@@ -300,14 +279,8 @@ type TorrentSearchResult struct {
 	TVDbID               string  `json:"tvdb_id,omitempty"`
 	MatchReason          string  `json:"match_reason,omitempty"`
 	MatchScore           float64 `json:"match_score"`
-	// SearchDecisionClass is retained only in the in-memory search result cache.
-	SearchDecisionClass searchCandidateClass `json:"-"`
-	// SearchStrictMismatchReason and SearchRelaxedDifferences retain the exact
-	// release-metadata relaxation admitted for this cached result.
-	SearchStrictMismatchReason string   `json:"-"`
-	SearchRelaxedDifferences   []string `json:"-"`
-	// SearchSourceTitles retains ARR aliases used to admit this cached result.
-	SearchSourceTitles []string `json:"-"`
+	// SearchDecision is retained only in the in-memory search result cache.
+	SearchDecision searchDecisionProvenance `json:"-"`
 }
 
 // Reasons for TorrentSearchResponse.QueryDegraded. No reason is reported when
@@ -494,6 +467,9 @@ type WebhookCheckResponse struct {
 // AutobrrApplyRequest represents autobrr pushing a torrent directly to qui for application.
 type AutobrrApplyRequest struct {
 	TorrentData string `json:"torrentData"`
+	// TorrentName is the original announcement name. It is distinct from the
+	// downloaded metainfo info.name used for replay validation.
+	TorrentName string `json:"torrentName,omitempty"`
 	// InstanceIDs optionally scopes the apply request to specific instances; omit or pass an empty array to target all matches.
 	InstanceIDs  []int    `json:"instanceIds,omitempty"`
 	Category     string   `json:"category,omitempty"`
