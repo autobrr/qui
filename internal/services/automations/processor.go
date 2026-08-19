@@ -941,9 +941,10 @@ func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, 
 		return
 	}
 
+	group := findCrossSeedGroup(torrent, cpIndex)
 	verifiedHashes, ok := crossSeedGroupMembers(
 		torrent,
-		findCrossSeedGroup(torrent, cpIndex),
+		group,
 		evalCtx.CrossSeedHashesToClear,
 		func(_ []string) (map[string]qbt.TorrentFiles, error) {
 			return evalCtx.CrossSeedFilesByHash, nil
@@ -965,7 +966,42 @@ func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, 
 		}
 	}
 
-	evalCtx.SpaceToClear += torrent.Size
+	evalCtx.SpaceToClear += verifiedCrossSeedFileBytes(torrent, group, verifiedHashes, evalCtx.CrossSeedFilesByHash)
+}
+
+func verifiedCrossSeedFileBytes(
+	trigger qbt.Torrent,
+	group []qbt.Torrent,
+	verifiedHashes []string,
+	filesByHash map[string]qbt.TorrentFiles,
+) int64 {
+	if len(filesByHash[trigger.Hash]) == 0 {
+		return trigger.Size
+	}
+
+	verified := make(map[string]struct{}, len(verifiedHashes))
+	for _, hash := range verifiedHashes {
+		verified[hash] = struct{}{}
+	}
+
+	maxSizeByPath := make(map[string]int64, len(filesByHash[trigger.Hash]))
+	var totalBytes int64
+	for _, torrent := range group {
+		if _, ok := verified[torrent.Hash]; !ok {
+			continue
+		}
+		for _, file := range filesByHash[torrent.Hash] {
+			resolvedPath := resolvedTorrentFilePath(torrent, file.Name)
+			previousSize := maxSizeByPath[resolvedPath]
+			if file.Size <= previousSize {
+				continue
+			}
+			maxSizeByPath[resolvedPath] = file.Size
+			totalBytes += file.Size - previousSize
+		}
+	}
+
+	return totalBytes
 }
 
 // CalculateScore computes the weighted score for a torrent based on configuration.

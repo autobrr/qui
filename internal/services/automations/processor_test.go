@@ -1242,6 +1242,51 @@ func TestProcessTorrents_IncludeCrossSeedsFreeSpaceProjection(t *testing.T) {
 	}
 }
 
+func TestProcessTorrents_IncludeCrossSeedsFreeSpaceCountsUniqueGroupFiles(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "first", Size: 100, AddedOn: 1, SavePath: "/data", ContentPath: "/data/shared"},
+		{Hash: "b", Name: "second", Size: 100, AddedOn: 2, SavePath: "/data", ContentPath: "/data/shared"},
+		{Hash: "c", Name: "later", Size: 10, AddedOn: 3, SavePath: "/data", ContentPath: "/data/later"},
+	}
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFilesIncludeCrossSeeds,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldFreeSpace,
+					Operator: models.OperatorLessThan,
+					Value:    "105",
+				},
+			},
+		},
+	}
+	evalCtx := &EvalContext{
+		FilesToClear:           make(map[crossSeedKey]struct{}),
+		CrossSeedHashesToClear: make(map[string]struct{}),
+		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
+			"a": {
+				{Name: "shared/common.mkv", Size: 90, Priority: 1},
+				{Name: "shared/first.nfo", Size: 10, Priority: 1},
+			},
+			"b": {
+				{Name: "shared/common.mkv", Size: 90, Priority: 1},
+				{Name: "shared/second.nfo", Size: 10, Priority: 1},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, qbittorrent.NewSyncManager(nil, nil), nil, nil, nil)
+
+	require.Len(t, states, 1)
+	require.Contains(t, states, "a")
+	require.NotContains(t, states, "c")
+	require.Equal(t, int64(110), evalCtx.SpaceToClear)
+}
+
 func TestProcessTorrents_SortsOldestFirst(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 
