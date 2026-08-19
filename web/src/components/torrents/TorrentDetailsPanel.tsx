@@ -33,7 +33,6 @@ import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -470,6 +469,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Fetch torrent peers with optimized refetch
   const isPeersTabActive = activeTab === "peers"
+
+  // flag-icons inlines 400 flags as data URIs, 73% of the boot stylesheet; load it with the tab.
+  useEffect(() => {
+    // offline PWA: the CSS is not precached, flags just render unstyled
+    if (isPeersTabActive) void import("flag-icons/css/flag-icons.min.css").catch(() => {})
+  }, [isPeersTabActive])
+
   const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
 
   const { data: peersData, isLoading: loadingPeers } = useQuery<SortedPeersResponse>({

@@ -69,7 +69,6 @@
     "portInfo": "。端口：{{port}}",
     "connectionStatus": "qBittorrent 连接状态：{{status}}",
     "streamStatus": {
-      "live": "实时流已连接",
       "cached": "刷新时显示缓存的仪表盘快照",
       "fallback": "正在刷新仪表盘统计信息",
       "error": "流出现问题；正在使用备用刷新"
@@ -85,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "概览",
     "instances": "实例",
     "connected": "已连接",
     "torrents": "种子",
@@ -153,6 +151,8 @@
     "mergeIntoGroup": "合并到分组",
     "addToMerge": "添加到合并",
     "rename": "重命名",
+    "edit": "编辑",
+    "delete": "删除",
     "pagination": {
       "range": "第 {{start}}-{{end}} 项，共 {{total}} 个 Tracker",
       "previous": "上一页",

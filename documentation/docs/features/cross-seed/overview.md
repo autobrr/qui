@@ -45,7 +45,11 @@ Scheduled polling of tracker RSS feeds. Configure in the **Auto** tab on the Cro
 - **Target instances** - Which qBittorrent instances receive cross-seeds
 - **Target indexers** - Limit to specific indexers or use all enabled ones
 
-RSS automation processes the full feed from every enabled indexer on each run, matching against torrents across your target instances.
+RSS automation processes the full feed from each selected target indexer on each run. If no target indexers are selected, it uses all enabled indexers.
+
+It compares each feed title and byte count with eligible local torrents.
+
+This comparison happens before the one intended torrent-file download. RSS does not fetch extra torrent files to measure candidates.
 
 ### Library Scan
 
@@ -73,12 +77,24 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 
 If a torrent is still **checking** or **moving**, qui waits and runs the completion search afterward instead of searching immediately against an unstable path/state.
 
+Completion searches use the same Torznab result classifier as interactive and scheduled searches. An equal positive reported size can activate the same controlled fallback.
+
 ### Manual Search
 
 Right-click any torrent in the list to access cross-seed actions:
 
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
+
+An exact positive byte count can relax approved name differences. Reported size is evidence, not proof that the torrent has the same bytes.
+
+qui still checks the downloaded torrent metadata, files, layout, and piece boundaries. Title, season, episode, and split release-group fallbacks require a full recheck.
+
+RSS uses the same classifier with its feed title and byte count. The [autobrr integration](./autobrr.md) uses passive announcement data during `/check`.
+
+If autobrr has no positive size, qui uses a narrow name-only preflight. This preflight can approve one download, but it cannot approve an add.
 
 ### Season Pack Assembly
 

@@ -655,8 +655,9 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 			wantFetches: 0,
 		},
 		{
-			// Zero missing bytes resumes even when piece-based progress reads
-			// under 1; only the title-rescue monitor also demands full progress.
+			// Ordinary zero-budget entries trust zero missing bytes even when
+			// piece progress reads under 1. Verification-required entries use
+			// their separate full-progress gate.
 			name:        "budget zero trusts zero missing bytes over progress",
 			budget:      0,
 			amountLeft:  0,
@@ -719,6 +720,100 @@ func TestProcessPendingRecheckResumeBudgetDecisions(t *testing.T) {
 	}
 }
 
+// Verification-required search matches must not spend qBittorrent's optimistic
+// pre-check completion state. The worker has to observe the recheck and then a
+// full result before it may ask qBittorrent to resume.
+func requireVerificationPendingWaitsForObservedFullCheck(t *testing.T, service *Service, queued *pendingResume) {
+	t.Helper()
+
+	resumeDataCheck := *queued
+	keep := service.processPendingRecheckResume(resumeDataCheck.instanceID, resumeDataCheck.hash, &resumeDataCheck, qbt.Torrent{
+		Hash:       resumeDataCheck.hash,
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStateCheckingResumeData,
+	})
+	require.True(t, keep)
+	require.False(t, resumeDataCheck.sawChecking, "resume-data validation does not prove a full piece check ran")
+	for range recheckResumeStablePolls {
+		keep = service.processPendingRecheckResume(resumeDataCheck.instanceID, resumeDataCheck.hash, &resumeDataCheck, qbt.Torrent{
+			Hash:       resumeDataCheck.hash,
+			Progress:   1,
+			AmountLeft: 0,
+			State:      qbt.TorrentStatePausedUp,
+		})
+		require.True(t, keep, "completion after resume-data validation must not trigger resume")
+		require.Zero(t, resumeDataCheck.resumeAttempts)
+	}
+
+	preCheck := *queued
+	for range recheckResumeStablePolls {
+		keep := service.processPendingRecheckResume(preCheck.instanceID, preCheck.hash, &preCheck, qbt.Torrent{
+			Hash:       preCheck.hash,
+			Progress:   1,
+			AmountLeft: 0,
+			State:      qbt.TorrentStatePausedUp,
+		})
+		require.True(t, keep, "the queue entry must wait until a hash check is observed")
+		require.Zero(t, preCheck.resumeAttempts, "stale pre-check completion must not trigger resume")
+	}
+
+	observeChecking := func(pending *pendingResume) {
+		t.Helper()
+		keep := service.processPendingRecheckResume(pending.instanceID, pending.hash, pending, qbt.Torrent{
+			Hash:     pending.hash,
+			Progress: 0.5,
+			State:    qbt.TorrentStateCheckingUp,
+		})
+		require.True(t, keep)
+		require.True(t, pending.sawChecking, "the live checking state must arm verification completion")
+	}
+
+	interrupted := *queued
+	observeChecking(&interrupted)
+	keep = service.processPendingRecheckResume(interrupted.instanceID, interrupted.hash, &interrupted, qbt.Torrent{
+		Hash:       interrupted.hash,
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStateCheckingResumeData,
+	})
+	require.True(t, keep)
+	require.False(t, interrupted.sawChecking,
+		"resume-data validation must invalidate a piece check interrupted by qBittorrent restart")
+	for range recheckResumeStablePolls {
+		keep = service.processPendingRecheckResume(interrupted.instanceID, interrupted.hash, &interrupted, qbt.Torrent{
+			Hash:       interrupted.hash,
+			Progress:   1,
+			AmountLeft: 0,
+			State:      qbt.TorrentStatePausedUp,
+		})
+		require.True(t, keep, "an interrupted verification must wait for a new piece-check transition")
+		require.Zero(t, interrupted.resumeAttempts)
+	}
+
+	belowFull := *queued
+	observeChecking(&belowFull)
+	keep = service.processPendingRecheckResume(belowFull.instanceID, belowFull.hash, &belowFull, qbt.Torrent{
+		Hash:       belowFull.hash,
+		Progress:   0.99,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedDl,
+	})
+	require.False(t, keep, "a completed hash check below 100% must stay paused for manual review")
+	require.Zero(t, belowFull.resumeAttempts, "zero missing bytes must not override incomplete progress")
+
+	complete := *queued
+	observeChecking(&complete)
+	keep = service.processPendingRecheckResume(complete.instanceID, complete.hash, &complete, qbt.Torrent{
+		Hash:       complete.hash,
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedUp,
+	})
+	require.True(t, keep, "the worker keeps the entry until resume is confirmed")
+	require.Equal(t, 1, complete.resumeAttempts, "an observed complete check may resume")
+}
+
 func TestProcessPendingTitleRescueMonitorNeverResumes(t *testing.T) {
 	t.Parallel()
 
@@ -756,17 +851,12 @@ func TestProcessPendingTitleRescueMonitorWaitsForFullProgress(t *testing.T) {
 	// or it would declare the rescue verified before the recheck ran.
 	sync := &recheckResumeSyncManager{}
 	service := &Service{
-		syncManager:      sync,
-		recheckResumeCtx: context.Background(),
+		syncManager:       sync,
+		recheckResumeCtx:  context.Background(),
+		recheckResumeChan: make(chan *pendingResume, 1),
 	}
-	budget := int64(0)
-	pending := &pendingResume{
-		instanceID:  1,
-		hash:        "hash1",
-		monitorOnly: true,
-		budgetBytes: &budget,
-		addedAt:     time.Now(),
-	}
+	require.NoError(t, service.queueTitleRescueMonitor(1, "hash1"))
+	pending := <-service.recheckResumeChan
 
 	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
 		Hash:       "hash1",
@@ -776,6 +866,15 @@ func TestProcessPendingTitleRescueMonitorWaitsForFullProgress(t *testing.T) {
 	})
 
 	require.True(t, keep)
+	require.Empty(t, sync.bulkActions)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedUp,
+	})
+	require.True(t, keep, "an optimistic 100% snapshot still does not prove the recheck ran")
 	require.Empty(t, sync.bulkActions)
 }
 

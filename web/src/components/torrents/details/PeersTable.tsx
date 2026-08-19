@@ -21,7 +21,6 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { SortIcon } from "@/components/ui/sort-icon"
-import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
