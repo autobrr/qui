@@ -216,8 +216,8 @@ func partialPoolFilesPair(sourceMember, targetMember *models.CrossSeedPartialPoo
 	if source == nil || target == nil || source.SizeBytes <= 0 || source.SizeBytes != target.SizeBytes {
 		return false
 	}
-	if source.PiecesRoot != "" && target.PiecesRoot != "" && strings.EqualFold(source.PiecesRoot, target.PiecesRoot) {
-		return true
+	if source.PiecesRoot != "" && target.PiecesRoot != "" {
+		return strings.EqualFold(source.PiecesRoot, target.PiecesRoot)
 	}
 	if strings.EqualFold(partialPoolRootStrippedPath(sourceMember, source), partialPoolRootStrippedPath(targetMember, target)) {
 		return true

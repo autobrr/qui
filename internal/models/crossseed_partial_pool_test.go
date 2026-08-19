@@ -178,7 +178,16 @@ func TestCrossSeedPartialPoolRemovalPreservesOtherMembers(t *testing.T) {
 	require.Len(t, reloaded.Members, 1)
 	require.Equal(t, secondMember.ID, reloaded.Members[0].ID)
 
+	readdedRegistration := partialPoolRegistration(t, firstID, secondID, "one", "one", "", "two")
+	readdedRegistration.SourceAliases = []string{"two"}
+	readdedPool, readdedMember, err := store.RegisterPartialPoolMember(ctx, readdedRegistration)
+	require.NoError(t, err)
+	require.Equal(t, pool.ID, readdedPool.ID)
+	require.NotEqual(t, firstMember.ID, readdedMember.ID)
+	require.Len(t, readdedPool.Members, 2)
+
 	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, secondMember.ID, "missing"))
+	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, readdedMember.ID, "missing"))
 	_, err = store.GetPartialPool(ctx, pool.ID)
 	require.Error(t, err)
 }

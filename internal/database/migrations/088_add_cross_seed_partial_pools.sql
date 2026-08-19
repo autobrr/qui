@@ -32,14 +32,14 @@ CREATE TABLE cross_seed_partial_pool_members (
     retry_after TIMESTAMP,
     last_error TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (instance_id, torrent_key)
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_cross_seed_partial_pool_members_pool_status
     ON cross_seed_partial_pool_members(pool_id, status);
-CREATE INDEX idx_cross_seed_partial_pool_members_instance_key
-    ON cross_seed_partial_pool_members(instance_id, torrent_key);
+CREATE UNIQUE INDEX idx_cross_seed_partial_pool_members_instance_key
+    ON cross_seed_partial_pool_members(instance_id, torrent_key)
+    WHERE status <> 'removed';
 
 CREATE TABLE cross_seed_partial_pool_member_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

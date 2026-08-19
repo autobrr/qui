@@ -122,6 +122,10 @@ func TestPartialPoolFilesPairPolicy(t *testing.T) {
 	}}
 
 	require.True(t, partialPoolFilesPair(source, target, source.Files[0], target.Files[0]), "v2 root")
+	target.Files[0].RelativePath = "Target/video.mkv"
+	target.Files[0].PiecesRoot = "different-root"
+	require.False(t, partialPoolFilesPair(source, target, source.Files[0], target.Files[0]), "different v2 roots are definitive")
+	target.Files[0].RelativePath = "Target/renamed.mkv"
 	target.Files[0].PiecesRoot = ""
 	require.False(t, partialPoolFilesPair(source, target, source.Files[0], target.Files[0]), "renamed v1 size alone")
 	require.True(t, partialPoolFilesPair(source, target, source.Files[0], target.Files[1]), "root-stripped path")

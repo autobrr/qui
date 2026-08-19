@@ -322,6 +322,13 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 		databaseBoolArg(s.db, member.StartedByPool), member.LastDownloadedBytes, member.LastProgressAt, member.RetryAfter, member.LastError,
 	).Scan(&memberID)
 	if err != nil {
+		if isUniqueConstraintError(err) {
+			_ = tx.Rollback()
+			pool, existing, resolveErr := s.ResolvePartialPoolMember(ctx, member.InstanceID, memberAliases...)
+			if resolveErr == nil && existing != nil {
+				return pool, existing, nil
+			}
+		}
 		return nil, nil, fmt.Errorf("insert partial pool member: %w", err)
 	}
 
@@ -846,7 +853,7 @@ func validPartialPoolMemberTransition(from, to string) bool {
 	case CrossSeedPartialPoolMemberStatusManual:
 		return to == CrossSeedPartialPoolMemberStatusComplete || to == CrossSeedPartialPoolMemberStatusRemoved
 	case CrossSeedPartialPoolMemberStatusComplete:
-		return to == CrossSeedPartialPoolMemberStatusRemoved
+		return to == CrossSeedPartialPoolMemberStatusManual || to == CrossSeedPartialPoolMemberStatusRemoved
 	default:
 		return false
 	}

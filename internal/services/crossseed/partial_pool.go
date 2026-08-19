@@ -251,6 +251,20 @@ func (s *Service) markPartialPoolMemberManual(ctx context.Context, memberID int6
 	_, _ = s.automationStore.TransitionPartialPoolMember(ctx, memberID, expected, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
 }
 
+func (s *Service) pausePartialPoolMemberForReview(ctx context.Context, member *models.CrossSeedPartialPoolMember, torrent qbt.Torrent, reason string) {
+	if s == nil || member == nil || ctx.Err() != nil {
+		return
+	}
+	if !isPausedOrStopped(torrent.State) {
+		_ = s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause")
+	}
+	reason = strings.TrimSpace(reason)
+	if member.Status == models.CrossSeedPartialPoolMemberStatusManual && member.LastError == reason {
+		return
+	}
+	s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
+}
+
 type partialPoolTorrentInventory struct {
 	loaded  bool
 	byAlias map[string]qbt.Torrent
@@ -420,16 +434,6 @@ func (s *Service) observePartialPoolMembers(
 			continue
 		}
 		observed[member.ID] = torrent
-		if !partialPoolTorrentComplete(torrent) || member.Status == models.CrossSeedPartialPoolMemberStatusVerifying || member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || member.Status == models.CrossSeedPartialPoolMemberStatusRechecking {
-			continue
-		}
-		_, _ = s.automationStore.TransitionPartialPoolMember(
-			ctx,
-			member.ID,
-			[]string{member.Status},
-			models.CrossSeedPartialPoolMemberStatusComplete,
-			models.PartialPoolMemberMutation{},
-		)
 	}
 	return observed
 }
@@ -445,11 +449,15 @@ func (s *Service) refreshPartialPoolFiles(
 	}
 	requestsByInstance := make(map[int][]memberRequest)
 	for _, member := range pool.Members {
-		if member.Status == models.CrossSeedPartialPoolMemberStatusRemoved || member.Status == models.CrossSeedPartialPoolMemberStatusManual {
+		if member.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
 			continue
 		}
 		snapshot, ok := snapshots[member.ID]
 		if !ok {
+			continue
+		}
+		if normalizePathForComparison(snapshot.torrent.SavePath) != normalizePathForComparison(member.RootPath) {
+			s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, "qBittorrent save path no longer matches admitted root")
 			continue
 		}
 		hash := normalizeHash(snapshot.torrent.Hash)
@@ -489,8 +497,8 @@ func (s *Service) refreshPartialPoolFiles(
 			}
 			fileByIndex, valid := partialPoolCurrentFiles(request.member, files)
 			if !valid {
-				if len(files) > 0 && request.member.Status != models.CrossSeedPartialPoolMemberStatusComplete {
-					s.markPartialPoolMemberManual(ctx, request.member.ID, []string{request.member.Status}, "qBittorrent file list no longer matches admitted metainfo")
+				if len(files) > 0 {
+					s.pausePartialPoolMemberForReview(ctx, request.member, snapshots[request.member.ID].torrent, "qBittorrent files or priorities no longer match admission")
 				}
 				continue
 			}
@@ -514,7 +522,7 @@ func partialPoolCurrentFiles(member *models.CrossSeedPartialPoolMember, files qb
 	}
 	for _, file := range member.Files {
 		currentFile, ok := current[file.FileIndex]
-		if !ok || currentFile.Name != file.RelativePath || currentFile.Size != file.SizeBytes {
+		if !ok || currentFile.Name != file.RelativePath || currentFile.Size != file.SizeBytes || (currentFile.Priority > 0) != file.WantedAtAdmission {
 			return nil, false
 		}
 	}
@@ -631,6 +639,10 @@ func (s *Service) reconcilePartialPool(
 			s.reconcilePartialPoolAcquiring(ctx, now, member, snapshot, budget)
 		case models.CrossSeedPartialPoolMemberStatusComplete:
 			s.reconcilePartialPoolComplete(ctx, member, snapshot)
+		case models.CrossSeedPartialPoolMemberStatusManual:
+			if partialPoolTorrentComplete(snapshot.torrent) {
+				s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusComplete, models.PartialPoolMemberMutation{})
+			}
 		}
 	}
 
