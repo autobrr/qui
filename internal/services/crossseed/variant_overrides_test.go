@@ -201,6 +201,15 @@ func TestReleasesMatch_PROPERBlockedForMovies(t *testing.T) {
 		"PROPER movie should NOT match vanilla movie")
 }
 
+func TestVariantMismatchReasonIsDeterministic(t *testing.T) {
+	source := &rls.Release{Collection: "IMAX", Other: []string{"HYBRID"}}
+	candidate := &rls.Release{}
+
+	for range 100 {
+		require.Equal(t, "HYBRID", strictVariantOverrides.findMismatch(source, candidate))
+	}
+}
+
 func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {
 	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 

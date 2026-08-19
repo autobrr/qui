@@ -102,7 +102,7 @@ jobs:
           # Bound how many times Claude can invoke the write helper per run, so a
           # prompt-injection in discussion content cannot spam label mutations.
           CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 5}'
-        uses: anthropics/claude-code-action@v1.0.183
+        uses: anthropics/claude-code-action@v1.0.189
         with:
           # The dispatch job re-triggers this run via workflow_dispatch using
           # GITHUB_TOKEN, so the actor is github-actions[bot]. Allow it past the

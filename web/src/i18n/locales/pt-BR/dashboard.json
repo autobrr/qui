@@ -69,7 +69,6 @@
     "portInfo": ". Porta: {{port}}",
     "connectionStatus": "Status da conexão do qBittorrent: {{status}}",
     "streamStatus": {
-      "live": "Transmissão ao vivo conectada",
       "cached": "Mostrando snapshot em cache enquanto atualiza",
       "fallback": "Atualizando estatísticas do painel",
       "error": "Erro na transmissão; usando atualização reserva"
@@ -85,7 +84,6 @@
     }
   },
   "mobileOverview": {
-    "title": "Visão Geral",
     "instances": "Instâncias",
     "connected": "Conectado",
     "torrents": "Torrents",
@@ -153,6 +151,8 @@
     "mergeIntoGroup": "Mesclar no grupo",
     "addToMerge": "Adicionar à mesclagem",
     "rename": "Renomear",
+    "edit": "Editar",
+    "delete": "Excluir",
     "pagination": {
       "range": "{{start}}-{{end}} de {{total}} trackers",
       "previous": "Anterior",

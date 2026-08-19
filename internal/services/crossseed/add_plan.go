@@ -19,13 +19,16 @@ const (
 )
 
 type crossSeedAddPlan struct {
-	torrent       qbt.Torrent
-	files         qbt.TorrentFiles
-	matchType     string
-	matchScore    int
-	sourceRoot    string
-	candidateRoot string
-	contentLayout string
+	torrent          qbt.Torrent
+	files            qbt.TorrentFiles
+	sourceFiles      qbt.TorrentFiles
+	sourceRelease    *rls.Release
+	candidateRelease *rls.Release
+	matchType        string
+	matchScore       int
+	sourceRoot       string
+	candidateRoot    string
+	contentLayout    string
 	// savePathOverride is an explicit save path that pins a rootless single file into the matched folder.
 	savePathOverride string
 	layoutRank       addPlanLayoutRank
@@ -33,6 +36,7 @@ type crossSeedAddPlan struct {
 	fileCount        int
 	needsRootAlign   bool
 	needsFileAlign   bool
+	isEpisodeInPack  bool
 	forceRecheck     bool
 }
 
@@ -88,6 +92,9 @@ func buildCrossSeedAddPlan(
 	return crossSeedAddPlan{
 		torrent:          torrent,
 		files:            files,
+		sourceFiles:      sourceFiles,
+		sourceRelease:    sourceRelease,
+		candidateRelease: candidateRelease,
 		matchType:        matchType,
 		matchScore:       matchTypePriority(matchType),
 		sourceRoot:       sourceRoot,
@@ -99,6 +106,7 @@ func buildCrossSeedAddPlan(
 		fileCount:        len(files),
 		needsRootAlign:   needsRootAlign,
 		needsFileAlign:   needsFileAlign,
+		isEpisodeInPack:  isEpisodeInPack,
 		forceRecheck:     needsRootAlign || needsFileAlign,
 	}
 }

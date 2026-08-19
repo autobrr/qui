@@ -37,7 +37,7 @@ qui supports three presets:
 
 For `by-tracker`, qui resolves the folder name using the same fallback chain as cross-seed statistics:
 
-1. **Tracker customization display name** (Settings → Tracker Customizations)
+1. **Tracker customization display name** ([Tracker Customizations](../tracker-customizations.md), on the Dashboard under **Tracker Breakdown**)
 2. Indexer name (from Prowlarr/Jackett)
 3. Raw announce domain
 

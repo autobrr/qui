@@ -45,6 +45,9 @@ export default defineConfig(() => ({
         // Use development mode on Node 24+ to keep builds working without changing runtime behavior elsewhere.
         mode: workboxMode,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
+        // ~140 flag SVGs plus a 420 kB flag stylesheet, for a tab most users never
+        // open; content-hashed, so the HTTP cache still covers repeat views.
+        globIgnores: ["assets/*.svg", "assets/flag-icons-*.css"],
         disableDevLogs: true,
         // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,

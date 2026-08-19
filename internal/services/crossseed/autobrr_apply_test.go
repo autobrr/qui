@@ -5,11 +5,16 @@ package crossseed
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"testing"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
@@ -305,4 +310,267 @@ func TestAutobrrApply_RespectsWebhookSourceFilters(t *testing.T) {
 			require.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
 		})
 	}
+}
+
+// TestAutobrrApplyBindsAnnouncementDecision catches an apply planner that
+// authorizes from downloaded info.name, or loses the instance/hash that
+// supplied the exact byte evidence.
+func TestAutobrrApplyBindsAnnouncementDecision(t *testing.T) {
+	t.Parallel()
+
+	const (
+		announcedName  = "Starbound.Route.2025.1080p.WEB-DL.H.264-LUMA"
+		downloadedName = "Starbound.Route.2025.1080p.WEB-DL.H.265-LUMA"
+		sourceHash     = "AABBCC"
+		actualSize     = int64(2_000_000)
+	)
+	instance := &models.Instance{ID: 41, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: sourceHash, Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1,
+	}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+
+	var captured *CrossSeedRequest
+	service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+		captured = request
+		return &CrossSeedResponse{Success: true}, nil
+	}
+
+	_, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData:  base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName:  announcedName,
+		InstanceIDs:  []int{instance.ID},
+		Indexer:      "tracker-a",
+		Category:     "incoming",
+		Tags:         []string{"from-webhook"},
+		SkipIfExists: new(true),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, captured)
+	require.Equal(t, []int{instance.ID}, captured.TargetInstanceIDs)
+	require.Equal(t, instance.ID, captured.SearchDecision.SourceInstanceID)
+	require.Equal(t, normalizeHash(sourceHash), captured.SearchDecision.SourceHash)
+	require.Equal(t, announcedName, captured.SearchDecision.SearchCandidateName)
+	require.Equal(t, "tracker-a", captured.IndexerName)
+	require.Equal(t, "incoming", captured.Category)
+	require.Equal(t, []string{"from-webhook"}, captured.Tags)
+}
+
+// TestAutobrrApplyRejectsAnnouncementActualSizeMismatch catches a relaxed
+// apply that treats an announced name as authority when metainfo bytes do not
+// have the exact size that matched the local source.
+func TestAutobrrApplyRejectsAnnouncementActualSizeMismatch(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{ID: 42, Name: "primary", IsActive: true}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+			Hash: "source", Name: "Falling.Comet.2025.1080p.WEB-DL.H.265-LUMA", Size: 2_000_000, TotalSize: 2_000_000, Progress: 1,
+		}}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			t.Fatal("actual size mismatch must not invoke CrossSeed")
+			return nil, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t,
+			"Falling.Comet.2025.1080p.WEB-DL.H.265-LUMA", "movie.mkv", 2_000_001)),
+		TorrentName: "Falling.Comet.2025.1080p.WEB-DL.H.264-LUMA",
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	require.False(t, response.Success)
+	require.Empty(t, response.Results)
+}
+
+// TestAutobrrApplyTriesLaterBoundSource catches an apply planner that discards
+// a lower-ranked source before CrossSeed can reject the first source's file or
+// add plan and accept the next one.
+func TestAutobrrApplyTriesLaterBoundSource(t *testing.T) {
+	t.Parallel()
+
+	const (
+		announcedName  = "Aurora.Signal.2025.1080p.WEB-DL.H.264-LUMA"
+		downloadedName = "Aurora.Signal.2025.1080p.WEB-DL.H.265-LUMA"
+		actualSize     = int64(2_000_000)
+	)
+	instance := &models.Instance{ID: 43, Name: "primary", IsActive: true}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{
+			{Hash: "strict", Name: announcedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+			{Hash: "fallback", Name: downloadedName, Size: actualSize, TotalSize: actualSize, Progress: 1},
+		}, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+
+	var sourceHashes []string
+	service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+		sourceHashes = append(sourceHashes, request.SearchDecision.SourceHash)
+		if request.SearchDecision.SourceHash == "strict" {
+			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Status: "no_match"}}}, nil
+		}
+		return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, downloadedName, "movie.mkv", actualSize)),
+		TorrentName: announcedName,
+		InstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Success)
+	require.Equal(t, []string{"strict", "fallback"}, sourceHashes)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "added", response.Results[0].Status)
+}
+
+// TestAutobrrApplyNonexactAnnouncementCheapGate catches apply planning that
+// fetches selected files for a nonexact source before raw strict/tolerance
+// matching decides whether the source can be replayed.
+func TestAutobrrApplyNonexactAnnouncementCheapGate(t *testing.T) {
+	t.Parallel()
+
+	const sourceSize = int64(2_000_000)
+	instance := &models.Instance{ID: 44, Name: "primary", IsActive: true}
+	tests := []struct {
+		name           string
+		announcedName  string
+		downloadedName string
+		wantInvokes    int
+		wantLookups    int
+	}{
+		{
+			name:           "codec mismatch rejects without lookup",
+			announcedName:  "Hollow.Station.2025.1080p.WEB-DL.H.265-LUMA",
+			downloadedName: "Hollow.Station.2025.1080p.WEB-DL.H.265-LUMA",
+			wantInvokes:    0, wantLookups: 0,
+		},
+		{
+			name:           "strict tolerance invokes without lookup",
+			announcedName:  "Hollow.Station.2025.1080p.WEB-DL.H.264-LUMA",
+			downloadedName: "Hollow.Station.2025.1080p.WEB-DL.H.264-LUMA",
+			wantInvokes:    1, wantLookups: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{
+				Hash: "apply-cheap-gate", Name: "Hollow.Station.2025.1080p.WEB-DL.H.264-LUMA",
+				Size: sourceSize - 10_000, TotalSize: sourceSize, Progress: 1,
+			}
+			sync := &announcementLookupCountingSyncManager{fakeSyncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+				source.Hash: {{Name: source.Name + ".mkv", Size: sourceSize}},
+			})}
+			service := &Service{
+				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+				syncManager:      sync,
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{}, nil
+				},
+			}
+			invocations := 0
+			service.crossSeedInvoker = func(_ context.Context, _ *CrossSeedRequest) (*CrossSeedResponse, error) {
+				invocations++
+				return &CrossSeedResponse{Success: true, Results: []InstanceCrossSeedResult{{InstanceID: instance.ID, Success: true, Status: "added"}}}, nil
+			}
+
+			response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+				TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t,
+					tt.downloadedName, "movie.mkv", sourceSize+500)),
+				TorrentName: tt.announcedName,
+				InstanceIDs: []int{instance.ID},
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.wantInvokes, invocations)
+			require.Equal(t, tt.wantLookups, sync.lookups)
+			if tt.wantInvokes == 0 {
+				require.False(t, response.Success)
+			} else {
+				require.True(t, response.Success)
+			}
+		})
+	}
+}
+
+// TestAutobrrApplyRetainsPartialSuccess catches a webhook response that drops
+// a successful add because a later target instance returned an error.
+func TestAutobrrApplyRetainsPartialSuccess(t *testing.T) {
+	t.Parallel()
+
+	const (
+		name = "Binary.Orbit.2025.1080p.WEB-DL.H.264-LUMA"
+		size = int64(2_000_000)
+	)
+	instanceA := &models.Instance{ID: 45, Name: "alpha", IsActive: true}
+	instanceB := &models.Instance{ID: 46, Name: "beta", IsActive: true}
+	sourceA := qbt.Torrent{Hash: "alpha-source", Name: name, Size: size, TotalSize: size, Progress: 1}
+	sourceB := qbt.Torrent{Hash: "beta-source", Name: name, Size: size, TotalSize: size, Progress: 1}
+	sync := &fakeSyncManager{
+		cached: map[int][]internalqb.CrossInstanceTorrentView{
+			instanceA.ID: buildCrossInstanceViews(instanceA, []qbt.Torrent{sourceA}),
+			instanceB.ID: buildCrossInstanceViews(instanceB, []qbt.Torrent{sourceB}),
+		},
+		all: map[int][]qbt.Torrent{
+			instanceA.ID: {sourceA},
+			instanceB.ID: {sourceB},
+		},
+	}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{
+			instanceA.ID: instanceA,
+			instanceB.ID: instanceB,
+		}},
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{}, nil
+		},
+	}
+	service.crossSeedInvoker = func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
+		if request.TargetInstanceIDs[0] == instanceB.ID {
+			return nil, errors.New("beta unavailable")
+		}
+		return &CrossSeedResponse{
+			Success: true,
+			Results: []InstanceCrossSeedResult{{
+				InstanceID: instanceA.ID, InstanceName: instanceA.Name, Success: true, Status: "added",
+			}},
+		}, nil
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(createNamedFileTestTorrent(t, name, "movie.mkv", size)),
+		TorrentName: name,
+		InstanceIDs: []int{instanceA.ID, instanceB.ID},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Success)
+	require.Len(t, response.Results, 2)
+	require.Equal(t, "added", response.Results[0].Status)
+	require.Equal(t, "error", response.Results[1].Status)
+	require.Contains(t, response.Results[1].Message, "beta unavailable")
 }

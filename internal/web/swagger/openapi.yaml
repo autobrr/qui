@@ -1746,12 +1746,13 @@ paths:
               properties:
                 field:
                   type: string
-                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents.
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents. `magnet_uri` is only available here; torrent list responses omit it.
                   enum:
                     - name
                     - hash
                     - full_path
                     - tags
+                    - magnet_uri
                 sort:
                   type: string
                   description: Sort field. Defaults to added_on.
@@ -4235,11 +4236,13 @@ paths:
         - Cross-Seed
       summary: Check if a release can be cross-seeded (autobrr webhook)
       description: |
-        Accepts release metadata from autobrr and checks if matching torrents exist on the requested instances (or all instances when no list is provided). The HTTP status describes whether the match is ready:
+        Performs a stateless, advisory check with release data that autobrr already has. This endpoint never downloads the torrent file.
+        A positive exact reported size can activate approved reported-size matching. A rounded size can pass only normal strict matching within tolerance. A zero or omitted size uses a narrow metadata-only preflight and grants no authority to add a torrent.
+        The HTTP status describes whether the match is ready:
         * `200 OK` – at least one matching torrent is fully downloaded and ready for cross-seeding
         * `202 Accepted` – matching torrents exist but the data is still downloading; retry `/check` until it returns `200` (ready) or `404`
         * `404 Not Found` – no matches exist (recommendation `skip`)
-        This endpoint is designed for autobrr filter external webhooks. When `instanceIds` is omitted or empty, qui will search every configured instance. Provide a subset of IDs to restrict the scan.
+        When `instanceIds` is omitted or empty, qui searches every configured instance. Provide a subset of IDs to restrict the scan.
       parameters:
         - name: apikey
           in: query
@@ -4269,7 +4272,7 @@ paths:
                 size:
                   type: integer
                   format: uint64
-                  description: Total torrent size in bytes (optional - enables size validation when provided)
+                  description: Passive size reported by autobrr, in bytes. A positive exact value can activate reported-size matching. Zero or omission uses a narrow metadata-only preflight. This field never causes qui or autobrr to fetch the torrent file.
                 indexer:
                   type: string
                   minLength: 1
@@ -4306,7 +4309,11 @@ paths:
       tags:
         - Cross-Seed
       summary: Add a cross-seed torrent provided by autobrr
-      description: Accepts a torrent file from autobrr, matches it against the requested instances, and adds it with alignment wherever a complete match exists. When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
+      description: |
+        Accepts a torrent file from autobrr and calculates its actual total size from the metainfo.
+        When `torrentName` is present, qui repeats classification against live local sources and checks the downloaded metadata against the original announcement.
+        When `torrentName` is omitted, qui keeps the legacy strict apply behavior.
+        When `instanceIds` is omitted or empty, qui attempts to inject the torrent into every configured instance that has a match.
       parameters:
         - name: apikey
           in: query
@@ -4326,6 +4333,9 @@ paths:
                 torrentData:
                   type: string
                   description: Base64-encoded torrent file provided by autobrr (for example, using the TorrentDataRawBytes macro piped through toString|b64enc or toJson)
+                torrentName:
+                  type: string
+                  description: Optional original announcement name. Include it to revalidate the actual torrent size and metadata against a live source-bound match.
                 instanceIds:
                   type: array
                   items:
@@ -5742,7 +5752,7 @@ components:
         matchType:
           type: string
           enum: ["metadata", "exact", "size"]
-          description: Type of match - metadata (no size check), exact (size < 0.1% diff), or size (within tolerance)
+          description: Match evidence. `exact` means positive byte equality. `size` means a strict release match within size tolerance. `metadata` means that no positive size was supplied.
         sizeDiff:
           type: number
           format: double
@@ -6894,7 +6904,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
@@ -7039,7 +7049,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           default: false

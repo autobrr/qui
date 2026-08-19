@@ -20,6 +20,12 @@ export function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
+export function formatBytesOrFallback(bytes: number, fallback: string): string {
+  if (bytes < 0) return fallback
+
+  return formatBytes(bytes)
+}
+
 /**
  * Get the appropriate color for a torrent ratio based on predefined thresholds
  * @param ratio - The ratio value (uploaded/downloaded)

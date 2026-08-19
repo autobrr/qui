@@ -172,7 +172,6 @@ export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
     amount_left: 0,
     completed: 0,
     last_activity: 0,
-    magnet_uri: "",
     availability: 0,
     dl_limit: 0,
     download_path: "",

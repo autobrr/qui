@@ -148,15 +148,15 @@ export function LicenseManager({
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
             {t("themes.license.loadingTitle")}
           </CardTitle>
           <CardDescription>{t("themes.license.loadingDescription")}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           <div className="animate-pulse space-y-2">
             <div className="h-4 bg-muted rounded w-3/4"></div>
             <div className="h-4 bg-muted rounded w-1/2"></div>
@@ -168,8 +168,8 @@ export function LicenseManager({
 
   return (
     <>
-      <Card>
-        <CardHeader>
+      <Card className="gap-4 py-4">
+        <CardHeader className="px-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -194,9 +194,9 @@ export function LicenseManager({
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-4">
           {/* Premium License Status */}
-          <div className="p-4 bg-muted/30 rounded-lg">
+          <div className="rounded-lg bg-muted/30 p-3">
             {/* Status header */}
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -244,7 +244,7 @@ export function LicenseManager({
 
             {/* Discord perk */}
             {hasPremiumAccess && (
-              <div className="mt-4 border-t border-border/50 pt-4 animate-in fade-in duration-300 motion-reduce:animate-none">
+              <div className="mt-3 border-t border-border/50 pt-3 animate-in fade-in duration-300 motion-reduce:animate-none">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                   {t("themes.license.discord.title")}
                 </p>
