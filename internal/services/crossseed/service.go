@@ -43,6 +43,7 @@ import (
 	"github.com/moistari/rls"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
@@ -356,6 +357,10 @@ type Service struct {
 	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
 	indexerDomainCache  *ttlcache.Cache[string, string]
 	stringNormalizer    *stringutils.Normalizer[string, string]
+
+	// sizeMismatchWarned tracks (source hash, matched hash) pairs whose
+	// size-mismatch rejection already logged at warn; repeats drop to trace.
+	sizeMismatchWarned sync.Map
 
 	automationStore          *models.CrossSeedStore
 	blocklistStore           *models.CrossSeedBlocklistStore
@@ -3791,6 +3796,16 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	return run, runErr
 }
 
+// sizeMismatchLogLevel returns warn for the first size-mismatch rejection of a
+// (source, matched) pair and trace for repeats: RSS retries the same doomed
+// pair every run until it leaves the feed. In-memory and unbounded on purpose.
+func (s *Service) sizeMismatchLogLevel(sourceHash, matchedHash string) zerolog.Level {
+	if _, seen := s.sizeMismatchWarned.LoadOrStore(sourceHash+"|"+matchedHash, struct{}{}); seen {
+		return zerolog.TraceLevel
+	}
+	return zerolog.WarnLevel
+}
+
 func isSkippedCrossSeedResultStatus(status string) bool {
 	switch status {
 	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold", "skipped_recheck", "skipped_unsafe_pieces", contentPrefilterRejectedContentStatus:
@@ -5176,7 +5191,7 @@ func (s *Service) processCrossSeedCandidate(
 		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
-			log.Warn().
+			log.WithLevel(s.sizeMismatchLogLevel(torrentHash, matchedTorrent.Hash)).
 				Int("instanceID", candidate.InstanceID).
 				Str("instanceName", candidate.InstanceName).
 				Str("torrentHash", torrentHash).
