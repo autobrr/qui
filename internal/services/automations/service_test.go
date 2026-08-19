@@ -324,6 +324,33 @@ func TestDetectCrossSeeds(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name:   "season pack folder vs episode file subpath (target is season pack)",
+			target: qbt.Torrent{Hash: "pack1", SavePath: "/downloads", ContentPath: "/downloads/Show.S01"},
+			allTorrents: []qbt.Torrent{
+				{Hash: "pack1", SavePath: "/downloads", ContentPath: "/downloads/Show.S01"},
+				{Hash: "ep1", SavePath: "/downloads/Show.S01", ContentPath: "/downloads/Show.S01/Show.S01E01.mkv"},
+			},
+			want: true,
+		},
+		{
+			name:   "season pack folder vs episode file subpath (target is episode file)",
+			target: qbt.Torrent{Hash: "ep1", SavePath: "/downloads/Show.S01", ContentPath: "/downloads/Show.S01/Show.S01E01.mkv"},
+			allTorrents: []qbt.Torrent{
+				{Hash: "pack1", SavePath: "/downloads", ContentPath: "/downloads/Show.S01"},
+				{Hash: "ep1", SavePath: "/downloads/Show.S01", ContentPath: "/downloads/Show.S01/Show.S01E01.mkv"},
+			},
+			want: true,
+		},
+		{
+			name:   "ambiguous root path does not match unrelated download in subfolder",
+			target: qbt.Torrent{Hash: "root1", SavePath: "/downloads", ContentPath: "/downloads"},
+			allTorrents: []qbt.Torrent{
+				{Hash: "root1", SavePath: "/downloads", ContentPath: "/downloads"},
+				{Hash: "movie1", SavePath: "/downloads", ContentPath: "/downloads/Movie1.mkv"},
+			},
+			want: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -1384,6 +1411,22 @@ func TestFindCrossSeedGroup(t *testing.T) {
 			},
 			wantCount:  0,
 			wantHashes: nil,
+		},
+		{
+			scenario: "season pack directory and episode subpath => grouped together",
+			target: qbt.Torrent{
+				Hash:        "pack1",
+				Name:        "Show.S01",
+				SavePath:    "/downloads",
+				ContentPath: "/downloads/Show.S01",
+			},
+			allTorrents: []qbt.Torrent{
+				{Hash: "pack1", Name: "Show.S01", SavePath: "/downloads", ContentPath: "/downloads/Show.S01"},
+				{Hash: "ep1", Name: "Show.S01E01", SavePath: "/downloads/Show.S01", ContentPath: "/downloads/Show.S01/Show.S01E01.mkv"},
+				{Hash: "other", Name: "Other.Movie", SavePath: "/downloads", ContentPath: "/downloads/Other.Movie"},
+			},
+			wantCount:  2,
+			wantHashes: []string{"pack1", "ep1"},
 		},
 	}
 

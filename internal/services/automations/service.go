@@ -4672,17 +4672,59 @@ func buildContentPathIndex(torrents []qbt.Torrent) contentPathIndex {
 	return idx
 }
 
-// detectCrossSeeds checks if any other torrent shares the same ContentPath,
-// indicating they are cross-seeds sharing the same data files.
-func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
-	p := normalizePath(target.ContentPath)
-	if p == "" {
+// isPathSubpath returns true if childPath is located inside parentPath directory.
+// Both paths must be non-empty and childPath must be strictly inside parentPath.
+func isPathSubpath(childPath, parentPath string) bool {
+	child := normalizePath(childPath)
+	parent := normalizePath(parentPath)
+	if child == "" || parent == "" || child == parent {
 		return false
 	}
-	group := idx[p]
-	for _, other := range group {
-		if other.Hash != target.Hash {
-			return true
+	if !strings.HasSuffix(parent, "/") {
+		parent += "/"
+	}
+	return strings.HasPrefix(child, parent)
+}
+
+// isCrossSeedMatch returns true if two different torrents share the same ContentPath
+// or have a non-ambiguous parent-child directory relationship (e.g. season pack vs episode file).
+func isCrossSeedMatch(t1, t2 qbt.Torrent) bool {
+	if t1.Hash == t2.Hash {
+		return false
+	}
+	p1 := normalizePath(t1.ContentPath)
+	p2 := normalizePath(t2.ContentPath)
+	if p1 == "" || p2 == "" {
+		return false
+	}
+	if p1 == p2 {
+		return true
+	}
+	if !isContentPathAmbiguous(t1) && isPathSubpath(p2, p1) {
+		return true
+	}
+	if !isContentPathAmbiguous(t2) && isPathSubpath(p1, p2) {
+		return true
+	}
+	return false
+}
+
+// detectCrossSeeds checks if any other torrent shares data files with the target torrent,
+// either via exact ContentPath match or parent-child directory containment (e.g. season pack vs episode).
+func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
+	targetPath := normalizePath(target.ContentPath)
+	if targetPath == "" {
+		return false
+	}
+	for pathKey, torrents := range idx {
+		if pathKey == targetPath ||
+			(!isContentPathAmbiguous(target) && isPathSubpath(pathKey, targetPath)) ||
+			isPathSubpath(targetPath, pathKey) {
+			for _, other := range torrents {
+				if isCrossSeedMatch(target, other) {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -4697,14 +4739,36 @@ func isContentPathAmbiguous(t qbt.Torrent) bool {
 	return contentPath == savePath
 }
 
-// findCrossSeedGroup returns all torrents (including the target) that share
-// the same normalized ContentPath. Returns nil if ContentPath is empty.
+// findCrossSeedGroup returns all torrents (including the target) that share data files
+// with the target torrent (exact ContentPath match or parent-child directory containment).
+// Returns nil if target's ContentPath is empty.
 func findCrossSeedGroup(target qbt.Torrent, idx contentPathIndex) []qbt.Torrent {
-	p := normalizePath(target.ContentPath)
-	if p == "" {
+	targetPath := normalizePath(target.ContentPath)
+	if targetPath == "" {
 		return nil
 	}
-	return idx[p]
+	var result []qbt.Torrent
+	seenHashes := make(map[string]struct{})
+
+	// Add target first
+	result = append(result, target)
+	seenHashes[target.Hash] = struct{}{}
+
+	for pathKey, torrents := range idx {
+		if pathKey == targetPath ||
+			(!isContentPathAmbiguous(target) && isPathSubpath(pathKey, targetPath)) ||
+			isPathSubpath(targetPath, pathKey) {
+			for _, other := range torrents {
+				if _, seen := seenHashes[other.Hash]; !seen {
+					if isCrossSeedMatch(target, other) {
+						result = append(result, other)
+						seenHashes[other.Hash] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	return result
 }
 
 // fileOverlapKey represents a unique file identity for overlap comparison.
