@@ -1,0 +1,198 @@
+{
+  "nav": {
+    "dashboard": "儀表板",
+    "search": "搜尋",
+    "crossSeed": "輔種",
+    "automations": "自動化",
+    "backups": "備份",
+    "rss": "RSS",
+    "settings": "設定",
+    "logs": "日誌",
+    "instances": "實例",
+    "generalSettings": "一般設定",
+    "manageInstances": "管理實例",
+    "appearance": "外觀",
+    "instanceBackups": "實例備份"
+  },
+  "sidebar": {
+    "instances": "實例",
+    "allInstancesDisabled": "所有實例均已停用",
+    "noInstancesConfigured": "尚未配置實例",
+    "logout": "登出",
+    "version": "版本 {{version}}",
+    "language": "語言",
+    "viewOnGitHub": "在 GitHub 上檢視",
+    "rssRunning": "RSS 執行中",
+    "rssEnabled": "RSS 已啟用",
+    "scanRunning": "掃描執行中",
+    "showSidebar": "顯示側邊欄",
+    "hideSidebar": "隱藏側邊欄"
+  },
+  "header": {
+    "currentInstance": "目前實例：{{name}}。點選切換實例。",
+    "connected": "已連線",
+    "disconnected": "已斷開",
+    "noActiveInstances": "沒有活動的實例",
+    "showFilters": "顯示篩選器",
+    "hideFilters": "隱藏篩選器",
+    "addTorrent": "新增種子",
+    "createTorrent": "建立種子",
+    "torrentCreationTasks": "種子建立任務",
+    "instanceSettings": "實例設定",
+    "addToInstance": "新增到實例",
+    "createForInstance": "為實例建立",
+    "tasksForInstance": "實例任務",
+    "settingsForInstance": "實例設定",
+    "clearSearch": "清除搜尋",
+    "searchTorrents": "搜尋種子... ({{shortcutKey}})",
+    "globPattern": "Glob 模式...",
+    "smartSearchTitle": "智慧搜尋功能：",
+    "smartSearchGlob": "Glob 模式：",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "模糊匹配：",
+    "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
+    "smartSearchDots": "自動處理點號、底線和方括號",
+    "smartSearchFields": "搜尋名稱、分類和標籤",
+    "smartSearchEnter": "按Enter 鍵立即搜尋",
+    "smartSearchAuto": "暫停輸入 500 毫秒後自動搜尋",
+    "torrentCreationTasksTitle": "種子建立任務",
+    "updateAvailable": "有可用更新",
+    "updateVersion": "版本 {{version}}",
+    "rssRunning": "RSS 執行中",
+    "rssEnabled": "RSS 已啟用",
+    "scanRunning": "掃描執行中",
+    "allScope": "全部",
+    "unified": "統一檢視"
+  },
+  "unifiedScope": {
+    "unified": "統一檢視",
+    "collapseScope": "摺疊統一檢視",
+    "expandScope": "展開統一檢視",
+    "allActive": "全部活動 ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "儀表板",
+    "clients": "用戶端",
+    "settings": "設定",
+    "qbittorrentClients": "qBittorrent 用戶端",
+    "instances": "實例",
+    "noActiveInstances": "沒有活動的實例",
+    "loading": "載入中...",
+    "noActiveClients": "沒有活動的用戶端",
+    "updateAvailable": "有可用更新",
+    "updateVersion": "版本 {{version}}",
+    "rssRunning": "RSS 執行中",
+    "rssEnabled": "RSS 已啟用",
+    "scanRunning": "掃描執行中",
+    "logout": "登出",
+    "version": "版本 {{version}}",
+    "viewOnGitHub": "在 GitHub 上檢視"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr - GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "取消",
+    "close": "關閉",
+    "create": "建立",
+    "copyPath": "複製路徑",
+    "scrollToTop": "回到頂部",
+    "search": "搜尋",
+    "select": "選擇",
+    "toggle": "切換"
+  },
+  "placeholders": {
+    "search": "搜尋...",
+    "selectItems": "選擇項目..."
+  },
+  "feedback": {
+    "noResultsFound": "未找到結果。"
+  },
+  "status": {
+    "disabled": "已停用",
+    "notContacted": "未連線",
+    "working": "工作中",
+    "updating": "更新中",
+    "error": "錯誤",
+    "unknown": "未知",
+    "trackerError": "Tracker 錯誤",
+    "unreachable": "無法連線"
+  },
+  "themeToggle": {
+    "changeTheme": "切換主題",
+    "appearance": "外觀",
+    "mode": "模式",
+    "light": "淺色",
+    "dark": "深色",
+    "system": "跟隨系統",
+    "theme": "主題",
+    "premium": "進階",
+    "switchedToMode": "已切換到{{mode}}模式",
+    "switchedToTheme": "已切換到{{theme}}主題",
+    "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
+    "unableToVerifyLicense": "無法驗證授權",
+    "licenseCheckFailed": "授權檢查失敗，進階主題切換暫時不可用。",
+    "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。",
+    "custom": "自訂"
+  },
+  "updateBanner": {
+    "updateAvailable": "有可用更新",
+    "versionAvailable": "版本 {{version}} 現已可用",
+    "viewRelease": "檢視釋出",
+    "dismiss": "關閉"
+  },
+  "notFound": {
+    "title": "迷路了？",
+    "subtitle": "看起來您進入了未知區域。",
+    "bugReport": "如果您認為這是一個 bug 而不是無效連結，",
+    "reportTo": "歡迎在我們的",
+    "githubRepository": "GitHub 儲存庫",
+    "getBackOnTrack": "提交反饋。我們來幫您回到正軌！",
+    "returnToDashboard": "返回儀表板"
+  },
+  "magnetHandler": {
+    "registerPrompt": "將 qui 註冊為磁力連結處理程式",
+    "register": "註冊",
+    "dismiss": "關閉",
+    "registrationRequested": "已請求註冊磁力連結處理程式",
+    "registrationFailed": "註冊磁力連結處理程式失敗",
+    "guidance": {
+      "standalone": "請在一般瀏覽器分頁中開啟 qui 進行註冊（提示可能出現在位址列中，PWA 不會顯示位址列）。",
+      "chromium": "Chrome 通常會在位址列中顯示一個小的協議處理圖示；如果沒有出現，請在 chrome://settings/handlers 中啟用協議處理。",
+      "default": "如果瀏覽器彈出提示，請接受以完成註冊。"
+    }
+  },
+  "fieldHelp": {
+    "trigger": "更多資訊"
+  },
+  "numberInput": {
+    "unlimited": "無限制",
+    "useUnlimited": "（使用 -1 表示無限制）"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "剛剛",
+    "today": "今天",
+    "yesterday": "昨天",
+    "past": "{{value}}前",
+    "future": "{{value}}後",
+    "units": {
+      "second_other": "{{count}} 秒",
+      "minute_other": "{{count}} 分鐘",
+      "hour_other": "{{count}} 小時",
+      "day_other": "{{count}} 天",
+      "week_other": "{{count}} 週",
+      "month_other": "{{count}} 個月",
+      "year_other": "{{count}} 年"
+    }
+  },
+  "support": {
+    "title": "支援 qui",
+    "description": "已經有主題了，還想再出一份力？qui 的一切已經屬於您。訂閱不會解鎖功能，它資助的是開發這些功能所投入的時間。",
+    "perkPrefix": "贊助者可在 Discord 獲得",
+    "perkSuffix": "身分組，以及我們永遠的感謝。",
+    "yearly": "{{price}} / 年",
+    "monthly": "{{price}} / 月",
+    "notLicense": "進階主題是單獨的一次性購買。"
+  }
+}
