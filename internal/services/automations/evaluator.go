@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 const maxConditionDepth = 20
@@ -799,13 +800,13 @@ func compareString(value string, cond *RuleCondition) bool {
 	case OperatorNotEqual:
 		return !strings.EqualFold(value, cond.Value)
 	case OperatorContains:
-		return strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.ContainsFold(value, cond.Value)
 	case OperatorNotContains:
-		return !strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+		return !stringutils.ContainsFold(value, cond.Value)
 	case OperatorStartsWith:
-		return strings.HasPrefix(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.HasPrefixFold(value, cond.Value)
 	case OperatorEndsWith:
-		return strings.HasSuffix(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.HasSuffixFold(value, cond.Value)
 	default:
 		return false
 	}
@@ -987,9 +988,8 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 		})
 	}
 	if cond.Operator == OperatorNotContains {
-		condLower := strings.ToLower(cond.Value)
 		return !slices.ContainsFunc(uniq, func(c string) bool {
-			return strings.Contains(strings.ToLower(c), condLower)
+			return stringutils.ContainsFold(c, cond.Value)
 		})
 	}
 
@@ -1077,13 +1077,13 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 	case OperatorNotEqual:
 		return !anyTagMatches(tags, condValue, strings.EqualFold)
 	case OperatorContains:
-		return anyTagMatches(tags, condValue, tagContains)
+		return anyTagMatches(tags, condValue, stringutils.ContainsFold)
 	case OperatorNotContains:
-		return !anyTagMatches(tags, condValue, tagContains)
+		return !anyTagMatches(tags, condValue, stringutils.ContainsFold)
 	case OperatorStartsWith:
-		return anyTagMatches(tags, condValue, tagStartsWith)
+		return anyTagMatches(tags, condValue, stringutils.HasPrefixFold)
 	case OperatorEndsWith:
-		return anyTagMatches(tags, condValue, tagEndsWith)
+		return anyTagMatches(tags, condValue, stringutils.HasSuffixFold)
 	default:
 		return false
 	}
@@ -1099,22 +1099,6 @@ func anyTagMatches(tags []string, condValue string, match func(string, string) b
 	return false
 }
 
-// tagContains checks if tag contains condValue (case-insensitive).
-func tagContains(tag, condValue string) bool {
-	return strings.Contains(strings.ToLower(tag), condValue)
-}
-
-// tagStartsWith checks if tag starts with condValue (case-insensitive).
-func tagStartsWith(tag, condValue string) bool {
-	return strings.HasPrefix(strings.ToLower(tag), condValue)
-}
-
-// tagEndsWith checks if tag ends with condValue (case-insensitive).
-func tagEndsWith(tag, condValue string) bool {
-	return strings.HasSuffix(strings.ToLower(tag), condValue)
-}
-
-// compareInt64 compares an int64 value against the condition.
 func compareInt64(value int64, cond *RuleCondition) bool {
 	// Parse the condition value as int64. Trim first so a whitespace-padded value
 	// (e.g. from an imported config) compares the same way save-time validation

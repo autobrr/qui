@@ -311,7 +311,7 @@
       "rescueTitleMismatches": "Zachránit neshody názvů",
       "rescueTitleMismatchesDescription": "Pro každé hledání zdroje vyzkouší celkem až tři výsledky s přesnou velikostí ze všech indexerů. qui před spuštěním torrentu zkontroluje všechna data. Přeskočení kontroly toto pravidlo vypne.",
       "skipRecheck": "Přeskočit shody, které vyžadují kontrolu",
-      "skipRecheckDescription": "Přeskočit shody, které vyžadují přejmenování, extra soubory, nebo diskové rozvržení (BDMV/VIDEO_TS). Když je to VYPNUTO, tyto shody jsou kontrolovány rehashováním dat.",
+      "skipRecheckDescription": "Přeskočit shody, které vyžadují opětovnou kontrolu kvůli přejmenovaným cestám, extra nebo chybějícím souborům, návratu z režimu hardlink/reflink nebo diskovým strukturám (BDMV/VIDEO_TS). Přeskočit také shody s přesně stejnou velikostí, které spoléhají na odlišné údaje o sezóně, epizodě nebo release-group. Když je tato možnost vypnutá, qui přidá tyto shody pozastavené a znovu je zkontroluje.",
       "pieceBoundaryDisabled": "Kontrola hranice kusu souborů vypnutá",
       "pieceBoundaryEnabled": "Kontrola hranice kusu souborů povolena",
       "pieceBoundaryDisabledDescription": "Povolit shody i když extra soubory sdílí kousky s obsahem. Může poškodit již seedované soubory, pokud se obsah liší. Zvažte reflink režim místo tohohle.",

@@ -78,14 +78,12 @@
       "cancel": "Zrušit"
     },
     "streamStatus": {
-      "live": "Živý stream připojen",
       "cached": "Zobrazuje se uložený snímek přehledu během obnovování",
       "fallback": "Obnovování statistik přehledu",
       "error": "Problém se streamem; používá se záložní obnovování"
     }
   },
   "mobileOverview": {
-    "title": "Přehled",
     "instances": "Instance",
     "connected": "Připojené",
     "torrents": "Torrenty",
@@ -153,6 +151,8 @@
     "mergeIntoGroup": "Spojit do skupiny",
     "addToMerge": "Přidat do spojení",
     "rename": "Přejmenovat",
+    "edit": "Editovat",
+    "delete": "Smazat",
     "pagination": {
       "range": "{{start}}-{{end}} z {{total}} trackerů",
       "previous": "Předchozí",

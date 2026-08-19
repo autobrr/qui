@@ -65,6 +65,8 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 		automationEnabled bool
 		libraryTorrents   []qbt.Torrent
 		libraryFiles      map[string]qbt.TorrentFiles
+		decisionClass     searchCandidateClass
+		mismatchReason    string
 		applied           bool
 		wantDiverted      bool
 		wantSuccess       bool
@@ -107,6 +109,27 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 			wantDiverted:      true,
 			wantSuccess:       false,
 		},
+		{
+			name:              "verification-required search match never diverts",
+			automationEnabled: true,
+			libraryTorrents:   episodeTorrents,
+			libraryFiles:      episodeFiles,
+			decisionClass:     searchCandidateClassExactSizeFallback,
+			mismatchReason:    groupMismatchReason,
+			applied:           true,
+			wantDiverted:      false,
+			wantSuccess:       false,
+		},
+		{
+			name:              "title rescue never diverts",
+			automationEnabled: true,
+			libraryTorrents:   episodeTorrents,
+			libraryFiles:      episodeFiles,
+			decisionClass:     searchCandidateClassTitleRescue,
+			applied:           true,
+			wantDiverted:      false,
+			wantSuccess:       false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -146,6 +169,10 @@ func TestCrossSeed_DivertsSeasonPackToAssembly(t *testing.T) {
 				TargetInstanceIDs:      []int{instance.ID},
 				FindIndividualEpisodes: true,
 				IndexerName:            "tracker",
+				SearchDecision: searchDecisionProvenance{
+					Class:                tt.decisionClass,
+					StrictMismatchReason: tt.mismatchReason,
+				},
 			})
 			require.NoError(t, err)
 

@@ -271,3 +271,28 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	require.Contains(t, resp.Body.String(), "Failed to apply season pack")
 	require.Equal(t, 1, syncManager.addCalls, "the 500 must come from the AddTorrent failure, not an earlier assembly error")
 }
+
+func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
+	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
+	svc := &crossseed.Service{}
+	setServiceField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
+	setServiceField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
+	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
+	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		return &models.CrossSeedAutomationSettings{}, nil
+	})
+
+	body, err := json.Marshal(map[string]any{
+		"torrentData": createSeasonPackHandlerTorrent(t, "Downloaded.Name.2025.1080p.WEB-DL.H.265-LUMA", []string{"movie.mkv"}),
+		"torrentName": "Announced.Name.2025.1080p.WEB-DL.H.264-LUMA",
+		"instanceIds": []int{instance.ID},
+	})
+	require.NoError(t, err)
+
+	handler := &CrossSeedHandler{service: svc}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/cross-seed/apply", bytes.NewReader(body))
+	resp := httptest.NewRecorder()
+	handler.AutobrrApply(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+}

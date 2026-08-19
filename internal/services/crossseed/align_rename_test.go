@@ -168,15 +168,24 @@ func TestAlignCrossSeedContentPaths_RootlessSourceIntoMatchedFolderRenamesBasena
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 
+	sourceFiles := qbt.TorrentFiles{{Name: sourcePath, Size: 4096}}
+	candidateFiles := qbt.TorrentFiles{{Name: candidateDir + "/" + targetName, Size: 4096}}
+	matchedTorrent := qbt.Torrent{Hash: "matchedhash", Name: candidateDir}
+	plan := buildCrossSeedAddPlan(
+		matchedTorrent,
+		candidateFiles,
+		"single-file",
+		service.releaseCache.Parse(sourceName),
+		service.releaseCache.Parse(candidateDir),
+		sourceFiles,
+	)
 	ok, activeHash := service.alignCrossSeedContentPaths(
 		context.Background(),
 		1,
 		hash,
 		"",
 		sourceName,
-		&qbt.Torrent{Hash: "matchedhash", Name: candidateDir},
-		qbt.TorrentFiles{{Name: sourcePath, Size: 4096}},
-		qbt.TorrentFiles{{Name: candidateDir + "/" + targetName, Size: 4096}},
+		&plan,
 	)
 
 	require.True(t, ok)

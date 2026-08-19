@@ -470,6 +470,37 @@ func TestDetermineContentTypeWithFiles(t *testing.T) {
 			wantIsMusic: false,
 		},
 		{
+			// #2336: the file names of a disc rip say nothing, and the folder of
+			// this one has no year or resolution, so only the layout is left.
+			name:    "a disc layout classifies as a movie when the name gives nothing",
+			release: rls.Release{Type: rls.Unknown, Title: "Some Feature DVDR"},
+			files: qbt.TorrentFiles{
+				{Name: "Some Feature DVDR/VIDEO_TS/VTS_01_1.VOB", Size: 4_000_000_000},
+				{Name: "Some Feature DVDR/VIDEO_TS/VIDEO_TS.IFO", Size: 20_000},
+			},
+			wantType:    "movie",
+			wantIsMusic: false,
+		},
+		{
+			// The layout must not overrule structure the name does supply.
+			name:    "a disc layout keeps the tv structure of the name",
+			release: rls.Release{Type: rls.Unknown, Title: "Some Show", Series: 2},
+			files: qbt.TorrentFiles{
+				{Name: "Some Show S02 DVDR/VIDEO_TS/VTS_01_1.VOB", Size: 4_000_000_000},
+			},
+			wantType:    "tv",
+			wantIsMusic: false,
+		},
+		{
+			name:    "no disc layout leaves an unknown name unknown",
+			release: rls.Release{Type: rls.Unknown, Title: "Some Feature DVDR"},
+			files: qbt.TorrentFiles{
+				{Name: "Some Feature DVDR/feature.vob", Size: 4_000_000_000},
+			},
+			wantType:    "unknown",
+			wantIsMusic: false,
+		},
+		{
 			name:        "neither class dominant falls back to the name",
 			release:     rls.Release{Type: rls.Book, Title: "Test Book"},
 			files:       qbt.TorrentFiles{{Name: "Author - Book.epub", Size: 2_000_000}},

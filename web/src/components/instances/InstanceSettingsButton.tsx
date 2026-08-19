@@ -50,7 +50,7 @@ export function InstanceSettingsButton({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 p-0"
+                className="size-11 sm:size-7"
                 onClick={handleClick}
                 aria-label={t("header.instanceSettings", { ns: "common" })}
               >
@@ -61,7 +61,7 @@ export function InstanceSettingsButton({
                 aria-label={t("header.instanceSettings", { ns: "common" })}
                 role="button"
                 tabIndex={0}
-                className="cursor-pointer"
+                className="inline-flex size-11 cursor-pointer items-center justify-center sm:size-auto"
                 onClick={handleClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
