@@ -104,7 +104,7 @@ var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is requ
 
 const (
 	defaultRateLimitCooldown = 30 * time.Minute
-	defaultTorrentCacheTTL   = 12 * time.Hour
+	defaultTorrentCacheTTL   = 24 * time.Hour
 	defaultSearchCacheTTL    = 24 * time.Hour
 	storeOperationTimeout    = 5 * time.Second
 	minSearchCacheTTL        = defaultSearchCacheTTL
