@@ -1019,9 +1019,11 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	eligibleMode := previewView == "eligible"
 
 	cpIndex := buildContentPathIndex(torrents)
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds || deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		s.loadCrossSeedFiles(ctx, instanceID, cpIndex, evalCtx)
+	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		s.loadCrossSeedFiles(ctx, instanceID, cpIndex, evalCtx)
 		return s.previewDeleteIncludeCrossSeeds(
 			rule,
 			torrents,
@@ -2136,7 +2138,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	if rulesUseIncludeCrossSeedsDelete(eligibleRules) {
+	if rulesNeedCrossSeedFiles(eligibleRules) {
 		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
@@ -2356,9 +2358,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			case DeleteModeWithFilesPreserveCrossSeeds:
 				hashesToDelete = []string{hash}
-				if detectCrossSeeds(torrent, cpIndex) {
+				if shouldPreserveCrossSeedFiles(torrent, cpIndex, evalCtx.CrossSeedFilesByHash) {
 					actualMode = DeleteModeKeepFiles
-					logMsg = "automations: removing torrent (cross-seed detected - keeping files)"
+					logMsg = "automations: removing torrent (preserve cross-seeds - keeping files)"
 					keepingFiles = true
 				} else {
 					actualMode = DeleteModeWithFiles
@@ -4596,22 +4598,6 @@ func cachedTorrentFilesFetcher(filesByHash map[string]qbt.TorrentFiles) torrentF
 	}
 }
 
-// detectCrossSeeds checks if any other torrent shares the same ContentPath,
-// indicating they are cross-seeds sharing the same data files.
-func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
-	p := normalizePath(target.ContentPath)
-	if p == "" {
-		return false
-	}
-	group := idx[p]
-	for _, other := range group {
-		if other.Hash != target.Hash {
-			return true
-		}
-	}
-	return false
-}
-
 // isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
 // files unique to this torrent. This happens when ContentPath == SavePath, meaning
 // the torrent uses the SavePath directly (common for shared download directories).
@@ -4749,6 +4735,16 @@ func crossSeedGroupMembers(
 		}
 	}
 	return verified, true
+}
+
+func shouldPreserveCrossSeedFiles(torrent qbt.Torrent, cpIndex contentPathIndex, filesByHash map[string]qbt.TorrentFiles) bool {
+	verifiedHashes, ok := crossSeedGroupMembers(
+		torrent,
+		findCrossSeedGroup(torrent, cpIndex),
+		nil,
+		cachedTorrentFilesFetcher(filesByHash),
+	)
+	return !ok || len(verifiedHashes) > 1
 }
 
 // verifyFileOverlap checks if two torrents share at least minOverlapPercent of their files.
@@ -4894,21 +4890,25 @@ func allGroupMembersMatchCategoryAction(
 //
 // Returns false for:
 //   - DeleteModeKeepFiles: files are retained on disk
-//   - DeleteModeWithFilesPreserveCrossSeeds when cross-seeds exist: files are kept
+//   - DeleteModeWithFilesPreserveCrossSeeds when shared files exist or verification is incomplete
 //   - Unknown/invalid modes: don't count toward projection to avoid false early-stop
 //
 // Returns true for:
 //   - DeleteModeWithFiles: files are always deleted
-//   - DeleteModeWithFilesPreserveCrossSeeds when no cross-seeds exist: files will be deleted
+//   - DeleteModeWithFilesPreserveCrossSeeds when no shared files exist: files will be deleted
 //   - DeleteModeWithFilesIncludeCrossSeeds: always frees disk space (deletes entire group)
-func deleteFreesSpace(mode string, torrent qbt.Torrent, cpIndex contentPathIndex) bool {
+func deleteFreesSpace(
+	mode string,
+	torrent qbt.Torrent,
+	cpIndex contentPathIndex,
+	filesByHash map[string]qbt.TorrentFiles,
+) bool {
 	switch mode {
 	case DeleteModeKeepFiles, DeleteModeNone, "":
 		// Keep-files mode never frees disk space
 		return false
 	case DeleteModeWithFilesPreserveCrossSeeds:
-		// Only frees space if no cross-seeds share the files
-		return !detectCrossSeeds(torrent, cpIndex)
+		return !shouldPreserveCrossSeedFiles(torrent, cpIndex, filesByHash)
 	case DeleteModeWithFiles, DeleteModeWithFilesIncludeCrossSeeds:
 		// Always frees disk space (include mode deletes the whole group)
 		return true
@@ -5089,8 +5089,20 @@ func ruleUsesIncludeCrossSeedsFreeSpace(rule *models.Automation) bool {
 	return ruleUsesIncludeCrossSeedsDelete(rule) && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace)
 }
 
-func rulesUseIncludeCrossSeedsDelete(rules []*models.Automation) bool {
-	return slices.ContainsFunc(rules, ruleUsesIncludeCrossSeedsDelete)
+func ruleNeedsCrossSeedFiles(rule *models.Automation) bool {
+	if rule == nil || rule.Conditions == nil {
+		return false
+	}
+	deleteAction := rule.Conditions.Delete
+	if deleteAction == nil || !deleteAction.Enabled {
+		return false
+	}
+	return deleteAction.Mode == DeleteModeWithFilesIncludeCrossSeeds ||
+		deleteAction.Mode == DeleteModeWithFilesPreserveCrossSeeds
+}
+
+func rulesNeedCrossSeedFiles(rules []*models.Automation) bool {
+	return slices.ContainsFunc(rules, ruleNeedsCrossSeedFiles)
 }
 
 // buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.

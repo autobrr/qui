@@ -247,94 +247,6 @@ func TestMatchesTracker(t *testing.T) {
 	}
 }
 
-// -----------------------------------------------------------------------------
-// detectCrossSeeds tests
-// -----------------------------------------------------------------------------
-
-func TestDetectCrossSeeds(t *testing.T) {
-	tests := []struct {
-		name        string
-		target      qbt.Torrent
-		allTorrents []qbt.Torrent
-		want        bool
-	}{
-		{
-			name:        "no other torrents",
-			target:      qbt.Torrent{Hash: "abc", ContentPath: "/data/movie"},
-			allTorrents: []qbt.Torrent{{Hash: "abc", ContentPath: "/data/movie"}},
-			want:        false,
-		},
-		{
-			name:   "different paths no cross-seed",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie1"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie1"},
-				{Hash: "def", ContentPath: "/data/movie2"},
-			},
-			want: false,
-		},
-		{
-			name:   "same path is cross-seed",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie"},
-				{Hash: "def", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-		{
-			name:   "case insensitive match",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/Data/Movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/Data/Movie"},
-				{Hash: "def", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-		{
-			name:   "backslash normalized",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "D:\\Data\\Movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "D:\\Data\\Movie"},
-				{Hash: "def", ContentPath: "D:/Data/Movie"},
-			},
-			want: true,
-		},
-		{
-			name:   "trailing slash normalized",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie/"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie/"},
-				{Hash: "def", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-		{
-			name:        "empty content path",
-			target:      qbt.Torrent{Hash: "abc", ContentPath: ""},
-			allTorrents: []qbt.Torrent{{Hash: "abc", ContentPath: ""}},
-			want:        false,
-		},
-		{
-			name:   "multiple cross-seeds",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie"},
-				{Hash: "def", ContentPath: "/data/movie"},
-				{Hash: "ghi", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := detectCrossSeeds(tc.target, buildContentPathIndex(tc.allTorrents))
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -1910,6 +1822,10 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 	}
 
 	target := allTorrents[0]
+	filesByHash := map[string]qbt.TorrentFiles{
+		"abc123": {{Name: "My.Movie.2024.1080p.BluRay.x264-GRP/movie.mkv", Size: 100}},
+		"xyz789": {{Name: "My.Movie.2024.1080p.BluRay.x264-GRP/movie.mkv", Size: 100}},
+	}
 
 	tests := []struct {
 		scenario string
@@ -1929,7 +1845,7 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 		{
 			scenario: "preserve cross-seeds => no space freed (cross-seed exists)",
 			mode:     DeleteModeWithFilesPreserveCrossSeeds,
-			want:     false, // xyz789 shares ContentPath, files kept
+			want:     false, // xyz789 resolves to the same file, so files are kept
 		},
 		{
 			scenario: "keep files => never frees space",
@@ -1941,7 +1857,7 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, cpIndex)
+			got := deleteFreesSpace(tc.mode, target, cpIndex, filesByHash)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1976,7 +1892,7 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, cpIndex)
+			got := deleteFreesSpace(tc.mode, target, cpIndex, nil)
 			assert.Equal(t, tc.want, got)
 		})
 	}

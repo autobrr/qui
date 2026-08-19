@@ -886,12 +886,18 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, cpIndex) {
+	if !deleteFreesSpace(deleteMode, torrent, cpIndex, evalCtx.CrossSeedFilesByHash) {
 		return
 	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
 		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, cpIndex)
+		return
+	}
+	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		// File verification above established that this torrent has no shared files.
+		// Do not deduplicate unrelated torrents that merely use the same directory.
+		evalCtx.SpaceToClear += torrent.Size
 		return
 	}
 
