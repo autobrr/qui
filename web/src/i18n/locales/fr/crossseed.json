@@ -307,7 +307,7 @@
       "rescueTitleMismatches": "Récupérer les titres différents",
       "rescueTitleMismatchesDescription": "Essayez au total jusqu’à trois résultats de taille exacte par recherche source, tous indexeurs confondus. qui vérifie toutes les données avant de démarrer le torrent. Ignorer la revérification désactive cette règle.",
       "skipRecheck": "Ignorer les correspondances nécessitant une revérification",
-      "skipRecheckDescription": "Ignorer les correspondances nécessitant un alignement de renommage, des fichiers supplémentaires ou des structures de disques (BDMV/VIDEO_TS). Lorsque désactivé, ces correspondances sont forcées à être revérifiées par défaut.",
+      "skipRecheckDescription": "Ignorer les correspondances qui nécessitent une revérification en raison de chemins renommés, de fichiers supplémentaires ou manquants, d’un repli du mode hardlink/reflink ou de structures de disque (BDMV/VIDEO_TS). Cela ignore aussi les correspondances de taille exacte qui reposent sur des informations différentes de saison, d’épisode ou de groupe de release. Lorsque cette option est désactivée, qui ajoute ces correspondances en pause et les revérifie.",
       "pieceBoundaryDisabled": "Vérification de sécurité des limites de pièces actuellement désactivée",
       "pieceBoundaryEnabled": "Vérification de sécurité des limites de pièces activée",
       "pieceBoundaryDisabledDescription": "Autoriser les correspondances même si des fichiers supplémentaires partagent des pièces avec le contenu. Peut corrompre les fichiers existants si le contenu diffère. Envisagez plutôt le mode reflink.",

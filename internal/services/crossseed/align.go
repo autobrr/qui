@@ -41,9 +41,7 @@ func (s *Service) alignCrossSeedContentPaths(
 	torrentHash string,
 	torrentHashV2 string,
 	sourceTorrentName string,
-	matchedTorrent *qbt.Torrent,
-	expectedSourceFiles qbt.TorrentFiles,
-	candidateFiles qbt.TorrentFiles,
+	addPlan *crossSeedAddPlan,
 ) (bool, string) {
 	hashes := dedupeHashes(torrentHash, torrentHashV2)
 	hashLabel := ""
@@ -51,29 +49,19 @@ func (s *Service) alignCrossSeedContentPaths(
 		hashLabel = hashes[0]
 	}
 
-	if matchedTorrent == nil {
+	if addPlan == nil {
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("torrentHash", hashLabel).
-			Msg("alignCrossSeedContentPaths called with nil matchedTorrent")
+			Msg("alignCrossSeedContentPaths called with nil add plan")
 		return false, ""
 	}
 
-	sourceRelease := s.releaseCache.Parse(sourceTorrentName)
-	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
-
-	// Safety check: reject forbidden pairing (season pack from episode) at alignment stage.
-	// This should have been caught earlier, but serves as a defense-in-depth guard.
-	// Returns false so callers know alignment did not succeed (prevents recheck/resume logic).
-	if reject, _ := rejectSeasonPackFromEpisode(sourceRelease, matchedRelease, true); reject {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("torrentHash", torrentHash).
-			Str("sourceName", sourceTorrentName).
-			Str("matchedName", matchedTorrent.Name).
-			Msg("Skipping alignment: season pack cannot use single-episode files")
-		return false, ""
-	}
+	matchedTorrent := &addPlan.torrent
+	expectedSourceFiles := addPlan.sourceFiles
+	candidateFiles := addPlan.files
+	sourceRelease := addPlan.sourceRelease
+	matchedRelease := addPlan.candidateRelease
 
 	if len(expectedSourceFiles) == 0 || len(candidateFiles) == 0 {
 		log.Debug().
