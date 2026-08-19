@@ -82,11 +82,11 @@ If hardlink/reflink mode falls back to regular mode for a partial or non-perfect
 
 ### Pooled Partial Completion
 
-Enable **Automatically complete partial hardlink/reflink cross-seeds** under Cross-Seed → Rules → Post-injection behavior to coordinate accepted partial link-mode torrents. The feature is off by default and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
+Enable **Automatically complete partial hardlink/reflink cross-seeds** under Cross-Seed → Rules → Hardlink / Reflink Mode to coordinate accepted partial link-mode torrents. The feature is off by default and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
 
 qui groups related members persistently by their original source torrent identity, not category, release name, save path, or the latest match. Each member keeps the managed link-tree root chosen when it was added, and unfinished work resumes after a qui restart.
 
-After each recheck, **Max auto-start download** determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
+After each recheck, **Max auto-start download** under Rules → After injection → Post-injection behavior determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
 
 Only one member downloads in a pool at a time. When a whole wanted file completes, qui can link or clone it into stopped related members, recheck each target, and resume only targets that qBittorrent verifies as complete. Exact file evidence is required; ambiguous names, moved roots, changed priorities, conflicting targets, and unsafe paths remain paused for review.
 

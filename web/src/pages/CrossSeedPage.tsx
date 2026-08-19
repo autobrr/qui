@@ -551,8 +551,14 @@ function SeasonPackRunsPanel({
   )
 }
 
-/** Per-instance hardlink/reflink mode settings component */
-function HardlinkModeSettings() {
+/** Per-instance hardlink/reflink mode settings plus the global pooled-completion toggle. */
+function HardlinkModeSettings({
+  pooledPartialCompletionEnabled,
+  onPooledPartialCompletionEnabledChange,
+}: {
+  pooledPartialCompletionEnabled: boolean
+  onPooledPartialCompletionEnabledChange: (checked: boolean) => void
+}) {
   const { t } = useTranslation("crossseed")
   const { instances, updateInstance, isUpdating } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
@@ -677,8 +683,12 @@ function HardlinkModeSettings() {
           <ChevronDown className="h-4 w-4 transition-transform duration-200" />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t border-border/70 p-4 pt-4">
+          <div className="border-t border-border/70 p-4 pt-4 space-y-4">
             <p className="text-sm text-muted-foreground">{t("rules.noActiveInstances")}</p>
+            <PooledCompletionSetting
+              checked={pooledPartialCompletionEnabled}
+              onCheckedChange={onPooledPartialCompletionEnabledChange}
+            />
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -858,6 +868,11 @@ function HardlinkModeSettings() {
               )
             })}
           </Accordion>
+
+          <PooledCompletionSetting
+            checked={pooledPartialCompletionEnabled}
+            onCheckedChange={onPooledPartialCompletionEnabledChange}
+          />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -878,50 +893,29 @@ export function TitleRescueSetting({ checked, disabled = false, onCheckedChange 
   )
 }
 
-/** Renders pooled partial completion and its shared post-recheck byte budget. */
+/** Renders the global pooled partial completion toggle. */
 export function PooledCompletionSetting({
   checked,
-  autoResumeMaxDownloadMb,
   onCheckedChange,
-  onAutoResumeMaxDownloadMbChange,
 }: {
   checked: boolean
-  autoResumeMaxDownloadMb: number
   onCheckedChange: (checked: boolean) => void
-  onAutoResumeMaxDownloadMbChange: (value: number) => void
 }) {
   const { t } = useTranslation("crossseed")
 
   return (
-    <div className="space-y-4 pt-3 border-t border-border/50">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor="pooled-partial-completion" className="font-medium">
-            {t("rules.postInjection.pooledPartialCompletion")}
-          </Label>
-          <FieldHelp>{t("rules.postInjection.pooledPartialCompletionDescription")}</FieldHelp>
-        </div>
-        <Switch
-          id="pooled-partial-completion"
-          checked={checked}
-          onCheckedChange={value => onCheckedChange(!!value)}
-        />
+    <div className="flex items-center justify-between gap-3 pt-4 border-t border-border/50">
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor="pooled-partial-completion" className="font-medium">
+          {t("rules.postInjection.pooledPartialCompletion")}
+        </Label>
+        <FieldHelp>{t("rules.postInjection.pooledPartialCompletionDescription")}</FieldHelp>
       </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center gap-1.5">
-          <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
-          <FieldHelp>{t("rules.postInjection.maxAutoResumeDownloadDescription")}</FieldHelp>
-        </div>
-        <Input
-          id="global-auto-resume-max-download"
-          type="number"
-          min="0"
-          step="1"
-          value={autoResumeMaxDownloadMb}
-          onChange={event => onAutoResumeMaxDownloadMbChange(parseNonNegativeInt(event.target.value))}
-        />
-      </div>
+      <Switch
+        id="pooled-partial-completion"
+        checked={checked}
+        onCheckedChange={value => onCheckedChange(!!value)}
+      />
     </div>
   )
 }
@@ -2915,7 +2909,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <CardDescription>{t("rules.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <HardlinkModeSettings />
+              <HardlinkModeSettings
+                pooledPartialCompletionEnabled={globalSettings.pooledPartialCompletionEnabled}
+                onPooledPartialCompletionEnabledChange={pooledPartialCompletionEnabled => setGlobalSettings(prev => ({ ...prev, pooledPartialCompletionEnabled }))}
+              />
 
               <div className="flex items-center gap-2 pt-1">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 shrink-0">{t("rules.sections.matching")}</span>
@@ -3503,15 +3500,23 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !value }))}
                       />
                     </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+                        <FieldHelp>{t("rules.postInjection.maxAutoResumeDownloadDescription")}</FieldHelp>
+                      </div>
+                      <Input
+                        id="global-auto-resume-max-download"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={globalSettings.autoResumeMaxDownloadMb}
+                        onChange={event => setGlobalSettings(prev => ({ ...prev, autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value) }))}
+                      />
+                    </div>
                   </div>
                 </div>
-
-                <PooledCompletionSetting
-                  checked={globalSettings.pooledPartialCompletionEnabled}
-                  autoResumeMaxDownloadMb={globalSettings.autoResumeMaxDownloadMb}
-                  onCheckedChange={pooledPartialCompletionEnabled => setGlobalSettings(prev => ({ ...prev, pooledPartialCompletionEnabled }))}
-                  onAutoResumeMaxDownloadMbChange={autoResumeMaxDownloadMb => setGlobalSettings(prev => ({ ...prev, autoResumeMaxDownloadMb }))}
-                />
 
                 <div className="space-y-2 pt-3 border-t border-border/50">
                   <Label htmlFor="global-external-program">{t("rules.postInjection.externalProgram")}</Label>
