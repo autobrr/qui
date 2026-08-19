@@ -1170,7 +1170,7 @@
         "maxRetries": "最大重試次數",
         "maxRetriesDescription": "每個種子的重試次數",
         "quickRetry": "快速重試",
-        "quickRetryTooltip": "使用重試間隔作為掃描之間的冷卻時間，而非預設的 2 分鐘。適用於註冊新上傳較慢的 Tracker。qui 會在 Tracker 更新期間始終等待，絕不會發送垃圾請求。",
+        "quickRetryTooltip": "使用重試間隔作為掃描之間的冷卻時間，而非預設的 2 分鐘。適用於註冊新上傳較慢的 Tracker。qui 會在 Tracker 更新期間始終等待，絕不會傳送垃圾請求。",
         "scopeFiltering": "範圍與過濾",
         "monitorAllStalled": "監控所有停滯的種子",
         "monitorAllDescriptionEnabled": "啟用後，監控所有種子，但排除項除外。",

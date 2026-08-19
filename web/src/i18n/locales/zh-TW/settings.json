@@ -170,7 +170,7 @@
     "empty": "尚未配置外部程式。建立一個以開始使用。",
     "enabled": "已啟用",
     "disabled": "已停用",
-    "created": "創建於 {{date}}",
+    "created": "建立於 {{date}}",
     "updated": "更新於 {{date}}",
     "programPath": "程式路徑：",
     "argumentsTemplate": "參數範本：",
@@ -274,7 +274,7 @@
     },
     "dialog": {
       "newTitle": "新建通知目標",
-      "newDescription": "配置 qui 應將警報和狀態更新發送到何處。",
+      "newDescription": "配置 qui 應將警報和狀態更新傳送到何處。",
       "editTitle": "編輯通知目標",
       "editDescription": "更新此目標的投遞設定。",
       "deleteTitle": "刪除通知目標？",
@@ -475,8 +475,8 @@
         "suffix": "，並使用您的授權電子郵件登入。"
       },
       "details": {
-        "productAdded": "{{productName}} · 添加於 {{date}}",
-        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 添加於 {{date}}"
+        "productAdded": "{{productName}} · 新增於 {{date}}",
+        "productStatusAndAdded": "{{productName}} · 狀態：{{status}} · 新增於 {{date}}"
       },
       "invalid": {
         "polarPrefix": "此授權未在此裝置上啟用。點選重新啟用以在此使用。如果達到啟用上限，請在另一臺已啟用的裝置上停用，或透過",
@@ -593,7 +593,7 @@
     "loading": "正在載入 ARR 實例...",
     "loadFailed": "載入 ARR 實例失敗",
     "empty": "尚未配置 ARR 實例。新增一個 Sonarr 或 Radarr 實例以啟用基於 ID 的 cross-seed 搜尋。",
-    "created": "創建於 {{date}}",
+    "created": "建立於 {{date}}",
     "sonarrInstances": "Sonarr 實例",
     "radarrInstances": "Radarr 實例",
     "unknownError": "未知錯誤",

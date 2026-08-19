@@ -76,6 +76,9 @@ function detectBrowserLanguage(): AppLanguage | null {
   for (const lang of browserLanguages) {
     // Exact match (e.g. "fr" → "fr", "zh-CN" → "zh-CN")
     if (isAppLanguage(lang)) return lang
+    // Traditional Chinese tags ("zh-Hant", "zh-Hant-TW", "zh-HK", "zh-MO") have no
+    // exact match, and the prefix match below would hand them zh-CN.
+    if (/^zh-(hant|hk|mo)\b/i.test(lang)) return "zh-TW"
     // Prefix match (e.g. "fr-FR" → "fr", "zh-Hans" → skip if no match)
     const prefix = lang.split("-")[0]
     const match = supportedLanguages.find((s) => s === prefix || s.startsWith(`${prefix}-`))
