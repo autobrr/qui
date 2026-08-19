@@ -49,12 +49,13 @@ func TestScanTorrentFiles_MissingFileScope(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		priority int
-		want     string
+		name        string
+		priority    int
+		want        string
+		wantPresent bool
 	}{
-		{name: "skipped", priority: 0, want: HardlinkScopeNone},
-		{name: "wanted", priority: 1, want: ""},
+		{name: "skipped", priority: 0, want: HardlinkScopeNone, wantPresent: true},
+		{name: "wanted", priority: 1, want: "", wantPresent: false},
 	}
 
 	for _, tt := range tests {
@@ -71,7 +72,9 @@ func TestScanTorrentFiles_MissingFileScope(t *testing.T) {
 			index := indexFrom(map[string]*torrentFileInfo{
 				"hash": scanTorrentFiles(qbt.Torrent{SavePath: dir}, files),
 			})
-			require.Equal(t, tt.want, index.ScopeByHash["hash"])
+			scope, present := index.ScopeByHash["hash"]
+			require.Equal(t, tt.wantPresent, present)
+			require.Equal(t, tt.want, scope)
 		})
 	}
 }
