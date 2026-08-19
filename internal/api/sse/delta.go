@@ -196,8 +196,7 @@ func computeRowDelta[T any](rows []T, keyOf func(T) string, fpOf func(*fpBuf, T)
 // prefix so adjacent fields cannot alias ("ab"+"c" vs "a"+"bc").
 type fpBuf []byte
 
-// fpBufSize covers a typical row (fixed fields plus name and paths); a row with a
-// long magnet URI takes one extra grow.
+// fpBufSize covers a typical row (fixed fields plus name and paths).
 const fpBufSize = 1024
 
 func (b *fpBuf) i64(v int64)   { *b = binary.LittleEndian.AppendUint64(*b, uint64(v)) }
@@ -220,7 +219,10 @@ func (b *fpBuf) bit(v bool) {
 // almost as large as a full snapshot (the root cause of the stream saturating an
 // HTTP/2 connection). The excluded fields still ride along with their current value
 // whenever a row is sent for a real change; they are just not on their own a reason
-// to resend a row. TestTorrentFingerprintCoversEveryField pins this partition, so a
+// to resend a row. MagnetURI is also left out, for a different reason: TorrentView
+// shadows it out of the serialized payload entirely (issue #2328), so a magnet-only
+// change has nothing to update and must not resend a row.
+// TestTorrentFingerprintCoversEveryField pins this partition, so a
 // go-qbittorrent bump that adds a field fails until the field is categorized here.
 func (b *fpBuf) torrent(t *qbt.Torrent) {
 	if t == nil {
@@ -246,7 +248,6 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.str(t.InfohashV1)
 	b.str(t.InfohashV2)
 	b.bit(t.Private)
-	b.str(t.MagnetURI)
 	b.f64(t.MaxRatio)
 	b.i64(t.MaxSeedingTime)
 	b.i64(t.MaxInactiveSeedingTime)

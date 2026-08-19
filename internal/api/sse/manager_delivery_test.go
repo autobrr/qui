@@ -411,11 +411,25 @@ func waitForUpdateOnBoth(t *testing.T, a, b *sseReader, timeout time.Duration, t
 func connectStream(t *testing.T, srv *httptest.Server, payload []map[string]any) (*sseReader, context.CancelFunc) {
 	t.Helper()
 
+	resp, cleanup := dialStream(t, srv, payload, "")
+	return newSSEReader(resp.Body), cleanup
+}
+
+// dialStream opens an SSE connection and returns the live response plus a cancel
+// func that closes the client (ending Serve). A non-empty acceptEncoding is sent
+// verbatim, which also stops the transport from adding its own and decoding the
+// body, so the caller sees the wire bytes.
+func dialStream(t *testing.T, srv *httptest.Server, payload []map[string]any, acceptEncoding string) (*http.Response, context.CancelFunc) {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	reqURL := srv.URL + "/stream?streams=" + streamsQuery(t, payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	require.NoError(t, err)
 	req.Header.Set("Accept", "text/event-stream")
+	if acceptEncoding != "" {
+		req.Header.Set("Accept-Encoding", acceptEncoding)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -429,13 +443,12 @@ func connectStream(t *testing.T, srv *httptest.Server, payload []map[string]any)
 		t.Fatalf("unexpected status %d connecting to stream: %s", resp.StatusCode, string(body))
 	}
 
-	reader := newSSEReader(resp.Body)
 	cleanup := func() {
 		cancel()
 		resp.Body.Close()
 	}
 	t.Cleanup(cleanup)
-	return reader, cleanup
+	return resp, cleanup
 }
 
 func cannedResponse() *qbittorrent.TorrentResponse {

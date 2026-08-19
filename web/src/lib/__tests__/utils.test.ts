@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { joinPath, parseTrackerDomains } from "@/lib/utils"
+import { formatBytesOrFallback, joinPath, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { describe, expect, it } from "vitest"
 
@@ -49,5 +49,18 @@ describe("joinPath", () => {
 
   it("returns the relative path unchanged when the base is empty", () => {
     expect(joinPath("", "Movie/file.mkv")).toBe("Movie/file.mkv")
+  })
+})
+
+describe("formatBytesOrFallback", () => {
+  it("returns the fallback for a negative byte value", () => {
+    expect(formatBytesOrFallback(-1, "Unknown")).toBe("Unknown")
+  })
+
+  it.each([
+    [0, "0 B"],
+    [1024, "1 KiB"],
+  ])("formats the available byte value %s", (value, expected) => {
+    expect(formatBytesOrFallback(value, "Unknown")).toBe(expected)
   })
 })

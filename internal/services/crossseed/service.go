@@ -6704,6 +6704,17 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	if len(files) == 0 || s == nil || s.releaseCache == nil {
 		return sourceRelease, false
 	}
+	if isDisc, _ := isDiscLayoutTorrent(files); isDisc {
+		discRelease := *sourceRelease
+		if isTVRelease(sourceRelease) {
+			if discRelease.Type != rls.Series && discRelease.Type != rls.Episode {
+				discRelease.Type = rls.Series
+			}
+		} else {
+			discRelease.Type = rls.Movie
+		}
+		return &discRelease, false
+	}
 
 	largestFile := FindLargestFile(files)
 	if largestFile == nil {

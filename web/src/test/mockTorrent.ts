@@ -36,7 +36,6 @@ export function makeTorrent(overrides: Partial<Torrent> = {}): Torrent {
     popularity: 0,
     private: false,
     last_activity: 0,
-    magnet_uri: "",
     max_ratio: 0,
     max_seeding_time: 0,
     name: "test-torrent",
