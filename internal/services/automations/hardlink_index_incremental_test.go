@@ -45,6 +45,50 @@ func indexFrom(scans map[string]*torrentFileInfo) *HardlinkIndex {
 	return index
 }
 
+func TestScanTorrentFiles_MissingFileScope(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		priority int
+		want     string
+	}{
+		{name: "skipped", priority: 0, want: HardlinkScopeNone},
+		{name: "wanted", priority: 1, want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			createFile(t, filepath.Join(dir, "movie.mkv"))
+			files := qbt.TorrentFiles{
+				{Name: "movie.mkv", Priority: 1},
+				{Name: "missing.txt", Priority: tt.priority},
+			}
+
+			index := indexFrom(map[string]*torrentFileInfo{
+				"hash": scanTorrentFiles(qbt.Torrent{SavePath: dir}, files),
+			})
+			require.Equal(t, tt.want, index.ScopeByHash["hash"])
+		})
+	}
+}
+
+func TestScanTorrentFiles_PresentSkippedFileStillAffectsScope(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	linkPair(t, dir)
+	files := qbt.TorrentFiles{{Name: "movie.mkv", Priority: 0}}
+
+	index := indexFrom(map[string]*torrentFileInfo{
+		"hash": scanTorrentFiles(qbt.Torrent{SavePath: filepath.Join(dir, "a")}, files),
+	})
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash["hash"])
+}
+
 // Two torrents holding the same physical file are hardlinked to each other and to
 // nothing else. Dropping one of them, files and all, leaves the survivor with a single
 // link, and the survivor's scope has to follow even though nothing happened to it

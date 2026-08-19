@@ -757,7 +757,7 @@ The `HARDLINK_SCOPE` field lets automations distinguish between torrents whose f
 
 #### How scope is determined
 
-When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by calling `Lstat()` on every file of every torrent in qBittorrent. For each file it extracts:
+When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by calling `Lstat()` on every file of every torrent in qBittorrent. If a priority-0 (`Do not download`) file is absent, qui ignores it. If it exists, qui scans it like any other file. For each file it extracts:
 
 - The **inode** and **device ID** — uniquely identifying the file on disk.
 - The **nlink count** — the total number of hardlinks to that inode, as reported by the filesystem.
@@ -784,7 +784,7 @@ Combined with AND/OR groups and the "is not" operator, every combination of the 
 
 #### Unknown scope and safety behavior
 
-If qui cannot `Lstat()` **any** file in a torrent — due to wrong paths, missing permissions, or inaccessible storage — that torrent receives no scope entry. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This is a safety measure to prevent unintended deletions of torrents qui cannot fully inspect.
+If `Lstat()` fails for **any remaining** file, the torrent receives no scope entry. Causes include wrong paths, missing permissions, and inaccessible storage. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This safety measure prevents unintended deletion of torrents that qui cannot fully inspect.
 
 To diagnose this, enable debug logging and look for the "hardlink index built" log message, which reports an `inaccessible` count.
 
