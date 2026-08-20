@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -254,7 +255,7 @@ func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.To
 
 		lstatInfo, err := backend.Lstat(ctx, fullPath)
 		if err != nil {
-			if f.Priority == 0 && os.IsNotExist(err) {
+			if f.Priority == 0 && errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
 			info.allAccessible = false
