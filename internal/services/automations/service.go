@@ -7,6 +7,7 @@ package automations
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"path"
@@ -968,6 +969,9 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 	}
 	evalCtx.FreeSpace = freeSpace
 	evalCtx.FilesToClear = make(map[crossSeedKey]struct{})
+	if ruleUsesIncludeCrossSeedsFreeSpace(rule) {
+		evalCtx.CrossSeedHashesToClear = make(map[string]struct{})
+	}
 	return nil
 }
 
@@ -1025,9 +1029,23 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	eligibleMode := previewView == "eligible"
 
 	cpIndex := buildContentPathIndex(torrents)
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds || deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		s.loadCrossSeedFiles(ctx, instanceID, cpIndex, evalCtx)
+	}
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode, scoreByHash, cpIndex)
+		return s.previewDeleteIncludeCrossSeeds(
+			rule,
+			torrents,
+			evalCtx,
+			hardlinkIndex,
+			cfg.limit,
+			cfg.offset,
+			eligibleMode,
+			scoreByHash,
+			cpIndex,
+			cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
+		)
 	}
 
 	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash, cpIndex)
@@ -1318,19 +1336,19 @@ func (s *Service) previewDeleteStandard(
 }
 
 // crossSeedExpansionState tracks state during cross-seed preview expansion.
+type torrentFilesFetcher func(hashes []string) (map[string]qbt.TorrentFiles, error)
+
 type crossSeedExpansionState struct {
-	expandedSet           map[string]struct{}
-	crossSeedSet          map[string]struct{}
-	hardlinkCopySet       map[string]struct{}
-	processedContentPaths map[string]struct{}
+	expandedSet     map[string]struct{}
+	crossSeedSet    map[string]struct{}
+	hardlinkCopySet map[string]struct{}
 }
 
 func newCrossSeedExpansionState() *crossSeedExpansionState {
 	return &crossSeedExpansionState{
-		expandedSet:           make(map[string]struct{}),
-		crossSeedSet:          make(map[string]struct{}),
-		hardlinkCopySet:       make(map[string]struct{}),
-		processedContentPaths: make(map[string]struct{}),
+		expandedSet:     make(map[string]struct{}),
+		crossSeedSet:    make(map[string]struct{}),
+		hardlinkCopySet: make(map[string]struct{}),
 	}
 }
 
@@ -1338,17 +1356,6 @@ func newCrossSeedExpansionState() *crossSeedExpansionState {
 func (s *crossSeedExpansionState) isAlreadyExpanded(hash string) bool {
 	_, included := s.expandedSet[hash]
 	return included
-}
-
-// isContentPathProcessed returns true if the content path was already processed.
-func (s *crossSeedExpansionState) isContentPathProcessed(contentPath string) bool {
-	_, processed := s.processedContentPaths[contentPath]
-	return processed
-}
-
-// markContentPathProcessed marks a content path as processed.
-func (s *crossSeedExpansionState) markContentPathProcessed(contentPath string) {
-	s.processedContentPaths[contentPath] = struct{}{}
 }
 
 // addHardlinkCopies adds hardlink copies to the expanded set.
@@ -1370,8 +1377,6 @@ func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex
 // When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
 // If IncludeHardlinks is enabled, also expands with hardlink copies (same physical files).
 func (s *Service) previewDeleteIncludeCrossSeeds(
-	ctx context.Context,
-	instanceID int,
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -1380,6 +1385,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	eligibleMode bool,
 	scoreByHash map[string]float64,
 	cpIndex contentPathIndex,
+	fetchFiles torrentFilesFetcher,
 ) (*PreviewResult, error) {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 		return &PreviewResult{Examples: make([]PreviewTorrent, 0)}, nil
@@ -1401,15 +1407,9 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		contentPath := normalizePath(torrent.ContentPath)
-		if state.isContentPathProcessed(contentPath) {
-			continue
-		}
-
 		crossSeedGroup := findCrossSeedGroup(*torrent, cpIndex)
-		state.markContentPathProcessed(contentPath)
 
-		if !s.expandGroupForPreview(ctx, instanceID, torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet) {
+		if !expandGroupForPreview(torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet, fetchFiles) {
 			continue
 		}
 
@@ -1490,70 +1490,16 @@ func (s *Service) buildCrossSeedPreviewResult(
 	return result
 }
 
-// verifyGroupForPreview validates an ambiguous cross-seed group for preview.
-// Returns (true, hashes) if all verifications pass, (false, nil) if any fail.
-// Safety: if ANY verification fails, the entire group should be skipped.
-func (s *Service) verifyGroupForPreview(
-	ctx context.Context,
-	instanceID int,
-	trigger *qbt.Torrent,
-	crossSeedGroup []qbt.Torrent,
-	alreadyIncluded map[string]struct{},
-) (ok bool, hashes []string) {
-	verifiedHashes := []string{trigger.Hash}
-	for i := range crossSeedGroup {
-		other := &crossSeedGroup[i]
-		if other.Hash == trigger.Hash {
-			continue
-		}
-		if _, exists := alreadyIncluded[other.Hash]; exists {
-			continue
-		}
-		hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, *trigger, *other, minFileOverlapPercent)
-		if err != nil || !hasOverlap {
-			// Any failure means skip the entire group
-			return false, nil
-		}
-		verifiedHashes = append(verifiedHashes, other.Hash)
-	}
-	return true, verifiedHashes
-}
-
-// expandGroupForPreview expands a trigger torrent with its cross-seed group for preview.
-// Returns true if group was added, false if skipped (e.g., verification failure).
-func (s *Service) expandGroupForPreview(
-	ctx context.Context,
-	instanceID int,
+// expandGroupForPreview expands a trigger torrent with its verified cross-seed group.
+// Returns true if the group was added, false if the whole group must be skipped.
+func expandGroupForPreview(
 	trigger *qbt.Torrent,
 	crossSeedGroup []qbt.Torrent,
 	expandedSet, crossSeedSet map[string]struct{},
+	fetchFiles torrentFilesFetcher,
 ) bool {
-	// No cross-seeds, just add the trigger
-	if len(crossSeedGroup) <= 1 {
-		expandedSet[trigger.Hash] = struct{}{}
-		return true
-	}
-
-	// Ambiguous group requires verification
-	if isContentPathAmbiguous(*trigger) {
-		return s.expandAmbiguousGroup(ctx, instanceID, trigger, crossSeedGroup, expandedSet, crossSeedSet)
-	}
-
-	// Unambiguous group - include all cross-seeds
-	expandUnambiguousCrossSeeds(trigger, crossSeedGroup, expandedSet, crossSeedSet)
-	return true
-}
-
-// expandAmbiguousGroup verifies and expands an ambiguous cross-seed group.
-func (s *Service) expandAmbiguousGroup(
-	ctx context.Context,
-	instanceID int,
-	trigger *qbt.Torrent,
-	crossSeedGroup []qbt.Torrent,
-	expandedSet, crossSeedSet map[string]struct{},
-) bool {
-	valid, verifiedHashes := s.verifyGroupForPreview(ctx, instanceID, trigger, crossSeedGroup, expandedSet)
-	if !valid {
+	verifiedHashes, ok := crossSeedGroupMembers(*trigger, crossSeedGroup, expandedSet, fetchFiles)
+	if !ok {
 		return false
 	}
 	for _, h := range verifiedHashes {
@@ -1563,22 +1509,6 @@ func (s *Service) expandAmbiguousGroup(
 		}
 	}
 	return true
-}
-
-// expandUnambiguousCrossSeeds adds all cross-seeds from an unambiguous group.
-func expandUnambiguousCrossSeeds(trigger *qbt.Torrent, crossSeedGroup []qbt.Torrent, expandedSet, crossSeedSet map[string]struct{}) {
-	expandedSet[trigger.Hash] = struct{}{}
-	for i := range crossSeedGroup {
-		other := &crossSeedGroup[i]
-		if other.Hash == trigger.Hash {
-			continue
-		}
-		if _, exists := expandedSet[other.Hash]; exists {
-			continue
-		}
-		expandedSet[other.Hash] = struct{}{}
-		crossSeedSet[other.Hash] = struct{}{}
-	}
 }
 
 // categoryPreviewState tracks state during category preview processing.
@@ -2216,12 +2146,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 			ruleKey := GetFreeSpaceRuleKey(r)
 			sourceKey := GetFreeSpaceSourceKey(r.FreeSpaceSource)
-			evalCtx.FreeSpaceStates[ruleKey] = &FreeSpaceSourceState{
+			state := &FreeSpaceSourceState{
 				FreeSpace:                 freeSpaceBySourceKey[sourceKey],
 				SpaceToClear:              0,
 				FilesToClear:              make(map[crossSeedKey]struct{}),
 				HardlinkSignaturesToClear: make(map[string]struct{}),
 			}
+			if ruleUsesIncludeCrossSeedsFreeSpace(r) {
+				state.CrossSeedHashesToClear = make(map[string]struct{})
+			}
+			evalCtx.FreeSpaceStates[ruleKey] = state
 		}
 
 		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
@@ -2229,6 +2163,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
 			evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
 		}
+	}
+
+	if rulesNeedCrossSeedFiles(eligibleRules) {
+		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
 	// Load tracker display names when needed by tagging OR by TRACKER conditions.
@@ -2396,77 +2334,31 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 			switch deleteMode {
 			case DeleteModeWithFilesIncludeCrossSeeds:
-				// Find all cross-seeds sharing the same ContentPath
+				// A shared ContentPath is not proof of shared data, so every member is
+				// verified against the trigger's file list before it is deleted.
 				crossSeedGroup := findCrossSeedGroup(torrent, cpIndex)
-				if len(crossSeedGroup) <= 1 {
-					// No cross-seeds, just delete this torrent
-					hashesToDelete = []string{hash}
-					actualMode = DeleteModeWithFiles
-					logMsg = logMsgRemoveTorrentWithFiles
-					keepingFiles = false
-				} else if isContentPathAmbiguous(torrent) {
-					// ContentPath is ambiguous (equals SavePath), need to verify file overlap for ALL members.
-					// Safety: if ANY verification fails, skip the entire group to avoid leaving broken torrents.
-					verifiedHashes := []string{hash}
-					skipGroup := false
-					for _, other := range crossSeedGroup {
-						if other.Hash == hash {
-							continue
-						}
-						// Skip if already processed in a previous iteration
-						if _, processed := includedCrossSeedHashes[other.Hash]; processed {
-							continue
-						}
-						hasOverlap, err := s.verifyFileOverlap(ctx, instanceID, torrent, other, minFileOverlapPercent)
-						if err != nil {
-							log.Warn().Err(err).
-								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
-								Str("hash", hash).Str("otherHash", other.Hash).
-								Msg("automations: skipping entire group due to verification error")
-							skipGroup = true
-							break
-						}
-						if !hasOverlap {
-							log.Warn().
-								Int("instanceID", instanceID).Int("ruleID", state.deleteRuleID).Str("ruleName", state.deleteRuleName).
-								Str("hash", hash).Str("otherHash", other.Hash).
-								Msg("automations: skipping entire group due to low file overlap")
-							skipGroup = true
-							break
-						}
-						verifiedHashes = append(verifiedHashes, other.Hash)
-					}
-					if skipGroup {
-						// Skip this torrent entirely - don't delete trigger or cross-seeds
-						continue
-					}
-					// All verified - mark cross-seeds and proceed
-					for _, h := range verifiedHashes {
-						if h != hash {
-							includedCrossSeedHashes[h] = struct{}{}
-						}
-					}
-					hashesToDelete = verifiedHashes
-					actualMode = DeleteModeWithFiles
-					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
-					keepingFiles = false
-				} else {
-					// ContentPath is unambiguous, include all cross-seeds
-					hashesToDelete = make([]string, 0, len(crossSeedGroup))
-					for _, t := range crossSeedGroup {
-						// Skip if already processed in a previous iteration
-						if _, processed := includedCrossSeedHashes[t.Hash]; processed {
-							continue
-						}
-						hashesToDelete = append(hashesToDelete, t.Hash)
-						if t.Hash != hash {
-							includedCrossSeedHashes[t.Hash] = struct{}{}
-						}
-					}
-					actualMode = DeleteModeWithFiles
-					logMsg = "automations: removing torrent with files (include cross-seeds)"
-					keepingFiles = false
+				verifiedHashes, ok := crossSeedGroupMembers(
+					torrent,
+					crossSeedGroup,
+					includedCrossSeedHashes,
+					cachedTorrentFilesFetcher(evalCtx.CrossSeedFilesByHash),
+				)
+				if !ok {
+					// Skip this torrent entirely - don't delete trigger or cross-seeds
+					continue
 				}
+				for _, h := range verifiedHashes {
+					if h != hash {
+						includedCrossSeedHashes[h] = struct{}{}
+					}
+				}
+				hashesToDelete = verifiedHashes
+				actualMode = DeleteModeWithFiles
+				logMsg = logMsgRemoveTorrentWithFiles
+				if len(verifiedHashes) > 1 {
+					logMsg = "automations: removing torrent with files (include cross-seeds - verified)"
+				}
+				keepingFiles = false
 
 				// Expand with hardlink copies if enabled (O(1) lookup via cached index)
 				if state.deleteIncludeHardlinks && hardlinkIndex != nil {
@@ -2493,9 +2385,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			case DeleteModeWithFilesPreserveCrossSeeds:
 				hashesToDelete = []string{hash}
-				if detectCrossSeeds(torrent, cpIndex) {
+				if shouldPreserveCrossSeedFiles(torrent, cpIndex, evalCtx.CrossSeedFilesByHash) {
 					actualMode = DeleteModeKeepFiles
-					logMsg = "automations: removing torrent (cross-seed detected - keeping files)"
+					logMsg = "automations: removing torrent (preserve cross-seeds - keeping files)"
 					keepingFiles = true
 				} else {
 					actualMode = DeleteModeWithFiles
@@ -4699,20 +4591,38 @@ func buildContentPathIndex(torrents []qbt.Torrent) contentPathIndex {
 	return idx
 }
 
-// detectCrossSeeds checks if any other torrent shares the same ContentPath,
-// indicating they are cross-seeds sharing the same data files.
-func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
-	p := normalizePath(target.ContentPath)
-	if p == "" {
-		return false
-	}
-	group := idx[p]
-	for _, other := range group {
-		if other.Hash != target.Hash {
-			return true
+func sharedContentPathHashes(idx contentPathIndex) []string {
+	var hashes []string
+	for _, group := range idx {
+		if len(group) < 2 {
+			continue
+		}
+		for _, torrent := range group {
+			hashes = append(hashes, torrent.Hash)
 		}
 	}
-	return false
+	slices.Sort(hashes)
+	return hashes
+}
+
+func (s *Service) loadCrossSeedFiles(ctx context.Context, instanceID int, cpIndex contentPathIndex, evalCtx *EvalContext) {
+	hashes := sharedContentPathHashes(cpIndex)
+	if len(hashes) == 0 {
+		return
+	}
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	evalCtx.CrossSeedFilesByHash = filesByHash
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: some cross-seed files could not be loaded")
+	}
+}
+
+func cachedTorrentFilesFetcher(filesByHash map[string]qbt.TorrentFiles) torrentFilesFetcher {
+	return func(_ []string) (map[string]qbt.TorrentFiles, error) {
+		return filesByHash, nil
+	}
 }
 
 // isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
@@ -4734,18 +4644,135 @@ func findCrossSeedGroup(target qbt.Torrent, idx contentPathIndex) []qbt.Torrent 
 	return idx[p]
 }
 
-// fileOverlapKey represents a unique file identity for overlap comparison.
-// Uses lowercase normalized path + size to identify matching files.
-type fileOverlapKey struct {
-	name string // normalized lowercase path
-	size int64
+// fileOverlapIndex records the trigger's files by their resolved on-disk path.
+type fileOverlapIndex struct {
+	sizeByPath map[string]int64
+	totalBytes int64
 }
 
 // minFileOverlapPercent is the minimum percentage of file overlap required
-// to consider two torrents as sharing the same files when ContentPath is ambiguous.
+// to consider two torrents as sharing the same files.
 // 90% tolerates small differences (extra NFO/sample/metadata files) while preventing
-// accidental grouping of unrelated torrents that happen to share the same SavePath.
+// accidental grouping of unrelated torrents that happen to share the same path.
 const minFileOverlapPercent = 90
+
+// overlapUnknown is returned when the overlap between two file lists cannot be
+// computed, for example when one of the lists is empty or has no bytes.
+const overlapUnknown = -1
+
+func resolvedTorrentFilePath(torrent qbt.Torrent, fileName string) string {
+	savePath := normalizePath(torrent.SavePath)
+	relativePath := strings.TrimPrefix(normalizePath(fileName), "/")
+	if savePath == "" {
+		return relativePath
+	}
+	if relativePath == "" {
+		return savePath
+	}
+	return savePath + "/" + relativePath
+}
+
+func buildFileOverlapIndex(torrent qbt.Torrent, files qbt.TorrentFiles) fileOverlapIndex {
+	index := fileOverlapIndex{sizeByPath: make(map[string]int64, len(files))}
+	for _, file := range files {
+		index.sizeByPath[resolvedTorrentFilePath(torrent, file.Name)] = file.Size
+		index.totalBytes += file.Size
+	}
+	return index
+}
+
+// fileOverlapPercent returns how much of the smaller torrent, in bytes, resolves
+// to the same on-disk paths. Returns overlapUnknown when comparison is not possible.
+func fileOverlapPercent(triggerFiles fileOverlapIndex, candidate qbt.Torrent, candidateFiles qbt.TorrentFiles) int64 {
+	if len(triggerFiles.sizeByPath) == 0 || len(candidateFiles) == 0 {
+		return overlapUnknown
+	}
+
+	var candidateBytes, matchedBytes int64
+	for _, file := range candidateFiles {
+		candidateBytes += file.Size
+		if triggerSize, exists := triggerFiles.sizeByPath[resolvedTorrentFilePath(candidate, file.Name)]; exists {
+			matchedBytes += min(triggerSize, file.Size)
+		}
+	}
+
+	smallerBytes := min(triggerFiles.totalBytes, candidateBytes)
+	if smallerBytes <= 0 {
+		return overlapUnknown
+	}
+	return (matchedBytes * 100) / smallerBytes
+}
+
+// crossSeedGroupMembers returns the members of a shared-ContentPath group that hold the
+// same data as the trigger and are therefore safe to delete with it.
+//
+// A shared ContentPath only proves the torrents write into the same directory: unrelated
+// packs whose payload folder carries the same name (a bare "Season 2" root) all report the
+// same path. Members that share no file are dropped, the trigger is still deleted. Partial
+// overlap or unreadable files abort the group, because the delete would break data another
+// torrent needs.
+func crossSeedGroupMembers(
+	trigger qbt.Torrent,
+	group []qbt.Torrent,
+	alreadyIncludedHashes map[string]struct{},
+	fetchFiles func(hashes []string) (map[string]qbt.TorrentFiles, error),
+) ([]string, bool) {
+	candidates := make([]qbt.Torrent, 0, len(group))
+	for _, other := range group {
+		if other.Hash == trigger.Hash {
+			continue
+		}
+		if _, processed := alreadyIncludedHashes[other.Hash]; processed {
+			continue
+		}
+		candidates = append(candidates, other)
+	}
+	if len(candidates) == 0 {
+		return []string{trigger.Hash}, true
+	}
+
+	hashes := make([]string, 0, len(candidates)+1)
+	hashes = append(hashes, trigger.Hash)
+	for _, candidate := range candidates {
+		hashes = append(hashes, candidate.Hash)
+	}
+	filesByHash, err := fetchFiles(hashes)
+	if err != nil {
+		log.Warn().Err(err).Str("hash", trigger.Hash).
+			Msg("automations: skipping cross-seed group, could not read its files")
+		return nil, false
+	}
+
+	triggerFiles := buildFileOverlapIndex(trigger, filesByHash[trigger.Hash])
+	verified := []string{trigger.Hash}
+	for _, candidate := range candidates {
+		percent := fileOverlapPercent(triggerFiles, candidate, filesByHash[candidate.Hash])
+		switch {
+		case percent >= minFileOverlapPercent:
+			verified = append(verified, candidate.Hash)
+		case percent == 0:
+			// Same directory, different content: not a cross-seed of the trigger.
+			log.Debug().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).
+				Str("contentPath", trigger.ContentPath).
+				Msg("automations: excluding torrent that shares the content path but no files")
+		default:
+			log.Warn().Str("hash", trigger.Hash).Str("otherHash", candidate.Hash).Int64("overlapPercent", percent).
+				Msg("automations: skipping entire group due to partial file overlap")
+			return nil, false
+		}
+	}
+	return verified, true
+}
+
+func shouldPreserveCrossSeedFiles(torrent qbt.Torrent, cpIndex contentPathIndex, filesByHash map[string]qbt.TorrentFiles) bool {
+	verifiedHashes, ok := crossSeedGroupMembers(
+		torrent,
+		findCrossSeedGroup(torrent, cpIndex),
+		nil,
+		cachedTorrentFilesFetcher(filesByHash),
+	)
+	return !ok || len(verifiedHashes) > 1
+}
 
 // verifyFileOverlap checks if two torrents share at least minOverlapPercent of their files.
 // Returns true if verification passes, false if not enough overlap or verification failed.
@@ -4765,48 +4792,14 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 		return false, err
 	}
 
-	files1, ok1 := filesByHash[torrent1.Hash]
-	files2, ok2 := filesByHash[torrent2.Hash]
-	if !ok1 || !ok2 || len(files1) == 0 || len(files2) == 0 {
-		return false, fmt.Errorf("missing file lists for torrents")
-	}
-
-	// Build set of file keys from first torrent and compute total bytes
-	fileSet1 := make(map[fileOverlapKey]struct{}, len(files1))
-	var totalBytes1 int64
-	for _, f := range files1 {
-		key := fileOverlapKey{
-			name: normalizePath(f.Name),
-			size: f.Size,
-		}
-		fileSet1[key] = struct{}{}
-		totalBytes1 += f.Size
-	}
-
-	// Compute total bytes for second torrent and sum matched bytes
-	var totalBytes2, matchedBytes int64
-	for _, f := range files2 {
-		totalBytes2 += f.Size
-		key := fileOverlapKey{
-			name: normalizePath(f.Name),
-			size: f.Size,
-		}
-		if _, exists := fileSet1[key]; exists {
-			matchedBytes += f.Size
-		}
-	}
-
-	// Calculate overlap percentage based on bytes of the smaller torrent
-	smallerBytes := min(totalBytes2, totalBytes1)
-	if smallerBytes == 0 {
-		return false, fmt.Errorf("cannot compute overlap: zero-size torrents")
-	}
-
 	if minOverlapPercent <= 0 {
 		minOverlapPercent = minFileOverlapPercent
 	}
-	overlapPercent := (matchedBytes * 100) / smallerBytes
-	return overlapPercent >= int64(minOverlapPercent), nil
+	percent := fileOverlapPercent(buildFileOverlapIndex(torrent1, filesByHash[torrent1.Hash]), torrent2, filesByHash[torrent2.Hash])
+	if percent == overlapUnknown {
+		return false, errors.New("cannot compute overlap: missing or zero-size file lists")
+	}
+	return percent >= int64(minOverlapPercent), nil
 }
 
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied
@@ -4924,21 +4917,25 @@ func allGroupMembersMatchCategoryAction(
 //
 // Returns false for:
 //   - DeleteModeKeepFiles: files are retained on disk
-//   - DeleteModeWithFilesPreserveCrossSeeds when cross-seeds exist: files are kept
+//   - DeleteModeWithFilesPreserveCrossSeeds when shared files exist or verification is incomplete
 //   - Unknown/invalid modes: don't count toward projection to avoid false early-stop
 //
 // Returns true for:
 //   - DeleteModeWithFiles: files are always deleted
-//   - DeleteModeWithFilesPreserveCrossSeeds when no cross-seeds exist: files will be deleted
+//   - DeleteModeWithFilesPreserveCrossSeeds when no shared files exist: files will be deleted
 //   - DeleteModeWithFilesIncludeCrossSeeds: always frees disk space (deletes entire group)
-func deleteFreesSpace(mode string, torrent qbt.Torrent, cpIndex contentPathIndex) bool {
+func deleteFreesSpace(
+	mode string,
+	torrent qbt.Torrent,
+	cpIndex contentPathIndex,
+	filesByHash map[string]qbt.TorrentFiles,
+) bool {
 	switch mode {
 	case DeleteModeKeepFiles, DeleteModeNone, "":
 		// Keep-files mode never frees disk space
 		return false
 	case DeleteModeWithFilesPreserveCrossSeeds:
-		// Only frees space if no cross-seeds share the files
-		return !detectCrossSeeds(torrent, cpIndex)
+		return !shouldPreserveCrossSeedFiles(torrent, cpIndex, filesByHash)
 	case DeleteModeWithFiles, DeleteModeWithFilesIncludeCrossSeeds:
 		// Always frees disk space (include mode deletes the whole group)
 		return true
@@ -5105,6 +5102,34 @@ func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
 		}
 	}
 	return false
+}
+
+func ruleUsesIncludeCrossSeedsDelete(rule *models.Automation) bool {
+	if rule == nil || rule.Conditions == nil {
+		return false
+	}
+	deleteAction := rule.Conditions.Delete
+	return deleteAction != nil && deleteAction.Enabled && deleteAction.Mode == DeleteModeWithFilesIncludeCrossSeeds
+}
+
+func ruleUsesIncludeCrossSeedsFreeSpace(rule *models.Automation) bool {
+	return ruleUsesIncludeCrossSeedsDelete(rule) && ConditionUsesField(rule.Conditions.Delete.Condition, FieldFreeSpace)
+}
+
+func ruleNeedsCrossSeedFiles(rule *models.Automation) bool {
+	if rule == nil || rule.Conditions == nil {
+		return false
+	}
+	deleteAction := rule.Conditions.Delete
+	if deleteAction == nil || !deleteAction.Enabled {
+		return false
+	}
+	return deleteAction.Mode == DeleteModeWithFilesIncludeCrossSeeds ||
+		deleteAction.Mode == DeleteModeWithFilesPreserveCrossSeeds
+}
+
+func rulesNeedCrossSeedFiles(rules []*models.Automation) bool {
+	return slices.ContainsFunc(rules, ruleNeedsCrossSeedFiles)
 }
 
 // buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.
