@@ -22,7 +22,10 @@ const (
 	aadFieldSSHHostKey = "ssh_host_key"
 )
 
-var ErrSSHHostKeyNotPinned = errors.New("ssh host key is not pinned")
+var (
+	ErrSSHHostKeyNotPinned = errors.New("ssh host key is not pinned")
+	ErrSSHEndpointChanged  = errors.New("ssh endpoint changed while pinning the host key")
+)
 
 func sshKeyAAD(instanceID int) []byte {
 	return []byte(strconv.Itoa(instanceID) + "|" + aadFieldSSHKey)
@@ -96,13 +99,39 @@ func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, marsh
 		return errors.New("instance has no ssh host configured")
 	}
 
-	encrypted, err := s.encryptWithAAD(string(marshaledKey), hostKeyPinAAD(instanceID, instance.SSHHost, instance.SSHPort))
+	return s.setHostKeyPinFor(ctx, instanceID, instance.SSHHost, instance.SSHPort, marshaledKey)
+}
+
+// setHostKeyPinFor writes a pin bound to one endpoint and refuses if the row no
+// longer carries that endpoint. The AAD is built from a host and port read a
+// moment earlier, so an interleaved credential update would otherwise leave
+// behind a pin that can never decrypt again — remote access dead until someone
+// pins afresh, with nothing pointing at why.
+func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
+	encrypted, err := s.encryptWithAAD(string(marshaledKey), hostKeyPinAAD(instanceID, host, port))
 	if err != nil {
 		return fmt.Errorf("encrypt host key pin: %w", err)
 	}
 
-	query := `UPDATE instances SET ssh_host_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-	return s.execInstanceUpdate(ctx, query, encrypted, instanceID)
+	query := `
+		UPDATE instances
+		SET ssh_host_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND ssh_host = ? AND ssh_port = ?
+	`
+	result, err := s.db.ExecContext(ctx, query, encrypted, instanceID, host, port)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrSSHEndpointChanged
+	}
+
+	return nil
 }
 
 // GetDecryptedSSHKey returns the private key for an instance, or "" when no

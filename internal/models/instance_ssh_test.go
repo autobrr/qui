@@ -263,6 +263,27 @@ func TestSetHostKeyPinRequiresHostAndKey(t *testing.T) {
 	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testHostKey), "cannot pin a host that is not configured")
 }
 
+// A pin is written for the endpoint it was confirmed against. If a credential
+// update moves the instance between the read and the write, the pin must be
+// refused rather than stored bound to an endpoint the row no longer has — that
+// pin could never decrypt again.
+func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	// Stands in for the interleaving: the endpoint read before encrypting is no
+	// longer the one on the row by the time the write lands.
+	err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey)
+	require.ErrorIs(t, err, ErrSSHEndpointChanged)
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	pin, err := store.GetHostKeyPin(stored)
+	require.NoError(t, err, "the existing pin must survive a refused write")
+	assert.Equal(t, testHostKey, pin)
+}
+
 func flipLastByte(t *testing.T, encoded string) string {
 	t.Helper()
 
