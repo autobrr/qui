@@ -19,6 +19,7 @@ vi.mock("sonner", () => ({
     success: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
+    loading: vi.fn(() => "archive-toast"),
   },
 }))
 
@@ -118,6 +119,36 @@ describe("useTorrentExporter", () => {
   })
 
   describe("explicit selection (isAllSelected=false)", () => {
+    it("shows a loading toast while the archive request is pending", async () => {
+      let resolveArchive!: (value: ReturnType<typeof makeExportResult>) => void
+      mockedApi.exportTorrentsArchive.mockReturnValue(new Promise((resolve) => {
+        resolveArchive = resolve
+      }))
+      const torrents = Array.from({ length: 11 }, (_, index) =>
+        makeTorrent({ hash: `hash-${index}` }))
+
+      const { result } = setupHook()
+      let pending: Promise<void>
+      act(() => {
+        pending = result.current.exportTorrents({
+          hashes: torrents.map(torrent => torrent.hash),
+          torrents,
+          isAllSelected: false,
+          totalSelected: torrents.length,
+        })
+      })
+
+      await waitFor(() => expect(mockedToast.loading).toHaveBeenCalledWith(
+        "contextMenu.exportTorrents/11"
+      ))
+      expect(clickedDownloads).toHaveLength(0)
+
+      await act(async () => {
+        resolveArchive(makeExportResult("qui-torrents.zip"))
+        await pending
+      })
+    })
+
     it("downloads one category-grouped archive when more than 10 torrents are selected", async () => {
       mockedApi.exportTorrentsArchive.mockResolvedValue(makeExportResult("qui-torrents.zip"))
       const torrents = Array.from({ length: 11 }, (_, index) => ({
@@ -145,7 +176,10 @@ describe("useTorrentExporter", () => {
       })))
       expect(mockedApi.exportTorrent).not.toHaveBeenCalled()
       expect(clickedDownloads).toEqual(["qui-torrents.zip"])
-      expect(mockedToast.success).toHaveBeenCalledWith("creationTasks.toast.downloadStarted")
+      expect(mockedToast.success).toHaveBeenCalledWith(
+        "creationTasks.toast.downloadStarted",
+        { id: "archive-toast" }
+      )
     })
 
     it("keeps individual downloads for exactly 10 torrents", async () => {
@@ -522,6 +556,27 @@ describe("useTorrentExporter", () => {
   })
 
   describe("error paths", () => {
+    it("replaces the archive loading toast when the request fails", async () => {
+      mockedApi.exportTorrentsArchive.mockRejectedValue(new Error("archive failed"))
+      const torrents = Array.from({ length: 11 }, (_, index) =>
+        makeTorrent({ hash: `hash-${index}` }))
+
+      const { result } = setupHook()
+      await act(async () => {
+        await result.current.exportTorrents({
+          hashes: torrents.map(torrent => torrent.hash),
+          torrents,
+          isAllSelected: false,
+          totalSelected: torrents.length,
+        })
+      })
+
+      expect(mockedToast.error).toHaveBeenCalledWith(
+        "archive failed",
+        { id: "archive-toast" }
+      )
+    })
+
     it("toasts error.message, resets isExporting, and triggers no download when exportTorrent rejects", async () => {
       mockedApi.exportTorrent.mockRejectedValue(new Error("export failed"))
 

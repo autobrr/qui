@@ -61,6 +61,7 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
     }
 
     setIsExporting(true)
+    let archiveToastId: string | number | undefined
 
     try {
       let targets: Torrent[]
@@ -96,6 +97,7 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       }
 
       if (targets.length > TORRENT_ARCHIVE_THRESHOLD) {
+        archiveToastId = toast.loading(t("contextMenu.exportTorrents", { count: targets.length }))
         const { blob, filename } = await api.exportTorrentsArchive(targets.map(torrent => ({
           instanceId: getTorrentTargetInstanceId(torrent, instanceId),
           instanceName: (torrent as Torrent & { instanceName?: string }).instanceName ?? "",
@@ -104,7 +106,7 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
           ...(incognitoMode && { filename: buildDownloadName(torrent.hash, torrent.hash, true) }),
         })))
         triggerBrowserDownload(blob, filename || "qui-torrents.zip")
-        toast.success(t("creationTasks.toast.downloadStarted"))
+        toast.success(t("creationTasks.toast.downloadStarted"), { id: archiveToastId })
         return
       }
 
@@ -129,7 +131,11 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : t("contextMenu.toast.exportFailed")
-      toast.error(message)
+      if (archiveToastId === undefined) {
+        toast.error(message)
+      } else {
+        toast.error(message, { id: archiveToastId })
+      }
     } finally {
       setIsExporting(false)
     }
