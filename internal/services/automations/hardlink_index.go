@@ -254,6 +254,9 @@ func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.To
 
 		lstatInfo, err := backend.Lstat(ctx, fullPath)
 		if err != nil {
+			if f.Priority == 0 && os.IsNotExist(err) {
+				continue
+			}
 			info.allAccessible = false
 			continue
 		}

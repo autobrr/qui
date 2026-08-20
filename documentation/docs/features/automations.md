@@ -534,6 +534,7 @@ Delete actions can specify a `groupId` to expand the deletion to all torrents in
 When a torrent matches the rule, the system finds other torrents that point to the same downloaded files (cross-seeds/duplicates) and deletes them together. This is useful when you want to fully remove content and all its cross-seeded copies at once.
 
 - **Safe expansion**: If qui can't safely confirm another torrent uses the same files, it won't be included in the deletion.
+- **File lists decide, not paths**: qui includes a candidate only when at least 90% of the smaller torrent's bytes use the same file locations. A torrent that shares only the folder, such as a pack with a top folder named `Season 2`, keeps its files and stays in the client. If overlap is above zero but below 90%, qui skips the entire deletion group.
 - **Safety-first**: If verification can't complete for any reason, the entire group is skipped rather than risking broken torrents.
 - **Preview**: The delete preview shows all torrents that would be deleted, with cross-seeds marked.
 
@@ -757,7 +758,7 @@ The `HARDLINK_SCOPE` field lets automations distinguish between torrents whose f
 
 #### How scope is determined
 
-When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by calling `Lstat()` on every file of every torrent in qBittorrent. For each file it extracts:
+When an automation references `HARDLINK_SCOPE`, qui validates and inspects every file of every torrent in qBittorrent. If a valid path has no priority-0 (`Do not download`) file, qui ignores that file. Qui scans an existing priority-0 file like any other regular file. For each regular file, it extracts:
 
 - The **inode** and **device ID** — uniquely identifying the file on disk.
 - The **nlink count** — the total number of hardlinks to that inode, as reported by the filesystem.
@@ -784,7 +785,7 @@ Combined with AND/OR groups and the "is not" operator, every combination of the 
 
 #### Unknown scope and safety behavior
 
-If qui cannot `Lstat()` **any** file in a torrent — due to wrong paths, missing permissions, or inaccessible storage — that torrent receives no scope entry. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This is a safety measure to prevent unintended deletions of torrents qui cannot fully inspect.
+If path validation or file inspection fails for **any remaining** file, the torrent receives no scope entry. Causes include invalid paths, missing permissions, and inaccessible storage. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This safety measure prevents unintended deletion of torrents that qui cannot fully inspect.
 
 To diagnose this, enable debug logging and look for the "hardlink index built" log message, which reports an `inaccessible` count.
 
@@ -1029,14 +1030,15 @@ Cross-seeds are only expanded and displayed in the preview when using `Remove wi
 | Delete Mode                            | Space Added to Projection |
 | -------------------------------------- | ------------------------- |
 | Remove with files                      | Full torrent size         |
-| Preserve cross-seeds (no cross-seeds)  | Full torrent size         |
-| Preserve cross-seeds (has cross-seeds) | 0 (files kept)            |
+| Preserve cross-seeds (no shared files) | Full torrent size         |
+| Preserve cross-seeds (shared files)    | 0 (files kept)            |
 
 **How preserve cross-seeds works:**
 
-- Cross-seed detection checks if any other torrent shares the same Content Path at evaluation time (before any removals).
-- If multiple torrents share the same files, removing them all in one rule run will still keep the files on disk. No disk space is freed from that group because each torrent sees the others as cross-seeds.
-- Only non-cross-seeded torrents contribute to the free-space projection when using preserve mode.
+- Torrents are candidates when they share the same Content Path. qui then compares their resolved file paths and sizes.
+- Torrents in the same directory that use different files are not treated as cross-seeds. Their files are removed.
+- If torrents share files, or the file comparison cannot be completed, qui keeps the files.
+- Only torrents whose files will be removed contribute to the free-space projection.
 
 **Example:** With 400GB free and a rule "Delete if Free Space < 500GB" using `Remove with files`, the system deletes oldest torrents until the cumulative freed space reaches 100GB, then stops. A 50GB torrent and its cross-seed (same files) only count as 50GB freed, not 100GB.
 

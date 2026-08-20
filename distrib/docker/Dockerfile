@@ -18,7 +18,7 @@ RUN pnpm run build
 
 # Go build stage
 # Use BUILDPLATFORM to build on native architecture (fast)
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.22 AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.23 AS go-builder
 
 # Install build dependencies
 RUN apk add --no-cache git

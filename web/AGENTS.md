@@ -42,7 +42,7 @@ Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
-English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`.
+English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`.
 
 ## i18n Commands
 
@@ -50,6 +50,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:hardcoded`
 - `pnpm check:i18n:raw-backend-values`
 - `pnpm check:i18n:zh-cn`
+- `pnpm check:i18n:zh-tw`
 - `pnpm check:i18n:fr`
 - `pnpm check:i18n:de`
 - `pnpm check:i18n:cs`
@@ -64,9 +65,9 @@ Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.t
 
 1. Add all 10 namespace JSON files under `web/src/i18n/locales/<lang>/`.
 2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
-3. Add/adapt a locale coverage script if the locale is not `zh-CN`.
+3. Add/adapt a locale coverage script. Both Chinese locales share `scripts/check-chinese-coverage.mjs`, which takes the locale as its argument.
 4. Run `pnpm check:i18n`.
-5. Update the supported-language list in `README.md` (Features) and `documentation/docs/intro.md` (Features + Languages section) so the promoted list stays accurate.
+5. Update the supported-language list in `README.md` (Features), `documentation/docs/intro.md` (Features + Languages section), and the i18n section above so the promoted list stays accurate.
 
 Coverage must compare against English for missing/extra keys, interpolation placeholders, HTML tag parity, plural forms, empty strings, encoding, and JSON validity.
 
