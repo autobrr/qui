@@ -31,7 +31,7 @@ function render(overrides: Partial<UseCompactViewSortParams> = {}) {
     setLastUserAction: vi.fn(),
     ...overrides,
   }
-  return { params, ...renderHook(() => useCompactViewSort(params)) }
+  return { params, ...renderHook((p: UseCompactViewSortParams) => useCompactViewSort(p), { initialProps: params }) }
 }
 
 describe("useCompactViewSort", () => {
@@ -80,5 +80,14 @@ describe("useCompactViewSort", () => {
     const { params, result } = render({ activeSortField: "name", activeSortOrder: "desc" })
     act(() => result.current.handleCompactSortOrderToggle())
     expect(params.setSorting).toHaveBeenCalledWith([{ id: "name", desc: false }])
+  })
+
+  it("keeps stable identities when the table object changes between renders", () => {
+    const { params, result, rerender } = render()
+    const first = result.current
+    rerender({ ...params, table: fakeTable(COLUMNS) })
+    expect(result.current.compactSortOptions).toBe(first.compactSortOptions)
+    expect(result.current.currentCompactSortLabel).toBe(first.currentCompactSortLabel)
+    expect(result.current.handleCompactSortOrderToggle).toBe(first.handleCompactSortOrderToggle)
   })
 })

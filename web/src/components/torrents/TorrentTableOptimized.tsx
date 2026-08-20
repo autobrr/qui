@@ -1025,13 +1025,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     backendLoadMore,
   })
 
-  // Memoize minTableWidth to avoid recalculation on every row render
+  // Keyed on the state that changes widths, not on the per-render `table` object.
   const minTableWidth = useMemo(() => {
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, columnVisibility])
+  }, [columnVisibility, columnSizing])
 
   const { clearFiltersAtomically } = useFilterLifecycle({
     virtualizer,
@@ -1169,6 +1169,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // reading current state at click time. Assigned during render, same pattern
   // as leafColumnIdsRef above.
   const rowInteraction = {
+    // v9's useTable returns a new table object every render; read it here, never from a dep array.
+    table,
     isReadOnly,
     isAllSelected,
     selectedRowIds,
@@ -1198,7 +1200,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const selectionIdentity = s.getSelectionIdentity(torrent)
-    const allRows = table.getRowModel().rows
+    const allRows = s.table.getRowModel().rows
     const currentIndex = allRows.findIndex(r => r.id === row.id)
 
     // Handle shift-click for range selection - EXACTLY like checkbox
@@ -1263,7 +1265,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       lastSelectedIndexRef.current = currentIndex
     }
     s.onTorrentSelect?.(torrent)
-  }, [table, lastSelectedIndexRef])
+  }, [lastSelectedIndexRef])
 
   const handleRowContextMenu = useCallback((row: TorrentRow, isRowSelected: boolean) => {
     const s = rowInteractionRef.current
