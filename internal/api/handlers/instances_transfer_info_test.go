@@ -54,7 +54,7 @@ func TestTransferInfoResponseFromServerState(t *testing.T) {
 // and let the client keep the value it already has.
 func TestTransferInfoResponseFallbackOmitsAlltimeTotals(t *testing.T) {
 	payload, err := json.Marshal(transferInfoResponse{
-		TransferInfo: qbt.TransferInfo{ConnectionStatus: "connected", DlInfoSpeed: 42},
+		ConnectionStatus: "connected", DlInfoSpeed: 42,
 	})
 	require.NoError(t, err)
 

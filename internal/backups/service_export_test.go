@@ -369,8 +369,8 @@ func TestExecuteBackupRunsExportsConcurrently(t *testing.T) {
 		})
 	}
 	stub := &rendezvousExportStub{
-		concurrentExportStub: concurrentExportStub{torrents: torrents},
-		ready:                make(chan struct{}),
+		torrents: torrents,
+		ready:    make(chan struct{}),
 	}
 	svc, instanceID := newExportTestService(t, stub)
 

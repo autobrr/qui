@@ -474,10 +474,10 @@ func TestFindLocalMatches_ReflinkVerificationErrorPolicy(t *testing.T) {
 	}
 	candidate := *hardlinkTestCandidate(candidateDir)
 	syncManager := &reflinkFindLocalMatchesSyncManager{
-		localMatchSyncManager: localMatchSyncManager{files: map[string]qbt.TorrentFiles{
+		files: map[string]qbt.TorrentFiles{
 			normalizeHash(hlSourceHash):    files,
 			normalizeHash(hlCandidateHash): files,
-		}},
+		},
 		source:    source,
 		candidate: candidate,
 	}
