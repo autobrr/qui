@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 vi.mock("react-i18next", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-i18next")>()
   const text: Record<string, string> = {
-    "rules.postInjection.pooledPartialCompletion": "Automatically complete partial hardlink/reflink cross-seeds",
-    "rules.postInjection.pooledPartialCompletionDescription": "Uses the existing maximum auto-start download value and coordinates one downloader per related pool. Applies only to hardlink and reflink modes.",
+    "rules.postInjection.pooledPartialCompletion": "Automatically pool torrents with extra data",
+    "rules.postInjection.pooledPartialCompletionDescription": "Uses the existing maximum auto-start download value, and coordinates one downloader per related cross-seed pool for handling extra files in cross-seeds.",
   }
   return {
     ...actual,
@@ -33,16 +33,17 @@ describe("PooledCompletionSetting", () => {
     const onCheckedChange = vi.fn()
     render(
       <PooledCompletionSetting
+        id="pooled-partial-completion-1"
         checked
         onCheckedChange={onCheckedChange}
       />
     )
 
-    const toggle = screen.getByRole("switch", { name: "Automatically complete partial hardlink/reflink cross-seeds" })
-    expect(toggle.getAttribute("aria-checked")).toBe("true")
-    expect(screen.getByText(/one downloader per related pool/)).toBeTruthy()
+    const checkbox = screen.getByRole("checkbox", { name: "Automatically pool torrents with extra data" })
+    expect(checkbox.getAttribute("aria-checked")).toBe("true")
+    expect(screen.getByText(/one downloader per related cross-seed pool/)).toBeTruthy()
 
-    fireEvent.click(toggle)
+    fireEvent.click(checkbox)
     expect(onCheckedChange).toHaveBeenCalledWith(false)
   })
 

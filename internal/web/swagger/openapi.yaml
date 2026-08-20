@@ -6863,7 +6863,7 @@ components:
           description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
         pooledPartialCompletionEnabled:
           type: boolean
-          description: Coordinate one downloader per related pool for partial hardlink and reflink cross-seeds.
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -7012,7 +7012,7 @@ components:
         pooledPartialCompletionEnabled:
           type: boolean
           default: false
-          description: Coordinate one downloader per related pool for partial hardlink and reflink cross-seeds.
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:

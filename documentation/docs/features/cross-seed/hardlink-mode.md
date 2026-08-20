@@ -82,7 +82,7 @@ If hardlink/reflink mode falls back to regular mode for a partial or non-perfect
 
 ### Pooled Partial Completion
 
-Enable **Automatically complete partial hardlink/reflink cross-seeds** under Cross-Seed → Rules → Hardlink / Reflink Mode to coordinate accepted partial link-mode torrents. The feature is off by default and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
+Enable **Automatically pool torrents with extra data** inside an instance dropdown under Cross-Seed → Rules → Hardlink / Reflink Mode, below **Fallback to regular mode on error**. The checkbox appears only when Hardlink or Reflink mode is selected. It controls one global setting for all eligible instances, is off by default, and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
 
 qui groups related members persistently by their original source torrent identity, not category, release name, save path, or the latest match. Each member keeps the managed link-tree root chosen when it was added, and unfinished work resumes after a qui restart.
 

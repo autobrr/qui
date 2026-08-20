@@ -551,7 +551,7 @@ function SeasonPackRunsPanel({
   )
 }
 
-/** Per-instance hardlink/reflink mode settings plus the global pooled-completion toggle. */
+/** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
 function HardlinkModeSettings({
   pooledPartialCompletionEnabled,
   onPooledPartialCompletionEnabledChange,
@@ -685,10 +685,6 @@ function HardlinkModeSettings({
         <CollapsibleContent>
           <div className="border-t border-border/70 p-4 pt-4 space-y-4">
             <p className="text-sm text-muted-foreground">{t("rules.noActiveInstances")}</p>
-            <PooledCompletionSetting
-              checked={pooledPartialCompletionEnabled}
-              onCheckedChange={onPooledPartialCompletionEnabledChange}
-            />
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -848,6 +844,12 @@ function HardlinkModeSettings({
                                 </FieldHelp>
                               </div>
                             </div>
+
+                            <PooledCompletionSetting
+                              id={`pooled-partial-completion-${instance.id}`}
+                              checked={pooledPartialCompletionEnabled}
+                              onCheckedChange={onPooledPartialCompletionEnabledChange}
+                            />
                           </div>
                         </>
                       )}
@@ -868,11 +870,6 @@ function HardlinkModeSettings({
               )
             })}
           </Accordion>
-
-          <PooledCompletionSetting
-            checked={pooledPartialCompletionEnabled}
-            onCheckedChange={onPooledPartialCompletionEnabledChange}
-          />
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -893,29 +890,31 @@ export function TitleRescueSetting({ checked, disabled = false, onCheckedChange 
   )
 }
 
-/** Renders the global pooled partial completion toggle. */
+/** Renders the global pooled partial completion checkbox. */
 export function PooledCompletionSetting({
+  id,
   checked,
   onCheckedChange,
 }: {
+  id: string
   checked: boolean
   onCheckedChange: (checked: boolean) => void
 }) {
   const { t } = useTranslation("crossseed")
 
   return (
-    <div className="flex items-center justify-between gap-3 pt-4 border-t border-border/50">
+    <div className="flex items-center gap-3">
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={value => onCheckedChange(value === true)}
+      />
       <div className="flex items-center gap-1.5">
-        <Label htmlFor="pooled-partial-completion" className="font-medium">
+        <Label htmlFor={id} className="font-medium cursor-pointer">
           {t("rules.postInjection.pooledPartialCompletion")}
         </Label>
         <FieldHelp>{t("rules.postInjection.pooledPartialCompletionDescription")}</FieldHelp>
       </div>
-      <Switch
-        id="pooled-partial-completion"
-        checked={checked}
-        onCheckedChange={value => onCheckedChange(!!value)}
-      />
     </div>
   )
 }
