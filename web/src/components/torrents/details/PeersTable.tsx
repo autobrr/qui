@@ -14,12 +14,11 @@ import type { SortedPeer, TorrentPeer } from "@/types"
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  type SortingFn,
+  type SortFn,
   type SortingState,
-  useReactTable
+  useTable
 } from "@tanstack/react-table"
+import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Ban, Copy, Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -35,10 +34,10 @@ interface PeersTableProps {
   onBanPeer?: (peer: TorrentPeer) => void
 }
 
-const columnHelper = createColumnHelper<SortedPeer>()
+const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, SortedPeer>()
 
 // Sorting function that pushes 0/null/undefined values to the bottom
-const zeroLastSortingFn: SortingFn<SortedPeer> = (rowA, rowB, columnId) => {
+const zeroLastSortingFn: SortFn<typeof sortableDetailsTableFeatures, SortedPeer> = (rowA, rowB, columnId) => {
   const a = (rowA.getValue(columnId) as number | undefined | null) ?? 0
   const b = (rowB.getValue(columnId) as number | undefined | null) ?? 0
   if (a === 0 && b !== 0) return 1
@@ -57,7 +56,7 @@ export const PeersTable = memo(function PeersTable({
   const { t } = useTranslation("torrents")
   const [sorting, setSorting] = useState<SortingState>([{ id: "progress", desc: true }])
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => columnHelper.columns([
     columnHelper.accessor("country_code", {
       header: "",
       cell: (info) => {
@@ -124,7 +123,7 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("up_speed", {
       header: t("peersTable.upSpeed"),
@@ -135,7 +134,7 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("downloaded", {
       header: t("peersTable.downloaded"),
@@ -146,7 +145,7 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("uploaded", {
       header: t("peersTable.uploaded"),
@@ -157,7 +156,7 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     ...(showFlags ? [
       columnHelper.accessor("flags", {
@@ -188,17 +187,16 @@ export const PeersTable = memo(function PeersTable({
         size: 60,
       }),
     ] : []),
-  ], [speedUnit, showFlags, incognitoMode, t])
+  ]), [speedUnit, showFlags, incognitoMode, t])
 
   const data = useMemo(() => peers || [], [peers])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: sortableDetailsTableFeatures,
     data,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   })
 
   const handleCopyIp = (peer: SortedPeer) => {
@@ -256,7 +254,7 @@ export const PeersTable = memo(function PeersTable({
               <ContextMenu key={row.id}>
                 <ContextMenuTrigger asChild>
                   <tr className="border-b border-border/50 hover:bg-muted/30 cursor-default">
-                    {row.getVisibleCells().map((cell) => (
+                    {row.getAllCells().map((cell) => (
                       <td
                         key={cell.id}
                         className="px-2 py-1.5"

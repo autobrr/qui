@@ -33,17 +33,12 @@ import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/u
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
-import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type Row
-} from "@tanstack/react-table"
+import { useTable } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
+import { torrentTableFeatures, type TorrentRow } from "./tanstackTableFeatures"
 import { type TableViewMode } from "./TorrentTableColumns"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
@@ -783,16 +778,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     sortedTorrents,
   })
 
-  const table = useReactTable({
+  const table = useTable({
+    features: torrentTableFeatures,
     data: sortedTorrents,
     columns,
-    getCoreRowModel: getCoreRowModel(),
     // For cross-seed filtering, enable client-side sorting and filtering
     // For regular filtering, backend handles sorting and column filters
     manualSorting: !isCrossSeedFiltering,
-    getSortedRowModel: isCrossSeedFiltering ? getSortedRowModel() : undefined,
     manualFiltering: !isCrossSeedFiltering,
-    getFilteredRowModel: isCrossSeedFiltering ? getFilteredRowModel() : undefined,
     // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
       const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
@@ -839,9 +832,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // Enable column resizing
     enableColumnResizing: true,
     columnResizeMode: "onChange" as const,
-    // Prevent automatic state resets during data updates
-    autoResetPageIndex: false,
-    autoResetExpanded: false,
   })
 
   // Keep the leaf-column accessor current for useColumnDnd (drag reads it lazily).
@@ -1193,7 +1183,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const rowInteractionRef = useRef(rowInteraction)
   rowInteractionRef.current = rowInteraction
 
-  const handleRowClick = useCallback((e: React.MouseEvent, row: Row<Torrent>, isSelected: boolean, isRowSelected: boolean) => {
+  const handleRowClick = useCallback((e: React.MouseEvent, row: TorrentRow, isSelected: boolean, isRowSelected: boolean) => {
     const s = rowInteractionRef.current
     // Don't select when clicking checkbox or its wrapper
     const target = e.target as HTMLElement
@@ -1275,7 +1265,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     s.onTorrentSelect?.(torrent)
   }, [table, lastSelectedIndexRef])
 
-  const handleRowContextMenu = useCallback((row: Row<Torrent>, isRowSelected: boolean) => {
+  const handleRowContextMenu = useCallback((row: TorrentRow, isRowSelected: boolean) => {
     const s = rowInteractionRef.current
     if (s.isReadOnly) {
       return

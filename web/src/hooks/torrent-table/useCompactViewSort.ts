@@ -5,14 +5,14 @@
 
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "@/components/torrents/torrentSortOptions"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
-import type { Torrent } from "@/types"
-import type { ColumnOrderState, Table, VisibilityState } from "@tanstack/react-table"
+import type { ColumnOrderState, ColumnVisibilityState } from "@tanstack/react-table"
 import { useCallback, useMemo } from "react"
+import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
 
 export interface UseCompactViewSortParams {
-  table: Table<Torrent>
+  table: TorrentTable
   // Included so the derived options/label recompute when columns change.
-  columnVisibility: VisibilityState
+  columnVisibility: ColumnVisibilityState
   columnOrder: ColumnOrderState
   activeSortField: string
   activeSortOrder: "asc" | "desc"

@@ -12,8 +12,8 @@ import type { WebSeed } from "@/types"
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  useReactTable
+  tableFeatures,
+  useTable
 } from "@tanstack/react-table"
 import { Copy, Loader2, Search, X } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -26,7 +26,8 @@ interface WebSeedsTableProps {
   incognitoMode: boolean
 }
 
-const columnHelper = createColumnHelper<WebSeed>()
+const webSeedTableFeatures = tableFeatures({})
+const columnHelper = createColumnHelper<typeof webSeedTableFeatures, WebSeed>()
 
 export const WebSeedsTable = memo(function WebSeedsTable({
   webseeds,
@@ -36,7 +37,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
   const { t } = useTranslation("torrents")
   const [searchQuery, setSearchQuery] = useState("")
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => columnHelper.columns([
     columnHelper.accessor("url", {
       header: t("webSeedsTable.url"),
       cell: (info) => {
@@ -60,7 +61,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
         )
       },
     }),
-  ], [incognitoMode, t])
+  ]), [incognitoMode, t])
 
   const filteredData = useMemo(() => {
     const data = webseeds || []
@@ -69,10 +70,10 @@ export const WebSeedsTable = memo(function WebSeedsTable({
     return data.filter((ws) => ws.url.toLowerCase().includes(query))
   }, [webseeds, searchQuery])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: webSeedTableFeatures,
     data: filteredData,
     columns,
-    getCoreRowModel: getCoreRowModel(),
   })
 
   const handleCopyUrl = (webseed: WebSeed) => {
@@ -146,7 +147,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
                 <ContextMenu key={row.id}>
                   <ContextMenuTrigger asChild>
                     <tr className="border-b border-border/50 hover:bg-muted/30 cursor-default">
-                      {row.getVisibleCells().map((cell) => (
+                      {row.getAllCells().map((cell) => (
                         <td key={cell.id} className="px-2 py-1.5">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
