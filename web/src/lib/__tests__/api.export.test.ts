@@ -55,6 +55,35 @@ describe("api.exportTorrent — request serialization", () => {
   })
 })
 
+describe("api.exportTorrentsArchive", () => {
+  it("posts archive targets and returns the ZIP filename", async () => {
+    let captured: Request | undefined
+    const targets = [{
+      instanceId: 7,
+      instanceName: "Home",
+      hash: "deadbeef",
+      category: "Movies",
+    }]
+
+    server.use(
+      http.post("*/api/torrents/export", ({ request }) => {
+        captured = request.clone()
+        return new HttpResponse("zipdata", {
+          status: 200,
+          headers: { "Content-Disposition": "attachment; filename=qui-torrents.zip" },
+        })
+      })
+    )
+
+    const result = await api.exportTorrentsArchive(targets)
+
+    expect(captured?.method).toBe("POST")
+    expect(await captured?.json()).toEqual({ targets })
+    expect(await result.blob.text()).toBe("zipdata")
+    expect(result.filename).toBe("qui-torrents.zip")
+  })
+})
+
 describe("api.exportTorrent — response parsing", () => {
   it("returns a Blob and the filename parsed from a quoted content-disposition", async () => {
     server.use(

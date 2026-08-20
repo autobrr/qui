@@ -5,7 +5,7 @@
 
 import { useCallback, useState } from "react"
 import { api } from "@/lib/api"
-import { getLinuxIsoName } from "@/lib/incognito"
+import { getLinuxCategory, getLinuxIsoName } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { getTorrentTargetInstanceId, type TorrentActionTarget } from "@/lib/torrent-action-targets"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -30,6 +30,8 @@ interface ExportSelection {
   sortField?: string
   sortOrder?: "asc" | "desc"
 }
+
+const TORRENT_ARCHIVE_THRESHOLD = 10
 
 export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExporterOptions) {
   const { t } = useTranslation("torrents")
@@ -83,15 +85,34 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
         return
       }
 
+      targets = targets.filter(torrent => {
+        const targetInstanceId = getTorrentTargetInstanceId(torrent, instanceId)
+        return !excludeSet.has(torrent.hash) && !excludeTargetSet.has(targetKey(targetInstanceId, torrent.hash))
+      })
+
+      if (targets.length === 0) {
+        toast.info(t("contextMenu.toast.noTorrentsExported"))
+        return
+      }
+
+      if (targets.length > TORRENT_ARCHIVE_THRESHOLD) {
+        const { blob, filename } = await api.exportTorrentsArchive(targets.map(torrent => ({
+          instanceId: getTorrentTargetInstanceId(torrent, instanceId),
+          instanceName: (torrent as Torrent & { instanceName?: string }).instanceName ?? "",
+          hash: torrent.hash,
+          category: incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category,
+          ...(incognitoMode && { filename: buildDownloadName(torrent.hash, torrent.hash, true) }),
+        })))
+        triggerBrowserDownload(blob, filename || "qui-torrents.zip")
+        toast.success(t("creationTasks.toast.downloadStarted"))
+        return
+      }
+
       const filenameCounts = new Map<string, number>()
       let exportedCount = 0
 
       for (const torrent of targets) {
         const targetInstanceId = getTorrentTargetInstanceId(torrent, instanceId)
-        if (excludeSet.has(torrent.hash) || excludeTargetSet.has(targetKey(targetInstanceId, torrent.hash))) {
-          continue
-        }
-
         const { blob, filename } = await api.exportTorrent(targetInstanceId, torrent.hash)
         const fallbackName = filename || torrent.name || torrent.hash
         const downloadName = buildDownloadName(torrent.hash, fallbackName, incognitoMode)
