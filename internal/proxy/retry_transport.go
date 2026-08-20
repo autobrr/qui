@@ -278,8 +278,7 @@ func isRetryableError(err error) bool {
 	}
 
 	// Check for URL errors first - unwrap and check underlying error
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		return isRetryableError(urlErr.Err)
 	}
 
@@ -296,8 +295,7 @@ func isRetryableError(err error) bool {
 func isRetryableNetError(err error) bool {
 	// Check OpError first - dial errors (including dial timeouts) are retryable
 	// since they indicate transient connection issues, not slow server responses
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
+	if opErr, ok := errors.AsType[*net.OpError](err); ok {
 		if opErr.Op == "dial" {
 			return true
 		}

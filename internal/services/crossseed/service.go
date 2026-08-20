@@ -2779,8 +2779,7 @@ func completionRetryDelay(err error) (time.Duration, bool) {
 		return 0, false
 	}
 
-	var waitErr *jackett.RateLimitWaitError
-	if errors.As(err, &waitErr) {
+	if waitErr, ok := errors.AsType[*jackett.RateLimitWaitError](err); ok {
 		if waitErr.Wait > 0 {
 			return waitErr.Wait, true
 		}
@@ -15403,8 +15402,7 @@ func (s *Service) processReflinkMode(
 	// Materialize only after the coverage and plan gates so clearly invalid
 	// partial matches are skipped before probing filesystem capabilities.
 	created, err := s.materializeReflink(selectedBaseDir, plan)
-	var unsupportedErr *reflinkUnsupportedError
-	if errors.As(err, &unsupportedErr) {
+	if unsupportedErr, ok := errors.AsType[*reflinkUnsupportedError](err); ok {
 		log.Warn().
 			Str("reason", unsupportedErr.reason).
 			Str("baseDir", selectedBaseDir).

@@ -828,10 +828,8 @@ func TestRetryTransport_ClosesIdleConnectionsMultipleTimes(t *testing.T) {
 
 func TestRetryTransport_DoesNotCloseOnNonRetryableError(t *testing.T) {
 	mock := &mockTransportWithIdleClose{
-		mockRoundTripper: mockRoundTripper{
-			err:        errors.New("some non-retryable error"),
-			maxAttempt: 10,
-		},
+		err:        errors.New("some non-retryable error"),
+		maxAttempt: 10,
 	}
 
 	transport := NewRetryTransport(mock)

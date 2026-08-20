@@ -106,13 +106,11 @@ func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service
 			},
 		}}}),
 		syncManager: &hashFilteringSyncManager{
-			gazelleSkipHashSyncManager: gazelleSkipHashSyncManager{
-				torrents: []qbt.Torrent{sourceTorrent},
-				filesByHash: map[string]qbt.TorrentFiles{
-					strings.ToLower(torznabGazelleSourceHash): sourceFiles,
-				},
-				exportedTorrent: torrentBytes,
+			torrents: []qbt.Torrent{sourceTorrent},
+			filesByHash: map[string]qbt.TorrentFiles{
+				strings.ToLower(torznabGazelleSourceHash): sourceFiles,
 			},
+			exportedTorrent: torrentBytes,
 		},
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),

@@ -1178,8 +1178,7 @@ func isRetryableDownloadError(err error) bool {
 		return false
 	}
 
-	var dlErr *DownloadError
-	if errors.As(err, &dlErr) {
+	if dlErr, ok := errors.AsType[*DownloadError](err); ok {
 		return dlErr.StatusCode >= 500 && dlErr.StatusCode < 600
 	}
 
@@ -1876,8 +1875,7 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func asRateLimitWaitError(err error) (*RateLimitWaitError, bool) {
-	var waitErr *RateLimitWaitError
-	if errors.As(err, &waitErr) {
+	if waitErr, ok := errors.AsType[*RateLimitWaitError](err); ok {
 		return waitErr, true
 	}
 	return nil, false

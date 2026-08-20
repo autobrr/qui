@@ -162,18 +162,16 @@ type transferInfoResponse struct {
 // endpoint clients poll every few seconds.
 func newTransferInfoResponse(state *qbt.ServerState) transferInfoResponse {
 	return transferInfoResponse{
-		TransferInfo: qbt.TransferInfo{
-			ConnectionStatus: qbt.ConnectionStatus(state.ConnectionStatus),
-			DHTNodes:         state.DhtNodes,
-			DlInfoData:       state.DlInfoData,
-			DlInfoSpeed:      state.DlInfoSpeed,
-			DlRateLimit:      state.DlRateLimit,
-			UpInfoData:       state.UpInfoData,
-			UpInfoSpeed:      state.UpInfoSpeed,
-			UpRateLimit:      state.UpRateLimit,
-		},
-		AlltimeDl: &state.AlltimeDl,
-		AlltimeUl: &state.AlltimeUl,
+		ConnectionStatus: qbt.ConnectionStatus(state.ConnectionStatus),
+		DHTNodes:         state.DhtNodes,
+		DlInfoData:       state.DlInfoData,
+		DlInfoSpeed:      state.DlInfoSpeed,
+		DlRateLimit:      state.DlRateLimit,
+		UpInfoData:       state.UpInfoData,
+		UpInfoSpeed:      state.UpInfoSpeed,
+		UpRateLimit:      state.UpRateLimit,
+		AlltimeDl:        &state.AlltimeDl,
+		AlltimeUl:        &state.AlltimeUl,
 	}
 }
 
@@ -319,9 +317,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		ConnectionStatus:         connectionStatus,
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
-	}
 
-	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
+		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
 	// Fetch recent errors for disconnected instances
 	if instance.IsActive && !healthy {

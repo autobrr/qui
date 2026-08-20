@@ -28,7 +28,7 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 	t.Parallel()
 
 	var (
-		hits int32
+		hits atomic.Int32
 		ch   = make(chan struct {
 			key  string
 			path string
@@ -36,7 +36,7 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
+		hits.Add(1)
 		ch <- struct {
 			key  string
 			path string
@@ -53,7 +53,7 @@ func TestValidateNotifiarrAPIKeyValid(t *testing.T) {
 
 	err := ValidateNotifiarrAPIKey(context.Background(), rawURL)
 	require.NoError(t, err)
-	require.Equal(t, int32(1), atomic.LoadInt32(&hits))
+	require.Equal(t, int32(1), hits.Load())
 	select {
 	case got := <-ch:
 		require.Equal(t, "abc123", got.key)
