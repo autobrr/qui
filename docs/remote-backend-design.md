@@ -8,7 +8,7 @@ hits a performance wall).
 ## Context and Decision
 
 PR #1914 adds `fsops.Backend`; service callsites migrate from direct
-`os.*` calls to it in #1915–#1916. Instances running on a different host than qui
+`os.*` calls to it in #1915. Instances running on a different host than qui
 need a remote implementation.
 
 The prior design deployed a `qui-helper` binary to the remote host and spoke
@@ -257,7 +257,14 @@ port). Not a fingerprint column: the `HostKeyAlgorithms` constraint and
 the mismatch flow both need the full key, and fingerprints are
 display-only (see Security). No helper-deploy columns, no persisted
 capabilities. `HasFilesystemAccess` resolves to local | remote | none.
-This is the slimmed scope for #1917.
+This is the slimmed scope for #1917, which also carries the credential
+store that owns these columns: the AEAD write and read path, and setting
+or clearing the pin. Columns without the code that owns them cannot be
+tested end to end, and the AAD binding is only real once something
+applies it. Note that the AAD carries the instance id, so credentials can
+only be encrypted after the row exists — the endpoints below all operate
+on an existing instance, and a future create-with-credentials call would
+need insert-then-update in one transaction.
 
 ## API
 
@@ -291,9 +298,10 @@ every other remote path.
 
 ## Rollout
 
-1. Foundation (open): #1914 backend interface, #1915 callsite migration,
-   #1916 missing-files.
-2. #1917 reshaped to the schema above.
+1. Foundation (open): #1914 backend interface, #1915 callsite migration.
+   #1916 (missing-files) was closed as superseded — #1915 carries that
+   migration along with every other callsite.
+2. #1917: the schema above plus its credential store.
 3. Remote backend: pool + SFTP implementation + capability probe (re-adds
    batch methods), API endpoints, OpenAPI.
 4. Frontend.
