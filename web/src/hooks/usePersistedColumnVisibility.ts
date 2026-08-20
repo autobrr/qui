@@ -3,24 +3,24 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { VisibilityState } from "@tanstack/react-table"
+import type { ColumnVisibilityState } from "@tanstack/react-table"
 import { useEffect, useState } from "react"
 
 export function usePersistedColumnVisibility(
-  defaultVisibility: VisibilityState = {},
+  defaultVisibility: ColumnVisibilityState = {},
   instanceKey?: string | number
 ) {
   const baseStorageKey = "qui-column-visibility"
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
   const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
 
-  const loadVisibility = (): VisibilityState => {
+  const loadVisibility = (): ColumnVisibilityState => {
     try {
       const stored = localStorage.getItem(storageKey)
       if (stored) {
         const parsed = JSON.parse(stored)
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return parsed as VisibilityState
+          return parsed as ColumnVisibilityState
         }
       }
     } catch (error) {
@@ -30,7 +30,7 @@ export function usePersistedColumnVisibility(
     return { ...defaultVisibility }
   }
 
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() => loadVisibility())
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => loadVisibility())
 
   useEffect(() => {
     if (!hasInstanceKey) {

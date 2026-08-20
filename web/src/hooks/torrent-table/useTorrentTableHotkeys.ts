@@ -4,13 +4,14 @@
  */
 
 import type { Torrent } from "@/types"
+import type { RowSelectionState } from "@tanstack/react-table"
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useMemo } from "react"
 
 export interface UseTorrentTableHotkeysParams {
   sortedTorrents: Torrent[]
   setIsAllSelected: Dispatch<SetStateAction<boolean>>
   setExcludedFromSelectAll: Dispatch<SetStateAction<Set<string>>>
-  setRowSelection: Dispatch<SetStateAction<Record<string, boolean>>>
+  setRowSelection: Dispatch<SetStateAction<RowSelectionState>>
   lastSelectedIndexRef: RefObject<number | null>
 }
 

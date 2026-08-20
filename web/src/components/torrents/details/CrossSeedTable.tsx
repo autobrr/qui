@@ -21,11 +21,10 @@ import type { Instance } from "@/types"
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
   type SortingState
 } from "@tanstack/react-table"
+import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
 import type { TFunction } from "i18next"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -46,7 +45,7 @@ interface CrossSeedTableProps {
   onNavigateToTorrent?: (instanceId: number, torrentHash: string) => void
 }
 
-const columnHelper = createColumnHelper<CrossSeedTorrent>()
+const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, CrossSeedTorrent>()
 
 function getStatusInfo(match: CrossSeedTorrent, t: TFunction): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   const trackerHealth = match.tracker_health ?? null
@@ -140,7 +139,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     return map
   }, [trackerCustomizations])
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => columnHelper.columns([
     columnHelper.display({
       id: "select",
       header: () => null,
@@ -320,15 +319,14 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       },
       size: 130,
     }),
-  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById, t])
+  ]), [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById, t])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: sortableDetailsTableFeatures,
     data: matches,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   })
 
   if (loading && matches.length === 0) {
@@ -443,7 +441,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                     }
                   }}
                 >
-                  {row.getVisibleCells().map((cell) => (
+                  {row.getAllCells().map((cell) => (
                     <td
                       key={cell.id}
                       className="px-2 py-1.5"

@@ -6,16 +6,15 @@
 import type { ColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import type { ColumnFilter } from "@/lib/column-filter-utils"
-import type { Torrent } from "@/types"
 import { closestCenter, DndContext } from "@dnd-kit/core"
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import { horizontalListSortingStrategy, SortableContext } from "@dnd-kit/sortable"
-import type { Table } from "@tanstack/react-table"
 import type { Dispatch, SetStateAction } from "react"
 import { DraggableTableHeader } from "../DraggableTableHeader"
+import type { TorrentTable } from "../tanstackTableFeatures"
 
 export interface TableColumnHeaderProps {
-  table: Table<Torrent>
+  table: TorrentTable
   sensors: ColumnDnd["sensors"]
   onDragEnd: ColumnDnd["onDragEnd"]
   columnFilters: ColumnFilter[]
