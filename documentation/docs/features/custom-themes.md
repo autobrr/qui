@@ -30,6 +30,10 @@ environment variable (see the [configuration reference](../configuration/referen
 Each theme is a single, self-contained `.css` file placed directly in that
 directory (subdirectories and symlinks are ignored).
 
+Ready-made themes live in
+[qui-community-themes](https://github.com/autobrr/qui-community-themes), which
+also takes submissions.
+
 ## Authoring a theme
 
 A theme file has an optional metadata comment header followed by a `:root`
