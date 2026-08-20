@@ -37,7 +37,7 @@ qui supports three presets:
 
 For `by-tracker`, qui resolves the folder name using the same fallback chain as cross-seed statistics:
 
-1. **Tracker customization display name** (Settings → Tracker Customizations)
+1. **Tracker customization display name** ([Tracker Customizations](../tracker-customizations.md), on the Dashboard under **Tracker Breakdown**)
 2. Indexer name (from Prowlarr/Jackett)
 3. Raw announce domain
 
@@ -57,5 +57,7 @@ For `flat`, an isolation folder is always used.
 If **Fallback to regular mode** is enabled, qui will fall back to adding the torrent with a normal `savepath` (pointing at the matched source files) when link-tree creation fails.
 
 This is particularly useful when hardlinking can intermittently fail due to filesystem/device boundaries (for example: pooled mounts where two paths look the same but resolve to different underlying devices).
+
+Because this fallback uses regular source-file paths instead of the link-tree directory, qui adds the torrent paused, rechecks it, and only auto-resumes after qBittorrent reports 100% complete. If **Skip recheck** is enabled, these fallback candidates are skipped.
 
 If fallback is disabled, qui skips/fails the candidate when link-tree creation fails.

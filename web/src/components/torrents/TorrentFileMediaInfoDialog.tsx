@@ -13,6 +13,7 @@ import type { TorrentFile, TorrentFileMediaInfoResponse } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2, RotateCw } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface TorrentFileMediaInfoDialogProps {
@@ -64,14 +65,16 @@ function ErrorRetryBlock({
   error: unknown
   onRetry: () => void
 }) {
+  const { t } = useTranslation("torrents")
+
   return (
     <div className="flex flex-col items-start gap-3 py-8">
       <p className="text-sm text-muted-foreground">
-        {error instanceof Error ? error.message : "Failed to fetch MediaInfo"}
+        {error instanceof Error ? error.message : t("mediaInfoDialog.failedToFetch")}
       </p>
       <Button variant="outline" size="sm" onClick={onRetry}>
         <RotateCw className="h-4 w-4 mr-2" />
-        Retry
+        {t("mediaInfoDialog.retry")}
       </Button>
     </div>
   )
@@ -112,6 +115,7 @@ export function TorrentFileMediaInfoDialog({
   torrentHash,
   file,
 }: TorrentFileMediaInfoDialogProps) {
+  const { t } = useTranslation("torrents")
   const [tab, setTab] = useState<"summary" | "raw">("summary")
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -149,7 +153,7 @@ export function TorrentFileMediaInfoDialog({
     }
   }, [query.data?.rawJSON])
 
-  const copyLabel = tab === "summary" ? "Copy Summary" : "Copy JSON"
+  const copyLabel = tab === "summary" ? t("mediaInfoDialog.copySummary") : t("mediaInfoDialog.copyJson")
   const copyText = tab === "summary" ? summaryText : prettyRawJSON
   const canCopy = !!copyText && !query.isLoading && !query.isError && !query.isFetching
 
@@ -157,14 +161,14 @@ export function TorrentFileMediaInfoDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg md:max-w-5xl max-h-[85vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>MediaInfo</DialogTitle>
+          <DialogTitle>{t("mediaInfoDialog.title")}</DialogTitle>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)} className="w-full">
           <div className="flex items-center justify-between gap-2 min-w-0 mb-4">
             <TabsList className="min-w-0">
-              <TabsTrigger value="summary">Summary</TabsTrigger>
-              <TabsTrigger value="raw">Raw JSON</TabsTrigger>
+              <TabsTrigger value="summary">{t("mediaInfoDialog.summary")}</TabsTrigger>
+              <TabsTrigger value="raw">{t("mediaInfoDialog.rawJson")}</TabsTrigger>
             </TabsList>
 
             <Button
@@ -175,9 +179,9 @@ export function TorrentFileMediaInfoDialog({
                 if (!canCopy) return
                 try {
                   await copyTextToClipboard(copyText)
-                  toast.success(`${copyLabel} copied to clipboard`)
+                  toast.success(t("mediaInfoDialog.toast.copied", { label: copyLabel }))
                 } catch {
-                  toast.error("Failed to copy to clipboard")
+                  toast.error(t("mediaInfoDialog.toast.copyFailed"))
                 }
               }}
               disabled={!canCopy}
@@ -210,7 +214,7 @@ export function TorrentFileMediaInfoDialog({
                           </div>
 
                           {fields.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No fields</p>
+                            <p className="text-sm text-muted-foreground">{t("mediaInfoDialog.noFields")}</p>
                           ) : (
                             <div className="grid grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1">
                               {fields.map((field, fieldIdx) => (

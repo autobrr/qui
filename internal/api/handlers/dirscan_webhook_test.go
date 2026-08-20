@@ -18,9 +18,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type webhookPayloadSimple struct {
@@ -144,12 +146,7 @@ func TestNormalizeAllowedDownloadClients(t *testing.T) {
 func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -167,6 +164,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -206,12 +204,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -229,6 +222,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -260,12 +254,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -280,6 +269,7 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -309,12 +299,7 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -332,6 +317,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -390,12 +376,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -413,6 +394,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -455,12 +437,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -478,6 +455,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -519,12 +497,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -542,6 +515,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -591,12 +565,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -614,6 +583,7 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 

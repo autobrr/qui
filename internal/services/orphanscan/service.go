@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +22,10 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -39,6 +43,9 @@ type Service struct {
 	store         *models.OrphanScanStore
 	syncManager   *qbittorrent.SyncManager
 	notifier      notifications.Notifier
+	backendPool   *fsops.Pool
+
+	activityPublisher activity.Publisher
 
 	// Per-instance mutex to prevent overlapping scans
 	instanceMu map[int]*sync.Mutex
@@ -57,7 +64,7 @@ type Service struct {
 }
 
 // NewService creates a new orphan scan service.
-func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, backendPool *fsops.Pool) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
 	}
@@ -68,14 +75,40 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		cfg.StuckRunThreshold = DefaultConfig().StuckRunThreshold
 	}
 	return &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		store:         store,
-		syncManager:   syncManager,
-		notifier:      notifier,
-		instanceMu:    make(map[int]*sync.Mutex),
-		cancelFuncs:   make(map[int64]context.CancelFunc),
+		cfg:               cfg,
+		instanceStore:     instanceStore,
+		store:             store,
+		syncManager:       syncManager,
+		notifier:          notifier,
+		backendPool:       backendPool,
+		activityPublisher: activity.NopPublisher{},
+		instanceMu:        make(map[int]*sync.Mutex),
+		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so orphan scan run status
+// transitions are pushed to connected clients instead of polled. Safe to call
+// once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+// emitRun signals connected clients that an orphan scan run changed status.
+// Call only after the status transition has been persisted and any held lock
+// released; never inside per-file progress loops.
+func (s *Service) emitRun(instanceID int, runID int64) {
+	if s == nil || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindOrphanScanRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.FormatInt(runID, 10),
+	})
 }
 
 // getAllTorrents returns all torrents for an instance, using the provider if set.
@@ -215,6 +248,10 @@ func (s *Service) recoverStuckRuns(ctx context.Context) error {
 	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"}); err != nil {
 		return fmt.Errorf("mark stuck runs failed: %w", err)
 	}
+
+	// Crash recovery operates in bulk without per-run identifiers, so emit a coarse
+	// signal that prompts clients to refetch any runs they were tracking.
+	s.emitRun(0, 0)
 	return nil
 }
 
@@ -234,7 +271,7 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 
 	now := time.Now()
 	for _, inst := range instances {
-		// Gate 1: instance must be active and have local access
+		// Gate 1: instance must be active and have filesystem access
 		if !inst.IsActive || !inst.HasLocalFilesystemAccess {
 			continue
 		}
@@ -346,6 +383,9 @@ func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy s
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
 
+	// Run created (pending) - notify clients so they begin tracking it.
+	s.emitRun(instanceID, runID)
+
 	go func() {
 		defer func() {
 			s.cancelMu.Lock()
@@ -378,7 +418,11 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		s.cancelMu.Unlock()
 
 		// Mark as canceled in DB
-		return s.store.UpdateRunStatus(ctx, runID, "canceled")
+		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
+			return err
+		}
+		s.emitRun(run.InstanceID, runID)
+		return nil
 
 	case "deleting":
 		// If deletion is truly in progress (in-memory cancel func exists), refuse to cancel mid-delete.
@@ -396,6 +440,7 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
 			return fmt.Errorf("update run status: %w", err)
 		}
+		s.emitRun(run.InstanceID, runID)
 		return nil
 
 	case "completed", "failed", "canceled":
@@ -455,6 +500,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update run status")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	// Get settings (fall back to defaults if none exist yet)
 	settings, err := s.store.GetSettings(ctx, instanceID)
@@ -551,14 +597,24 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	for _, root := range scanRoots {
 		if ctx.Err() != nil {
-			s.markCanceled(ctx, runID)
+			s.markCanceled(ctx, instanceID, runID)
 			return
 		}
 
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
+		if s.backendPool == nil {
+			s.failRun(ctx, runID, instanceID, "backend pool not configured")
+			return
+		}
+		backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
+		if backendErr != nil {
+			log.Error().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend")
+			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", backendErr))
+			return
+		}
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
 		if err != nil {
 			if ctx.Err() != nil {
-				s.markCanceled(ctx, runID)
+				s.markCanceled(ctx, instanceID, runID)
 				return
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
@@ -668,6 +724,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
 			return
 		}
+		s.emitRun(instanceID, runID)
 		startedAt, completedAt := s.getRunTimes(ctx, runID)
 		s.notify(ctx, notifications.Event{
 			Type:                     notifications.EventOrphanScanCompleted,
@@ -691,6 +748,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to preview_ready")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
 
@@ -783,6 +841,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to deleting")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	// Get run details
 	run, err := s.store.GetRun(ctx, runID)
@@ -830,6 +889,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var sawReadOnly bool
 	var sawPermissionDenied bool
 
+	// Resolve the backend once for the whole batch; per-file resolves would
+	// panic on a nil pool and hammer the store for no reason.
+	var deleteBackend fsops.Backend
+	backendErr := errors.New("filesystem backend pool not configured")
+	if s.backendPool != nil {
+		deleteBackend, backendErr = s.backendPool.GetBackend(ctx, instanceID)
+	}
+
 	// Delete files
 	for _, f := range files {
 		if ctx.Err() != nil {
@@ -846,7 +913,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm, ignorePaths)
+		if backendErr != nil {
+			s.updateFileStatus(ctx, f.ID, "failed", "backend unavailable")
+			failedDeletes++
+			continue
+		}
+		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
@@ -880,21 +952,25 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 	}
 
-	// Clean up empty directories
+	// Clean up empty directories, reusing the batch's backend.
 	var foldersDeleted int
-	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
-	for _, dir := range candidateDirs {
-		if ctx.Err() != nil {
-			break
-		}
+	if backendErr != nil {
+		log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: no backend for empty-dir cleanup")
+	} else {
+		candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
+		for _, dir := range candidateDirs {
+			if ctx.Err() != nil {
+				break
+			}
 
-		scanRoot := findScanRoot(dir, run.ScanPaths)
-		if scanRoot == "" {
-			continue
-		}
+			scanRoot := findScanRoot(dir, run.ScanPaths)
+			if scanRoot == "" {
+				continue
+			}
 
-		if err := safeDeleteEmptyDir(scanRoot, dir); err == nil {
-			foldersDeleted++
+			if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
+				foldersDeleted++
+			}
 		}
 	}
 
@@ -917,6 +993,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return
 		}
+		s.emitRun(instanceID, runID)
 		startedAt, completedAt := s.getRunTimes(ctx, runID)
 		s.notify(ctx, notifications.Event{
 			Type:            notifications.EventOrphanScanFailed,
@@ -938,6 +1015,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
@@ -966,10 +1044,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		Msg("orphanscan: deletion complete")
 }
 
-func (s *Service) markCanceled(ctx context.Context, runID int64) {
+func (s *Service) markCanceled(ctx context.Context, instanceID int, runID int64) {
 	if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run canceled")
+		return
 	}
+	s.emitRun(instanceID, runID)
 }
 
 func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, message string) {
@@ -981,6 +1061,7 @@ func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, mess
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run failed")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
@@ -1109,6 +1190,42 @@ func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []st
 	return filtered
 }
 
+// dedupeCaseVariantRoots drops a scan root when an earlier root differs from it
+// only by case AND both name the same directory on disk, which is what a
+// case-insensitive filesystem gives us when qBittorrent reports two spellings of
+// one save path (issue #2314). Without the os.SameFile confirmation this would
+// silently stop scanning a second, genuinely different directory on a
+// case-sensitive filesystem.
+// Roots are compared in the given order; the first spelling wins.
+//
+// os.Lstat, never os.Stat: a symlink that differs from its target only by case
+// would look like the same directory through os.Stat, and dropping the real
+// directory in favour of the symlink would scan nothing at all, because
+// filepath.WalkDir does not follow a symlinked root.
+func dedupeCaseVariantRoots(roots []string) []string {
+	if len(roots) < 2 {
+		return roots
+	}
+
+	kept := make([]string, 0, len(roots))
+	seen := make(map[string]fs.FileInfo, len(roots))
+	for _, root := range roots {
+		norm := normalizePath(root)
+		info, _ := os.Lstat(root) // nil FileInfo on error
+
+		if prev, ok := seen[norm]; ok && prev != nil && info != nil && os.SameFile(prev, info) {
+			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that is the same directory as an earlier root")
+			continue
+		}
+
+		kept = append(kept, root)
+		if _, ok := seen[norm]; !ok {
+			seen[norm] = info
+		}
+	}
+	return kept
+}
+
 func addAbsoluteScanRoot(scanRoots map[string]struct{}, root string) {
 	root = filepath.Clean(root)
 	if root == "" || !filepath.IsAbs(root) {
@@ -1235,7 +1352,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	}
 
 	skippedRootList := sortedRoots(skippedRoots)
-	scanRootList := filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList)
+	scanRootList := dedupeCaseVariantRoots(filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList))
 
 	return &buildFileMapResult{
 		fileMap:      tfm,

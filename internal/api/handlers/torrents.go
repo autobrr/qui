@@ -201,6 +201,17 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Determine freshness preference
+	preferParam := strings.TrimSpace(r.URL.Query().Get("prefer"))
+	preferCached := strings.EqualFold(preferParam, "stale") ||
+		strings.EqualFold(preferParam, "cache") ||
+		strings.EqualFold(preferParam, "cached")
+
+	ctx := r.Context()
+	if preferCached {
+		ctx = qbittorrent.WithSkipFreshData(ctx)
+	}
+
 	// Trace logging with truncated expression to prevent log bloat
 	logEvent := log.Trace().
 		Int("instanceID", instanceID).
@@ -209,6 +220,7 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		Int("page", page).
 		Int("limit", limit).
 		Str("search", search).
+		Bool("preferCached", preferCached).
 		Str("sessionID", sessionID)
 
 	// Log filters but truncate long expressions
@@ -232,14 +244,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Get torrents with search, sorting and filters
 	// The sync manager will handle stale-while-revalidate internally
-	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
 			return
 		}
 		// Record error for user visibility
 		errorStore := h.syncManager.GetErrorStore()
-		if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
+		if recordErr := errorStore.RecordError(ctx, instanceID, err); recordErr != nil {
 			log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
 		}
 
@@ -248,8 +260,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Data is always fresh from sync manager
-	w.Header().Set("X-Data-Source", "fresh")
+	switch {
+	case response.CacheMetadata != nil && response.CacheMetadata.Source != "":
+		w.Header().Set("X-Data-Source", response.CacheMetadata.Source)
+	case preferCached:
+		w.Header().Set("X-Data-Source", "cache")
+	default:
+		w.Header().Set("X-Data-Source", "fresh")
+	}
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -332,7 +350,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			if instanceID == allInstancesID && len(req.Targets) == 0 {
 				requestedHashes := buildExcludeHashSet(req.Hashes)
 				response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-					r.Context(),
+					qbittorrent.WithSkipFreshData(r.Context()),
 					0,
 					0,
 					"",
@@ -406,7 +424,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -427,7 +445,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	if instanceID == allInstancesID {
 		response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-			r.Context(),
+			qbittorrent.WithSkipFreshData(r.Context()),
 			0,
 			0,
 			req.Sort,
@@ -441,12 +459,13 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
 			return
 		}
-		if response.PartialResults && req.Field == "tags" {
-			log.Error().
-				Int("instanceID", instanceID).
+		// A truncated value list behind a 200 reads as complete, so partial aggregates fail for every field.
+		if response.PartialResults {
+			log.Warn().
 				Str("field", req.Field).
-				Msg("Cross-instance torrent field returned partial results for tag baseline")
-			RespondError(w, http.StatusServiceUnavailable, "Failed to resolve the full tag baseline")
+				Ints("instanceIDs", req.InstanceIDs).
+				Msg("Cross-instance torrent field returned partial results")
+			RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
 			return
 		}
 
@@ -464,7 +483,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				continue
 			}
 
-			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
+			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
 			}
@@ -1120,6 +1139,7 @@ type BulkActionRequest struct {
 	Action                   string                     `json:"action"`
 	DeleteFiles              bool                       `json:"deleteFiles,omitempty"`              // For delete action
 	Tags                     string                     `json:"tags,omitempty"`                     // For tag operations (comma-separated)
+	Comment                  string                     `json:"comment,omitempty"`                  // For setComment action
 	Category                 string                     `json:"category,omitempty"`                 // For category operations
 	Enable                   bool                       `json:"enable,omitempty"`                   // For toggleAutoTMM action
 	SelectAll                bool                       `json:"selectAll,omitempty"`                // When true, apply to all torrents matching filters
@@ -1311,13 +1331,6 @@ func preferredHashValue(torrent *qbt.Torrent) string {
 	return ""
 }
 
-func preferredCrossInstanceHashValue(torrent qbittorrent.CrossInstanceTorrentView) string {
-	if torrent.TorrentView == nil || torrent.Torrent == nil {
-		return ""
-	}
-	return preferredHashValue(torrent.Torrent)
-}
-
 func fullPathValue(savePath, name string) string {
 	normalizedSavePath := strings.ReplaceAll(strings.TrimSpace(savePath), "\\", "/")
 	trimmedName := strings.TrimSpace(name)
@@ -1368,7 +1381,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	validActions := []string{
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
-		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
+		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setComment", "setCategory",
 		"toggleAutoTMM", "forceStart", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
 		"editTrackers", "addTrackers", "removeTrackers", "toggleSequentialDownload",
 	}
@@ -1646,6 +1659,8 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 	case "setTags":
 		// allow empty tags to clear all tags from torrents
 		return h.syncManager.SetTags(ctx, instanceID, hashes, req.Tags)
+	case "setComment":
+		return h.syncManager.SetComment(ctx, instanceID, hashes, req.Comment)
 	case "setCategory":
 		return h.syncManager.SetCategory(ctx, instanceID, hashes, req.Category)
 	case "toggleAutoTMM":
@@ -2864,7 +2879,16 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	offset := page * limit
 
 	// Get torrents from all instances with the filter expression
-	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(r.Context(), limit, offset, sort, order, search, filters, instanceIDs)
+	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
+		qbittorrent.WithSkipFreshData(r.Context()),
+		limit,
+		offset,
+		sort,
+		order,
+		search,
+		filters,
+		instanceIDs,
+	)
 	if err != nil {
 		// Note: Cross-instance queries don't have a single instanceID, so we pass 0 for logging purposes
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {
@@ -2875,7 +2899,6 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	w.Header().Set("X-Data-Source", "fresh")
 	RespondJSON(w, http.StatusOK, response)
 }
 

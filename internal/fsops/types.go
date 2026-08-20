@@ -5,8 +5,9 @@
 // operations for qui's services. Current implementations: Local (delegates
 // to os.* on the qui host) and Noop (returns ErrNoFilesystemAccess for
 // instances without filesystem access). A Remote implementation (SSH-backed)
-// is planned. Service code uses only this interface, making the transport
-// transparent.
+// is planned. Services still call os.* directly; they adopt this interface
+// in a separate callsite migration, after which the transport is transparent
+// to them.
 package fsops
 
 import (
@@ -31,7 +32,6 @@ type DirEntry struct {
 	Name      string
 	IsDir     bool
 	IsSymlink bool
-	Mode      fs.FileMode
 }
 
 // LstatInfo holds metadata from an Lstat call, including hardlink identity.
@@ -39,6 +39,11 @@ type LstatInfo struct {
 	FileInfo
 	FileID hardlink.FileID
 	Nlinks uint64
+	// FileIDErr is set when FileID/Nlinks could not be resolved (e.g. a
+	// Windows ACL denial on an otherwise statable file). The rest of the
+	// struct is still valid; callers that need identity must check this
+	// instead of treating the whole stat as failed.
+	FileIDErr error
 }
 
 // WalkEntry is emitted by WalkDir for each filesystem entry encountered.
@@ -50,12 +55,13 @@ type WalkEntry struct {
 
 // WalkOptions controls the behavior of a WalkDir call.
 type WalkOptions struct {
-	SkipHidden     bool
+	SkipHidden bool
+	// IgnoreDirNames are directory basenames to skip, matched case-insensitively
+	// (OS/NAS metadata dirs like $RECYCLE.BIN and @eaDir vary in on-disk case).
 	IgnoreDirNames []string
 	IgnorePaths    []string
-	WantFileID     bool
-	WantNlinks     bool
-	MaxEntries     int
+	// WantFileID populates FileID and Nlinks on regular-file entries.
+	WantFileID bool
 }
 
 // StatfsResult holds filesystem space information.
@@ -66,23 +72,16 @@ type StatfsResult struct {
 
 // RemoveOptions controls the behavior of a Remove call.
 type RemoveOptions struct {
-	Recursive   bool
-	IgnorePaths []string
-	RequestID   string
+	Recursive bool
 }
 
 // TreeCreateResult holds the outcome of a HardlinkTree or ReflinkTree call.
+// Files and Dirs record what the call actually created on disk (pre-existing
+// paths are excluded), so RemoveTree can undo exactly this call's work without
+// touching links shared with sibling torrents (discussion #2282).
 type TreeCreateResult struct {
 	Created       int
 	SkippedExists int
-	RolledBack    bool
-}
-
-// BackendInfo describes the capabilities of a Backend implementation.
-type BackendInfo struct {
-	Kind          string   // "local", "helper", or "none"
-	HelperVersion string   // empty for local
-	AllowedRoots  []string // empty for local (no restrictions)
-	ReflinkRoots  []string // roots whose FS supports CoW reflinks
-	Capabilities  []string // op capabilities advertised by the helper
+	Files         []string
+	Dirs          []string
 }

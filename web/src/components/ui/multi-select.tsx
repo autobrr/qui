@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
 import * as React from "react"
+import { useTranslation } from "react-i18next"
 
 export interface Option {
   label: string
@@ -25,6 +26,18 @@ export interface Option {
   level?: number
   /** Optional icon element to display before the label */
   icon?: React.ReactNode
+}
+
+/**
+ * Toggles `item` in `selected`. In single mode a new pick replaces whatever was
+ * there instead of appending, so a caller that stores one string does not keep
+ * the stale first entry and appear to ignore the click.
+ */
+export function nextSelection(selected: string[], item: string, single: boolean): string[] {
+  if (selected.includes(item)) {
+    return selected.filter((i) => i !== item)
+  }
+  return single ? [item] : [...selected, item]
 }
 
 interface MultiSelectProps {
@@ -39,22 +52,33 @@ interface MultiSelectProps {
   /** Hide the check icon in dropdown items (useful when options have icons) */
   hideCheckIcon?: boolean
   title?: string
+  /**
+   * Hold at most one value. Picking a second option replaces the first instead
+   * of appending, and the popover closes on select. Callers that store a single
+   * string need this: without it the appended value lands at the end of the
+   * array, the caller keeps `selected[0]`, and the click looks ignored.
+   */
+  single?: boolean
 }
 
 export function MultiSelect({
   options,
   selected,
   onChange,
-  placeholder = "Select items...",
+  placeholder,
   className,
   creatable = false,
   onCreateOption,
   disabled = false,
   hideCheckIcon = false,
-  title = "Select",
+  title,
+  single = false,
 }: MultiSelectProps) {
+  const { t } = useTranslation("common")
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState("")
+  const resolvedPlaceholder = placeholder ?? t("placeholders.selectItems")
+  const resolvedTitle = title ?? t("actions.select")
 
   const selectedSet = React.useMemo(() => new Set(selected), [selected])
 
@@ -63,10 +87,9 @@ export function MultiSelect({
   }
 
   const handleSelect = (item: string) => {
-    if (selectedSet.has(item)) {
-      handleUnselect(item)
-    } else {
-      onChange([...selected, item])
+    onChange(nextSelection(selected, item, single))
+    if (single && !selectedSet.has(item)) {
+      setOpen(false)
     }
     setInputValue("")
   }
@@ -89,7 +112,7 @@ export function MultiSelect({
       disabled={disabled}
       className={cn("w-full justify-between h-auto min-h-10 hover:bg-background", className)}
     >
-      <div className="flex flex-wrap gap-1 flex-1 text-left">
+      <div className="flex flex-wrap gap-1 flex-1 min-w-0 text-left">
         {selected.length > 0 ? (
           selected.map((item) => {
             const option = options.find((o) => o.value === item)
@@ -97,14 +120,14 @@ export function MultiSelect({
               <Badge
                 variant="secondary"
                 key={item}
-                className="shrink-0"
+                className="max-w-full min-w-0"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleUnselect(item)
                 }}
               >
                 {option?.icon && <span className="mr-1 shrink-0">{option.icon}</span>}
-                {option?.label || item}
+                <span className="truncate">{option?.label || item}</span>
                 <span
                   role="button"
                   tabIndex={0}
@@ -131,7 +154,7 @@ export function MultiSelect({
             )
           })
         ) : (
-          <span className="text-muted-foreground font-normal">{placeholder}</span>
+          <span className="text-muted-foreground font-normal truncate">{resolvedPlaceholder}</span>
         )}
       </div>
       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -143,7 +166,7 @@ export function MultiSelect({
       open={open}
       onOpenChange={setOpen}
       trigger={triggerButton}
-      title={title}
+      title={resolvedTitle}
       popoverWidth="100%"
       popoverAlign="start"
     >
@@ -180,6 +203,7 @@ function MultiSelectContent({
   creatable: boolean
   hideCheckIcon: boolean
 }) {
+  const { t } = useTranslation("common")
   const isMobile = useResponsiveMobile()
 
   const displayOptions = isMobile ? options : options.filter((option) => !selectedSet.has(option.value))
@@ -187,7 +211,7 @@ function MultiSelectContent({
   return (
     <ResponsiveCommand>
       <ResponsiveCommandInput
-        placeholder="Search..."
+        placeholder={t("placeholders.search")}
         value={inputValue}
         onValueChange={setInputValue}
       />
@@ -201,10 +225,10 @@ function MultiSelectContent({
               )}
               onClick={handleCreate}
             >
-              Create "{inputValue}"
+              {t("actions.create")} "{inputValue}"
             </div>
           ) : (
-            "No results found."
+            t("feedback.noResultsFound")
           )}
 
         </ResponsiveCommandEmpty>

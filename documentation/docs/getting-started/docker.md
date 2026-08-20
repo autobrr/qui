@@ -36,6 +36,17 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
+## macOS Container
+
+On macOS, [Apple Container](https://github.com/apple/container/releases) runs the same image. Create the host folders first, then use `container` in place of `docker`:
+
+```bash
+container run -d \
+  -p 7476:7476 \
+  -v $(pwd)/config:/config \
+  ghcr.io/autobrr/qui:latest
+```
+
 ## Local Filesystem Access
 
 <LocalFilesystemDocker />

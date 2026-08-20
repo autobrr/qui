@@ -6,7 +6,10 @@ package crossseed
 import (
 	"fmt"
 
-	"github.com/anacrolix/torrent/metainfo"
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/metainfo"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // PieceBoundarySafetyResult contains the outcome of a piece-boundary safety check.
@@ -141,27 +144,6 @@ func CheckPieceBoundarySafety(files []TorrentFileForBoundaryCheck, pieceLength i
 	}
 }
 
-// CheckPieceBoundarySafetyFromMetainfo is a convenience wrapper that builds the
-// file list from metainfo.Info and a predicate function for content detection.
-//
-// Parameters:
-//   - info: parsed torrent info from metainfo
-//   - isContentFile: predicate returning true if the file path is required content
-func CheckPieceBoundarySafetyFromMetainfo(
-	info *metainfo.Info,
-	isContentFile func(path string) bool,
-) PieceBoundarySafetyResult {
-	if info == nil {
-		return PieceBoundarySafetyResult{
-			Safe:   false,
-			Reason: "nil torrent info",
-		}
-	}
-
-	files := BuildFilesForBoundaryCheck(info, isContentFile)
-	return CheckPieceBoundarySafety(files, info.PieceLength)
-}
-
 // BuildFilesForBoundaryCheck constructs the file list from torrent metadata.
 func BuildFilesForBoundaryCheck(
 	info *metainfo.Info,
@@ -173,11 +155,12 @@ func BuildFilesForBoundaryCheck(
 
 	// Single-file torrent
 	if len(info.Files) == 0 {
+		name := stringutils.SanitizeUTF8(info.Name)
 		return []TorrentFileForBoundaryCheck{
 			{
-				Path:      info.Name,
+				Path:      name,
 				Size:      info.Length,
-				IsContent: isContentFile(info.Name),
+				IsContent: isContentFile(name),
 			},
 		}
 	}
@@ -187,16 +170,17 @@ func BuildFilesForBoundaryCheck(
 	// - When info.IsDir(): rootName + "/" + displayPath
 	// - Otherwise: displayPath
 	files := make([]TorrentFileForBoundaryCheck, 0, len(info.Files))
+	rootName := stringutils.SanitizeUTF8(info.Name)
 	for i := range info.Files {
-		displayPath := info.Files[i].DisplayPath(info)
+		displayPath := stringutils.SanitizeUTF8(torrentDisplayPath(info, &info.Files[i]))
 		var path string
 		switch {
 		case info.IsDir() && displayPath != "":
-			path = info.Name + "/" + displayPath
+			path = rootName + "/" + displayPath
 		case displayPath != "":
 			path = displayPath
 		default:
-			path = info.Name
+			path = rootName
 		}
 		files = append(files, TorrentFileForBoundaryCheck{
 			Path:      path,
@@ -246,4 +230,35 @@ func HasUnsafeIgnoredExtras(
 
 	result = CheckPieceBoundarySafety(files, info.PieceLength)
 	return !result.Safe, result
+}
+
+func unmaterializedSourceFilePaths(sourceFiles, candidateFiles qbt.TorrentFiles) map[string]bool {
+	matches, _ := matchMaterializedSourceFilesToCandidates(sourceFiles, candidateFiles)
+	materialized := make(map[string]bool, len(matches))
+	for _, match := range matches {
+		materialized[match.sourcePath] = true
+	}
+
+	unmaterialized := make(map[string]bool)
+	for _, file := range sourceFiles {
+		if !materialized[file.Name] {
+			unmaterialized[file.Name] = true
+		}
+	}
+	return unmaterialized
+}
+
+func HasUnsafeUnmaterializedSourcePieces(
+	info *metainfo.Info,
+	sourceFiles,
+	candidateFiles qbt.TorrentFiles,
+) (unsafe bool, result PieceBoundarySafetyResult) {
+	unmaterialized := unmaterializedSourceFilePaths(sourceFiles, candidateFiles)
+	if len(unmaterialized) == 0 {
+		return false, PieceBoundarySafetyResult{Safe: true, Reason: "no unmaterialized files"}
+	}
+
+	return HasUnsafeIgnoredExtras(info, func(path string) bool {
+		return unmaterialized[path]
+	})
 }

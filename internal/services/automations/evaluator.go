@@ -17,7 +17,9 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 const maxConditionDepth = 20
@@ -53,7 +55,9 @@ type EvalContext struct {
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
 	TrackerDownSet map[string]struct{}
-	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
+	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
+	TrackerErrorSet map[string]struct{}
+	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent, both)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
 	// Same values as HardlinkScopeByHash but considers files from all instances.
@@ -109,6 +113,9 @@ type EvalContext struct {
 	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
 	// seeding (Progress >= 1.0) on the same instance.
 	SameInstanceCrossSeedSeedingHashSet map[string]struct{}
+	// SameInstanceCrossSeedTagsByHash maps a torrent hash to the raw Tags strings of
+	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
+	SameInstanceCrossSeedTagsByHash map[string][]string
 
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
@@ -280,13 +287,6 @@ func evaluateTime(ctx *EvalContext) time.Time {
 	return time.Now()
 }
 
-// EvaluateCondition recursively evaluates a condition against a torrent.
-// Returns true if the torrent matches the condition.
-// For conditions that require additional context (like isUnregistered), use EvaluateConditionWithContext.
-func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool {
-	return EvaluateConditionWithContext(cond, torrent, nil, depth)
-}
-
 // EvaluateConditionWithContext recursively evaluates a condition against a torrent with optional context.
 // Returns true if the torrent matches the condition.
 func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) bool {
@@ -397,12 +397,19 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(torrentRlsChannels(torrent, ctx), cond)
 	case FieldRlsGroup:
 		return compareString(torrentRlsGroup(torrent, ctx), cond)
+	case FieldRlsYear:
+		// Numeric RLS-derived field. A parsed year of 0 means "unknown" and never matches.
+		return compareRlsYearIfSet(torrentRlsYear(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
 		return compareTracker(torrent.Tracker, cond, ctx)
 	case FieldTrackers:
 		return compareTrackers(torrent, cond, ctx)
+	case FieldTrackerStatus:
+		return compareTrackerStatuses(torrent, cond)
+	case FieldTrackerMessage:
+		return compareTrackerMessages(torrent, cond)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -435,11 +442,11 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAddedOn:
 		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOn:
-		return compareAgeIfSet(torrent.CompletionOn, cond, ctx)
+		return compareAgeIfSet(qbittorrent.NormalizeCompletionTimestamp(torrent.CompletionOn), cond, ctx)
 	case FieldLastActivity:
 		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 	case FieldSeenComplete:
-		return compareAgeIfSet(torrent.SeenComplete, cond, ctx)
+		return compareAgeIfSet(qbittorrent.NormalizeCompletionTimestamp(torrent.SeenComplete), cond, ctx)
 	case FieldETA:
 		return compareInt64(torrent.ETA, cond)
 	case FieldReannounce:
@@ -461,7 +468,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 	case FieldAddedOnAge:
 		return compareAgeIfSet(torrent.AddedOn, cond, ctx)
 	case FieldCompletionOnAge:
-		return compareAgeIfSet(torrent.CompletionOn, cond, ctx)
+		return compareAgeIfSet(qbittorrent.NormalizeCompletionTimestamp(torrent.CompletionOn), cond, ctx)
 	case FieldLastActivityAge:
 		return compareAgeIfSet(torrent.LastActivity, cond, ctx)
 
@@ -635,6 +642,19 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareBool(seeding, cond)
 
+	case FieldCrossSeedTags:
+		// Tags across this torrent and its same-instance cross-seeds: positive
+		// operators match when ANY copy carries a matching tag, NOT_* when none
+		// does. Without member data this degrades to the torrent's own tags.
+		parts := make([]string, 0, 2)
+		if torrent.Tags != "" {
+			parts = append(parts, torrent.Tags)
+		}
+		if ctx != nil {
+			parts = append(parts, ctx.SameInstanceCrossSeedTagsByHash[torrent.Hash]...)
+		}
+		return compareTags(strings.Join(parts, ","), cond)
+
 	default:
 		return false
 	}
@@ -748,6 +768,12 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 		}
 		_, ok := ctx.TrackerDownSet[torrent.Hash]
 		return ok
+	case "tracker_error":
+		if ctx == nil || ctx.TrackerErrorSet == nil {
+			return false
+		}
+		_, ok := ctx.TrackerErrorSet[torrent.Hash]
+		return ok
 	}
 
 	// Fallback to raw torrent state (qBittorrent Web API value, e.g. "stalledUP").
@@ -774,13 +800,13 @@ func compareString(value string, cond *RuleCondition) bool {
 	case OperatorNotEqual:
 		return !strings.EqualFold(value, cond.Value)
 	case OperatorContains:
-		return strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.ContainsFold(value, cond.Value)
 	case OperatorNotContains:
-		return !strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+		return !stringutils.ContainsFold(value, cond.Value)
 	case OperatorStartsWith:
-		return strings.HasPrefix(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.HasPrefixFold(value, cond.Value)
 	case OperatorEndsWith:
-		return strings.HasSuffix(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.HasSuffixFold(value, cond.Value)
 	default:
 		return false
 	}
@@ -797,6 +823,103 @@ func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext)
 		candidates = append(candidates, trackerCandidates(tracker.Url, ctx)...)
 	}
 	return compareStringCandidates(candidates, cond)
+}
+
+func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition) bool {
+	if len(torrent.Trackers) == 0 {
+		return false
+	}
+	for _, tracker := range torrent.Trackers {
+		// Skip DHT/PeX/LSD pseudo-trackers: they are always reported as Disabled with
+		// no message and would otherwise spuriously satisfy "disabled"/NOT_EQUAL queries.
+		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
+			continue
+		}
+		if compareTrackerStatus(int(tracker.Status), cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareTrackerStatus(status int, cond *RuleCondition) bool {
+	if cond == nil {
+		return false
+	}
+
+	matches := matchesTrackerStatusValue(status, cond.Value)
+	switch cond.Operator { //nolint:exhaustive // tracker status only supports equal/not equal
+	case OperatorEqual:
+		return matches
+	case OperatorNotEqual:
+		return !matches
+	default:
+		return false
+	}
+}
+
+func matchesTrackerStatusValue(status int, value string) bool {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return false
+	}
+
+	if n, err := strconv.Atoi(normalized); err == nil {
+		return status == n
+	}
+
+	switch strings.ToLower(normalized) {
+	case "not_contacted", "notcontacted", "not contacted":
+		return status == int(qbt.TrackerStatusNotContacted)
+	case "working", "ok":
+		return status == int(qbt.TrackerStatusOK)
+	case "updating":
+		return status == int(qbt.TrackerStatusUpdating)
+	case "error", "not_working", "not working":
+		return status == int(qbt.TrackerStatusNotWorking)
+	case "tracker_error", "tracker error":
+		return status == int(qbt.TrackerStatusTrackerError)
+	case "unreachable":
+		return status == int(qbt.TrackerStatusUnreachable)
+	}
+
+	return false
+}
+
+func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition) bool {
+	if len(torrent.Trackers) == 0 {
+		return false
+	}
+	for _, tracker := range torrent.Trackers {
+		// Skip DHT/PeX/LSD pseudo-trackers: they carry no message and would otherwise
+		// make "message is nil" match nearly every torrent.
+		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
+			continue
+		}
+		if compareTrackerMessage(tracker.Message, cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareTrackerMessage(message string, cond *RuleCondition) bool {
+	if cond == nil {
+		return false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(cond.Value), "nil") {
+		switch cond.Operator { //nolint:exhaustive // nil tracker message only supports equal/not equal
+		case OperatorEqual:
+			return message == ""
+		case OperatorNotEqual:
+			return message != ""
+		default:
+			return false
+		}
+	}
+
+	return compareString(message, cond)
 }
 
 func trackerCandidates(trackerURL string, ctx *EvalContext) []string {
@@ -865,9 +988,8 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 		})
 	}
 	if cond.Operator == OperatorNotContains {
-		condLower := strings.ToLower(cond.Value)
 		return !slices.ContainsFunc(uniq, func(c string) bool {
-			return strings.Contains(strings.ToLower(c), condLower)
+			return stringutils.ContainsFold(c, cond.Value)
 		})
 	}
 
@@ -955,13 +1077,13 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 	case OperatorNotEqual:
 		return !anyTagMatches(tags, condValue, strings.EqualFold)
 	case OperatorContains:
-		return anyTagMatches(tags, condValue, tagContains)
+		return anyTagMatches(tags, condValue, stringutils.ContainsFold)
 	case OperatorNotContains:
-		return !anyTagMatches(tags, condValue, tagContains)
+		return !anyTagMatches(tags, condValue, stringutils.ContainsFold)
 	case OperatorStartsWith:
-		return anyTagMatches(tags, condValue, tagStartsWith)
+		return anyTagMatches(tags, condValue, stringutils.HasPrefixFold)
 	case OperatorEndsWith:
-		return anyTagMatches(tags, condValue, tagEndsWith)
+		return anyTagMatches(tags, condValue, stringutils.HasSuffixFold)
 	default:
 		return false
 	}
@@ -977,25 +1099,11 @@ func anyTagMatches(tags []string, condValue string, match func(string, string) b
 	return false
 }
 
-// tagContains checks if tag contains condValue (case-insensitive).
-func tagContains(tag, condValue string) bool {
-	return strings.Contains(strings.ToLower(tag), condValue)
-}
-
-// tagStartsWith checks if tag starts with condValue (case-insensitive).
-func tagStartsWith(tag, condValue string) bool {
-	return strings.HasPrefix(strings.ToLower(tag), condValue)
-}
-
-// tagEndsWith checks if tag ends with condValue (case-insensitive).
-func tagEndsWith(tag, condValue string) bool {
-	return strings.HasSuffix(strings.ToLower(tag), condValue)
-}
-
-// compareInt64 compares an int64 value against the condition.
 func compareInt64(value int64, cond *RuleCondition) bool {
-	// Parse the condition value as int64
-	condValue, err := strconv.ParseInt(cond.Value, 10, 64)
+	// Parse the condition value as int64. Trim first so a whitespace-padded value
+	// (e.g. from an imported config) compares the same way save-time validation
+	// accepts it, instead of parsing-failing and silently never matching.
+	condValue, err := strconv.ParseInt(strings.TrimSpace(cond.Value), 10, 64)
 	if err != nil && cond.Value != "" {
 		return false
 	}
@@ -1025,8 +1133,9 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 
 // compareFloat64 compares a float64 value against the condition.
 func compareFloat64(value float64, cond *RuleCondition) bool {
-	// Parse the condition value as float64
-	condValue, err := strconv.ParseFloat(cond.Value, 64)
+	// Parse the condition value as float64. Trim first so whitespace-padded values
+	// stay consistent with save-time validation instead of silently never matching.
+	condValue, err := strconv.ParseFloat(strings.TrimSpace(cond.Value), 64)
 	if err != nil && cond.Value != "" {
 		return false
 	}
@@ -1110,15 +1219,26 @@ func compareBool(value bool, cond *RuleCondition) bool {
 	}
 }
 
-// compareHardlinkScope compares a hardlink scope value against the condition.
+// compareHardlinkScope compares a stored hardlink scope value against the condition.
 func compareHardlinkScope(value string, cond *RuleCondition) bool {
 	switch cond.Operator {
 	case OperatorEqual:
-		return strings.EqualFold(value, cond.Value)
+		return hardlinkScopeMatches(value, cond.Value)
 	case OperatorNotEqual:
-		return !strings.EqualFold(value, cond.Value)
+		return !hardlinkScopeMatches(value, cond.Value)
 	default:
 		return false
+	}
+}
+
+func hardlinkScopeMatches(value, condValue string) bool {
+	switch {
+	case strings.EqualFold(condValue, HardlinkScopeInsideQBitTorrent):
+		return value == HardlinkScopeTorrentsOnly || value == HardlinkScopeBoth
+	case strings.EqualFold(condValue, HardlinkScopeOutsideQBitTorrent):
+		return value == HardlinkScopeOutsideQBitTorrent || value == HardlinkScopeBoth
+	default:
+		return strings.EqualFold(value, condValue)
 	}
 }
 
@@ -1143,6 +1263,15 @@ func compareAgeIfSet(timestamp int64, cond *RuleCondition, ctx *EvalContext) boo
 		return false
 	}
 	return compareAge(timestamp, cond, ctx)
+}
+
+// compareRlsYearIfSet compares a parsed release year and treats an unparsed year (<= 0)
+// as unknown/no-match, mirroring compareAgeIfSet for timestamp-backed fields.
+func compareRlsYearIfSet(year int64, cond *RuleCondition) bool {
+	if year <= 0 {
+		return false
+	}
+	return compareInt64(year, cond)
 }
 
 // splitTags splits a comma-separated tag string into individual tags.

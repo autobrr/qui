@@ -7,7 +7,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,15 +17,13 @@ import (
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestValidateLicenses_DoesNotAutoActivateInvalidDodoLicense(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -65,10 +62,7 @@ func TestValidateLicenses_DoesNotAutoActivateInvalidDodoLicense(t *testing.T) {
 func TestRefreshAllLicenses_UnknownProviderStoresDodoInstanceIDFromValidate(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -124,10 +118,7 @@ func TestRefreshAllLicenses_UnknownProviderStoresDodoInstanceIDFromValidate(t *t
 func TestValidateAndStoreLicense_UnknownProviderDodoInvalidDoesNotFallbackToPolar(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -177,7 +168,7 @@ func TestValidateAndStoreLicense_UnknownProviderDodoInvalidDoesNotFallbackToPola
 
 	service := NewLicenseService(repo, polarClient, dodoClient, t.TempDir())
 
-	_, err = service.ValidateAndStoreLicense(ctx, license.LicenseKey, "tester")
+	_, err := service.ValidateAndStoreLicense(ctx, license.LicenseKey, "tester")
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrLicenseNotActive)
 }
@@ -185,10 +176,7 @@ func TestValidateAndStoreLicense_UnknownProviderDodoInvalidDoesNotFallbackToPola
 func TestValidateLicenses_DodoProviderWithoutDodoClientDoesNotPanic(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -221,10 +209,7 @@ func TestValidateLicenses_DodoProviderWithoutDodoClientDoesNotPanic(t *testing.T
 func TestRefreshAllLicenses_ContinuesAfterDodoClientError(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -273,7 +258,7 @@ func TestRefreshAllLicenses_ContinuesAfterDodoClientError(t *testing.T) {
 
 	service := NewLicenseService(repo, polarClient, nil, t.TempDir())
 
-	err = service.RefreshAllLicenses(ctx)
+	err := service.RefreshAllLicenses(ctx)
 	require.ErrorIs(t, err, ErrDodoClientNotConfigured)
 
 	storedPolar, err := repo.GetLicenseByKey(ctx, polarLicense.LicenseKey)
@@ -284,10 +269,7 @@ func TestRefreshAllLicenses_ContinuesAfterDodoClientError(t *testing.T) {
 func TestDeleteLicense_DodoProviderWithoutDodoClientStillDeletesLocalLicense(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-dodo-regression")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -309,6 +291,6 @@ func TestDeleteLicense_DodoProviderWithoutDodoClientStillDeletesLocalLicense(t *
 	service := NewLicenseService(repo, nil, nil, t.TempDir())
 	require.NoError(t, service.DeleteLicense(ctx, license.LicenseKey))
 
-	_, err = repo.GetLicenseByKey(ctx, license.LicenseKey)
+	_, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
 	require.ErrorIs(t, err, models.ErrLicenseNotFound)
 }

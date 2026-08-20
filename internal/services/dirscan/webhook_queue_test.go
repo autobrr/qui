@@ -4,22 +4,21 @@
 package dirscan
 
 import (
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestMergeWebhookScanRoots(t *testing.T) {
 	dir := "/data/media/tv"
 
 	require.Equal(t, dir, mergeWebhookScanRoots(dir, "", dir))
-	require.Equal(t, path.Join(dir, "Show"), mergeWebhookScanRoots(
+	require.Equal(t, filepath.Join(dir, "Show"), mergeWebhookScanRoots(
 		dir,
 		filepath.Join(dir, "Show", "Season 01"),
 		filepath.Join(dir, "Show", "Season 02"),
@@ -34,12 +33,7 @@ func TestMergeWebhookScanRoots(t *testing.T) {
 func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "webhook-queue.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "webhook-queue")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -48,7 +42,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
-	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil)
+	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil)
 
 	dirPath := t.TempDir()
 	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{

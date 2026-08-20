@@ -12,9 +12,8 @@ import (
 
 // Pool resolves an instance ID to the appropriate Backend. For instances with
 // local filesystem access it returns the local backend; for instances without
-// access it returns a noop backend that errors on every call. Stage C will
-// extend this to return an SSH-backed remote backend for instances with a
-// deployed helper.
+// access it returns a noop backend that errors on every call. A future remote
+// backend slots in here for instances with SSH access configured.
 type Pool struct {
 	instanceStore instanceGetter
 	local         Backend
@@ -28,12 +27,6 @@ type instanceGetter interface {
 
 // NewPool creates a Backend pool backed by the given instance store and local backend.
 func NewPool(store instanceGetter, local Backend) *Pool {
-	if store == nil {
-		panic("fsops.NewPool: instanceStore must not be nil")
-	}
-	if local == nil {
-		panic("fsops.NewPool: local backend must not be nil")
-	}
 	return &Pool{
 		instanceStore: store,
 		local:         local,
@@ -56,7 +49,7 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return p.local, nil
 	}
 
-	// Future: return a remote backend for instances with SSH/helper configured.
+	// Future: return a remote backend for instances with SSH access configured.
 
 	return noopBackend{}, nil
 }

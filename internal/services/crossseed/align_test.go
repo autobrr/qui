@@ -13,6 +13,62 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+func TestExactUsableFilePairing(t *testing.T) {
+	normalizer := stringutils.NewDefaultNormalizer()
+	t.Run("renamed unique sizes", func(t *testing.T) {
+		require.True(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/audio.flac", Size: 100}},
+			qbt.TorrentFiles{{Name: "old/one.bin", Size: 200}, {Name: "old/two.bin", Size: 100}},
+			normalizer,
+		))
+	})
+
+	t.Run("ambiguous duplicate sizes", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/one.mkv", Size: 200}, {Name: "new/two.mkv", Size: 200}},
+			qbt.TorrentFiles{{Name: "old/a.bin", Size: 200}, {Name: "old/b.bin", Size: 200}},
+			normalizer,
+		))
+	})
+
+	t.Run("duplicate sizes with exact paths", func(t *testing.T) {
+		files := qbt.TorrentFiles{{Name: "one.mkv", Size: 200}, {Name: "two.mkv", Size: 200}}
+		require.True(t, exactUsableFilePairing(files, files, normalizer))
+	})
+
+	t.Run("ignored sidecars do not need partners", func(t *testing.T) {
+		require.True(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/info.nfo", Size: 10}},
+			qbt.TorrentFiles{{Name: "old/video.bin", Size: 200}},
+			normalizer,
+		))
+	})
+
+	t.Run("requires usable files", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "info.nfo", Size: 10}},
+			qbt.TorrentFiles{{Name: "other.nfo", Size: 10}},
+			normalizer,
+		))
+	})
+
+	t.Run("rejects a size mismatch", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}},
+			qbt.TorrentFiles{{Name: "old/video.mkv", Size: 201}},
+			normalizer,
+		))
+	})
+
+	t.Run("rejects an extra usable file", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/extra.mkv", Size: 100}},
+			qbt.TorrentFiles{{Name: "old/video.mkv", Size: 200}},
+			normalizer,
+		))
+	})
+}
+
 func TestBuildFileRenamePlan_MovieRelease(t *testing.T) {
 	t.Parallel()
 
@@ -487,9 +543,10 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			// Files with different normalized keys are extras even if sizes match.
-			// a.mkv and x.mkv have different normalized keys, so they don't match.
-			name: "different normalized keys same size - has extras",
+			// Renamed content matches when each file is the sole candidate of its
+			// size: same policy as the rename plan and link modes (#2272). Ambiguous
+			// same-size buckets and ignored sidecars still count as extras (below).
+			name: "different normalized keys same size - sole candidate matches",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/a.mkv", Size: 1000},
 				{Name: "Movie/b.mkv", Size: 2000},
@@ -498,7 +555,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/x.mkv", Size: 1000},
 				{Name: "Movie/y.mkv", Size: 2000},
 			},
-			expectedResult: true, // a.mkv ≠ x.mkv, b.mkv ≠ y.mkv by normalized key
+			expectedResult: false, // each pairs by unique size via the size-only fallback
 		},
 		{
 			name: "candidate has more files than source - no extras",

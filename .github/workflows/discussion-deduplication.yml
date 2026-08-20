@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
 
       - name: Setup GitHub MCP Server
         run: |
@@ -68,8 +68,16 @@ jobs:
           EOF
 
       - name: Run Claude Code for Deduplication
-        uses: anthropics/claude-code-action@v1.0.119
+        env:
+          # Bound how many times Claude can invoke the write helper per run, so a
+          # prompt-injection in discussion content cannot spam comments/labels.
+          CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 5}'
+        uses: anthropics/claude-code-action@v1.0.189
         with:
+          # The dispatch job re-triggers this run via workflow_dispatch using
+          # GITHUB_TOKEN, so the actor is github-actions[bot]. Allow it past the
+          # agent-mode human-actor guard. Scoped to github-actions only (not '*').
+          allowed_bots: "github-actions"
           prompt: |
             You're a deduplication assistant for GitHub discussions. Your task is to find potential duplicates and handle them appropriately.
 
@@ -98,14 +106,13 @@ jobs:
                - Only mark as duplicate if you're confident (>80% similar intent)
                - Exclude the current discussion (number ${{ inputs.discussion_number || github.event.discussion.number }}) from matches
 
-            5A. IF DUPLICATE FOUND:
+            5A. IF DUPLICATE FOUND (the helper acts on the current discussion,
+                which is fixed by the workflow, so you only supply the text/name):
                 First, post a helpful comment linking to the original:
-                gh discussion comment ${{ inputs.discussion_number || github.event.discussion.number }} --repo ${{ github.repository }} --body "This appears to be a duplicate of #[ORIGINAL_NUMBER]. Please see the existing discussion for updates and add any additional context there."
+                ./.github/scripts/discussion-write.sh comment "This appears to be a duplicate of #ORIGINAL_NUMBER. Please see the existing discussion for updates and add any additional context there."
 
-                Then, add the "duplicate" label using GraphQL:
-                - Get label IDs: gh label list --json name,id --limit 100
-                - Get discussion node ID: gh api graphql -f query='query { repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") { discussion(number: ${{ inputs.discussion_number || github.event.discussion.number }}) { id } } }'
-                - Add label: gh api graphql -f query='mutation { addLabelsToLabelable(input: {labelIds: ["LABEL_ID"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
+                Then, add the "duplicate" label:
+                ./.github/scripts/discussion-write.sh add-label "duplicate"
 
             5B. IF NOT A DUPLICATE:
                 Do nothing. Do not add labels or comments for unique discussions.
@@ -118,9 +125,9 @@ jobs:
             - If unsure, err on the side of NOT marking as duplicate
             - Do not comment on unique discussions
           claude_args: |
-            --allowedTools "Bash(gh search:*),Bash(gh label list:*),Bash(gh api graphql:*),Bash(gh discussion comment:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
+            --allowedTools "Bash(gh search:*),Bash(./.github/scripts/discussion-write.sh:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
             --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
-            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "DISCUSSION_WRITE_ALLOWED_OPS": "add-label,comment"}}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

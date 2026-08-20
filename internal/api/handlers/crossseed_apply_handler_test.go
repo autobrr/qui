@@ -15,14 +15,18 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"unsafe"
 
-	"github.com/anacrolix/torrent/bencode"
-	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -64,6 +68,7 @@ type seasonPackHandlerSyncManager struct {
 	torrents map[int][]qbt.Torrent
 	files    map[string]qbt.TorrentFiles
 	addErr   error
+	addCalls int
 }
 
 func (s *seasonPackHandlerSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -99,6 +104,7 @@ func (*seasonPackHandlerSyncManager) GetAppPreferences(context.Context, int) (qb
 }
 
 func (s *seasonPackHandlerSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	s.addCalls++
 	return nil, s.addErr
 }
 
@@ -154,19 +160,22 @@ func (*seasonPackHandlerSyncManager) CreateCategory(context.Context, int, string
 func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []string) string {
 	t.Helper()
 
-	tempDir := t.TempDir()
-	for _, file := range files {
-		path := filepath.Join(tempDir, rootName, file)
-		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-		require.NoError(t, os.WriteFile(path, fmt.Appendf(nil, "content for %s", file), 0o600))
-	}
-
 	info := metainfo.Info{
 		Name:        rootName,
 		PieceLength: 256 * 1024,
 	}
-	require.NoError(t, info.BuildFromFilePath(filepath.Join(tempDir, rootName)))
-	info.Name = rootName
+	for _, file := range files {
+		content := fmt.Appendf(nil, "content for %s", file)
+		info.Files = append(info.Files, metainfo.FileInfo{
+			Path:   strings.Split(file, "/"),
+			Length: int64(len(content)),
+		})
+	}
+	// Order files by full path, the shape every real torrent-creation tool
+	// produces.
+	slices.SortFunc(info.Files, func(a, b metainfo.FileInfo) int {
+		return strings.Compare(strings.Join(a.Path, "/"), strings.Join(b.Path, "/"))
+	})
 
 	infoBytes, err := bencode.Marshal(info)
 	require.NoError(t, err)
@@ -184,7 +193,10 @@ func createSeasonPackHandlerTorrent(t *testing.T, rootName string, files []strin
 func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	packFile := "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"
-	torrentData := createSeasonPackHandlerTorrent(t, packName, []string{packFile, "notes.txt"})
+	// Single-file pack: an unmatched extra like notes.txt would be a pending
+	// file sharing a piece with the episode, and the piece-boundary safety
+	// check would fail assembly before the AddTorrent call under test.
+	torrentData := createSeasonPackHandlerTorrent(t, packName, []string{packFile})
 
 	metaBytes, err := base64.StdEncoding.DecodeString(torrentData)
 	require.NoError(t, err)
@@ -200,12 +212,18 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 		HardlinkBaseDir:          t.TempDir(),
 	}
 
+	// The episode must exist on disk with the pack file's exact size, on the
+	// same filesystem as the hardlink base dir, so assembly succeeds and the
+	// apply reaches AddTorrent.
+	episodePath := filepath.Join(t.TempDir(), "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv")
+	require.NoError(t, os.WriteFile(episodePath, make([]byte, meta.Files[0].Size), 0o600))
+
 	syncManager := &seasonPackHandlerSyncManager{
 		torrents: map[int][]qbt.Torrent{
 			inst.ID: {{
 				Hash:        "e01",
 				Name:        "Cool.Show.S01E01.1080p.WEB.x264-GRP",
-				ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv",
+				ContentPath: episodePath,
 				Progress:    1.0,
 			}},
 		},
@@ -218,8 +236,10 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 		addErr: errors.New("qb add failed"),
 	}
 
+	instanceStore := &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
 	svc := &crossseed.Service{}
-	setServiceField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}})
+	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
+	setServiceField(t, svc, "instanceStore", instanceStore)
 	setServiceField(t, svc, "syncManager", syncManager)
 	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
 	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
@@ -228,7 +248,9 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 			SeasonPackCoverageThreshold: 1,
 		}, nil
 	})
-	setServiceField(t, svc, "seasonPackLinkCreator", func(*hardlinktree.TreePlan) error { return nil })
+	setServiceField(t, svc, "seasonPackLinkCreator", func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+		return &fsops.TreeCreateResult{}, nil
+	})
 
 	handler := &CrossSeedHandler{service: svc}
 
@@ -247,4 +269,30 @@ func TestSeasonPackApply_Returns500ForFailedApplyResponse(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, resp.Code)
 	require.Contains(t, resp.Body.String(), "Failed to apply season pack")
+	require.Equal(t, 1, syncManager.addCalls, "the 500 must come from the AddTorrent failure, not an earlier assembly error")
+}
+
+func TestAutobrrApplyAcceptsOptionalAnnouncementName(t *testing.T) {
+	instance := &models.Instance{ID: 8, Name: "primary", IsActive: true}
+	svc := &crossseed.Service{}
+	setServiceField(t, svc, "instanceStore", &seasonPackHandlerInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}})
+	setServiceField(t, svc, "syncManager", &seasonPackHandlerSyncManager{torrents: map[int][]qbt.Torrent{instance.ID: {}}})
+	setServiceField(t, svc, "releaseCache", crossseed.NewReleaseCache())
+	setServiceField(t, svc, "automationSettingsLoader", func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+		return &models.CrossSeedAutomationSettings{}, nil
+	})
+
+	body, err := json.Marshal(map[string]any{
+		"torrentData": createSeasonPackHandlerTorrent(t, "Downloaded.Name.2025.1080p.WEB-DL.H.265-LUMA", []string{"movie.mkv"}),
+		"torrentName": "Announced.Name.2025.1080p.WEB-DL.H.264-LUMA",
+		"instanceIds": []int{instance.ID},
+	})
+	require.NoError(t, err)
+
+	handler := &CrossSeedHandler{service: svc}
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/cross-seed/apply", bytes.NewReader(body))
+	resp := httptest.NewRecorder()
+	handler.AutobrrApply(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
 }

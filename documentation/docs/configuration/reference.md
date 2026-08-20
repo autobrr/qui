@@ -43,14 +43,16 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 |---|---|---:|---|---|
 | `host` | `QUI__HOST` | string | `localhost` (or `0.0.0.0` in containers) | Bind address for the main HTTP server. |
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
-| `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). |
+| `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). Normalized at startup: leading and trailing slashes are added when missing. |
 | `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. Empty disables CORS. Origins must be `http(s)://host[:port]`; wildcards are rejected; default ports are normalized. Restart required. |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: changing breaks decryption of stored instance passwords; you must re-enter them in the UI. |
-| `logLevel` | `QUI__LOG_LEVEL` | string | `INFO` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. |
+| `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty: logs to stdout. Relative paths resolve relative to the config directory. Applied immediately. |
-| `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | MiB threshold before rotation. Applied immediately. |
-| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `3` | Rotated files retained. `0` keeps all. Applied immediately. |
+| `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | Size in MB that starts a rotation. Applied immediately. |
+| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `10` | Number of rotated files that qui keeps. `0` keeps all. Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file compresses to 2 to 3 MB. Applied immediately. |
 | `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Always used for non-database assets (logs, tracker icon cache, etc.). When `databaseEngine=sqlite`, `qui.db` also lives here. Restart recommended. |
+| `backupDir` | `QUI__BACKUP_DIR` | string | empty | If empty: `<dataDir>/backups`. Directory for [backup](../features/backups.md) manifests, archives, and cached `.torrent` files. Relative paths resolve against the config directory. If you change this on an existing install, move the contents of `<dataDir>/backups` to the new directory. Restart required. |
+| `customThemesDir` | `QUI__CUSTOM_THEMES_DIR` | string | empty | Directory for sideloaded [custom theme](../features/custom-themes.md) `.css` files. If empty: `<config-dir>/themes` (auto-created). Relative paths resolve against the config directory. Listing requires premium access. Config changes applied on next request. |
 | `databaseEngine` | `QUI__DATABASE_ENGINE` | string | `sqlite` | `sqlite` or `postgres`. Existing installs should keep `sqlite` unless you migrate. Restart required. |
 | `databaseDsn` | `QUI__DATABASE_DSN` / `QUI__DATABASE_DSN_FILE` | string | empty | Full Postgres DSN. Preferred when `databaseEngine=postgres`. |
 | `databaseHost` | `QUI__DATABASE_HOST` | string | `localhost` | Postgres host when not using `databaseDsn`. |
@@ -66,7 +68,8 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart recommended. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable to prevent remote tracker favicon fetches. Applied immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | When enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. Can add 25+ minutes per torrent. Restart recommended. |
-| `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables pprof server on `:6060` (`/debug/pprof/`). Restart required. |
+| `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables pprof server (`/debug/pprof/`). Restart required. |
+| `pprofAddr` | `QUI__PPROF_ADDR` | string | `127.0.0.1:6060` | pprof server bind address. Loopback by default to avoid colliding with another listener in a shared network namespace (e.g. a Tailscale sidecar). Restart required. |
 | `metricsEnabled` | `QUI__METRICS_ENABLED` | bool | `false` | Enables a Prometheus metrics server (separate port). Restart required. |
 | `metricsHost` | `QUI__METRICS_HOST` | string | `127.0.0.1` | Metrics server bind address. Restart required. |
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |
@@ -136,7 +139,7 @@ Rules:
 - path/query/fragment/userinfo are rejected
 - invalid values refuse startup; invalid live reloads are rejected and keep the last valid allowlist
 
-For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors).
+For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors.md).
 
 ## Example `config.toml`
 
@@ -145,10 +148,10 @@ host = "0.0.0.0"
 port = 7476
 baseUrl = "/qui/"
 
-logLevel = "INFO"
+logLevel = "DEBUG"
 logPath = "log/qui.log"
 logMaxSize = 50
-logMaxBackups = 3
+logMaxBackups = 10
 
 trackerIconsFetchEnabled = false
 

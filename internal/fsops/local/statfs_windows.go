@@ -8,7 +8,8 @@ package local
 import (
 	"context"
 	"fmt"
-	"unsafe"
+	"os"
+	"path/filepath"
 
 	"golang.org/x/sys/windows"
 
@@ -20,6 +21,18 @@ func (b *Backend) Statfs(ctx context.Context, path string) (*fsops.StatfsResult,
 		return nil, err
 	}
 
+	// GetDiskFreeSpaceEx requires a directory, while the unix reference
+	// (unix.Statfs) accepts files. Stat first so a missing path keeps its
+	// portable fs.ErrNotExist, then query the containing directory for
+	// non-directories.
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		path = filepath.Dir(path)
+	}
+
 	pathPtr, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, fmt.Errorf("invalid path %s: %w", path, err)
@@ -27,10 +40,7 @@ func (b *Backend) Statfs(ctx context.Context, path string) (*fsops.StatfsResult,
 
 	var freeBytesAvailable, totalBytes, totalFreeBytes uint64
 	if err := windows.GetDiskFreeSpaceEx(
-		pathPtr,
-		(*uint64)(unsafe.Pointer(&freeBytesAvailable)),
-		(*uint64)(unsafe.Pointer(&totalBytes)),
-		(*uint64)(unsafe.Pointer(&totalFreeBytes)),
+		pathPtr, &freeBytesAvailable, &totalBytes, &totalFreeBytes,
 	); err != nil {
 		return nil, fmt.Errorf("GetDiskFreeSpaceEx %s: %w", path, err)
 	}

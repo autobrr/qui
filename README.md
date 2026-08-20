@@ -43,6 +43,7 @@ docker run -d \
 - **Automations**: Rule-based torrent management with conditions and actions
 - **Backups & Restore**: Scheduled snapshots with multiple restore modes
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps
+- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, and Simplified Chinese, with automatic browser-language detection
 
 ## Community
 
@@ -102,7 +103,20 @@ For other currencies or donation methods, [reach out on Discord](https://discord
 
 ## Contributing
 
-Contributions are welcome. Note: this repo restricts pull request creation to **collaborators only**. Please start with a Discussion/Issue (or Discord) so we can coordinate changes.
+Contributions are welcome.
+
+See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the development and test workflow.
+
+## Alternatives
+
+If qui does not fit your setup, these projects offer different approaches:
+
+- [VueTorrent](https://github.com/VueTorrent/VueTorrent) is a modern, responsive alternative WebUI.
+- [iQbit](https://github.com/ntoporcov/iQbit) is a mobile-focused WebUI and PWA.
+- [Flood](https://github.com/jesec/flood) supports qBittorrent and other torrent clients.
+- [qBitController](https://github.com/Bartuzen/qBitController) is a native app for Android, iOS, Linux, macOS, and Windows.
+
+The qBittorrent wiki includes a longer [list of community WebUIs](https://github.com/qbittorrent/qBittorrent/wiki/List-of-known-alternate-WebUIs).
 
 ## License
 

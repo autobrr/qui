@@ -15,6 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -29,7 +30,7 @@ func TestSafeDeleteFile(t *testing.T) {
 
 	tfm := NewTorrentFileMap()
 
-	disp, err := safeDeleteFile(root, target, tfm)
+	disp, err := safeDeleteFile(context.Background(), root, target, tfm, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteFile error: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestSafeDeleteFile_SkipsWhenInUse(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(target))
 
-	disp, err := safeDeleteFile(root, target, tfm)
+	disp, err := safeDeleteFile(context.Background(), root, target, tfm, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteFile error: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestSafeDeleteFile_RefusesScanRoot(t *testing.T) {
 	root := t.TempDir()
 	tfm := NewTorrentFileMap()
 
-	if _, err := safeDeleteFile(root, root, tfm); err == nil {
+	if _, err := safeDeleteFile(context.Background(), root, root, tfm, local.NewBackend()); err == nil {
 		t.Fatalf("expected error deleting scan root")
 	}
 }
@@ -83,7 +84,7 @@ func TestSafeDeleteFile_RefusesEscapingPath(t *testing.T) {
 	tfm := NewTorrentFileMap()
 
 	outside := filepath.Join(root, "..", "escape.txt")
-	if _, err := safeDeleteFile(root, outside, tfm); err == nil {
+	if _, err := safeDeleteFile(context.Background(), root, outside, tfm, local.NewBackend()); err == nil {
 		t.Fatalf("expected error for path escaping scan root")
 	}
 }
@@ -109,7 +110,7 @@ func TestSafeDeleteTarget_DeletesDirectoryRecursively(t *testing.T) {
 	tfm := NewTorrentFileMap()
 
 	unit := filepath.Join(root, "Movie.2024")
-	disp, err := safeDeleteTarget(root, unit, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, unit, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -146,7 +147,7 @@ func TestSafeDeleteTarget_SkipsDirectoryWhenAnyFileInUse(t *testing.T) {
 	tfm.Add(normalizePath(fileInUse))
 
 	unit := filepath.Join(root, "Movie.2024")
-	disp, err := safeDeleteTarget(root, unit, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, unit, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.
 
 	tfm := NewTorrentFileMap()
 	markerUnit := filepath.Join(movieDir, "BDMV")
-	disp, err := safeDeleteTarget(root, markerUnit, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, markerUnit, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -228,7 +229,7 @@ func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(linkPath))
 
-	disp, err := safeDeleteTarget(root, dir, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -258,7 +259,7 @@ func TestCollectCandidateDirsForCleanup_CascadesToParents(t *testing.T) {
 	}
 
 	tfm := NewTorrentFileMap()
-	disp, err := safeDeleteFile(scanRoot, target, tfm)
+	disp, err := safeDeleteFile(context.Background(), scanRoot, target, tfm, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteFile error: %v", err)
 	}
@@ -268,7 +269,7 @@ func TestCollectCandidateDirsForCleanup_CascadesToParents(t *testing.T) {
 
 	candidates := collectCandidateDirsForCleanup([]string{target}, []string{scanRoot}, nil)
 	for _, dir := range candidates {
-		_ = safeDeleteEmptyDir(scanRoot, dir)
+		_ = safeDeleteEmptyDir(context.Background(), scanRoot, dir, local.NewBackend())
 	}
 
 	if _, err := os.Stat(seasonDir); !os.IsNotExist(err) {
@@ -333,7 +334,7 @@ func TestSafeDeleteTarget_SkipsWhenContainsIgnoredFile(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	ignorePaths := []string{fileB}
 
-	disp, err := safeDeleteTarget(root, dir, tfm, ignorePaths)
+	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, ignorePaths, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -358,7 +359,7 @@ func TestSafeDeleteTarget_SkipsWhenTargetIsIgnored(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	ignorePaths := []string{file}
 
-	disp, err := safeDeleteTarget(root, file, tfm, ignorePaths)
+	disp, err := safeDeleteTarget(context.Background(), root, file, tfm, ignorePaths, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -388,7 +389,7 @@ func TestSafeDeleteTarget_AllowsDeleteWhenNoIgnorePaths(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	ignorePaths := []string{} // No ignore paths
 
-	disp, err := safeDeleteTarget(root, dir, tfm, ignorePaths)
+	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, ignorePaths, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -565,7 +566,7 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 	}
 
 	store := models.NewOrphanScanStore(&testQuerier{DB: sqlDB})
-	svc := NewService(DefaultConfig(), nil, store, nil, nil)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, nil)
 	if err := svc.recoverStuckRuns(ctx); err != nil {
 		t.Fatalf("recoverStuckRuns: %v", err)
 	}
@@ -596,5 +597,129 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 	}
 	if pendingRun.Status != "pending" {
 		t.Fatalf("expected pending run unchanged, got %q", pendingRun.Status)
+	}
+}
+
+// A case-insensitive filesystem can hand the deletion flow a target spelled
+// differently from the file map entry and from the scan root it was found under.
+// Neither may lead to deleting an owned file. See issue #2314.
+func TestSafeDeleteTarget_CaseDifferentOwnedFileIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	trackerDir := filepath.Join(root, "trackername")
+	if err := os.MkdirAll(trackerDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	target := filepath.Join(trackerDir, "Show.S01E01.mkv")
+	if err := os.WriteFile(target, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	// Owned under the other casing of the same directory.
+	tfm := NewTorrentFileMap()
+	tfm.Add(filepath.Join(root, "TrackerName", "Show.S01E01.mkv"))
+
+	disp, err := safeDeleteTarget(context.Background(), root, target, tfm, nil, local.NewBackend())
+	if err != nil {
+		t.Fatalf("safeDeleteTarget file: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected owned file to remain, stat err=%v", err)
+	}
+
+	// Same guard when the target is the directory (recursive delete path).
+	disp, err = safeDeleteTarget(context.Background(), root, trackerDir, tfm, nil, local.NewBackend())
+	if err != nil {
+		t.Fatalf("safeDeleteTarget dir: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition for directory, got %v", disp)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("expected owned file to survive directory delete, stat err=%v", err)
+	}
+}
+
+func TestWithinScanRoot_CaseDifferentScanRootDoesNotEscape(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "cross-seed", "TrackerName")
+	target := filepath.Join(base, "cross-seed", "trackername", "Show.S01E01.mkv")
+
+	if err := withinScanRoot(root, target); err != nil {
+		t.Fatalf("expected target inside scan root, got %v", err)
+	}
+	if err := withinScanRoot(root, strings.ToLower(root)); err == nil ||
+		!strings.Contains(err.Error(), "refusing to delete scan root") {
+		t.Fatalf("expected refusal to delete the scan root itself, got %v", err)
+	}
+	outside := filepath.Join(base, "cross-seed", "other", "movie.mkv")
+	if err := withinScanRoot(root, outside); err == nil ||
+		!strings.Contains(err.Error(), "escapes scan root") {
+		t.Fatalf("expected escape error for %q, got %v", outside, err)
+	}
+}
+
+// safeDeleteTarget routes symlinks to safeDeleteSymlink, whose in-use re-check
+// folds case like every other one.
+func TestSafeDeleteSymlink_CaseDifferentOwnedLinkIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	payload := filepath.Join(root, "payload.mkv")
+	if err := os.WriteFile(payload, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	link := filepath.Join(root, "Linked.mkv")
+	if err := os.Symlink(payload, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	tfm := NewTorrentFileMap()
+	tfm.Add(filepath.Join(root, "linked.mkv"))
+
+	disp, err := safeDeleteTarget(context.Background(), root, link, tfm, nil, local.NewBackend())
+	if err != nil {
+		t.Fatalf("safeDeleteTarget symlink: %v", err)
+	}
+	if disp != deleteDispositionSkippedInUse {
+		t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("expected symlink to remain, lstat err=%v", err)
+	}
+
+	// Not owned: the link goes, under its real (unfolded) name.
+	disp, err = safeDeleteTarget(context.Background(), root, link, NewTorrentFileMap(), nil, local.NewBackend())
+	if err != nil {
+		t.Fatalf("safeDeleteTarget symlink: %v", err)
+	}
+	if disp != deleteDispositionDeleted {
+		t.Fatalf("expected deleted disposition, got %v", disp)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatalf("expected symlink removed, lstat err=%v", err)
+	}
+}
+
+// The empty-directory cleanup walks up from a deleted file to its scan root,
+// which can be spelled differently on a case-insensitive filesystem.
+func TestCollectCandidateDirsForCleanup_CaseDifferentScanRoot(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	scanRoot := filepath.Join(base, "TrackerName")
+	deleted := filepath.Join(base, "trackername", "Show.S01", "Show.S01E01.mkv")
+
+	got := collectCandidateDirsForCleanup([]string{deleted}, []string{scanRoot}, nil)
+
+	want := []string{filepath.Join(base, "trackername", "Show.S01")}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("expected candidate dirs %v, got %v", want, got)
 	}
 }

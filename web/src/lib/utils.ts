@@ -4,6 +4,7 @@
  */
 
 import type { Automation } from "@/types"
+import { getTrackerTokens } from "@/lib/workflow-utils"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -17,6 +18,12 @@ export function formatBytes(bytes: number): string {
   const sizes = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
+}
+
+export function formatBytesOrFallback(bytes: number, fallback: string): string {
+  if (bytes < 0) return fallback
+
+  return formatBytes(bytes)
 }
 
 /**
@@ -177,14 +184,7 @@ export function formatErrorReason(reason: string): string {
  * @returns Array of tracker domain strings
  */
 export function parseTrackerDomains(rule: Automation): string[] {
-  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
-    return rule.trackerDomains
-  }
-  if (!rule.trackerPattern) return []
-  return rule.trackerPattern
-    .split(/[|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
+  return getTrackerTokens(rule).map((token) => token.startsWith("!") ? token.slice(1) : token)
 }
 
 /**
@@ -206,4 +206,21 @@ export function normalizeTrackerDomains(values: string[]): string[] {
   }
 
   return result
+}
+
+/**
+ * Join a base path with a relative path, handling both Unix and Windows separators.
+ * Detects the separator from the base path and uses it for joining. Torrent-internal
+ * relative paths are always slash-delimited, so they are normalized to the detected
+ * separator to avoid mixed separators on Windows (e.g. "C:\dl\Movie/file.mkv").
+ * @param basePath - The base directory path (e.g., "/data/torrents" or "C:\data\torrents")
+ * @param relativePath - The relative path to append
+ * @returns The joined full path
+ */
+export function joinPath(basePath: string, relativePath: string): string {
+  if (!basePath) return relativePath
+  const separator = basePath.includes("\\") ? "\\" : "/"
+  const cleanBase = basePath.replace(/[\\/]$/, "")
+  const normalizedRelative = separator === "\\" ? relativePath.replace(/\//g, "\\") : relativePath
+  return `${cleanBase}${separator}${normalizedRelative}`
 }

@@ -12,23 +12,23 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6.0.6
+        uses: pnpm/action-setup@v6.0.10
         with:
           package_json_file: web/package.json
 
       - name: Install frontend dependencies
         working-directory: web
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint frontend
         working-directory: web
@@ -36,17 +36,21 @@ jobs:
           webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
           if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
 
+      - name: Check i18n coverage
+        working-directory: web
+        run: pnpm check:i18n
+
   backend:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: "go.mod"
           cache: true
@@ -93,7 +97,7 @@ jobs:
           echo "go fix check clean."
 
       - name: Lint backend
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.11.1
           only-new-issues: true

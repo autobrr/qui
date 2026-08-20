@@ -11,21 +11,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"io/fs"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/torrentname"
@@ -40,6 +46,7 @@ var (
 // Config controls background backup scheduling.
 type Config struct {
 	DataDir         string
+	BackupDir       string // backup root; empty means <DataDir>/backups
 	PollInterval    time.Duration
 	WorkerCount     int
 	FailureCooldown time.Duration
@@ -55,6 +62,7 @@ type BackupProgress struct {
 type missingTorrent struct {
 	hash    string
 	name    string
+	relPath string
 	absPath string
 }
 
@@ -68,6 +76,7 @@ type Service struct {
 	jackettSvc     *jackett.Service
 	notifier       notifications.Notifier
 	cfg            Config
+	root           string // backup root directory; stored paths resolve against it
 	cacheDir       string
 
 	jobs   chan job
@@ -83,6 +92,8 @@ type Service struct {
 	progressMu sync.RWMutex
 
 	now func() time.Time
+
+	activityPublisher activity.Publisher
 }
 
 type backupReader interface {
@@ -140,6 +151,7 @@ type ManifestItem struct {
 	InfoHashV2  *string  `json:"infohashV2,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
+	SavePath    string   `json:"savePath,omitempty"`
 }
 
 func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
@@ -156,11 +168,18 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		cfg.ExportThrottle = 100 * time.Millisecond
 	}
 
+	root := strings.TrimSpace(cfg.BackupDir)
+	if root == "" && strings.TrimSpace(cfg.DataDir) != "" {
+		root = filepath.Join(cfg.DataDir, "backups")
+	}
+
 	cacheDir := ""
-	if strings.TrimSpace(cfg.DataDir) != "" {
-		cacheDir = filepath.Join(cfg.DataDir, "backups", "torrents")
+	if root != "" {
+		cacheDir = filepath.Join(root, "torrents")
 		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 			log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to prepare torrent cache directory")
+		} else {
+			go sweepStaleBlobTemps(cacheDir)
 		}
 	}
 
@@ -175,11 +194,14 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		jackettSvc: jackettService,
 		notifier:   notifier,
 		cfg:        cfg,
+		root:       root,
 		cacheDir:   cacheDir,
 		jobs:       make(chan job, cfg.WorkerCount*2),
 		inflight:   make(map[int]int64),
 		progress:   make(map[int64]*BackupProgress),
 		now:        func() time.Time { return time.Now().UTC() },
+
+		activityPublisher: activity.NopPublisher{},
 	}
 	if tracker, ok := reader.(backupTrackerSource); ok {
 		svc.tracker = tracker
@@ -195,6 +217,30 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 	}
 
 	return svc
+}
+
+// SetActivityPublisher wires the qui server-event hub so backup run status
+// changes are pushed to connected clients instead of polled. Safe to call once
+// at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+// emitRunActivity signals connected clients that a backup run's status changed
+// so they refetch instead of polling. Must be called after the state transition
+// is persisted and any held lock released.
+func (s *Service) emitRunActivity(instanceID int, runID int64) {
+	if s == nil || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindBackupRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.FormatInt(runID, 10),
+	})
 }
 
 func normalizeBackupSettings(settings *models.BackupSettings) bool {
@@ -272,10 +318,18 @@ func (s *Service) Start(ctx context.Context) {
 		log.Warn().Err(err).Msg("Failed to recover incomplete backup runs")
 	}
 
-	for i := 0; i < s.cfg.WorkerCount; i++ {
-		s.wg.Add(1)
-		go s.worker(ctx)
-	}
+	// Reclaim cache blobs stranded by failed runs before workers start
+	// writing, but off the startup path so a large cache cannot hold up the
+	// HTTP listener. Workers only spawn once the sweep finishes; a canceled
+	// ctx stops the sweep mid-walk, and the pre-registered wg count plus the
+	// tracked sweep goroutine keep Stop waiting for both.
+	s.wg.Add(s.cfg.WorkerCount)
+	s.wg.Go(func() {
+		s.cleanupOrphanedBlobs(ctx)
+		for i := 0; i < s.cfg.WorkerCount; i++ {
+			go s.worker(ctx)
+		}
+	})
 
 	// Check for missed backups and queue exactly one if applicable
 	s.wg.Go(func() {
@@ -337,6 +391,11 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	}
 
 	log.Info().Int("count", len(incompleteRuns)).Msg("Successfully recovered incomplete backup runs")
+
+	// Notify connected clients that these runs transitioned to failed.
+	for _, run := range incompleteRuns {
+		s.emitRunActivity(run.InstanceID, run.ID)
+	}
 	return nil
 }
 
@@ -512,6 +571,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			ErrorMessage: msg,
 			CompletedAt:  &now,
 		})
+		s.emitRunActivity(j.instanceID, j.runID)
 		return
 	}
 
@@ -527,6 +587,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		log.Error().Err(err).Int("instanceID", j.instanceID).Msg("Failed to mark backup run as running")
 		return
 	}
+	s.emitRunActivity(j.instanceID, j.runID)
 
 	result, execErr := s.executeBackup(ctx, j)
 	if execErr != nil {
@@ -548,6 +609,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			StartedAt:    &start,
 			CompletedAt:  &now,
 		})
+		s.emitRunActivity(j.instanceID, j.runID)
 	} else {
 		now := s.now()
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -585,6 +647,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			StartedAt:          &start,
 			CompletedAt:        &now,
 		})
+		s.emitRunActivity(j.instanceID, j.runID)
 	}
 
 	s.clearInstance(j.instanceID, j.runID)
@@ -640,8 +703,6 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	if err := os.MkdirAll(baseAbs, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
 	}
-
-	var lastExportElapsed time.Duration
 
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
@@ -711,78 +772,54 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.progressMu.Unlock()
 
-	for idx, torrent := range torrents {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
+	// Exports run concurrently: qBittorrent serves its WebAPI from a single
+	// thread, so a handful of workers lets fast exports drain while one waits
+	// out a stall behind another client's large response. Results land in a
+	// slice indexed by input position; all order-dependent bookkeeping
+	// (usedPaths, categoryCounts, items) happens afterwards in input order so
+	// the output is identical to a serial run.
+	results := make([]exportedTorrent, len(torrents))
+	var exportedCount atomic.Int64
 
-		var (
-			data          []byte
-			suggestedName string
-			trackerDomain string
-			blobRelPath   *string
-		)
-
-		cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
-		if cacheErr != nil {
-			log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
-		}
-		if cachedTorrent != nil {
-			data = cachedTorrent.data
-			suggestedName = torrent.Name
-			trackerDomain = trackerDomainFromTorrent(torrent)
-			rel := cachedTorrent.relPath
-			blobRelPath = &rel
-		}
-
-		if data == nil {
-			if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
-				log.Warn().
-					Str("hash", torrent.Hash).
-					Str("name", torrent.Name).
-					Int("instanceID", j.instanceID).
-					Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
-				s.updateProgress(j.runID, idx+1)
-				continue
+	g, gctx := errgroup.WithContext(ctx)
+	indexes := make(chan int)
+	g.Go(func() error {
+		defer close(indexes)
+		for i := range torrents {
+			select {
+			case indexes <- i:
+			case <-gctx.Done():
+				return gctx.Err()
 			}
-			if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, lastExportElapsed); err != nil {
-				return nil, err
-			}
-			exportStart := time.Now()
-			var tracker string
-			data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
-			lastExportElapsed = time.Since(exportStart)
-			if err != nil {
-				if isExportMetadataUnavailable(err) {
-					log.Warn().
-						Err(err).
-						Str("hash", torrent.Hash).
-						Str("name", torrent.Name).
-						Int("instanceID", j.instanceID).
-						Msg("Skipping torrent export; metadata not downloaded yet")
-					s.updateProgress(j.runID, idx+1)
-					continue
+		}
+		return nil
+	})
+	for range exportWorkers {
+		g.Go(func() error {
+			// Per-worker adaptive delay keeps the aggregate request rate
+			// bounded by exportWorkers regardless of how the pool schedules.
+			var lastExportElapsed time.Duration
+			for idx := range indexes {
+				res, err := s.exportBackupTorrent(gctx, j, torrents[idx], patchTrackers, webAPIVersion, &lastExportElapsed)
+				if err != nil {
+					return err
 				}
-				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+				results[idx] = res
+				s.updateProgress(j.runID, int(exportedCount.Add(1)))
 			}
-			trackerDomain = tracker
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	for idx, torrent := range torrents {
+		res := results[idx]
+		if res.skipped {
+			continue
 		}
 
-		if patchTrackers {
-			trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
-			if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
-				log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
-			} else if changed {
-				data = patched
-				// ensure cached entry is rebuilt with the corrected payload
-				blobRelPath = nil
-				log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Str("webAPIVersion", webAPIVersion).Msg("Injected tracker metadata into exported torrent")
-			}
-		}
-
-		filename := torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash)
 		category := strings.TrimSpace(torrent.Category)
 		var categoryPtr *string
 		if category != "" {
@@ -797,42 +834,27 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			rawTags = strings.TrimSpace(torrent.Tags)
 		}
 
-		archivePath := filename
+		archivePath := res.filename
 		if settings.IncludeCategories && category != "" {
-			archivePath = filepath.ToSlash(filepath.Join(safeSegment(category), filename))
+			archivePath = filepath.ToSlash(filepath.Join(safeSegment(category), res.filename))
 		}
 
 		uniquePath := ensureUniquePath(archivePath, usedPaths)
+		blobRelPath := res.blobRelPath
 
-		if blobRelPath == nil && s.cacheDir != "" {
-			sum := sha256.Sum256(data)
-			hash := hex.EncodeToString(sum[:])
-			blobName := hash + ".torrent"
-			subdir := ""
-			if len(hash) >= 6 {
-				subdir = filepath.Join(hash[0:2], hash[2:4], hash[4:6])
-			}
-			absBlob := filepath.Join(s.cacheDir, subdir, blobName)
-			if _, err := os.Stat(absBlob); errors.Is(err, os.ErrNotExist) {
-				if subdir != "" {
-					if err := os.MkdirAll(filepath.Dir(absBlob), 0o755); err != nil {
-						return nil, fmt.Errorf("create torrent cache subdir: %w", err)
-					}
-				}
-				if err := os.WriteFile(absBlob, data, 0o644); err != nil && !errors.Is(err, os.ErrExist) {
-					return nil, fmt.Errorf("cache torrent blob: %w", err)
-				}
-			}
-			rel := filepath.ToSlash(filepath.Join("backups", "torrents", subdir, blobName))
-			blobRelPath = &rel
-		}
-
-		// Note: Removed zip header creation for streaming interface
-
-		totalBytes += int64(len(data))
+		totalBytes += int64(res.dataLen)
 
 		infohashV1 := strings.TrimSpace(torrent.InfohashV1)
 		infohashV2 := strings.TrimSpace(torrent.InfohashV2)
+
+		// Capture the per-torrent save path only when it diverges from the
+		// category (cross-seed hardlinks, manual relocations, Auto TMM off).
+		// Category-managed torrents store nothing here and are placed by their
+		// recreated category on restore.
+		storeSavePath := ""
+		if settings.IncludeSavePaths {
+			storeSavePath = resolveBackupSavePath(torrent.SavePath, category, snapshotCategories)
+		}
 
 		item := models.BackupItem{
 			RunID:       j.runID,
@@ -859,6 +881,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		if blobRelPath != nil {
 			item.TorrentBlobPath = blobRelPath
 		}
+		if storeSavePath != "" {
+			sp := storeSavePath
+			item.SavePath = &sp
+		}
 		items = append(items, item)
 
 		manifestItem := ManifestItem{
@@ -882,10 +908,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		if blobRelPath != nil {
 			manifestItem.TorrentBlob = *blobRelPath
 		}
+		if storeSavePath != "" {
+			manifestItem.SavePath = storeSavePath
+		}
 		manifestItems = append(manifestItems, manifestItem)
-
-		// Update progress after processing each torrent
-		s.updateProgress(j.runID, idx+1)
 	}
 
 	manifest := Manifest{
@@ -921,16 +947,298 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
+// exportWorkers bounds concurrent torrents/export calls during a backup run.
+// Kept small on purpose: enough to overlap stalls on qBittorrent's
+// single-threaded WebAPI without flooding a struggling instance (#1101).
+const exportWorkers = 4
+
+// maxAdaptiveExportDelay caps the adaptive back-pressure delay. A slow export
+// usually means the request queued behind another client's large response, not
+// that qBittorrent is melting down; sleeping the full stall duration again
+// would just double the cost of every stall.
+const maxAdaptiveExportDelay = 500 * time.Millisecond
+
+// exportedTorrent is the order-independent result of exporting one torrent.
+type exportedTorrent struct {
+	skipped     bool
+	dataLen     int
+	filename    string
+	blobRelPath *string
+}
+
+// exportBackupTorrent produces the .torrent payload for one torrent (cached
+// blob or live export), patches trackers if needed, and persists the blob to
+// the cache. It touches no order-dependent backup state, so callers may run it
+// concurrently for distinct torrents. lastExportElapsed carries the adaptive
+// delay state between consecutive calls on the same worker.
+func (s *Service) exportBackupTorrent(ctx context.Context, j job, torrent qbt.Torrent, patchTrackers bool, webAPIVersion string, lastExportElapsed *time.Duration) (exportedTorrent, error) {
+	select {
+	case <-ctx.Done():
+		return exportedTorrent{}, ctx.Err()
+	default:
+	}
+
+	var (
+		data          []byte
+		suggestedName string
+		trackerDomain string
+		blobRelPath   *string
+	)
+
+	cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
+	if cacheErr != nil {
+		log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
+	}
+	if cachedTorrent != nil {
+		data = cachedTorrent.data
+		suggestedName = torrent.Name
+		trackerDomain = trackerDomainFromTorrent(torrent)
+		rel := cachedTorrent.relPath
+		blobRelPath = &rel
+	}
+
+	if data == nil {
+		if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
+			log.Warn().
+				Str("hash", torrent.Hash).
+				Str("name", torrent.Name).
+				Int("instanceID", j.instanceID).
+				Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
+			return exportedTorrent{skipped: true}, nil
+		}
+		if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, *lastExportElapsed); err != nil {
+			return exportedTorrent{}, err
+		}
+		exportStart := time.Now()
+		var tracker string
+		var err error
+		data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+		*lastExportElapsed = time.Since(exportStart)
+		if err != nil {
+			if isExportMetadataUnavailable(err) {
+				log.Warn().
+					Err(err).
+					Str("hash", torrent.Hash).
+					Str("name", torrent.Name).
+					Int("instanceID", j.instanceID).
+					Msg("Skipping torrent export; metadata not downloaded yet")
+				return exportedTorrent{skipped: true}, nil
+			}
+			return exportedTorrent{}, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
+		}
+		trackerDomain = tracker
+	}
+
+	if patchTrackers {
+		trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
+		if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
+			log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
+		} else if changed {
+			data = patched
+			// ensure cached entry is rebuilt with the corrected payload
+			blobRelPath = nil
+			log.Debug().Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Str("webAPIVersion", webAPIVersion).Msg("Injected tracker metadata into exported torrent")
+		}
+	}
+
+	if blobRelPath == nil && s.cacheDir != "" {
+		sum := sha256.Sum256(data)
+		hash := hex.EncodeToString(sum[:])
+		blobName := hash + ".torrent"
+		subdir := ""
+		if len(hash) >= 6 {
+			subdir = filepath.Join(hash[0:2], hash[2:4], hash[4:6])
+		}
+		if err := cacheTorrentBlob(s.cacheDir, filepath.Join(subdir, blobName), data); err != nil {
+			return exportedTorrent{}, err
+		}
+		rel := filepath.ToSlash(filepath.Join("backups", "torrents", subdir, blobName))
+		blobRelPath = &rel
+	}
+
+	return exportedTorrent{
+		dataLen:     len(data),
+		filename:    torrentname.SanitizeExportFilename(suggestedName, torrent.Hash, trackerDomain, torrent.Hash),
+		blobRelPath: blobRelPath,
+	}, nil
+}
+
+// blobTmpSeq distinguishes temp file names when several writers cache the
+// same payload at once.
+var blobTmpSeq atomic.Int64
+
+// blobTmpMinAge shields temp files a live writer is about to rename into
+// place from the sweep; anything older is crash litter.
+const blobTmpMinAge = time.Hour
+
+// sweepStaleBlobTemps removes *.tmp-* files a crashed run may have left in
+// the blob cache. They are never trusted or served; this is litter
+// collection, so every failure is best-effort. Runs in the background so a
+// large cache does not stall startup; the age guard keeps it clear of temp
+// files concurrent writers are about to rename into place.
+func sweepStaleBlobTemps(cacheDir string) {
+	root, err := os.OpenRoot(cacheDir)
+	if err != nil {
+		log.Warn().Err(err).Str("cacheDir", cacheDir).Msg("Failed to open torrent cache for temp sweep")
+		return
+	}
+	defer root.Close()
+
+	cutoff := time.Now().Add(-blobTmpMinAge)
+	removed := 0
+	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.Contains(d.Name(), ".tmp-") {
+			return nil
+		}
+		if info, err := d.Info(); err != nil || info.ModTime().After(cutoff) {
+			return nil
+		}
+		if root.Remove(filepath.FromSlash(p)) == nil {
+			removed++
+		}
+		return nil
+	})
+	if removed > 0 {
+		log.Info().Int("removed", removed).Str("cacheDir", cacheDir).Msg("Removed stale torrent cache temp files")
+	}
+}
+
+// cacheTorrentBlob persists data at the content-addressed path relBlob inside
+// rootDir via a temp file plus rename, so a crash mid-write can never leave a
+// truncated file at a path later runs would trust (#2187). An existing
+// destination is kept as-is: same address means same content. All access goes
+// through os.Root, which guarantees the path cannot escape rootDir. Every
+// writer of the blob cache (live export, temp-dir import, background import
+// download) must go through this helper.
+func cacheTorrentBlob(rootDir, relBlob string, data []byte) error {
+	root, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return fmt.Errorf("open torrent cache: %w", err)
+	}
+	defer root.Close()
+
+	if _, err := root.Stat(relBlob); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+	if dir := filepath.Dir(relBlob); dir != "." {
+		if err := root.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create torrent cache subdir: %w", err)
+		}
+	}
+
+	// 0o644 matches the manifest and archive writes in this file.
+	tmpName := fmt.Sprintf("%s.tmp-%d-%d", relBlob, os.Getpid(), blobTmpSeq.Add(1))
+	tmp, err := root.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+	// Best-effort cleanup: after a successful rename the temp name is gone
+	// and this remove is a no-op.
+	defer func() { _ = root.Remove(tmpName) }()
+
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Close()
+	} else {
+		tmp.Close()
+	}
+	if err != nil {
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+
+	if err := root.Rename(tmpName, relBlob); err != nil {
+		// The destination can only exist here if a concurrent worker
+		// published the identical payload after the existence check above,
+		// so losing the rename race is success. Rename atomically replaces
+		// existing files on POSIX and Windows alike; the stat covers any
+		// filesystem that refuses the replace regardless.
+		if _, statErr := root.Stat(relBlob); statErr == nil {
+			return nil
+		}
+		return fmt.Errorf("cache torrent blob: %w", err)
+	}
+	return nil
+}
+
+// orphanBlobMinAge shields just-written blobs from the startup orphan sweep.
+const orphanBlobMinAge = 24 * time.Hour
+
+// cleanupOrphanedBlobs removes cache files no backup item references. Blobs
+// are written to the cache during export but only referenced in the database
+// once the whole run succeeds, so every failed run strands its already-written
+// blobs and nothing else ever deletes them. Runs in the background at startup,
+// before any backup workers spawn; the age guard keeps it clear of files
+// written around the sweep. All access goes through os.Root so paths cannot
+// escape the cache.
+func (s *Service) cleanupOrphanedBlobs(ctx context.Context) {
+	if s.cacheDir == "" {
+		return
+	}
+
+	refs, err := s.store.ListTorrentBlobPaths(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to list referenced torrent blobs; skipping cache cleanup")
+		return
+	}
+	// Stored paths carry the legacy "backups/" prefix or not; ResolveBackupPath
+	// maps both forms to the same absolute path under the backup root.
+	referenced := make(map[string]struct{}, len(refs))
+	for _, rel := range refs {
+		if abs := s.ResolveBackupPath(rel); abs != "" {
+			referenced[abs] = struct{}{}
+		}
+	}
+
+	root, err := os.OpenRoot(s.cacheDir)
+	if err != nil {
+		log.Warn().Err(err).Str("cacheDir", s.cacheDir).Msg("Failed to open torrent cache for cleanup")
+		return
+	}
+	defer root.Close()
+
+	cutoff := s.now().Add(-orphanBlobMinAge)
+	removed := 0
+	var freed int64
+	walkErr := fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, entryErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entryErr != nil || d.IsDir() {
+			return nil
+		}
+		if _, ok := referenced[filepath.Join(s.cacheDir, filepath.FromSlash(p))]; ok {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			return nil
+		}
+		if root.Remove(filepath.FromSlash(p)) == nil {
+			removed++
+			freed += info.Size()
+		}
+		return nil
+	})
+	if walkErr != nil {
+		log.Warn().Err(walkErr).Str("cacheDir", s.cacheDir).Msg("Torrent cache cleanup stopped early")
+	}
+	if removed > 0 {
+		log.Info().Int("removed", removed).Int64("freedBytes", freed).Str("cacheDir", s.cacheDir).Msg("Removed orphaned torrent cache blobs")
+	}
+}
+
 // adaptiveExportDelay waits between export API calls with back-pressure.
-// The delay is at least minDelay, but extends to match the previous export's
-// response time when qBittorrent is under load. This prevents overwhelming
-// qBittorrent during large backup operations.
+// The delay is at least minDelay and extends to match the previous export's
+// response time when qBittorrent is under load, capped at
+// maxAdaptiveExportDelay so a stalled request is not double-charged.
 func adaptiveExportDelay(ctx context.Context, minDelay, lastExportDuration time.Duration) error {
 	if minDelay <= 0 {
 		return nil
 	}
 
-	delay := max(minDelay, lastExportDuration)
+	delay := max(minDelay, min(lastExportDuration, maxAdaptiveExportDelay))
 	t := time.NewTimer(delay)
 	defer t.Stop()
 
@@ -956,13 +1264,12 @@ func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings
 		baseSegment = fmt.Sprintf("instance-%d", instanceID)
 	}
 
-	base := filepath.Join("backups", baseSegment)
-
-	if s.cfg.DataDir == "" {
-		return "", "", errors.New("data directory not configured")
+	if s.root == "" {
+		return "", "", errors.New("backup directory not configured")
 	}
 
-	abs := filepath.Join(s.cfg.DataDir, base)
+	base := filepath.Join("backups", baseSegment)
+	abs := filepath.Join(s.root, baseSegment)
 	return abs, base, nil
 }
 
@@ -1045,11 +1352,12 @@ func (s *Service) clearInstance(instanceID int, runID int64) {
 	s.progressMu.Unlock()
 }
 
-// updateProgress updates the progress for a run
+// updateProgress updates the progress for a run. Progress only moves forward:
+// concurrent export workers may report completion counts out of order.
 func (s *Service) updateProgress(runID int64, current int) {
 	s.progressMu.Lock()
 	defer s.progressMu.Unlock()
-	if p := s.progress[runID]; p != nil {
+	if p := s.progress[runID]; p != nil && current > p.Current {
 		p.Current = current
 		p.Percentage = float64(current) / float64(p.Total) * 100
 	}
@@ -1123,6 +1431,7 @@ func (s *Service) QueueRun(ctx context.Context, instanceID int, kind models.Back
 	case s.jobs <- job{runID: run.ID, instanceID: instanceID, kind: kind}:
 	}
 
+	s.emitRunActivity(instanceID, run.ID)
 	return run, nil
 }
 
@@ -1248,12 +1557,18 @@ func (s *Service) cleanupRunFiles(ctx context.Context, runIDs []int64) error {
 		itemsToCleanup = append(itemsToCleanup, runItems...)
 
 		if run.ManifestPath != nil {
-			manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
-			filesToDelete = append(filesToDelete, manifestPath)
+			if abs := s.ResolveBackupPath(*run.ManifestPath); abs != "" {
+				filesToDelete = append(filesToDelete, abs)
+			} else {
+				log.Warn().Str("path", *run.ManifestPath).Msg("Skipping manifest with unresolvable path during cleanup")
+			}
 		}
 		if run.ArchivePath != nil {
-			archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
-			filesToDelete = append(filesToDelete, archivePath)
+			if abs := s.ResolveBackupPath(*run.ArchivePath); abs != "" {
+				filesToDelete = append(filesToDelete, abs)
+			} else {
+				log.Warn().Str("path", *run.ArchivePath).Msg("Skipping archive with unresolvable path during cleanup")
+			}
 		}
 	}
 
@@ -1314,12 +1629,18 @@ func (s *Service) DeleteRun(ctx context.Context, runID int64) error {
 
 	var filesToDelete []string
 	if run.ManifestPath != nil {
-		manifestPath := filepath.Join(s.cfg.DataDir, *run.ManifestPath)
-		filesToDelete = append(filesToDelete, manifestPath)
+		if abs := s.ResolveBackupPath(*run.ManifestPath); abs != "" {
+			filesToDelete = append(filesToDelete, abs)
+		} else {
+			log.Warn().Str("path", *run.ManifestPath).Msg("Skipping manifest with unresolvable path during delete")
+		}
 	}
 	if run.ArchivePath != nil {
-		archivePath := filepath.Join(s.cfg.DataDir, *run.ArchivePath)
-		filesToDelete = append(filesToDelete, archivePath)
+		if abs := s.ResolveBackupPath(*run.ArchivePath); abs != "" {
+			filesToDelete = append(filesToDelete, abs)
+		} else {
+			log.Warn().Str("path", *run.ArchivePath).Msg("Skipping archive with unresolvable path during delete")
+		}
 	}
 
 	s.deleteFilesParallel(ctx, filesToDelete)
@@ -1398,6 +1719,9 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 		if item.TorrentBlobPath != nil {
 			entry.TorrentBlob = *item.TorrentBlobPath
 		}
+		if item.SavePath != nil {
+			entry.SavePath = *item.SavePath
+		}
 		manifest.Items = append(manifest.Items, entry)
 	}
 
@@ -1409,15 +1733,15 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 // The caller is responsible for cleaning up the temp files after this returns.
 func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, manifestData []byte, requestedBy string, torrentPaths map[string]string) (*models.BackupRun, error) {
 	// Use local variable to avoid mutating shared config (thread-safety)
-	dataDir := s.cfg.DataDir
+	rootDir := s.root
 
-	// Normalize DataDir for Windows Git Bash paths
-	if runtime.GOOS == "windows" && strings.HasPrefix(dataDir, "/c/") {
-		dataDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(dataDir, "/c"), "/", "\\")
-		log.Info().Str("normalizedDataDir", dataDir).Msg("Normalized DataDir for Windows")
+	// Normalize the backup root for Windows Git Bash paths
+	if runtime.GOOS == "windows" && strings.HasPrefix(rootDir, "/c/") {
+		rootDir = "C:" + strings.ReplaceAll(strings.TrimPrefix(rootDir, "/c"), "/", "\\")
+		log.Info().Str("normalizedBackupDir", rootDir).Msg("Normalized backup directory for Windows")
 	}
 
-	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("torrentPaths", len(torrentPaths)).Str("dataDir", dataDir).Msg("Starting manifest import from dir")
+	log.Info().Int("instanceID", instanceID).Str("requestedBy", requestedBy).Int("dataSize", len(manifestData)).Int("torrentPaths", len(torrentPaths)).Str("backupDir", rootDir).Msg("Starting manifest import from dir")
 
 	var manifest Manifest
 	if err := json.Unmarshal(manifestData, &manifest); err != nil {
@@ -1449,6 +1773,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 	}
 
 	log.Info().Int64("runID", run.ID).Msg("Backup run created successfully")
+	s.emitRunActivity(instanceID, run.ID)
 
 	// Convert manifest items to backup items
 	items := make([]models.BackupItem, 0, len(manifest.Items))
@@ -1498,23 +1823,29 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 			backupItem.Tags = &tagsStr
 		}
 
+		if savePath := strings.TrimSpace(item.SavePath); savePath != "" {
+			backupItem.SavePath = &savePath
+		}
+
 		if item.TorrentBlob != "" {
 			// Validate blob path to prevent directory traversal
-			rel := filepath.Clean(item.TorrentBlob)
-			if filepath.IsAbs(rel) || strings.HasPrefix(rel, "..") {
+			slashRel := backupRelPath(item.TorrentBlob)
+			if slashRel == "" {
 				log.Warn().Str("hash", item.Hash).Str("blob", item.TorrentBlob).Msg("Ignoring unsafe TorrentBlob path from manifest")
 				items = append(items, backupItem)
 				totalBytes += item.SizeBytes
 				continue
 			}
 
-			backupItem.TorrentBlobPath = &rel
-			absPath := filepath.Join(dataDir, rel)
+			stored := path.Join("backups", slashRel)
+			backupItem.TorrentBlobPath = &stored
+			rel := filepath.FromSlash(slashRel)
+			absPath := filepath.Join(rootDir, rel)
 
 			// Check if torrent file path was provided from temp directory
 			if torrentPaths != nil && item.ArchivePath != "" {
 				if tempPath, ok := torrentPaths[item.ArchivePath]; ok {
-					if err := s.copyTorrentFromTemp(tempPath, absPath); err == nil {
+					if err := s.copyTorrentFromTemp(tempPath, rootDir, rel); err == nil {
 						if info, statErr := os.Stat(absPath); statErr == nil {
 							totalTorrentFileBytes += info.Size()
 						}
@@ -1529,7 +1860,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 			}
 
 			// Mark for background download from qBittorrent
-			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, absPath: absPath})
+			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, relPath: rel, absPath: absPath})
 		}
 
 		items = append(items, backupItem)
@@ -1565,7 +1896,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		s.progressMu.Unlock()
 		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
 		s.wg.Go(func() {
-			s.downloadMissingTorrents(run.ID, instanceID, missing)
+			s.downloadMissingTorrents(run.ID, instanceID, rootDir, missing)
 		})
 	} else {
 		// No missing torrents, mark as completed immediately
@@ -1579,6 +1910,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		}); err != nil {
 			log.Warn().Err(err).Int64("runID", run.ID).Msg("Failed to mark import run as completed")
 		}
+		s.emitRunActivity(instanceID, run.ID)
 	}
 
 	// Update the run with total bytes and torrent count
@@ -1599,58 +1931,31 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 	return run, nil
 }
 
-// copyTorrentFromTemp copies a torrent from temp file to final blob cache location.
-func (s *Service) copyTorrentFromTemp(srcPath, destPath string) error {
-	srcFile, err := os.Open(srcPath)
+// copyTorrentFromTemp validates a torrent from the import temp dir and caches
+// it at the final blob location through the same atomic write as live exports.
+func (s *Service) copyTorrentFromTemp(srcPath, rootDir, relPath string) error {
+	data, err := os.ReadFile(srcPath)
 	if err != nil {
-		return fmt.Errorf("open temp file: %w", err)
+		return fmt.Errorf("read temp file: %w", err)
 	}
-	defer srcFile.Close()
-
-	// Check minimum file size (valid torrents are at least ~50 bytes)
-	info, err := srcFile.Stat()
-	if err != nil {
-		return fmt.Errorf("stat temp file: %w", err)
+	// Valid torrents are at least ~50 bytes and start with 'd' (bencoded dict).
+	if len(data) < 50 {
+		return fmt.Errorf("invalid torrent data: too small (%d bytes)", len(data))
 	}
-	if info.Size() < 50 {
-		return fmt.Errorf("invalid torrent data: too small (%d bytes)", info.Size())
-	}
-
-	// Validate torrent starts with 'd' (bencoded dict)
-	header := make([]byte, 1)
-	if _, err := srcFile.Read(header); err != nil {
-		return fmt.Errorf("read header: %w", err)
-	}
-	if header[0] != 'd' {
+	if data[0] != 'd' {
 		return fmt.Errorf("invalid torrent data: not a bencoded dict")
 	}
-	if _, err := srcFile.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
 
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return fmt.Errorf("create dir: %w", err)
-	}
-
-	destFile, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("create dest: %w", err)
-	}
-	defer destFile.Close()
-
-	if _, err := io.Copy(destFile, srcFile); err != nil {
-		os.Remove(destPath)
-		return fmt.Errorf("copy: %w", err)
-	}
-
-	return nil
+	return cacheTorrentBlob(rootDir, relPath, data)
 }
 
-// downloadMissingTorrents downloads torrent blobs in the background for imported manifests
-func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing []missingTorrent) {
+// downloadMissingTorrents downloads torrent blobs in the background for
+// imported manifests. rootDir is the import's normalized backup root, the
+// same root missingTorrent.absPath was built from.
+func (s *Service) downloadMissingTorrents(runID int64, instanceID int, rootDir string, missing []missingTorrent) {
 	if s.reader == nil {
 		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
-		s.markImportComplete(runID)
+		s.markImportComplete(instanceID, runID)
 		return
 	}
 
@@ -1665,7 +1970,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 			select {
 			case <-s.ctx.Done():
 				log.Info().Int64("runID", runID).Int("completed", successCount).Int("total", total).Msg("Background download cancelled due to shutdown")
-				s.markImportComplete(runID)
+				s.markImportComplete(instanceID, runID)
 				return
 			default:
 			}
@@ -1687,13 +1992,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 			ctx = context.Background()
 		}
 		if data, _, _, err := s.reader.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
-			// Ensure directory exists
-			if err := os.MkdirAll(filepath.Dir(mt.absPath), 0o755); err != nil {
-				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob")
-				s.updateProgress(runID, i+1)
-				continue
-			}
-			if err := os.WriteFile(mt.absPath, data, 0o644); err == nil {
+			if err := cacheTorrentBlob(rootDir, mt.relPath, data); err == nil {
 				log.Trace().Int("downloaded", successCount+1).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Successfully cached missing torrent blob")
 				totalTorrentBytes += int64(len(data))
 				successCount++
@@ -1761,11 +2060,11 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		log.Info().Int64("runID", runID).Int64("totalBytes", totalTorrentBytes).Msg("Updated run metadata with torrent file sizes")
 	}
 
-	s.markImportComplete(runID)
+	s.markImportComplete(instanceID, runID)
 }
 
 // markImportComplete marks an import run as completed and cleans up progress
-func (s *Service) markImportComplete(runID int64) {
+func (s *Service) markImportComplete(instanceID int, runID int64) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
@@ -1784,11 +2083,36 @@ func (s *Service) markImportComplete(runID int64) {
 	s.progressMu.Lock()
 	delete(s.progress, runID)
 	s.progressMu.Unlock()
+
+	// Notify connected clients after the progress lock is released.
+	s.emitRunActivity(instanceID, runID)
 }
 
-// DataDir returns the base data directory used for backups.
-func (s *Service) DataDir() string {
-	return s.cfg.DataDir
+// backupRelPath normalizes a stored backup-relative path to a slash form
+// without the legacy "backups/" prefix. Returns "" for unsafe paths:
+// absolute (POSIX or Windows), drive-prefixed, UNC, or containing a ".."
+// path segment.
+func backupRelPath(rel string) string {
+	raw := strings.ReplaceAll(strings.TrimSpace(rel), `\`, "/")
+	if slices.Contains(strings.Split(raw, "/"), "..") {
+		return ""
+	}
+	slash := path.Clean(raw)
+	if slash == "." || strings.HasPrefix(slash, "/") || (len(slash) >= 2 && slash[1] == ':') {
+		return ""
+	}
+	return strings.TrimPrefix(slash, "backups/")
+}
+
+// ResolveBackupPath maps a stored backup-relative path (with or without the
+// legacy "backups/" prefix) to an absolute path under the backup root.
+// Returns "" when no root is configured or the path is unsafe.
+func (s *Service) ResolveBackupPath(rel string) string {
+	slash := backupRelPath(rel)
+	if slash == "" || s.root == "" {
+		return ""
+	}
+	return filepath.Join(s.root, filepath.FromSlash(slash))
 }
 
 type cachedTorrent struct {
@@ -1797,7 +2121,7 @@ type cachedTorrent struct {
 }
 
 func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash string) (*cachedTorrent, error) {
-	if s.cacheDir == "" || strings.TrimSpace(s.cfg.DataDir) == "" {
+	if s.cacheDir == "" {
 		return nil, nil
 	}
 
@@ -1809,23 +2133,20 @@ func (s *Service) loadCachedTorrent(ctx context.Context, instanceID int, hash st
 		return nil, nil
 	}
 
-	absPath := filepath.Join(s.cfg.DataDir, *rel)
+	absPath := s.ResolveBackupPath(*rel)
+	if absPath == "" {
+		return nil, nil
+	}
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			altRel := filepath.ToSlash(filepath.Join("backups", *rel))
-			altAbs := filepath.Join(s.cfg.DataDir, altRel)
-			if altData, altErr := os.ReadFile(altAbs); altErr == nil {
-				return &cachedTorrent{data: altData, relPath: altRel}, nil
-			} else if errors.Is(altErr, os.ErrNotExist) {
-				return nil, nil
-			} else {
-				return nil, altErr
-			}
+			return nil, nil
 		}
 		return nil, err
 	}
 
+	// Keep the stored spelling so rows that share a blob agree on the rel
+	// path; blob refcounts compare these strings.
 	return &cachedTorrent{data: data, relPath: *rel}, nil
 }
 
@@ -1834,63 +2155,66 @@ func (s *Service) cleanupTorrentBlobs(ctx context.Context, items []*models.Backu
 		return
 	}
 
+	// Rows can reference the same blob under the canonical "backups/"-prefixed
+	// spelling or the legacy unprefixed one; both resolve to the same file, so
+	// count remaining references across both spellings before deleting.
 	seen := make(map[string]struct{})
-	var uniqueBlobs []string
+	var uniqueBlobs, lookup []string
 
 	for _, item := range items {
 		if item == nil || item.TorrentBlobPath == nil {
 			continue
 		}
 
-		rel := strings.TrimSpace(*item.TorrentBlobPath)
-		if rel == "" {
+		canon := backupRelPath(*item.TorrentBlobPath)
+		if canon == "" {
 			continue
 		}
-		if _, ok := seen[rel]; ok {
+		if _, ok := seen[canon]; ok {
 			continue
 		}
 
-		seen[rel] = struct{}{}
-		uniqueBlobs = append(uniqueBlobs, rel)
+		seen[canon] = struct{}{}
+		uniqueBlobs = append(uniqueBlobs, canon)
+		lookup = append(lookup, canon, "backups/"+canon)
 	}
 
 	if len(uniqueBlobs) == 0 {
 		return
 	}
 
-	// Batch count references for all blobs
-	refCounts, err := s.store.CountBlobReferencesBatch(ctx, uniqueBlobs)
+	// Item rows are committed only at run end, so a live run's blob reuse is
+	// invisible to the refcount, and blobs are content-addressed and shared
+	// across instances. Defer to the startup sweep while any run is active.
+	if active, err := s.store.FindIncompleteRuns(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to check for active backup runs; skipping blob cleanup")
+		return
+	} else if len(active) > 0 {
+		log.Debug().Int("activeRuns", len(active)).Msg("Backup run in progress; deferring blob cleanup to the startup sweep")
+		return
+	}
+
+	refCounts, err := s.store.CountBlobReferencesBatch(ctx, lookup)
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to count torrent blob references")
-		// Fall back to individual counts if batch fails
-		refCounts = make(map[string]int)
-		for _, blob := range uniqueBlobs {
-			count, err := s.store.CountBlobReferences(ctx, blob)
-			if err != nil {
-				log.Warn().Err(err).Str("blob", blob).Msg("Failed to count torrent blob references")
-				continue
-			}
-			refCounts[blob] = count
-		}
+		// Unknown counts must keep the blob: deleting on error can lose a file
+		// another run still references. Startup's cleanupOrphanedBlobs sweeps
+		// anything truly unreferenced later.
+		log.Warn().Err(err).Msg("Failed to count torrent blob references; skipping blob cleanup")
+		return
 	}
 
 	var blobsToDelete []string
 
-	for _, rel := range uniqueBlobs {
-		count, exists := refCounts[rel]
-		if !exists {
-			count = 0 // If not in map, assume 0 references
-		}
-		if count > 0 {
+	for _, canon := range uniqueBlobs {
+		if refCounts[canon]+refCounts["backups/"+canon] > 0 {
 			continue
 		}
 
-		if s.cfg.DataDir == "" {
-			log.Warn().Str("blob", rel).Msg("Cannot cleanup torrent blob without data directory")
+		abs := s.ResolveBackupPath(canon)
+		if abs == "" {
+			log.Warn().Str("blob", canon).Msg("Cannot cleanup torrent blob without backup directory")
 			continue
 		}
-
-		abs := filepath.Join(s.cfg.DataDir, rel)
 		blobsToDelete = append(blobsToDelete, abs)
 	}
 

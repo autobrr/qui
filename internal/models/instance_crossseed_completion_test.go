@@ -5,7 +5,6 @@ package models_test
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,19 +12,13 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func setupCompletionTestDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "completion.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	return db
+	return testdb.NewMigratedSQLite(t, "completion")
 }
 
 func insertTestInstance(t *testing.T, db *database.DB, name string) int {

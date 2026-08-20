@@ -29,6 +29,7 @@ type BackupSettings struct {
 	KeepMonthly       int       `json:"keepMonthly"`
 	IncludeCategories bool      `json:"includeCategories"`
 	IncludeTags       bool      `json:"includeTags"`
+	IncludeSavePaths  bool      `json:"includeSavePaths"`
 	CustomPath        *string   `json:"customPath,omitempty"`
 	CreatedAt         time.Time `json:"createdAt"`
 	UpdatedAt         time.Time `json:"updatedAt"`
@@ -48,6 +49,7 @@ func DefaultBackupSettings(instanceID int) *BackupSettings {
 		KeepMonthly:       12,
 		IncludeCategories: true,
 		IncludeTags:       true,
+		IncludeSavePaths:  true,
 		CustomPath:        nil,
 		CreatedAt:         time.Now().UTC(),
 		UpdatedAt:         time.Now().UTC(),
@@ -107,6 +109,7 @@ type BackupItem struct {
 	InfoHashV2      *string   `json:"infohashV2,omitempty"`
 	Tags            *string   `json:"tags,omitempty"`
 	TorrentBlobPath *string   `json:"torrentBlobPath,omitempty"`
+	SavePath        *string   `json:"savePath,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
@@ -126,7 +129,7 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 	query := `
         SELECT instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
                keep_hourly, keep_daily, keep_weekly, keep_monthly,
-               include_categories, include_tags, custom_path, created_at, updated_at
+               include_categories, include_tags, include_save_paths, custom_path, created_at, updated_at
         FROM instance_backup_settings
         WHERE instance_id = ?
     `
@@ -138,7 +141,7 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 	var createdAt sql.NullTime
 	var updatedAt sql.NullTime
 	var enabled, hourlyEnabled, dailyEnabled, weeklyEnabled, monthlyEnabled int
-	var includeCategories, includeTags int
+	var includeCategories, includeTags, includeSavePaths int
 
 	err := row.Scan(
 		&settings.InstanceID,
@@ -153,6 +156,7 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 		&settings.KeepMonthly,
 		&includeCategories,
 		&includeTags,
+		&includeSavePaths,
 		&customPath,
 		&createdAt,
 		&updatedAt,
@@ -181,6 +185,7 @@ func (s *BackupStore) GetSettings(ctx context.Context, instanceID int) (*BackupS
 	settings.MonthlyEnabled = SQLiteIntToBool(monthlyEnabled)
 	settings.IncludeCategories = SQLiteIntToBool(includeCategories)
 	settings.IncludeTags = SQLiteIntToBool(includeTags)
+	settings.IncludeSavePaths = SQLiteIntToBool(includeSavePaths)
 
 	return &settings, nil
 }
@@ -200,8 +205,8 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
         INSERT INTO instance_backup_settings (
             instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
             keep_hourly, keep_daily, keep_weekly, keep_monthly,
-            include_categories, include_tags, custom_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            include_categories, include_tags, include_save_paths, custom_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(instance_id) DO UPDATE SET
             enabled = excluded.enabled,
             hourly_enabled = excluded.hourly_enabled,
@@ -214,6 +219,7 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
             keep_monthly = excluded.keep_monthly,
             include_categories = excluded.include_categories,
             include_tags = excluded.include_tags,
+            include_save_paths = excluded.include_save_paths,
             custom_path = excluded.custom_path
     `
 
@@ -232,6 +238,7 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 		maxInt(settings.KeepMonthly, 0),
 		BoolToSQLite(settings.IncludeCategories),
 		BoolToSQLite(settings.IncludeTags),
+		BoolToSQLite(settings.IncludeSavePaths),
 		settings.CustomPath,
 	)
 
@@ -842,15 +849,18 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 
 	// Batch insert items with larger chunks for better performance
 	// SQLite SQLITE_MAX_VARIABLE_NUMBER is typically 32766 on modern systems
-	// but default is 999. Use 90 items * 10 params = 900 to stay safe
+	// but default is 999. Use 90 items * 11 params = 990 to stay safe
 	const chunkSize = 90
+	const paramsPerItem = 11
 
-	// Pre-build the query template for full chunks to avoid repeated string building in hot path
+	// Pre-build the query template for full chunks to avoid repeated string building in hot path.
+	// save_path is a plain TEXT column (not interned): cross-seed paths are unique
+	// per torrent and would only bloat string_pool, so it is written verbatim.
 	queryTemplate := `INSERT INTO instance_backup_items (
 		run_id, torrent_hash_id, name_id, category_id, size_bytes,
-		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id
+		archive_rel_path_id, infohash_v1_id, infohash_v2_id, tags_id, torrent_blob_path_id, save_path
 	) VALUES %s`
-	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, chunkSize)
+	fullQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, paramsPerItem, chunkSize)
 
 	for i := 0; i < len(items); i += chunkSize {
 		end := min(i+chunkSize, len(items))
@@ -859,10 +869,10 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 		// Use pre-built query for full chunks, build new one only for smaller final chunk
 		query := fullQuery
 		if len(chunk) < chunkSize {
-			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, 10, len(chunk))
+			query = dbinterface.BuildQueryWithPlaceholders(queryTemplate, paramsPerItem, len(chunk))
 		}
 
-		args := make([]any, 0, len(chunk)*10)
+		args := make([]any, 0, len(chunk)*paramsPerItem)
 		for _, item := range chunk {
 			// Get IDs from the stringToID map for required fields
 			torrentHashID := stringToID[item.TorrentHash]
@@ -879,6 +889,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 				getID(item.InfoHashV2),
 				getID(item.Tags),
 				getID(item.TorrentBlobPath),
+				item.SavePath,
 			)
 		}
 
@@ -898,7 +909,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 	}
 
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
+		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id = ?
 		ORDER BY %s
@@ -918,6 +929,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		var infohashV2 sql.NullString
 		var tags sql.NullString
 		var blobPath sql.NullString
+		var savePath sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.RunID,
@@ -930,6 +942,7 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 			&infohashV2,
 			&tags,
 			&blobPath,
+			&savePath,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -951,6 +964,9 @@ func (s *BackupStore) ListItems(ctx context.Context, runID int64) ([]*BackupItem
 		}
 		if blobPath.Valid {
 			item.TorrentBlobPath = &blobPath.String
+		}
+		if savePath.Valid {
+			item.SavePath = &savePath.String
 		}
 		items = append(items, &item)
 	}
@@ -998,7 +1014,7 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 	}
 
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
+		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id IN `+buildInPlaceholders(len(runIDs))+`
 		ORDER BY run_id, %s
@@ -1018,6 +1034,7 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 		var infohashV2 sql.NullString
 		var tags sql.NullString
 		var blobPath sql.NullString
+		var savePath sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.RunID,
@@ -1030,6 +1047,7 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 			&infohashV2,
 			&tags,
 			&blobPath,
+			&savePath,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -1052,6 +1070,9 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 		if blobPath.Valid {
 			item.TorrentBlobPath = &blobPath.String
 		}
+		if savePath.Valid {
+			item.SavePath = &savePath.String
+		}
 		items = append(items, &item)
 	}
 
@@ -1064,7 +1085,7 @@ func (s *BackupStore) listItemsForRunsChunk(ctx context.Context, runIDs []int64)
 
 func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash string) (*BackupItem, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, created_at
+		SELECT id, run_id, torrent_hash, name, category, size_bytes, archive_rel_path, infohash_v1, infohash_v2, tags, torrent_blob_path, save_path, created_at
 		FROM instance_backup_items_view
 		WHERE run_id = ? AND torrent_hash = ?
 		LIMIT 1
@@ -1077,6 +1098,7 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 	var infohashV2 sql.NullString
 	var tags sql.NullString
 	var blobPath sql.NullString
+	var savePath sql.NullString
 
 	if err := row.Scan(
 		&item.ID,
@@ -1090,6 +1112,7 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 		&infohashV2,
 		&tags,
 		&blobPath,
+		&savePath,
 		&item.CreatedAt,
 	); err != nil {
 		return nil, err
@@ -1112,6 +1135,9 @@ func (s *BackupStore) GetItemByHash(ctx context.Context, runID int64, hash strin
 	}
 	if blobPath.Valid {
 		item.TorrentBlobPath = &blobPath.String
+	}
+	if savePath.Valid {
+		item.SavePath = &savePath.String
 	}
 
 	return &item, nil
@@ -1149,26 +1175,33 @@ func (s *BackupStore) FindCachedTorrentBlob(ctx context.Context, instanceID int,
 	return &trimmed, nil
 }
 
-func (s *BackupStore) CountBlobReferences(ctx context.Context, relPath string) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
+// ListTorrentBlobPaths returns every distinct blob path referenced by any
+// backup item across all runs and instances.
+func (s *BackupStore) ListTorrentBlobPaths(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT torrent_blob_path
 		FROM instance_backup_items_view
-		WHERE torrent_blob_path = ?
-	`, relPath).Scan(&count)
-
+		WHERE torrent_blob_path IS NOT NULL
+	`)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
+	defer rows.Close()
 
-	return count, nil
+	var paths []string
+	for rows.Next() {
+		var path sql.NullString
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		if trimmed := strings.TrimSpace(path.String); path.Valid && trimmed != "" {
+			paths = append(paths, trimmed)
+		}
+	}
+	return paths, rows.Err()
 }
 
 func (s *BackupStore) CountBlobReferencesBatch(ctx context.Context, relPaths []string) (map[string]int, error) {
-	return s.countBlobReferencesBatchChunk(ctx, relPaths)
-}
-
-func (s *BackupStore) countBlobReferencesBatchChunk(ctx context.Context, relPaths []string) (map[string]int, error) {
 	if len(relPaths) == 0 {
 		return nil, nil
 	}
@@ -1567,7 +1600,7 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT instance_id, enabled, hourly_enabled, daily_enabled, weekly_enabled, monthly_enabled,
 		       keep_hourly, keep_daily, keep_weekly, keep_monthly,
-		       include_categories, include_tags, custom_path, created_at, updated_at
+		       include_categories, include_tags, include_save_paths, custom_path, created_at, updated_at
 		FROM instance_backup_settings
 		WHERE enabled = 1
 	`)
@@ -1584,7 +1617,7 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		var createdAt sql.NullTime
 		var updatedAt sql.NullTime
 		var enabled, hourlyEnabled, dailyEnabled, weeklyEnabled, monthlyEnabled int
-		var includeCategories, includeTags int
+		var includeCategories, includeTags, includeSavePaths int
 
 		if err := rows.Scan(
 			&s.InstanceID,
@@ -1599,6 +1632,7 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 			&s.KeepMonthly,
 			&includeCategories,
 			&includeTags,
+			&includeSavePaths,
 			&customPath,
 			&createdAt,
 			&updatedAt,
@@ -1622,6 +1656,7 @@ func (s *BackupStore) ListEnabledSettings(ctx context.Context) ([]*BackupSetting
 		s.MonthlyEnabled = SQLiteIntToBool(monthlyEnabled)
 		s.IncludeCategories = SQLiteIntToBool(includeCategories)
 		s.IncludeTags = SQLiteIntToBool(includeTags)
+		s.IncludeSavePaths = SQLiteIntToBool(includeSavePaths)
 
 		settings = append(settings, &s)
 	}
@@ -1706,128 +1741,11 @@ func deleteRunsOlderThanQuery(dialect string) string {
     `
 }
 
-func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) error {
-	if len(runIDs) == 0 {
-		return nil
-	}
-
-	// Process in chunks to avoid hitting SQLite parameter limits
-	const chunkSize = 900
-
-	for i := 0; i < len(runIDs); i += chunkSize {
-		end := min(i+chunkSize, len(runIDs))
-		chunk := runIDs[i:end]
-
-		if err := s.deleteItemsByRunIDsChunk(ctx, chunk); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *BackupStore) deleteItemsByRunIDsChunk(ctx context.Context, runIDs []int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := "DELETE FROM instance_backup_items WHERE run_id IN " + buildInPlaceholders(len(runIDs))
-
-	args := make([]any, len(runIDs))
-	for i, id := range runIDs {
-		args[i] = id
-	}
-
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
 func buildInPlaceholders(count int) string {
 	if count <= 0 {
 		return "()"
 	}
 	return dbinterface.BuildQueryWithPlaceholders("%s", count, 1)
-}
-
-func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error {
-	if len(runIDs) == 0 {
-		return nil
-	}
-
-	// Process in chunks to avoid hitting SQLite parameter limits
-	const chunkSize = 900
-
-	for i := 0; i < len(runIDs); i += chunkSize {
-		end := min(i+chunkSize, len(runIDs))
-		chunk := runIDs[i:end]
-
-		if err := s.deleteRunsByIDsChunk(ctx, chunk); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *BackupStore) deleteRunsByIDsChunk(ctx context.Context, runIDs []int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := "DELETE FROM instance_backup_runs WHERE id IN " + buildInPlaceholders(len(runIDs))
-	args := make([]any, len(runIDs))
-	for i, id := range runIDs {
-		args[i] = id
-	}
-
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
-func (s *BackupStore) CountRunsByKind(ctx context.Context, instanceID int, kind BackupRunKind) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-        SELECT COUNT(*)
-        FROM instance_backup_runs_view
-        WHERE instance_id = ? AND kind = ?
-    `, instanceID, string(kind)).Scan(&count)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
-}
-
-func (s *BackupStore) LatestRunByKind(ctx context.Context, instanceID int, kind BackupRunKind) (*BackupRun, error) {
-	runs, err := s.ListRunsByKind(ctx, instanceID, kind, 1)
-	if err != nil {
-		return nil, err
-	}
-	if len(runs) == 0 {
-		return nil, sql.ErrNoRows
-	}
-	return runs[0], nil
 }
 
 func (s *BackupStore) CleanupRun(ctx context.Context, runID int64) error {
@@ -1881,38 +1799,6 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 	}
 
 	return nil
-}
-
-// RemoveFailedRunsBefore deletes failed runs older than the provided cutoff and returns the number of rows affected.
-func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	// Start a transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern the status string
-	status := string(BackupRunStatusFailed)
-	ids, err := dbinterface.InternStringNullable(ctx, tx, &status)
-	if err != nil {
-		return 0, fmt.Errorf("failed to intern status: %w", err)
-	}
-
-	// Execute DELETE with interned ID
-	res, err := tx.ExecContext(ctx, `
-		DELETE FROM instance_backup_runs
-		WHERE status_id = ? AND requested_at < ?
-	`, ids[0], cutoff)
-	if err != nil {
-		return 0, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return res.RowsAffected()
 }
 
 // FindIncompleteRuns returns all backup runs that are in pending or running status.

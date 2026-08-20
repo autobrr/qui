@@ -12,6 +12,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -59,6 +61,8 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		},
 	}
 
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
+
 	service := &Service{
 		syncManager:      sync,
 		instanceStore:    instanceStore,
@@ -68,6 +72,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.SetBackendPool(pool)
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
@@ -137,6 +142,8 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		},
 	}
 
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
+
 	service := &Service{
 		syncManager:      sync,
 		instanceStore:    instanceStore,
@@ -146,6 +153,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.SetBackendPool(pool)
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
@@ -186,16 +194,16 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 	require.NoError(t, os.MkdirAll(downloadsDir, 0o755))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(downloadsDir, "Movie.2024.1080p.WEB-DL-GROUP.mkv"),
-		[]byte("movie"),
+		make([]byte, 1000),
 		0o600,
 	))
 
 	candidateFiles := qbt.TorrentFiles{
-		{Name: "Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 5},
+		{Name: "Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 1000},
 	}
 	sourceFiles := qbt.TorrentFiles{
-		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 5},
-		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Sample/sample.mkv", Size: 1},
+		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 1000},
+		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Sample/sample.mkv", Size: 10},
 	}
 
 	matchedTorrent := qbt.Torrent{
@@ -226,6 +234,8 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		},
 	}
 
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
+
 	service := &Service{
 		syncManager:      sync,
 		instanceStore:    instanceStore,
@@ -235,6 +245,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.SetBackendPool(pool)
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,
@@ -306,6 +317,8 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 		},
 	}
 
+	pool := fsops.NewPool(instanceStore, local.NewBackend())
+
 	service := &Service{
 		syncManager:      sync,
 		instanceStore:    instanceStore,
@@ -315,6 +328,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessReflinkModeBypas
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.SetBackendPool(pool)
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,

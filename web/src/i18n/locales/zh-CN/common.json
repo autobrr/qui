@@ -1,0 +1,198 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "search": "搜索",
+    "crossSeed": "辅种",
+    "automations": "自动化",
+    "backups": "备份",
+    "rss": "RSS",
+    "settings": "设置",
+    "logs": "日志",
+    "instances": "实例",
+    "generalSettings": "常规设置",
+    "manageInstances": "管理实例",
+    "appearance": "外观",
+    "instanceBackups": "实例备份"
+  },
+  "sidebar": {
+    "instances": "实例",
+    "allInstancesDisabled": "所有实例均已禁用",
+    "noInstancesConfigured": "尚未配置实例",
+    "logout": "退出登录",
+    "version": "版本 {{version}}",
+    "language": "语言",
+    "viewOnGitHub": "在 GitHub 上查看",
+    "rssRunning": "RSS 运行中",
+    "rssEnabled": "RSS 已启用",
+    "scanRunning": "扫描运行中",
+    "showSidebar": "显示侧边栏",
+    "hideSidebar": "隐藏侧边栏"
+  },
+  "header": {
+    "currentInstance": "当前实例：{{name}}。点击切换实例。",
+    "connected": "已连接",
+    "disconnected": "已断开",
+    "noActiveInstances": "没有活动的实例",
+    "showFilters": "显示筛选器",
+    "hideFilters": "隐藏筛选器",
+    "addTorrent": "添加种子",
+    "createTorrent": "创建种子",
+    "torrentCreationTasks": "种子创建任务",
+    "instanceSettings": "实例设置",
+    "addToInstance": "添加到实例",
+    "createForInstance": "为实例创建",
+    "tasksForInstance": "实例任务",
+    "settingsForInstance": "实例设置",
+    "clearSearch": "清除搜索",
+    "searchTorrents": "搜索种子... ({{shortcutKey}})",
+    "globPattern": "Glob 模式...",
+    "smartSearchTitle": "智能搜索功能：",
+    "smartSearchGlob": "Glob 模式：",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "模糊匹配：",
+    "smartSearchFuzzyExample": "\"breaking bad\" 可匹配 \"Breaking.Bad\"",
+    "smartSearchDots": "自动处理点号、下划线和方括号",
+    "smartSearchFields": "搜索名称、分类和标签",
+    "smartSearchEnter": "按回车键立即搜索",
+    "smartSearchAuto": "暂停输入 500 毫秒后自动搜索",
+    "torrentCreationTasksTitle": "种子创建任务",
+    "updateAvailable": "有可用更新",
+    "updateVersion": "版本 {{version}}",
+    "rssRunning": "RSS 运行中",
+    "rssEnabled": "RSS 已启用",
+    "scanRunning": "扫描运行中",
+    "allScope": "全部",
+    "unified": "统一视图"
+  },
+  "unifiedScope": {
+    "unified": "统一视图",
+    "collapseScope": "折叠统一视图",
+    "expandScope": "展开统一视图",
+    "allActive": "全部活动 ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "仪表盘",
+    "clients": "客户端",
+    "settings": "设置",
+    "qbittorrentClients": "qBittorrent 客户端",
+    "instances": "实例",
+    "noActiveInstances": "没有活动的实例",
+    "loading": "加载中...",
+    "noActiveClients": "没有活动的客户端",
+    "updateAvailable": "有可用更新",
+    "updateVersion": "版本 {{version}}",
+    "rssRunning": "RSS 运行中",
+    "rssEnabled": "RSS 已启用",
+    "scanRunning": "扫描运行中",
+    "logout": "退出登录",
+    "version": "版本 {{version}}",
+    "viewOnGitHub": "在 GitHub 上查看"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr - GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "取消",
+    "close": "关闭",
+    "create": "创建",
+    "copyPath": "复制路径",
+    "scrollToTop": "回到顶部",
+    "search": "搜索",
+    "select": "选择",
+    "toggle": "切换"
+  },
+  "placeholders": {
+    "search": "搜索...",
+    "selectItems": "选择项目..."
+  },
+  "feedback": {
+    "noResultsFound": "未找到结果。"
+  },
+  "status": {
+    "disabled": "已禁用",
+    "notContacted": "未连接",
+    "working": "工作中",
+    "updating": "更新中",
+    "error": "错误",
+    "unknown": "未知",
+    "trackerError": "Tracker 错误",
+    "unreachable": "无法连接"
+  },
+  "themeToggle": {
+    "changeTheme": "切换主题",
+    "appearance": "外观",
+    "mode": "模式",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "theme": "主题",
+    "premium": "高级",
+    "switchedToMode": "已切换到{{mode}}模式",
+    "switchedToTheme": "已切换到{{theme}}主题",
+    "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
+    "unableToVerifyLicense": "无法验证许可证",
+    "licenseCheckFailed": "许可证检查失败，高级主题切换暂时不可用。",
+    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。",
+    "custom": "自定义"
+  },
+  "updateBanner": {
+    "updateAvailable": "有可用更新",
+    "versionAvailable": "版本 {{version}} 现已可用",
+    "viewRelease": "查看发布",
+    "dismiss": "关闭"
+  },
+  "notFound": {
+    "title": "迷路了？",
+    "subtitle": "看起来你进入了未知区域。",
+    "bugReport": "如果你认为这是一个 bug 而不是无效链接，",
+    "reportTo": "欢迎在我们的",
+    "githubRepository": "GitHub 仓库",
+    "getBackOnTrack": "提交反馈。我们来帮你回到正轨！",
+    "returnToDashboard": "返回仪表盘"
+  },
+  "magnetHandler": {
+    "registerPrompt": "将 qui 注册为磁力链接处理程序",
+    "register": "注册",
+    "dismiss": "关闭",
+    "registrationRequested": "已请求注册磁力链接处理程序",
+    "registrationFailed": "注册磁力链接处理程序失败",
+    "guidance": {
+      "standalone": "请在常规浏览器标签页中打开 qui 进行注册（提示可能出现在地址栏中，PWA 不会显示地址栏）。",
+      "chromium": "Chrome 通常会在地址栏中显示一个小的协议处理图标；如果没有出现，请在 chrome://settings/handlers 中启用协议处理。",
+      "default": "如果浏览器弹出提示，请接受以完成注册。"
+    }
+  },
+  "fieldHelp": {
+    "trigger": "更多信息"
+  },
+  "numberInput": {
+    "unlimited": "无限制",
+    "useUnlimited": "（使用 -1 表示无限制）"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "刚刚",
+    "today": "今天",
+    "yesterday": "昨天",
+    "past": "{{value}}前",
+    "future": "{{value}}后",
+    "units": {
+      "second_other": "{{count}} 秒",
+      "minute_other": "{{count}} 分钟",
+      "hour_other": "{{count}} 小时",
+      "day_other": "{{count}} 天",
+      "week_other": "{{count}} 周",
+      "month_other": "{{count}} 个月",
+      "year_other": "{{count}} 年"
+    }
+  },
+  "support": {
+    "title": "支持 qui",
+    "description": "已经有主题了，还想再出一份力？qui 的一切已经属于你。订阅不会解锁功能，它资助的是开发这些功能所投入的时间。",
+    "perkPrefix": "赞助者可在 Discord 获得",
+    "perkSuffix": "身份组，以及我们永远的感谢。",
+    "yearly": "{{price}} / 年",
+    "monthly": "{{price}} / 月",
+    "notLicense": "高级主题是单独的一次性购买。"
+  }
+}

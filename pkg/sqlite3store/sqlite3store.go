@@ -15,16 +15,6 @@ import (
 
 type OptFunc func(*SQLite3Store)
 
-// WithCleanupInterval sets a custom cleanup interval. The cleanupInterval
-// parameter controls how frequently expired session data is removed by the
-// background cleanup goroutine. Setting it to 0 prevents the cleanup goroutine
-// from running (i.e. expired sessions will not be removed).
-func WithCleanupInterval(interval time.Duration) OptFunc {
-	return func(s *SQLite3Store) {
-		s.cleanupInterval = interval
-	}
-}
-
 // SQLite3Store represents the session store.
 // Despite the package name, queries are portable across SQLite and Postgres.
 type SQLite3Store struct {

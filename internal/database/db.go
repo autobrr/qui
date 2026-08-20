@@ -23,7 +23,9 @@
 //
 // String interning uses the database string_pool table as the source of truth.
 // String operations are handled through dbinterface package functions that work
-// within transactions using INSERT ... ON CONFLICT for deduplication.
+// within transactions, looking up existing IDs first and inserting only missing
+// values (insert-first ON CONFLICT burns Postgres sequence values; see
+// dbinterface.InternStrings).
 //
 // CLEANUP CONCURRENCY PROTECTION:
 //
@@ -552,15 +554,47 @@ func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn, readOnly boo
 	return nil
 }
 
+// secureDatabaseFiles makes the SQLite database and its WAL/SHM sidecars
+// owner-only (0o600) so a content-sharing process umask (see discussion #1704)
+// cannot expose the encrypted credentials and API keys they hold. The main file
+// is created 0o600 before SQLite opens it; SQLite then propagates that mode to
+// the -wal/-shm files it creates. Pre-existing files (e.g. from an older install
+// or a prior crash) are tightened too. On Windows os.Chmod only toggles the
+// read-only bit, but privacy there is governed by ACLs rather than umask.
+func secureDatabaseFiles(databasePath string) error {
+	f, err := os.OpenFile(databasePath, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to create database file %s: %w", databasePath, err)
+	}
+	_ = f.Close()
+
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		p := databasePath + suffix
+		if _, statErr := os.Stat(p); statErr != nil {
+			continue
+		}
+		if err := os.Chmod(p, 0o600); err != nil {
+			return fmt.Errorf("failed to secure database file %s: %w", p, err)
+		}
+	}
+	return nil
+}
+
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
-	// Ensure the directory exists
+	// Ensure the directory exists. Use 0o750 (not other-traversable) like the
+	// config and log dirs: the database holds encrypted credentials and API
+	// keys, so a content-sharing UMASK must not expose it to other users.
 	dir := filepath.Dir(databasePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Database directory ensured: %s", dir)
+
+	if err := secureDatabaseFiles(databasePath); err != nil {
+		return nil, err
+	}
 
 	registerConnectionHook()
 
@@ -1641,9 +1675,11 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 
 	// Temp tables are connection-local on Postgres, so create and use them on the same tx.
+	// BIGINT, not INTEGER: string_pool ids can exceed the int4 range on Postgres
+	// installs whose sequence burned past it (see migration 079).
 	_, err = tx.ExecContext(ctx, `
 		CREATE TEMP TABLE temp_referenced_strings (
-			string_id INTEGER PRIMARY KEY
+			string_id BIGINT PRIMARY KEY
 		)
 	`)
 	if err != nil {
@@ -1705,39 +1741,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 // - Tests should use short-lived databases or manually clean up
 // - Uses the same connection for both reads and writes (no separate reader pool)
 //
-// This differs from production where:
-// - stringPoolCleanupLoop runs automatically every 24 hours
-// - Unused strings are automatically removed
-// - String pool size is bounded
-// - Separate writer connection and reader pool for better concurrency
-//
-// Note: This function is intended for testing only and should not be used in
-// production code. Use New() for production database initialization.
-func NewForTest(conn *sql.DB) *DB {
-	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
-		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
-			if s != nil {
-				_ = s.Close()
-			}
-		})
-
-	stmtsCache := ttlcache.New(stmtOpts)
-
-	db := &DB{
-		writerConn:      conn,
-		readerPool:      conn,       // For tests, use same connection for both
-		writerStmts:     stmtsCache, // For tests, use same cache for both
-		readerStmts:     stmtsCache, // For tests, use same cache for both
-		dialect:         DialectSQLite,
-		serializeWrites: true,
-	}
-
-	// Note: stringPoolCleanupLoop is NOT started for tests
-	// Tests that need cleanup must call CleanupUnusedStrings() explicitly
-
-	return db
-}
-
 // GetStringPoolMetrics returns the current values of string pool cleanup metrics.
 // These metrics track cleanup activity:
 //   - cleanupDeleted: Total number of unused strings deleted since startup

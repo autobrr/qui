@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 )
@@ -24,8 +25,10 @@ type serverStateProvider interface {
 }
 
 type mainDataProvider interface {
-	GetData() *qbt.MainData
-	GetDataUnchecked() *qbt.MainData
+	GetTrackers() map[string][]string
+	GetTrackersUnchecked() map[string][]string
+	GetCategoriesUnchecked() map[string]qbt.Category
+	GetServerStateUnchecked() qbt.ServerState
 }
 
 func (sm *SyncManager) readMainData(ctx context.Context, instanceID int, mode mainDataReadMode) (*Client, *qbt.SyncManager, *qbt.MainData, error) {
@@ -106,18 +109,45 @@ func mainDataServerState(data *qbt.MainData) *qbt.ServerState {
 	return &stateCopy
 }
 
+// mainDataModeForRequest picks the read mode for a list request. Only a zero
+// lastSync means "never synced", and that cold cache still takes the checked
+// read so the first request fills it. A nil tracker map is not the same signal:
+// a synced instance can simply have no trackers.
+func mainDataModeForRequest(skipFreshData bool, lastSync time.Time) mainDataReadMode {
+	if skipFreshData && !lastSync.IsZero() {
+		return mainDataReadCached
+	}
+
+	return mainDataRead
+}
+
+// resolveMainData assembles only the three fields qui reads. GetData and
+// GetDataUnchecked deep-clone the whole torrent map on every call and nothing
+// here reads it; cloning the tracker map instead is free by comparison. A cold
+// cache yields nil fields rather than a nil *MainData, which every consumer
+// already treats the same way.
 func resolveMainData(provider mainDataProvider, mode mainDataReadMode) *qbt.MainData {
 	if provider == nil {
 		return nil
 	}
 
+	var trackers map[string][]string
 	switch mode {
 	case mainDataReadCached, mainDataReadFresh:
-		return provider.GetDataUnchecked()
+		// mainDataReadFresh has already synced, so the cache is current.
+		trackers = provider.GetTrackersUnchecked()
 	case mainDataRead:
-		return provider.GetData()
+		// The checked getter is the one that refreshes a stale cache. Read it
+		// first so the getters below see what it filled in.
+		trackers = provider.GetTrackers()
 	default:
 		return nil
+	}
+
+	return &qbt.MainData{
+		Trackers:    trackers,
+		Categories:  provider.GetCategoriesUnchecked(),
+		ServerState: provider.GetServerStateUnchecked(),
 	}
 }
 

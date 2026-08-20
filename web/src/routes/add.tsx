@@ -15,6 +15,7 @@ import type { InstanceResponse } from "@/types"
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/add")({
 })
 
 function AddTorrentHandler() {
+  const { t } = useTranslation(["common", "torrents"])
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const { magnet: magnetParam, url, instance, expectingFiles: expectingFilesParam } = Route.useSearch()
   const navigate = useNavigate()
@@ -62,10 +64,10 @@ function AddTorrentHandler() {
     if (hasRawParam) {
       hasReceivedPayload.current = true
       clearAddIntent()
-      toast.error("Invalid magnet link")
+      toast.error(t("addRoute.invalidMagnetLink", { ns: "torrents" }))
       navigate({ to: "/" })
     }
-  }, [magnet, magnetParam, navigate, url])
+  }, [magnet, magnetParam, navigate, t, url])
 
   const handleLaunchQueueEvent = useCallback((event: LaunchQueueEvent) => {
     if (event.kind === "payload") {
@@ -75,9 +77,9 @@ function AddTorrentHandler() {
     }
 
     clearAddIntent()
-    toast.error("No valid .torrent files found")
+    toast.error(t("addRoute.noValidTorrentFiles", { ns: "torrents" }))
     navigate({ to: "/" })
-  }, [navigate])
+  }, [navigate, t])
 
   // Handle files from file handler (launchQueue API)
   useEffect(() => {
@@ -107,14 +109,14 @@ function AddTorrentHandler() {
       if (!hasReceivedPayload.current) {
         // Only show error if we explicitly expected files (came from auth redirect)
         if (expectingFiles) {
-          toast.error("Unable to open torrent file. Please try again.")
+          toast.error(t("addRoute.openTorrentFileFailed", { ns: "torrents" }))
         }
         navigate({ to: "/" })
       }
     }, 2000)
 
     return () => clearTimeout(timeout)
-  }, [expectingFiles, isStandalone, magnet, navigate])
+  }, [expectingFiles, isStandalone, magnet, navigate, t])
 
   const handleCancel = useCallback(() => {
     navigate({ to: "/" })
@@ -208,7 +210,7 @@ function AddTorrentHandler() {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Waiting for torrent data...</p>
+        <p className="text-sm text-muted-foreground">{t("addRoute.waitingForTorrentData", { ns: "torrents" })}</p>
       </div>
     )
   }
@@ -224,13 +226,15 @@ interface InstanceSelectorProps {
 }
 
 function InstanceSelector({ instances, onSelect, onCancel }: InstanceSelectorProps) {
+  const { t } = useTranslation(["common", "torrents"])
+
   return (
     <div className="flex h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Select Instance</CardTitle>
+          <CardTitle>{t("addRoute.selectInstance.title", { ns: "torrents" })}</CardTitle>
           <CardDescription>
-            Choose which qBittorrent instance to add this torrent to
+            {t("addRoute.selectInstance.description", { ns: "torrents" })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
@@ -253,7 +257,7 @@ function InstanceSelector({ instances, onSelect, onCancel }: InstanceSelectorPro
             className="w-full"
             onClick={onCancel}
           >
-            Cancel
+            {t("actions.cancel", { ns: "common" })}
           </Button>
         </CardContent>
       </Card>

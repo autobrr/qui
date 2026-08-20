@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/pkg/hardlink"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -32,18 +31,12 @@ func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, er
 // fakeBackend is a minimal Backend for verifying which backend the pool returns.
 type fakeBackend struct{ kind string }
 
-func (f fakeBackend) Stat(context.Context, string) (*FileInfo, error) {
-	return &FileInfo{}, nil
-}
-func (f fakeBackend) StatBatch(context.Context, []string) ([]*FileInfo, []error, error) {
-	return nil, nil, nil
+func (f fakeBackend) Stat(context.Context, string) (*LstatInfo, error) {
+	return &LstatInfo{}, nil
 }
 func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
-func (f fakeBackend) LstatBatch(context.Context, []string) ([]*LstatInfo, []error, error) {
-	return nil, nil, nil
-}
-func (f fakeBackend) ReadDir(context.Context, string, int) ([]DirEntry, bool, error) {
-	return nil, false, nil
+func (f fakeBackend) ReadDir(context.Context, string) ([]DirEntry, error) {
+	return nil, nil
 }
 func (f fakeBackend) WalkDir(context.Context, string, WalkOptions) (<-chan WalkEntry, error) {
 	return nil, nil
@@ -51,9 +44,6 @@ func (f fakeBackend) WalkDir(context.Context, string, WalkOptions) (<-chan WalkE
 func (f fakeBackend) Statfs(context.Context, string) (*StatfsResult, error) { return nil, nil }
 func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, error) {
 	return false, nil
-}
-func (f fakeBackend) FileID(context.Context, string) (hardlink.FileID, uint64, error) {
-	return hardlink.FileID{}, 0, nil
 }
 func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
 func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
@@ -65,14 +55,10 @@ func (f fakeBackend) HardlinkTree(context.Context, *hardlinktree.TreePlan) (*Tre
 func (f fakeBackend) ReflinkTree(context.Context, *hardlinktree.TreePlan) (*TreeCreateResult, error) {
 	return nil, nil
 }
-func (f fakeBackend) RemoveTree(context.Context, *hardlinktree.TreePlan) error { return nil }
+func (f fakeBackend) RemoveTree(context.Context, *TreeCreateResult) error { return nil }
 func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, error) {
 	return false, "", nil
 }
-func (f fakeBackend) Info(context.Context) (*BackendInfo, error) {
-	return &BackendInfo{Kind: f.kind}, nil
-}
-func (f fakeBackend) HealthCheck(context.Context) error { return nil }
 
 func TestPool_LocalAccess(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{
@@ -83,10 +69,7 @@ func TestPool_LocalAccess(t *testing.T) {
 
 	backend, err := pool.GetBackend(context.Background(), 1)
 	require.NoError(t, err)
-
-	info, err := backend.Info(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "local", info.Kind)
+	assert.Equal(t, Backend(local), backend)
 }
 
 func TestPool_NoAccess(t *testing.T) {
@@ -105,14 +88,6 @@ func TestPool_NoAccess(t *testing.T) {
 
 	err = backend.MkdirAll(context.Background(), "/any", 0o755)
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
-
-	err = backend.HealthCheck(context.Background())
-	require.ErrorIs(t, err, ErrNoFilesystemAccess)
-
-	// Info should still work (returns kind="none").
-	info, err := backend.Info(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, "none", info.Kind)
 }
 
 func TestPool_InstanceNotFound(t *testing.T) {
@@ -131,16 +106,10 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 	_, err := b.Stat(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
-	_, _, err = b.StatBatch(ctx, []string{"/x"})
-	require.ErrorIs(t, err, ErrNoFilesystemAccess)
-
 	_, err = b.Lstat(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
-	_, _, err = b.LstatBatch(ctx, []string{"/x"})
-	require.ErrorIs(t, err, ErrNoFilesystemAccess)
-
-	_, _, err = b.ReadDir(ctx, "/x", 0)
+	_, err = b.ReadDir(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.WalkDir(ctx, "/x", WalkOptions{})
@@ -152,12 +121,11 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 	_, err = b.SameFilesystem(ctx, "/x", "/y")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
-	_, _, err = b.FileID(ctx, "/x")
-	require.ErrorIs(t, err, ErrNoFilesystemAccess)
-
 	require.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
 	require.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
-	require.ErrorIs(t, b.RemoveTree(ctx, nil), ErrNoFilesystemAccess)
+	// A nil handle means nothing to remove — safe on every backend.
+	require.NoError(t, b.RemoveTree(ctx, nil))
+	require.ErrorIs(t, b.RemoveTree(ctx, &TreeCreateResult{Files: []string{"/x"}}), ErrNoFilesystemAccess)
 
 	_, err = b.HardlinkTree(ctx, nil)
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
@@ -167,6 +135,4 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 
 	_, _, err = b.SupportsReflink(ctx, "/x")
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
-
-	require.ErrorIs(t, b.HealthCheck(ctx), ErrNoFilesystemAccess)
 }

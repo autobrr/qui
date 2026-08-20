@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { SpreadsheetFormulaBar } from "@/components/spreadsheet/SpreadsheetFormulaBar"
+import { SpreadsheetSheetTabs } from "@/components/spreadsheet/SpreadsheetSheetTabs"
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
-import { GlobalStatusBar, type SelectionInfo } from "@/components/torrents/GlobalStatusBar"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
 import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
@@ -24,10 +25,12 @@ import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedIn
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
+import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { cn } from "@/lib/utils"
-import type { Category, CrossInstanceTorrent, ServerState, Torrent, TorrentCounts } from "@/types"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
 
 interface TorrentsProps {
@@ -39,12 +42,14 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, instanceName, isAllInstancesView = false, search, onSearchChange }: TorrentsProps) {
+  const { t } = useTranslation("torrents")
   const isAllInstances = isAllInstancesView || isAllInstancesScope(instanceId)
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("normal")
   const { clearSelection } = useTorrentSelection()
   const { instances } = useInstances()
+  const spreadsheetDisguise = useSpreadsheetDisguise()
   const [persistedUnifiedFilter] = usePersistedUnifiedInstanceFilter()
   const activeInstanceIds = useMemo(
     () => (instances ?? []).filter(current => current.isActive).map(current => current.id),
@@ -66,30 +71,14 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [instances, instanceId, isAllInstances])
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
-  // Server state for global status bar
-  const [serverState, setServerState] = useState<ServerState | null>(null)
-  const [listenPort, setListenPort] = useState<number | null>(null)
-  const handleServerStateUpdate = useCallback((state: ServerState | null, port?: number | null) => {
-    setServerState(state)
-    setListenPort(port ?? null)
-  }, [])
-
   useTitleBarSpeeds({
     mode: "instance",
     enabled: titleBarSpeedsEnabled && !isAllInstances,
     instanceId,
     instanceName: instance?.name ?? instanceName,
-    foregroundSpeeds: serverState? {
-      dl: serverState.dl_info_speed ?? 0,
-      up: serverState.up_info_speed ?? 0,
-    }: undefined,
+    // Foreground speeds come from the SSE stream inside useTitleBarSpeeds itself,
+    // so no page-level serverState plumbing is needed here.
   })
-
-  // Selection info for global status bar
-  const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null)
-  const handleSelectionInfoUpdate = useCallback((info: SelectionInfo) => {
-    setSelectionInfo(info)
-  }, [])
 
   // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
   const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
@@ -479,7 +468,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
           }}
         >
           <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
+            <SheetTitle className="text-lg font-semibold">{t("filterSidebar.title")}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
             <FilterSidebar
@@ -509,7 +498,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         {/* Use React conditional rendering to avoid duplicate dialogs */}
         {!isMobile && (
           <div className="flex flex-col h-full">
+            {spreadsheetDisguise && <SpreadsheetFormulaBar />}
             <ResizablePanelGroup
+              className="flex-1 min-h-0"
               direction="vertical"
               defaultLayout={defaultLayout}
               onLayoutChange={onLayoutChange}
@@ -529,8 +520,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                     onAddTorrentModalChange={handleAddTorrentModalChange}
                     onFilteredDataUpdate={handleFilteredDataUpdate}
                     onFilterChange={setFilters}
-                    onServerStateUpdate={handleServerStateUpdate}
-                    onSelectionInfoUpdate={handleSelectionInfoUpdate}
                   />
                 </div>
               </ResizablePanel>
@@ -560,7 +549,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                       }
                     }}
                   >
-                    <div className="h-full border-t bg-background">
+                    {/* Marker so the table's arrow-key navigation leaves focus inside the panel alone. */}
+                    <div className="h-full border-t bg-background" data-torrent-details-panel>
                       <TorrentDetailsPanel
                         instanceId={selectedTorrentInstanceId}
                         torrent={selectedTorrent}
@@ -575,14 +565,8 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                 </>
               )}
             </ResizablePanelGroup>
-            {/* Global status bar - at bottom of desktop layout */}
-            <GlobalStatusBar
-              instanceId={instanceId}
-              serverState={serverState}
-              instance={instance}
-              listenPort={listenPort}
-              selectionInfo={selectionInfo}
-            />
+            {spreadsheetDisguise && <SpreadsheetSheetTabs currentInstanceId={instanceId} />}
+            <div id="qui-status-bar-container" className="flex-shrink-0 bg-background" />
           </div>
         )}
 
@@ -622,7 +606,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             <SheetHeader className="sr-only">
               <VisuallyHidden>
                 <SheetTitle>
-                  {selectedTorrent ? `Torrent Details: ${selectedTorrent.name}` : "Torrent Details"}
+                  {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
                 </SheetTitle>
               </VisuallyHidden>
             </SheetHeader>
@@ -654,7 +638,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
           <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <DialogTitle>Torrent Creation Tasks</DialogTitle>
+              <DialogTitle>{t("creationTasks.dialogTitle")}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-auto">
               <TorrentCreationTasks instanceId={instanceId} />

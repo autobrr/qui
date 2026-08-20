@@ -73,20 +73,3 @@ func (lc *Checker) validateLicense(ctx context.Context) {
 		lc.graceUntil = time.Time{}
 	}
 }
-
-func (lc *Checker) IsValid() bool {
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-
-	// If license is valid, always allow
-	if lc.isValid.Load() {
-		return true
-	}
-
-	// If license is invalid but we're in grace period, allow
-	if !lc.graceUntil.IsZero() && time.Now().Before(lc.graceUntil) {
-		return true
-	}
-
-	return false
-}

@@ -21,12 +21,14 @@ import (
 
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/api/sse"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -67,6 +69,7 @@ type Server struct {
 	updateService                    *update.Service
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
+	streamManager                    *sse.StreamManager
 	filesManager                     *filesmanager.Service
 	crossSeedService                 *crossseed.Service
 	jackettService                   *jackett.Service
@@ -76,6 +79,7 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	filterViewStore                  *models.FilterViewStore
 	logExclusionsStore               *models.LogExclusionsStore
 	notificationTargetStore          *models.NotificationTargetStore
 	notificationService              *notifications.Service
@@ -116,6 +120,7 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	FilterViewStore                  *models.FilterViewStore
 	LogExclusionsStore               *models.LogExclusionsStore
 	NotificationTargetStore          *models.NotificationTargetStore
 	NotificationService              *notifications.Service
@@ -126,15 +131,30 @@ type Dependencies struct {
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	ActivityHub                      *activity.Hub
 }
 
 func NewServer(deps *Dependencies) *Server {
+	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.InstanceStore)
+	if deps.ClientPool != nil {
+		deps.ClientPool.SetSyncEventSink(streamManager)
+	}
+	if deps.ActivityHub != nil {
+		streamManager.SetActivityHub(deps.ActivityHub)
+	}
+
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
 			ReadTimeout:       60 * time.Second,
-			WriteTimeout:      120 * time.Second,
-			IdleTimeout:       180 * time.Second,
+			// No WriteTimeout: it is an absolute deadline on the whole response,
+			// so it aborts large file downloads (DownloadTorrentContentFile) and
+			// long-lived SSE streams once they run past a fixed bound, regardless
+			// of any reverse proxy. ReadHeaderTimeout/ReadTimeout/IdleTimeout still
+			// bound slow-header and idle connections; on a single-user self-hosted
+			// instance the response-side slow-client protection is not worth the cost.
+			WriteTimeout: 0,
+			IdleTimeout:  180 * time.Second,
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
@@ -154,6 +174,7 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:                    deps.UpdateService,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
+		streamManager:                    streamManager,
 		filesManager:                     deps.FilesManager,
 		crossSeedService:                 deps.CrossSeedService,
 		reannounceService:                deps.ReannounceService,
@@ -164,6 +185,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		filterViewStore:                  deps.FilterViewStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
 		notificationTargetStore:          deps.NotificationTargetStore,
 		notificationService:              deps.NotificationService,
@@ -179,17 +201,9 @@ func NewServer(deps *Dependencies) *Server {
 	return &s
 }
 
-func (s *Server) ListenAndServe() error {
-	return s.open(nil)
-}
-
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
 func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
 	return s.open(ready)
-}
-
-func (s *Server) Open() error {
-	return s.open(nil)
 }
 
 func (s *Server) open(ready chan<- struct{}) error {
@@ -252,6 +266,13 @@ func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error 
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
+	}
+
 	return s.server.Shutdown(ctx)
 }
 
@@ -277,7 +298,24 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		r.Use(compressor)
+		// SSE responses must never go through this compressor. Its writer buffers
+		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
+		// cuts the stream handler's http.NewResponseController off from the socket
+		// and silently disables the per-write deadline that evicts stalled clients.
+		// Bypass compression for event-stream requests (EventSource always sends
+		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
+		// without coupling to specific paths. /api/stream compresses itself instead:
+		// see gzipSessionWriter in internal/api/sse.
+		r.Use(func(next http.Handler) http.Handler {
+			compressed := compressor(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
+					next.ServeHTTP(w, req)
+					return
+				}
+				compressed.ServeHTTP(w, req)
+			})
+		})
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.
@@ -308,13 +346,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
-	versionHandler := handlers.NewVersionHandler(s.updateService)
+	versionHandler := handlers.NewVersionHandler(s.updateService, s.version)
 	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,
@@ -331,6 +370,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
 	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
 	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
@@ -390,6 +430,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Put("/auth/change-password", authHandler.ChangePassword)
 
 			r.Route("/license", licenseHandler.Routes)
+
+			// Sideloaded custom themes (premium-gated inside the handler)
+			r.Get("/themes/custom", themesHandler.ListCustomThemes)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {
@@ -453,6 +496,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
 
+			// Saved filter views (named TorrentFilters snapshots)
+			r.Route("/filter-views", func(r chi.Router) {
+				r.Get("/", filterViewHandler.List)
+				r.Post("/", filterViewHandler.Create)
+				r.Put("/{id}", filterViewHandler.Update)
+				r.Delete("/{id}", filterViewHandler.Delete)
+			})
+
 			// Log exclusions (muted log message patterns)
 			r.Get("/log-exclusions", logExclusionsHandler.Get)
 			r.Put("/log-exclusions", logExclusionsHandler.Update)
@@ -460,9 +511,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Log settings and streaming
 			logsHandler.Routes(r)
 
-			// Version endpoint for update checks
+			// Version endpoints (current running version + update checks)
+			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
+
+			r.Get("/stream", s.streamManager.Serve)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
@@ -617,6 +671,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Patch("/", dirScanHandler.UpdateDirectory)
 							r.Delete("/", dirScanHandler.DeleteDirectory)
 							r.Post("/reset-files", dirScanHandler.ResetFiles)
+							r.Post("/requeue-no-match", dirScanHandler.RequeueNoMatch)
 							r.Post("/scan", dirScanHandler.TriggerScan)
 							r.Delete("/scan", dirScanHandler.CancelScan)
 							r.Get("/status", dirScanHandler.GetStatus)
@@ -635,8 +690,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		})
 	})
 
-	// Proxy routes (outside of /api and not requiring authentication)
-	proxyHandler.Routes(r)
+	// Proxy routes (outside of /api and not requiring authentication).
+	// Wrapped so proxy traffic gets the same status and latency record as /api.
+	proxyHandler.Routes(r.With(middleware.Logger(s.logger)))
 
 	swaggerHandler, err := swagger.NewHandler(s.config.Config.BaseURL)
 	if err != nil {

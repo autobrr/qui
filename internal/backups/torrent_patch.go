@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/anacrolix/torrent/bencode"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/go-torrent/bencode"
 	"github.com/rs/zerolog/log"
 )
 
@@ -36,7 +36,10 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 		return data, false, nil
 	}
 
-	var root map[string]any
+	// Keep top-level values as raw bencode so re-encoding cannot rewrite the
+	// info dict of a non-canonical torrent, which would change its infohash.
+	// Only the announce fields we replace are ever re-encoded.
+	var root map[string]bencode.Bytes
 	if err := bencode.Unmarshal(data, &root); err != nil {
 		return data, false, fmt.Errorf("decode torrent: %w", err)
 	}
@@ -44,15 +47,21 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 	announce := firstTracker(trackers)
 	changed := false
 
-	if announce != "" {
-		if !trackerMatches(root["announce"], trackers) {
-			root["announce"] = announce
-			changed = true
+	if announce != "" && !trackerMatches(decodeRawValue(root["announce"]), trackers) {
+		raw, err := bencode.Marshal(announce)
+		if err != nil {
+			return data, false, fmt.Errorf("encode announce: %w", err)
 		}
+		root["announce"] = raw
+		changed = true
 	}
 
-	if needAnnounceListUpdate(root["announce-list"], trackers) {
-		root["announce-list"] = buildAnnounceList(trackers)
+	if needAnnounceListUpdate(decodeRawValue(root["announce-list"]), trackers) {
+		raw, err := bencode.Marshal(buildAnnounceList(trackers))
+		if err != nil {
+			return data, false, fmt.Errorf("encode announce-list: %w", err)
+		}
+		root["announce-list"] = raw
 		changed = true
 	}
 
@@ -66,6 +75,16 @@ func patchTorrentTrackers(data []byte, trackers []string) ([]byte, bool, error) 
 	}
 
 	return buf.Bytes(), true, nil
+}
+
+// decodeRawValue returns the decoded form of one raw top-level value, or nil
+// when the key is absent or its value does not decode.
+func decodeRawValue(raw bencode.Bytes) any {
+	var v any
+	if err := bencode.Unmarshal(raw, &v); err != nil {
+		return nil
+	}
+	return v
 }
 
 func shouldInjectTrackerMetadata(apiVersion string) bool {

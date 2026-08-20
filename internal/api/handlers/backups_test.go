@@ -31,6 +31,7 @@ import (
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func newRequestWithParams(method, path string, params map[string]string) *http.Request {
@@ -54,13 +55,11 @@ func newRequestWithParamsAndQuery(method, path string, params map[string]string,
 	return req
 }
 
-func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string, func()) {
+func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string) {
 	t.Helper()
 
 	// Create test database
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
+	db := testdb.NewMigratedSQLite(t, "backups-handler")
 
 	// Create test data directory
 	dataDir := t.TempDir()
@@ -76,11 +75,7 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 
 	handler := NewBackupsHandler(service)
 
-	cleanup := func() {
-		require.NoError(t, db.Close())
-	}
-
-	return handler, db, dataDir, cleanup
+	return handler, db, dataDir
 }
 
 func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instanceID int) *models.BackupRun {
@@ -188,8 +183,7 @@ func createTestTorrentFiles(t *testing.T, dataDir string) {
 }
 
 func TestDownloadRun_InvalidInstanceID(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/invalid/backups/runs/1/download", map[string]string{
 		"instanceID": "invalid",
@@ -204,8 +198,7 @@ func TestDownloadRun_InvalidInstanceID(t *testing.T) {
 }
 
 func TestDownloadRun_InvalidRunID(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/1/backups/runs/invalid/download", map[string]string{
 		"instanceID": "1",
@@ -220,8 +213,7 @@ func TestDownloadRun_InvalidRunID(t *testing.T) {
 }
 
 func TestDownloadRun_BackupNotFound(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/1/backups/runs/999/download", map[string]string{
 		"instanceID": "1",
@@ -236,8 +228,7 @@ func TestDownloadRun_BackupNotFound(t *testing.T) {
 }
 
 func TestDownloadRun_BackupNotAvailable(t *testing.T) {
-	handler, db, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, _ := setupTestBackupHandler(t)
 
 	// Create a test instance
 	ctx := context.Background()
@@ -274,8 +265,7 @@ func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 }
 
 func TestDownloadRun_UnsupportedFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -302,8 +292,7 @@ func TestDownloadRun_UnsupportedFormat(t *testing.T) {
 }
 
 func TestDownloadRun_ZIPFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -347,8 +336,7 @@ func TestDownloadRun_ZIPFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarGzFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -398,8 +386,7 @@ func TestDownloadRun_TarGzFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarZstFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -449,8 +436,7 @@ func TestDownloadRun_TarZstFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarBrFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -497,8 +483,7 @@ func TestDownloadRun_TarBrFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarXzFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -547,8 +532,7 @@ func TestDownloadRun_TarXzFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -594,8 +578,7 @@ func TestDownloadRun_TarFormat(t *testing.T) {
 }
 
 func TestDownloadRun_DefaultFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -664,78 +647,4 @@ func getBackupDownloadUrl(instanceId, runId int, format ...string) string {
 		u.RawQuery = q.Encode()
 	}
 	return u.String()
-}
-
-func TestValidateBlobPath(t *testing.T) {
-	baseDir := t.TempDir()
-
-	tests := []struct {
-		name     string
-		blobPath string
-		wantSafe bool
-	}{
-		{
-			name:     "valid relative path",
-			blobPath: "backups/torrents/ab/cd/test.torrent",
-			wantSafe: true,
-		},
-		{
-			name:     "valid simple path",
-			blobPath: "test.torrent",
-			wantSafe: true,
-		},
-		{
-			name:     "empty path",
-			blobPath: "",
-			wantSafe: false,
-		},
-		{
-			name:     "traversal with ../",
-			blobPath: "../../../etc/passwd",
-			wantSafe: false,
-		},
-		{
-			name:     "traversal in middle",
-			blobPath: "backups/../../../etc/passwd",
-			wantSafe: false,
-		},
-		{
-			name:     "absolute path unix",
-			blobPath: "/etc/passwd",
-			wantSafe: false,
-		},
-		{
-			name:     "double dot only",
-			blobPath: "..",
-			wantSafe: false,
-		},
-		{
-			name:     "dot dot slash",
-			blobPath: "../",
-			wantSafe: false,
-		},
-		{
-			name:     "hidden traversal with dot segments",
-			blobPath: "backups/./../../etc/passwd",
-			wantSafe: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validateBlobPath(baseDir, tt.blobPath)
-			if tt.wantSafe {
-				assert.NotEmpty(t, result, "expected safe path to return non-empty result")
-				assert.True(t, filepath.IsAbs(result), "expected absolute path")
-			} else {
-				assert.Empty(t, result, "expected unsafe path to return empty result")
-			}
-		})
-	}
-
-	// Test empty baseDir separately (not using shared baseDir)
-	t.Run("empty baseDir", func(t *testing.T) {
-		result := validateBlobPath("", "some/valid/path.torrent")
-		assert.Empty(t, result, "expected empty baseDir to return empty result")
-	})
 }

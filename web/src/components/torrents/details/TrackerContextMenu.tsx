@@ -8,6 +8,7 @@ import { isValidTrackerUrl } from "@/lib/tracker-utils"
 import type { TorrentTracker } from "@/types"
 import { Edit } from "lucide-react"
 import { memo, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 
 interface TrackerContextMenuProps {
   children: ReactNode
@@ -27,6 +28,7 @@ export const TrackerContextMenu = memo(function TrackerContextMenu({
   onEditTracker,
   supportsTrackerEditing = false,
 }: TrackerContextMenuProps) {
+  const { t } = useTranslation("torrents")
   // Only show context menu for valid URLs and when edit handler is provided
   if (!onEditTracker || !isValidTrackerUrl(tracker.url)) {
     return <>{children}</>
@@ -43,7 +45,7 @@ export const TrackerContextMenu = memo(function TrackerContextMenu({
           onClick={() => onEditTracker(tracker)}
         >
           <Edit className="mr-2 h-4 w-4" />
-          Edit Tracker URL
+          {t("trackerContextMenu.editTrackerUrl")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

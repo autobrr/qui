@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,10 +12,10 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	_ "modernc.org/sqlite"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // testQuerier wraps sql.DB to implement dbinterface.Querier for store tests.
@@ -174,7 +173,8 @@ func (m *completionGazelleSyncMock) CreateCategory(context.Context, int, string,
 }
 
 func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the test stubs the package-level findGazelleMatch.
+	stubGazelleMatchLookup(t)
 
 	db, err := sql.Open("sqlite", "file:completion_gazelle_guard?mode=memory&cache=shared")
 	if err != nil {
@@ -247,14 +247,10 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 }
 
 func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the test stubs the package-level findGazelleMatch.
+	stubGazelleMatchLookup(t)
 
-	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-search.db")
-	db, err := database.New(dbPath)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := testdb.NewMigratedSQLite(t, "completion-gazelle-search")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -341,12 +337,7 @@ func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUnd
 	t.Parallel()
 
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-undecryptable.db")
-	db, err := database.New(dbPath)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := testdb.NewMigratedSQLite(t, "completion-gazelle-undecryptable")
 
 	key := make([]byte, 32)
 	for i := range key {

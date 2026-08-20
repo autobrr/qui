@@ -8,11 +8,11 @@ package local
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -30,7 +30,7 @@ func NewBackend() *Backend { return &Backend{} }
 // compile-time check
 var _ fsops.Backend = (*Backend)(nil)
 
-func (b *Backend) Stat(ctx context.Context, path string) (*fsops.FileInfo, error) {
+func (b *Backend) Stat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -38,27 +38,7 @@ func (b *Backend) Stat(ctx context.Context, path string) (*fsops.FileInfo, error
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToFsops(fi, path), nil
-}
-
-func (b *Backend) StatBatch(ctx context.Context, paths []string) ([]*fsops.FileInfo, []error, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	infos := make([]*fsops.FileInfo, len(paths))
-	errs := make([]error, len(paths))
-	for i, p := range paths {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		fi, err := os.Stat(p)
-		if err != nil {
-			errs[i] = err
-			continue
-		}
-		infos[i] = osFileInfoToFsops(fi, p)
-	}
-	return infos, errs, nil
+	return osFileInfoToLstat(fi, path), nil
 }
 
 func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
@@ -69,64 +49,27 @@ func (b *Backend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, err
 	if err != nil {
 		return nil, err
 	}
-	return osFileInfoToLstat(fi, path)
+	return osFileInfoToLstat(fi, path), nil
 }
 
-func (b *Backend) LstatBatch(ctx context.Context, paths []string) ([]*fsops.LstatInfo, []error, error) {
+func (b *Backend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	infos := make([]*fsops.LstatInfo, len(paths))
-	errs := make([]error, len(paths))
-	for i, p := range paths {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		fi, err := os.Lstat(p)
-		if err != nil {
-			errs[i] = err
-			continue
-		}
-		info, err := osFileInfoToLstat(fi, p)
-		if err != nil {
-			errs[i] = err
-			continue
-		}
-		infos[i] = info
-	}
-	return infos, errs, nil
-}
-
-func (b *Backend) ReadDir(ctx context.Context, path string, maxEntries int) ([]fsops.DirEntry, bool, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
-	truncated := false
-	if maxEntries > 0 && len(entries) > maxEntries {
-		entries = entries[:maxEntries]
-		truncated = true
-	}
-
-	result := make([]fsops.DirEntry, len(entries))
-	for i, e := range entries {
-		info, _ := e.Info()
-		de := fsops.DirEntry{
+	result := make([]fsops.DirEntry, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, fsops.DirEntry{
 			Name:      e.Name(),
 			IsDir:     e.IsDir(),
 			IsSymlink: e.Type()&os.ModeSymlink != 0,
-			Mode:      e.Type().Perm(),
-		}
-		if info != nil {
-			de.Mode = info.Mode().Perm()
-		}
-		result[i] = de
+		})
 	}
-	return result, truncated, nil
+	return result, nil
 }
 
 func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
@@ -141,13 +84,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	ch := make(chan fsops.WalkEntry, 64)
 	go func() {
 		defer close(ch)
-		count := 0
 		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 			if ctx.Err() != nil {
-				return fs.SkipAll
-			}
-
-			if opts.MaxEntries > 0 && count >= opts.MaxEntries {
 				return fs.SkipAll
 			}
 
@@ -166,9 +104,12 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 				return nil
 			}
 
-			// Skip ignored directory names.
+			// Skip ignored directory names. Case-insensitive: these are OS/NAS
+			// metadata dirs ($RECYCLE.BIN, @eaDir) whose on-disk case varies.
 			if d.IsDir() && path != root {
-				if slices.Contains(opts.IgnoreDirNames, name) {
+				if slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
+					return strings.EqualFold(ignored, name)
+				}) {
 					return filepath.SkipDir
 				}
 			}
@@ -196,35 +137,47 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			} else {
 				fi, err := d.Info()
 				if err != nil {
-					entry.Err = err
-				} else {
-					entry.Size = fi.Size()
-					entry.ModTime = fi.ModTime()
-					entry.Mode = fi.Mode()
-					entry.IsDir = fi.IsDir()
-					entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
+					// An entry that vanished or can't be stat'd is skipped, not
+					// surfaced: consumers (orphanscan, dirscan) skipped such
+					// files pre-migration, and emitting it as Err would read as
+					// a walk failure and abort whole scans. Err stays reserved
+					// for enumeration-level failures.
+					return nil
+				}
+				entry.Size = fi.Size()
+				entry.ModTime = fi.ModTime()
+				entry.Mode = fi.Mode()
+				entry.IsDir = fi.IsDir()
+				entry.IsSymlink = fi.Mode()&os.ModeSymlink != 0
 
-					if (opts.WantFileID || opts.WantNlinks) && fi.Mode().IsRegular() {
-						fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
-						if fidErr == nil {
-							entry.FileID = fid
-							entry.Nlinks = nlinks
-						}
+				if opts.WantFileID && fi.Mode().IsRegular() {
+					fid, nlinks, fidErr := hardlink.GetFileID(fi, path)
+					if fidErr != nil {
+						// Identity failure must not read as an unreadable
+						// entry — that would abort whole scans over one odd
+						// file. Callers that need identity check FileIDErr.
+						entry.FileIDErr = fidErr
+					} else {
+						entry.FileID = fid
+						entry.Nlinks = nlinks
 					}
 				}
 			}
 
 			select {
 			case ch <- entry:
-				count++
 			case <-ctx.Done():
 				return fs.SkipAll
 			}
 			return nil
 		})
-		// Surface unrecoverable walk errors (permission denied, etc.) as a
-		// final entry so the caller knows the walk did not complete fully.
-		// Context cancellation is not an error — the caller initiated it.
+		// Surface a walk abort as a final entry so the caller knows the walk
+		// did not complete. Per-entry enumeration errors (unreadable
+		// subdirectory, permission denied on a child) are emitted inline
+		// above and do NOT abort the walk, so this fires only when the walk
+		// itself returned an error — in practice the root-stat TOCTOU case,
+		// where the callback propagates walkErr. Context cancellation is not
+		// an error — the caller initiated it.
 		if walkErr != nil && ctx.Err() == nil {
 			entry := fsops.WalkEntry{Err: walkErr}
 			entry.Path = root
@@ -244,17 +197,6 @@ func (b *Backend) SameFilesystem(ctx context.Context, p1, p2 string) (bool, erro
 	return fsutil.SameFilesystem(p1, p2)
 }
 
-func (b *Backend) FileID(ctx context.Context, path string) (hardlink.FileID, uint64, error) {
-	if err := ctx.Err(); err != nil {
-		return hardlink.FileID{}, 0, err
-	}
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return hardlink.FileID{}, 0, err
-	}
-	return hardlink.GetFileID(fi, path)
-}
-
 func (b *Backend) MkdirAll(ctx context.Context, path string, perm fs.FileMode) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -267,9 +209,6 @@ func (b *Backend) Remove(ctx context.Context, path string, opts fsops.RemoveOpti
 		return err
 	}
 	if opts.Recursive {
-		if len(opts.IgnorePaths) > 0 {
-			return errors.New("recursive remove with IgnorePaths is not supported by the local backend")
-		}
 		return os.RemoveAll(path)
 	}
 	return os.Remove(path)
@@ -279,29 +218,42 @@ func (b *Backend) HardlinkTree(ctx context.Context, plan *hardlinktree.TreePlan)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := hardlinktree.Create(plan)
+	created, err := hardlinktree.Create(plan)
 	if err != nil {
-		return &fsops.TreeCreateResult{RolledBack: true}, err
+		return nil, err
 	}
-	return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+	return treeCreateResult(created, plan), nil
 }
 
 func (b *Backend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	err := reflinktree.Create(plan)
+	created, err := reflinktree.Create(plan)
 	if err != nil {
-		return &fsops.TreeCreateResult{RolledBack: true}, err
+		return nil, err
 	}
-	return &fsops.TreeCreateResult{Created: len(plan.Files)}, nil
+	return treeCreateResult(created, plan), nil
 }
 
-func (b *Backend) RemoveTree(ctx context.Context, plan *hardlinktree.TreePlan) error {
+func (b *Backend) RemoveTree(ctx context.Context, created *fsops.TreeCreateResult) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return hardlinktree.Rollback(plan)
+	if created == nil {
+		return nil
+	}
+	handle := &hardlinktree.Created{Files: created.Files, Dirs: created.Dirs}
+	return handle.Rollback()
+}
+
+func treeCreateResult(created *hardlinktree.Created, plan *hardlinktree.TreePlan) *fsops.TreeCreateResult {
+	return &fsops.TreeCreateResult{
+		Created:       len(created.Files),
+		SkippedExists: len(plan.Files) - len(created.Files),
+		Files:         created.Files,
+		Dirs:          created.Dirs,
+	}
 }
 
 func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, string, error) {
@@ -310,14 +262,6 @@ func (b *Backend) SupportsReflink(ctx context.Context, path string) (bool, strin
 	}
 	supported, reason := reflinktree.SupportsReflink(path)
 	return supported, reason, nil
-}
-
-func (b *Backend) Info(_ context.Context) (*fsops.BackendInfo, error) {
-	return &fsops.BackendInfo{Kind: "local"}, nil
-}
-
-func (b *Backend) HealthCheck(_ context.Context) error {
-	return nil
 }
 
 // osFileInfoToFsops converts an os.FileInfo to an fsops.FileInfo.
@@ -333,17 +277,21 @@ func osFileInfoToFsops(fi os.FileInfo, path string) *fsops.FileInfo {
 }
 
 // osFileInfoToLstat converts an os.FileInfo from Lstat to an fsops.LstatInfo.
-func osFileInfoToLstat(fi os.FileInfo, path string) (*fsops.LstatInfo, error) {
+// Identity failure degrades to FileIDErr rather than failing the conversion:
+// callers that only want size/mtime keep working, callers that need identity
+// check FileIDErr.
+func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
 		FileInfo: *osFileInfoToFsops(fi, path),
 	}
 	if fi.Mode().IsRegular() {
 		fid, nlinks, err := hardlink.GetFileID(fi, path)
 		if err != nil {
-			return nil, err
+			info.FileIDErr = err
+		} else {
+			info.FileID = fid
+			info.Nlinks = nlinks
 		}
-		info.FileID = fid
-		info.Nlinks = nlinks
 	}
-	return info, nil
+	return info
 }

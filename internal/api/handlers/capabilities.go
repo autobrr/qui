@@ -14,6 +14,7 @@ type InstanceCapabilitiesResponse struct {
 	SupportsTorrentCreation     bool   `json:"supportsTorrentCreation"`
 	SupportsTorrentExport       bool   `json:"supportsTorrentExport"`
 	SupportsSetTags             bool   `json:"supportsSetTags"`
+	SupportsSetComment          bool   `json:"supportsSetComment"`
 	SupportsTrackerHealth       bool   `json:"supportsTrackerHealth"`
 	SupportsTrackerEditing      bool   `json:"supportsTrackerEditing"`
 	SupportsRenameTorrent       bool   `json:"supportsRenameTorrent"`
@@ -37,6 +38,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsTorrentCreation:     client.SupportsTorrentCreation(),
 		SupportsTorrentExport:       client.SupportsTorrentExport(),
 		SupportsSetTags:             client.SupportsSetTags(),
+		SupportsSetComment:          client.SupportsSetComment(),
 		SupportsTrackerHealth:       client.SupportsTrackerHealth(),
 		SupportsTrackerEditing:      client.SupportsTrackerEditing(),
 		SupportsRenameTorrent:       client.SupportsRenameTorrent(),
