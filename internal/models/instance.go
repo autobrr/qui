@@ -215,6 +215,13 @@ func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceSt
 
 // encrypt encrypts a string using AES-GCM
 func (s *InstanceStore) encrypt(plaintext string) (string, error) {
+	return s.encryptWithAAD(plaintext, nil)
+}
+
+// encryptWithAAD encrypts a string using AES-GCM, binding the ciphertext to
+// additionalData. Passing nil is the unbound form the older credential columns
+// use; see instance_ssh.go for what the SSH columns bind to and why.
+func (s *InstanceStore) encryptWithAAD(plaintext string, additionalData []byte) (string, error) {
 	block, err := aes.NewCipher(s.encryptionKey)
 	if err != nil {
 		return "", err
@@ -230,12 +237,19 @@ func (s *InstanceStore) encrypt(plaintext string) (string, error) {
 		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), additionalData)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 // decrypt decrypts a string encrypted with encrypt
 func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
+	return s.decryptWithAAD(ciphertext, nil)
+}
+
+// decryptWithAAD decrypts a string encrypted with encryptWithAAD. Mismatched
+// additionalData fails authentication, which is the point: it is how a
+// transplanted or redirected credential is caught.
+func (s *InstanceStore) decryptWithAAD(ciphertext string, additionalData []byte) (string, error) {
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", err
@@ -256,7 +270,7 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	}
 
 	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
+	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, additionalData)
 	if err != nil {
 		return "", err
 	}
