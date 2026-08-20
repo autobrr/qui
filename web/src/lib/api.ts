@@ -1664,6 +1664,31 @@ class ApiClient {
     return { blob, filename }
   }
 
+  async exportTorrentsArchive(targets: Array<{
+    instanceId: number
+    instanceName: string
+    hash: string
+    category: string
+    filename?: string
+  }>): Promise<{ blob: Blob; filename: string | null }> {
+    const response = await ssoSafeFetch(`${API_BASE}/torrents/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets }),
+    })
+
+    if (!response.ok) {
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, "/torrents/export", message)
+      throw new Error(message)
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get("content-disposition")),
+    }
+  }
+
   async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
     return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
   }

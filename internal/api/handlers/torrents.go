@@ -58,6 +58,7 @@ type TorrentsHandler struct {
 	torrentAdder      torrentAdder
 	torrentDownloader torrentDownloader
 	contentResolver   torrentContentResolver
+	archiveExporter   torrentArchiveExporter
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
