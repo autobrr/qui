@@ -33,7 +33,7 @@ describe("PooledCompletionSetting", () => {
     const onCheckedChange = vi.fn()
     render(
       <PooledCompletionSetting
-        id="pooled-partial-completion-1"
+        id="pooled-partial-completion"
         checked
         onCheckedChange={onCheckedChange}
       />

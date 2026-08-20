@@ -675,6 +675,14 @@ function HardlinkModeSettings({
     })
   }
 
+  const pooledCompletionSetting = (
+    <PooledCompletionSetting
+      id="pooled-partial-completion"
+      checked={pooledPartialCompletionEnabled}
+      onCheckedChange={onPooledPartialCompletionEnabledChange}
+    />
+  )
+
   if (!activeInstances.length) {
     return (
       <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
@@ -685,6 +693,7 @@ function HardlinkModeSettings({
         <CollapsibleContent>
           <div className="border-t border-border/70 p-4 pt-4 space-y-4">
             <p className="text-sm text-muted-foreground">{t("rules.noActiveInstances")}</p>
+            {pooledCompletionSetting}
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -844,12 +853,6 @@ function HardlinkModeSettings({
                                 </FieldHelp>
                               </div>
                             </div>
-
-                            <PooledCompletionSetting
-                              id={`pooled-partial-completion-${instance.id}`}
-                              checked={pooledPartialCompletionEnabled}
-                              onCheckedChange={onPooledPartialCompletionEnabledChange}
-                            />
                           </div>
                         </>
                       )}
@@ -870,6 +873,8 @@ function HardlinkModeSettings({
               )
             })}
           </Accordion>
+
+          {pooledCompletionSetting}
         </div>
       </CollapsibleContent>
     </Collapsible>
