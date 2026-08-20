@@ -305,7 +305,7 @@
       "rescueTitleMismatches": "挽救标题不匹配的结果",
       "rescueTitleMismatchesDescription": "每次源搜索会在所有索引器中合计尝试最多三个大小完全相同的结果。qui 会先检查所有数据，再启动种子。启用跳过重新校验会关闭此规则。",
       "skipRecheck": "跳过需要重新校验的匹配",
-      "skipRecheckDescription": "跳过需要重命名对齐、额外文件或光盘布局（BDMV/VIDEO_TS）的匹配。关闭此选项时，这些匹配默认会强制重新校验。",
+      "skipRecheckDescription": "跳过因路径重命名、额外或缺失文件、链接模式回退或光盘布局（BDMV/VIDEO_TS）而需要重新校验的匹配。也会跳过依赖不同季、集或发布组信息的精确大小匹配。关闭此选项时，qui 会以暂停状态添加这些匹配并重新校验。",
       "pieceBoundaryDisabled": "块边界安全检查当前已禁用",
       "pieceBoundaryEnabled": "块边界安全检查已启用",
       "pieceBoundaryDisabledDescription": "即使额外文件与内容共享块也允许匹配。如果内容不同，可能会损坏已做种的文件。请考虑使用引用链接模式。",

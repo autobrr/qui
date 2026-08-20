@@ -103,7 +103,11 @@ func TestSearchResultUsable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidateName)
-			got := s.searchResultUsable(&source, &candidate, tt.sourceName, tt.sourceSize, tt.candidateName, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes)
+			got := s.searchResultUsable(
+				namedRelease{release: &source, rawName: tt.sourceName},
+				namedRelease{release: &candidate, rawName: tt.candidateName},
+				tt.sourceSize, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes,
+			)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -133,7 +137,11 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 
 	// Indexer 1 returned a raw hit (so the old logic omitted it), but it is junk;
 	// indexer 3 returned nothing. Both must be re-queried; only indexer 2 is done.
-	got := s.indexersWithoutUsableResults([]int{1, 2, 3}, results, &source, sourceName, size, nil, 5, false)
+	got := s.indexersWithoutUsableResults(
+		[]int{1, 2, 3}, results,
+		namedRelease{release: &source, rawName: sourceName},
+		size, nil, 5, false,
+	)
 	require.Equal(t, []int{1, 3}, got)
 
 	// Sanity: the raw helper would have skipped indexer 1 (the P1 bug).
@@ -155,9 +163,10 @@ func TestShouldRunTitleFallbackForRescueOnly(t *testing.T) {
 	normal := jackett.SearchResult{Title: sourceName, Size: size}
 	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
 
-	require.True(t, service.shouldRunTitleFallback(nil, &source, sourceName, size, nil, 5, false, false))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, false))
-	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, &source, sourceName, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, &source, sourceName, size, nil, 5, false, true))
+	sourceView := namedRelease{release: &source, rawName: sourceName}
+	require.True(t, service.shouldRunTitleFallback(nil, sourceView, size, nil, 5, false, false))
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, sourceView, size, nil, 5, false, false))
+	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, sourceView, size, nil, 5, false, true))
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, sourceView, size, nil, 5, false, true))
+	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, sourceView, size, nil, 5, false, true))
 }

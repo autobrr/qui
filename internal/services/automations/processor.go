@@ -886,7 +886,18 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, cpIndex) {
+	if !deleteFreesSpace(deleteMode, torrent, cpIndex, evalCtx.CrossSeedFilesByHash) {
+		return
+	}
+
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && evalCtx.CrossSeedHashesToClear != nil {
+		updateCrossSeedFreeSpaceCleared(torrent, evalCtx, cpIndex)
+		return
+	}
+	if deleteMode == DeleteModeWithFilesPreserveCrossSeeds {
+		// File verification above established that this torrent has no shared files.
+		// Do not deduplicate unrelated torrents that merely use the same directory.
+		evalCtx.SpaceToClear += torrent.Size
 		return
 	}
 
@@ -923,6 +934,74 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	// This is a new torrent, so we add the file size to the cumulative space to clear
 	evalCtx.SpaceToClear += torrent.Size
 	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
+}
+
+func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, cpIndex contentPathIndex) {
+	if _, counted := evalCtx.CrossSeedHashesToClear[torrent.Hash]; counted {
+		return
+	}
+
+	group := findCrossSeedGroup(torrent, cpIndex)
+	verifiedHashes, ok := crossSeedGroupMembers(
+		torrent,
+		group,
+		evalCtx.CrossSeedHashesToClear,
+		func(_ []string) (map[string]qbt.TorrentFiles, error) {
+			return evalCtx.CrossSeedFilesByHash, nil
+		},
+	)
+	if !ok {
+		return
+	}
+	for _, hash := range verifiedHashes {
+		evalCtx.CrossSeedHashesToClear[hash] = struct{}{}
+	}
+
+	if evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		if signature := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; signature != "" {
+			if _, counted := evalCtx.HardlinkSignaturesToClear[signature]; counted {
+				return
+			}
+			evalCtx.HardlinkSignaturesToClear[signature] = struct{}{}
+		}
+	}
+
+	evalCtx.SpaceToClear += verifiedCrossSeedFileBytes(torrent, group, verifiedHashes, evalCtx.CrossSeedFilesByHash)
+}
+
+func verifiedCrossSeedFileBytes(
+	trigger qbt.Torrent,
+	group []qbt.Torrent,
+	verifiedHashes []string,
+	filesByHash map[string]qbt.TorrentFiles,
+) int64 {
+	if len(filesByHash[trigger.Hash]) == 0 {
+		return trigger.Size
+	}
+
+	verified := make(map[string]struct{}, len(verifiedHashes))
+	for _, hash := range verifiedHashes {
+		verified[hash] = struct{}{}
+	}
+
+	maxSizeByPath := make(map[string]int64, len(filesByHash[trigger.Hash]))
+	var totalBytes int64
+	for _, torrent := range group {
+		if _, ok := verified[torrent.Hash]; !ok {
+			continue
+		}
+		for _, file := range filesByHash[torrent.Hash] {
+			resolvedPath := resolvedTorrentFilePath(torrent, file.Name)
+			previousSize := maxSizeByPath[resolvedPath]
+			if file.Size <= previousSize {
+				continue
+			}
+			maxSizeByPath[resolvedPath] = file.Size
+			totalBytes += file.Size - previousSize
+		}
+	}
+
+	return totalBytes
 }
 
 // CalculateScore computes the weighted score for a torrent based on configuration.

@@ -4,12 +4,14 @@
 package crossseed
 
 import (
+	"context"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -176,6 +178,43 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.Equal(t, 37, *query.Episode)
 }
 
+func TestDeriveSearchSourceRelease_ReplaysCategoryMappedView(t *testing.T) {
+	const instanceID = 1
+	torrent := qbt.Torrent{
+		Hash:     "category-mapped-source",
+		Name:     "[Orbit] Azure Compass (2025) [720p]",
+		Category: "forced-movie",
+	}
+	files := qbt.TorrentFiles{
+		{Name: "[Orbit] Azure Compass - S01E03 (720p) [11111111].mkv", Size: 1},
+	}
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				CategoryMappingRules: []models.CategoryMappingRule{
+					{Categories: []string{torrent.Category}, ContentType: "movie"},
+				},
+			}, nil
+		},
+	}
+	svc.syncManager = newFakeSyncManager(instance, []qbt.Torrent{torrent}, map[string]qbt.TorrentFiles{
+		torrent.Hash: files,
+	})
+
+	parsed := svc.releaseCache.Parse(torrent.Name)
+	searchView, contentInfo := svc.searchSourceReleaseViewAndContentInfo(context.Background(), &torrent, parsed, files)
+	replayedView := svc.deriveSearchSourceRelease(context.Background(), instanceID, &torrent, parsed)
+
+	require.Equal(t, "movie", contentInfo.ContentType)
+	require.Equal(t, rls.Movie, searchView.release.Type,
+		"the category rule must keep TV-looking files on the movie search path")
+	require.Equal(t, searchView.release, replayedView.release)
+	require.Equal(t, searchView.tagOrigin, replayedView.tagOrigin)
+}
+
 func TestSelectContentDetectionRelease_MusicNameKeepsEpisodeMarkersFromFiles(t *testing.T) {
 	svc := &Service{
 		releaseCache:     NewReleaseCache(),
@@ -303,12 +342,10 @@ func TestSelectContentDetectionRelease_RepeatedFolderNameKeepsGroup(t *testing.T
 
 	const candidateName = sourceName + ".mkv"
 	ok, reason := svc.validateExactSizeSearchIdentity(searchCandidateInput{
-		SourceRelease:    searchRelease,
-		CandidateRelease: svc.releaseCache.Parse(candidateName),
-		SourceName:       sourceName,
-		CandidateName:    candidateName,
-		SourceSize:       sourceSize,
-		CandidateSize:    sourceSize,
+		Source:        namedRelease{release: searchRelease, rawName: sourceName},
+		Candidate:     namedRelease{release: svc.releaseCache.Parse(candidateName), rawName: candidateName},
+		SourceSize:    sourceSize,
+		CandidateSize: sourceSize,
 	})
 	require.True(t, ok, "byte-identical candidate rejected: %s", reason)
 }

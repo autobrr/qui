@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -241,94 +242,6 @@ func TestMatchesTracker(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := matchesTracker(tc.pattern, tc.domains)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
-// detectCrossSeeds tests
-// -----------------------------------------------------------------------------
-
-func TestDetectCrossSeeds(t *testing.T) {
-	tests := []struct {
-		name        string
-		target      qbt.Torrent
-		allTorrents []qbt.Torrent
-		want        bool
-	}{
-		{
-			name:        "no other torrents",
-			target:      qbt.Torrent{Hash: "abc", ContentPath: "/data/movie"},
-			allTorrents: []qbt.Torrent{{Hash: "abc", ContentPath: "/data/movie"}},
-			want:        false,
-		},
-		{
-			name:   "different paths no cross-seed",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie1"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie1"},
-				{Hash: "def", ContentPath: "/data/movie2"},
-			},
-			want: false,
-		},
-		{
-			name:   "same path is cross-seed",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie"},
-				{Hash: "def", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-		{
-			name:   "case insensitive match",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/Data/Movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/Data/Movie"},
-				{Hash: "def", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-		{
-			name:   "backslash normalized",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "D:\\Data\\Movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "D:\\Data\\Movie"},
-				{Hash: "def", ContentPath: "D:/Data/Movie"},
-			},
-			want: true,
-		},
-		{
-			name:   "trailing slash normalized",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie/"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie/"},
-				{Hash: "def", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-		{
-			name:        "empty content path",
-			target:      qbt.Torrent{Hash: "abc", ContentPath: ""},
-			allTorrents: []qbt.Torrent{{Hash: "abc", ContentPath: ""}},
-			want:        false,
-		},
-		{
-			name:   "multiple cross-seeds",
-			target: qbt.Torrent{Hash: "abc", ContentPath: "/data/movie"},
-			allTorrents: []qbt.Torrent{
-				{Hash: "abc", ContentPath: "/data/movie"},
-				{Hash: "def", ContentPath: "/data/movie"},
-				{Hash: "ghi", ContentPath: "/data/movie"},
-			},
-			want: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := detectCrossSeeds(tc.target, buildContentPathIndex(tc.allTorrents))
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1297,6 +1210,202 @@ func TestIsContentPathAmbiguous(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// crossSeedGroupMembers tests
+// -----------------------------------------------------------------------------
+
+func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{syncManager: sm}
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "first",
+			Tags:        "delete-me",
+			SavePath:    "/downloads",
+			ContentPath: "/downloads/shared",
+		},
+		{
+			Hash:        "second",
+			Tags:        "delete-me",
+			SavePath:    "/downloads",
+			ContentPath: "/downloads/shared",
+		},
+	}
+	rule := &models.Automation{
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Delete: &models.DeleteAction{
+				Enabled: true,
+				Mode:    DeleteModeWithFilesIncludeCrossSeeds,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "delete-me",
+				},
+			},
+		},
+	}
+	filesByHash := map[string]qbt.TorrentFiles{
+		"first":  {{Name: "shared/first.mkv", Size: 1_000}},
+		"second": {{Name: "shared/second.mkv", Size: 1_000}},
+	}
+
+	result, err := s.previewDeleteIncludeCrossSeeds(
+		rule,
+		torrents,
+		&EvalContext{},
+		nil,
+		10,
+		0,
+		true,
+		nil,
+		buildContentPathIndex(torrents),
+		func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.TotalMatches)
+	assert.Zero(t, result.CrossSeedCount)
+}
+
+func TestCrossSeedGroupMembers(t *testing.T) {
+	// Two unrelated packs whose payload folder is a bare "Season 2", so qBittorrent
+	// reports the same content path for both while they hold different files.
+	trigger := qbt.Torrent{
+		Hash:        "trigger",
+		Name:        "[Subs] Silver Lantern Chronicle S2 (BD 1080p)",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+	stranger := qbt.Torrent{
+		Hash:        "stranger",
+		Name:        "[Subs] Paper Crane Detective S2 (BD 1080p)",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+	crossSeed := qbt.Torrent{
+		Hash:        "crossseed",
+		Name:        "Silver.Lantern.Chronicle.S02.1080p.BluRay-GRPB",
+		ContentPath: "/downloads/anime/Season 2",
+		SavePath:    "/downloads/anime",
+	}
+
+	// Ten equal episodes, so a swapped file moves the overlap by exactly 10%.
+	episodes := func(title string, shared int) qbt.TorrentFiles {
+		files := make(qbt.TorrentFiles, 0, 10)
+		for i := 1; i <= 10; i++ {
+			name := fmt.Sprintf("Season 2/%s - %02d.mkv", title, i)
+			if i > shared {
+				name = fmt.Sprintf("Season 2/%s - %02d (v2).mkv", title, i)
+			}
+			files = append(files, qbt.TorrentFile{Name: name, Size: 1_000_000_000})
+		}
+		return files
+	}
+	triggerFiles := episodes("Silver Lantern Chronicle", 10)
+	strangerFiles := episodes("Paper Crane Detective", 10)
+	thresholdFiles := episodes("Silver Lantern Chronicle", 9)
+	partialFiles := episodes("Silver Lantern Chronicle", 5)
+
+	tests := []struct {
+		scenario string
+		group    []qbt.Torrent
+		skip     map[string]struct{}
+		files    map[string]qbt.TorrentFiles
+		filesErr error
+		want     []string
+		wantOK   bool
+	}{
+		{
+			scenario: "torrent sharing only the directory is dropped, trigger still deleted",
+			group:    []qbt.Torrent{trigger, stranger},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "stranger": strangerFiles},
+			want:     []string{"trigger"},
+			wantOK:   true,
+		},
+		{
+			scenario: "real cross-seed is deleted with the trigger",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": triggerFiles},
+			want:     []string{"trigger", "crossseed"},
+			wantOK:   true,
+		},
+		{
+			scenario: "cross-seed on the overlap threshold is still deleted",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": thresholdFiles},
+			want:     []string{"trigger", "crossseed"},
+			wantOK:   true,
+		},
+		{
+			scenario: "partial overlap skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles, "crossseed": partialFiles},
+			wantOK:   false,
+		},
+		{
+			scenario: "missing file list skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			files:    map[string]qbt.TorrentFiles{"trigger": triggerFiles},
+			wantOK:   false,
+		},
+		{
+			scenario: "fetch error skips the whole group",
+			group:    []qbt.Torrent{trigger, crossSeed},
+			filesErr: assert.AnError,
+			wantOK:   false,
+		},
+		{
+			scenario: "members already queued elsewhere are ignored",
+			group:    []qbt.Torrent{trigger, stranger},
+			skip:     map[string]struct{}{"stranger": {}},
+			files:    map[string]qbt.TorrentFiles{},
+			want:     []string{"trigger"},
+			wantOK:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.scenario, func(t *testing.T) {
+			got, ok := crossSeedGroupMembers(trigger, tc.group, tc.skip, func(_ []string) (map[string]qbt.TorrentFiles, error) {
+				if tc.filesErr != nil {
+					return nil, tc.filesErr
+				}
+				return tc.files, nil
+			})
+			assert.Equal(t, tc.wantOK, ok)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("different layouts resolving to the same file are grouped", func(t *testing.T) {
+		layoutTrigger := qbt.Torrent{
+			Hash:        "layout-trigger",
+			ContentPath: "/downloads/Season 2",
+			SavePath:    "/downloads",
+		}
+		layoutCrossSeed := qbt.Torrent{
+			Hash:        "layout-crossseed",
+			ContentPath: "/downloads/Season 2",
+			SavePath:    "/downloads/Season 2",
+		}
+		filesByHash := map[string]qbt.TorrentFiles{
+			layoutTrigger.Hash:   {{Name: "Season 2/01.mkv", Size: 1_000_000_000}},
+			layoutCrossSeed.Hash: {{Name: "01.mkv", Size: 1_000_000_000}},
+		}
+
+		got, ok := crossSeedGroupMembers(
+			layoutTrigger,
+			[]qbt.Torrent{layoutTrigger, layoutCrossSeed},
+			nil,
+			func(_ []string) (map[string]qbt.TorrentFiles, error) { return filesByHash, nil },
+		)
+
+		assert.True(t, ok)
+		assert.Equal(t, []string{layoutTrigger.Hash, layoutCrossSeed.Hash}, got)
+	})
+}
+
+// -----------------------------------------------------------------------------
 // findCrossSeedGroup tests
 // -----------------------------------------------------------------------------
 
@@ -1713,6 +1822,10 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 	}
 
 	target := allTorrents[0]
+	filesByHash := map[string]qbt.TorrentFiles{
+		"abc123": {{Name: "My.Movie.2024.1080p.BluRay.x264-GRP/movie.mkv", Size: 100}},
+		"xyz789": {{Name: "My.Movie.2024.1080p.BluRay.x264-GRP/movie.mkv", Size: 100}},
+	}
 
 	tests := []struct {
 		scenario string
@@ -1732,7 +1845,7 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 		{
 			scenario: "preserve cross-seeds => no space freed (cross-seed exists)",
 			mode:     DeleteModeWithFilesPreserveCrossSeeds,
-			want:     false, // xyz789 shares ContentPath, files kept
+			want:     false, // xyz789 resolves to the same file, so files are kept
 		},
 		{
 			scenario: "keep files => never frees space",
@@ -1744,7 +1857,7 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, cpIndex)
+			got := deleteFreesSpace(tc.mode, target, cpIndex, filesByHash)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1779,7 +1892,7 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, cpIndex)
+			got := deleteFreesSpace(tc.mode, target, cpIndex, nil)
 			assert.Equal(t, tc.want, got)
 		})
 	}
