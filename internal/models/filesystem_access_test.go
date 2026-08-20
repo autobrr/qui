@@ -5,7 +5,6 @@ package models
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -13,7 +12,23 @@ import (
 func TestHasFilesystemAccess(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
+	remote := func() *Instance {
+		return &Instance{
+			SSHHost:             "box.example.com",
+			SSHUsername:         "qui",
+			SSHKeyEncrypted:     "enc-key",
+			SSHHostKeyEncrypted: "enc-hostkey",
+		}
+	}
+
+	pendingPin := remote()
+	pendingPin.SSHHostKeyEncrypted = ""
+
+	noCreds := remote()
+	noCreds.SSHKeyEncrypted = ""
+
+	localAndRemote := remote()
+	localAndRemote.HasLocalFilesystemAccess = true
 
 	tests := []struct {
 		name     string
@@ -24,9 +39,10 @@ func TestHasFilesystemAccess(t *testing.T) {
 		{"nil instance", nil, FilesystemModeNone, false},
 		{"no access", &Instance{}, FilesystemModeNone, false},
 		{"local access", &Instance{HasLocalFilesystemAccess: true}, FilesystemModeLocal, true},
-		{"helper deployed", &Instance{SSHHost: "box.example.com", HelperDeployedAt: &now}, FilesystemModeHelper, true},
-		{"ssh configured but no deploy", &Instance{SSHHost: "box.example.com"}, FilesystemModeNone, false},
-		{"local takes precedence", &Instance{HasLocalFilesystemAccess: true, SSHHost: "box.example.com", HelperDeployedAt: &now}, FilesystemModeLocal, true},
+		{"remote pinned", remote(), FilesystemModeRemote, true},
+		{"remote awaiting host key confirmation", pendingPin, FilesystemModeNone, false},
+		{"remote without credentials", noCreds, FilesystemModeNone, false},
+		{"local takes precedence", localAndRemote, FilesystemModeLocal, true},
 	}
 
 	for _, tt := range tests {

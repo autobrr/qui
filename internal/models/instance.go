@@ -46,23 +46,18 @@ type Instance struct {
 	// Fallback to regular mode when reflink/hardlink fails
 	FallbackToRegularMode bool `json:"fallbackToRegularMode"`
 
-	// SSH/helper fields for remote filesystem access
-	SSHHost                   string     `json:"sshHost,omitempty"`
-	SSHPort                   int        `json:"sshPort,omitempty"`
-	SSHUsername               string     `json:"sshUsername,omitempty"`
-	SSHAuthType               string     `json:"sshAuthType,omitempty"` // "", "key", "password"
-	SSHKeyEncrypted           string     `json:"-"`
-	SSHKeyPassphraseEncrypted string     `json:"-"`
-	SSHPasswordEncrypted      string     `json:"-"`
-	SSHHostKey                string     `json:"-"`
-	HelperPath                string     `json:"helperPath,omitempty"`
-	HelperVersion             string     `json:"helperVersion,omitempty"`
-	HelperCapabilities        []string   `json:"helperCapabilities,omitempty"`
-	HelperAllowedRoots        []string   `json:"helperAllowedRoots,omitempty"`
-	HelperReflinkRoots        []string   `json:"helperReflinkRoots,omitempty"`
-	HelperPlatform            string     `json:"helperPlatform,omitempty"`
-	HelperDeployedAt          *time.Time `json:"helperDeployedAt,omitempty"`
-	HelperLastActivityAt      *time.Time `json:"helperLastActivityAt,omitempty"`
+	// SSH access for instances whose torrent data lives on another host.
+	// Not part of the JSON contract yet: the API shape lands with the
+	// ssh-test/credentials endpoints, which are also what first writes these.
+	SSHHost     string `json:"-"`
+	SSHPort     int    `json:"-"`
+	SSHUsername string `json:"-"`
+	// AES-GCM encrypted private key (AAD: instance id + field).
+	SSHKeyEncrypted string `json:"-"`
+	// Pinned host key: the marshaled public key under the same AEAD
+	// (AAD: instance id + field + host + port). Empty until the user
+	// confirms the key, and no remote operation runs before it is set.
+	SSHHostKeyEncrypted string `json:"-"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -84,21 +79,6 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
 		UseReflinks              bool       `json:"useReflinks"`
 		FallbackToRegularMode    bool       `json:"fallbackToRegularMode"`
-		SSHHost                  string     `json:"sshHost,omitempty"`
-		SSHPort                  int        `json:"sshPort,omitempty"`
-		SSHUsername              string     `json:"sshUsername,omitempty"`
-		SSHAuthType              string     `json:"sshAuthType,omitempty"`
-		SSHPassword              string     `json:"sshPassword,omitempty"`
-		SSHKey                   string     `json:"sshKey,omitempty"`
-		SSHKeyPassphrase         string     `json:"sshKeyPassphrase,omitempty"`
-		HelperPath               string     `json:"helperPath,omitempty"`
-		HelperVersion            string     `json:"helperVersion,omitempty"`
-		HelperCapabilities       []string   `json:"helperCapabilities,omitempty"`
-		HelperAllowedRoots       []string   `json:"helperAllowedRoots,omitempty"`
-		HelperReflinkRoots       []string   `json:"helperReflinkRoots,omitempty"`
-		HelperPlatform           string     `json:"helperPlatform,omitempty"`
-		HelperDeployedAt         *time.Time `json:"helperDeployedAt,omitempty"`
-		HelperLastActivityAt     *time.Time `json:"helperLastActivityAt,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -126,21 +106,6 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkDirPreset:        i.HardlinkDirPreset,
 		UseReflinks:              i.UseReflinks,
 		FallbackToRegularMode:    i.FallbackToRegularMode,
-		SSHHost:                  i.SSHHost,
-		SSHPort:                  i.SSHPort,
-		SSHUsername:              i.SSHUsername,
-		SSHAuthType:              i.SSHAuthType,
-		SSHPassword:              domain.RedactString(i.SSHPasswordEncrypted),
-		SSHKey:                   domain.RedactString(i.SSHKeyEncrypted),
-		SSHKeyPassphrase:         domain.RedactString(i.SSHKeyPassphraseEncrypted),
-		HelperPath:               i.HelperPath,
-		HelperVersion:            i.HelperVersion,
-		HelperCapabilities:       i.HelperCapabilities,
-		HelperAllowedRoots:       i.HelperAllowedRoots,
-		HelperReflinkRoots:       i.HelperReflinkRoots,
-		HelperPlatform:           i.HelperPlatform,
-		HelperDeployedAt:         i.HelperDeployedAt,
-		HelperLastActivityAt:     i.HelperLastActivityAt,
 	})
 }
 
@@ -163,14 +128,6 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
 		UseReflinks              *bool      `json:"useReflinks,omitempty"`
 		FallbackToRegularMode    *bool      `json:"fallbackToRegularMode,omitempty"`
-		SSHHost                  *string    `json:"sshHost,omitempty"`
-		SSHPort                  *int       `json:"sshPort,omitempty"`
-		SSHUsername              *string    `json:"sshUsername,omitempty"`
-		SSHAuthType              *string    `json:"sshAuthType,omitempty"`
-		SSHPassword              string     `json:"sshPassword,omitempty"`
-		SSHKey                   string     `json:"sshKey,omitempty"`
-		SSHKeyPassphrase         string     `json:"sshKeyPassphrase,omitempty"`
-		HelperAllowedRoots       []string   `json:"helperAllowedRoots,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -222,23 +179,6 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		i.FallbackToRegularMode = *temp.FallbackToRegularMode
 	}
 
-	// SSH fields
-	if temp.SSHHost != nil {
-		i.SSHHost = *temp.SSHHost
-	}
-	if temp.SSHPort != nil {
-		i.SSHPort = *temp.SSHPort
-	}
-	if temp.SSHUsername != nil {
-		i.SSHUsername = *temp.SSHUsername
-	}
-	if temp.SSHAuthType != nil {
-		i.SSHAuthType = *temp.SSHAuthType
-	}
-	if temp.HelperAllowedRoots != nil {
-		i.HelperAllowedRoots = temp.HelperAllowedRoots
-	}
-
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
 		i.PasswordEncrypted = temp.Password
@@ -252,17 +192,6 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	// Handle basic password - don't overwrite if redacted
 	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
 		i.BasicPasswordEncrypted = &temp.BasicPassword
-	}
-
-	// Handle SSH secrets - don't overwrite if redacted
-	if temp.SSHPassword != "" && !domain.IsRedactedString(temp.SSHPassword) {
-		i.SSHPasswordEncrypted = temp.SSHPassword
-	}
-	if temp.SSHKey != "" && !domain.IsRedactedString(temp.SSHKey) {
-		i.SSHKeyEncrypted = temp.SSHKey
-	}
-	if temp.SSHKeyPassphrase != "" && !domain.IsRedactedString(temp.SSHKeyPassphrase) {
-		i.SSHKeyPassphraseEncrypted = temp.SSHKeyPassphrase
 	}
 
 	return nil
@@ -530,7 +459,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 }
 
 // instanceViewColumns is the column list for instances_view queries.
-const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_auth_type, ssh_key_encrypted, ssh_key_passphrase_encrypted, ssh_password_encrypted, ssh_host_key, helper_path, helper_version, helper_capabilities, helper_allowed_roots, helper_reflink_roots, helper_platform, helper_deployed_at, helper_last_activity_at`
+const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted`
 
 // scanInstance scans a row from instances_view into an Instance.
 func scanInstance(scan func(dest ...any) error) (*Instance, error) {
@@ -541,12 +470,9 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	var useHardlinks int
 	var hardlinkBaseDir, hardlinkDirPreset string
 	var useReflinks, fallbackToRegularMode int
-	var sshHost, sshUsername, sshAuthType string
+	var sshHost, sshUsername string
 	var sshPort int
-	var sshKeyEncrypted, sshKeyPassphraseEncrypted, sshPasswordEncrypted, sshHostKey string
-	var helperPath, helperVersion, helperPlatform string
-	var helperCapabilities, helperAllowedRoots, helperReflinkRoots string
-	var helperDeployedAt, helperLastActivityAt sql.NullTime
+	var sshKeyEncrypted, sshHostKeyEncrypted string
 
 	err := scan(
 		&instanceID, &name, &host, &username,
@@ -556,45 +482,34 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 		&hasLocalFilesystemAccess,
 		&useHardlinks, &hardlinkBaseDir, &hardlinkDirPreset,
 		&useReflinks, &fallbackToRegularMode,
-		&sshHost, &sshPort, &sshUsername, &sshAuthType,
-		&sshKeyEncrypted, &sshKeyPassphraseEncrypted,
-		&sshPasswordEncrypted, &sshHostKey,
-		&helperPath, &helperVersion,
-		&helperCapabilities, &helperAllowedRoots, &helperReflinkRoots,
-		&helperPlatform,
-		&helperDeployedAt, &helperLastActivityAt,
+		&sshHost, &sshPort, &sshUsername,
+		&sshKeyEncrypted, &sshHostKeyEncrypted,
 	)
 	if err != nil {
 		return nil, err
 	}
 
 	instance := &Instance{
-		ID:                        instanceID,
-		Name:                      name,
-		Host:                      host,
-		Username:                  username,
-		PasswordEncrypted:         passwordEncrypted,
-		APIKeyEncrypted:           apiKeyEncrypted,
-		TLSSkipVerify:             SQLiteIntToBool(tlsSkipVerify),
-		SortOrder:                 sortOrder,
-		IsActive:                  SQLiteIntToBool(isActive),
-		HasLocalFilesystemAccess:  SQLiteIntToBool(hasLocalFilesystemAccess),
-		UseHardlinks:              SQLiteIntToBool(useHardlinks),
-		HardlinkBaseDir:           hardlinkBaseDir,
-		HardlinkDirPreset:         hardlinkDirPreset,
-		UseReflinks:               SQLiteIntToBool(useReflinks),
-		FallbackToRegularMode:     SQLiteIntToBool(fallbackToRegularMode),
-		SSHHost:                   sshHost,
-		SSHPort:                   sshPort,
-		SSHUsername:               sshUsername,
-		SSHAuthType:               sshAuthType,
-		SSHKeyEncrypted:           sshKeyEncrypted,
-		SSHKeyPassphraseEncrypted: sshKeyPassphraseEncrypted,
-		SSHPasswordEncrypted:      sshPasswordEncrypted,
-		SSHHostKey:                sshHostKey,
-		HelperPath:                helperPath,
-		HelperVersion:             helperVersion,
-		HelperPlatform:            helperPlatform,
+		ID:                       instanceID,
+		Name:                     name,
+		Host:                     host,
+		Username:                 username,
+		PasswordEncrypted:        passwordEncrypted,
+		APIKeyEncrypted:          apiKeyEncrypted,
+		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
+		SortOrder:                sortOrder,
+		IsActive:                 SQLiteIntToBool(isActive),
+		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
+		UseHardlinks:             SQLiteIntToBool(useHardlinks),
+		HardlinkBaseDir:          hardlinkBaseDir,
+		HardlinkDirPreset:        hardlinkDirPreset,
+		UseReflinks:              SQLiteIntToBool(useReflinks),
+		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
+		SSHHost:                  sshHost,
+		SSHPort:                  sshPort,
+		SSHUsername:              sshUsername,
+		SSHKeyEncrypted:          sshKeyEncrypted,
+		SSHHostKeyEncrypted:      sshHostKeyEncrypted,
 	}
 
 	if basicUsername.Valid {
@@ -603,23 +518,6 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	if basicPasswordEncrypted.Valid {
 		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
 	}
-	if helperDeployedAt.Valid {
-		instance.HelperDeployedAt = &helperDeployedAt.Time
-	}
-	if helperLastActivityAt.Valid {
-		instance.HelperLastActivityAt = &helperLastActivityAt.Time
-	}
-
-	if err := json.Unmarshal([]byte(helperCapabilities), &instance.HelperCapabilities); err != nil {
-		return nil, fmt.Errorf("unmarshal helperCapabilities: %w", err)
-	}
-	if err := json.Unmarshal([]byte(helperAllowedRoots), &instance.HelperAllowedRoots); err != nil {
-		return nil, fmt.Errorf("unmarshal helperAllowedRoots: %w", err)
-	}
-	if err := json.Unmarshal([]byte(helperReflinkRoots), &instance.HelperReflinkRoots); err != nil {
-		return nil, fmt.Errorf("unmarshal helperReflinkRoots: %w", err)
-	}
-
 	return instance, nil
 }
 
