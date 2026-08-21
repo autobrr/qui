@@ -458,7 +458,7 @@ func (c *AppConfig) writeDefaultConfig(path string) error {
 	log.Debug().Msgf("Created config directory: %s", dir)
 
 	// Create config template
-	configTemplate := `# config.toml - Auto-generated on first run //nolint:gosec // G101: a config template, not a credential
+	configTemplate := `# config.toml - Auto-generated on first run
 
 # Hostname / IP
 # Default: "localhost" (or "0.0.0.0" in containers)

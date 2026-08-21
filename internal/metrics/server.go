@@ -45,7 +45,7 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 
 	// Add standard middleware
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
+	router.Use(middleware.RealIP) //nolint:staticcheck // SA1019: the metrics listener uses RemoteAddr for logging only
 	router.Use(middleware.Recoverer)
 
 	// Add basic auth if configured

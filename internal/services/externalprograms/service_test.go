@@ -21,16 +21,10 @@ import (
 )
 
 // mockProgramStore implements a minimal mock for testing
-type mockProgramStore struct {
-	programs map[int]*models.ExternalProgram
-	err      error
-}
+type mockProgramStore struct{}
 
 // mockActivityStore implements a minimal mock for testing
-type mockActivityStore struct {
-	activities []*models.AutomationActivity
-	err        error
-}
+type mockActivityStore struct{}
 
 func TestNewService(t *testing.T) {
 	t.Run("creates service with all dependencies", func(t *testing.T) {
