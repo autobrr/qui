@@ -122,6 +122,28 @@ const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, stri
   }
 };
 
+// Cache the full applied theme so the next page load can paint it before the
+// theme registry arrives from the API (the anti-FOUC vars only cover the
+// background). Hydrated back in config/themes.ts.
+const cacheAppliedTheme = (theme: Theme): void => {
+  if (theme.isCustom || theme.locked) {
+    return;
+  }
+  try {
+    localStorage.setItem("theme-cache", JSON.stringify({
+      id: theme.id,
+      name: theme.name,
+      description: theme.description,
+      isPremium: theme.isPremium,
+      lightOnly: theme.lightOnly,
+      variations: theme.variations,
+      cssVars: theme.cssVars,
+    }));
+  } catch {
+    // Ignore localStorage errors
+  }
+};
+
 // Core theme application logic
 const applyTheme = async (theme: Theme, variation: string | null, isDark: boolean, withTransition = false): Promise<void> => {
   const root = document.documentElement;
@@ -189,6 +211,7 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
 
     root.setAttribute("data-theme", theme.id);
     applyCriticalBackground(root, cssVars);
+    cacheAppliedTheme(theme);
   }
 
   // Spreadsheet disguise: the tab title is a tell. Set/restore it on theme

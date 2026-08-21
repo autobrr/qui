@@ -165,7 +165,7 @@ export function ThemeSelector() {
     refetch: refetchCustomThemes,
   } = useCustomThemes()
   // Subscribe so the picker re-renders when the async theme registry lands.
-  useBuiltinThemes()
+  const builtins = useBuiltinThemes()
 
   const canSwitchPremium = canSwitchToPremiumTheme({
     hasPremiumAccess,
@@ -259,7 +259,7 @@ export function ThemeSelector() {
           </div>
         )}
 
-        {premiumThemes.length === 0 && (
+        {builtins.isReady && !builtins.isError && premiumThemes.length === 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
             <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-400">
               <AlertTriangle className="mr-1 h-3 w-3" />

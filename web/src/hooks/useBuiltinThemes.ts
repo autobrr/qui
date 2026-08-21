@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { registerBuiltinThemes, getThemeById, type Theme } from "@/config/themes"
 import { parseThemeCSS } from "@/utils/themeParser"
-import { getCurrentTheme, setTheme } from "@/utils/theme"
+import { setTheme } from "@/utils/theme"
 import type { BuiltinTheme } from "@/types"
 
 function toTheme(entry: BuiltinTheme): Theme | null {
@@ -50,6 +50,10 @@ function toTheme(entry: BuiltinTheme): Theme | null {
  * Once registered, the stored selection is re-applied in case it only just
  * became resolvable (boot paints the bundled fallback until then).
  */
+// Five components subscribe to this hook; register (and re-apply) only once
+// per fetched payload instead of re-parsing every theme per mount.
+let lastRegistered: unknown = null
+
 export function useBuiltinThemes() {
   const query = useQuery({
     queryKey: ["builtin-themes"],
@@ -61,11 +65,16 @@ export function useBuiltinThemes() {
   const { data } = query
 
   useEffect(() => {
-    if (!data) return
+    if (!data || data === lastRegistered) return
+    lastRegistered = data
     registerBuiltinThemes(data.themes.map(toTheme).filter((t): t is Theme => t !== null))
 
+    // Re-apply the stored selection with the fresh registry entry: it may
+    // only just have become resolvable, and the boot paint may have used the
+    // cached copy of a theme whose CSS has since changed server-side.
     const storedId = localStorage.getItem("color-theme")
-    if (storedId && getThemeById(storedId) && getCurrentTheme().id !== storedId) {
+    const stored = storedId ? getThemeById(storedId) : undefined
+    if (storedId && stored && !stored.locked) {
       void setTheme(storedId)
     }
   }, [data])
