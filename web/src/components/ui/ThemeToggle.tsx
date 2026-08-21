@@ -27,7 +27,6 @@ import {
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
@@ -64,7 +63,6 @@ const useThemeChange = () => {
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
   const { currentMode, currentTheme, isDark } = useThemeChange();
-  const { isError } = useHasPremiumAccess();
   const { customThemes } = useCustomThemes();
   const [open, setOpen] = useState(false);
 
@@ -121,13 +119,7 @@ export const ThemeToggle: React.FC = () => {
     // The server is the authority: a premium theme without a license arrives
     // as a locked stub with no CSS, so the locked flag is the gate.
     if (getThemeById(themeId)?.locked) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        });
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"));
-      }
+      toast.error(t("themeToggle.premiumThemeError"));
       return;
     }
 
@@ -135,17 +127,11 @@ export const ThemeToggle: React.FC = () => {
 
     const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }));
-  }, [isError, t]);
+  }, [t]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
     if (getThemeById(themeId)?.locked) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        });
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"));
-      }
+      toast.error(t("themeToggle.premiumThemeError"));
       return;
     }
 
@@ -155,7 +141,7 @@ export const ThemeToggle: React.FC = () => {
     const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
-  }, [isError, t]);
+  }, [t]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>

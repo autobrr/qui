@@ -30,7 +30,6 @@ import { useAuth } from "@/hooks/useAuth"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
-import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
@@ -119,7 +118,6 @@ export function MobileFooterNav() {
   const { isFooterVisible } = useMobileScroll()
   const { viewMode, setViewMode } = usePersistedCompactViewState("compact", MOBILE_VIEW_MODES)
   const { currentMode, currentTheme } = useThemeChange()
-  const { isError } = useHasPremiumAccess()
   const { customThemes } = useCustomThemes()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
@@ -202,30 +200,18 @@ export function MobileFooterNav() {
     // The server is the authority: a premium theme without a license arrives
     // as a locked stub with no CSS, so the locked flag is the gate.
     if (getThemeById(themeId)?.locked) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        })
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"))
-      }
+      toast.error(t("themeToggle.premiumThemeError"))
       return
     }
 
     await setTheme(themeId)
     const theme = getThemeById(themeId)
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }))
-  }, [isError, t])
+  }, [t])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     if (getThemeById(themeId)?.locked) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        })
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"))
-      }
+      toast.error(t("themeToggle.premiumThemeError"))
       return false
     }
 
@@ -234,7 +220,7 @@ export function MobileFooterNav() {
     const theme = getThemeById(themeId)
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }))
     return true
-  }, [isError, t])
+  }, [t])
 
   if (isSelectionMode) {
     return null

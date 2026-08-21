@@ -12,7 +12,6 @@ import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
-import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -167,12 +166,6 @@ export function ThemeSelector() {
   // Subscribe so the picker re-renders when the async theme registry lands.
   const builtins = useBuiltinThemes()
 
-  const canSwitchPremium = canSwitchToPremiumTheme({
-    hasPremiumAccess,
-    isError,
-    isLoading,
-  })
-
   // The server is the authority: a premium theme without a license arrives as
   // a locked stub with no CSS, so the locked flag is the gate.
   const isThemeUnlocked = (themeId: string) => !getThemeById(themeId)?.locked
@@ -181,13 +174,6 @@ export function ThemeSelector() {
   const themeCatalog = buildThemeCatalog(themes, customThemes)
 
   const showThemeLockedToast = () => {
-    if (isError) {
-      toast.error(t("themes.toasts.verifyFailed"), {
-        description: t("themes.toasts.verifyFailedDescription"),
-      })
-      return
-    }
-
     toast.error(t("themes.toasts.premiumRequired"), {
       description: t("themes.toasts.premiumRequiredDescription"),
     })
@@ -249,7 +235,7 @@ export function ThemeSelector() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 px-4">
-        {isError && !canSwitchPremium && (
+        {isError && !hasPremiumAccess && (
           <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
             <WifiOff className="h-4 w-4 flex-shrink-0" />
             <p className="text-sm">

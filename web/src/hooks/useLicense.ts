@@ -5,9 +5,7 @@
 
 import { api } from "@/lib/api"
 import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
-import { clearLicenseEntitlement, setLicenseEntitlement } from "@/lib/license-entitlement"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -22,12 +20,6 @@ export const usePremiumAccess = () => {
     refetchOnReconnect: true,
     retry: 2,
   })
-
-  useEffect(() => {
-    if (query.data) {
-      setLicenseEntitlement(query.data.hasPremiumAccess)
-    }
-  }, [query.data])
 
   return query
 }
@@ -85,7 +77,6 @@ export const useDeleteLicense = () => {
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
       toast.success(t("themes.license.toasts.removedFromMachine"))
-      clearLicenseEntitlement()
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },

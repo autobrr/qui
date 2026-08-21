@@ -435,8 +435,6 @@
       "lock": "Sperren"
     },
     "toasts": {
-      "verifyFailed": "Lizenzprüfung nicht verfügbar",
-      "verifyFailedDescription": "Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
       "premiumRequired": "Premium-Lizenz erforderlich",
       "premiumRequiredDescription": "Schalte Premium-Designs frei, indem du eine gültige Premium-Lizenz hinzufügst."
     },
