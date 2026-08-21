@@ -26,7 +26,8 @@ export function useThemeSettingsSync(): void {
     queryKey: ["theme-settings"],
     queryFn: () => api.getThemeSettings(),
     enabled: hasPremiumAccess,
-    staleTime: Infinity,
+    // Poll so an API-side theme change repaints open tabs; pauses while the tab is hidden.
+    refetchInterval: 5_000,
     retry: false,
   })
 
