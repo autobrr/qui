@@ -28,8 +28,10 @@ export function useThemeSettingsSync(): void {
     queryKey: ["theme-settings"],
     queryFn: () => api.getThemeSettings(),
     enabled: hasPremiumAccess,
-    // Poll so an API-side theme change repaints open tabs; pauses while the tab is hidden.
+    // Poll so an API-side theme change repaints open tabs, hidden ones
+    // included (desktop hooks PUT while qui is on another workspace).
     refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
     retry: false,
   })
 
