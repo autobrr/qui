@@ -3076,7 +3076,7 @@ paths:
       tags:
         - Themes
       summary: List built-in themes
-      description: List every built-in theme. Free themes always include their CSS. Premium themes include CSS only when the instance holds a premium license; otherwise the entry is a locked stub with preview colors. Public endpoint, no authentication required.
+      description: List every built-in theme. Free themes always include their CSS. On a licensed instance, premium themes include CSS for an authenticated caller; an unauthenticated caller only receives the selected theme's CSS so the login page can paint, and every other premium theme is a locked stub with preview colors. Without a license every premium theme is a locked stub. Public endpoint, no authentication required.
       security: []
       responses:
         '200':

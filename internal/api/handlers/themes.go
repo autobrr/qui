@@ -49,10 +49,16 @@ type ThemesHandler struct {
 	themesDir themesDirProvider
 	premium   premiumChecker
 	settings  themeSettingsStore
+	// authed reports whether the caller has an authenticated session. The
+	// theme catalog is public so the login page can paint, but a public
+	// (unauthenticated) caller only receives full premium CSS for the one
+	// selected theme; the picker behind auth gets the whole set. nil means
+	// treat every caller as unauthenticated.
+	authed func(context.Context) bool
 }
 
-func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, settings themeSettingsStore) *ThemesHandler {
-	return &ThemesHandler{themesDir: themesDir, premium: premium, settings: settings}
+func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, settings themeSettingsStore, authed func(context.Context) bool) *ThemesHandler {
+	return &ThemesHandler{themesDir: themesDir, premium: premium, settings: settings, authed: authed}
 }
 
 // CustomTheme is a single sideloaded theme file and its raw CSS contents.
@@ -209,7 +215,7 @@ type BuiltinTheme struct {
 // buildBuiltinThemeList applies the premium gate: free themes always include
 // their CSS, premium themes only with a license, locked entries get preview
 // colors instead.
-func buildBuiltinThemeList(list []themes.Theme, hasPremium bool) []BuiltinTheme {
+func buildBuiltinThemeList(list []themes.Theme, hasPremium, authed bool, selectedID string) []BuiltinTheme {
 	out := make([]BuiltinTheme, 0, len(list))
 	for _, t := range list {
 		bt := BuiltinTheme{
@@ -218,9 +224,17 @@ func buildBuiltinThemeList(list []themes.Theme, hasPremium bool) []BuiltinTheme 
 			Description: t.Description,
 			Premium:     t.Premium,
 		}
-		if t.Premium && !hasPremium {
+		// Free themes always carry CSS. A premium theme needs a license, and
+		// for a public (unauthenticated) caller it carries CSS only when it is
+		// the selected theme the login page must paint; every other premium
+		// theme is a preview stub so a licensed instance does not hand its
+		// whole premium set to anonymous callers.
+		switch {
+		case t.Premium && !hasPremium:
 			bt.Preview = &t.Preview
-		} else {
+		case t.Premium && !authed && t.ID != selectedID:
+			bt.Preview = &t.Preview
+		default:
 			bt.CSS = t.CSS
 		}
 		out = append(out, bt)
@@ -239,5 +253,17 @@ func (h *ThemesHandler) ListThemes(w http.ResponseWriter, r *http.Request) {
 		hasPremium = false
 	}
 
-	RespondJSON(w, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium)})
+	authed := h.authed != nil && h.authed(r.Context())
+
+	// The selected theme is the one the public login page paints, so it is the
+	// only premium theme an unauthenticated caller receives with CSS. A failed
+	// read just means no premium CSS goes out anonymously.
+	var selectedID string
+	if !authed {
+		if settings, err := h.settings.Get(r.Context()); err == nil && settings != nil {
+			selectedID = settings.ThemeID
+		}
+	}
+
+	RespondJSON(w, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium, authed, selectedID)})
 }

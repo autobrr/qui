@@ -356,7 +356,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
+		return s.sessionManager.GetBool(ctx, "authenticated")
+	})
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,
