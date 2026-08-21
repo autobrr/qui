@@ -37,6 +37,10 @@ export function useThemeSettingsSync(): void {
   useEffect(() => {
     if (!data?.themeId) return
     lastSynced.current = JSON.stringify(data)
+    // Mirror the server selection locally even when it resolves to a locked
+    // stub or an unknown id, so the push below never sends a differing local
+    // id over it.
+    localStorage.setItem("color-theme", data.themeId)
     // Skip unknown ids (e.g. a custom theme not registered yet) so we never
     // downgrade the local selection to the default theme.
     if (!getThemeById(data.themeId)) return

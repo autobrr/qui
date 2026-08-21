@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   getCurrentThemeMode,
   getCurrentTheme,
@@ -71,19 +71,11 @@ export const ThemeToggle: React.FC = () => {
   useBuiltinThemes();
   const sortedThemes = buildThemeCatalog(themes, customThemes);
 
-  const previewColorsCache = useMemo(() => new Map<string, {
-    primary: string;
-    secondary: string;
-    accent: string;
-    variations?: Array<{ id: string; color: string }>;
-  }>(), []);
-
+  // Pure property reads over ~two dozen themes: cheap enough to recompute per
+  // render, and a cache would go stale when the registry swaps an entry
+  // (license activation replacing a locked stub, custom theme refresh).
   const modeKey = isDark ? "dark" : "light";
-  const getPreviewColors = useCallback((theme: (typeof themes)[number]) => {
-    const cacheKey = `${modeKey}:${theme.id}`;
-    const cached = previewColorsCache.get(cacheKey);
-    if (cached) return cached;
-
+  const getPreviewColors = (theme: (typeof themes)[number]) => {
     const cssVars = modeKey === "dark" ? theme.cssVars.dark : theme.cssVars.light;
     const firstVariation = theme.variations?.[0];
     const resolveColor = (varName: "--primary" | "--secondary" | "--accent") => {
@@ -94,7 +86,7 @@ export const ThemeToggle: React.FC = () => {
       return value || "";
     };
 
-    const colors = {
+    return {
       primary: resolveColor("--primary"),
       secondary: resolveColor("--secondary"),
       accent: resolveColor("--accent"),
@@ -103,10 +95,7 @@ export const ThemeToggle: React.FC = () => {
         color: cssVars[`--variation-${id}`],
       })).filter((v) => v.color !== undefined),
     };
-
-    previewColorsCache.set(cacheKey, colors);
-    return colors;
-  }, [modeKey, previewColorsCache]);
+  };
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);

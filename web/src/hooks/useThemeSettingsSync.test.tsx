@@ -4,17 +4,18 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { renderHook, act, cleanup } from "@testing-library/react"
+import { renderHook, act, cleanup, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useThemeSettingsSync } from "./useThemeSettingsSync"
+import type { ThemeSettings } from "@/types"
 
 const { mockApi } = vi.hoisted(() => {
   const builtinThemesResponse = Promise.resolve({ themes: [] })
   return {
     mockApi: {
       getBuiltinThemes: vi.fn(() => builtinThemesResponse),
-      getThemeSettings: vi.fn(() => Promise.resolve(undefined)),
+      getThemeSettings: vi.fn<() => Promise<ThemeSettings | undefined>>(() => Promise.resolve(undefined)),
       updateThemeSettings: vi.fn(() => Promise.resolve({ themeId: "minimal", mode: "dark" })),
     },
   }
@@ -57,6 +58,25 @@ describe("useThemeSettingsSync", () => {
     // without replacing the stored selection on the server.
     localStorage.setItem("color-theme", "locked-premium")
     renderHook(() => useThemeSettingsSync(), { wrapper })
+
+    dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
+
+    expect(mockApi.updateThemeSettings).toHaveBeenCalledExactlyOnceWith({
+      themeId: "locked-premium",
+      mode: "dark",
+    })
+  })
+
+  it("mirrors a pulled unresolvable selection so a mode change keeps it", async () => {
+    // Fresh browser, server selection is a premium theme this client cannot
+    // resolve: the pull must persist the id locally, or the next mode toggle
+    // would push the applied fallback id over the server selection.
+    mockApi.getThemeSettings.mockResolvedValue({ themeId: "locked-premium", mode: "light" })
+    renderHook(() => useThemeSettingsSync(), { wrapper })
+
+    await waitFor(() => {
+      expect(localStorage.getItem("color-theme")).toBe("locked-premium")
+    })
 
     dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
 

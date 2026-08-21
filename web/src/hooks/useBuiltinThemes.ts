@@ -77,6 +77,9 @@ export function useBuiltinThemes() {
       return payload
     },
     staleTime: Infinity,
+    // Match the hourly license poll: a lapse or recovery server-side swaps
+    // full entries and locked stubs within the hour without a reload.
+    refetchInterval: 60 * 60 * 1000,
     retry: 1,
   })
 
