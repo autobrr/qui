@@ -233,6 +233,7 @@ func (s *Server) open(ready chan<- struct{}) error {
 }
 
 func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error {
+	//nolint:noctx // the listener outlives every request; a ListenConfig context would only bound the bind itself
 	listener, err := net.Listen(protocol, addr)
 	if err != nil {
 		return err

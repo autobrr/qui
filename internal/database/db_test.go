@@ -105,19 +105,19 @@ func TestMigrationsApplyFullSchema(t *testing.T) {
 	require.Equal(t, len(files), applied, "All migrations should be recorded as applied")
 
 	t.Run("pragma settings", func(t *testing.T) {
-		verifyPragmas(t, t.Context(), conn)
+		verifyPragmas(t.Context(), t, conn)
 	})
 
 	t.Run("schema", func(t *testing.T) {
-		verifySchema(t, t.Context(), conn)
+		verifySchema(t.Context(), t, conn)
 	})
 
 	t.Run("indexes", func(t *testing.T) {
-		verifyIndexes(t, t.Context(), conn)
+		verifyIndexes(t.Context(), t, conn)
 	})
 
 	t.Run("triggers", func(t *testing.T) {
-		verifyTriggers(t, t.Context(), conn)
+		verifyTriggers(t.Context(), t, conn)
 	})
 }
 
@@ -143,8 +143,8 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 		require.NoError(t, conn2.Close())
 	})
 
-	verifyPragmas(t, ctx, conn1)
-	verifyPragmas(t, ctx, conn2)
+	verifyPragmas(ctx, t, conn1)
+	verifyPragmas(ctx, t, conn2)
 }
 
 func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
@@ -367,7 +367,7 @@ type pragmaQuerier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
+func verifyPragmas(ctx context.Context, t *testing.T, q pragmaQuerier) {
 	t.Helper()
 
 	var journalMode string
@@ -395,7 +395,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	require.Equal(t, "ok", strings.ToLower(integrity))
 }
 
-func verifySchema(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifySchema(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	actualTables := make(map[string]struct{})
@@ -453,7 +453,7 @@ func verifySchema(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 }
 
-func verifyIndexes(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifyIndexes(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	for table, indexes := range expectedIndexes {
@@ -466,7 +466,7 @@ func verifyIndexes(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 }
 
-func verifyTriggers(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifyTriggers(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	for _, trigger := range expectedTriggers {

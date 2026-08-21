@@ -4103,6 +4103,8 @@ func (s *Service) detectContentType(req *TorznabSearchRequest) contentType {
 		return contentTypeApp
 	case rls.Game:
 		return contentTypeGame
+	default:
+		// rls.Unknown is inferred from the parsed fields below.
 	}
 
 	if release.Type == rls.Unknown {

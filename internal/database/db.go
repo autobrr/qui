@@ -314,11 +314,11 @@ func (t *Tx) shouldBypassStatementCache(query string) bool {
 
 type txExecResult struct{ tx *Tx }
 
-func (e txExecResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (sql.Result, error) {
+func (e txExecResult) execStmt(ctx context.Context, stmt *sql.Stmt, args []any) (sql.Result, error) {
 	return stmt.ExecContext(ctx, args...)
 }
 
-func (e txExecResult) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
+func (e txExecResult) execDirect(ctx context.Context, _ *sql.DB, query string, args []any) (sql.Result, error) {
 	result, err := e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
 	if err == nil {
 		e.tx.markQueryForCaching(query)
@@ -331,11 +331,11 @@ func (e txExecResult) getTx() *Tx            { return e.tx }
 
 type txQueryRows struct{ tx *Tx }
 
-func (q txQueryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Rows, error) {
+func (q txQueryRows) execStmt(ctx context.Context, stmt *sql.Stmt, args []any) (*sql.Rows, error) {
 	return stmt.QueryContext(ctx, args...)
 }
 
-func (q txQueryRows) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
+func (q txQueryRows) execDirect(ctx context.Context, _ *sql.DB, query string, args []any) (*sql.Rows, error) {
 	rows, err := q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
 	if err == nil {
 		q.tx.markQueryForCaching(query)
@@ -355,14 +355,14 @@ func (q txQueryRows) getTx() *Tx { return q.tx }
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return execWithRetry(t.db, ctx, query, args, txExecResult{tx: t})
+	return execWithRetry(ctx, t.db, query, args, txExecResult{tx: t})
 }
 
 // QueryContext executes a query within the transaction.
 // Uses connection-specific statement cache when available. If statement is not cached,
 // prepares it on the transaction and marks it for promotion to DB cache after commit.
 func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return execWithRetry(t.db, ctx, query, args, txQueryRows{tx: t})
+	return execWithRetry(ctx, t.db, query, args, txQueryRows{tx: t})
 }
 
 // QueryRowContext executes a query within the transaction.
@@ -962,19 +962,19 @@ func isSQLiteNestedTxErr(err error) bool {
 const stmtClosedErrMsg = "statement is closed"
 
 type stmtExecutor[T any] interface {
-	execStmt(*sql.Stmt, context.Context, []any) (T, error)
-	execDirect(*sql.DB, context.Context, string, []any) (T, error)
+	execStmt(context.Context, *sql.Stmt, []any) (T, error)
+	execDirect(context.Context, *sql.DB, string, []any) (T, error)
 	getErr(T) error
 	getTx() *Tx // Returns tx if this is a transaction executor, nil otherwise
 }
 
 type execResult struct{}
 
-func (execResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (sql.Result, error) {
+func (execResult) execStmt(ctx context.Context, stmt *sql.Stmt, args []any) (sql.Result, error) {
 	return stmt.ExecContext(ctx, args...)
 }
 
-func (execResult) execDirect(conn *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
+func (execResult) execDirect(ctx context.Context, conn *sql.DB, query string, args []any) (sql.Result, error) {
 	return conn.ExecContext(ctx, query, args...)
 }
 
@@ -983,11 +983,11 @@ func (execResult) getTx() *Tx              { return nil }
 
 type queryRows struct{}
 
-func (queryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (*sql.Rows, error) {
+func (queryRows) execStmt(ctx context.Context, stmt *sql.Stmt, args []any) (*sql.Rows, error) {
 	return stmt.QueryContext(ctx, args...)
 }
 
-func (queryRows) execDirect(conn *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
+func (queryRows) execDirect(ctx context.Context, conn *sql.DB, query string, args []any) (*sql.Rows, error) {
 	return conn.QueryContext(ctx, query, args...)
 }
 
@@ -999,17 +999,17 @@ func (queryRows) getErr(r *sql.Rows) error {
 }
 func (queryRows) getTx() *Tx { return nil }
 
-func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query string, args []any, executor E) (T, error) {
+func execWithRetry[T any, E stmtExecutor[T]](ctx context.Context, db *DB, query string, args []any, executor E) (T, error) {
 	stmt, err := db.getStmt(ctx, query, executor.getTx())
 	if err != nil {
 		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return executor.execDirect(db.writerConn, ctx, boundQuery, args)
+			return executor.execDirect(ctx, db.writerConn, boundQuery, args)
 		}
-		return executor.execDirect(db.readerPool, ctx, boundQuery, args)
+		return executor.execDirect(ctx, db.readerPool, boundQuery, args)
 	}
 
-	result, execErr := executor.execStmt(stmt, ctx, args)
+	result, execErr := executor.execStmt(ctx, stmt, args)
 	resultErr := executor.getErr(result)
 	if (execErr == nil || !strings.Contains(execErr.Error(), stmtClosedErrMsg)) &&
 		(resultErr == nil || !strings.Contains(resultErr.Error(), stmtClosedErrMsg)) {
@@ -1027,12 +1027,12 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 	if err != nil {
 		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return executor.execDirect(db.writerConn, ctx, boundQuery, args)
+			return executor.execDirect(ctx, db.writerConn, boundQuery, args)
 		}
-		return executor.execDirect(db.readerPool, ctx, boundQuery, args)
+		return executor.execDirect(ctx, db.readerPool, boundQuery, args)
 	}
 
-	result, execErr = executor.execStmt(stmt, ctx, args)
+	result, execErr = executor.execStmt(ctx, stmt, args)
 	return result, execErr
 }
 
@@ -1041,7 +1041,7 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 // Do NOT use this for queries with RETURNING clauses - use QueryRowContext or QueryContext instead.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	if !isWriteQuery(query) {
-		return execWithRetry(db, ctx, query, args, execResult{})
+		return execWithRetry(ctx, db, query, args, execResult{})
 	}
 
 	if db.serializeWrites {
@@ -1049,14 +1049,14 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		defer db.writerMu.Unlock()
 	}
 
-	return execWithRetry(db, ctx, query, args, execResult{})
+	return execWithRetry(ctx, db, query, args, execResult{})
 }
 
 // QueryContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	if !isWriteQuery(query) {
-		return execWithRetry(db, ctx, query, args, queryRows{})
+		return execWithRetry(ctx, db, query, args, queryRows{})
 	}
 
 	if db.serializeWrites {
@@ -1064,7 +1064,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 		defer db.writerMu.Unlock()
 	}
 
-	return execWithRetry(db, ctx, query, args, queryRows{})
+	return execWithRetry(ctx, db, query, args, queryRows{})
 }
 
 // QueryRowContext routes write queries to the single writer connection and

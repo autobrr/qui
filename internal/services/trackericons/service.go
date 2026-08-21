@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+
 	// Registered for their side effect: image.Decode needs the gif and jpeg
 	// decoders to read icons that are not png.
 	_ "image/gif"
