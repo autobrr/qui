@@ -79,6 +79,7 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	themeSettingsStore               *models.ThemeSettingsStore
 	filterViewStore                  *models.FilterViewStore
 	logExclusionsStore               *models.LogExclusionsStore
 	notificationTargetStore          *models.NotificationTargetStore
@@ -120,6 +121,7 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	ThemeSettingsStore               *models.ThemeSettingsStore
 	FilterViewStore                  *models.FilterViewStore
 	LogExclusionsStore               *models.LogExclusionsStore
 	NotificationTargetStore          *models.NotificationTargetStore
@@ -185,6 +187,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		themeSettingsStore:               deps.ThemeSettingsStore,
 		filterViewStore:                  deps.FilterViewStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
 		notificationTargetStore:          deps.NotificationTargetStore,
@@ -353,7 +356,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,
@@ -433,6 +436,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Sideloaded custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
+
+			// Persisted theme selection (writes premium-gated inside the handler)
+			r.Get("/themes/settings", themesHandler.GetThemeSettings)
+			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {

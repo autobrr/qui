@@ -12,9 +12,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // stubPremium controls the premium-access result for the themes handler tests.
@@ -46,7 +49,7 @@ func doListCustomThemes(t *testing.T, h *ThemesHandler) *httptest.ResponseRecord
 }
 
 func TestThemesHandler_NotPremium(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{ok: false})
+	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{ok: false}, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
@@ -56,14 +59,14 @@ func TestThemesHandler_NotPremium(t *testing.T) {
 }
 
 func TestThemesHandler_PremiumCheckError(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{err: errors.New("boom")})
+	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{err: errors.New("boom")}, nil)
 	rec := doListCustomThemes(t, h)
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestThemesHandler_EmptyDirReturnsEmptyArray(t *testing.T) {
 	dir := t.TempDir()
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true})
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -89,7 +92,7 @@ func TestThemesHandler_ListsOnlyRegularCSSFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(outside, []byte(":root{--primary:red}"), 0o600))
 	_ = os.Symlink(outside, filepath.Join(dir, "linked.css"))
 
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true})
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -108,7 +111,7 @@ func TestThemesHandler_SkipsOversizeFiles(t *testing.T) {
 	big := make([]byte, maxCustomThemeFileSize+1)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "huge.css"), big, 0o600))
 
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true})
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil)
 	rec := doListCustomThemes(t, h)
 
 	var resp CustomThemesResponse
@@ -135,7 +138,7 @@ func TestThemesHandler_CapsFileCount(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(":root{}"), 0o600))
 	}
 
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true})
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil)
 	rec := doListCustomThemes(t, h)
 
 	var resp CustomThemesResponse
@@ -144,9 +147,94 @@ func TestThemesHandler_CapsFileCount(t *testing.T) {
 }
 
 func TestThemesHandler_EnsureDirErrorReturnsEmpty(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{dir: filepath.Join("non", "existent"), err: errors.New("mkdir failed")}, stubPremium{ok: true})
+	h := NewThemesHandler(stubThemesDir{dir: filepath.Join("non", "existent"), err: errors.New("mkdir failed")}, stubPremium{ok: true}, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"themes":[]`)
+}
+
+// stubThemeSettings is an in-memory themeSettingsStore.
+type stubThemeSettings struct {
+	saved *models.ThemeSettings
+	err   error
+}
+
+func (s *stubThemeSettings) Get(context.Context) (*models.ThemeSettings, error) {
+	return s.saved, s.err
+}
+
+func (s *stubThemeSettings) Set(_ context.Context, ts *models.ThemeSettings) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.saved = ts
+	return nil
+}
+
+func doUpdateThemeSettings(t *testing.T, h *ThemesHandler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/api/themes/settings", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.UpdateThemeSettings(rec, req)
+	return rec
+}
+
+func TestThemeSettings_UpdateNotPremium(t *testing.T) {
+	store := &stubThemeSettings{}
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: false}, store)
+
+	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Nil(t, store.saved)
+}
+
+func TestThemeSettings_UpdateValidation(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"missing themeId", `{"mode":"dark"}`},
+		{"bad mode", `{"themeId":"minimal","mode":"neon"}`},
+		{"bad json", `{`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &stubThemeSettings{}
+			h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store)
+			rec := doUpdateThemeSettings(t, h, tt.body)
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Nil(t, store.saved)
+		})
+	}
+}
+
+func TestThemeSettings_UpdateAndGet(t *testing.T) {
+	store := &stubThemeSettings{}
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store)
+
+	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal","variation":"blue"}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, &models.ThemeSettings{ThemeID: "minimal", Mode: "auto", Variation: "blue"}, store.saved)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/themes/settings", nil)
+	getRec := httptest.NewRecorder()
+	h.GetThemeSettings(getRec, req)
+	require.Equal(t, http.StatusOK, getRec.Code)
+
+	var got models.ThemeSettings
+	require.NoError(t, json.Unmarshal(getRec.Body.Bytes(), &got))
+	require.Equal(t, *store.saved, got)
+}
+
+func TestThemeSettings_GetEmpty(t *testing.T) {
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/themes/settings", nil)
+	rec := httptest.NewRecorder()
+	h.GetThemeSettings(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "null", strings.TrimSpace(rec.Body.String()))
 }

@@ -3103,6 +3103,47 @@ paths:
         '500':
           description: Failed to check premium access or read the custom themes directory
 
+  /api/themes/settings:
+    get:
+      tags:
+        - Themes
+      summary: Get stored theme selection
+      description: Get the theme selection stored in the database. Returns null when no selection is stored.
+      responses:
+        '200':
+          description: Stored theme selection, or null when none is stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeSettings'
+                nullable: true
+        '500':
+          description: Failed to load theme settings
+    put:
+      tags:
+        - Themes
+      summary: Store theme selection
+      description: Store the theme selection in the database. Requires premium access.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThemeSettings'
+      responses:
+        '200':
+          description: Theme selection stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeSettings'
+        '400':
+          description: Invalid payload, missing themeId, or invalid mode
+        '403':
+          description: Premium access required
+        '500':
+          description: Failed to check premium access or save theme settings
+
   /api/torrents/export:
     post:
       tags:
@@ -5744,6 +5785,20 @@ components:
       description: Directory scan run ID
 
   schemas:
+    ThemeSettings:
+      type: object
+      required:
+        - themeId
+      properties:
+        themeId:
+          type: string
+        mode:
+          type: string
+          enum: [auto, light, dark]
+          default: auto
+        variation:
+          type: string
+
     User:
       type: object
       properties:

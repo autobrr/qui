@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 const (
@@ -34,13 +37,21 @@ type themesDirProvider interface {
 	EnsureCustomThemesDir() (string, error)
 }
 
+// themeSettingsStore persists the selected theme.
+// Satisfied by *models.ThemeSettingsStore.
+type themeSettingsStore interface {
+	Get(ctx context.Context) (*models.ThemeSettings, error)
+	Set(ctx context.Context, ts *models.ThemeSettings) error
+}
+
 type ThemesHandler struct {
 	themesDir themesDirProvider
 	premium   premiumChecker
+	settings  themeSettingsStore
 }
 
-func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker) *ThemesHandler {
-	return &ThemesHandler{themesDir: themesDir, premium: premium}
+func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, settings themeSettingsStore) *ThemesHandler {
+	return &ThemesHandler{themesDir: themesDir, premium: premium, settings: settings}
 }
 
 // CustomTheme is a single sideloaded theme file and its raw CSS contents.
@@ -135,4 +146,54 @@ func readCustomThemeCSS(path string) ([]byte, bool) {
 	}
 
 	return css, true
+}
+
+// GetThemeSettings returns the stored theme selection, or null when none is saved.
+func (h *ThemesHandler) GetThemeSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.settings.Get(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load theme settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to load theme settings")
+		return
+	}
+	RespondJSON(w, http.StatusOK, settings)
+}
+
+// UpdateThemeSettings stores the theme selection. It is premium-gated:
+// callers without an active premium-access license receive 403.
+func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Request) {
+	hasPremium, err := h.premium.HasPremiumAccess(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to check premium access for theme settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to check premium access")
+		return
+	}
+	if !hasPremium {
+		RespondError(w, http.StatusForbidden, "Premium access required")
+		return
+	}
+
+	var settings models.ThemeSettings
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	if settings.ThemeID == "" {
+		RespondError(w, http.StatusBadRequest, "themeId is required")
+		return
+	}
+	if settings.Mode == "" {
+		settings.Mode = "auto"
+	}
+	if settings.Mode != "auto" && settings.Mode != "light" && settings.Mode != "dark" {
+		RespondError(w, http.StatusBadRequest, "mode must be auto, light or dark")
+		return
+	}
+
+	if err := h.settings.Set(r.Context(), &settings); err != nil {
+		log.Error().Err(err).Msg("Failed to save theme settings")
+		RespondError(w, http.StatusInternalServerError, "Failed to save theme settings")
+		return
+	}
+	RespondJSON(w, http.StatusOK, settings)
 }

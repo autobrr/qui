@@ -122,6 +122,7 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   TransferInfo,
+  ThemeSettings,
   User,
   WarningResponse,
   WebSeed
@@ -2044,6 +2045,18 @@ class ApiClient {
     themes: Array<{ id: string; filename: string; css: string }>
   }> {
     return this.request("/themes/custom")
+  }
+
+  // Theme settings (theme selection stored in the database; writes premium-gated server-side)
+  async getThemeSettings(): Promise<ThemeSettings | null> {
+    return this.request<ThemeSettings | null>("/themes/settings")
+  }
+
+  async updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>("/themes/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
   }
 
   // Preferences endpoints

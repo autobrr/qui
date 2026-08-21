@@ -4,12 +4,15 @@
  */
 
 import { useCustomThemes } from "@/hooks/useCustomThemes"
+import { useThemeSettingsSync } from "@/hooks/useThemeSettingsSync"
 
 /**
  * Mounts the custom-themes loader app-wide (for authenticated users) so a stored
  * custom theme is registered and applied even when the theme picker isn't open.
+ * Also keeps the theme selection synced with the server for premium users.
  */
 export function CustomThemesLoader(): null {
   useCustomThemes()
+  useThemeSettingsSync()
   return null
 }
