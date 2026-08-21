@@ -48,7 +48,11 @@ export function useThemeSettingsSync(): void {
     const handleThemeChange = (event: Event) => {
       const { theme, mode, isSystemChange, variant } = (event as CustomEvent).detail
       if (isSystemChange) return
-      const payload: ThemeSettings = { themeId: theme.id, mode, ...(variant ? { variation: variant } : {}) }
+      // Push the stored selection, not the applied theme: a locked premium id
+      // paints the fallback default, which must not overwrite the server
+      // selection; mode changes still sync.
+      const themeId = localStorage.getItem("color-theme") ?? theme.id
+      const payload: ThemeSettings = { themeId, mode, ...(variant ? { variation: variant } : {}) }
       const serialized = JSON.stringify(payload)
       if (serialized === lastSynced.current) return
       lastSynced.current = serialized

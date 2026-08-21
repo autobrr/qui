@@ -36,6 +36,7 @@ function dispatchThemeChange(detail: object) {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  localStorage.clear()
 })
 
 describe("useThemeSettingsSync", () => {
@@ -48,6 +49,20 @@ describe("useThemeSettingsSync", () => {
       themeId: "minimal",
       mode: "dark",
       variation: "blue",
+    })
+  })
+
+  it("pushes the stored selection, not the applied fallback theme", () => {
+    // Mode toggle during the locked-premium fallback: sync the new mode
+    // without replacing the stored selection on the server.
+    localStorage.setItem("color-theme", "locked-premium")
+    renderHook(() => useThemeSettingsSync(), { wrapper })
+
+    dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
+
+    expect(mockApi.updateThemeSettings).toHaveBeenCalledExactlyOnceWith({
+      themeId: "locked-premium",
+      mode: "dark",
     })
   })
 

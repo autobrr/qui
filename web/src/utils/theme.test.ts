@@ -54,7 +54,7 @@ describe("setTheme locked fallback", () => {
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
   })
 
-  it("keeps a mode toggle from syncing the fallback over the stored selection", async () => {
+  it("keeps the stored selection through a mode toggle on the fallback", async () => {
     localStorage.setItem("color-theme", "locked-premium")
 
     const events: Array<{ themeId: string; isSystemChange: boolean }> = []
@@ -67,8 +67,8 @@ describe("setTheme locked fallback", () => {
     window.removeEventListener("themechange", listener)
 
     expect(localStorage.getItem("color-theme")).toBe("locked-premium")
-    // The applied theme is the fallback default, not a user selection: flagged
-    // system-driven so the sync never PUTs it over the stored premium id.
-    expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
+    // A user change dispatched with the applied fallback theme; the sync hook
+    // maps it back to the stored selection before pushing to the server.
+    expect(events).toEqual([{ themeId: "minimal", isSystemChange: false }])
   })
 })
