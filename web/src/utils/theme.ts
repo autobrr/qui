@@ -135,6 +135,8 @@ const cacheAppliedTheme = (theme: Theme): void => {
       lightOnly: theme.lightOnly,
       variations: theme.variations,
       cssVars: theme.cssVars,
+      isCustom: theme.isCustom,
+      rawCss: theme.rawCss,
     }));
   } catch {
     // Ignore localStorage errors
@@ -183,8 +185,6 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
       .forEach(prop => root.style.removeProperty(prop));
 
     applyCustomThemeStyle(theme.rawCss);
-    root.setAttribute("data-theme", theme.id);
-    applyCriticalBackground(root, cssVars);
   } else {
     // Built-in theme: drop any injected custom stylesheet and apply vars inline.
     removeCustomThemeStyle();
@@ -205,11 +205,11 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
         root.style.setProperty("--variation-color", variationColor);
       }
     }
-
-    root.setAttribute("data-theme", theme.id);
-    applyCriticalBackground(root, cssVars);
-    cacheAppliedTheme(theme);
   }
+
+  root.setAttribute("data-theme", theme.id);
+  applyCriticalBackground(root, cssVars);
+  cacheAppliedTheme(theme);
 
   // Spreadsheet disguise: the tab title is a tell. Set/restore it on theme
   // application so every page (not just those running useTitleBarSpeeds)

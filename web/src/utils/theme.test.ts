@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { setTheme, setThemeMode } from "./theme"
-import { registerBuiltinThemes } from "@/config/themes"
+import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
 
 vi.mock("./fontLoader", () => ({ loadThemeFonts: vi.fn() }))
 
@@ -28,6 +28,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  registerCustomThemes([])
   localStorage.clear()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -84,5 +85,24 @@ describe("setTheme locked fallback", () => {
     // A user change dispatched with the applied fallback theme; the sync hook
     // maps it back to the stored selection before pushing to the server.
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: false }])
+  })
+})
+
+describe("boot cache for custom themes", () => {
+  it("caches an applied custom theme with its raw CSS so a refresh can repaint it", async () => {
+    registerCustomThemes([{
+      id: "custom:ocean",
+      name: "Ocean",
+      isCustom: true,
+      rawCss: ":root { --background: navy; }",
+      cssVars,
+    }])
+
+    await setTheme("custom:ocean")
+
+    const cached = parseCachedTheme(localStorage.getItem("theme-cache"))
+    expect(cached?.id).toBe("custom:ocean")
+    expect(cached?.isCustom).toBe(true)
+    expect(cached?.rawCss).toBe(":root { --background: navy; }")
   })
 })
