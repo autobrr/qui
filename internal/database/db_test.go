@@ -835,7 +835,7 @@ func TestTransactionSerialization(t *testing.T) {
 			t.Errorf("Failed to begin first transaction: %v", err)
 			return
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Signal that we started
 		started <- true

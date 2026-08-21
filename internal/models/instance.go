@@ -338,7 +338,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern all strings in a single call
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &name, &normalizedHost, &username, basicUsername)
@@ -640,7 +640,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Prepare strings to intern - always intern name, host, username
 	// Also intern basic_username if it's provided and not empty
@@ -795,7 +795,7 @@ func (s *InstanceStore) SetActiveState(ctx context.Context, id int, active bool)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, `UPDATE instances SET is_active = ? WHERE id = ?`, BoolToSQLite(active), id)
 	if err != nil {
@@ -872,7 +872,7 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `DELETE FROM instances WHERE id = ?`
 

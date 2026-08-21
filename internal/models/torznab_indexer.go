@@ -296,7 +296,7 @@ func (s *TorznabIndexerStore) CreateWithIndexerID(ctx context.Context, name, bas
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern strings into string_pool (name, baseURL, optionally indexerID + basic username)
 	toIntern := make([]*string, 0, 4)
@@ -684,7 +684,7 @@ func (s *TorznabIndexerStore) Update(ctx context.Context, id int, params Torznab
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern strings into string_pool
 	stringsToIntern := []string{existing.Name, existing.BaseURL}
@@ -855,7 +855,7 @@ func (s *TorznabIndexerStore) SetCapabilities(ctx context.Context, indexerID int
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Delete existing capabilities
 	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_capabilities WHERE indexer_id = ?", indexerID)
@@ -947,7 +947,7 @@ func (s *TorznabIndexerStore) SetCategories(ctx context.Context, indexerID int, 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Delete existing categories
 	_, err = tx.ExecContext(ctx, "DELETE FROM torznab_indexer_categories WHERE indexer_id = ?", indexerID)
@@ -1050,7 +1050,7 @@ func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, er
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern error message
 	ids, err := dbinterface.InternStrings(ctx, tx, errorMessage)

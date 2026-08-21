@@ -755,7 +755,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
+			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
 		})
 		//	// Redirect root to base URL
 		//	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

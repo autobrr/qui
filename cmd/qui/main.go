@@ -452,7 +452,9 @@ func (app *Application) runServer() {
 		cfg.Config.PprofEnabled = true
 	}
 
-	cfg.ApplyLogConfig()
+	if err := cfg.ApplyLogConfig(); err != nil {
+		log.Warn().Err(err).Str("logPath", cfg.Config.LogPath).Msg("Failed to apply log configuration, continuing with the previous log settings")
+	}
 
 	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
 

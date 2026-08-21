@@ -24,13 +24,13 @@ type Handler struct {
 
 func init() {
 	// Ensure MIME types are properly registered
-	mime.AddExtensionType(".js", "application/javascript")
-	mime.AddExtensionType(".css", "text/css")
-	mime.AddExtensionType(".html", "text/html")
-	mime.AddExtensionType(".json", "application/json")
-	mime.AddExtensionType(".svg", "image/svg+xml")
-	mime.AddExtensionType(".woff", "font/woff")
-	mime.AddExtensionType(".woff2", "font/woff2")
+	_ = mime.AddExtensionType(".js", "application/javascript")
+	_ = mime.AddExtensionType(".css", "text/css")
+	_ = mime.AddExtensionType(".html", "text/html")
+	_ = mime.AddExtensionType(".json", "application/json")
+	_ = mime.AddExtensionType(".svg", "image/svg+xml")
+	_ = mime.AddExtensionType(".woff", "font/woff")
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
 }
 
 func NewHandler(version, baseURL string, embedFS fs.FS) *Handler {
@@ -186,7 +186,7 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"src": "pwa-`, `"src": "`+basePrefix+`/pwa-`)
 		}
 
-		w.Write([]byte(modifiedContent))
+		_, _ = w.Write([]byte(modifiedContent))
 	} else {
 		// Serve the file normally
 		http.ServeContent(w, r, path, stat.ModTime(), file.(io.ReadSeeker))
@@ -257,5 +257,5 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 
 	// Set content type and write response
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(modifiedContent))
+	_, _ = w.Write([]byte(modifiedContent))
 }

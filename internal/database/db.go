@@ -1462,7 +1462,7 @@ func (db *DB) applyAllMigrations(ctx context.Context, migrations []string) error
 	// This prevents double-rollback issues when recreating transactions mid-migration
 	rollbackActive := func() {
 		if tx != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			tx = nil
 		}
 	}
@@ -1664,7 +1664,7 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// CRITICAL: Defer foreign key checks until end of transaction
 	// All string_pool references use ON DELETE RESTRICT which would prevent deletion

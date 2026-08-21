@@ -46,7 +46,7 @@ func TestInternStringsBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Test batch interning
 	values := []string{"hash1", "hash2", "hash1", "hash3", "hash2", "name1", "name2"}
@@ -126,7 +126,7 @@ func TestInternStringsLargeBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Create 2000 unique values (well over the 900 chunk limit)
 	largeValues := make([]string, 2000)
@@ -222,7 +222,7 @@ func TestGetStringID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Test getting IDs for non-existent strings
 	nullIDs, err := GetStringID(ctx, tx, "nonexistent1", "nonexistent2")
@@ -297,7 +297,7 @@ func TestInternEmptyString(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to begin transaction: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Test 1: Creates empty string when it doesn't exist
 	id1, err := InternEmptyString(ctx, tx)

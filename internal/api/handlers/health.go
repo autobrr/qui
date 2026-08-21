@@ -29,7 +29,7 @@ func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	//}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (h *HealthHandler) HandleReady(w http.ResponseWriter, r *http.Request) {
@@ -38,10 +38,10 @@ func (h *HealthHandler) HandleReady(w http.ResponseWriter, r *http.Request) {
 	// Check if service is ready to serve traffic
 	if h.isReady() {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "not ready"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "not ready"})
 	}
 }
 
@@ -51,10 +51,10 @@ func (h *HealthHandler) HandleLiveness(w http.ResponseWriter, r *http.Request) {
 	// Check if service is alive (should restart if this fails)
 	if h.isAlive() {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "alive"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "alive"})
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "dead"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "dead"})
 	}
 }
 

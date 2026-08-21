@@ -176,7 +176,7 @@ func TestSwitchableWriter_ConcurrentWrite(t *testing.T) {
 	for range numWriters {
 		wg.Go(func() {
 			for range linesPerWriter {
-				sw.Write([]byte("line\n"))
+				_, _ = sw.Write([]byte("line\n"))
 			}
 		})
 	}
