@@ -4,6 +4,7 @@
  */
 
 import type { CrossInstanceTorrent, Torrent } from "@/types"
+import type { RowSelectionState } from "@tanstack/react-table"
 import { type Dispatch, type RefObject, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 // Minimal structural shape of a TanStack row that the selection logic reads.
@@ -28,8 +29,8 @@ export interface UseTorrentSelectionParams {
 }
 
 export interface TorrentSelection {
-  rowSelection: Record<string, boolean>
-  setRowSelection: Dispatch<SetStateAction<Record<string, boolean>>>
+  rowSelection: RowSelectionState
+  setRowSelection: Dispatch<SetStateAction<RowSelectionState>>
   isAllSelected: boolean
   setIsAllSelected: Dispatch<SetStateAction<boolean>>
   excludedFromSelectAll: Set<string>
@@ -61,7 +62,7 @@ export function useTorrentSelection({
   onResetSelection,
   getVisibleRows,
 }: UseTorrentSelectionParams): TorrentSelection {
-  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [isAllSelected, setIsAllSelected] = useState(false)
   const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
 
@@ -201,10 +202,15 @@ export function useTorrentSelection({
     } else {
       // Regular selection mode - use table's built-in selection with correct row ID
       const keyToUse = rowId || selectionIdentity // Use rowId if provided, fallback for backward compatibility
-      setRowSelection(prev => ({
-        ...prev,
-        [keyToUse]: checked,
-      }))
+      setRowSelection(prev => {
+        if (checked) {
+          return { ...prev, [keyToUse]: true }
+        }
+
+        const next = { ...prev }
+        delete next[keyToUse]
+        return next
+      })
     }
   }, [isAllSelected, setRowSelection, isReadOnly])
 

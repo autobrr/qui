@@ -124,8 +124,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 				}
 			}
 
-			entry := fsops.WalkEntry{}
-			entry.Path = path
+			entry := fsops.WalkEntry{
+				Path: path}
 
 			rel, err := filepath.Rel(root, path)
 			if err == nil {
@@ -179,8 +179,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 		// where the callback propagates walkErr. Context cancellation is not
 		// an error — the caller initiated it.
 		if walkErr != nil && ctx.Err() == nil {
-			entry := fsops.WalkEntry{Err: walkErr}
-			entry.Path = root
+			entry := fsops.WalkEntry{Err: walkErr,
+				Path: root}
 			select {
 			case ch <- entry:
 			case <-ctx.Done():

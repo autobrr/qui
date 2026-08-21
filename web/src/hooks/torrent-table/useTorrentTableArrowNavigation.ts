@@ -4,7 +4,8 @@
  */
 
 import type { Torrent } from "@/types"
-import type { Row } from "@tanstack/react-table"
+import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
+import type { RowSelectionState } from "@tanstack/react-table"
 import type { Virtualizer } from "@tanstack/react-virtual"
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react"
 
@@ -12,7 +13,7 @@ import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "r
 const LOAD_MORE_THRESHOLD = 50
 
 export interface UseTorrentTableArrowNavigationParams {
-  rows: Row<Torrent>[]
+  rows: TorrentRow[]
   virtualizer: Virtualizer<HTMLDivElement, Element>
   /** Virtualized row count (progressive window), which can trail rows.length. */
   safeLoadedRows: number
@@ -22,7 +23,7 @@ export interface UseTorrentTableArrowNavigationParams {
   selectedRowIds: string[]
   lastSelectedIndexRef: RefObject<number | null>
   getSelectionIdentity: (torrent: Torrent) => string
-  setRowSelection: Dispatch<SetStateAction<Record<string, boolean>>>
+  setRowSelection: Dispatch<SetStateAction<RowSelectionState>>
   setIsAllSelected: Dispatch<SetStateAction<boolean>>
   setExcludedFromSelectAll: Dispatch<SetStateAction<Set<string>>>
   onTorrentSelect?: (torrent: Torrent | null) => void

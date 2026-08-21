@@ -5,14 +5,14 @@
 
 import { TORRENT_SORT_OPTIONS, type TorrentSortOptionValue, getDefaultSortOrder } from "@/components/torrents/torrentSortOptions"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
-import type { Torrent } from "@/types"
-import type { ColumnOrderState, Table, VisibilityState } from "@tanstack/react-table"
-import { useCallback, useMemo } from "react"
+import type { ColumnOrderState, ColumnVisibilityState } from "@tanstack/react-table"
+import { useCallback, useMemo, useRef } from "react"
+import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
 
 export interface UseCompactViewSortParams {
-  table: Table<Torrent>
+  table: TorrentTable
   // Included so the derived options/label recompute when columns change.
-  columnVisibility: VisibilityState
+  columnVisibility: ColumnVisibilityState
   columnOrder: ColumnOrderState
   activeSortField: string
   activeSortOrder: "asc" | "desc"
@@ -33,8 +33,13 @@ export function useCompactViewSort({
   setSorting,
   setLastUserAction,
 }: UseCompactViewSortParams) {
+  // v9's useTable returns a new table object every render; read it through a
+  // latest-ref so the memos and callbacks below keep stable identities.
+  const tableRef = useRef(table)
+  tableRef.current = table
+
   const resolveSortColumnId = useCallback((field: string): string => {
-    const columns = table.getAllLeafColumns()
+    const columns = tableRef.current.getAllLeafColumns()
     const directMatch = columns.find(column => column.id === field)
     if (directMatch) {
       return directMatch.id
@@ -46,11 +51,11 @@ export function useCompactViewSort({
     }
 
     return field
-    // Reads table.getAllLeafColumns() at call time, so it only depends on `table`.
-  }, [table])
+    // Reads the table at call time through tableRef, so it needs no deps.
+  }, [])
 
   const compactSortOptions = useMemo(() => {
-    const columns = table.getAllLeafColumns()
+    const columns = tableRef.current.getAllLeafColumns()
     const availableFields = new Set<string>()
 
     for (const column of columns) {
@@ -60,7 +65,7 @@ export function useCompactViewSort({
 
     return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, columnVisibility, columnOrder])
+  }, [columnVisibility, columnOrder])
 
   const currentCompactSortLabel = useMemo(() => {
     const directOption = compactSortOptions.find(option => option.value === activeSortField)
@@ -68,7 +73,7 @@ export function useCompactViewSort({
       return directOption.label
     }
 
-    const columns = table.getAllLeafColumns()
+    const columns = tableRef.current.getAllLeafColumns()
     const directColumn = columns.find(column => column.id === activeSortField)
     if (directColumn) {
       const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
@@ -95,7 +100,7 @@ export function useCompactViewSort({
 
     return activeSortField
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
+  }, [compactSortOptions, activeSortField, columnVisibility, columnOrder])
 
   const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
     if (activeSortField === value) {

@@ -84,8 +84,8 @@ func TestScanWalker_RecordsInUseFileIDsForDedup(t *testing.T) {
 	backend := &fakeWalkBackend{
 		Backend: newTestBackend(),
 		entries: []fsops.WalkEntry{
-			{LstatInfo: fsops.LstatInfo{FileInfo: fsops.FileInfo{Path: inUsePath, Size: 123, ModTime: old}, FileID: fid, Nlinks: 1}},
-			{LstatInfo: fsops.LstatInfo{FileInfo: fsops.FileInfo{Path: aliasPath, Size: 123, ModTime: old}, FileID: fid, Nlinks: 1}},
+			{Path: inUsePath, Size: 123, ModTime: old, FileID: fid, Nlinks: 1},
+			{Path: aliasPath, Size: 123, ModTime: old, FileID: fid, Nlinks: 1},
 		},
 	}
 
