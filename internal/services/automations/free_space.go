@@ -105,6 +105,6 @@ func getLocalFreeSpaceBytes(path string) (int64, error) {
 	}
 	// Bavail is the number of free blocks available to unprivileged users
 	// Bsize is the fundamental block size
-	//nolint:gosec // uint64 to int64 conversion is safe: disk free space won't exceed int64 max (~8 EiB)
+	//nolint:gosec,unconvert // uint64 to int64 conversion is safe: disk free space won't exceed int64 max (~8 EiB). Bsize is int64 on linux but uint32 on darwin, so the conversion only reads as redundant on one of them.
 	return int64(stat.Bavail) * int64(stat.Bsize), nil
 }
