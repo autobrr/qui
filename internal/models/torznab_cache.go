@@ -63,12 +63,12 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 
 	if maxAge > 0 && time.Since(cachedAt) > maxAge {
 		// Expired entry; remove asynchronously
-		go s.deleteEntry(context.Background(), id)
+		go s.deleteEntry(context.Background(), id) //nolint:gosec // G118: cache eviction must outlive the read that noticed the stale entry
 		return nil, false, nil
 	}
 
 	// Update last_used timestamp, ignoring failures so we don't block serving cached data
-	go s.touchEntry(context.Background(), id)
+	go s.touchEntry(context.Background(), id) //nolint:gosec // G118: cache touch must outlive the read that triggered it
 
 	return data, true, nil
 }

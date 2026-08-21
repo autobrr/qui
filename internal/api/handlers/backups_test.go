@@ -648,3 +648,31 @@ func getBackupDownloadUrl(instanceId, runId int, format ...string) string {
 	}
 	return u.String()
 }
+
+// Archive entry names are attacker-controlled, so the check must reject POSIX
+// and Windows escapes regardless of which OS the extraction runs on.
+func TestSafeArchiveEntryPath(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry string
+		want  string
+	}{
+		{"plain name", "example.torrent", "example.torrent"},
+		{"nested name", "torrents/example.torrent", filepath.Join("torrents", "example.torrent")},
+		{"dot segments that stay inside", "torrents/./example.torrent", filepath.Join("torrents", "example.torrent")},
+		{"posix traversal", "../../etc/passwd", ""},
+		{"posix traversal mid-path", "torrents/../../etc/passwd", ""},
+		{"posix absolute", "/etc/passwd", ""},
+		{"windows traversal", `..\..\Windows\System32\evil.torrent`, ""},
+		{"windows absolute", `C:\Windows\System32\evil.torrent`, ""},
+		{"windows unc", `\\server\share\evil.torrent`, ""},
+		{"empty", "   ", ""},
+		{"bare dot", ".", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, safeArchiveEntryPath(tt.entry))
+		})
+	}
+}

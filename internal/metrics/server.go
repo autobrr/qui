@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -69,6 +70,10 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 	s.server = &http.Server{
 		Addr:    addr,
 		Handler: router,
+		// Same header timeout the API server uses: a metrics scraper that
+		// opens a connection and never finishes its request should not hold
+		// one open indefinitely.
+		ReadHeaderTimeout: 15 * time.Second,
 	}
 
 	return s

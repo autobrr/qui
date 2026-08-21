@@ -458,7 +458,7 @@ func (c *AppConfig) writeDefaultConfig(path string) error {
 	log.Debug().Msgf("Created config directory: %s", dir)
 
 	// Create config template
-	configTemplate := `# config.toml - Auto-generated on first run
+	configTemplate := `# config.toml - Auto-generated on first run //nolint:gosec // G101: a config template, not a credential
 
 # Hostname / IP
 # Default: "localhost" (or "0.0.0.0" in containers)
@@ -907,7 +907,7 @@ func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 		return
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // G703: the path comes from the operator's own *_FILE environment variable
 	if err != nil {
 		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
 	}

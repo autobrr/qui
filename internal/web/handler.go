@@ -81,7 +81,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 		if r.URL.RawQuery != "" {
 			target += "?" + r.URL.RawQuery
 		}
-		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		http.Redirect(w, r, target, http.StatusMovedPermanently) //nolint:gosec // G710: same-origin relative target built from the configured base path; the query is carried through unchanged
 	})
 
 	// SPA routes

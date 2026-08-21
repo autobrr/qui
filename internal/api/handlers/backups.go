@@ -15,7 +15,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,11 +79,27 @@ func findStreamingExtractor(filename string) *streamingExtractor {
 	return nil
 }
 
+// isPlainExtension reports whether ext is a leading dot followed by ASCII
+// alphanumerics, the only shape the temp-file pattern should ever carry.
+func isPlainExtension(ext string) bool {
+	if len(ext) < 2 || ext[0] != '.' {
+		return false
+	}
+	for _, r := range ext[1:] {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // saveUploadToTemp copies the uploaded file to a temp file for streaming extraction.
 func saveUploadToTemp(src io.Reader, filename string) (string, error) {
-	// Determine extension for temp file
+	// Determine extension for temp file. The name comes from the upload, so
+	// anything that is not a plain extension is discarded rather than carried
+	// into the temp file pattern.
 	ext := filepath.Ext(filename)
-	if ext == "" {
+	if ext == "" || strings.ContainsAny(ext, `/\`) || !isPlainExtension(ext) {
 		ext = ".tmp"
 	}
 
@@ -641,7 +659,7 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Parse multipart form with reduced memory limit (large files spool to disk)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { //nolint:gosec // G120: the uploader is the authenticated single user restoring their own backup; memory is bounded and the rest spools to disk
 		RespondError(w, http.StatusBadRequest, "Failed to parse multipart form")
 		return
 	}
@@ -725,6 +743,25 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusCreated, run)
 }
 
+// safeArchiveEntryPath converts a slash-delimited archive entry name into the
+// local relative path to extract it to, or "" when the entry escapes the
+// extraction directory. Entry names come from an untrusted archive, so this
+// rejects POSIX and Windows escapes on every OS rather than only the escapes
+// the host filesystem happens to understand.
+func safeArchiveEntryPath(name string) string {
+	raw := strings.ReplaceAll(strings.TrimSpace(name), `\`, "/")
+	if slices.Contains(strings.Split(raw, "/"), "..") {
+		return ""
+	}
+
+	slash := path.Clean(raw)
+	if slash == "." || strings.HasPrefix(slash, "/") || (len(slash) >= 2 && slash[1] == ':') {
+		return ""
+	}
+
+	return filepath.FromSlash(slash)
+}
+
 // --- Streaming extractors (write directly to disk) ---
 
 // extractZipToDisk extracts a zip archive to a temp directory.
@@ -773,9 +810,8 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 			}
 			result.ManifestPath = destPath
 		} else if strings.HasSuffix(baseName, ".torrent") {
-			// Validate path to prevent directory traversal
-			safePath := filepath.Clean(name)
-			if filepath.IsAbs(safePath) || strings.HasPrefix(safePath, "..") {
+			safePath := safeArchiveEntryPath(name)
+			if safePath == "" {
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
@@ -817,7 +853,7 @@ func extractZipFileToDisk(zf *zip.File, destPath string) error {
 	}
 	defer destFile.Close()
 
-	_, err = io.Copy(destFile, rc)
+	_, err = io.Copy(destFile, rc) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 	return err
 }
 
@@ -934,11 +970,10 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 			}
 			result.ManifestPath = destPath
 		} else if strings.HasSuffix(baseName, ".torrent") {
-			// Validate path to prevent directory traversal
-			safePath := filepath.Clean(name)
-			if filepath.IsAbs(safePath) || strings.HasPrefix(safePath, "..") {
+			safePath := safeArchiveEntryPath(name)
+			if safePath == "" {
 				// Skip unsafe paths but continue reading to consume the entry
-				_, _ = io.Copy(io.Discard, tarReader)
+				_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
@@ -949,7 +984,7 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 			result.TorrentPaths[name] = destPath
 		} else {
 			// Skip other files but consume the data
-			_, _ = io.Copy(io.Discard, tarReader)
+			_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 		}
 	}
 
@@ -1016,7 +1051,7 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	file, err := os.Open(absTarget)
+	file, err := os.Open(absTarget) //nolint:gosec // G703: backupRelPath rejects escapes before the path resolves under the backup root
 	if err != nil {
 		if os.IsNotExist(err) {
 			RespondError(w, http.StatusNotFound, "Cached torrent file missing")

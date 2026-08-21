@@ -6202,7 +6202,7 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 
 		// Execute asynchronously - the service handles its own activity logging
 		// Use context.Background() since parent context may be cancelled before execution completes
-		go func() {
+		go func() { //nolint:gosec // G118: external program runs past the automation pass that queued it
 			result := s.externalProgramService.Execute(context.Background(), externalprograms.ExecuteRequest{
 				ProgramID:  programID,
 				Torrent:    &torrent,

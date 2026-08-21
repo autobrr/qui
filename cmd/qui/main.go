@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: registered on the opt-in pprof listener, which binds loopback by default
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -863,10 +863,14 @@ func (app *Application) runServer() {
 		if pprofAddr == "" {
 			pprofAddr = "127.0.0.1:6060"
 		}
+		pprofServer := &http.Server{
+			Addr:              pprofAddr,
+			ReadHeaderTimeout: 15 * time.Second,
+		}
 		go func() {
 			log.Info().Str("addr", pprofAddr).Msg("Starting pprof server")
 			log.Info().Msgf("Access profiling at: http://%s/debug/pprof/", pprofAddr)
-			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+			if err := pprofServer.ListenAndServe(); err != nil {
 				log.Error().Err(err).Str("addr", pprofAddr).Msg("Profiling server failed")
 			}
 		}()
