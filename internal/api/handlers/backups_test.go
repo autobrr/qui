@@ -676,3 +676,61 @@ func TestSafeArchiveEntryPath(t *testing.T) {
 		})
 	}
 }
+
+// Normalising slash styles means two archive entries can resolve to one
+// destination. Extracting both would store the second entry's bytes under the
+// first entry's name, so the import has to refuse the archive instead.
+func TestExtractRejectsCollidingEntryNames(t *testing.T) {
+	manifest := []byte(`{"items":[]}`)
+
+	t.Run("zip", func(t *testing.T) {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		for name, body := range map[string][]byte{
+			"manifest.json": manifest,
+			"a/b.torrent":   []byte("alpha"),
+			`a\b.torrent`:   []byte("beta"),
+		} {
+			w, err := zw.Create(name)
+			require.NoError(t, err)
+			_, err = w.Write(body)
+			require.NoError(t, err)
+		}
+		require.NoError(t, zw.Close())
+
+		archivePath := filepath.Join(t.TempDir(), "backup.zip")
+		require.NoError(t, os.WriteFile(archivePath, buf.Bytes(), 0o600))
+
+		_, err := extractZipToDisk(archivePath)
+		require.ErrorContains(t, err, "extract to the same path")
+	})
+
+	t.Run("tar", func(t *testing.T) {
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		for _, entry := range []struct {
+			name string
+			body []byte
+		}{
+			{"manifest.json", manifest},
+			{"a/b.torrent", []byte("alpha")},
+			{`a\b.torrent`, []byte("beta")},
+		} {
+			require.NoError(t, tw.WriteHeader(&tar.Header{
+				Name:     entry.name,
+				Mode:     0o600,
+				Size:     int64(len(entry.body)),
+				Typeflag: tar.TypeReg,
+			}))
+			_, err := tw.Write(entry.body)
+			require.NoError(t, err)
+		}
+		require.NoError(t, tw.Close())
+
+		archivePath := filepath.Join(t.TempDir(), "backup.tar")
+		require.NoError(t, os.WriteFile(archivePath, buf.Bytes(), 0o600))
+
+		_, err := extractTarToDisk(archivePath)
+		require.ErrorContains(t, err, "extract to the same path")
+	})
+}

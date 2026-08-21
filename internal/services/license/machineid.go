@@ -20,6 +20,7 @@ func GetDeviceID(appID string, userID string, configDir string) (string, error) 
 	if content, err := os.ReadFile(fingerprintPath); err == nil {
 		existing := strings.TrimSpace(string(content))
 		if existing != "" {
+			restrictFingerprintMode(fingerprintPath)
 			log.Trace().Str("path", fingerprintPath).Msg("using existing fingerprint")
 			return existing, nil
 		}
@@ -61,10 +62,20 @@ func persistFingerprint(fingerprint, userID string, configDir string) (string, e
 		log.Warn().Err(err).Str("path", fingerprintPath).Msg("failed to persist fingerprint")
 		return fingerprint, nil
 	}
+	restrictFingerprintMode(fingerprintPath)
 
 	log.Trace().Str("path", fingerprintPath).Msg("persisted new fingerprint")
 
 	return fingerprint, nil
+}
+
+// restrictFingerprintMode narrows an existing fingerprint file to 0600. Files
+// written by older versions are 0644, and WriteFile only applies its mode when
+// it creates the file, so neither path tightens one on its own.
+func restrictFingerprintMode(path string) {
+	if err := os.Chmod(path, 0o600); err != nil {
+		log.Warn().Err(err).Str("path", path).Msg("failed to restrict fingerprint permissions")
+	}
 }
 
 func getFingerprintPath(userID string, configDir string) string {

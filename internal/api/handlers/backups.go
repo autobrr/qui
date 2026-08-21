@@ -794,6 +794,11 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 
 	cleanup := func() { os.RemoveAll(tempDir) }
 
+	// Entry names are normalised before they are joined, so two names that
+	// differ only in slash style resolve to one destination. Extracting both
+	// would leave the second entry's bytes sitting under the first entry's name.
+	claimed := make(map[string]string)
+
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
@@ -815,6 +820,11 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
+			if previous, ok := claimed[destPath]; ok {
+				cleanup()
+				return nil, fmt.Errorf("archive entries %q and %q extract to the same path", previous, name)
+			}
+			claimed[destPath] = name
 			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 				cleanup()
 				return nil, fmt.Errorf("create dir: %w", err)
@@ -944,6 +954,10 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 
 	cleanup := func() { os.RemoveAll(tempDir) }
 
+	// See extractZipToDisk: normalised names can collide, and the second write
+	// would silently replace the first entry's bytes.
+	claimed := make(map[string]string)
+
 	tarReader := tar.NewReader(r)
 	for {
 		header, err := tarReader.Next()
@@ -977,6 +991,11 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
+			if previous, ok := claimed[destPath]; ok {
+				cleanup()
+				return nil, fmt.Errorf("archive entries %q and %q extract to the same path", previous, name)
+			}
+			claimed[destPath] = name
 			if err := copyStreamToFile(tarReader, destPath); err != nil {
 				cleanup()
 				return nil, fmt.Errorf("extract %s: %w", name, err)

@@ -12,6 +12,11 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
+// cacheMaintenanceTimeout bounds the detached eviction and touch writes. They
+// outlive the read that triggered them, so without a deadline a stalled write
+// would hold a connection for as long as the process runs.
+const cacheMaintenanceTimeout = 5 * time.Second
+
 // TorznabTorrentCacheEntry represents a cached torrent payload downloaded from an indexer.
 type TorznabTorrentCacheEntry struct {
 	IndexerID   int
@@ -63,12 +68,20 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 
 	if maxAge > 0 && time.Since(cachedAt) > maxAge {
 		// Expired entry; remove asynchronously
-		go s.deleteEntry(context.Background(), id) //nolint:gosec // G118: cache eviction must outlive the read that noticed the stale entry
+		go func() { //nolint:gosec // G118: cache eviction must outlive the read that noticed the stale entry
+			ctx, cancel := context.WithTimeout(context.Background(), cacheMaintenanceTimeout)
+			defer cancel()
+			s.deleteEntry(ctx, id)
+		}()
 		return nil, false, nil
 	}
 
 	// Update last_used timestamp, ignoring failures so we don't block serving cached data
-	go s.touchEntry(context.Background(), id) //nolint:gosec // G118: cache touch must outlive the read that triggered it
+	go func() { //nolint:gosec // G118: cache touch must outlive the read that triggered it
+		ctx, cancel := context.WithTimeout(context.Background(), cacheMaintenanceTimeout)
+		defer cancel()
+		s.touchEntry(ctx, id)
+	}()
 
 	return data, true, nil
 }

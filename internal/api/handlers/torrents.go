@@ -2760,6 +2760,7 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 	w.Header().Set("Content-Type", "application/x-bittorrent")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 
 	if _, err := w.Write(data); err != nil { //nolint:gosec // G705: a .torrent body served as an attachment with nosniff, not markup
