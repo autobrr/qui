@@ -14,6 +14,9 @@ import (
 
 // testInstanceSchema is the shared test schema for instance store tests.
 // Keeping it in one place avoids updating 7 inline schemas when columns change.
+// It must stay column-for-column with the migrated instances table: the columns
+// it invents are exactly the ones a statement can reference and still pass here
+// while failing against a real database.
 const testInstanceSchema = `
 	CREATE TABLE IF NOT EXISTS string_pool (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,9 +46,6 @@ const testInstanceSchema = `
 		ssh_username TEXT NOT NULL DEFAULT '',
 		ssh_key_encrypted TEXT NOT NULL DEFAULT '',
 		ssh_host_key_encrypted TEXT NOT NULL DEFAULT '',
-		last_connected_at TIMESTAMP,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (name_id) REFERENCES string_pool(id),
 		FOREIGN KEY (host_id) REFERENCES string_pool(id),
 		FOREIGN KEY (username_id) REFERENCES string_pool(id),

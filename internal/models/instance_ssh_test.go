@@ -5,22 +5,65 @@ package models
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/pem"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 )
 
 const (
-	testSSHKey     = "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----"
 	testSSHHost    = "seedbox.example.com"
 	testSSHUser    = "qui"
 	testSSHKeyPort = 22
 )
 
-var testHostKey = []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI-test-marshaled-key")
+// Real key material: the store validates both the private key and the wire
+// format of the pin, so placeholder strings would only prove the fixtures
+// parse each other.
+var (
+	testSSHKey            = generateTestPrivateKey("")
+	testSSHKeyPassphrased = generateTestPrivateKey("hunter2")
+	testHostKey           = generateTestHostKey()
+)
+
+func generateTestPrivateKey(passphrase string) string {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	var block *pem.Block
+	if passphrase == "" {
+		block, err = ssh.MarshalPrivateKey(priv, "")
+	} else {
+		block, err = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(passphrase))
+	}
+	if err != nil {
+		panic(err)
+	}
+
+	return string(pem.EncodeToMemory(block))
+}
+
+func generateTestHostKey() []byte {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	sshPub, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		panic(err)
+	}
+
+	return sshPub.Marshal()
+}
 
 func newSSHTestStore(t *testing.T) (*InstanceStore, context.Context) {
 	t.Helper()
@@ -128,6 +171,40 @@ func TestTamperedCiphertextFailsClosed(t *testing.T) {
 	require.Error(t, err)
 }
 
+// The pin's AAD carries the endpoint, so rewriting ssh_host or ssh_port
+// directly in the database — the one edit that would otherwise redirect a
+// trusted instance while keeping its pin — reads as a decryption failure and
+// never as "unpinned", which would re-TOFU the attacker's host.
+func TestHostKeyPinIsBoundToTheStoredEndpoint(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+		arg   any
+	}{
+		{"host rewritten underneath the pin", "UPDATE instances SET ssh_host = ? WHERE id = ?", "attacker.example"},
+		{"port rewritten underneath the pin", "UPDATE instances SET ssh_port = ? WHERE id = ?", 2222},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, ctx := newSSHTestStore(t)
+			instance := newSSHTestInstance(t, store, "remote")
+			configureSSH(t, store, instance.ID)
+
+			// A database writer, not the store: the pin column is left intact.
+			_, err := store.db.ExecContext(ctx, tt.query, tt.arg, instance.ID)
+			require.NoError(t, err)
+
+			stored, err := store.Get(ctx, instance.ID)
+			require.NoError(t, err)
+
+			_, err = store.GetHostKeyPin(stored)
+			require.Error(t, err)
+			require.NotErrorIs(t, err, ErrSSHHostKeyNotPinned, "a redirected endpoint must not read as unpinned: that is a silent re-pin")
+		})
+	}
+}
+
 // A credential blob is only valid for the row it was written for: the AAD
 // carries the instance id, so copying ciphertext between instances fails.
 func TestCredentialsDoNotTransplantBetweenInstances(t *testing.T) {
@@ -136,7 +213,7 @@ func TestCredentialsDoNotTransplantBetweenInstances(t *testing.T) {
 	target := newSSHTestInstance(t, store, "target")
 
 	configureSSH(t, store, source.ID)
-	require.NoError(t, store.SetSSHCredentials(ctx, target.ID, testSSHHost, testSSHKeyPort, testSSHUser, "other-key"))
+	require.NoError(t, store.SetSSHCredentials(ctx, target.ID, testSSHHost, testSSHKeyPort, testSSHUser, generateTestPrivateKey("")))
 
 	storedSource, err := store.Get(ctx, source.ID)
 	require.NoError(t, err)
@@ -190,6 +267,24 @@ func TestRedirectedInstanceDropsPin(t *testing.T) {
 	})
 }
 
+// Host comparison is case-insensitive in DNS, so re-saving the same box with
+// different capitalisation must not read as a redirect and drop a good pin.
+func TestHostIsNormalizedToLowercase(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	configureSSH(t, store, instance.ID)
+
+	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, "SeedBox.Example.COM", testSSHKeyPort, testSSHUser, testSSHKey))
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	assert.Equal(t, testSSHHost, stored.SSHHost)
+
+	pin, err := store.GetHostKeyPin(stored)
+	require.NoError(t, err, "a cosmetic case edit is not an endpoint change")
+	assert.Equal(t, testHostKey, pin)
+}
+
 // Deleting credentials is not a reason to forget the host: the pin belongs to
 // the host, so reconfiguring the same box must not silently re-TOFU.
 func TestClearSSHCredentialsKeepsPin(t *testing.T) {
@@ -232,6 +327,12 @@ func TestSetSSHCredentialsValidation(t *testing.T) {
 		{"negative port", testSSHHost, -1, testSSHUser, testSSHKey},
 		{"empty username", testSSHHost, 22, "", testSSHKey},
 		{"empty key", testSSHHost, 22, testSSHUser, ""},
+		{"host carrying a scheme", "ssh://" + testSSHHost, 22, testSSHUser, testSSHKey},
+		{"host carrying a port", testSSHHost + ":22", 22, testSSHUser, testSSHKey},
+		{"host carrying a user", testSSHUser + "@" + testSSHHost, 22, testSSHUser, testSSHKey},
+		{"host with embedded whitespace", "seedbox example.com", 22, testSSHUser, testSSHKey},
+		{"unparseable key", testSSHHost, 22, testSSHUser, "-----BEGIN OPENSSH PRIVATE KEY-----\nnope\n-----END OPENSSH PRIVATE KEY-----"},
+		{"passphrase-protected key", testSSHHost, 22, testSSHUser, testSSHKeyPassphrased},
 	}
 
 	for _, tt := range tests {
@@ -268,20 +369,69 @@ func TestSetHostKeyPinRequiresHostAndKey(t *testing.T) {
 // refused rather than stored bound to an endpoint the row no longer has — that
 // pin could never decrypt again.
 func TestSetHostKeyPinRefusesAMovedEndpoint(t *testing.T) {
+	t.Run("unpinned row", func(t *testing.T) {
+		store, ctx := newSSHTestStore(t)
+		instance := newSSHTestInstance(t, store, "remote")
+		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
+
+		// Nothing but the endpoint terms can refuse this write, so the CAS is
+		// what is under test rather than the already-pinned guard.
+		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey)
+		require.ErrorIs(t, err, ErrSSHEndpointChanged)
+
+		stored, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		_, err = store.GetHostKeyPin(stored)
+		require.ErrorIs(t, err, ErrSSHHostKeyNotPinned, "a refused write must not pin anything")
+	})
+
+	t.Run("pinned row keeps its pin", func(t *testing.T) {
+		store, ctx := newSSHTestStore(t)
+		instance := newSSHTestInstance(t, store, "remote")
+		configureSSH(t, store, instance.ID)
+
+		err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey)
+		require.Error(t, err)
+
+		stored, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		pin, err := store.GetHostKeyPin(stored)
+		require.NoError(t, err, "the existing pin must survive a refused write")
+		assert.Equal(t, testHostKey, pin)
+	})
+}
+
+// Re-pinning a live endpoint is the silent re-pin the mismatch flow exists to
+// prevent: a bug in a future host-key handler must not be able to overwrite a
+// confirmed pin just by calling the ordinary pin method again.
+func TestSetHostKeyPinRefusesAnAlreadyPinnedInstance(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
 	configureSSH(t, store, instance.ID)
 
-	// Stands in for the interleaving: the endpoint read before encrypting is no
-	// longer the one on the row by the time the write lands.
-	err := store.setHostKeyPinFor(ctx, instance.ID, "stale.example.com", testSSHKeyPort, testHostKey)
-	require.ErrorIs(t, err, ErrSSHEndpointChanged)
+	otherKey := generateTestHostKey()
+	require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, otherKey), ErrSSHHostKeyAlreadyPinned)
 
 	stored, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err)
 	pin, err := store.GetHostKeyPin(stored)
-	require.NoError(t, err, "the existing pin must survive a refused write")
-	assert.Equal(t, testHostKey, pin)
+	require.NoError(t, err)
+	assert.Equal(t, testHostKey, pin, "the confirmed pin must be the one still on the row")
+}
+
+// A pin is worthless if the column can hold anything but SSH wire format: host
+// key verification parses the algorithm back out of this value.
+func TestSetHostKeyPinRequiresWireFormat(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
+
+	displayForm := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexample")
+	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, displayForm), "authorized_keys display form is not a marshaled key")
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	assert.Empty(t, stored.SSHHostKeyEncrypted, "a rejected pin must not be written")
 }
 
 func flipLastByte(t *testing.T, encoded string) string {
