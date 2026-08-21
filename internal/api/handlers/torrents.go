@@ -2756,7 +2756,7 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 		return
 	}
 
-	filename := fmt.Sprintf("%s.torrent", taskID)
+	filename := taskID + ".torrent"
 	w.Header().Set("Content-Type", "application/x-bittorrent")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))

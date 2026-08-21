@@ -386,7 +386,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	// Build the exec function for each indexer
 	execFn := func(execCtx context.Context, idxs []*models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
 		if len(idxs) == 0 {
-			return nil, nil, fmt.Errorf("missing indexer")
+			return nil, nil, errors.New("missing indexer")
 		}
 		if s.searchExecutor != nil {
 			return s.searchExecutor(execCtx, idxs, vals, m)
@@ -646,7 +646,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
 	if req.Query == "" && !hasAdvancedParams {
-		return fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
+		return errors.New("query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
 	}
 
 	var detectedType contentType
@@ -1005,12 +1005,12 @@ const (
 // in the shared rate limiter to prevent hammering indexers.
 func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadRequest) ([]byte, error) {
 	if req.IndexerID <= 0 {
-		return nil, fmt.Errorf("indexer ID must be positive")
+		return nil, errors.New("indexer ID must be positive")
 	}
 
 	downloadURL := strings.TrimSpace(req.DownloadURL)
 	if downloadURL == "" {
-		return nil, fmt.Errorf("download URL is required")
+		return nil, errors.New("download URL is required")
 	}
 
 	cacheKey := strings.TrimSpace(req.GUID)
@@ -1620,7 +1620,7 @@ func buildSearchCacheFingerprints(payload searchCacheKeyPayload) (string, string
 
 func buildBaseFingerprintFromRaw(raw string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
-		return "", fmt.Errorf("empty fingerprint")
+		return "", errors.New("empty fingerprint")
 	}
 
 	var payload searchCacheKeyPayload
@@ -1736,7 +1736,7 @@ func (s *Service) GetRecentSearches(ctx context.Context, scope string, limit int
 // UpdateSearchCacheSettings updates the TTL configuration at runtime.
 func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error) {
 	if s == nil || s.searchCache == nil {
-		return nil, fmt.Errorf("search cache is not configured")
+		return nil, errors.New("search cache is not configured")
 	}
 	if ttlMinutes < MinSearchCacheTTLMinutes {
 		return nil, fmt.Errorf("ttlMinutes must be at least %d", MinSearchCacheTTLMinutes)
@@ -1778,7 +1778,7 @@ func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int)
 // SyncIndexerCaps fetches and persists Torznab capabilities and categories for an indexer.
 func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.TorznabIndexer, error) {
 	if indexerID <= 0 {
-		return nil, fmt.Errorf("indexer ID must be positive")
+		return nil, errors.New("indexer ID must be positive")
 	}
 
 	indexer, err := s.indexerStore.Get(ctx, indexerID)
@@ -1808,7 +1808,7 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 		return nil, fmt.Errorf("fetch torznab caps: %w", err)
 	}
 	if caps == nil {
-		return nil, fmt.Errorf("torznab caps response was empty")
+		return nil, errors.New("torznab caps response was empty")
 	}
 
 	if err := s.indexerStore.SetCapabilities(ctx, indexer.ID, caps.Capabilities); err != nil {
@@ -1916,15 +1916,15 @@ func computeSearchTimeout(meta *searchContext, indexerCount int) time.Duration {
 
 func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
 	if idx == nil {
-		return fmt.Errorf("missing indexer")
+		return errors.New("missing indexer")
 	}
 
 	baseURL := strings.TrimSpace(idx.BaseURL)
 	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
-		return fmt.Errorf("invalid indexer base URL")
+		return errors.New("invalid indexer base URL")
 	}
 	if strings.Contains(baseURL, "api/v2.0/indexers/") && !strings.Contains(baseURL, "://") {
-		return fmt.Errorf("invalid indexer base URL")
+		return errors.New("invalid indexer base URL")
 	}
 	return nil
 }
@@ -1942,7 +1942,7 @@ type indexerExecOptions struct {
 
 func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext, opts indexerExecOptions) indexerExecResult {
 	if idx == nil {
-		return indexerExecResult{err: fmt.Errorf("missing indexer")}
+		return indexerExecResult{err: errors.New("missing indexer")}
 	}
 
 	apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
@@ -2021,7 +2021,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 				Str("indexer", idx.Name).
 				Str("backend", string(idx.Backend)).
 				Msg("Skipping prowlarr indexer without numeric identifier")
-			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
+			return indexerExecResult{id: idx.ID, err: errors.New("missing prowlarr indexer identifier")}
 		}
 
 		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
@@ -2055,7 +2055,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 				Str("indexer", idx.Name).
 				Str("backend", string(idx.Backend)).
 				Msg("Skipping indexer without resolved identifier")
-			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
+			return indexerExecResult{id: idx.ID, err: errors.New("missing indexer identifier")}
 		}
 
 		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
@@ -2214,7 +2214,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		if len(cooldownIndexers) > 0 {
 			return nil, nil, fmt.Errorf("all indexers are currently rate-limited. %d indexer(s) in cooldown", len(cooldownIndexers))
 		}
-		return nil, nil, fmt.Errorf("no indexers available for search")
+		return nil, nil, errors.New("no indexers available for search")
 	}
 
 	resultsChan := make(chan indexerExecResult, len(availableIndexers))
@@ -2307,7 +2307,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 // runIndexerSearch executes a search against a single indexer.
 func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 	if idx == nil {
-		return nil, nil, fmt.Errorf("missing indexer")
+		return nil, nil, errors.New("missing indexer")
 	}
 
 	if err := validateIndexerBaseURL(idx); err != nil {
@@ -4563,7 +4563,7 @@ func (s *Service) GetIndexerDomain(ctx context.Context, indexerName string) (str
 // getProwlarrIndexerDomain gets the tracker domain for a specific Prowlarr indexer
 func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.TorznabIndexer) (string, error) {
 	if indexer.Backend != models.TorznabBackendProwlarr {
-		return "", fmt.Errorf("indexer is not a Prowlarr indexer")
+		return "", errors.New("indexer is not a Prowlarr indexer")
 	}
 
 	// Get the API key for this indexer
@@ -4580,14 +4580,14 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 
 	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, 30)
 	if client.prowlarr == nil {
-		return "", fmt.Errorf("failed to create Prowlarr client")
+		return "", errors.New("failed to create Prowlarr client")
 	}
 
 	// Parse the indexer ID from the IndexerID field
 	// For Prowlarr, the IndexerID should be a numeric string
 	indexerIDStr := strings.TrimSpace(indexer.IndexerID)
 	if indexerIDStr == "" {
-		return "", fmt.Errorf("prowlarr indexer ID is empty")
+		return "", errors.New("prowlarr indexer ID is empty")
 	}
 
 	// Convert to int for the API call
@@ -4605,7 +4605,7 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 	// Extract the tracker domain from the indexer configuration
 	domain := prowlarr.ExtractDomainFromIndexerFields(detail.Fields)
 	if domain == "" {
-		return "", fmt.Errorf("could not extract domain from Prowlarr indexer fields")
+		return "", errors.New("could not extract domain from Prowlarr indexer fields")
 	}
 
 	return domain, nil

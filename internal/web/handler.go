@@ -171,12 +171,13 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 		basePrefix := strings.TrimSuffix(h.baseURL, "/")
 
 		// Modify service worker files to use correct base URL
-		if path == "registerSW.js" {
+		switch path {
+		case "registerSW.js":
 			// Fix service worker registration paths
 			modifiedContent = strings.ReplaceAll(modifiedContent, `'/sw.js'`, `'`+basePrefix+`/sw.js'`)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"/sw.js"`, `"`+basePrefix+`/sw.js"`)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `scope: '/'`, `scope: '`+basePrefix+`/'`)
-		} else if path == "manifest.webmanifest" {
+		case "manifest.webmanifest":
 			// Fix manifest paths (icons, start_url, etc.)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"start_url":"/"`, `"start_url":"`+basePrefix+`/"`)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"start_url": "/"`, `"start_url": "`+basePrefix+`/"`)

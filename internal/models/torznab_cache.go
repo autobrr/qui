@@ -6,6 +6,7 @@ package models
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -43,7 +44,7 @@ func NewTorznabTorrentCacheStore(db dbinterface.Querier) *TorznabTorrentCacheSto
 // maxAge <= 0 disables expiration checks.
 func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cacheKey string, maxAge time.Duration) ([]byte, bool, error) {
 	if indexerID <= 0 || cacheKey == "" {
-		return nil, false, fmt.Errorf("invalid cache lookup parameters")
+		return nil, false, errors.New("invalid cache lookup parameters")
 	}
 
 	const query = `
@@ -89,16 +90,16 @@ func (s *TorznabTorrentCacheStore) Fetch(ctx context.Context, indexerID int, cac
 // Store inserts or updates a cached torrent payload.
 func (s *TorznabTorrentCacheStore) Store(ctx context.Context, entry *TorznabTorrentCacheEntry) error {
 	if entry == nil {
-		return fmt.Errorf("entry cannot be nil")
+		return errors.New("entry cannot be nil")
 	}
 	if entry.IndexerID <= 0 {
-		return fmt.Errorf("indexer id must be positive")
+		return errors.New("indexer id must be positive")
 	}
 	if entry.CacheKey == "" {
-		return fmt.Errorf("cache key required")
+		return errors.New("cache key required")
 	}
 	if len(entry.TorrentData) == 0 {
-		return fmt.Errorf("torrent data required")
+		return errors.New("torrent data required")
 	}
 
 	const query = `

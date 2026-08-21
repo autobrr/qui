@@ -121,7 +121,7 @@ func (s *InstanceCrossSeedCompletionStore) List(ctx context.Context) ([]*Instanc
 // Upsert saves settings for an instance, creating or updating as needed.
 func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings *InstanceCrossSeedCompletionSettings) (*InstanceCrossSeedCompletionSettings, error) {
 	if settings == nil {
-		return nil, fmt.Errorf("settings cannot be nil")
+		return nil, errors.New("settings cannot be nil")
 	}
 
 	coerced := sanitizeInstanceCrossSeedCompletionSettings(settings)

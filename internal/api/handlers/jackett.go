@@ -505,7 +505,7 @@ func (h *JackettHandler) GetIndexer(w http.ResponseWriter, r *http.Request) {
 
 	indexer, err := h.indexerStore.Get(r.Context(), id)
 	if err != nil {
-		if err == models.ErrTorznabIndexerNotFound {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
 			return
 		}
@@ -716,7 +716,7 @@ func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
 
 	err = h.indexerStore.Delete(r.Context(), id)
 	if err != nil {
-		if err == models.ErrTorznabIndexerNotFound {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
 			return
 		}
@@ -756,7 +756,7 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 
 	indexer, err := h.indexerStore.Get(r.Context(), id)
 	if err != nil {
-		if err == models.ErrTorznabIndexerNotFound {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
 			return
 		}
@@ -1061,7 +1061,7 @@ func (h *JackettHandler) GetIndexerHealth(w http.ResponseWriter, r *http.Request
 
 	health, err := h.indexerStore.GetHealth(r.Context(), id)
 	if err != nil {
-		if err == models.ErrTorznabIndexerNotFound {
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
 			return
 		}

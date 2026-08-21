@@ -27,7 +27,7 @@ func mustLoadTorrent(t *testing.T, torrentData []byte) (metainfo.MetaInfo, metai
 	info, err := mi.UnmarshalInfo()
 	require.NoError(t, err)
 
-	require.Greater(t, info.PieceLength, int64(0))
+	require.Positive(t, info.PieceLength)
 
 	return *mi, info
 }
@@ -173,8 +173,8 @@ func TestPieceBoundariesSpanFiles_InRealTorrentFixtures(t *testing.T) {
 	require.NotZero(t, found.boundaryOff%found.pieceLength)
 	require.NotEmpty(t, found.prevFile)
 	require.NotEmpty(t, found.nextFile)
-	require.Greater(t, found.prevFileSize, int64(0))
-	require.Greater(t, found.nextFileSize, int64(0))
+	require.Positive(t, found.prevFileSize)
+	require.Positive(t, found.nextFileSize)
 	require.GreaterOrEqual(t, found.boundaryPiece, 0)
 	require.Equal(t, int((found.boundaryOff-1)/found.pieceLength), found.boundaryPiece)
 }

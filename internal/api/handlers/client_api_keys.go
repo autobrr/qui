@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -70,7 +71,7 @@ func (h *ClientAPIKeysHandler) CreateClientAPIKey(w http.ResponseWriter, r *http
 	ctx := r.Context()
 	instance, err := h.instanceStore.Get(ctx, req.InstanceID)
 	if err != nil {
-		if err == models.ErrInstanceNotFound {
+		if errors.Is(err, models.ErrInstanceNotFound) {
 			http.Error(w, "Instance not found", http.StatusNotFound)
 			return
 		}
@@ -154,7 +155,7 @@ func (h *ClientAPIKeysHandler) DeleteClientAPIKey(w http.ResponseWriter, r *http
 
 	ctx := r.Context()
 	if err := h.clientAPIKeyStore.Delete(ctx, id); err != nil {
-		if err == models.ErrClientAPIKeyNotFound {
+		if errors.Is(err, models.ErrClientAPIKeyNotFound) {
 			http.Error(w, "API key not found", http.StatusNotFound)
 			return
 		}

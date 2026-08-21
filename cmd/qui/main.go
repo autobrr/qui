@@ -246,7 +246,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if strings.TrimSpace(username) == "" {
-				return fmt.Errorf("username cannot be empty")
+				return errors.New("username cannot be empty")
 			}
 			username = strings.TrimSpace(username)
 
@@ -259,7 +259,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(password) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			user, err := authService.SetupUser(context.Background(), username, password)
@@ -327,7 +327,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to check setup status: %w", err)
 			}
 			if !exists {
-				return fmt.Errorf("no user account found. Create a user first with 'create-user' command")
+				return errors.New("no user account found. Create a user first with 'create-user' command")
 			}
 
 			if username == "" {
@@ -341,7 +341,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			userStore := models.NewUserStore(db)
 			user, err := userStore.GetByUsername(ctx, username)
 			if err != nil {
-				if err == models.ErrUserNotFound {
+				if errors.Is(err, models.ErrUserNotFound) {
 					return fmt.Errorf("username '%s' not found", username)
 				}
 				return fmt.Errorf("failed to verify username: %w", err)
@@ -356,7 +356,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(newPassword) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			hashedPassword, err := auth.HashPassword(newPassword)
@@ -892,13 +892,13 @@ func (app *Application) runServer() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		//log.Fatal().Err(err).Msg("Server forced to shutdown")
+		// log.Fatal().Err(err).Msg("Server forced to shutdown")
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
 
 		os.Exit(1)
 	}
 
-	//if err := srv.Shutdown(context.Background()); err != nil {
+	// if err := srv.Shutdown(context.Background()); err != nil {
 	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
 	//
 	//	os.Exit(1)
@@ -907,7 +907,7 @@ func (app *Application) runServer() {
 	os.Exit(0)
 
 	//// Wait for interrupt signal to gracefully shutdown the server
-	//quit := make(chan os.Signal, 1)
+	// quit := make(chan os.Signal, 1)
 	//signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	//<-quit
 	//log.Info().Msg("Shutting down server...")

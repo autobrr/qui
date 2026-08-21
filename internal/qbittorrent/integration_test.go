@@ -87,8 +87,8 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		stats := sm.calculateStats(torrents)
 
 		assert.Equal(t, 10, stats.Total, "Total should be 10")
-		assert.Greater(t, stats.TotalDownloadSpeed, 0, "Should have download speed")
-		assert.Greater(t, stats.TotalUploadSpeed, 0, "Should have upload speed")
+		assert.Positive(t, stats.TotalDownloadSpeed, "Should have download speed")
+		assert.Positive(t, stats.TotalUploadSpeed, "Should have upload speed")
 
 		assert.Positive(t, stats.TotalDownloadData, "Should have session download data")
 		assert.Positive(t, stats.TotalUploadData, "Should have session upload data")

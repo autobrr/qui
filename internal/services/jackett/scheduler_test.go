@@ -237,7 +237,7 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
 				assert.Error(t, err)
-				assert.True(t, errors.Is(err, context.Canceled))
+				assert.ErrorIs(t, err, context.Canceled)
 				close(done)
 			},
 		},
@@ -829,9 +829,9 @@ func TestSearchScheduler_MaxWaitSkipsIndexer(t *testing.T) {
 	gotError := <-completeCh
 
 	// Should have received a RateLimitWaitError
-	assert.NotNil(t, gotError, "expected RateLimitWaitError but got nil")
+	assert.Error(t, gotError, "expected RateLimitWaitError but got nil")
 	var waitErr *RateLimitWaitError
-	assert.True(t, errors.As(gotError, &waitErr))
+	assert.ErrorAs(t, gotError, &waitErr)
 }
 
 func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
@@ -899,9 +899,9 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 			require.NoError(t, err)
 
 			gotError := <-completeCh
-			require.NotNil(t, gotError, "expected RateLimitWaitError for priority %s", tc.priority)
+			require.Error(t, gotError, "expected RateLimitWaitError for priority %s", tc.priority)
 			var waitErr *RateLimitWaitError
-			require.True(t, errors.As(gotError, &waitErr))
+			require.ErrorAs(t, gotError, &waitErr)
 			assert.Equal(t, tc.expectedMaxWait, waitErr.MaxWait, "wrong MaxWait for priority %s", tc.priority)
 		})
 	}

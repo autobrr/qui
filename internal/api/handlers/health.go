@@ -20,9 +20,9 @@ func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Perform actual health checks
-	//health := h.checkOverallHealth()
+	// health := h.checkOverallHealth()
 
-	//if health.Status == "ok" {
+	// if health.Status == "ok" {
 	//	w.WriteHeader(http.StatusOK)
 	//} else {
 	//	w.WriteHeader(http.StatusServiceUnavailable)
@@ -59,7 +59,7 @@ func (h *HealthHandler) HandleLiveness(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helper methods for actual health checking
-//func (h *HealthHandler) checkOverallHealth() HealthResponse {
+// func (h *HealthHandler) checkOverallHealth() HealthResponse {
 //	checks := make(map[string]CheckResult)
 //	overallStatus := "ok"
 //
@@ -92,7 +92,7 @@ func (h *HealthHandler) HandleLiveness(w http.ResponseWriter, r *http.Request) {
 
 func (h *HealthHandler) isReady() bool {
 	// Check if all dependencies are available and service can handle requests
-	//if h.db != nil && h.db.Ping() != nil {
+	// if h.db != nil && h.db.Ping() != nil {
 	//	return false
 	//}
 	// Add other readiness checks

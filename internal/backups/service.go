@@ -1943,7 +1943,7 @@ func (s *Service) copyTorrentFromTemp(srcPath, rootDir, relPath string) error {
 		return fmt.Errorf("invalid torrent data: too small (%d bytes)", len(data))
 	}
 	if data[0] != 'd' {
-		return fmt.Errorf("invalid torrent data: not a bencoded dict")
+		return errors.New("invalid torrent data: not a bencoded dict")
 	}
 
 	return cacheTorrentBlob(rootDir, relPath, data)

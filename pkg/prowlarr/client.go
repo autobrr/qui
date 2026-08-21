@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,10 +118,10 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	var rss gojackett.Rss
 
 	if strings.TrimSpace(indexerID) == "" {
-		return rss, fmt.Errorf("prowlarr indexer ID is required")
+		return rss, errors.New("prowlarr indexer ID is required")
 	}
 	if c.httpClient == nil {
-		return rss, fmt.Errorf("prowlarr HTTP client is not configured")
+		return rss, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -192,7 +194,7 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 // GetIndexers retrieves all configured indexers from the Prowlarr instance.
 func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+		return nil, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -225,7 +227,7 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	case http.StatusOK:
 		// continue
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("prowlarr endpoint not found (404)")
+		return nil, errors.New("prowlarr endpoint not found (404)")
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return nil, fmt.Errorf("prowlarr returned %d (unauthorized)", resp.StatusCode)
 	default:
@@ -243,13 +245,13 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 // GetIndexer retrieves detailed information about a specific indexer from Prowlarr
 func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+		return nil, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	endpoint, err := url.JoinPath(c.host, "api", "v1", "indexer", fmt.Sprintf("%d", indexerID))
+	endpoint, err := url.JoinPath(c.host, "api", "v1", "indexer", strconv.Itoa(indexerID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prowlarr endpoint: %w", err)
 	}
