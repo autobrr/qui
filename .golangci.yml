@@ -82,17 +82,21 @@ linters:
 
       # gosec's taint analysis follows archive entry names through
       # safeArchiveEntryPath, which validates them in the slash domain, and
-      # through backupRelPath for stored blobs. It cannot see either check.
+      # cannot see the check. Scoped to the statements in the extraction flow
+      # so a new unvalidated path in this file is still reported.
       - path: internal/api/handlers/backups\.go
         linters:
           - gosec
         text: "G703"
+        source: "tmpFile\\.Name\\(\\)|filepath\\.Dir\\(destPath\\)|os\\.Create\\(destPath\\)|os\\.Open\\(archivePath\\)"
 
       # The generated config template contains a commented-out password field.
+      # Scoped to the template literal itself, which cannot carry a nolint.
       - path: internal/config/config\.go
         linters:
           - gosec
         text: "G101"
+        source: "configTemplate := "
 
       # Test fixtures are allowed to hold obvious fake credentials, build
       # requests without a context, and set cookies without the production

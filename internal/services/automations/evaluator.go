@@ -340,6 +340,7 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 			}
 		default:
 			// A group carrying a leaf operator has no children to combine.
+			result = false
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
