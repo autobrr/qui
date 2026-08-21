@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
-import { CustomThemesLoader } from "@/components/themes/CustomThemesLoader"
+import { useCustomThemes } from "@/hooks/useCustomThemes"
 
 function AppLayoutContent() {
   const { t } = useTranslation("common")
@@ -75,9 +75,10 @@ function AppLayoutContent() {
 }
 
 export function AppLayout() {
+  // Registers and applies stored custom themes for authenticated users.
+  useCustomThemes()
   return (
     <LayoutRouteProvider>
-      <CustomThemesLoader />
       <TorrentSelectionProvider>
         <MobileScrollProvider>
           <AppLayoutContent />

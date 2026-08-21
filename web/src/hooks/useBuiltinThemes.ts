@@ -58,7 +58,8 @@ export function applyBuiltinThemesPayload(payload: { themes: BuiltinTheme[] }): 
 
   const storedId = localStorage.getItem("color-theme")
   if (storedId && getThemeById(storedId)) {
-    void setTheme(storedId)
+    // System change: restoring existing state must not be pushed.
+    void setTheme(storedId, undefined, undefined, true)
   }
 }
 
@@ -80,6 +81,7 @@ export function useBuiltinThemes() {
     // Match the hourly license poll: a lapse or recovery server-side swaps
     // full entries and locked stubs within the hour without a reload.
     refetchInterval: 60 * 60 * 1000,
+    refetchIntervalInBackground: true,
     retry: 1,
   })
 

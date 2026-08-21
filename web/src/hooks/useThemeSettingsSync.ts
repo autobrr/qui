@@ -44,7 +44,7 @@ export function useThemeSettingsSync(): void {
     // Skip unknown ids (e.g. a custom theme not registered yet) so we never
     // downgrade the local selection to the default theme.
     if (!getThemeById(data.themeId)) return
-    void setTheme(data.themeId, data.mode, data.variation)
+    void setTheme(data.themeId, data.mode, data.variation, true)
   }, [data, builtins.isSuccess])
 
   // Push: store local theme changes on the server.

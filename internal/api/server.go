@@ -412,9 +412,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			}
 		})
 
-		// Built-in theme catalog: public so the login page can paint the
-		// selected theme before auth. Premium CSS is license-gated inside.
+		// Built-in theme catalog and stored selection: public so the login
+		// page can paint the selected theme before auth. Premium CSS is
+		// license-gated inside; writes stay authenticated.
 		r.Get("/themes", themesHandler.ListThemes)
+		r.Get("/themes/settings", themesHandler.GetThemeSettings)
 
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
@@ -444,8 +446,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Sideloaded custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
 
-			// Persisted theme selection (writes premium-gated inside the handler)
-			r.Get("/themes/settings", themesHandler.GetThemeSettings)
+			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
 
 			// Jackett routes (if configured)

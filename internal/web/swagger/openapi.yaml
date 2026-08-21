@@ -3152,7 +3152,8 @@ paths:
       tags:
         - Themes
       summary: Get stored theme selection
-      description: Get the theme selection stored in the database. Returns null when no selection is stored.
+      description: Get the theme selection stored in the database. Returns null when no selection is stored. Public endpoint, no authentication required, so the login page can apply the selected theme.
+      security: []
       responses:
         '200':
           description: Stored theme selection, or null when none is stored

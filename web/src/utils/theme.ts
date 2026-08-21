@@ -295,7 +295,10 @@ export const getCurrentThemeMode = (): ThemeMode => {
   return getStoredMode() || THEME_AUTO;
 };
 
-export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string): Promise<void> => {
+// isSystemChange marks applications that restore existing state (catalog
+// hydration, server pull) rather than a user selection, so the server sync
+// never pushes them.
+export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string, isSystemChange = false): Promise<void> => {
   const theme = getThemeById(themeId);
 
   // Unknown ids and locked premium stubs apply the default instead. The
@@ -341,7 +344,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, currentVariation, isDark, false);
-  dispatchThemeChange(currentMode, theme, false, currentVariation);
+  dispatchThemeChange(currentMode, theme, isSystemChange, currentVariation);
 };
 
 export const setThemeMode = async (mode: ThemeMode): Promise<void> => {

@@ -80,9 +80,9 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 				return
 			}
 
-			// The built-in theme catalog is public so the setup and login
-			// pages paint the selected theme too.
-			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/themes") {
+			// The built-in theme catalog and stored selection are public so
+			// the setup and login pages paint the selected theme too.
+			if r.Method == http.MethodGet && (strings.HasSuffix(r.URL.Path, "/themes") || strings.HasSuffix(r.URL.Path, "/themes/settings")) {
 				next.ServeHTTP(w, r)
 				return
 			}

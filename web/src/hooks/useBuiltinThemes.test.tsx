@@ -90,7 +90,8 @@ describe("applyBuiltinThemesPayload", () => {
       themes: [{ id: "testfree", name: "Testfree", premium: false, css: TEST_CSS }],
     })
 
-    expect(mockSetTheme).toHaveBeenCalledWith("testfree")
+    // System change: hydration must never be pushed to the server.
+    expect(mockSetTheme).toHaveBeenCalledWith("testfree", undefined, undefined, true)
   })
 
   it("re-applies a stored selection that resolved to a locked stub without rewriting it", () => {
@@ -106,7 +107,7 @@ describe("applyBuiltinThemesPayload", () => {
 
     // setTheme's locked fallback paints the default itself, without touching
     // the stored selection, so the payload apply passes the stored id through.
-    expect(mockSetTheme).toHaveBeenCalledWith("locked")
+    expect(mockSetTheme).toHaveBeenCalledWith("locked", undefined, undefined, true)
     expect(localStorage.getItem("color-theme")).toBe("locked")
   })
 })

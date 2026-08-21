@@ -4,12 +4,15 @@
  */
 
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
+import { useThemeSettingsSync } from "@/hooks/useThemeSettingsSync"
 
 /**
- * Mounts the built-in theme query app-wide, above auth, so the login page
- * paints the selected theme too. Registration happens in the queryFn.
+ * Mounts the built-in theme query and the server theme-settings sync app-wide,
+ * above auth, so the login page paints the selected theme too. Registration
+ * happens in the queryFn.
  */
 export function BuiltinThemesLoader(): null {
   useBuiltinThemes()
+  useThemeSettingsSync()
   return null
 }

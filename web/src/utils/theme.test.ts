@@ -54,6 +54,20 @@ describe("setTheme locked fallback", () => {
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
   })
 
+  it("dispatches system-driven applications as system changes", async () => {
+    const events: boolean[] = []
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent).detail.isSystemChange)
+    }
+    window.addEventListener("themechange", listener)
+    await setTheme("minimal", undefined, undefined, true)
+    window.removeEventListener("themechange", listener)
+
+    // Hydration and server pulls restore existing state; the sync hook must
+    // never push them.
+    expect(events).toEqual([true])
+  })
+
   it("keeps the stored selection through a mode toggle on the fallback", async () => {
     localStorage.setItem("color-theme", "locked-premium")
 
