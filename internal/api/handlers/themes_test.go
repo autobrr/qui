@@ -181,14 +181,14 @@ func doUpdateThemeSettings(t *testing.T, h *ThemesHandler, body string) *httptes
 	return rec
 }
 
-func TestThemeSettings_UpdateNotPremium(t *testing.T) {
+func TestThemeSettings_UpdateWithoutPremium(t *testing.T) {
 	store := &stubThemeSettings{}
 	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: false}, store)
 
 	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
 
-	require.Equal(t, http.StatusForbidden, rec.Code)
-	require.Nil(t, store.saved)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, store.saved)
 }
 
 func TestThemeSettings_UpdateValidation(t *testing.T) {

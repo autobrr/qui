@@ -3167,7 +3167,7 @@ paths:
       tags:
         - Themes
       summary: Store theme selection
-      description: Store the theme selection in the database. Requires premium access.
+      description: Store the theme selection in the database.
       requestBody:
         required: true
         content:
@@ -3183,10 +3183,8 @@ paths:
                 $ref: '#/components/schemas/ThemeSettings'
         '400':
           description: Invalid payload, missing themeId, or invalid mode
-        '403':
-          description: Premium access required
         '500':
-          description: Failed to check premium access or save theme settings
+          description: Failed to save theme settings
 
   /api/torrents/export:
     post:

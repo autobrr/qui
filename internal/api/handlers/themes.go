@@ -160,20 +160,9 @@ func (h *ThemesHandler) GetThemeSettings(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, settings)
 }
 
-// UpdateThemeSettings stores the theme selection. It is premium-gated:
-// callers without an active premium-access license receive 403.
+// UpdateThemeSettings stores the theme selection. Not premium-gated: a stored
+// premium id serves locked, so clients fall back to the default.
 func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Request) {
-	hasPremium, err := h.premium.HasPremiumAccess(r.Context())
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to check premium access for theme settings")
-		RespondError(w, http.StatusInternalServerError, "Failed to check premium access")
-		return
-	}
-	if !hasPremium {
-		RespondError(w, http.StatusForbidden, "Premium access required")
-		return
-	}
-
 	var settings models.ThemeSettings
 	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request payload")

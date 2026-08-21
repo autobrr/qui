@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useThemeSettingsSync } from "./useThemeSettingsSync"
 
-const { mockApi, mockPremium } = vi.hoisted(() => {
+const { mockApi } = vi.hoisted(() => {
   const builtinThemesResponse = Promise.resolve({ themes: [] })
   return {
     mockApi: {
@@ -17,12 +17,10 @@ const { mockApi, mockPremium } = vi.hoisted(() => {
       getThemeSettings: vi.fn(() => Promise.resolve(undefined)),
       updateThemeSettings: vi.fn(() => Promise.resolve({ themeId: "minimal", mode: "dark" })),
     },
-    mockPremium: { hasPremiumAccess: true, isLoading: false, isError: false },
   }
 })
 
 vi.mock("@/lib/api", () => ({ api: mockApi }))
-vi.mock("@/hooks/useLicense", () => ({ useHasPremiumAccess: () => mockPremium }))
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -38,7 +36,6 @@ function dispatchThemeChange(detail: object) {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
-  mockPremium.hasPremiumAccess = true
 })
 
 describe("useThemeSettingsSync", () => {
@@ -63,15 +60,5 @@ describe("useThemeSettingsSync", () => {
     dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
     dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
     expect(mockApi.updateThemeSettings).toHaveBeenCalledTimes(1)
-  })
-
-  it("does nothing without premium access", () => {
-    mockPremium.hasPremiumAccess = false
-    renderHook(() => useThemeSettingsSync(), { wrapper })
-
-    dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
-
-    expect(mockApi.getThemeSettings).not.toHaveBeenCalled()
-    expect(mockApi.updateThemeSettings).not.toHaveBeenCalled()
   })
 })
