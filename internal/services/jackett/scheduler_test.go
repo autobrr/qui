@@ -65,6 +65,12 @@ func (r *recordingHistoryRecorder) statuses() []string {
 	return out
 }
 
+// taskOutcome carries what a scheduler callback saw back to the test goroutine.
+type taskOutcome struct {
+	results []Result
+	err     error
+}
+
 func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 	s := newSearchScheduler(nil, 10)
 	defer s.Stop()
@@ -79,14 +85,17 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 
 	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
 
+	// Callbacks run on a scheduler worker, so they hand their outcome to the
+	// test goroutine: a failed require there would Goexit the worker instead of
+	// failing the test, and OnJobDone signals from a different goroutine again.
+	completions := make(chan taskOutcome, 1)
+
 	_, err := s.Submit(context.Background(), SubmitRequest{
 		Indexers: []*models.TorznabIndexer{indexer},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, results []Result, _ []int, err error) {
-				require.NoError(t, err)
-				assert.Len(t, results, 1)
-				assert.Equal(t, "test", results[0].Title)
+				completions <- taskOutcome{results: results, err: err}
 			},
 			OnJobDone: func(jobID uint64) {
 				close(done)
@@ -96,6 +105,10 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 
 	require.NoError(t, err)
 	<-done
+	got := <-completions
+	require.NoError(t, got.err)
+	require.Len(t, got.results, 1)
+	assert.Equal(t, "test", got.results[0].Title)
 	assert.True(t, executed.Load())
 }
 
@@ -231,13 +244,13 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan struct{})
+	var gotErr error
 	_, err := s.Submit(ctx, SubmitRequest{
 		Indexers: []*models.TorznabIndexer{indexer},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
-				require.Error(t, err)
-				require.ErrorIs(t, err, context.Canceled)
+				gotErr = err
 				close(done)
 			},
 		},
@@ -254,6 +267,7 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 	cancel()
 
 	<-done
+	require.ErrorIs(t, gotErr, context.Canceled)
 }
 
 func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
@@ -262,6 +276,11 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 
 	var completed atomic.Int32
 	done := make(chan struct{})
+
+	// Both callbacks run on scheduler workers; they report over a channel and
+	// leave every assertion to the test goroutine.
+	panicked := make(chan taskOutcome, 1)
+	recovered := make(chan taskOutcome, 1)
 
 	// Exec that panics for indexer 1, succeeds for indexer 2
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -280,8 +299,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), "scheduler worker panic")
+				panicked <- taskOutcome{err: err}
 				if completed.Add(1) == 2 {
 					close(done)
 				}
@@ -296,8 +314,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, results []Result, _ []int, err error) {
-				require.NoError(t, err)
-				assert.Len(t, results, 1)
+				recovered <- taskOutcome{results: results, err: err}
 				if completed.Add(1) == 2 {
 					close(done)
 				}
@@ -307,6 +324,13 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 	require.NoError(t, err2)
 
 	<-done
+	gotPanic := <-panicked
+	require.Error(t, gotPanic.err)
+	assert.Contains(t, gotPanic.err.Error(), "scheduler worker panic")
+
+	gotRecovered := <-recovered
+	require.NoError(t, gotRecovered.err)
+	assert.Len(t, gotRecovered.results, 1)
 }
 
 func TestSearchScheduler_TaskTimeoutCompletesHungExecution(t *testing.T) {
