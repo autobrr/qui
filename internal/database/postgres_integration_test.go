@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,13 +42,14 @@ func TestCleanupUnusedStringsPostgres(t *testing.T) {
 	t.Parallel()
 
 	db, ctx := openPostgresTestDB(t)
-	conn := db.Conn()
 
+	// Through the DB wrapper, not db.Conn(): the raw handle skips the ?-to-$n
+	// rebinding, so every placeholder below would reach Postgres verbatim.
 	var referencedID, orphanID int64
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_referenced").Scan(&referencedID))
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_orphan").Scan(&orphanID))
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_referenced").Scan(&referencedID))
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_orphan").Scan(&orphanID))
 
-	_, err := conn.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO instances (name_id, host_id, username_id, password_encrypted)
 		VALUES (?, ?, ?, ?)
 	`, referencedID, referencedID, referencedID, "dummy_password")
@@ -58,9 +60,9 @@ func TestCleanupUnusedStringsPostgres(t *testing.T) {
 	require.Positive(t, deleted)
 
 	var exists bool
-	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", referencedID).Scan(&exists))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", referencedID).Scan(&exists))
 	require.True(t, exists)
-	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
 	require.False(t, exists)
 
 	deletedAgain, err := db.CleanupUnusedStrings(ctx)
@@ -172,6 +174,9 @@ func openPostgresTestDB(t *testing.T) (*DB, context.Context) {
 	return db, ctx
 }
 
+// testSchemaSeq keeps parallel tests from claiming the same schema name.
+var testSchemaSeq atomic.Int64
+
 func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 	t.Helper()
 
@@ -187,7 +192,9 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 	require.NoError(t, err)
 	t.Cleanup(adminPool.Close)
 
-	schemaName := fmt.Sprintf("qui_test_%d", time.Now().UnixNano())
+	// UnixNano alone collides: the clock is coarse enough that two tests
+	// starting together get the same value, and these all run in parallel.
+	schemaName := fmt.Sprintf("qui_test_%d_%d", time.Now().UnixNano(), testSchemaSeq.Add(1))
 	_, err = adminPool.Exec(ctx, "CREATE SCHEMA "+quoteIdent(schemaName))
 	require.NoError(t, err)
 	t.Cleanup(func() {
