@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/themes"
 )
 
 const (
@@ -189,6 +190,13 @@ func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Reque
 		RespondError(w, http.StatusBadRequest, "mode must be auto, light or dark")
 		return
 	}
+	// Sideloaded custom themes ("custom:<file>") are user-managed files; the
+	// frontend already falls back safely when one disappears, so only
+	// built-in ids are validated against the registry.
+	if !themes.Exists(settings.ThemeID) && !strings.HasPrefix(settings.ThemeID, "custom:") {
+		RespondError(w, http.StatusBadRequest, "unknown themeId")
+		return
+	}
 
 	if err := h.settings.Set(r.Context(), &settings); err != nil {
 		log.Error().Err(err).Msg("Failed to save theme settings")
@@ -196,4 +204,51 @@ func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	RespondJSON(w, http.StatusOK, settings)
+}
+
+// BuiltinTheme is one embedded theme as served to the frontend. Locked
+// premium themes carry preview swatch colors instead of CSS.
+type BuiltinTheme struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Premium     bool            `json:"premium"`
+	CSS         string          `json:"css,omitempty"`
+	Preview     *themes.Preview `json:"preview,omitempty"`
+}
+
+// buildBuiltinThemeList applies the premium gate: free themes always include
+// their CSS, premium themes only with a license, locked entries get preview
+// colors instead.
+func buildBuiltinThemeList(list []themes.Theme, hasPremium bool) []BuiltinTheme {
+	out := make([]BuiltinTheme, 0, len(list))
+	for _, t := range list {
+		bt := BuiltinTheme{
+			ID:          t.ID,
+			Name:        t.Name,
+			Description: t.Description,
+			Premium:     t.Premium,
+		}
+		if t.Premium && !hasPremium {
+			bt.Preview = &t.Preview
+		} else {
+			bt.CSS = t.CSS
+		}
+		out = append(out, bt)
+	}
+	return out
+}
+
+// ListThemes returns every built-in theme through buildBuiltinThemeList. The
+// endpoint is public so the login page can paint the selected theme.
+func (h *ThemesHandler) ListThemes(w http.ResponseWriter, r *http.Request) {
+	hasPremium, err := h.premium.HasPremiumAccess(r.Context())
+	if err != nil {
+		// Serve as unlicensed rather than failing: the login page depends on
+		// this endpoint and free themes never require the license check.
+		log.Warn().Err(err).Msg("Failed to check premium access for theme list; serving free themes only")
+		hasPremium = false
+	}
+
+	RespondJSON(w, http.StatusOK, map[string][]BuiltinTheme{"themes": buildBuiltinThemeList(themes.All(), hasPremium)})
 }

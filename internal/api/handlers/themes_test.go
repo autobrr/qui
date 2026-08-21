@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/themes"
 )
 
 // stubPremium controls the premium-access result for the themes handler tests.
@@ -237,4 +238,70 @@ func TestThemeSettings_GetEmpty(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "null", strings.TrimSpace(rec.Body.String()))
+}
+
+func TestThemeSettings_UpdateUnknownTheme(t *testing.T) {
+	store := &stubThemeSettings{}
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store)
+
+	rec := doUpdateThemeSettings(t, h, `{"themeId":"not-a-theme"}`)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Nil(t, store.saved)
+
+	// Custom theme ids pass without registry validation.
+	rec = doUpdateThemeSettings(t, h, `{"themeId":"custom:mytheme"}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "custom:mytheme", store.saved.ThemeID)
+}
+
+func doListThemes(t *testing.T, h *ThemesHandler) []BuiltinTheme {
+	t.Helper()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/themes", nil)
+	rec := httptest.NewRecorder()
+	h.ListThemes(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Themes []BuiltinTheme `json:"themes"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	return resp.Themes
+}
+
+func TestListThemes_FreeAlwaysHaveCSS(t *testing.T) {
+	for _, premium := range []bool{false, true} {
+		h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: premium}, nil)
+		for _, theme := range doListThemes(t, h) {
+			if theme.Premium {
+				continue
+			}
+			require.NotEmpty(t, theme.CSS, "free theme %s must always include CSS (premium=%v)", theme.ID, premium)
+			require.Nil(t, theme.Preview)
+		}
+	}
+}
+
+// TestBuildBuiltinThemeList uses synthetic themes because the premium CSS
+// files are not in the public repo: gating tests against the real registry
+// would silently assert nothing in CI.
+func TestBuildBuiltinThemeList(t *testing.T) {
+	list := []themes.Theme{
+		{ID: "free", Name: "Free", CSS: "free-css", Preview: themes.Preview{Light: map[string]string{"--primary": "red"}}},
+		{ID: "paid", Name: "Paid", Premium: true, CSS: "paid-css", Preview: themes.Preview{Light: map[string]string{"--primary": "gold"}}},
+	}
+
+	unlicensed := buildBuiltinThemeList(list, false)
+	require.Equal(t, "free-css", unlicensed[0].CSS)
+	require.Nil(t, unlicensed[0].Preview)
+	require.Empty(t, unlicensed[1].CSS, "premium CSS leaked without a license")
+	require.Equal(t, "gold", unlicensed[1].Preview.Light["--primary"])
+
+	licensed := buildBuiltinThemeList(list, true)
+	require.Equal(t, "paid-css", licensed[1].CSS)
+	require.Nil(t, licensed[1].Preview)
+}
+
+func TestListThemes_PremiumCheckErrorServesFree(t *testing.T) {
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{err: errors.New("boom")}, nil)
+	require.NotEmpty(t, doListThemes(t, h))
 }

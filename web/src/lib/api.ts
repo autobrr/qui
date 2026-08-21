@@ -122,6 +122,7 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   TransferInfo,
+  BuiltinTheme,
   ThemeSettings,
   User,
   WarningResponse,
@@ -2037,6 +2038,11 @@ class ApiClient {
 
   async refreshLicenses(): Promise<{ message: string }> {
     return this.request("/license/refresh", { method: "POST" })
+  }
+
+  // Built-in themes (public; premium CSS license-gated server-side)
+  async getBuiltinThemes(): Promise<{ themes: BuiltinTheme[] }> {
+    return this.request("/themes")
   }
 
   // Custom themes (sideloaded CSS files; premium-gated server-side)

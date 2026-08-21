@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
-import { ThemeValidator } from "@/components/themes/ThemeValidator"
 import { CustomThemesLoader } from "@/components/themes/CustomThemesLoader"
 
 function AppLayoutContent() {
@@ -78,7 +77,6 @@ function AppLayoutContent() {
 export function AppLayout() {
   return (
     <LayoutRouteProvider>
-      <ThemeValidator />
       <CustomThemesLoader />
       <TorrentSelectionProvider>
         <MobileScrollProvider>

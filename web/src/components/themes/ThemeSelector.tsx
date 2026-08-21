@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { themes, isThemePremium, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
@@ -163,6 +164,8 @@ export function ThemeSelector() {
     isError: customThemesError,
     refetch: refetchCustomThemes,
   } = useCustomThemes()
+  // Subscribe so the picker re-renders when the async theme registry lands.
+  useBuiltinThemes()
 
   const canSwitchPremium = canSwitchToPremiumTheme({
     hasPremiumAccess,

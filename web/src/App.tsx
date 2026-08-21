@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { BuiltinThemesLoader } from "@/components/themes/BuiltinThemesLoader"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SyncStreamProvider } from "@/contexts/SyncStreamContext"
@@ -39,6 +40,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <BuiltinThemesLoader />
       <SyncStreamProvider>
         <TooltipProvider>
           <RouterProvider router={router} />

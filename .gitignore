@@ -52,12 +52,11 @@ test/mockindexer/feeds/*
 test/mockindexer/files/*
 cpu.pprof
 
-web/src/themes/premium/
+internal/themes/assets/premium/*
 
 # Preserve files
 !.gitkeep
 
-web/src/themes/premium/*
 docs/*
 !docs/CROSS_SEEDING.md
 !docs/architecture.md

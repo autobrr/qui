@@ -50,8 +50,8 @@ themes-fetch:
 		git clone --depth=1 --filter=blob:none --sparse \
 			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
 		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
-		mkdir -p $(WEB_DIR)/src/themes/premium && \
-		cp .themes-temp/themes/*.css $(WEB_DIR)/src/themes/premium/ && \
+		mkdir -p internal/themes/assets/premium && \
+		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \
 		rm -rf .themes-temp && \
 		echo "Premium themes fetched successfully"; \
 	else \
@@ -61,7 +61,7 @@ themes-fetch:
 # Clean premium themes
 themes-clean:
 	@echo "Cleaning premium themes..."
-	rm -rf $(WEB_DIR)/src/themes/premium
+	rm -f internal/themes/assets/premium/*.css
 
 # Build frontend
 frontend: themes-fetch

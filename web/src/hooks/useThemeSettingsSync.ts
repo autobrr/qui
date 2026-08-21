@@ -6,6 +6,7 @@
 import { useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { getThemeById } from "@/config/themes"
 import { setTheme } from "@/utils/theme"
@@ -18,6 +19,7 @@ import type { ThemeSettings } from "@/types"
  */
 export function useThemeSettingsSync(): void {
   const { hasPremiumAccess } = useHasPremiumAccess()
+  const builtins = useBuiltinThemes()
   // Last payload synced with the server, to avoid echoing an applied server
   // value straight back as a PUT.
   const lastSynced = useRef<string | null>(null)
@@ -31,7 +33,8 @@ export function useThemeSettingsSync(): void {
     retry: false,
   })
 
-  // Pull: apply the stored server selection.
+  // Pull: apply the stored server selection. Re-runs when the async theme
+  // registry lands, since the id may only resolve from then on.
   useEffect(() => {
     if (!data?.themeId) return
     lastSynced.current = JSON.stringify(data)
@@ -39,7 +42,7 @@ export function useThemeSettingsSync(): void {
     // downgrade the local selection to the default theme.
     if (!getThemeById(data.themeId)) return
     void setTheme(data.themeId, data.mode, data.variation)
-  }, [data])
+  }, [data, builtins.isReady])
 
   // Push: store local theme changes on the server.
   useEffect(() => {

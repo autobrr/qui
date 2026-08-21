@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
@@ -74,9 +75,10 @@ export const ThemeToggle: React.FC = () => {
     isLoading,
   });
 
-  const sortedThemes = useMemo(() => {
-    return buildThemeCatalog(themes, customThemes);
-  }, [customThemes]);
+  // Subscribe so the list re-renders when the async theme registry lands;
+  // the registry array mutates in place, so it must not be a memo dep.
+  useBuiltinThemes();
+  const sortedThemes = buildThemeCatalog(themes, customThemes);
 
   const previewColorsCache = useMemo(() => new Map<string, {
     primary: string;

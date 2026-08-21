@@ -409,6 +409,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			}
 		})
 
+		// Built-in theme catalog: public so the login page can paint the
+		// selected theme before auth. Premium CSS is license-gated inside.
+		r.Get("/themes", themesHandler.ListThemes)
+
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 

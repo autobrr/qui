@@ -3071,6 +3071,50 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/themes:
+    get:
+      tags:
+        - Themes
+      summary: List built-in themes
+      description: List every built-in theme. Free themes always include their CSS. Premium themes include CSS only when the instance holds a premium license; otherwise the entry is a locked stub with preview colors. Public endpoint, no authentication required.
+      security: []
+      responses:
+        '200':
+          description: Built-in themes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        premium:
+                          type: boolean
+                        css:
+                          type: string
+                          description: Full theme CSS. Absent on locked premium entries.
+                        preview:
+                          type: object
+                          description: Swatch colors for locked premium entries.
+                          properties:
+                            light:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            dark:
+                              type: object
+                              additionalProperties:
+                                type: string
+
   /api/themes/custom:
     get:
       tags:

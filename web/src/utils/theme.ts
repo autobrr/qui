@@ -255,53 +255,17 @@ const addMediaQueryListener = (
 };
 
 // Public API
-let validatedThemes: Set<string> | null = null;
-let isInitializing = true;
 
-export const setValidatedThemes = (themeIds: string[]): void => {
-  validatedThemes = new Set(themeIds);
-  isInitializing = false;
-};
-
-const isThemeAccessible = (themeId: string): boolean => {
-  const theme = getThemeById(themeId);
-
-  // Custom themes are registered only after a backend premium check, so being
-  // present in the registry is the access grant. An unregistered custom id
-  // (not yet fetched, or unlicensed) is not accessible and falls back to default.
-  if (theme?.isCustom) {
-    return true;
-  }
-
-  // During initialization (before license data loads), trust the stored theme
-  // This prevents the theme from resetting on hard refresh
-  if (isInitializing && !validatedThemes) {
-    // Allow the stored theme temporarily during initialization
-    // It will be validated once license data loads
-    return true;
-  }
-
-  // If we haven't received validation data yet but initialization is complete,
-  // only allow non-premium themes
-  if (!validatedThemes) {
-    return !theme?.isPremium;
-  }
-
-  // Check if theme is in validated list
-  return validatedThemes.has(themeId);
-};
-
+// License enforcement lives server-side: premium CSS is never served to an
+// unlicensed install, so a premium theme id can only ever resolve to a locked
+// preview stub here. The stored id is kept so the theme comes back when the
+// registry can serve it (license activated, custom theme file restored).
 export const getCurrentTheme = (): Theme => {
   const storedThemeId = getStoredThemeId();
   if (storedThemeId) {
     const theme = getThemeById(storedThemeId);
-    // Validate theme access
-    if (theme && isThemeAccessible(theme.id)) {
+    if (theme && !theme.locked) {
       return theme;
-    }
-    // If theme exists but not accessible, clear it from storage
-    if (theme && !isThemeAccessible(theme.id)) {
-      localStorage.removeItem(COLOR_THEME_KEY);
     }
   }
   return getDefaultTheme();
@@ -314,13 +278,12 @@ export const getCurrentThemeMode = (): ThemeMode => {
 export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string): Promise<void> => {
   const theme = getThemeById(themeId);
 
-  // Validate theme access before applying
-  if (!theme || !isThemeAccessible(theme.id)) {
-    // Fall back to default theme if not accessible
+  // Unknown ids and locked premium stubs apply the default instead. The
+  // stored id is left alone so the selection survives until it resolves.
+  if (!theme || theme.locked) {
     const defaultTheme = getDefaultTheme();
     const currentMode = mode || getCurrentThemeMode();
 
-    setStoredThemeId(defaultTheme.id);
     if (mode) {
       setStoredMode(mode);
     }

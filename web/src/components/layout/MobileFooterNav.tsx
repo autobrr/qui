@@ -35,6 +35,7 @@ import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedIn
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
@@ -122,7 +123,9 @@ export function MobileFooterNav() {
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
   const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
   const { customThemes } = useCustomThemes()
-  const themeCatalog = useMemo(() => buildThemeCatalog(themes, customThemes), [customThemes])
+  // Subscribe so the list re-renders when the async theme registry lands.
+  useBuiltinThemes()
+  const themeCatalog = buildThemeCatalog(themes, customThemes)
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 

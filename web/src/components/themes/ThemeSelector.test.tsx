@@ -48,6 +48,10 @@ vi.mock("@/hooks/useLicense.ts", () => ({
   }),
 }))
 
+vi.mock("@/hooks/useBuiltinThemes", () => ({
+  useBuiltinThemes: () => ({ isReady: true, isError: false }),
+}))
+
 vi.mock("@/hooks/useCustomThemes", () => ({
   useCustomThemes: () => ({
     customThemes: fixture.customThemes,
