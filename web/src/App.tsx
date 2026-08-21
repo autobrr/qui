@@ -40,8 +40,8 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BuiltinThemesLoader />
       <SyncStreamProvider>
+        <BuiltinThemesLoader />
         <TooltipProvider>
           <RouterProvider router={router} />
           <Toaster />

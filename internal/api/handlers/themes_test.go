@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/themes"
 )
 
@@ -50,7 +51,7 @@ func doListCustomThemes(t *testing.T, h *ThemesHandler) *httptest.ResponseRecord
 }
 
 func TestThemesHandler_NotPremium(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{ok: false}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{ok: false}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
@@ -60,14 +61,14 @@ func TestThemesHandler_NotPremium(t *testing.T) {
 }
 
 func TestThemesHandler_PremiumCheckError(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{err: errors.New("boom")}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: t.TempDir()}, stubPremium{err: errors.New("boom")}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestThemesHandler_EmptyDirReturnsEmptyArray(t *testing.T) {
 	dir := t.TempDir()
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -93,7 +94,7 @@ func TestThemesHandler_ListsOnlyRegularCSSFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(outside, []byte(":root{--primary:red}"), 0o600))
 	_ = os.Symlink(outside, filepath.Join(dir, "linked.css"))
 
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -112,7 +113,7 @@ func TestThemesHandler_SkipsOversizeFiles(t *testing.T) {
 	big := make([]byte, maxCustomThemeFileSize+1)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "huge.css"), big, 0o600))
 
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 
 	var resp CustomThemesResponse
@@ -139,7 +140,7 @@ func TestThemesHandler_CapsFileCount(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(":root{}"), 0o600))
 	}
 
-	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: dir}, stubPremium{ok: true}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 
 	var resp CustomThemesResponse
@@ -148,7 +149,7 @@ func TestThemesHandler_CapsFileCount(t *testing.T) {
 }
 
 func TestThemesHandler_EnsureDirErrorReturnsEmpty(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{dir: filepath.Join("non", "existent"), err: errors.New("mkdir failed")}, stubPremium{ok: true}, nil, nil)
+	h := NewThemesHandler(stubThemesDir{dir: filepath.Join("non", "existent"), err: errors.New("mkdir failed")}, stubPremium{ok: true}, nil, nil, nil)
 	rec := doListCustomThemes(t, h)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -181,9 +182,39 @@ func doUpdateThemeSettings(t *testing.T, h *ThemesHandler, body string) *httptes
 	return rec
 }
 
+// recordingPublisher records published activity events.
+type recordingPublisher struct {
+	events []activity.Event
+}
+
+func (p *recordingPublisher) Publish(ev activity.Event) {
+	p.events = append(p.events, ev)
+}
+
+func TestThemeSettings_UpdatePublishesActivity(t *testing.T) {
+	pub := &recordingPublisher{}
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{}, nil, pub)
+
+	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, pub.events, 1)
+	require.Equal(t, activity.KindThemeSettings, pub.events[0].Kind)
+}
+
+func TestThemeSettings_NoActivityOnStoreFailure(t *testing.T) {
+	pub := &recordingPublisher{}
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{err: errors.New("boom")}, nil, pub)
+
+	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Empty(t, pub.events)
+}
+
 func TestThemeSettings_UpdateWithoutPremium(t *testing.T) {
 	store := &stubThemeSettings{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: false}, store, nil)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: false}, store, nil, nil)
 
 	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal"}`)
 
@@ -203,7 +234,7 @@ func TestThemeSettings_UpdateValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &stubThemeSettings{}
-			h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil)
+			h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, nil)
 			rec := doUpdateThemeSettings(t, h, tt.body)
 			require.Equal(t, http.StatusBadRequest, rec.Code)
 			require.Nil(t, store.saved)
@@ -213,7 +244,7 @@ func TestThemeSettings_UpdateValidation(t *testing.T) {
 
 func TestThemeSettings_UpdateAndGet(t *testing.T) {
 	store := &stubThemeSettings{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, nil)
 
 	rec := doUpdateThemeSettings(t, h, `{"themeId":"minimal","variation":"blue"}`)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -230,7 +261,7 @@ func TestThemeSettings_UpdateAndGet(t *testing.T) {
 }
 
 func TestThemeSettings_GetEmpty(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{}, nil)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, &stubThemeSettings{}, nil, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/themes/settings", nil)
 	rec := httptest.NewRecorder()
@@ -242,7 +273,7 @@ func TestThemeSettings_GetEmpty(t *testing.T) {
 
 func TestThemeSettings_UpdateUnknownTheme(t *testing.T) {
 	store := &stubThemeSettings{}
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: true}, store, nil, nil)
 
 	rec := doUpdateThemeSettings(t, h, `{"themeId":"not-a-theme"}`)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -270,7 +301,7 @@ func doListThemes(t *testing.T, h *ThemesHandler) []BuiltinTheme {
 
 func TestListThemes_FreeAlwaysHaveCSS(t *testing.T) {
 	for _, premium := range []bool{false, true} {
-		h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: premium}, &stubThemeSettings{}, nil)
+		h := NewThemesHandler(stubThemesDir{}, stubPremium{ok: premium}, &stubThemeSettings{}, nil, nil)
 		for _, theme := range doListThemes(t, h) {
 			if theme.Premium {
 				continue
@@ -312,6 +343,6 @@ func TestBuildBuiltinThemeList(t *testing.T) {
 }
 
 func TestListThemes_PremiumCheckErrorServesFree(t *testing.T) {
-	h := NewThemesHandler(stubThemesDir{}, stubPremium{err: errors.New("boom")}, &stubThemeSettings{}, nil)
+	h := NewThemesHandler(stubThemesDir{}, stubPremium{err: errors.New("boom")}, &stubThemeSettings{}, nil, nil)
 	require.NotEmpty(t, doListThemes(t, h))
 }

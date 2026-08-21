@@ -16,6 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/themes"
 )
 
@@ -55,10 +56,16 @@ type ThemesHandler struct {
 	// selected theme; the picker behind auth gets the whole set. nil means
 	// treat every caller as unauthenticated.
 	authed func(context.Context) bool
+	// activity signals stored-selection changes so open tabs refetch instead
+	// of polling.
+	activity activity.Publisher
 }
 
-func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, settings themeSettingsStore, authed func(context.Context) bool) *ThemesHandler {
-	return &ThemesHandler{themesDir: themesDir, premium: premium, settings: settings, authed: authed}
+func NewThemesHandler(themesDir themesDirProvider, premium premiumChecker, settings themeSettingsStore, authed func(context.Context) bool, publisher activity.Publisher) *ThemesHandler {
+	if publisher == nil {
+		publisher = activity.NopPublisher{}
+	}
+	return &ThemesHandler{themesDir: themesDir, premium: premium, settings: settings, authed: authed, activity: publisher}
 }
 
 // CustomTheme is a single sideloaded theme file and its raw CSS contents.
@@ -198,6 +205,7 @@ func (h *ThemesHandler) UpdateThemeSettings(w http.ResponseWriter, r *http.Reque
 		RespondError(w, http.StatusInternalServerError, "Failed to save theme settings")
 		return
 	}
+	h.activity.Publish(activity.Event{Kind: activity.KindThemeSettings})
 	RespondJSON(w, http.StatusOK, settings)
 }
 

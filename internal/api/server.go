@@ -91,6 +91,7 @@ type Server struct {
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	activityHub                      *activity.Hub
 }
 
 type Dependencies struct {
@@ -199,6 +200,7 @@ func NewServer(deps *Dependencies) *Server {
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		activityHub:                      deps.ActivityHub,
 	}
 
 	return &s
@@ -359,7 +361,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
 		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
 		return s.config.Config.IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
-	})
+	}, s.activityHub)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,

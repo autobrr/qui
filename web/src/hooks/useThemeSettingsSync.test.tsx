@@ -23,6 +23,11 @@ const { mockApi } = vi.hoisted(() => {
 
 vi.mock("@/lib/api", () => ({ api: mockApi }))
 
+// The real hook needs a SyncStreamProvider; the registration itself is the
+// provider's concern, so it is mocked and only the enabled flag is asserted.
+const mockUseActivityStream = vi.hoisted(() => vi.fn())
+vi.mock("@/contexts/SyncStreamContext", () => ({ useActivityStream: mockUseActivityStream }))
+
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -41,6 +46,20 @@ afterEach(() => {
 })
 
 describe("useThemeSettingsSync", () => {
+  it("gates the activity stream on a cached authenticated user", () => {
+    renderHook(() => useThemeSettingsSync(), { wrapper })
+    expect(mockUseActivityStream).toHaveBeenLastCalledWith(false)
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(["auth", "user"], { username: "admin" })
+    renderHook(() => useThemeSettingsSync(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    expect(mockUseActivityStream).toHaveBeenLastCalledWith(true)
+  })
+
   it("pushes local theme changes to the server", () => {
     renderHook(() => useThemeSettingsSync(), { wrapper })
 
