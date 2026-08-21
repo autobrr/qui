@@ -3114,7 +3114,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 
 	// Context cancellation should propagate as an error, not trigger fallback
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
 	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context cancellation")
@@ -3191,7 +3191,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 
 	// Context deadline exceeded should propagate as an error, not trigger fallback
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
 	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context deadline exceeded")

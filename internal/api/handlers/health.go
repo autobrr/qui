@@ -19,15 +19,6 @@ func NewHealthHandler() *HealthHandler {
 func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Perform actual health checks
-	// health := h.checkOverallHealth()
-
-	// if health.Status == "ok" {
-	//	w.WriteHeader(http.StatusOK)
-	//} else {
-	//	w.WriteHeader(http.StatusServiceUnavailable)
-	//}
-
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

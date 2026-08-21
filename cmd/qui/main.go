@@ -525,6 +525,7 @@ func (app *Application) runServer() {
 	licenseRepo := database.NewLicenseRepo(db)
 	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
 	if err != nil {
+		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 	instanceReannounceStore := models.NewInstanceReannounceStore(db)
@@ -905,22 +906,6 @@ func (app *Application) runServer() {
 	//}
 
 	os.Exit(0)
-
-	//// Wait for interrupt signal to gracefully shutdown the server
-	// quit := make(chan os.Signal, 1)
-	//signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	//<-quit
-	//log.Info().Msg("Shutting down server...")
-	//
-	//// Graceful shutdown with timeout
-	//ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	//defer cancel()
-	//
-	//if err := httpServer.Close(ctx); err != nil {
-	//	log.Fatal().Err(err).Msg("Server forced to shutdown")
-	//}
-	//
-	//log.Info().Msg("Server stopped")
 }
 
 // instanceListerAdapter implements filesmanager.InstanceLister

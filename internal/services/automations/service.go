@@ -4444,7 +4444,7 @@ func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string 
 		}
 	}
 
-	var domains []string
+	domains := make([]string, 0, len(domainSet))
 	for d := range domainSet {
 		domains = append(domains, d)
 	}

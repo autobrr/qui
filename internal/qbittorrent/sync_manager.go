@@ -3276,7 +3276,8 @@ func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash s
 }
 
 func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
-	candidates := []string{torrent.Tracker}
+	candidates := make([]string, 0, 1+len(torrent.Trackers))
+	candidates = append(candidates, torrent.Tracker)
 	for _, tracker := range torrent.Trackers {
 		candidates = append(candidates, tracker.Url)
 	}

@@ -1000,10 +1000,7 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 	}
 
 	return slices.ContainsFunc(uniq, func(c string) bool {
-		if compareString(c, cond) {
-			return true
-		}
-		return false
+		return compareString(c, cond)
 	})
 }
 

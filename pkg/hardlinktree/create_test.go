@@ -97,7 +97,7 @@ func TestCreate_MultipleFiles(t *testing.T) {
 	}
 
 	// Create plan
-	var filePlans []FilePlan
+	filePlans := make([]FilePlan, 0, len(files))
 	for _, f := range files {
 		filePlans = append(filePlans, FilePlan{
 			SourcePath: filepath.Join(srcDir, f),

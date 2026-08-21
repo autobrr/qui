@@ -335,11 +335,7 @@ func cacheIsFresh(info *SyncInfo) bool {
 	// Use a fixed cache duration for simplicity
 	cacheFreshDuration := 5 * time.Minute
 
-	if time.Since(info.LastSyncedAt) > cacheFreshDuration {
-		return false
-	}
-
-	return true
+	return time.Since(info.LastSyncedAt) <= cacheFreshDuration
 }
 
 func convertCachedFiles(cached []CachedFile) qbt.TorrentFiles {

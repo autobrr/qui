@@ -83,11 +83,7 @@ type ValidateResp struct {
 }
 
 func (v *ValidateResp) ValidLicense() bool {
-	if v.Status == "granted" {
-		return true
-	}
-
-	return false
+	return v.Status == "granted"
 }
 
 // ActivationResponse represents the response from the activate endpoint

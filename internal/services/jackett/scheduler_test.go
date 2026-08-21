@@ -84,7 +84,7 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, results []Result, _ []int, err error) {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Len(t, results, 1)
 				assert.Equal(t, "test", results[0].Title)
 			},
@@ -236,8 +236,8 @@ func TestSearchScheduler_ContextCancellation(t *testing.T) {
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
-				assert.Error(t, err)
-				assert.ErrorIs(t, err, context.Canceled)
+				require.Error(t, err)
+				require.ErrorIs(t, err, context.Canceled)
 				close(done)
 			},
 		},
@@ -280,7 +280,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "scheduler worker panic")
 				if completed.Add(1) == 2 {
 					close(done)
@@ -296,7 +296,7 @@ func TestSearchScheduler_WorkerPanicRecovery(t *testing.T) {
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
 			OnComplete: func(_ uint64, _ *models.TorznabIndexer, results []Result, _ []int, err error) {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Len(t, results, 1)
 				if completed.Add(1) == 2 {
 					close(done)
@@ -829,7 +829,7 @@ func TestSearchScheduler_MaxWaitSkipsIndexer(t *testing.T) {
 	gotError := <-completeCh
 
 	// Should have received a RateLimitWaitError
-	assert.Error(t, gotError, "expected RateLimitWaitError but got nil")
+	require.Error(t, gotError, "expected RateLimitWaitError but got nil")
 	var waitErr *RateLimitWaitError
 	assert.ErrorAs(t, gotError, &waitErr)
 }
