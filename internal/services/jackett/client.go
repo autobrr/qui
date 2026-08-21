@@ -447,7 +447,7 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 			Title:                item.Title,
 			Link:                 item.Enclosure.URL,
 			Details:              item.Comments,
-			GUID:                 item.Guid,
+			GUID:                 item.GUID,
 			Category:             "", // Categories are in item.Category array
 			Size:                 0,
 			DownloadVolumeFactor: 1.0,
