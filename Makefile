@@ -64,7 +64,7 @@ themes-clean:
 	rm -f internal/themes/assets/premium/*.css
 
 # Build frontend
-frontend: themes-fetch
+frontend:
 	@echo "Building frontend..."
 	cd $(WEB_DIR) && pnpm install && pnpm build
 	@echo "Copying frontend assets..."
@@ -72,7 +72,7 @@ frontend: themes-fetch
 	cp -r $(WEB_DIR)/dist $(INTERNAL_WEB_DIR)/
 
 # Build backend
-backend:
+backend: themes-fetch
 	@echo "Building backend..."
 	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/qui
 

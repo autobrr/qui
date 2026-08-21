@@ -126,9 +126,6 @@ const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, stri
 // theme registry arrives from the API (the anti-FOUC vars only cover the
 // background). Hydrated back in config/themes.ts.
 const cacheAppliedTheme = (theme: Theme): void => {
-  if (theme.isCustom || theme.locked) {
-    return;
-  }
   try {
     localStorage.setItem("theme-cache", JSON.stringify({
       id: theme.id,

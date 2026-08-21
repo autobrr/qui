@@ -42,7 +42,7 @@ export function useThemeSettingsSync(): void {
     // downgrade the local selection to the default theme.
     if (!getThemeById(data.themeId)) return
     void setTheme(data.themeId, data.mode, data.variation)
-  }, [data, builtins.isReady])
+  }, [data, builtins.isSuccess])
 
   // Push: store local theme changes on the server.
   useEffect(() => {

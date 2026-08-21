@@ -3,10 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { registerBuiltinThemes, getThemeById, type Theme } from "@/config/themes"
+import { registerBuiltinThemes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes"
 import { parseThemeCSS } from "@/utils/themeParser"
 import { setTheme } from "@/utils/theme"
 import type { BuiltinTheme } from "@/types"
@@ -45,15 +44,30 @@ function toTheme(entry: BuiltinTheme): Theme | null {
 }
 
 /**
- * Fetches the built-in theme list from the server and registers it in the
- * client theme registry. Public endpoint, so this also themes the login page.
- * Once registered, the stored selection is re-applied in case it only just
- * became resolvable (boot paints the bundled fallback until then).
+ * Registers a fetched theme payload in the client registry and re-applies the
+ * stored selection: it may only just have become resolvable, and the boot
+ * paint may have used a stale cached copy of the theme. A stored theme that
+ * resolves to a locked stub (license lapsed) is downgraded to the default,
+ * which also overwrites the boot cache. Called once per payload by
+ * BuiltinThemesLoader.
  */
-// Five components subscribe to this hook; register (and re-apply) only once
-// per fetched payload instead of re-parsing every theme per mount.
-let lastRegistered: unknown = null
+export function applyBuiltinThemesPayload(payload: { themes: BuiltinTheme[] }): void {
+  registerBuiltinThemes(payload.themes.map(toTheme).filter((t): t is Theme => t !== null))
 
+  const storedId = localStorage.getItem("color-theme")
+  const stored = storedId ? getThemeById(storedId) : undefined
+  if (stored && !stored.locked) {
+    void setTheme(stored.id)
+  } else if (stored?.locked) {
+    void setTheme(getDefaultTheme().id)
+  }
+}
+
+/**
+ * Query for the built-in theme list. Public endpoint, so it also themes the
+ * login page. Registration happens once, in BuiltinThemesLoader; every other
+ * caller subscribes purely for the re-render when the registry lands.
+ */
 export function useBuiltinThemes() {
   const query = useQuery({
     queryKey: ["builtin-themes"],
@@ -62,22 +76,5 @@ export function useBuiltinThemes() {
     retry: 1,
   })
 
-  const { data } = query
-
-  useEffect(() => {
-    if (!data || data === lastRegistered) return
-    lastRegistered = data
-    registerBuiltinThemes(data.themes.map(toTheme).filter((t): t is Theme => t !== null))
-
-    // Re-apply the stored selection with the fresh registry entry: it may
-    // only just have become resolvable, and the boot paint may have used the
-    // cached copy of a theme whose CSS has since changed server-side.
-    const storedId = localStorage.getItem("color-theme")
-    const stored = storedId ? getThemeById(storedId) : undefined
-    if (storedId && stored && !stored.locked) {
-      void setTheme(storedId)
-    }
-  }, [data])
-
-  return { isReady: query.isSuccess || query.isError, isError: query.isError }
+  return { data: query.data, isSuccess: query.isSuccess, isError: query.isError }
 }

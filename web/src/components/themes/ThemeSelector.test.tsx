@@ -49,7 +49,7 @@ vi.mock("@/hooks/useLicense.ts", () => ({
 }))
 
 vi.mock("@/hooks/useBuiltinThemes", () => ({
-  useBuiltinThemes: () => ({ isReady: true, isError: false }),
+  useBuiltinThemes: () => ({ data: undefined, isSuccess: true, isError: false }),
 }))
 
 vi.mock("@/hooks/useCustomThemes", () => ({

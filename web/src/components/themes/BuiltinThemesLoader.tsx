@@ -3,13 +3,21 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
+import { useEffect } from "react"
+import { applyBuiltinThemesPayload, useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 
 /**
- * Mounts the built-in theme registry loader app-wide, above auth, so the
- * login page paints the selected theme too.
+ * The single registrar for the built-in theme registry, mounted app-wide
+ * above auth so the login page paints the selected theme too.
  */
 export function BuiltinThemesLoader(): null {
-  useBuiltinThemes()
+  const { data } = useBuiltinThemes()
+
+  useEffect(() => {
+    if (data) {
+      applyBuiltinThemesPayload(data)
+    }
+  }, [data])
+
   return null
 }
