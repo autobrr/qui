@@ -153,13 +153,3 @@ function extractCSSVariables(cssContent: string, selector: string): Record<strin
 
   return Object.keys(variables).length > 0 ? variables : null;
 }
-
-/**
- * Generate a theme ID from the theme name
- */
-export function generateThemeId(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}

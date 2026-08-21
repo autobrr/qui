@@ -81,7 +81,7 @@ describe("applyBuiltinThemesPayload", () => {
     expect(mockSetTheme).toHaveBeenCalledWith("testfree")
   })
 
-  it("downgrades a stored selection that resolved to a locked stub", () => {
+  it("re-applies a stored selection that resolved to a locked stub without rewriting it", () => {
     localStorage.setItem("color-theme", "locked")
     // The server payload always contains the default theme (pinned server-side).
     const minimalCss = TEST_CSS.replace("@name: Testfree", "@name: Minimal")
@@ -92,11 +92,34 @@ describe("applyBuiltinThemesPayload", () => {
       ],
     })
 
-    expect(mockSetTheme).toHaveBeenCalledWith("minimal")
+    // setTheme's locked fallback paints the default itself, without touching
+    // the stored selection, so the payload apply passes the stored id through.
+    expect(mockSetTheme).toHaveBeenCalledWith("locked")
+    expect(localStorage.getItem("color-theme")).toBe("locked")
   })
 })
 
 describe("useBuiltinThemes", () => {
+  it("registers themes before observers render the committed data", async () => {
+    mockApi.getBuiltinThemes.mockResolvedValue({
+      themes: [{ id: "testfree", name: "Testfree", premium: false, css: TEST_CSS }],
+    })
+
+    const seenOnSuccess: boolean[] = []
+    const { result } = renderHook(() => {
+      const query = useBuiltinThemes()
+      if (query.isSuccess) {
+        seenOnSuccess.push(getThemeById("testfree") !== undefined)
+      }
+      return query
+    }, { wrapper })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    // The very first isSuccess render must already see the registered theme;
+    // an effect-based registrar leaves it reading the pre-registration array.
+    expect(seenOnSuccess[0]).toBe(true)
+  })
+
   it("reports error state and keeps the fallback registry when the fetch fails", async () => {
     mockApi.getBuiltinThemes.mockRejectedValue(new Error("boom"))
 

@@ -317,7 +317,9 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
       (currentMode === THEME_AUTO && getSystemPreference().matches);
 
     await applyTheme(defaultTheme, currentVariation, isDark, false);
-    dispatchThemeChange(currentMode, defaultTheme, false, currentVariation);
+    // System-driven fallback, not a user selection: flagged so the server
+    // sync never overwrites the stored selection with the default.
+    dispatchThemeChange(currentMode, defaultTheme, true, currentVariation);
     return;
   }
 

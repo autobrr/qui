@@ -36,7 +36,6 @@ import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
-import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -120,8 +119,7 @@ export function MobileFooterNav() {
   const { isFooterVisible } = useMobileScroll()
   const { viewMode, setViewMode } = usePersistedCompactViewState("compact", MOBILE_VIEW_MODES)
   const { currentMode, currentTheme } = useThemeChange()
-  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
-  const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
+  const { isError } = useHasPremiumAccess()
   const { customThemes } = useCustomThemes()
   // Subscribe so the list re-renders when the async theme registry lands.
   useBuiltinThemes()
@@ -201,8 +199,9 @@ export function MobileFooterNav() {
   }, [t])
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
-    const isPremium = isThemePremium(themeId)
-    if (isPremium && !canSwitchPremium) {
+    // The server is the authority: a premium theme without a license arrives
+    // as a locked stub with no CSS, so the locked flag is the gate.
+    if (getThemeById(themeId)?.locked) {
       if (isError) {
         toast.error(t("themeToggle.unableToVerifyLicense"), {
           description: t("themeToggle.licenseCheckFailed"),
@@ -216,11 +215,10 @@ export function MobileFooterNav() {
     await setTheme(themeId)
     const theme = getThemeById(themeId)
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }))
-  }, [canSwitchPremium, isError, t])
+  }, [isError, t])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
-    const isPremium = isThemePremium(themeId)
-    if (isPremium && !canSwitchPremium) {
+    if (getThemeById(themeId)?.locked) {
       if (isError) {
         toast.error(t("themeToggle.unableToVerifyLicense"), {
           description: t("themeToggle.licenseCheckFailed"),
@@ -236,7 +234,7 @@ export function MobileFooterNav() {
     const theme = getThemeById(themeId)
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }))
     return true
-  }, [canSwitchPremium, isError, t])
+  }, [isError, t])
 
   if (isSelectionMode) {
     return null
@@ -666,7 +664,7 @@ export function MobileFooterNav() {
               <div className="space-y-1">
                 {themeCatalog.map((theme) => {
                   const isPremium = isThemePremium(theme.id)
-                  const isLocked = isPremium && !hasPremiumAccess
+                  const isLocked = !!theme.locked
                   const colors = getThemeColors(theme)
                   const currentVariation = getThemeVariation(theme.id)
 

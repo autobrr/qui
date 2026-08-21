@@ -11,6 +11,7 @@ import { useThemeSettingsSync } from "./useThemeSettingsSync"
 
 const { mockApi, mockPremium } = vi.hoisted(() => ({
   mockApi: {
+    getBuiltinThemes: vi.fn(() => Promise.resolve({ themes: [] })),
     getThemeSettings: vi.fn(() => Promise.resolve(undefined)),
     updateThemeSettings: vi.fn(() => Promise.resolve({ themeId: "minimal", mode: "dark" })),
   },

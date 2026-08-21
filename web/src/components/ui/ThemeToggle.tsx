@@ -13,7 +13,7 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, isThemePremium, getThemeById } from "@/config/themes";
+import { themes, getThemeById } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Lock, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -30,7 +30,6 @@ import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
-import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
 
 // Constants
@@ -65,15 +64,9 @@ const useThemeChange = () => {
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
   const { currentMode, currentTheme, isDark } = useThemeChange();
-  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
+  const { isError } = useHasPremiumAccess();
   const { customThemes } = useCustomThemes();
   const [open, setOpen] = useState(false);
-
-  const canSwitchPremium = canSwitchToPremiumTheme({
-    hasPremiumAccess,
-    isError,
-    isLoading,
-  });
 
   // Subscribe so the list re-renders when the async theme registry lands;
   // the registry array mutates in place, so it must not be a memo dep.
@@ -125,8 +118,9 @@ export const ThemeToggle: React.FC = () => {
   }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
-    const isPremium = isThemePremium(themeId);
-    if (isPremium && !canSwitchPremium) {
+    // The server is the authority: a premium theme without a license arrives
+    // as a locked stub with no CSS, so the locked flag is the gate.
+    if (getThemeById(themeId)?.locked) {
       if (isError) {
         toast.error(t("themeToggle.unableToVerifyLicense"), {
           description: t("themeToggle.licenseCheckFailed"),
@@ -141,11 +135,10 @@ export const ThemeToggle: React.FC = () => {
 
     const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }));
-  }, [canSwitchPremium, isError, t]);
+  }, [isError, t]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
-    const isPremium = isThemePremium(themeId);
-    if (isPremium && !canSwitchPremium) {
+    if (getThemeById(themeId)?.locked) {
       if (isError) {
         toast.error(t("themeToggle.unableToVerifyLicense"), {
           description: t("themeToggle.licenseCheckFailed"),
@@ -162,7 +155,7 @@ export const ThemeToggle: React.FC = () => {
     const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
-  }, [canSwitchPremium, isError, t]);
+  }, [isError, t]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -216,8 +209,7 @@ export const ThemeToggle: React.FC = () => {
         <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.theme")}</div>
         <div className="max-h-[max(8rem,calc(var(--radix-dropdown-menu-content-available-height)-16rem))] overflow-y-auto overscroll-contain pr-1">
           {sortedThemes.map((theme) => {
-            const isPremium = isThemePremium(theme.id);
-            const isLocked = isPremium && !canSwitchPremium;
+            const isLocked = !!theme.locked;
             const colors = getPreviewColors(theme);
             const isCurrentTheme = currentTheme.id === theme.id;
             const currentVariation = isCurrentTheme ? getThemeVariation(theme.id) : null;

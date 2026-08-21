@@ -36,8 +36,8 @@ const fixture = vi.hoisted(() => {
 
 vi.mock("@/config/themes", () => ({
   themes: fixture.builtInThemes,
-  isThemePremium: (id: string) =>
-    fixture.builtInThemes.find((theme) => theme.id === id)?.isPremium ?? false,
+  getThemeById: (id: string) =>
+    fixture.builtInThemes.find((theme) => theme.id === id),
 }))
 
 vi.mock("@/hooks/useLicense.ts", () => ({
@@ -48,8 +48,9 @@ vi.mock("@/hooks/useLicense.ts", () => ({
   }),
 }))
 
+const builtinsResult = vi.hoisted(() => ({ data: undefined, isSuccess: true, isError: false }))
 vi.mock("@/hooks/useBuiltinThemes", () => ({
-  useBuiltinThemes: () => ({ data: undefined, isSuccess: true, isError: false }),
+  useBuiltinThemes: () => builtinsResult,
 }))
 
 vi.mock("@/hooks/useCustomThemes", () => ({
