@@ -44,9 +44,9 @@ var (
 	slugRe        = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
-// GenerateID mirrors the frontend's generateThemeId. The rule is frozen:
-// derived ids are stored in the database and in browsers, so it must never
-// change. TestRegistryIDsPinned enforces this for every committed theme.
+// GenerateID derives a theme id from its name. The rule is frozen: derived
+// ids are stored in the database and in browsers, so it must never change.
+// TestRegistryIDsPinned enforces this for every committed theme.
 func GenerateID(name string) string {
 	return strings.Trim(slugRe.ReplaceAllString(strings.ToLower(name), "-"), "-")
 }
@@ -66,14 +66,15 @@ func Exists(id string) bool {
 
 func load() []Theme {
 	var themes []Theme
-	for _, pattern := range []string{"assets/*.css", "assets/premium/*.css"} {
-		paths, _ := fs.Glob(assetsFS, pattern)
+	for _, dir := range []string{"assets", "assets/premium"} {
+		premium := dir == "assets/premium"
+		paths, _ := fs.Glob(assetsFS, dir+"/*.css")
 		for _, p := range paths {
 			css, err := fs.ReadFile(assetsFS, p)
 			if err != nil {
 				continue
 			}
-			themes = append(themes, parse(string(css), strings.TrimSuffix(path.Base(p), ".css")))
+			themes = append(themes, parse(string(css), strings.TrimSuffix(path.Base(p), ".css"), premium))
 		}
 	}
 	slices.SortFunc(themes, func(a, b Theme) int {
@@ -88,8 +89,11 @@ func load() []Theme {
 	return themes
 }
 
-func parse(css, fallbackID string) Theme {
-	t := Theme{CSS: css, Premium: premiumRe.MatchString(css)}
+// parse reads a theme from its CSS. fromPremiumDir classifies the theme as
+// premium by its location, so a missing or malformed metadata header can
+// never serve a premium stylesheet ungated.
+func parse(css, fallbackID string, fromPremiumDir bool) Theme {
+	t := Theme{CSS: css, Premium: fromPremiumDir || premiumRe.MatchString(css)}
 
 	if m := nameRe.FindStringSubmatch(css); m != nil {
 		t.Name = m[1]

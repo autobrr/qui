@@ -69,7 +69,7 @@ The easiest way to build a complete theme is to copy one of qui's free built-in
 themes and adjust the values. Their source files are the authoritative, always
 up-to-date starting point:
 
-[github.com/autobrr/qui/tree/main/web/src/themes](https://github.com/autobrr/qui/tree/main/web/src/themes)
+[github.com/autobrr/qui/tree/main/internal/themes/assets](https://github.com/autobrr/qui/tree/main/internal/themes/assets)
 (`minimal.css` is the neutral default and a good base).
 
 Copy the `:root` and `.dark` blocks into your own file - you do **not** need the

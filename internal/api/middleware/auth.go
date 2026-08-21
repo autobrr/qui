@@ -80,6 +80,13 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 				return
 			}
 
+			// The built-in theme catalog is public so the setup and login
+			// pages paint the selected theme too.
+			if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/themes") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Check if setup is complete
 			complete, err := authService.IsSetupComplete(r.Context())
 			if err != nil {

@@ -13,27 +13,36 @@ import (
 // These ids are stored in browsers and in the theme_settings table, so a
 // change here breaks every user's saved selection: the id rule is frozen.
 func TestRegistryIDsPinned(t *testing.T) {
-	want := map[string]bool{
-		"minimal":         false,
-		"autobrr":         false,
-		"the-kyle":        false,
-		"nightwalker":     false,
-		"napster":         false,
-		"swizzin":         false,
-		"kanagawa-dragon": false,
-		"kanagawa-wave":   false,
+	want := map[string]struct{}{
+		"minimal":         {},
+		"autobrr":         {},
+		"the-kyle":        {},
+		"nightwalker":     {},
+		"napster":         {},
+		"swizzin":         {},
+		"kanagawa-dragon": {},
+		"kanagawa-wave":   {},
 	}
 
 	for _, theme := range All() {
 		if theme.Premium {
 			continue
 		}
-		premium, ok := want[theme.ID]
+		_, ok := want[theme.ID]
 		require.True(t, ok, "unexpected free theme id %q (new theme? add it here)", theme.ID)
-		require.Equal(t, premium, theme.Premium)
 		delete(want, theme.ID)
 	}
 	require.Empty(t, want, "missing free themes")
+}
+
+// TestParsePremiumFromDir pins the premium classification: location is
+// authoritative, so a file under assets/premium/ without a metadata header
+// must never be served as a free theme.
+func TestParsePremiumFromDir(t *testing.T) {
+	noHeader := ":root {\n  --primary: red;\n}\n"
+	require.True(t, parse(noHeader, "mystery", true).Premium, "premium dir must classify premium without a header")
+	require.False(t, parse(noHeader, "mystery", false).Premium)
+	require.True(t, parse("/* @premium: true */\n"+noHeader, "mystery", false).Premium, "header alone still classifies premium")
 }
 
 func TestGenerateID(t *testing.T) {

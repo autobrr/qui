@@ -53,6 +53,8 @@ test/mockindexer/files/*
 cpu.pprof
 
 internal/themes/assets/premium/*
+# Premium theme fetch scratch dir; its .git config embeds the repo token.
+.themes-temp/
 
 # Preserve files
 !.gitkeep

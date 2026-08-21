@@ -134,6 +134,22 @@ func TestRequireSetup_AuthDisabled(t *testing.T) {
 	assert.Equal(t, "OK", resp.Body.String())
 }
 
+func TestRequireSetup_ThemeCatalogAllowedBeforeSetup(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// A nil auth service proves the allow-list short-circuits before the
+	// setup check: any fall-through would panic.
+	handler := RequireSetup(nil, &domain.Config{})(inner)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/themes", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+}
+
 func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
 	// AuthDisabled alone without IAcknowledgeThisIsABadIdea should NOT bypass auth
 	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: false}
