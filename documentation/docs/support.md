@@ -15,6 +15,7 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 Purchase premium themes directly from Settings → Themes in your qui instance. Your license key is delivered instantly after checkout.
 If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
 To manage activations or move a license to a new server, see [License Management](./licenses.md).
+A license also unlocks [custom themes](./features/custom-themes.md), which you can write yourself or take from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
 
 ## Donations
 

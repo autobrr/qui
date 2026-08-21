@@ -14,11 +14,10 @@ import type { TorrentTracker } from "@/types"
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
   type SortingState,
-  useReactTable
+  useTable
 } from "@tanstack/react-table"
+import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -33,7 +32,7 @@ interface TrackersTableProps {
   supportsTrackerEditing?: boolean
 }
 
-const columnHelper = createColumnHelper<TorrentTracker>()
+const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, TorrentTracker>()
 
 function getColumnStyle(meta: unknown, size?: number) {
   const columnMeta = meta as { fullWidth?: boolean }
@@ -58,13 +57,13 @@ export const TrackersTable = memo(function TrackersTable({
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }])
   const { data: trackerIcons } = useTrackerIcons()
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => columnHelper.columns([
     columnHelper.accessor("status", {
       header: t("trackersTable.status"),
       cell: (info) => getTrackerStatusBadge(info.getValue(), true),
       size: 90,
       // Custom sort: disabled (0) always at bottom
-      sortingFn: (rowA, rowB) => {
+      sortFn: (rowA, rowB) => {
         const a = rowA.original.status
         const b = rowB.original.status
         if (a === 0 && b !== 0) return 1
@@ -151,17 +150,16 @@ export const TrackersTable = memo(function TrackersTable({
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 60,
     }),
-  ], [incognitoMode, t, trackerIcons])
+  ]), [incognitoMode, t, trackerIcons])
 
   const data = useMemo(() => trackers || [], [trackers])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: sortableDetailsTableFeatures,
     data,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   })
 
   if (loading && !trackers) {
@@ -220,7 +218,7 @@ export const TrackersTable = memo(function TrackersTable({
                   supportsTrackerEditing={supportsTrackerEditing}
                 >
                   <tr className="border-b border-border/50 hover:bg-muted/30">
-                    {row.getVisibleCells().map((cell) => (
+                    {row.getAllCells().map((cell) => (
                       <td
                         key={cell.id}
                         className="px-3 py-2"

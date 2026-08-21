@@ -4,15 +4,14 @@
  */
 
 import { type UseCompactViewSortParams, useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
-import type { Torrent } from "@/types"
-import type { Table } from "@tanstack/react-table"
+import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
 import { act, renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 type FakeColumn = { id: string; columnDef: { meta?: { headerString?: string }; header?: unknown } }
 
-function fakeTable(columns: FakeColumn[]): Table<Torrent> {
-  return { getAllLeafColumns: () => columns } as unknown as Table<Torrent>
+function fakeTable(columns: FakeColumn[]): TorrentTable {
+  return { getAllLeafColumns: () => columns } as unknown as TorrentTable
 }
 
 const COLUMNS: FakeColumn[] = [
@@ -32,7 +31,7 @@ function render(overrides: Partial<UseCompactViewSortParams> = {}) {
     setLastUserAction: vi.fn(),
     ...overrides,
   }
-  return { params, ...renderHook(() => useCompactViewSort(params)) }
+  return { params, ...renderHook((p: UseCompactViewSortParams) => useCompactViewSort(p), { initialProps: params }) }
 }
 
 describe("useCompactViewSort", () => {
@@ -81,5 +80,14 @@ describe("useCompactViewSort", () => {
     const { params, result } = render({ activeSortField: "name", activeSortOrder: "desc" })
     act(() => result.current.handleCompactSortOrderToggle())
     expect(params.setSorting).toHaveBeenCalledWith([{ id: "name", desc: false }])
+  })
+
+  it("keeps stable identities when the table object changes between renders", () => {
+    const { params, result, rerender } = render()
+    const first = result.current
+    rerender({ ...params, table: fakeTable(COLUMNS) })
+    expect(result.current.compactSortOptions).toBe(first.compactSortOptions)
+    expect(result.current.currentCompactSortLabel).toBe(first.currentCompactSortLabel)
+    expect(result.current.handleCompactSortOrderToggle).toBe(first.handleCompactSortOrderToggle)
   })
 })

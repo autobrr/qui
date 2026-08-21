@@ -462,9 +462,9 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReload(t *testing.T) {
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(_ *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 	})
 
 	previousAuth := authReloadSettings{
@@ -481,7 +481,7 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReload(t *testing.T) {
 	assert.True(t, cfg.Config.IAcknowledgeThisIsABadIdea)
 	assert.Equal(t, []string{"127.0.0.1/32"}, cfg.Config.AuthDisabledAllowedCIDRs)
 	assert.False(t, cfg.Config.OIDCEnabled)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(0), listenerCalls.Load())
 	assert.Equal(t, zerolog.WarnLevel, zerolog.GlobalLevel())
 	require.NoError(t, cfg.Config.ValidateAuthDisabledConfig())
 }
@@ -503,9 +503,9 @@ func TestApplyDynamicChangesNotifiesOnValidAuthDisabledReload(t *testing.T) {
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 		assert.True(t, conf.IsAuthDisabled())
 		assert.Equal(t, []string{"10.0.0.0/8"}, conf.AuthDisabledAllowedCIDRs)
 	})
@@ -520,7 +520,7 @@ func TestApplyDynamicChangesNotifiesOnValidAuthDisabledReload(t *testing.T) {
 	cfg.applyDynamicChanges(previousAuth)
 
 	assert.Equal(t, "test", cfg.Config.Version)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(1), listenerCalls.Load())
 	assert.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
 }
 
@@ -540,9 +540,9 @@ func TestApplyDynamicChangesRejectsInvalidCORSReload(t *testing.T) {
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 		assert.Equal(t, []string{"https://good.example"}, conf.CORSAllowedOrigins)
 	})
 
@@ -554,7 +554,7 @@ func TestApplyDynamicChangesRejectsInvalidCORSReload(t *testing.T) {
 	cfg.applyDynamicChanges(previous)
 
 	assert.Equal(t, []string{"https://good.example"}, cfg.Config.CORSAllowedOrigins)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(1), listenerCalls.Load())
 }
 
 func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *testing.T) {
@@ -575,9 +575,9 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(_ *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 	})
 
 	previous := authReloadSettings{
@@ -595,7 +595,7 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *
 	assert.Nil(t, cfg.Config.AuthDisabledAllowedCIDRs)
 	assert.False(t, cfg.Config.OIDCEnabled)
 	assert.Equal(t, []string{"https://good.example"}, cfg.Config.CORSAllowedOrigins)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(0), listenerCalls.Load())
 }
 
 func TestHydrateConfigFromViperSplitsStringSlices(t *testing.T) {

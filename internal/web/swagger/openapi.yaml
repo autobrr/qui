@@ -3103,6 +3103,57 @@ paths:
         '500':
           description: Failed to check premium access or read the custom themes directory
 
+  /api/torrents/export:
+    post:
+      tags:
+        - Torrents
+      summary: Export torrents as a ZIP archive
+      description: |
+        Download selected .torrent files in one ZIP. Files are grouped by category and,
+        when multiple instances are selected, by instance. Failed exports are listed in
+        export-errors.txt while successful exports remain available.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targets
+              properties:
+                targets:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                        minimum: 1
+                      instanceName:
+                        type: string
+                      hash:
+                        type: string
+                        minLength: 1
+                      category:
+                        type: string
+                      filename:
+                        type: string
+                        description: Optional safe display filename, used by incognito exports.
+      responses:
+        '200':
+          description: ZIP archive containing exported torrents and any partial-failure report
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
+
   /api/torrents/cross-instance:
     get:
       tags:

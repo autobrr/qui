@@ -129,8 +129,7 @@ func URLError(err error) error {
 		return nil
 	}
 
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok {
 		// Clone the error with redacted URL
 		return &url.Error{
 			Op:  urlErr.Op,

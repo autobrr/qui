@@ -4,13 +4,13 @@
  */
 
 import { makeTorrent } from "@/test/mockTorrent"
+import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import type { Torrent } from "@/types"
-import type { Row } from "@tanstack/react-table"
 import { describe, expect, it } from "vitest"
 import { torrentTableRowPropsAreEqual, type TorrentTableRowProps } from "../TorrentTableRow"
 
-function makeRow(torrent: Torrent, id = torrent.hash): Row<Torrent> {
-  return { id, original: torrent } as Row<Torrent>
+function makeRow(torrent: Torrent, id = torrent.hash): TorrentRow {
+  return { id, original: torrent } as TorrentRow
 }
 
 function makeProps(overrides: Partial<TorrentTableRowProps> = {}): TorrentTableRowProps {
