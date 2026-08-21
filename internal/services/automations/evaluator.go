@@ -28,8 +28,8 @@ const maxConditionDepth = 20
 // to avoid surprising matches on short names.
 const minContainsNameLength = 10
 
-// categoryEntry stores torrent info for category-based lookups.
-type categoryEntry struct {
+// CategoryEntry stores torrent info for category-based lookups.
+type CategoryEntry struct {
 	Hash           string // torrent hash for self-exclusion
 	Name           string // lowercased name (for EXISTS_IN exact match)
 	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
@@ -98,9 +98,9 @@ type EvalContext struct {
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
 	CategoryIndex map[string]map[string]map[string]struct{}
 
-	// CategoryNames maps lowercased category → slice of categoryEntry.
+	// CategoryNames maps lowercased category → slice of CategoryEntry.
 	// Used for CONTAINS_IN iteration (stores pre-normalized names).
-	CategoryNames map[string][]categoryEntry
+	CategoryNames map[string][]CategoryEntry
 
 	// NowUnix is the current Unix timestamp, used for age field evaluation.
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
@@ -160,9 +160,9 @@ func normalizeName(s string) string {
 
 // BuildCategoryIndex builds the category lookup structures from a list of torrents.
 // Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
-func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]categoryEntry) {
+func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
 	categoryIndex := make(map[string]map[string]map[string]struct{})
-	categoryNames := make(map[string][]categoryEntry)
+	categoryNames := make(map[string][]CategoryEntry)
 
 	for _, t := range torrents {
 		// Use lowercased + trimmed category as key (empty string is valid for uncategorized)
@@ -179,7 +179,7 @@ func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[strin
 		categoryIndex[catKey][nameLower][t.Hash] = struct{}{}
 
 		// Build CategoryNames for CONTAINS_IN iteration
-		categoryNames[catKey] = append(categoryNames[catKey], categoryEntry{
+		categoryNames[catKey] = append(categoryNames[catKey], CategoryEntry{
 			Hash:           t.Hash,
 			Name:           nameLower,
 			NormalizedName: normalizeName(t.Name),

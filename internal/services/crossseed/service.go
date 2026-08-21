@@ -783,11 +783,6 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 		}
 	}
 
-	// Check Jackett service connectivity (if configured)
-	if s.jackettService != nil {
-		// We could add a lightweight check here if Jackett service has a health check method
-	}
-
 	return nil
 }
 

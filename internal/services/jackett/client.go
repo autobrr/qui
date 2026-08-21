@@ -211,7 +211,7 @@ func (c *Client) searchProwlarr(ctx context.Context, indexerID string, params ma
 }
 
 // FetchCaps retrieves the Torznab caps document for the configured backend/indexer.
-func (c *Client) FetchCaps(ctx context.Context, indexerID string) (*torznabCaps, error) {
+func (c *Client) FetchCaps(ctx context.Context, indexerID string) (*TorznabCaps, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -228,7 +228,7 @@ func (c *Client) FetchCaps(ctx context.Context, indexerID string) (*torznabCaps,
 	}
 }
 
-func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*torznabCaps, error) {
+func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*TorznabCaps, error) {
 	baseRoot := strings.TrimRight(c.baseURL, "/")
 	trimmedID := strings.Trim(strings.TrimSpace(indexerID), "/")
 
@@ -281,7 +281,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*t
 	return parseTorznabCaps(resp.Body)
 }
 
-func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*torznabCaps, error) {
+func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*TorznabCaps, error) {
 	trimmed := strings.TrimSpace(indexerID)
 	if trimmed == "" {
 		return nil, errors.New("prowlarr indexer identifier is required for caps fetch")
@@ -319,7 +319,7 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 	return parseTorznabCaps(resp.Body)
 }
 
-func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) {
+func (c *Client) fetchCapsFromNative(ctx context.Context) (*TorznabCaps, error) {
 	endpoint := strings.TrimRight(c.baseURL, "/")
 	if endpoint == "" {
 		return nil, errors.New("native torznab endpoint not configured")
@@ -673,15 +673,15 @@ func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string, basicU
 // capsFetchResult holds the result of a parallel caps fetch
 type capsFetchResult struct {
 	indexerID string
-	caps      *torznabCaps
+	caps      *TorznabCaps
 	err       error
 }
 
 // fetchCapsParallel fetches capabilities and categories for multiple indexers concurrently with retries.
-// Returns a map of indexerID -> torznabCaps and a slice of failed indexer IDs.
+// Returns a map of indexerID -> TorznabCaps and a slice of failed indexer IDs.
 // Failed fetches are logged but don't fail the overall operation.
 // The parent context is used to cancel all in-flight requests if the caller's context is cancelled.
-func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, indexerIDs []string) (map[string]*torznabCaps, []string) {
+func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, indexerIDs []string) (map[string]*TorznabCaps, []string) {
 	if len(indexerIDs) == 0 {
 		return nil, nil
 	}
@@ -693,7 +693,7 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, basicUsernam
 		fetchTimeout  = 15 * time.Second
 	)
 
-	results := make(map[string]*torznabCaps)
+	results := make(map[string]*TorznabCaps)
 	resultsChan := make(chan capsFetchResult, len(indexerIDs))
 
 	// Semaphore to limit concurrency
@@ -767,7 +767,7 @@ func fetchCapsParallel(ctx context.Context, baseURL, apiKey string, basicUsernam
 
 // fetchCapsWithRetry attempts to fetch capabilities with retries and exponential backoff.
 // The parent context is used as the base for per-attempt timeouts, allowing cancellation.
-func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*torznabCaps, error) {
+func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string, backend models.TorznabBackend, indexerID string, maxRetries int, retryDelay, timeout time.Duration) (*TorznabCaps, error) {
 	client := NewClient(baseURL, apiKey, basicUsername, basicPassword, backend, int(timeout.Seconds()))
 
 	var lastErr error

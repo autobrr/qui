@@ -859,7 +859,7 @@ func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrac
 	}
 
 	// Deep copy to prevent data races when caller iterates over the maps
-	copy := &ValidatedTrackerMapping{
+	mappingCopy := &ValidatedTrackerMapping{
 		HashToDomains:  make(map[string]map[string]struct{}, len(original.HashToDomains)),
 		DomainToHashes: make(map[string]map[string]struct{}, len(original.DomainToHashes)),
 		UpdatedAt:      original.UpdatedAt,
@@ -871,7 +871,7 @@ func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrac
 		for domain := range domains {
 			domainsCopy[domain] = struct{}{}
 		}
-		copy.HashToDomains[hash] = domainsCopy
+		mappingCopy.HashToDomains[hash] = domainsCopy
 	}
 
 	for domain, hashes := range original.DomainToHashes {
@@ -879,10 +879,10 @@ func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrac
 		for hash := range hashes {
 			hashesCopy[hash] = struct{}{}
 		}
-		copy.DomainToHashes[domain] = hashesCopy
+		mappingCopy.DomainToHashes[domain] = hashesCopy
 	}
 
-	return copy
+	return mappingCopy
 }
 
 // getAuthoritativeTrackerMapping returns the hydrated tracker mapping for an

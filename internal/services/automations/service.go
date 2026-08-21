@@ -4126,13 +4126,13 @@ func (s *Service) notifyAutomationFailure(ctx context.Context, instanceID int, e
 	})
 }
 
-func limitHashBatch(hashes []string, max int) [][]string {
-	if max <= 0 || len(hashes) <= max {
+func limitHashBatch(hashes []string, batchSize int) [][]string {
+	if batchSize <= 0 || len(hashes) <= batchSize {
 		return [][]string{hashes}
 	}
 	var batches [][]string
 	for len(hashes) > 0 {
-		end := min(len(hashes), max)
+		end := min(len(hashes), batchSize)
 		batches = append(batches, slices.Clone(hashes[:end]))
 		hashes = hashes[end:]
 	}

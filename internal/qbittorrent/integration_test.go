@@ -1525,13 +1525,13 @@ func TestSyncManager_ValidatedTrackerMapping_DeepCopy(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	// Get a copy
-	copy := sm.getValidatedTrackerMapping(1)
-	assert.NotNil(t, copy)
+	// Get a mappingCopy
+	mappingCopy := sm.getValidatedTrackerMapping(1)
+	assert.NotNil(t, mappingCopy)
 
-	// Modify the copy
-	copy.HashToDomains["hash1"]["modified.com"] = struct{}{}
-	copy.DomainToHashes["modified.com"] = map[string]struct{}{"hash1": {}}
+	// Modify the mappingCopy
+	mappingCopy.HashToDomains["hash1"]["modified.com"] = struct{}{}
+	mappingCopy.DomainToHashes["modified.com"] = map[string]struct{}{"hash1": {}}
 
 	// Original should be unchanged
 	original := sm.validatedTrackerMapping[1]
