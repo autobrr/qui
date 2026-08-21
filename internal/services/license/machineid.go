@@ -57,7 +57,7 @@ func persistFingerprint(fingerprint, userID string, configDir string) (string, e
 		return fingerprint, nil
 	}
 
-	if err := os.WriteFile(fingerprintPath, []byte(fingerprint), 0644); err != nil {
+	if err := os.WriteFile(fingerprintPath, []byte(fingerprint), 0o600); err != nil {
 		log.Warn().Err(err).Str("path", fingerprintPath).Msg("failed to persist fingerprint")
 		return fingerprint, nil
 	}

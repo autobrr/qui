@@ -930,7 +930,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 
 	manifestPointer := &manifestRelPath
-	if err := os.WriteFile(manifestAbsPath, manifestData, 0o644); err != nil {
+	if err := os.WriteFile(manifestAbsPath, manifestData, 0o600); err != nil {
 		log.Warn().Err(err).Str("path", manifestAbsPath).Msg("Failed to write manifest to disk")
 		manifestPointer = nil
 	}

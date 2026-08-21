@@ -64,7 +64,7 @@ func TestSameFilesystem_FileInDirectory(t *testing.T) {
 	// Create a file in a temp directory
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "testfile.txt")
-	if err := os.WriteFile(filePath, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte("test"), 0o600); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 

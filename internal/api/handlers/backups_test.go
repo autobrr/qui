@@ -147,7 +147,7 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 	manifestPath := filepath.Join("backups", fmt.Sprintf("instance-%d", instanceID), "manual", fmt.Sprintf("run-%d", run.ID), "manifest.json")
 	absManifestPath := filepath.Join(dataDir, manifestPath)
 	require.NoError(t, os.MkdirAll(filepath.Dir(absManifestPath), 0755))
-	require.NoError(t, os.WriteFile(absManifestPath, manifestData, 0644))
+	require.NoError(t, os.WriteFile(absManifestPath, manifestData, 0o600))
 
 	// Update run with manifest path
 	err = store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
@@ -178,8 +178,8 @@ func createTestTorrentFiles(t *testing.T, dataDir string) {
 	file1 := filepath.Join(subdir1, "abcd123456789.torrent")
 	file2 := filepath.Join(subdir2, "efgh987654321.torrent")
 
-	require.NoError(t, os.WriteFile(file1, testData, 0644))
-	require.NoError(t, os.WriteFile(file2, testData, 0644))
+	require.NoError(t, os.WriteFile(file1, testData, 0o600))
+	require.NoError(t, os.WriteFile(file2, testData, 0o600))
 }
 
 func TestDownloadRun_InvalidInstanceID(t *testing.T) {
