@@ -37,6 +37,7 @@ export const useActivateLicense = () => {
         toast.success(message)
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
+        queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
       }
     },
     onError: (error: Error) => {
@@ -60,6 +61,7 @@ export const useValidateLicense = () => {
         toast.success(message)
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
+        queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
       }
     },
     onError: (error: Error) => {
@@ -79,6 +81,7 @@ export const useDeleteLicense = () => {
       toast.success(t("themes.license.toasts.removedFromMachine"))
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
+      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
     },
     onError: (error: Error) => {
       toast.error(getLicenseErrorMessage(error))
@@ -97,6 +100,7 @@ export const useRefreshLicenses = () => {
       toast.success(t("themes.license.toasts.refreshedAll"))
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
+      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
     },
     onError: (error: Error) => {
       toast.error(error.message || t("themes.license.toasts.refreshFailed"))

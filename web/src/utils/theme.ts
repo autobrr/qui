@@ -69,6 +69,13 @@ const getSystemTheme = (): typeof THEME_DARK | typeof THEME_LIGHT => {
   return getSystemPreference().matches ? THEME_DARK : THEME_LIGHT;
 };
 
+// True when the applied theme is the fallback for an unresolvable stored
+// selection: callers flag it system-driven so the sync never PUTs it.
+const isFallbackTheme = (theme: Theme): boolean => {
+  const storedId = getStoredThemeId();
+  return storedId !== null && storedId !== theme.id;
+};
+
 const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: boolean, variant?: string | null): void => {
   const event = new CustomEvent("themechange", {
     detail: { mode, theme, isSystemChange, variant },
@@ -353,7 +360,7 @@ export const setThemeMode = async (mode: ThemeMode): Promise<void> => {
     (mode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, variation, isDark, false);
-  dispatchThemeChange(mode, theme, false, variation);
+  dispatchThemeChange(mode, theme, isFallbackTheme(theme), variation);
 };
 
 export const initializeTheme = async (): Promise<void> => {
@@ -388,7 +395,7 @@ export const resetToSystemTheme = async (): Promise<void> => {
   const theme = getCurrentTheme();
   const variation = getThemeVariation(theme.id);
   await applyTheme(theme, variation, getSystemPreference().matches, false);
-  dispatchThemeChange(THEME_AUTO, theme, false, variation);
+  dispatchThemeChange(THEME_AUTO, theme, isFallbackTheme(theme), variation);
 };
 
 export const setAutoTheme = async (): Promise<void> => {
@@ -411,7 +418,7 @@ export const setThemeVariation = async (variation: string): Promise<void> => {
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, variation, isDark, false);
-  dispatchThemeChange(currentMode, theme, false, variation);
+  dispatchThemeChange(currentMode, theme, isFallbackTheme(theme), variation);
 };
 
 export const getThemeVariation = (themeId?: string): string | null => {

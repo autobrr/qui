@@ -357,7 +357,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
 	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
-		return s.sessionManager.GetBool(ctx, "authenticated")
+		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
+		return s.config.Config.IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
 	})
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,

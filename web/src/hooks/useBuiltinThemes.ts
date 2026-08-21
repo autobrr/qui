@@ -21,7 +21,9 @@ function toTheme(entry: BuiltinTheme): Theme | null {
       id: entry.id,
       name: parsed.metadata.name,
       description: parsed.metadata.description,
-      isPremium: parsed.metadata.isPremium,
+      // Server classification is authoritative (premium dir OR CSS header);
+      // the CSS header alone misses directory-classified themes.
+      isPremium: entry.premium,
       lightOnly: parsed.metadata.lightOnly,
       variations: parsed.variations,
       cssVars: parsed.cssVars,

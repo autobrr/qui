@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { setTheme } from "./theme"
+import { setTheme, setThemeMode } from "./theme"
 import { registerBuiltinThemes } from "@/config/themes"
 
 vi.mock("./fontLoader", () => ({ loadThemeFonts: vi.fn() }))
@@ -51,6 +51,24 @@ describe("setTheme locked fallback", () => {
     expect(localStorage.getItem("color-theme")).toBe("locked-premium")
     // Flagged as system-driven so useThemeSettingsSync never pushes the
     // downgrade to the server, which would overwrite the stored selection.
+    expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
+  })
+
+  it("keeps a mode toggle from syncing the fallback over the stored selection", async () => {
+    localStorage.setItem("color-theme", "locked-premium")
+
+    const events: Array<{ themeId: string; isSystemChange: boolean }> = []
+    const listener = (event: Event) => {
+      const { theme, isSystemChange } = (event as CustomEvent).detail
+      events.push({ themeId: theme.id, isSystemChange })
+    }
+    window.addEventListener("themechange", listener)
+    await setThemeMode("dark")
+    window.removeEventListener("themechange", listener)
+
+    expect(localStorage.getItem("color-theme")).toBe("locked-premium")
+    // The applied theme is the fallback default, not a user selection: flagged
+    // system-driven so the sync never PUTs it over the stored premium id.
     expect(events).toEqual([{ themeId: "minimal", isSystemChange: true }])
   })
 })

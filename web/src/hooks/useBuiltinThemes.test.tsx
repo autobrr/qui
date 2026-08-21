@@ -72,6 +72,18 @@ describe("applyBuiltinThemesPayload", () => {
     expect(locked?.cssVars.light["--primary"]).toBe("gold")
   })
 
+  it("trusts the server premium flag over the CSS header", () => {
+    // Directory-classified premium theme: full CSS (licensed), no @premium
+    // header. The server flag is the only premium signal.
+    applyBuiltinThemesPayload({
+      themes: [{ id: "dirpremium", name: "Dirpremium", premium: true, css: TEST_CSS }],
+    })
+
+    const theme = getThemeById("dirpremium")
+    expect(theme?.isPremium).toBe(true)
+    expect(theme?.locked).toBeUndefined()
+  })
+
   it("re-applies the stored selection once it resolves", () => {
     localStorage.setItem("color-theme", "testfree")
     applyBuiltinThemesPayload({
