@@ -135,8 +135,10 @@ func TestRequireSetup_AuthDisabled(t *testing.T) {
 }
 
 func TestRequireSetup_ThemeCatalogAllowedBeforeSetup(t *testing.T) {
+	// A non-default status proves the inner handler ran: a bare recorder
+	// already reports 200.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusTeapot)
 	})
 
 	// A nil auth service proves the allow-list short-circuits before the
@@ -147,7 +149,7 @@ func TestRequireSetup_ThemeCatalogAllowedBeforeSetup(t *testing.T) {
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 
-	assert.Equal(t, http.StatusOK, resp.Code)
+	assert.Equal(t, http.StatusTeapot, resp.Code)
 }
 
 func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {

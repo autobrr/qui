@@ -84,7 +84,7 @@ func load() []Theme {
 		if b.ID == "minimal" {
 			return 1
 		}
-		return cmp.Compare(a.Name, b.Name)
+		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 	return themes
 }

@@ -4,6 +4,7 @@
 package themes
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,6 +34,19 @@ func TestRegistryIDsPinned(t *testing.T) {
 		delete(want, theme.ID)
 	}
 	require.Empty(t, want, "missing free themes")
+}
+
+// TestRegistryOrder pins the catalog order: the default first, then display
+// names case-insensitively, so lowercase names like "autobrr" do not sink to
+// the bottom.
+func TestRegistryOrder(t *testing.T) {
+	all := All()
+	require.Equal(t, "minimal", all[0].ID)
+	for i := 2; i < len(all); i++ {
+		require.LessOrEqual(t,
+			strings.ToLower(all[i-1].Name), strings.ToLower(all[i].Name),
+			"themes %q and %q out of order", all[i-1].Name, all[i].Name)
+	}
 }
 
 // TestParsePremiumFromDir pins the premium classification: location is

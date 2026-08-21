@@ -9,14 +9,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useThemeSettingsSync } from "./useThemeSettingsSync"
 
-const { mockApi, mockPremium } = vi.hoisted(() => ({
-  mockApi: {
-    getBuiltinThemes: vi.fn(() => Promise.resolve({ themes: [] })),
-    getThemeSettings: vi.fn(() => Promise.resolve(undefined)),
-    updateThemeSettings: vi.fn(() => Promise.resolve({ themeId: "minimal", mode: "dark" })),
-  },
-  mockPremium: { hasPremiumAccess: true, isLoading: false, isError: false },
-}))
+const { mockApi, mockPremium } = vi.hoisted(() => {
+  const builtinThemesResponse = Promise.resolve({ themes: [] })
+  return {
+    mockApi: {
+      getBuiltinThemes: vi.fn(() => builtinThemesResponse),
+      getThemeSettings: vi.fn(() => Promise.resolve(undefined)),
+      updateThemeSettings: vi.fn(() => Promise.resolve({ themeId: "minimal", mode: "dark" })),
+    },
+    mockPremium: { hasPremiumAccess: true, isLoading: false, isError: false },
+  }
+})
 
 vi.mock("@/lib/api", () => ({ api: mockApi }))
 vi.mock("@/hooks/useLicense", () => ({ useHasPremiumAccess: () => mockPremium }))
