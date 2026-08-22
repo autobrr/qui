@@ -148,27 +148,31 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 	require.Equal(t, []int{3}, indexersWithoutResults([]int{1, 2, 3}, results))
 }
 
-func TestShouldRunTitleFallbackForRescueOnly(t *testing.T) {
+// TestHasUsableSearchResult pins the retry-ladder gate. The yearless and
+// alternate-title passes run whenever nothing usable came back, which includes
+// the case that blocked them before: hits arrived but release and size
+// filtering rejected every one.
+func TestHasUsableSearchResult(t *testing.T) {
 	service := &Service{
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	const (
 		sourceName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
-		rescueName = "Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
 		size       = int64(4_000_000_000)
 	)
 	source := rls.ParseString(sourceName)
-	rescue := jackett.SearchResult{Title: rescueName, Size: size}
-	normal := jackett.SearchResult{Title: sourceName, Size: size}
-	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
-
 	sourceView := namedRelease{release: &source, rawName: sourceName}
-	require.True(t, service.shouldRunTitleFallback(nil, sourceView, size, nil, 5, false, false))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, sourceView, size, nil, 5, false, false))
-	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, sourceView, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, sourceView, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, sourceView, size, nil, 5, false, true))
+
+	match := jackett.SearchResult{Title: sourceName, Size: size}
+	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
+	wrongSize := jackett.SearchResult{Title: sourceName, Size: size * 2}
+
+	require.False(t, service.hasUsableSearchResult(nil, sourceView, size, nil, 5, false))
+	require.False(t, service.hasUsableSearchResult([]jackett.SearchResult{junk}, sourceView, size, nil, 5, false))
+	require.False(t, service.hasUsableSearchResult([]jackett.SearchResult{junk, wrongSize}, sourceView, size, nil, 5, false))
+	require.True(t, service.hasUsableSearchResult([]jackett.SearchResult{match}, sourceView, size, nil, 5, false))
+	require.True(t, service.hasUsableSearchResult([]jackett.SearchResult{junk, match}, sourceView, size, nil, 5, false))
 }
 
 // TestMediaIDRetryIndexers is the regression for the MediaInfo ID retry gate:
