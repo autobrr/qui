@@ -31,7 +31,7 @@ func TestDatabasePathResolution(t *testing.T) {
 			name: "default_next_to_config",
 			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
 				configPath := filepath.Join(tmpDir, "config.toml")
-				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
 				return configPath, "", filepath.Join(tmpDir, "qui.db")
 			},
 		},
@@ -42,7 +42,7 @@ func TestDatabasePathResolution(t *testing.T) {
 				dataDir := filepath.Join(tmpDir, "data")
 				require.NoError(t, os.MkdirAll(dataDir, 0o755))
 				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", dataDir)
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 				return configPath, "", filepath.Join(dataDir, "qui.db")
 			},
 		},
@@ -55,7 +55,7 @@ func TestDatabasePathResolution(t *testing.T) {
 				require.NoError(t, os.MkdirAll(configDataDir, 0o755))
 				require.NoError(t, os.MkdirAll(envDataDir, 0o755))
 				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", configDataDir)
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 				return configPath, envDataDir, filepath.Join(envDataDir, "qui.db")
 			},
 		},
@@ -312,7 +312,7 @@ func TestConfigDirResolution(t *testing.T) {
 					err := os.MkdirAll(inputPath, 0o755)
 					require.NoError(t, err)
 				} else {
-					err := os.WriteFile(inputPath, []byte("test"), 0o644)
+					err := os.WriteFile(inputPath, []byte("test"), 0o600)
 					require.NoError(t, err)
 				}
 			}
@@ -334,7 +334,7 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 			name: "config_file_path",
 			prepare: func(t *testing.T, tmpDir string) (string, string, int, string) {
 				configPath := filepath.Join(tmpDir, "myconfig.toml")
-				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
 				return configPath, "localhost", 8080, filepath.Join(tmpDir, "qui.db")
 			},
 		},
@@ -344,7 +344,7 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 				configDir := filepath.Join(tmpDir, "configdir")
 				require.NoError(t, os.MkdirAll(configDir, 0o755))
 				content := "host = \"0.0.0.0\"\nport = 9090\nsessionSecret = \"dir-secret\"\n"
-				require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o600))
 				return configDir, "0.0.0.0", 9090, filepath.Join(configDir, "qui.db")
 			},
 		},
@@ -369,14 +369,14 @@ func TestBindOrReadFromFile(t *testing.T) {
 	tmpKeyFile := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "key-file.txt")
 		content := "key-from-file"
-		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 		return configPath
 	}
 
 	tmpKeyFileWithNewline := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "key-file.txt")
 		content := "key-from-file\n"
-		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 		return configPath
 	}
 
@@ -386,7 +386,7 @@ func TestBindOrReadFromFile(t *testing.T) {
 
 	genConfigFile := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "myconfig.toml")
-		require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
 		return configPath
 	}
 

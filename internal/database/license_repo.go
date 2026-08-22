@@ -43,7 +43,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 	`
 
 	license := &models.ProductLicense{}
-	var activationId sql.Null[string]
+	var activationID sql.Null[string]
 	var provider sql.Null[string]
 	var dodoInstanceID sql.Null[string]
 
@@ -59,7 +59,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 		&dodoInstanceID,
 		&license.PolarCustomerID,
 		&license.PolarProductID,
-		&activationId,
+		&activationID,
 		&license.Username,
 		&license.CreatedAt,
 		&license.UpdatedAt,
@@ -74,7 +74,7 @@ func (r *LicenseRepo) GetLicenseByKey(ctx context.Context, licenseKey string) (*
 
 	license.Provider = provider.V
 	license.DodoInstanceID = dodoInstanceID.V
-	license.PolarActivationID = activationId.V
+	license.PolarActivationID = activationID.V
 
 	return license, nil
 }
@@ -98,7 +98,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 	for rows.Next() {
 		license := &models.ProductLicense{}
 
-		var activationId sql.Null[string]
+		var activationID sql.Null[string]
 		var provider sql.Null[string]
 		var dodoInstanceID sql.Null[string]
 
@@ -114,7 +114,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 			&dodoInstanceID,
 			&license.PolarCustomerID,
 			&license.PolarProductID,
-			&activationId,
+			&activationID,
 			&license.Username,
 			&license.CreatedAt,
 			&license.UpdatedAt,
@@ -125,7 +125,7 @@ func (r *LicenseRepo) GetAllLicenses(ctx context.Context) ([]*models.ProductLice
 
 		license.Provider = provider.V
 		license.DodoInstanceID = dodoInstanceID.V
-		license.PolarActivationID = activationId.V
+		license.PolarActivationID = activationID.V
 
 		licenses = append(licenses, license)
 	}
@@ -177,7 +177,7 @@ func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) erro
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("license not found")
+		return errors.New("license not found")
 	}
 
 	if err = tx.Commit(); err != nil {

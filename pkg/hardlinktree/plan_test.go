@@ -97,7 +97,7 @@ func TestBuildPlan_SubfolderLayout_MultipleFiles(t *testing.T) {
 
 	// Subfolder layout wraps in torrent name folder
 	for _, fp := range plan.Files {
-		if !filepath.HasPrefix(fp.TargetPath, filepath.Join("/dest", "Show.S01")) {
+		if !strings.HasPrefix(fp.TargetPath, filepath.Join("/dest", "Show.S01")) {
 			t.Errorf("TargetPath %q should start with %q", fp.TargetPath, filepath.Join("/dest", "Show.S01"))
 		}
 	}

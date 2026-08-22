@@ -32,7 +32,8 @@ func GetFileID(fi os.FileInfo, _ string) (FileID, uint64, error) {
 	if !ok {
 		return FileID{}, 0, errors.New("failed to get syscall.Stat_t")
 	}
-	return FileID{Dev: uint64(sys.Dev), Ino: sys.Ino}, uint64(sys.Nlink), nil //nolint:gosec // sys.Dev is always non-negative
+	//nolint:gosec,unconvert // sys.Dev is always non-negative, and it is uint64 on linux but int32 on darwin, so the conversion only reads as redundant on one of them.
+	return FileID{Dev: uint64(sys.Dev), Ino: sys.Ino}, uint64(sys.Nlink), nil
 }
 
 // Bytes returns a byte slice representation of the FileID for hashing.

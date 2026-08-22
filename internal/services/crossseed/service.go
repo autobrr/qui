@@ -570,7 +570,7 @@ func NewService(
 	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
 		SetDefaultTTL(5 * time.Minute))
 
-	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	recheckCtx, recheckCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: service-lifetime context, cancelled on shutdown
 	var arrLookup arrLookupService
 	if !isNilARRLookupService(arrService) {
 		arrLookup = arrService
@@ -783,11 +783,6 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 		}
 	}
 
-	// Check Jackett service connectivity (if configured)
-	if s.jackettService != nil {
-		// We could add a lightweight check here if Jackett service has a health check method
-	}
-
 	return nil
 }
 
@@ -969,7 +964,7 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx               context.Context //nolint:containedctx // pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	ctx               context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
 	svc               *Service
 	sourceInstanceID  int
 	sourceHash        string
@@ -7628,7 +7623,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 		if enableContentFiltering {
 			if len(capabilityIndexers) > 0 {
-				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
+				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState) //nolint:gosec // G118: async filtering must outlive the request that queued it
 			} else {
 				filteringState.Lock()
 				filteringState.FilteredIndexers = []int{}
@@ -12298,7 +12293,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 			if normalizedDomain == normalizedSpecificDomain {
 				return true
 			}
-
 		}
 
 		// 3. Partial match: domain contains normalized indexer name or vice versa
@@ -15024,7 +15018,6 @@ func (s *Service) buildHardlinkDestDir(
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-
 	// Determine if isolation folder is needed based on torrent structure.
 	// Since hardlink mode always uses contentLayout=Original, we only need
 	// an isolation folder when the torrent doesn't have a common root folder.

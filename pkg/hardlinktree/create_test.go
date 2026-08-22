@@ -46,7 +46,7 @@ func TestCreate_SingleFile(t *testing.T) {
 	// Create source file
 	srcFile := filepath.Join(srcDir, "testfile.txt")
 	testContent := []byte("test content")
-	if err := os.WriteFile(srcFile, testContent, 0644); err != nil {
+	if err := os.WriteFile(srcFile, testContent, 0o600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 
@@ -91,13 +91,13 @@ func TestCreate_MultipleFiles(t *testing.T) {
 	// Create source files
 	files := []string{"file1.txt", "file2.txt", "file3.txt"}
 	for _, f := range files {
-		if err := os.WriteFile(filepath.Join(srcDir, f), []byte(f), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(srcDir, f), []byte(f), 0o600); err != nil {
 			t.Fatalf("Failed to create source file %s: %v", f, err)
 		}
 	}
 
 	// Create plan
-	var filePlans []FilePlan
+	filePlans := make([]FilePlan, 0, len(files))
 	for _, f := range files {
 		filePlans = append(filePlans, FilePlan{
 			SourcePath: filepath.Join(srcDir, f),
@@ -129,7 +129,7 @@ func TestCreate_NestedDirectories(t *testing.T) {
 
 	// Create source file in nested directory
 	srcFile := filepath.Join(srcDir, "file.txt")
-	if err := os.WriteFile(srcFile, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 
@@ -165,7 +165,7 @@ func TestCreate_Idempotent(t *testing.T) {
 
 	// Create source file
 	srcFile := filepath.Join(srcDir, "file.txt")
-	if err := os.WriteFile(srcFile, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 
@@ -220,13 +220,13 @@ func TestCreate_TargetExistsDifferentFile(t *testing.T) {
 
 	// Create source file
 	srcFile := filepath.Join(srcDir, "file.txt")
-	if err := os.WriteFile(srcFile, []byte("source"), 0644); err != nil {
+	if err := os.WriteFile(srcFile, []byte("source"), 0o600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 
 	// Create different file at target location
 	dstFile := filepath.Join(dstDir, "file.txt")
-	if err := os.WriteFile(dstFile, []byte("different content"), 0644); err != nil {
+	if err := os.WriteFile(dstFile, []byte("different content"), 0o600); err != nil {
 		t.Fatalf("Failed to create target file: %v", err)
 	}
 
@@ -250,10 +250,10 @@ func TestRollback(t *testing.T) {
 	// Create source files
 	srcFile1 := filepath.Join(srcDir, "file1.txt")
 	srcFile2 := filepath.Join(srcDir, "file2.txt")
-	if err := os.WriteFile(srcFile1, []byte("test1"), 0644); err != nil {
+	if err := os.WriteFile(srcFile1, []byte("test1"), 0o600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
-	if err := os.WriteFile(srcFile2, []byte("test2"), 0644); err != nil {
+	if err := os.WriteFile(srcFile2, []byte("test2"), 0o600); err != nil {
 		t.Fatalf("Failed to create source file: %v", err)
 	}
 

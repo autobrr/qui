@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewClient(t *testing.T) {
@@ -69,7 +70,7 @@ func TestValidateLicense_NoOrgID(t *testing.T) {
 	// Don't set organization ID
 
 	result, err := client.Validate(context.Background(), ValidateRequest{})
-	assert.ErrorIs(t, err, ErrBadRequestData)
+	require.ErrorIs(t, err, ErrBadRequestData)
 	assert.Nil(t, result)
 }
 

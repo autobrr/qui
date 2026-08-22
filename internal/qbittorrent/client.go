@@ -344,7 +344,7 @@ func truncateWebAPIVersion(s string) string {
 
 // RefreshCapabilities fetches the latest WebAPI version information and recalculates feature support flags.
 func (c *Client) RefreshCapabilities(ctx context.Context) error {
-	version, err := c.Client.GetWebAPIVersionCtx(ctx)
+	version, err := c.GetWebAPIVersionCtx(ctx)
 	if err != nil {
 		return err
 	}
@@ -612,7 +612,7 @@ func (c *Client) supportsTrackerInclude() bool {
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
 	tm := c.trackerManager()
 	if tm == nil {
-		return torrents, nil, nil, fmt.Errorf("tracker manager unavailable")
+		return torrents, nil, nil, errors.New("tracker manager unavailable")
 	}
 
 	enriched, trackerData := tm.HydrateTorrents(ctx, torrents)
@@ -677,7 +677,7 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 	c.mu.RUnlock()
 
 	if syncManager == nil {
-		return fmt.Errorf("sync manager not initialized")
+		return errors.New("sync manager not initialized")
 	}
 
 	return syncManager.Start(ctx)
@@ -893,7 +893,7 @@ func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
 	// Create a new peer sync manager for this torrent
 	peerSyncOpts := qbt.DefaultPeerSyncOptions()
 	peerSyncOpts.AutoSync = false // We'll sync manually when requested
-	peerSync := c.Client.NewPeerSyncManager(hash, peerSyncOpts)
+	peerSync := c.NewPeerSyncManager(hash, peerSyncOpts)
 	c.peerSyncManager[hash] = peerSync
 
 	return peerSync

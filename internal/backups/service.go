@@ -930,7 +930,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 
 	manifestPointer := &manifestRelPath
-	if err := os.WriteFile(manifestAbsPath, manifestData, 0o644); err != nil {
+	if err := os.WriteFile(manifestAbsPath, manifestData, 0o600); err != nil {
 		log.Warn().Err(err).Str("path", manifestAbsPath).Msg("Failed to write manifest to disk")
 		manifestPointer = nil
 	}
@@ -1845,7 +1845,8 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 			// Check if torrent file path was provided from temp directory
 			if torrentPaths != nil && item.ArchivePath != "" {
 				if tempPath, ok := torrentPaths[item.ArchivePath]; ok {
-					if err := s.copyTorrentFromTemp(tempPath, rootDir, rel); err == nil {
+					err := s.copyTorrentFromTemp(tempPath, rootDir, rel)
+					if err == nil {
 						if info, statErr := os.Stat(absPath); statErr == nil {
 							totalTorrentFileBytes += info.Size()
 						}
@@ -1853,9 +1854,8 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 						items = append(items, backupItem)
 						totalBytes += item.SizeBytes
 						continue
-					} else {
-						log.Warn().Err(err).Str("hash", item.Hash).Msg("Failed to copy from temp, will try qBittorrent")
 					}
+					log.Warn().Err(err).Str("hash", item.Hash).Msg("Failed to copy from temp, will try qBittorrent")
 				}
 			}
 
@@ -1943,7 +1943,7 @@ func (s *Service) copyTorrentFromTemp(srcPath, rootDir, relPath string) error {
 		return fmt.Errorf("invalid torrent data: too small (%d bytes)", len(data))
 	}
 	if data[0] != 'd' {
-		return fmt.Errorf("invalid torrent data: not a bencoded dict")
+		return errors.New("invalid torrent data: not a bencoded dict")
 	}
 
 	return cacheTorrentBlob(rootDir, relPath, data)

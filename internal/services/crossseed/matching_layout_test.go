@@ -6,7 +6,6 @@ package crossseed
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -274,7 +273,7 @@ func (c *candidateSelectionSyncManager) GetTorrentFiles(_ context.Context, _ int
 	key := strings.ToLower(hash)
 	files, ok := c.files[key]
 	if !ok {
-		return nil, fmt.Errorf("files not found")
+		return nil, errors.New("files not found")
 	}
 	copyFiles := make(qbt.TorrentFiles, len(files))
 	copy(copyFiles, files)
@@ -282,7 +281,7 @@ func (c *candidateSelectionSyncManager) GetTorrentFiles(_ context.Context, _ int
 }
 
 func (c *candidateSelectionSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
@@ -312,11 +311,11 @@ func (c *candidateSelectionSyncManager) AddTorrent(context.Context, int, []byte,
 }
 
 func (c *candidateSelectionSyncManager) BulkAction(context.Context, int, []string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) ExtractDomainFromURL(string) string {
@@ -324,19 +323,19 @@ func (c *candidateSelectionSyncManager) ExtractDomainFromURL(string) string {
 }
 
 func (c *candidateSelectionSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) RenameTorrent(context.Context, int, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) SetTags(context.Context, int, []string, string) error {

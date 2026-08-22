@@ -58,7 +58,7 @@ func (s *InstanceErrorStore) RecordError(ctx context.Context, instanceID int, er
 	if txErr != nil {
 		return fmt.Errorf("failed to begin transaction: %w", txErr)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Validate that the instance exists before trying to record error
 	var exists int

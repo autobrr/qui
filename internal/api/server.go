@@ -233,6 +233,7 @@ func (s *Server) open(ready chan<- struct{}) error {
 }
 
 func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error {
+	//nolint:noctx // the listener outlives every request; a ListenConfig context would only bound the bind itself
 	listener, err := net.Listen(protocol, addr)
 	if err != nil {
 		return err
@@ -755,7 +756,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
+			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
 		})
 		//	// Redirect root to base URL
 		//	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

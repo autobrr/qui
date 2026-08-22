@@ -907,7 +907,7 @@ func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 		return
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // G703: the path comes from the operator's own *_FILE environment variable
 	if err != nil {
 		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
 	}

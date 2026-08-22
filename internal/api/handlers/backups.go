@@ -13,9 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,11 +80,27 @@ func findStreamingExtractor(filename string) *streamingExtractor {
 	return nil
 }
 
+// isPlainExtension reports whether ext is a leading dot followed by ASCII
+// alphanumerics, the only shape the temp-file pattern should ever carry.
+func isPlainExtension(ext string) bool {
+	if len(ext) < 2 || ext[0] != '.' {
+		return false
+	}
+	for _, r := range ext[1:] {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // saveUploadToTemp copies the uploaded file to a temp file for streaming extraction.
 func saveUploadToTemp(src io.Reader, filename string) (string, error) {
-	// Determine extension for temp file
+	// Determine extension for temp file. The name comes from the upload, so
+	// anything that is not a plain extension is discarded rather than carried
+	// into the temp file pattern.
 	ext := filepath.Ext(filename)
-	if ext == "" {
+	if !isPlainExtension(ext) {
 		ext = ".tmp"
 	}
 
@@ -110,7 +129,8 @@ func copyStreamToFile(src io.Reader, destPath string) error {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
-	f, err := os.Create(destPath)
+	//nolint:gosec // G703: destPath is built from safeArchiveEntryPath output joined onto a temp dir, and O_EXCL refuses an existing file
+	f, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -641,7 +661,7 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Parse multipart form with reduced memory limit (large files spool to disk)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil { //nolint:gosec // G120: the uploader is the authenticated single user restoring their own backup; memory is bounded and the rest spools to disk
 		RespondError(w, http.StatusBadRequest, "Failed to parse multipart form")
 		return
 	}
@@ -725,6 +745,33 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusCreated, run)
 }
 
+// archiveEntryBaseName classifies an archive entry by its final element.
+// Entry names are slash-delimited by the zip and tar specs, so filepath.Base
+// only agrees with that on Windows: on Linux it would read "b\\manifest.json"
+// as one long filename and quietly skip the entry.
+func archiveEntryBaseName(name string) string {
+	return strings.ToLower(path.Base(strings.ReplaceAll(name, `\`, "/")))
+}
+
+// safeArchiveEntryPath converts a slash-delimited archive entry name into the
+// local relative path to extract it to, or "" when the entry escapes the
+// extraction directory. Entry names come from an untrusted archive, so this
+// rejects POSIX and Windows escapes on every OS rather than only the escapes
+// the host filesystem happens to understand.
+func safeArchiveEntryPath(name string) string {
+	raw := strings.ReplaceAll(strings.TrimSpace(name), `\`, "/")
+	if slices.Contains(strings.Split(raw, "/"), "..") {
+		return ""
+	}
+
+	slash := path.Clean(raw)
+	if slash == "." || strings.HasPrefix(slash, "/") || (len(slash) >= 2 && slash[1] == ':') {
+		return ""
+	}
+
+	return filepath.FromSlash(slash)
+}
+
 // --- Streaming extractors (write directly to disk) ---
 
 // extractZipToDisk extracts a zip archive to a temp directory.
@@ -757,15 +804,30 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 
 	cleanup := func() { os.RemoveAll(tempDir) }
 
+	// Entry names are normalised before they are joined, so two names that
+	// differ only in slash style resolve to one destination. Extracting both
+	// would leave the second entry's bytes sitting under the first entry's name.
+	// The manifest is matched on basename, so it collides the same way and is
+	// guarded separately below. Claims are folded to lower case because a
+	// destination differing only in case is the same file on Windows and on a
+	// default macOS volume. The writers open with O_EXCL as the backstop for
+	// whatever else a filesystem folds together, and fs.ErrExist from that is
+	// reported as the collision it is rather than as a create failure.
+	claimed := make(map[string]string)
+
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
 		}
 
 		name := file.Name
-		baseName := strings.ToLower(filepath.Base(name))
+		baseName := archiveEntryBaseName(name)
 
 		if baseName == "manifest.json" {
+			if result.ManifestPath != "" {
+				cleanup()
+				return nil, errors.New("archive carries more than one manifest.json")
+			}
 			destPath := filepath.Join(tempDir, "manifest.json")
 			if err := extractZipFileToDisk(file, destPath); err != nil {
 				cleanup()
@@ -773,18 +835,27 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 			}
 			result.ManifestPath = destPath
 		} else if strings.HasSuffix(baseName, ".torrent") {
-			// Validate path to prevent directory traversal
-			safePath := filepath.Clean(name)
-			if filepath.IsAbs(safePath) || strings.HasPrefix(safePath, "..") {
+			safePath := safeArchiveEntryPath(name)
+			if safePath == "" {
+				log.Warn().Str("entry", name).Msg("Skipping archive entry that resolves outside the extraction directory")
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
+			claim := strings.ToLower(destPath)
+			if previous, ok := claimed[claim]; ok {
+				cleanup()
+				return nil, fmt.Errorf("archive entries %q and %q extract to the same path", previous, name)
+			}
+			claimed[claim] = name
 			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 				cleanup()
 				return nil, fmt.Errorf("create dir: %w", err)
 			}
 			if err := extractZipFileToDisk(file, destPath); err != nil {
 				cleanup()
+				if errors.Is(err, fs.ErrExist) {
+					return nil, fmt.Errorf("archive entry %q extracts onto a path another entry already wrote", name)
+				}
 				return nil, fmt.Errorf("extract %s: %w", name, err)
 			}
 			result.TorrentPaths[name] = destPath
@@ -793,7 +864,7 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 
 	if result.ManifestPath == "" {
 		cleanup()
-		return nil, fmt.Errorf("manifest.json not found in archive")
+		return nil, errors.New("manifest.json not found in archive")
 	}
 
 	return result, nil
@@ -811,13 +882,14 @@ func extractZipFileToDisk(zf *zip.File, destPath string) error {
 		return err
 	}
 
-	destFile, err := os.Create(destPath)
+	//nolint:gosec // G703: destPath is built from safeArchiveEntryPath output joined onto a temp dir, and O_EXCL refuses an existing file
+	destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
 	defer destFile.Close()
 
-	_, err = io.Copy(destFile, rc)
+	_, err = io.Copy(destFile, rc) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 	return err
 }
 
@@ -908,6 +980,10 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 
 	cleanup := func() { os.RemoveAll(tempDir) }
 
+	// See extractZipToDisk: normalised names can collide, and the second write
+	// would silently replace the first entry's bytes.
+	claimed := make(map[string]string)
+
 	tarReader := tar.NewReader(r)
 	for {
 		header, err := tarReader.Next()
@@ -924,9 +1000,13 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 		}
 
 		name := header.Name
-		baseName := strings.ToLower(filepath.Base(name))
+		baseName := archiveEntryBaseName(name)
 
 		if baseName == "manifest.json" {
+			if result.ManifestPath != "" {
+				cleanup()
+				return nil, errors.New("archive carries more than one manifest.json")
+			}
 			destPath := filepath.Join(tempDir, "manifest.json")
 			if err := copyStreamToFile(tarReader, destPath); err != nil {
 				cleanup()
@@ -934,28 +1014,37 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 			}
 			result.ManifestPath = destPath
 		} else if strings.HasSuffix(baseName, ".torrent") {
-			// Validate path to prevent directory traversal
-			safePath := filepath.Clean(name)
-			if filepath.IsAbs(safePath) || strings.HasPrefix(safePath, "..") {
-				// Skip unsafe paths but continue reading to consume the entry
-				_, _ = io.Copy(io.Discard, tarReader)
+			safePath := safeArchiveEntryPath(name)
+			if safePath == "" {
+				log.Warn().Str("entry", name).Msg("Skipping archive entry that resolves outside the extraction directory")
+				// Consume the entry so the tar reader stays aligned.
+				_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
+			claim := strings.ToLower(destPath)
+			if previous, ok := claimed[claim]; ok {
+				cleanup()
+				return nil, fmt.Errorf("archive entries %q and %q extract to the same path", previous, name)
+			}
+			claimed[claim] = name
 			if err := copyStreamToFile(tarReader, destPath); err != nil {
 				cleanup()
+				if errors.Is(err, fs.ErrExist) {
+					return nil, fmt.Errorf("archive entry %q extracts onto a path another entry already wrote", name)
+				}
 				return nil, fmt.Errorf("extract %s: %w", name, err)
 			}
 			result.TorrentPaths[name] = destPath
 		} else {
 			// Skip other files but consume the data
-			_, _ = io.Copy(io.Discard, tarReader)
+			_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 		}
 	}
 
 	if result.ManifestPath == "" {
 		cleanup()
-		return nil, fmt.Errorf("manifest.json not found in archive")
+		return nil, errors.New("manifest.json not found in archive")
 	}
 
 	return result, nil
@@ -1016,7 +1105,7 @@ func (h *BackupsHandler) DownloadTorrentBlob(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	file, err := os.Open(absTarget)
+	file, err := os.Open(absTarget) //nolint:gosec // G703: backupRelPath rejects escapes before the path resolves under the backup root
 	if err != nil {
 		if os.IsNotExist(err) {
 			RespondError(w, http.StatusNotFound, "Cached torrent file missing")
