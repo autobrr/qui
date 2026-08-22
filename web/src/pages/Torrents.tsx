@@ -421,7 +421,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       {/* Desktop Sidebar - slides in on tablet/desktop */}
       <div
         className={cn(
-          "hidden md:flex shrink-0 h-full overflow-hidden transition-[flex-basis,width] duration-300 ease-in-out",
+          "hidden desk:flex shrink-0 h-full overflow-hidden transition-[flex-basis,width] duration-300 ease-in-out",
           filterSidebarCollapsed && "basis-0"
         )}
         style={{ flexBasis: filterSidebarCollapsed ? 0 : sidebarWidth }}
@@ -458,7 +458,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
         <SheetContent
           side="left"
-          className="p-0 w-[280px] sm:w-[320px] md:hidden flex flex-col max-h-[100dvh]"
+          className="p-0 w-[280px] sm:w-[320px] desk:hidden flex flex-col max-h-[100dvh]"
           onOpenAutoFocus={(event) => {
             event.preventDefault()
 
@@ -600,7 +600,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         >
           <SheetContent
             side="right"
-            className="w-full p-0 gap-0"
+            className="w-full p-0 gap-0 pl-[env(safe-area-inset-left)]"
             hideClose
           >
             <SheetHeader className="sr-only">

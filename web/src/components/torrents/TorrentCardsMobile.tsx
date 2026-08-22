@@ -2139,7 +2139,7 @@ export function TorrentCardsMobile({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
+                    className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
                   >
                     {t("mobileCards.sort")}: {currentSortOption.label}
                   </Button>
@@ -2162,7 +2162,7 @@ export function TorrentCardsMobile({
                 variant="ghost"
                 size="sm"
                 onClick={toggleSortOrder}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                 aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
                 title={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
               >
@@ -2210,10 +2210,10 @@ export function TorrentCardsMobile({
       {/* Torrent cards with virtual scrolling */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300"
-        style={{
-          paddingBottom: selectionBarVisible? "calc(4rem + env(safe-area-inset-bottom))": isFooterVisible? "calc(8rem + env(safe-area-inset-bottom))": "env(safe-area-inset-bottom)",
-        }}
+        className={cn(
+          "flex-1 overflow-y-auto overscroll-contain transition-[padding] duration-300",
+          selectionBarVisible? "pb-[calc(4rem+env(safe-area-inset-bottom))]": isFooterVisible? "pb-[calc(8rem+env(safe-area-inset-bottom))] phone-land:pb-[calc(4rem+env(safe-area-inset-bottom))]": "pb-[env(safe-area-inset-bottom)]"
+        )}
       >
         <div
           style={{
@@ -2340,13 +2340,13 @@ export function TorrentCardsMobile({
 
       {/* More actions sheet */}
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
-        <SheetContent side="bottom" className="h-auto pb-8">
+        <SheetContent side="bottom" className="h-auto">
           <SheetHeader>
             <SheetTitle>
               {isAllSelected? t("mobileCards.actionsForAll", { count: effectiveSelectionCount }): t("mobileCards.actionsForCount", { count: effectiveSelectionCount })}
             </SheetTitle>
           </SheetHeader>
-          <div className="grid gap-2 py-4 px-4">
+          <div className="grid gap-2 pt-4 pb-8 px-4">
             {(() => {
               const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.force_start), stateUnknownForSelection)
 
@@ -2850,9 +2850,9 @@ export function TorrentCardsMobile({
           className={cn(
             "fixed left-0 right-0 z-50 lg:hidden bg-background/80 backdrop-blur-md border-t border-border/50",
             "transition-transform duration-300",
-            !isFooterVisible && "translate-y-[calc(100%+4rem+env(safe-area-inset-bottom))]"
+            "bottom-[calc(4rem+env(safe-area-inset-bottom))] phone-land:bottom-0 phone-land:left-[calc(5rem+env(safe-area-inset-left))] phone-land:pb-[env(safe-area-inset-bottom)]",
+            !isFooterVisible && "translate-y-[calc(100%+4rem+env(safe-area-inset-bottom))] phone-land:translate-y-[calc(100%+env(safe-area-inset-bottom))]"
           )}
-          style={{ bottom: "calc(4rem + env(safe-area-inset-bottom))" }}
         >
           <div className="flex items-center justify-around h-14 px-2">
             <button
@@ -2923,16 +2923,14 @@ export function TorrentCardsMobile({
         </div>
       )}
 
-      {/* Scroll to top button - only on mobile */}
-      <div className="sm:hidden">
-        <ScrollToTopButton
-          scrollContainerRef={parentRef}
-          className={cn(
-            "right-8 z-[60]",
-            selectionBarVisible? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
-          )}
-        />
-      </div>
+      {/* Scroll to top button */}
+      <ScrollToTopButton
+        scrollContainerRef={parentRef}
+        className={cn(
+          "right-8 z-[60]",
+          selectionBarVisible? "bottom-[calc(5rem+env(safe-area-inset-bottom))]": isFooterVisible? "bottom-[calc(8.5rem+env(safe-area-inset-bottom))] phone-land:bottom-[calc(5rem+env(safe-area-inset-bottom))]": "bottom-[calc(1.5rem+env(safe-area-inset-bottom))]"
+        )}
+      />
     </div>
   )
 }
