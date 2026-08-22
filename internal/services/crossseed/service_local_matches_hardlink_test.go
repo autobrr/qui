@@ -358,10 +358,9 @@ func TestFindLocalMatches_BackendFailure_FailsStrictMode(t *testing.T) {
 		ContentPath: filepath.Join(sourceDir, fileName),
 	}
 	syncManager := &reflinkFindLocalMatchesSyncManager{
-		localMatchSyncManager: localMatchSyncManager{files: map[string]qbt.TorrentFiles{
 			normalizeHash(hlSourceHash):    files,
 			normalizeHash(hlCandidateHash): files,
-		}},
+		},
 		source:    source,
 		candidate: *hardlinkTestCandidate(candidateDir),
 	}
