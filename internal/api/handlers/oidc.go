@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -77,22 +78,22 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 
 	if cfg.OIDCIssuer == "" {
 		log.Error().Msg("OIDC issuer is empty")
-		return nil, fmt.Errorf("OIDC issuer is required")
+		return nil, errors.New("OIDC issuer is required")
 	}
 
 	if cfg.OIDCClientID == "" {
 		log.Error().Msg("OIDC client ID is empty")
-		return nil, fmt.Errorf("OIDC client ID is required")
+		return nil, errors.New("OIDC client ID is required")
 	}
 
 	if cfg.OIDCClientSecret == "" {
 		log.Error().Msg("OIDC client secret is empty")
-		return nil, fmt.Errorf("OIDC client secret is required")
+		return nil, errors.New("OIDC client secret is required")
 	}
 
 	if cfg.OIDCRedirectURL == "" {
 		log.Error().Msg("OIDC redirect URL is empty")
-		return nil, fmt.Errorf("OIDC redirect URL is required")
+		return nil, errors.New("OIDC redirect URL is required")
 	}
 
 	scopes := []string{"openid", "profile", "email"}

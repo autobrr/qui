@@ -347,7 +347,7 @@ func TestResolveAllowedIndexerIDsRespectsSelection(t *testing.T) {
 
 	ids, reason := svc.resolveAllowedIndexerIDs(context.Background(), "hash", state, []int{2}, false)
 	require.Equal(t, []int{2}, ids)
-	require.Equal(t, "", reason)
+	require.Empty(t, reason)
 }
 
 func TestResolveAllowedIndexerIDsSelectionFilteredOut(t *testing.T) {
@@ -375,7 +375,7 @@ func TestResolveAllowedIndexerIDsCapabilitySelection(t *testing.T) {
 
 	ids, reason := svc.resolveAllowedIndexerIDs(ctx, "hash", state, []int{4}, false)
 	require.Equal(t, []int{4}, ids)
-	require.Equal(t, "", reason)
+	require.Empty(t, reason)
 
 	state2 := &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,

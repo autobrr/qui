@@ -177,7 +177,7 @@ func (r *LicenseRepo) DeleteLicense(ctx context.Context, licenseKey string) erro
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("license not found")
+		return errors.New("license not found")
 	}
 
 	if err = tx.Commit(); err != nil {

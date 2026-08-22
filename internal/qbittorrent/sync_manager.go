@@ -473,7 +473,7 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 // GetClient returns a client for an instance, creating one if needed
 func (sm *SyncManager) GetClient(ctx context.Context, instanceID int) (*Client, error) {
 	if sm == nil || sm.clientPool == nil {
-		return nil, fmt.Errorf("client pool unavailable")
+		return nil, errors.New("client pool unavailable")
 	}
 	return sm.clientPool.GetClient(ctx, instanceID)
 }
@@ -1245,7 +1245,7 @@ func (sm *SyncManager) removeHashFromAllTrackerMappings(instanceID int, hashes [
 
 func (sm *SyncManager) getTorrentFilesClient(ctx context.Context, instanceID int) (torrentFilesClient, error) {
 	if sm == nil {
-		return nil, fmt.Errorf("sync manager unavailable")
+		return nil, errors.New("sync manager unavailable")
 	}
 
 	if sm.torrentFilesClientProvider != nil {
@@ -1261,7 +1261,7 @@ func (sm *SyncManager) getTorrentFilesClient(ctx context.Context, instanceID int
 
 func (sm *SyncManager) getTorrentLookup(ctx context.Context, instanceID int) (torrentLookup, error) {
 	if sm == nil {
-		return nil, fmt.Errorf("sync manager unavailable")
+		return nil, errors.New("sync manager unavailable")
 	}
 
 	if sm.torrentLookupProvider != nil {
@@ -1322,7 +1322,7 @@ func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter q
 // GetInstanceWebAPIVersion returns the qBittorrent web API version for the provided instance.
 func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error) {
 	if sm == nil || sm.clientPool == nil {
-		return "", fmt.Errorf("client pool unavailable")
+		return "", errors.New("client pool unavailable")
 	}
 
 	if client, err := sm.clientPool.GetClientOffline(ctx, instanceID); err == nil {
@@ -1360,7 +1360,7 @@ func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID i
 	// Get sync manager
 	syncManager := client.GetSyncManager()
 	if syncManager == nil {
-		return nil, nil, fmt.Errorf("sync manager not initialized")
+		return nil, nil, errors.New("sync manager not initialized")
 	}
 
 	return client, syncManager, nil
@@ -1473,15 +1473,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
-	needsManualCategoryFiltering := false
-	if len(filters.Categories) == 1 && filters.Categories[0] == "" {
-		needsManualCategoryFiltering = true
-	}
+	needsManualCategoryFiltering := len(filters.Categories) == 1 && filters.Categories[0] == ""
 
-	needsManualTagFiltering := false
-	if len(filters.Tags) == 1 && filters.Tags[0] == "" {
-		needsManualTagFiltering = true
-	}
+	needsManualTagFiltering := len(filters.Tags) == 1 && filters.Tags[0] == ""
 
 	useManualFiltering = hasMultipleStatusFilters || hasMultipleCategoryFilters || hasMultipleTagFilters ||
 		hasTrackerFilters || hasExcludeStatusFilters || hasExcludeCategoryFilters || hasExcludeTagFilters || hasExcludeTrackerFilters ||
@@ -3253,7 +3247,7 @@ func resolveTorrentByVariantHash(torrentMap map[string]qbt.Torrent, inputHash st
 // ExportTorrent returns the raw .torrent data along with a display name suggestion
 func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error) {
 	if hash == "" {
-		return nil, "", "", fmt.Errorf("torrent hash is required")
+		return nil, "", "", errors.New("torrent hash is required")
 	}
 
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
@@ -3282,7 +3276,8 @@ func (sm *SyncManager) ExportTorrent(ctx context.Context, instanceID int, hash s
 }
 
 func (sm *SyncManager) primaryTrackerDomain(torrent qbt.Torrent) string {
-	candidates := []string{torrent.Tracker}
+	candidates := make([]string, 0, 1+len(torrent.Trackers))
+	candidates = append(candidates, torrent.Tracker)
 	for _, tracker := range torrent.Trackers {
 		candidates = append(candidates, tracker.Url)
 	}
@@ -6360,7 +6355,7 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 	}
 
 	if len(torrentMap) == 0 {
-		return fmt.Errorf("no sync data available")
+		return errors.New("no sync data available")
 	}
 
 	existingCount := 0
@@ -6371,7 +6366,7 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 	}
 
 	if existingCount == 0 {
-		return fmt.Errorf("no valid torrents found to add tags")
+		return errors.New("no valid torrents found to add tags")
 	}
 
 	if err := client.AddTagsCtx(ctx, hashes, tags); err != nil {
@@ -6934,7 +6929,7 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 
 	// Validate location is not empty
 	if strings.TrimSpace(location) == "" {
-		return fmt.Errorf("location cannot be empty")
+		return errors.New("location cannot be empty")
 	}
 
 	// Set the location - this will disable Auto TMM and move the torrents
@@ -6965,7 +6960,7 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 	}
 
 	if !client.SupportsFilePriority() {
-		return fmt.Errorf("qBittorrent instance does not support file priority changes (requires WebAPI 2.2.0+)")
+		return errors.New("qBittorrent instance does not support file priority changes (requires WebAPI 2.2.0+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "set file priorities"); err != nil {
@@ -6973,17 +6968,17 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 	}
 
 	if len(indices) == 0 {
-		return fmt.Errorf("at least one file index is required")
+		return errors.New("at least one file index is required")
 	}
 
 	if priority < 0 || priority > 7 {
-		return fmt.Errorf("file priority must be between 0 and 7")
+		return errors.New("file priority must be between 0 and 7")
 	}
 
 	ids := make([]string, len(indices))
 	for i, idx := range indices {
 		if idx < 0 {
-			return fmt.Errorf("file indices must be non-negative")
+			return errors.New("file indices must be non-negative")
 		}
 		ids[i] = strconv.Itoa(idx)
 	}
@@ -7022,7 +7017,7 @@ func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, 
 	}
 
 	if !client.SupportsRenameTorrent() {
-		return fmt.Errorf("qBittorrent instance does not support torrent renaming (requires WebAPI 2.0.0+, qBittorrent 4.1.0+)")
+		return errors.New("qBittorrent instance does not support torrent renaming (requires WebAPI 2.0.0+, qBittorrent 4.1.0+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename torrent"); err != nil {
@@ -7031,7 +7026,7 @@ func (sm *SyncManager) RenameTorrent(ctx context.Context, instanceID int, hash, 
 
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		return fmt.Errorf("torrent name cannot be empty")
+		return errors.New("torrent name cannot be empty")
 	}
 
 	if err := client.SetTorrentNameCtx(ctx, hash, trimmed); err != nil {
@@ -7051,7 +7046,7 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 	}
 
 	if !client.SupportsRenameFile() {
-		return fmt.Errorf("qBittorrent instance does not support file renaming (requires WebAPI 2.4.0+, qBittorrent 4.2.1+)")
+		return errors.New("qBittorrent instance does not support file renaming (requires WebAPI 2.4.0+, qBittorrent 4.2.1+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename file"); err != nil {
@@ -7059,11 +7054,11 @@ func (sm *SyncManager) RenameTorrentFile(ctx context.Context, instanceID int, ha
 	}
 
 	if strings.TrimSpace(oldPath) == "" {
-		return fmt.Errorf("original file path cannot be empty")
+		return errors.New("original file path cannot be empty")
 	}
 
 	if strings.TrimSpace(newPath) == "" {
-		return fmt.Errorf("new file path cannot be empty")
+		return errors.New("new file path cannot be empty")
 	}
 
 	if err := client.RenameFileCtx(ctx, hash, oldPath, newPath); err != nil {
@@ -7091,7 +7086,7 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 	}
 
 	if !client.SupportsRenameFolder() {
-		return fmt.Errorf("qBittorrent instance does not support folder renaming (requires WebAPI 2.7.0+, qBittorrent 4.3.3+)")
+		return errors.New("qBittorrent instance does not support folder renaming (requires WebAPI 2.7.0+, qBittorrent 4.3.3+)")
 	}
 
 	if err := sm.validateTorrentsExist(client, []string{hash}, "rename folder"); err != nil {
@@ -7099,11 +7094,11 @@ func (sm *SyncManager) RenameTorrentFolder(ctx context.Context, instanceID int, 
 	}
 
 	if strings.TrimSpace(oldPath) == "" {
-		return fmt.Errorf("original folder path cannot be empty")
+		return errors.New("original folder path cannot be empty")
 	}
 
 	if strings.TrimSpace(newPath) == "" {
-		return fmt.Errorf("new folder path cannot be empty")
+		return errors.New("new folder path cannot be empty")
 	}
 
 	if err := client.RenameFolderCtx(ctx, hash, oldPath, newPath); err != nil {
@@ -7253,7 +7248,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 	}
 
 	if !client.SupportsTrackerEditing() {
-		return fmt.Errorf("tracker editing is not supported by this qBittorrent instance")
+		return errors.New("tracker editing is not supported by this qBittorrent instance")
 	}
 
 	// Validate that torrents exist
@@ -7280,7 +7275,7 @@ func (sm *SyncManager) BulkEditTrackers(ctx context.Context, instanceID int, has
 		if lastErr != nil {
 			return fmt.Errorf("failed to edit trackers: %w", lastErr)
 		}
-		return fmt.Errorf("failed to edit trackers")
+		return errors.New("failed to edit trackers")
 	}
 
 	client.invalidateTrackerCache(updatedHashes...)
@@ -7335,7 +7330,7 @@ func (sm *SyncManager) BulkAddTrackers(ctx context.Context, instanceID int, hash
 		if lastErr != nil {
 			return fmt.Errorf("failed to add trackers: %w", lastErr)
 		}
-		return fmt.Errorf("failed to add trackers")
+		return errors.New("failed to add trackers")
 	}
 
 	client.invalidateTrackerCache(successfulHashes...)
@@ -7387,7 +7382,7 @@ func (sm *SyncManager) BulkRemoveTrackers(ctx context.Context, instanceID int, h
 		if lastErr != nil {
 			return fmt.Errorf("failed to remove trackers: %w", lastErr)
 		}
-		return fmt.Errorf("failed to remove trackers")
+		return errors.New("failed to remove trackers")
 	}
 
 	client.invalidateTrackerCache(successfulHashes...)

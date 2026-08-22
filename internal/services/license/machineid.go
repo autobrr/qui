@@ -5,6 +5,7 @@ package license
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func GetDeviceID(appID string, userID string, configDir string) (string, error) 
 
 	combined := fmt.Sprintf("%s-%s-%s", appID, baseID, userID)
 	hash := sha256.Sum256([]byte(combined))
-	fingerprint := fmt.Sprintf("%x", hash)
+	fingerprint := hex.EncodeToString(hash[:])
 
 	return persistFingerprint(fingerprint, userID, configDir)
 }
@@ -47,7 +48,7 @@ func generateFallbackMachineID() string {
 	}
 
 	hash := sha256.Sum256([]byte(hostInfo))
-	return fmt.Sprintf("%x", hash)[:32]
+	return hex.EncodeToString(hash[:])[:32]
 }
 
 func persistFingerprint(fingerprint, userID string, configDir string) (string, error) {

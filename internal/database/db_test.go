@@ -83,7 +83,7 @@ func TestMigrationIdempotency(t *testing.T) {
 	var count2 int
 	require.NoError(t, db2.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count2))
 	require.Equal(t, count1, count2, "Migration count should be the same after re-initialization")
-	require.Greater(t, count2, 0, "Should have at least one migration applied")
+	require.Positive(t, count2, "Should have at least one migration applied")
 
 	files := listMigrationFiles(t)
 	require.Equal(t, len(files), count2, "Applied migration count should match number of migration files")
@@ -505,7 +505,7 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	// Run cleanup
 	deleted, err := db.CleanupUnusedStrings(ctx)
 	require.NoError(t, err)
-	require.Greater(t, deleted, int64(0)) // Should delete some orphaned strings
+	require.Positive(t, deleted) // Should delete some orphaned strings
 
 	// Verify our referenced string still exists
 	var exists bool

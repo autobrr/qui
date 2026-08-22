@@ -767,7 +767,7 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 		}
 		return s, nil
 	} else if tx != nil && tx.isWriteTx {
-		return nil, fmt.Errorf("statement not cached")
+		return nil, errors.New("statement not cached")
 	}
 
 	// Slow path: prepare new statement

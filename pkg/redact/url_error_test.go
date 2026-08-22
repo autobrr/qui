@@ -95,7 +95,7 @@ func TestURLError(t *testing.T) {
 			result := URLError(tt.err)
 
 			if tt.err == nil {
-				assert.Nil(t, result)
+				assert.NoError(t, result)
 				return
 			}
 
@@ -120,7 +120,7 @@ func TestURLError_PreservesErrorType(t *testing.T) {
 	result := URLError(original)
 
 	var urlErr *url.Error
-	require.True(t, errors.As(result, &urlErr), "URLError() should preserve url.Error type")
+	require.ErrorAs(t, result, &urlErr, "URLError() should preserve url.Error type")
 	assert.Equal(t, "Get", urlErr.Op)
 	assert.NotContains(t, urlErr.URL, "SECRET")
 }

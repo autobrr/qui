@@ -113,7 +113,7 @@ type Rss struct {
 		Item        []struct {
 			Text           string `xml:",chardata"`
 			Title          string `xml:"title"`
-			Guid           string `xml:"guid"`
+			GUID           string `xml:"guid"`
 			Jackettindexer struct {
 				Text string `xml:",chardata"`
 				ID   string `xml:"id,attr"`

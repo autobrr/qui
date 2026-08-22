@@ -96,7 +96,7 @@ type Service struct {
 // NewService creates a new tracker icon service rooted in the provided data directory.
 func NewService(dataDir, userAgent string) (*Service, error) {
 	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("data directory must be provided")
+		return nil, errors.New("data directory must be provided")
 	}
 
 	iconDir := filepath.Join(dataDir, iconDirName)
@@ -768,7 +768,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 	withoutScheme := strings.TrimPrefix(dataURI, "data:")
 	parts := strings.SplitN(withoutScheme, ",", 2)
 	if len(parts) != 2 {
-		return nil, "", fmt.Errorf("invalid data URI")
+		return nil, "", errors.New("invalid data URI")
 	}
 
 	meta := parts[0]
@@ -784,7 +784,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 	}
 
 	if !strings.Contains(meta, "base64") {
-		return nil, "", fmt.Errorf("unsupported data URI encoding")
+		return nil, "", errors.New("unsupported data URI encoding")
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(payload)
@@ -797,7 +797,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 
 func decodeImage(data []byte, contentType, originalURL string) (image.Image, error) {
 	if strings.Contains(strings.ToLower(contentType), "svg") || strings.HasSuffix(strings.ToLower(originalURL), ".svg") {
-		return nil, fmt.Errorf("svg icons are not supported")
+		return nil, errors.New("svg icons are not supported")
 	}
 
 	const maxDimension = 1024

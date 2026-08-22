@@ -863,7 +863,6 @@ func (s *Service) getMatchTypeFromTitle(targetName, candidateName string, target
 				return "partial-in-pack"
 			}
 		}
-
 	}
 
 	// Renamed-file fallback: the torrent-level release gate already matched this

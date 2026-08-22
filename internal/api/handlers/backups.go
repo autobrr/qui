@@ -864,7 +864,7 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 
 	if result.ManifestPath == "" {
 		cleanup()
-		return nil, fmt.Errorf("manifest.json not found in archive")
+		return nil, errors.New("manifest.json not found in archive")
 	}
 
 	return result, nil
@@ -1044,7 +1044,7 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 
 	if result.ManifestPath == "" {
 		cleanup()
-		return nil, fmt.Errorf("manifest.json not found in archive")
+		return nil, errors.New("manifest.json not found in archive")
 	}
 
 	return result, nil

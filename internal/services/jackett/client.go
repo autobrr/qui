@@ -5,6 +5,7 @@ package jackett
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -198,7 +199,7 @@ func (c *Client) Search(ctx context.Context, indexer string, params map[string]s
 
 func (c *Client) searchProwlarr(ctx context.Context, indexerID string, params map[string]string) ([]Result, error) {
 	if c.prowlarr == nil {
-		return nil, fmt.Errorf("prowlarr client not configured")
+		return nil, errors.New("prowlarr client not configured")
 	}
 
 	rss, err := c.prowlarr.SearchIndexer(ctx, indexerID, params)
@@ -245,7 +246,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*t
 	}
 
 	if trimmedID == "" {
-		return nil, fmt.Errorf("jackett indexer identifier is required for caps fetch")
+		return nil, errors.New("jackett indexer identifier is required for caps fetch")
 	}
 
 	endpoint, err := url.JoinPath(baseRoot, "api", "v2.0", "indexers", trimmedID, "results", "torznab", "api")
@@ -283,7 +284,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*t
 func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*torznabCaps, error) {
 	trimmed := strings.TrimSpace(indexerID)
 	if trimmed == "" {
-		return nil, fmt.Errorf("prowlarr indexer identifier is required for caps fetch")
+		return nil, errors.New("prowlarr indexer identifier is required for caps fetch")
 	}
 
 	endpoint, err := url.JoinPath(strings.TrimRight(c.baseURL, "/"), "api", "v1", "indexer", trimmed, "newznab")
@@ -321,7 +322,7 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) {
 	endpoint := strings.TrimRight(c.baseURL, "/")
 	if endpoint == "" {
-		return nil, fmt.Errorf("native torznab endpoint not configured")
+		return nil, errors.New("native torznab endpoint not configured")
 	}
 
 	parsed, err := url.Parse(endpoint)
@@ -359,7 +360,7 @@ func (c *Client) fetchCapsFromNative(ctx context.Context) (*torznabCaps, error) 
 // Download retrieves the raw torrent bytes for the provided download URL.
 func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, error) {
 	if strings.TrimSpace(downloadURL) == "" {
-		return nil, fmt.Errorf("download URL is required")
+		return nil, errors.New("download URL is required")
 	}
 
 	if ctx == nil {
@@ -446,7 +447,7 @@ func (c *Client) convertRssToResults(rss gojackett.Rss) []Result {
 			Title:                item.Title,
 			Link:                 item.Enclosure.URL,
 			Details:              item.Comments,
-			GUID:                 item.Guid,
+			GUID:                 item.GUID,
 			Category:             "", // Categories are in item.Category array
 			Size:                 0,
 			DownloadVolumeFactor: 1.0,
@@ -536,7 +537,7 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string, basicU
 		ctx = context.Background()
 	}
 	if baseURL = strings.TrimSpace(baseURL); baseURL == "" {
-		return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("base url is required")
+		return DiscoveryResult{Indexers: []JackettIndexer{}}, errors.New("base url is required")
 	}
 
 	jackettIndexers, failedIDs, jackettErr := discoverJackettIndexers(ctx, baseURL, apiKey, basicUsername, basicPassword)
@@ -615,7 +616,7 @@ func DiscoverJackettIndexers(ctx context.Context, baseURL, apiKey string, basicU
 		return DiscoveryResult{Indexers: indexers, Warnings: warnings}, nil
 	}
 
-	return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("jackett discovery failed: %v; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
+	return DiscoveryResult{Indexers: []JackettIndexer{}}, fmt.Errorf("jackett discovery failed: %w; prowlarr discovery failed: %w", jackettErr, prowlarrErr)
 }
 
 func discoverJackettIndexers(ctx context.Context, baseURL, apiKey string, basicUsername, basicPassword *string) ([]JackettIndexer, []string, error) {

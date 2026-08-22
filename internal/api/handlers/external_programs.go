@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -143,7 +144,7 @@ func (h *ExternalProgramsHandler) UpdateExternalProgram(w http.ResponseWriter, r
 	ctx := r.Context()
 	program, err := h.externalProgramStore.Update(ctx, id, &req)
 	if err != nil {
-		if err == models.ErrExternalProgramNotFound {
+		if errors.Is(err, models.ErrExternalProgramNotFound) {
 			http.Error(w, "Program not found", http.StatusNotFound)
 			return
 		}
@@ -222,7 +223,7 @@ func (h *ExternalProgramsHandler) DeleteExternalProgram(w http.ResponseWriter, r
 
 	// Delete the program
 	if err := h.externalProgramStore.Delete(ctx, id); err != nil {
-		if err == models.ErrExternalProgramNotFound {
+		if errors.Is(err, models.ErrExternalProgramNotFound) {
 			http.Error(w, "Program not found", http.StatusNotFound)
 			return
 		}
@@ -269,7 +270,7 @@ func (h *ExternalProgramsHandler) ExecuteExternalProgram(w http.ResponseWriter, 
 	// Get the program configuration (we need it to get the instance ID for bulk torrent fetch)
 	program, err := h.externalProgramStore.GetByID(ctx, req.ProgramID)
 	if err != nil {
-		if err == models.ErrExternalProgramNotFound {
+		if errors.Is(err, models.ErrExternalProgramNotFound) {
 			http.Error(w, "Program not found", http.StatusNotFound)
 			return
 		}

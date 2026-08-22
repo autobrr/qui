@@ -2487,11 +2487,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 				// Determine activity action type
 				action := models.ActivityActionDeletedCondition
-				if state.deleteReason == "unregistered" {
+				switch state.deleteReason {
+				case "unregistered":
 					action = models.ActivityActionDeletedUnregistered
-				} else if state.deleteReason == "ratio limit reached" {
+				case "ratio limit reached":
 					action = models.ActivityActionDeletedRatio
-				} else if state.deleteReason == "seeding time limit reached" || state.deleteReason == "ratio and seeding time limits reached" {
+				case "seeding time limit reached", "ratio and seeding time limits reached":
 					action = models.ActivityActionDeletedSeeding
 				}
 
@@ -2627,10 +2628,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				desired[t] = struct{}{}
 			}
 			for tag, action := range state.tagActions {
-				if action == "add" {
+				switch action {
+				case "add":
 					toAdd = append(toAdd, tag)
 					desired[tag] = struct{}{}
-				} else if action == "remove" {
+				case "remove":
 					toRemove = append(toRemove, tag)
 					delete(desired, tag)
 				}
@@ -2739,7 +2741,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				exportExecutions = append(exportExecutions, exportEntry)
 			}
 		}
-
 	}
 
 	if dryRun {
@@ -4443,7 +4444,7 @@ func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string 
 		}
 	}
 
-	var domains []string
+	domains := make([]string, 0, len(domainSet))
 	for d := range domainSet {
 		domains = append(domains, d)
 	}

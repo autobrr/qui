@@ -246,7 +246,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if strings.TrimSpace(username) == "" {
-				return fmt.Errorf("username cannot be empty")
+				return errors.New("username cannot be empty")
 			}
 			username = strings.TrimSpace(username)
 
@@ -259,7 +259,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(password) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			user, err := authService.SetupUser(context.Background(), username, password)
@@ -327,7 +327,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to check setup status: %w", err)
 			}
 			if !exists {
-				return fmt.Errorf("no user account found. Create a user first with 'create-user' command")
+				return errors.New("no user account found. Create a user first with 'create-user' command")
 			}
 
 			if username == "" {
@@ -341,7 +341,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			userStore := models.NewUserStore(db)
 			user, err := userStore.GetByUsername(ctx, username)
 			if err != nil {
-				if err == models.ErrUserNotFound {
+				if errors.Is(err, models.ErrUserNotFound) {
 					return fmt.Errorf("username '%s' not found", username)
 				}
 				return fmt.Errorf("failed to verify username: %w", err)
@@ -356,7 +356,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(newPassword) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			hashedPassword, err := auth.HashPassword(newPassword)
@@ -525,6 +525,7 @@ func (app *Application) runServer() {
 	licenseRepo := database.NewLicenseRepo(db)
 	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
 	if err != nil {
+		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 	instanceReannounceStore := models.NewInstanceReannounceStore(db)
@@ -892,35 +893,19 @@ func (app *Application) runServer() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		//log.Fatal().Err(err).Msg("Server forced to shutdown")
+		// log.Fatal().Err(err).Msg("Server forced to shutdown")
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
 
 		os.Exit(1)
 	}
 
-	//if err := srv.Shutdown(context.Background()); err != nil {
+	// if err := srv.Shutdown(context.Background()); err != nil {
 	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
 	//
 	//	os.Exit(1)
 	//}
 
 	os.Exit(0)
-
-	//// Wait for interrupt signal to gracefully shutdown the server
-	//quit := make(chan os.Signal, 1)
-	//signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	//<-quit
-	//log.Info().Msg("Shutting down server...")
-	//
-	//// Graceful shutdown with timeout
-	//ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	//defer cancel()
-	//
-	//if err := httpServer.Close(ctx); err != nil {
-	//	log.Fatal().Err(err).Msg("Server forced to shutdown")
-	//}
-	//
-	//log.Info().Msg("Server stopped")
 }
 
 // instanceListerAdapter implements filesmanager.InstanceLister

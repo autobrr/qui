@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 const (
@@ -122,7 +123,7 @@ func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannoun
 // Upsert saves settings for an instance, creating or updating as needed.
 func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *InstanceReannounceSettings) (*InstanceReannounceSettings, error) {
 	if settings == nil {
-		return nil, fmt.Errorf("settings cannot be nil")
+		return nil, errors.New("settings cannot be nil")
 	}
 
 	coerced := sanitizeInstanceReannounceSettings(settings)

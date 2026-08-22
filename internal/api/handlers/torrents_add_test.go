@@ -436,7 +436,7 @@ func TestAddTorrentWithIndexer_DownloadFailureContinuesWithOthers(t *testing.T) 
 	assert.Equal(t, 1, failed)
 
 	// Verify both URLs were attempted
-	assert.Equal(t, 2, len(customJackett.calls))
+	assert.Len(t, customJackett.calls, 2)
 
 	// Verify only the successful download was added
 	require.Len(t, mockSync.addTorrentCalls, 1)

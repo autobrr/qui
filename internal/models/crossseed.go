@@ -1595,7 +1595,7 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 // UpsertSearchHistory updates the last searched timestamp for a torrent on an instance.
 func (s *CrossSeedStore) UpsertSearchHistory(ctx context.Context, instanceID int, torrentHash string, searchedAt time.Time) error {
 	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
-		return fmt.Errorf("invalid search history parameters")
+		return errors.New("invalid search history parameters")
 	}
 
 	const query = `
@@ -2061,7 +2061,7 @@ func encodeSearchFilters(filters CrossSeedSearchFilters) (string, error) {
 
 func decodeSearchFilters(src sql.NullString, dest *CrossSeedSearchFilters) error {
 	if dest == nil {
-		return fmt.Errorf("destination cannot be nil")
+		return errors.New("destination cannot be nil")
 	}
 	if !src.Valid || src.String == "" {
 		*dest = CrossSeedSearchFilters{}
@@ -2099,7 +2099,7 @@ type crossSeedSearchResultPayload struct {
 
 func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) error {
 	if dest == nil {
-		return fmt.Errorf("destination cannot be nil")
+		return errors.New("destination cannot be nil")
 	}
 	if !src.Valid || src.String == "" {
 		*dest = []CrossSeedSearchResult{}

@@ -92,7 +92,7 @@ func Create(plan *TreePlan) (*Created, error) {
 	rollbackOnError := func(err error) error {
 		rollbackErr := rollback(createdFiles, createdDirs)
 		if rollbackErr != nil {
-			return fmt.Errorf("%w (rollback also failed: %v)", err, rollbackErr)
+			return fmt.Errorf("%w (rollback also failed: %w)", err, rollbackErr)
 		}
 		return err
 	}
