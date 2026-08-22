@@ -13,8 +13,17 @@ import { FONT_MAP, extractFontName } from "./fontLoader"
 // themes too while CI covers the free set.
 const THEMES_DIR = resolve(import.meta.dirname, "../../../internal/themes/assets")
 
-// CSS generic keywords, UA stacks, and nested variable references never need loading.
-const GENERIC = /^(?:ui-|var\(|serif$|sans-serif$|monospace$)/
+// CSS generic keywords never need loading.
+const GENERIC = /^(?:serif|sans-serif|cursive|fantasy|monospace|system-ui|math|emoji|fangsong|ui-(?:serif|sans-serif|monospace|rounded))$/
+
+describe("generic font family classification", () => {
+  it("matches generic family names exactly", () => {
+    expect(GENERIC.test("system-ui")).toBe(true)
+    expect(GENERIC.test("emoji")).toBe(true)
+    expect(GENERIC.test("fangsong")).toBe(true)
+    expect(GENERIC.test("ui-custom-brand")).toBe(false)
+  })
+})
 
 describe("FONT_MAP", () => {
   it("covers every font family the bundled themes use", () => {
@@ -27,7 +36,9 @@ describe("FONT_MAP", () => {
       const css = readFileSync(join(THEMES_DIR, file), "utf8")
       for (const [, value] of css.matchAll(/--font-(?:sans|serif|mono):\s*([^;]+);/g)) {
         const family = extractFontName(value)
-        if (!GENERIC.test(family) && !(family in FONT_MAP)) {
+        const normalized = family.toLowerCase()
+        const isReference = normalized.startsWith("var(") || normalized.startsWith("generic(")
+        if (!isReference && !GENERIC.test(normalized) && !(family in FONT_MAP)) {
           missing.add(`${family} (${file})`)
         }
       }

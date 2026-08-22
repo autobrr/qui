@@ -47,6 +47,11 @@ export function useThemeSettingsSync(): void {
     retry: false,
   })
 
+  // Stopping the pre-auth poll does not itself fetch after login.
+  useEffect(() => {
+    if (isAuthed) void queryClient.invalidateQueries({ queryKey: ["theme-settings"] })
+  }, [isAuthed, queryClient])
+
   // Pull: apply the stored server selection. Re-runs when the async theme
   // registry lands, since the id may only resolve from then on.
   useEffect(() => {

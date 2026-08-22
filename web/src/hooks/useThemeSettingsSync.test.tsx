@@ -79,6 +79,29 @@ describe("useThemeSettingsSync", () => {
     expect(mockUseActivityStream).toHaveBeenLastCalledWith(true)
   })
 
+  it("refetches and applies settings when authentication succeeds", async () => {
+    themes.push({ id: "free-theme", name: "Free", cssVars: { light: {}, dark: {} } })
+    mockApi.getThemeSettings
+      .mockRejectedValueOnce(new Error("pre-auth request failed"))
+      .mockResolvedValueOnce({ themeId: "free-theme", mode: "dark" })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    renderHook(() => useThemeSettingsSync(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    await waitFor(() => {
+      expect(client.getQueryState(["theme-settings"])?.status).toBe("error")
+    })
+
+    act(() => client.setQueryData(["auth", "user"], { username: "admin" }))
+
+    await waitFor(() => {
+      expect(localStorage.getItem("color-theme")).toBe("free-theme")
+    })
+  })
+
   it("pushes local theme changes to the server", () => {
     renderHook(() => useThemeSettingsSync(), { wrapper })
 
