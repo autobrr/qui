@@ -570,7 +570,7 @@ func NewService(
 	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
 		SetDefaultTTL(5 * time.Minute))
 
-	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	recheckCtx, recheckCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: service-lifetime context, cancelled on shutdown
 	var arrLookup arrLookupService
 	if !isNilARRLookupService(arrService) {
 		arrLookup = arrService
@@ -7628,7 +7628,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 		if enableContentFiltering {
 			if len(capabilityIndexers) > 0 {
-				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
+				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState) //nolint:gosec // G118: async filtering must outlive the request that queued it
 			} else {
 				filteringState.Lock()
 				filteringState.FilteredIndexers = []int{}

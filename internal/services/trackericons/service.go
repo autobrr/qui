@@ -527,12 +527,7 @@ func (s *Service) writePNG(img image.Image, path string) error {
 	}()
 
 	// Write complete buffer atomically
-	if err := os.WriteFile(tmpName, buf.Bytes(), 0o644); err != nil {
-		return err
-	}
-
-	// Ensure final permissions are 0644 regardless of CreateTemp defaults
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	if err := os.WriteFile(tmpName, buf.Bytes(), 0o600); err != nil {
 		return err
 	}
 

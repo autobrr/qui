@@ -773,6 +773,12 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	// Run a lightweight search via the service to validate connectivity
 	// Use CacheModeBypass + SkipHistory + SkipCachePersist to keep test searches from
 	// cluttering search history or persisting a bogus "test" entry into the Torznab result cache.
+	// Detached from the request: SearchGeneric returns as soon as the task is
+	// scheduled, so the request context would cancel the search out from under
+	// itself. The timeout bounds the detached context, and the completion
+	// callback releases it as soon as the search is actually done.
+	testCtx, cancelTest := context.WithTimeout(context.Background(), 30*time.Second) //nolint:gosec // G118: deliberately outlives the request, see above
+
 	testReq := &jackett.TorznabSearchRequest{
 		Query:            "test",
 		Limit:            1,
@@ -781,17 +787,15 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		SkipHistory:      true,
 		SkipCachePersist: true,
 		OnAllComplete: func(*jackett.SearchResponse, error) {
-			// Ignore results for connectivity test
+			// Results are irrelevant for a connectivity test; this is only here
+			// to stop holding the detached context once the search finishes.
+			cancelTest()
 		},
 	}
 
-	// Use a detached context for test searches - the HTTP request lifecycle should not
-	// cancel the scheduler task since SearchGeneric returns immediately after scheduling.
-	// Note: We intentionally don't defer cancel() here because the search is async.
-	// The context will be cleaned up when the timeout expires.
-	testCtx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-
-	err = h.service.SearchGeneric(testCtx, testReq)
+	if err = h.service.SearchGeneric(testCtx, testReq); err != nil {
+		cancelTest()
+	}
 
 	// Update test status in database
 	if err != nil {

@@ -300,7 +300,7 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 		}
 
 		// Compute jitter-adjusted trigger time (non-blocking)
-		jitter := time.Duration(rand.Int63n(int64(s.cfg.MaxJitter)))
+		jitter := time.Duration(rand.Int63n(int64(s.cfg.MaxJitter))) //nolint:gosec // G404: schedule jitter, not a security decision
 		due = append(due, scheduledScan{
 			instanceID: inst.ID,
 			triggerAt:  now.Add(jitter),

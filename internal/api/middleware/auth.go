@@ -98,7 +98,7 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 			if !complete {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusPreconditionRequired)
-				w.Write([]byte(`{"error":"Initial setup required","setup_required":true}`))
+				_, _ = w.Write([]byte(`{"error":"Initial setup required","setup_required":true}`))
 				return
 			}
 

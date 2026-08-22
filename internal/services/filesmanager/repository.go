@@ -226,7 +226,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return fmt.Errorf("failed to defer foreign keys: %w", err)
@@ -356,7 +356,7 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Get the hash ID without creating it if it doesn't exist
 	hashIDs, err := dbinterface.GetStringID(ctx, tx, hash)
@@ -500,7 +500,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern the torrent hash
 	ids, err := dbinterface.InternStrings(ctx, tx, info.TorrentHash)
@@ -543,7 +543,7 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 	if err != nil {
 		return fmt.Errorf("UpsertSyncInfoBatch: failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Collect all hashes to intern
 	hashes := make([]string, len(infos))
@@ -708,7 +708,7 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Create a temporary table for current hashes
 	_, err = tx.ExecContext(ctx, `CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)`)
