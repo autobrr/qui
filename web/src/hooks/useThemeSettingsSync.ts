@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
+import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { getThemeById } from "@/config/themes"
 import { setTheme } from "@/utils/theme"
 import type { ThemeSettings } from "@/types"
@@ -78,7 +79,8 @@ export function useThemeSettingsSync(): void {
       // paints the fallback default, which must not overwrite the server
       // selection; mode changes still sync.
       const themeId = localStorage.getItem("color-theme") ?? theme.id
-      const payload: ThemeSettings = { themeId, mode, ...(variant ? { variation: variant } : {}) }
+      const variation = themeId === theme.id ? variant : getStoredVariation(themeId)
+      const payload: ThemeSettings = { themeId, mode, ...(variation ? { variation } : {}) }
       const serialized = JSON.stringify(payload)
       if (serialized === lastSynced.current) return
       lastSynced.current = serialized

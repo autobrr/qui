@@ -4,11 +4,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { renderHook, cleanup, waitFor } from "@testing-library/react"
+import { renderHook, act, cleanup, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useBuiltinThemes, applyBuiltinThemesPayload } from "./useBuiltinThemes"
 import { getThemeById, themes } from "@/config/themes"
+import type { BuiltinTheme } from "@/types"
 
 const TEST_CSS = `/* @name: Testfree
  * @description: A test theme
@@ -27,7 +28,7 @@ const TEST_CSS = `/* @name: Testfree
 `
 
 const { mockApi, mockSetTheme } = vi.hoisted(() => ({
-  mockApi: { getBuiltinThemes: vi.fn() },
+  mockApi: { getBuiltinThemes: vi.fn<(signal?: AbortSignal) => Promise<{ themes: BuiltinTheme[] }>>() },
   mockSetTheme: vi.fn(() => Promise.resolve()),
 }))
 
@@ -134,6 +135,27 @@ describe("applyBuiltinThemesPayload", () => {
 })
 
 describe("useBuiltinThemes", () => {
+  it("does not register a catalog response after the query is canceled", async () => {
+    let resolveRequest: ((payload: { themes: BuiltinTheme[] }) => void) | undefined
+    mockApi.getBuiltinThemes.mockImplementation((signal?: AbortSignal) => new Promise((resolve, reject) => {
+      resolveRequest = resolve
+      signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true })
+    }))
+
+    const { unmount } = renderHook(() => useBuiltinThemes(), { wrapper })
+    await waitFor(() => expect(resolveRequest).toBeTypeOf("function"))
+
+    unmount()
+    await act(async () => {
+      resolveRequest?.({
+        themes: [{ id: "stale", name: "Stale", premium: false, css: TEST_CSS }],
+      })
+      await Promise.resolve()
+    })
+
+    expect(getThemeById("stale")).toBeUndefined()
+  })
+
   it("registers themes before observers render the committed data", async () => {
     mockApi.getBuiltinThemes.mockResolvedValue({
       themes: [{ id: "testfree", name: "Testfree", premium: false, css: TEST_CSS }],

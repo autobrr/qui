@@ -75,8 +75,8 @@ export function applyBuiltinThemesPayload(payload: { themes: BuiltinTheme[] }): 
 export function useBuiltinThemes() {
   const query = useQuery({
     queryKey: ["builtin-themes"],
-    queryFn: async () => {
-      const payload = await api.getBuiltinThemes()
+    queryFn: async ({ signal }) => {
+      const payload = await api.getBuiltinThemes(signal)
       applyBuiltinThemesPayload(payload)
       return payload
     },

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { setTheme, setThemeMode } from "./theme"
 import { parseCachedTheme, registerBuiltinThemes, registerCustomThemes } from "@/config/themes"
+import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 
 vi.mock("./fontLoader", () => ({ loadThemeFonts: vi.fn() }))
 
@@ -67,6 +68,12 @@ describe("setTheme locked fallback", () => {
     // Hydration and server pulls restore existing state; the sync hook must
     // never push them.
     expect(events).toEqual([true])
+  })
+
+  it("keeps a requested variation while the selected theme is locked", async () => {
+    await setTheme("locked-premium", "dark", "purple", true)
+
+    expect(getStoredVariation("locked-premium")).toBe("purple")
   })
 
   it("keeps the stored selection through a mode toggle on the fallback", async () => {

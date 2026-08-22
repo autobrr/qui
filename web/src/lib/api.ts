@@ -2041,8 +2041,8 @@ class ApiClient {
   }
 
   // Built-in themes (public; premium CSS license-gated server-side)
-  async getBuiltinThemes(): Promise<{ themes: BuiltinTheme[] }> {
-    return this.request("/themes")
+  async getBuiltinThemes(signal?: AbortSignal): Promise<{ themes: BuiltinTheme[] }> {
+    return this.request("/themes", { signal })
   }
 
   // Custom themes (sideloaded CSS files; premium-gated server-side)

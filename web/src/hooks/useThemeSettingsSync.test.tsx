@@ -8,6 +8,7 @@ import { renderHook, act, cleanup, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useThemeSettingsSync } from "./useThemeSettingsSync"
+import { setStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { themes } from "@/config/themes"
 import type { ThemeSettings } from "@/types"
 
@@ -90,10 +91,11 @@ describe("useThemeSettingsSync", () => {
     })
   })
 
-  it("pushes the stored selection, not the applied fallback theme", () => {
+  it("pushes the stored selection and variation, not the applied fallback theme", () => {
     // Mode toggle during the locked-premium fallback: sync the new mode
-    // without replacing the stored selection on the server.
+    // without replacing the stored selection or variation on the server.
     localStorage.setItem("color-theme", "locked-premium")
+    setStoredVariation("locked-premium", "purple")
     renderHook(() => useThemeSettingsSync(), { wrapper })
 
     dispatchThemeChange({ theme: { id: "minimal" }, mode: "dark", isSystemChange: false })
@@ -101,6 +103,7 @@ describe("useThemeSettingsSync", () => {
     expect(mockApi.updateThemeSettings).toHaveBeenCalledExactlyOnceWith({
       themeId: "locked-premium",
       mode: "dark",
+      variation: "purple",
     })
   })
 

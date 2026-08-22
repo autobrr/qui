@@ -310,6 +310,9 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     if (mode) {
       setStoredMode(mode);
     }
+    if (variation) {
+      setStoredVariation(themeId, variation);
+    }
     // Get variation for default theme
     const currentVariation = getThemeVariation(defaultTheme.id);
     if (currentVariation) {
