@@ -140,8 +140,10 @@ func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) 
 
 	rows, err := tx.Query(ctx, `
 		SELECT conrelid::regclass::text, confrelid::regclass::text
-		FROM pg_constraint
-		WHERE contype = 'f'
+		FROM pg_constraint c
+		JOIN pg_namespace n ON n.oid = c.connamespace
+		WHERE c.contype = 'f'
+		  AND n.nspname = current_schema()
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list postgres foreign keys: %w", err)
