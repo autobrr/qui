@@ -531,11 +531,6 @@ func (s *Service) writePNG(img image.Image, path string) error {
 		return err
 	}
 
-	// Ensure final permissions are 0644 regardless of CreateTemp defaults
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		return err
-	}
-
 	// Atomic rename to final location
 	if err := os.Rename(tmpName, path); err != nil {
 		return err
