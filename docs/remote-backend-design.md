@@ -215,7 +215,14 @@ backend domain end to end.
   pinned type, so a key-type change is a mismatch, never a negotiation
   accident. Fingerprints render as `SHA256:` for humans only.
 - A host-key change after pinning fails closed: no automatic re-pin, and
-  no fallback to TOFU if the stored pin is missing or unreadable. The
+  no fallback to TOFU if the stored pin is unreadable — a pin that fails
+  to decrypt is a hard error, never "unpinned". A pin the DB attacker
+  clears outright is a different matter: an empty column is
+  indistinguishable from never-pinned, so that edit costs the attacker a
+  user-facing first-contact confirmation rather than being detectable.
+  Writing the pin is one-shot for the same reason: `SetHostKeyPin`
+  refuses an instance that is already pinned, so replacing a live pin has
+  to be asked for by name from the confirmed-mismatch path. The
   mismatch surfaces both fingerprints and both key types behind a
   confirmation deliberately heavier than first contact, one that names
   interception as a possible cause and points at out-of-band
