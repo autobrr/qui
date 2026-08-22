@@ -964,7 +964,7 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx               context.Context //nolint:containedctx // pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	ctx               context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
 	svc               *Service
 	sourceInstanceID  int
 	sourceHash        string

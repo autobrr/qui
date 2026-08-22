@@ -19,7 +19,7 @@ func TestGetDeviceIDRestrictsExistingFingerprintMode(t *testing.T) {
 	const userID = "user@example.com"
 
 	fingerprintPath := getFingerprintPath(userID, configDir)
-	require.NoError(t, os.WriteFile(fingerprintPath, []byte("existing-fingerprint"), 0o644)) //nolint:gosec // G306: the point of the test is a file that starts out too permissive
+	require.NoError(t, os.WriteFile(fingerprintPath, []byte("existing-fingerprint"), 0o644))
 
 	got, err := GetDeviceID("qui", userID, configDir)
 	require.NoError(t, err)
@@ -37,7 +37,7 @@ func TestPersistFingerprintRestrictsExistingFingerprintMode(t *testing.T) {
 	const userID = "user@example.com"
 
 	fingerprintPath := getFingerprintPath(userID, configDir)
-	require.NoError(t, os.WriteFile(fingerprintPath, nil, 0o644)) //nolint:gosec // G306: the point of the test is a file that starts out too permissive
+	require.NoError(t, os.WriteFile(fingerprintPath, nil, 0o644))
 
 	got, err := GetDeviceID("qui", userID, configDir)
 	require.NoError(t, err)

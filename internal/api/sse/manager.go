@@ -206,7 +206,7 @@ type StreamManager struct {
 	// activity events (and activity heartbeats). One topic per open SSE session.
 	activityTopics map[string]struct{}
 
-	ctx    context.Context //nolint:containedctx // lifecycle root context used only for coordinated shutdown
+	ctx    context.Context // Lifecycle root context used only for coordinated shutdown
 	cancel context.CancelFunc
 }
 

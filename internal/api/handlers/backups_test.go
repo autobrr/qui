@@ -823,7 +823,7 @@ func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
 		err := copyStreamToFile(bytes.NewReader([]byte("second")), destPath)
 		require.ErrorIs(t, err, fs.ErrExist)
 
-		kept, err := os.ReadFile(destPath) //nolint:gosec // G703: a path this test just created under t.TempDir()
+		kept, err := os.ReadFile(destPath)
 		require.NoError(t, err)
 		assert.Equal(t, "first", string(kept), "the existing file must survive")
 	})
@@ -839,7 +839,7 @@ func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
 
 		require.ErrorIs(t, extractZipFileToDisk(reader.File[0], destPath), fs.ErrExist)
 
-		kept, err := os.ReadFile(destPath) //nolint:gosec // G703: a path this test just created under t.TempDir()
+		kept, err := os.ReadFile(destPath)
 		require.NoError(t, err)
 		assert.Equal(t, "first", string(kept), "the existing file must survive")
 	})
