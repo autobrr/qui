@@ -128,7 +128,8 @@ func copyStreamToFile(src io.Reader, destPath string) error {
 		return fmt.Errorf("create directory: %w", err)
 	}
 
-	f, err := os.Create(destPath)
+	//nolint:gosec // G703: destPath is built from safeArchiveEntryPath output joined onto a temp dir, and O_EXCL refuses an existing file
+	f, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
@@ -743,6 +744,14 @@ func (h *BackupsHandler) ImportManifest(w http.ResponseWriter, r *http.Request) 
 	RespondJSON(w, http.StatusCreated, run)
 }
 
+// archiveEntryBaseName classifies an archive entry by its final element.
+// Entry names are slash-delimited by the zip and tar specs, so filepath.Base
+// only agrees with that on Windows: on Linux it would read "b\\manifest.json"
+// as one long filename and quietly skip the entry.
+func archiveEntryBaseName(name string) string {
+	return strings.ToLower(path.Base(strings.ReplaceAll(name, `\`, "/")))
+}
+
 // safeArchiveEntryPath converts a slash-delimited archive entry name into the
 // local relative path to extract it to, or "" when the entry escapes the
 // extraction directory. Entry names come from an untrusted archive, so this
@@ -798,7 +807,9 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 	// differ only in slash style resolve to one destination. Extracting both
 	// would leave the second entry's bytes sitting under the first entry's name.
 	// The manifest is matched on basename, so it collides the same way and is
-	// guarded separately below.
+	// guarded separately below. Claims are folded to lower case because a
+	// destination differing only in case is the same file on Windows and on a
+	// default macOS volume, and the writers refuse to overwrite as a backstop.
 	claimed := make(map[string]string)
 
 	for _, file := range reader.File {
@@ -807,7 +818,7 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 		}
 
 		name := file.Name
-		baseName := strings.ToLower(filepath.Base(name))
+		baseName := archiveEntryBaseName(name)
 
 		if baseName == "manifest.json" {
 			if result.ManifestPath != "" {
@@ -826,11 +837,12 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
-			if previous, ok := claimed[destPath]; ok {
+			claim := strings.ToLower(destPath)
+			if previous, ok := claimed[claim]; ok {
 				cleanup()
 				return nil, fmt.Errorf("archive entries %q and %q extract to the same path", previous, name)
 			}
-			claimed[destPath] = name
+			claimed[claim] = name
 			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 				cleanup()
 				return nil, fmt.Errorf("create dir: %w", err)
@@ -863,7 +875,8 @@ func extractZipFileToDisk(zf *zip.File, destPath string) error {
 		return err
 	}
 
-	destFile, err := os.Create(destPath)
+	//nolint:gosec // G703: destPath is built from safeArchiveEntryPath output joined onto a temp dir, and O_EXCL refuses an existing file
+	destFile, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -980,7 +993,7 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 		}
 
 		name := header.Name
-		baseName := strings.ToLower(filepath.Base(name))
+		baseName := archiveEntryBaseName(name)
 
 		if baseName == "manifest.json" {
 			if result.ManifestPath != "" {
@@ -1001,11 +1014,12 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
-			if previous, ok := claimed[destPath]; ok {
+			claim := strings.ToLower(destPath)
+			if previous, ok := claimed[claim]; ok {
 				cleanup()
 				return nil, fmt.Errorf("archive entries %q and %q extract to the same path", previous, name)
 			}
-			claimed[destPath] = name
+			claimed[claim] = name
 			if err := copyStreamToFile(tarReader, destPath); err != nil {
 				cleanup()
 				return nil, fmt.Errorf("extract %s: %w", name, err)
