@@ -6,7 +6,6 @@
 export interface ThemeMetadata {
   name: string;
   description?: string;
-  isPremium?: boolean;
   variations?: string;
   lightOnly?: boolean;
 }
@@ -62,7 +61,6 @@ export function parseThemeCSS(cssContent: string): ParsedTheme | null {
  * Expected format:
  * /* @name: Theme Name
  *  * @description: Theme description
- *  * @premium: true/false
  *  * @lightOnly: true/false (optional)
  *  * @variations: orange, blue, green (optional)
  *  */
@@ -74,7 +72,6 @@ function extractMetadata(cssContent: string): ThemeMetadata {
   // Extract individual metadata fields for more flexible parsing
   const nameMatch = cssContent.match(/@name:\s*(.+?)(?:\s*\n|\s*\*)/);
   const descMatch = cssContent.match(/@description:\s*(.+?)(?:\s*\n|\s*\*)/);
-  const premiumMatch = cssContent.match(/@premium:\s*(true|false)/);
   const lightOnlyMatch = cssContent.match(/@lightOnly:\s*(true|false)/);
   const variationsMatch = cssContent.match(/@variations:\s*(.+?)(?:\s*\n|\s*\*\/)/);
 
@@ -83,9 +80,6 @@ function extractMetadata(cssContent: string): ThemeMetadata {
   }
   if (descMatch) {
     metadata.description = descMatch[1].trim();
-  }
-  if (premiumMatch) {
-    metadata.isPremium = premiumMatch[1] === "true";
   }
   if (lightOnlyMatch) {
     metadata.lightOnly = lightOnlyMatch[1] === "true";
@@ -152,14 +146,4 @@ function extractCSSVariables(cssContent: string, selector: string): Record<strin
   }
 
   return Object.keys(variables).length > 0 ? variables : null;
-}
-
-/**
- * Generate a theme ID from the theme name
- */
-export function generateThemeId(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
 }

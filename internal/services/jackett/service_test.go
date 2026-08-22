@@ -3453,3 +3453,188 @@ func TestSearchIndexersWithSchedulerDedupExcludedFromFailureThreshold(t *testing
 		t.Fatal("first RSS search never completed after release")
 	}
 }
+
+// TestSearchIDDrivenMovieCategoryBehavior pins the outbound Torznab request for an
+// ID-driven movie search. An indexer that can search by IMDb ID must receive the ID
+// alone, without a query or a category filter that could hide a correctly matching
+// release stored outside the mapped category. An indexer without that capability
+// falls back to the title search and keeps its mapped category.
+func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities []string
+		noStoredCats bool
+		wantQuery    string
+		wantCategory string
+		wantIMDbID   string
+	}{
+		{
+			name:         "supported ID omits query and category",
+			capabilities: []string{"movie-search", "movie-search-imdbid"},
+			wantIMDbID:   "1234567",
+		},
+		{
+			name:         "unsupported ID restores title and category",
+			capabilities: []string{"movie-search"},
+			wantQuery:    "Synthetic Documentary",
+			wantCategory: "2000",
+		},
+		{
+			name:         "unsupported ID falls back without stored categories",
+			capabilities: []string{"movie-search"},
+			noStoredCats: true,
+			wantQuery:    "Synthetic Documentary",
+			wantCategory: "2000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outboundCh := make(chan url.Values, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				query := r.URL.Query()
+				if query.Get("t") == "caps" {
+					// An indexer with no stored categories triggers a caps fetch first.
+					// Answer without categories so it stays category-blind.
+					w.Header().Set("Content-Type", "application/xml")
+					if _, writeErr := w.Write([]byte(`<caps><categories/></caps>`)); writeErr != nil {
+						t.Errorf("write caps response: %v", writeErr)
+					}
+					return
+				}
+				select {
+				case outboundCh <- query:
+				default:
+				}
+				w.Header().Set("Content-Type", "application/rss+xml")
+				if _, writeErr := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); writeErr != nil {
+					t.Errorf("write RSS response: %v", writeErr)
+				}
+			}))
+			defer server.Close()
+
+			indexer := &models.TorznabIndexer{
+				ID:             1,
+				Name:           "Synthetic Prowlarr Indexer",
+				BaseURL:        server.URL,
+				Backend:        models.TorznabBackendProwlarr,
+				IndexerID:      "7",
+				Enabled:        true,
+				TimeoutSeconds: 5,
+				Capabilities:   tt.capabilities,
+				Categories: []models.TorznabIndexerCategory{
+					{CategoryID: CategoryMovies},
+				},
+			}
+			if tt.noStoredCats {
+				indexer.Categories = nil
+			}
+			service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
+
+			done := make(chan error, 1)
+			req := &TorznabSearchRequest{
+				Query:           "Synthetic Documentary",
+				Categories:      []int{CategoryMovies},
+				IMDbID:          "tt1234567",
+				OmitQueryForIDs: true,
+				IndexerIDs:      []int{1},
+				OnAllComplete: func(_ *SearchResponse, err error) {
+					done <- err
+				},
+			}
+
+			if err := service.Search(context.Background(), req); err != nil {
+				t.Fatalf("Search() error = %v", err)
+			}
+
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("search completed with error: %v", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for search to complete")
+			}
+
+			var outbound url.Values
+			select {
+			case outbound = <-outboundCh:
+			case <-time.After(time.Second):
+				t.Fatal("timed out waiting for the outbound request")
+			}
+
+			if got := outbound.Get("t"); got != "movie" {
+				t.Fatalf("t = %q, want movie", got)
+			}
+			if got := outbound.Get("q"); got != tt.wantQuery {
+				t.Fatalf("q = %q, want %q", got, tt.wantQuery)
+			}
+			if got := outbound.Get("cat"); got != tt.wantCategory {
+				t.Fatalf("cat = %q, want %q", got, tt.wantCategory)
+			}
+			if got := outbound.Get("imdbid"); got != tt.wantIMDbID {
+				t.Fatalf("imdbid = %q, want %q", got, tt.wantIMDbID)
+			}
+		})
+	}
+}
+
+// TestApplyIndexerRestrictionsKeepsContentTypeRouting locks the capability gate that
+// keeps a search on indexers of the correct content type. Omitting categories from an
+// ID-driven request must not let a TV or music search reach a movie-only indexer.
+func TestApplyIndexerRestrictionsKeepsContentTypeRouting(t *testing.T) {
+	tests := []struct {
+		name         string
+		searchMode   string
+		capabilities []string
+		params       map[string]string
+		wantSkip     bool
+	}{
+		{
+			name:         "TV rejects movie-only indexer",
+			searchMode:   "tvsearch",
+			capabilities: []string{"movie-search", "movie-search-imdbid"},
+			params:       map[string]string{"tvdbid": "123456"},
+			wantSkip:     true,
+		},
+		{
+			name:         "TV accepts TV indexer",
+			searchMode:   "tvsearch",
+			capabilities: []string{"tv-search", "tv-search-tvdbid"},
+			params:       map[string]string{"tvdbid": "123456"},
+		},
+		{
+			name:         "music rejects movie-only indexer",
+			searchMode:   "music",
+			capabilities: []string{"movie-search"},
+			params:       map[string]string{"q": "Synthetic Artist Synthetic Album", "artist": "Synthetic Artist", "album": "Synthetic Album"},
+			wantSkip:     true,
+		},
+		{
+			name:         "music accepts music indexer",
+			searchMode:   "music",
+			capabilities: []string{"music-search"},
+			params:       map[string]string{"q": "Synthetic Artist Synthetic Album", "artist": "Synthetic Artist", "album": "Synthetic Album"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(&mockTorznabIndexerStore{})
+			indexer := &models.TorznabIndexer{
+				ID:           1,
+				Name:         "Synthetic Indexer",
+				Capabilities: tt.capabilities,
+			}
+			meta := &searchContext{searchMode: tt.searchMode}
+
+			skip, rateLimited := service.applyIndexerRestrictions(context.Background(), nil, indexer, "", meta, maps.Clone(tt.params))
+			if skip != tt.wantSkip {
+				t.Fatalf("skip = %v, want %v", skip, tt.wantSkip)
+			}
+			if rateLimited {
+				t.Fatalf("rateLimited = true, want false")
+			}
+		})
+	}
+}

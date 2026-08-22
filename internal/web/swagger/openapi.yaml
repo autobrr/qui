@@ -3071,6 +3071,50 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/themes:
+    get:
+      tags:
+        - Themes
+      summary: List built-in themes
+      description: List every built-in theme. Free themes always include their CSS. On a licensed instance, premium themes include CSS for an authenticated caller; an unauthenticated caller only receives the selected theme's CSS so the login page can paint, and every other premium theme is a locked stub with preview colors. Without a license every premium theme is a locked stub. Public endpoint, no authentication required.
+      security: []
+      responses:
+        '200':
+          description: Built-in themes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        premium:
+                          type: boolean
+                        css:
+                          type: string
+                          description: Full theme CSS. Absent on locked premium entries.
+                        preview:
+                          type: object
+                          description: Swatch colors for locked premium entries.
+                          properties:
+                            light:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            dark:
+                              type: object
+                              additionalProperties:
+                                type: string
+
   /api/themes/custom:
     get:
       tags:
@@ -3108,7 +3152,8 @@ paths:
       tags:
         - Themes
       summary: Get stored theme selection
-      description: Get the theme selection stored in the database. Returns null when no selection is stored.
+      description: Get the theme selection stored in the database. Returns null when no selection is stored. Public endpoint, no authentication required, so the login page can apply the selected theme.
+      security: []
       responses:
         '200':
           description: Stored theme selection, or null when none is stored
@@ -3123,7 +3168,7 @@ paths:
       tags:
         - Themes
       summary: Store theme selection
-      description: Store the theme selection in the database. Requires premium access.
+      description: Store the theme selection in the database.
       requestBody:
         required: true
         content:
@@ -3139,10 +3184,8 @@ paths:
                 $ref: '#/components/schemas/ThemeSettings'
         '400':
           description: Invalid payload, missing themeId, or invalid mode
-        '403':
-          description: Premium access required
         '500':
-          description: Failed to check premium access or save theme settings
+          description: Failed to save theme settings
 
   /api/torrents/export:
     post:

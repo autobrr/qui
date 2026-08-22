@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-// Map of font names to their Google Fonts URLs
-const FONT_MAP: Record<string, string> = {
+// Map of font names to their Google Fonts URLs. Exported for fontLoader.test.ts.
+export const FONT_MAP: Record<string, string> = {
   // Sans fonts
   "Inter": "Inter:wght@300;400;500;600;700",
   "Montserrat": "Montserrat:wght@300;400;500;600;700",
   "Poppins": "Poppins:wght@300;400;500;600;700",
+  "Outfit": "Outfit:wght@300;400;500;600;700",
+  "Geist": "Geist:wght@300;400;500;600;700",
 
   // Serif fonts
   "Georgia": "", // System font, no need to load
@@ -19,14 +21,20 @@ const FONT_MAP: Record<string, string> = {
   "JetBrains Mono": "JetBrains+Mono:wght@300;400;500;600;700",
   "Fira Code": "Fira+Code:wght@300;400;500;600;700",
   "Source Code Pro": "Source+Code+Pro:wght@300;400;500;600;700",
+  "Roboto Mono": "Roboto+Mono:wght@300;400;500;600;700",
   "Courier New": "", // System font, no need to load
+  "Tahoma": "", // System font, no need to load
+  "Times New Roman": "", // System font, no need to load
+  "Aptos": "", // System font, no need to load
+  "Cambria": "", // System font, no need to load
+  "Consolas": "", // System font, no need to load
 };
 
 // Keep track of loaded fonts to avoid duplicates
 const loadedFonts = new Set<string>();
 
-// Extract font name from font family string
-function extractFontName(fontFamily: string): string {
+// Extract font name from font family string. Exported for fontLoader.test.ts.
+export function extractFontName(fontFamily: string): string {
   // Remove fallback fonts and quotes
   const match = fontFamily.match(/^["']?([^,"']+)/);
   return match ? match[1].trim() : "";

@@ -91,6 +91,7 @@ type Server struct {
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	activityHub                      *activity.Hub
 }
 
 type Dependencies struct {
@@ -199,6 +200,7 @@ func NewServer(deps *Dependencies) *Server {
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		activityHub:                      deps.ActivityHub,
 	}
 
 	return &s
@@ -356,7 +358,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
+		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
+		return s.config.Config.IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
+	}, s.activityHub)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,
@@ -409,6 +414,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			}
 		})
 
+		// Built-in theme catalog and stored selection: public so the login
+		// page can paint the selected theme before auth. Premium CSS is
+		// license-gated inside; writes stay authenticated.
+		r.Get("/themes", themesHandler.ListThemes)
+		r.Get("/themes/settings", themesHandler.GetThemeSettings)
+
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 
@@ -437,8 +448,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Sideloaded custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
 
-			// Persisted theme selection (writes premium-gated inside the handler)
-			r.Get("/themes/settings", themesHandler.GetThemeSettings)
+			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
 
 			// Jackett routes (if configured)

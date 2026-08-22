@@ -6,12 +6,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { themes, isThemePremium, type Theme } from "@/config/themes"
+import { themes, getThemeById, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
-import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -163,36 +163,24 @@ export function ThemeSelector() {
     isError: customThemesError,
     refetch: refetchCustomThemes,
   } = useCustomThemes()
+  // Subscribe so the picker re-renders when the async theme registry lands.
+  const builtins = useBuiltinThemes()
 
-  const canSwitchPremium = canSwitchToPremiumTheme({
-    hasPremiumAccess,
-    isError,
-    isLoading,
-  })
-
-  const isThemeLicensed = (themeId: string) => {
-    if (!isThemePremium(themeId)) return true // Free themes are always available
-    return canSwitchPremium
-  }
+  // The server is the authority: a premium theme without a license arrives as
+  // a locked stub with no CSS, so the locked flag is the gate.
+  const isThemeUnlocked = (themeId: string) => !getThemeById(themeId)?.locked
 
   const premiumThemes = themes.filter(theme => theme.isPremium)
   const themeCatalog = buildThemeCatalog(themes, customThemes)
 
   const showThemeLockedToast = () => {
-    if (isError) {
-      toast.error(t("themes.toasts.verifyFailed"), {
-        description: t("themes.toasts.verifyFailedDescription"),
-      })
-      return
-    }
-
     toast.error(t("themes.toasts.premiumRequired"), {
       description: t("themes.toasts.premiumRequiredDescription"),
     })
   }
 
   const handleThemeSelect = (themeId: string) => {
-    if (isThemeLicensed(themeId)) {
+    if (isThemeUnlocked(themeId)) {
       setTheme(themeId)
     } else {
       showThemeLockedToast()
@@ -200,7 +188,7 @@ export function ThemeSelector() {
   }
 
   const handleVariationSelect = (themeId: string, variationId: string) => {
-    if (isThemeLicensed(themeId)) {
+    if (isThemeUnlocked(themeId)) {
       setTheme(themeId)
       setVariation(variationId)
     } else {
@@ -247,7 +235,7 @@ export function ThemeSelector() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4 px-4">
-        {isError && !canSwitchPremium && (
+        {isError && !hasPremiumAccess && (
           <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
             <WifiOff className="h-4 w-4 flex-shrink-0" />
             <p className="text-sm">
@@ -256,7 +244,7 @@ export function ThemeSelector() {
           </div>
         )}
 
-        {premiumThemes.length === 0 && (
+        {builtins.isSuccess && premiumThemes.length === 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed p-3">
             <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 dark:border-orange-800 dark:bg-orange-950/20 dark:text-orange-400">
               <AlertTriangle className="mr-1 h-3 w-3" />
@@ -281,7 +269,7 @@ export function ThemeSelector() {
               key={theme.id}
               theme={theme}
               isSelected={currentTheme === theme.id}
-              isLocked={!isThemeLicensed(theme.id)}
+              isLocked={!isThemeUnlocked(theme.id)}
               onSelect={() => handleThemeSelect(theme.id)}
               onVariationSelect={handleVariationSelect}
             />
