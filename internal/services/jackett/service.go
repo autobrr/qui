@@ -2446,47 +2446,40 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		}
 	}
 
-	// If no categories requested, continue with search
-	if len(requested) == 0 {
-		return false, false
-	}
+	// Map the requested categories onto this indexer. Nothing to map means the params
+	// keep the categories they were built with; the capability handling below still runs.
+	if len(requested) > 0 && len(idx.Categories) > 0 {
+		mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
 
-	// If indexer has no categories stored, continue (will use requested categories as-is)
-	if len(idx.Categories) == 0 {
-		return false, false
-	}
+		// Filter mapped categories through indexer's supported categories
+		filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
+		if !ok {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Ints("requested_categories", requested).
+				Ints("mapped_categories", mappedCategories).
+				Msg("Skipping torznab indexer due to unsupported categories")
+			return true, false
+		}
 
-	// Map requested categories to what this indexer actually supports
-	mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
+		// Update the params with the filtered categories
+		params["cat"] = formatCategoryList(filtered)
 
-	// Filter mapped categories through indexer's supported categories
-	filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
-	if !ok {
 		log.Debug().
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Ints("requested_categories", requested).
 			Ints("mapped_categories", mappedCategories).
-			Msg("Skipping torznab indexer due to unsupported categories")
-		return true, false
+			Ints("filtered_categories", filtered).
+			Msg("Applied category mapping and filtering for indexer")
 	}
-
-	// Update the params with the filtered categories
-	params["cat"] = formatCategoryList(filtered)
-
-	log.Debug().
-		Int("indexer_id", idx.ID).
-		Str("indexer", idx.Name).
-		Ints("requested_categories", requested).
-		Ints("mapped_categories", mappedCategories).
-		Ints("filtered_categories", filtered).
-		Msg("Applied category mapping and filtering for indexer")
 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
-	// Drop the category filter again for an ID-driven search, but only while this
-	// indexer still has an ID to search by. applyCapabilitySpecificParams above prunes
+	// Drop the category filter for an ID-driven search, but only while this indexer
+	// still has an ID to search by. applyCapabilitySpecificParams above prunes
 	// unsupported IDs and restores the title query; that fallback keeps its category.
 	if meta != nil && meta.omitCategoriesForIDs && hasTorznabIDParams(params) {
 		delete(params, "cat")
@@ -3048,17 +3041,16 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 		params.Set("limit", strconv.Itoa(req.Limit))
 	}
 
-	// Omit the q and cat parameters when doing an ID-driven search (for cross-seed).
-	// This lets the IDs drive matching. A category filter would hide a release the ID
-	// matches but the tracker files outside the mapped category.
+	// Omit q parameter when doing ID-driven search (for cross-seed) so the IDs drive
+	// matching. applyIndexerRestrictions drops cat per-indexer, keeping it for any
+	// indexer that has to fall back to the title search.
 	if req.OmitQueryForIDs {
 		hasIDs := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0
 		if hasIDs && (mode == "movie" || mode == "tvsearch") {
 			params.Del("q")
-			params.Del("cat")
 			log.Debug().
 				Str("search_mode", mode).
-				Msg("Omitting q and cat parameters for ID-driven search")
+				Msg("Omitting q parameter for ID-driven search")
 		}
 	}
 

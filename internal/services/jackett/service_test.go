@@ -3463,6 +3463,7 @@ func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
 	tests := []struct {
 		name         string
 		capabilities []string
+		noStoredCats bool
 		wantQuery    string
 		wantCategory string
 		wantIMDbID   string
@@ -3478,14 +3479,31 @@ func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
 			wantQuery:    "Synthetic Documentary",
 			wantCategory: "2000",
 		},
+		{
+			name:         "unsupported ID falls back without stored categories",
+			capabilities: []string{"movie-search"},
+			noStoredCats: true,
+			wantQuery:    "Synthetic Documentary",
+			wantCategory: "2000",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			outboundCh := make(chan url.Values, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				query := r.URL.Query()
+				if query.Get("t") == "caps" {
+					// An indexer with no stored categories triggers a caps fetch first.
+					// Answer without categories so it stays category-blind.
+					w.Header().Set("Content-Type", "application/xml")
+					if _, writeErr := w.Write([]byte(`<caps><categories/></caps>`)); writeErr != nil {
+						t.Errorf("write caps response: %v", writeErr)
+					}
+					return
+				}
 				select {
-				case outboundCh <- r.URL.Query():
+				case outboundCh <- query:
 				default:
 				}
 				w.Header().Set("Content-Type", "application/rss+xml")
@@ -3507,6 +3525,9 @@ func TestSearchIDDrivenMovieCategoryBehavior(t *testing.T) {
 				Categories: []models.TorznabIndexerCategory{
 					{CategoryID: CategoryMovies},
 				},
+			}
+			if tt.noStoredCats {
+				indexer.Categories = nil
 			}
 			service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
 
