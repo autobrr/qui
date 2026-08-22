@@ -9353,6 +9353,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					// indexers that missed it, leave the rest untouched.
 					coveredIndexerIDs = subtractInts(coveredIndexerIDs, subtractInts(idIndexerIDs, idResp.CoveredIndexerIDs))
 					if len(idResp.Results) > 0 {
+						// These results came from an ID query, so the "searched
+						// by title only" degradation notice no longer holds.
+						queryDegraded = ""
 						log.Debug().
 							Str("torrentName", sourceTorrent.Name).
 							Int("idResults", len(idResp.Results)).

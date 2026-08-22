@@ -159,12 +159,16 @@ func TestLargestMKVPath(t *testing.T) {
 	writeFile("Show/episode1.mkv", 10)
 	writeFile("Show/episode2.mkv", 30)
 	writeFile("Show/sample.mp4", 100)
+	// A deselected file can exist on disk as a stub at the declared size;
+	// its Progress < 1 must exclude it even though it is the largest mkv.
+	writeFile("Show/stub.mkv", 500)
 
 	files := qbt.TorrentFiles{
-		{Name: "Show/episode1.mkv", Size: 10},
-		{Name: "Show/episode2.mkv", Size: 30},
-		{Name: "Show/sample.mp4", Size: 100},
-		{Name: "Show/missing.mkv", Size: 999},
+		{Name: "Show/episode1.mkv", Size: 10, Progress: 1},
+		{Name: "Show/episode2.mkv", Size: 30, Progress: 1},
+		{Name: "Show/sample.mp4", Size: 100, Progress: 1},
+		{Name: "Show/missing.mkv", Size: 999, Progress: 1},
+		{Name: "Show/stub.mkv", Size: 500, Progress: 0.4},
 	}
 
 	got := largestMKVPath(dir, files)
@@ -216,7 +220,7 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 	}
 	instance := &models.Instance{HasLocalFilesystemAccess: true}
 	torrent := &qbt.Torrent{Name: "Movie.2024.1080p.WEB-DL-GROUP", Hash: "ABC123", SavePath: dir}
-	files := qbt.TorrentFiles{{Name: "movie.mkv", Size: 10}}
+	files := qbt.TorrentFiles{{Name: "movie.mkv", Size: 10, Progress: 1}}
 	return svc, cache, instance, torrent, files, &analyzeCalls
 }
 

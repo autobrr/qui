@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -33,16 +35,28 @@ const mediaIDWiringSourceHash = "14a238e56ab06fed600c38d5068998d95e9338c2"
 func TestMediaIDRetrySkipsNonIDIndexers(t *testing.T) {
 	const sourceName = "Signal.Static.1997.1080p.BluRay.DD5.1.x264-FIELDTEST"
 
+	// The ID query returns one (junk) candidate so the flow can observe a
+	// nonempty ID-assisted result set; title queries return nothing.
 	newRecorder := func(requests *[]url.Values, mu *sync.Mutex) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Query().Get("t") != "caps" {
+		var server *httptest.Server
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query()
+			if q.Get("t") != "caps" {
 				mu.Lock()
-				*requests = append(*requests, r.URL.Query())
+				*requests = append(*requests, q)
 				mu.Unlock()
 			}
-			w.Header().Set("Content-Type", "application/xml")
+			w.Header().Set("Content-Type", "application/rss+xml")
+			if q.Get("imdbid") != "" {
+				_, _ = fmt.Fprintf(w, `<rss version="2.0"><channel><title>Indexer</title><item>
+					<title>Contact.1997.1080p.BluRay.x264-OTHER</title><guid>id-hit</guid><size>4000000</size>
+					<enclosure url="%s/candidate.torrent" length="4000000" type="application/x-bittorrent" />
+				</item></channel></rss>`, server.URL)
+				return
+			}
 			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel></channel></rss>`))
 		}))
+		return server
 	}
 
 	var mu sync.Mutex
@@ -64,7 +78,7 @@ func TestMediaIDRetrySkipsNonIDIndexers(t *testing.T) {
 		SavePath: saveDir,
 		Tracker:  "https://example.invalid/announce",
 	}
-	sourceFiles := qbt.TorrentFiles{{Name: sourceName + "/" + sourceName + ".mkv", Size: 10}}
+	sourceFiles := qbt.TorrentFiles{{Name: sourceName + "/" + sourceName + ".mkv", Size: 10, Progress: 1}}
 
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, "crossseed-mediainfo-retry-wiring")
@@ -77,6 +91,9 @@ func TestMediaIDRetrySkipsNonIDIndexers(t *testing.T) {
 	movieCategories := []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 2000, CategoryName: "Movies"}}
 	svc := &Service{
 		instanceStore: instanceStore,
+		// ARR knows the title but has no IDs: the search starts degraded
+		// (arr_no_ids) and a successful ID retry must clear that notice.
+		arrService: &spyARRLookupService{result: &arr.ExternalIDsResult{}},
 		jackettService: jackett.NewService(&gettableIndexerStore{failingEnabledIndexerStore{indexers: []*models.TorznabIndexer{
 			{
 				ID:           1,
@@ -114,8 +131,10 @@ func TestMediaIDRetrySkipsNonIDIndexers(t *testing.T) {
 		},
 	}
 
-	_, _, _, err = svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}}, nil)
+	resp, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}}, nil)
 	require.NoError(t, err)
+	require.Empty(t, resp.QueryDegraded,
+		"a successful ID retry must clear the searched-by-title-only notice")
 
 	mu.Lock()
 	defer mu.Unlock()
