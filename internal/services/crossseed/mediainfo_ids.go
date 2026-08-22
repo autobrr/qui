@@ -67,8 +67,9 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 	analyze := s.analyzeMediaFile
 	if analyze == nil {
 		analyze = func(path string) (mediainfo.Report, error) {
+			// Speed 0 skips codec/cluster probing; the Matroska Tags reads are ParseSpeed-independent.
 			// #nosec G304 -- path is constructed from the instance save path via resolveLocalTorrentFile.
-			return mediainfo.AnalyzeFile(path, mediainfo.WithParseSpeed(0.5))
+			return mediainfo.AnalyzeFile(path, mediainfo.WithParseSpeed(0))
 		}
 	}
 
@@ -118,12 +119,17 @@ func mediaIDsToExternalIDs(idType, idValue string) *models.ExternalIDs {
 // .mkv file, or "" when none resolves. qBittorrent returns files in stable
 // index order, so the pick is deterministic.
 func largestMKVPath(savePath string, files qbt.TorrentFiles) string {
+	// Filter first: forEachLocalTorrentFile stats every file it visits.
+	var mkvs qbt.TorrentFiles
+	for _, file := range files {
+		if strings.HasSuffix(strings.ToLower(file.Name), ".mkv") {
+			mkvs = append(mkvs, file)
+		}
+	}
+
 	var bestPath string
 	var bestSize int64
-	forEachLocalTorrentFile(savePath, files, func(file qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
-		if !strings.HasSuffix(strings.ToLower(file.Name), ".mkv") {
-			return true
-		}
+	forEachLocalTorrentFile(savePath, mkvs, func(file qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
 		if file.Size > bestSize {
 			bestPath = fullPath
 			bestSize = file.Size
