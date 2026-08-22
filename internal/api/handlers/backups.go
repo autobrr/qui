@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
@@ -809,7 +810,9 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 	// The manifest is matched on basename, so it collides the same way and is
 	// guarded separately below. Claims are folded to lower case because a
 	// destination differing only in case is the same file on Windows and on a
-	// default macOS volume, and the writers refuse to overwrite as a backstop.
+	// default macOS volume. The writers open with O_EXCL as the backstop for
+	// whatever else a filesystem folds together, and fs.ErrExist from that is
+	// reported as the collision it is rather than as a create failure.
 	claimed := make(map[string]string)
 
 	for _, file := range reader.File {
@@ -849,6 +852,9 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 			}
 			if err := extractZipFileToDisk(file, destPath); err != nil {
 				cleanup()
+				if errors.Is(err, fs.ErrExist) {
+					return nil, fmt.Errorf("archive entry %q extracts onto a path another entry already wrote", name)
+				}
 				return nil, fmt.Errorf("extract %s: %w", name, err)
 			}
 			result.TorrentPaths[name] = destPath
@@ -1022,6 +1028,9 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 			claimed[claim] = name
 			if err := copyStreamToFile(tarReader, destPath); err != nil {
 				cleanup()
+				if errors.Is(err, fs.ErrExist) {
+					return nil, fmt.Errorf("archive entry %q extracts onto a path another entry already wrote", name)
+				}
 				return nil, fmt.Errorf("extract %s: %w", name, err)
 			}
 			result.TorrentPaths[name] = destPath

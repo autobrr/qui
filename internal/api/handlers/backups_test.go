@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -808,5 +809,38 @@ func TestExtractAcceptsDistinctEntryNames(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = os.RemoveAll(extracted.TempDir) })
 		assert.Len(t, extracted.TorrentPaths, 2)
+	})
+}
+
+// The claim map catches destinations that collide as strings, case folded. The
+// writers are the backstop for whatever else a filesystem folds together, so
+// they must refuse an existing destination rather than truncate it.
+func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
+	t.Run("copyStreamToFile", func(t *testing.T) {
+		destPath := filepath.Join(t.TempDir(), "one.torrent")
+		require.NoError(t, os.WriteFile(destPath, []byte("first"), 0o600))
+
+		err := copyStreamToFile(bytes.NewReader([]byte("second")), destPath)
+		require.ErrorIs(t, err, fs.ErrExist)
+
+		kept, err := os.ReadFile(destPath) //nolint:gosec // G703: a path this test just created under t.TempDir()
+		require.NoError(t, err)
+		assert.Equal(t, "first", string(kept), "the existing file must survive")
+	})
+
+	t.Run("extractZipFileToDisk", func(t *testing.T) {
+		archivePath := buildTestZip(t, []archiveEntry{{name: "one.torrent", body: []byte("second")}})
+		reader, err := zip.OpenReader(archivePath)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = reader.Close() })
+
+		destPath := filepath.Join(t.TempDir(), "one.torrent")
+		require.NoError(t, os.WriteFile(destPath, []byte("first"), 0o600))
+
+		require.ErrorIs(t, extractZipFileToDisk(reader.File[0], destPath), fs.ErrExist)
+
+		kept, err := os.ReadFile(destPath) //nolint:gosec // G703: a path this test just created under t.TempDir()
+		require.NoError(t, err)
+		assert.Equal(t, "first", string(kept), "the existing file must survive")
 	})
 }
