@@ -114,3 +114,43 @@ func TestAlternateTitleQuery(t *testing.T) {
 		})
 	}
 }
+
+// TestSubtitleTitleQuery pins the guard boundary: a numbered season or
+// episode is skipped, a seasonless pack (Type flipped to Series by file
+// inspection, Series still 0) keeps its subtitle. Widening the guard to
+// isTVRelease must fail here.
+func TestSubtitleTitleQuery(t *testing.T) {
+	tests := []struct {
+		name        string
+		releaseName string
+		packFlip    bool // simulate deriveSourceReleaseForSearch: Type=Series, Episode=0
+		want        string
+	}{
+		{
+			name:        "seasonless pack keeps its subtitle",
+			releaseName: "Frontier.Cartographers.2021.Emerald.Arc.1080p.WEB.h264-GRP",
+			packFlip:    true,
+			want:        "Frontier Cartographers Emerald Arc",
+		},
+		{
+			name:        "numbered season pack is skipped",
+			releaseName: "Frontier.Cartographers.S02.Emerald.Arc.1080p.WEB.h264-GRP",
+			want:        "",
+		},
+		{
+			name:        "absolute-numbered episode is skipped",
+			releaseName: "Frontier.Cartographers.E07.Emerald.Arc.1080p.WEB.h264-GRP",
+			want:        "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			release := rls.ParseString(tt.releaseName)
+			if tt.packFlip {
+				release.Type = rls.Series
+				release.Episode = 0
+			}
+			require.Equal(t, tt.want, subtitleTitleQuery(&release))
+		})
+	}
+}

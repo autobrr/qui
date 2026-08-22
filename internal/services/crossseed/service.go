@@ -8436,8 +8436,10 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 // subtitleTitleQuery joins a release's title and parsed subtitle into a query.
 // rls parks the tokens between the year and the resolution in Subtitle, so a
 // title-only query for "Powerboat1.2026.Lisbon.Grand.Prix.1080p.WEB.h264-QUIET"
-// drops the only text that identifies the release. Season and episode releases
-// are skipped: their subtitle is an episode title, which no tracker indexes.
+// drops the only text that identifies the release. Releases with a numbered
+// season or episode are skipped: their subtitle is an episode title, which no
+// tracker indexes. A seasonless pack (TV type from file inspection, Series
+// still zero) keeps its subtitle: that text is the arc or batch name.
 // A dotted "AKA" never reaches rawAKATitleParts, which needs the spaced form,
 // so it lands here instead, and it replaces the title rather than extending it.
 func subtitleTitleQuery(release *rls.Release) string {
