@@ -8,6 +8,7 @@ import { renderHook, act, cleanup, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useThemeSettingsSync } from "./useThemeSettingsSync"
+import { themes } from "@/config/themes"
 import type { ThemeSettings } from "@/types"
 
 const { mockApi } = vi.hoisted(() => {
@@ -22,6 +23,11 @@ const { mockApi } = vi.hoisted(() => {
 })
 
 vi.mock("@/lib/api", () => ({ api: mockApi }))
+
+// jsdom has no matchMedia, so the real setTheme cannot run here; the pull
+// tests only assert storage, sync, and catalog invalidation anyway.
+const mockSetTheme = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+vi.mock("@/utils/theme", () => ({ setTheme: mockSetTheme }))
 
 // The real hook needs a SyncStreamProvider; the registration itself is the
 // provider's concern, so it is mocked and only the enabled flag is asserted.
@@ -43,7 +49,19 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   localStorage.clear()
+  // Reset the module-level registry to just the bundled fallback.
+  themes.splice(1, themes.length - 1)
 })
+
+// A wrapper that exposes its QueryClient so a test can spy on invalidation.
+function makeWrapper() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+  function spiedWrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  }
+  return { spiedWrapper, invalidateSpy }
+}
 
 describe("useThemeSettingsSync", () => {
   it("gates the activity stream on a cached authenticated user", () => {
@@ -103,6 +121,34 @@ describe("useThemeSettingsSync", () => {
       themeId: "locked-premium",
       mode: "dark",
     })
+  })
+
+  it("refetches the catalog when the server selection resolves to a locked stub", async () => {
+    // The stale catalog only stubs the new selection, but the server serves
+    // the selected theme's CSS even pre-auth: the pull must force a refetch
+    // instead of sitting on the default until the hourly refresh.
+    themes.push({ id: "locked-premium", name: "Locked", locked: true, cssVars: { light: {}, dark: {} } })
+    mockApi.getThemeSettings.mockResolvedValue({ themeId: "locked-premium", mode: "auto" })
+    const { spiedWrapper, invalidateSpy } = makeWrapper()
+
+    renderHook(() => useThemeSettingsSync(), { wrapper: spiedWrapper })
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["builtin-themes"] })
+    })
+  })
+
+  it("does not refetch the catalog for a selection that resolves with CSS", async () => {
+    themes.push({ id: "free-theme", name: "Free", cssVars: { light: {}, dark: {} } })
+    mockApi.getThemeSettings.mockResolvedValue({ themeId: "free-theme", mode: "auto" })
+    const { spiedWrapper, invalidateSpy } = makeWrapper()
+
+    renderHook(() => useThemeSettingsSync(), { wrapper: spiedWrapper })
+
+    await waitFor(() => {
+      expect(localStorage.getItem("color-theme")).toBe("free-theme")
+    })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["builtin-themes"] })
   })
 
   it("skips system-driven changes and duplicate payloads", () => {

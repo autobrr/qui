@@ -110,6 +110,27 @@ describe("applyBuiltinThemesPayload", () => {
     expect(mockSetTheme).toHaveBeenCalledWith("locked", undefined, undefined, true)
     expect(localStorage.getItem("color-theme")).toBe("locked")
   })
+
+  it("applies the fetched default on a fresh profile with no stored selection", () => {
+    const minimalCss = TEST_CSS.replace("@name: Testfree", "@name: Minimal")
+    applyBuiltinThemesPayload({
+      themes: [{ id: "minimal", name: "Minimal", premium: false, css: minimalCss }],
+    })
+
+    // The boot paint used the bundled fallback; the fetched default is the
+    // authority and must repaint, as a system change.
+    expect(mockSetTheme).toHaveBeenCalledWith("minimal", undefined, undefined, true)
+    // A system restore, not a selection: setTheme stores the id itself.
+  })
+
+  it("leaves an unresolvable stored selection alone", () => {
+    localStorage.setItem("color-theme", "custom:missing")
+    applyBuiltinThemesPayload({
+      themes: [{ id: "testfree", name: "Testfree", premium: false, css: TEST_CSS }],
+    })
+
+    expect(mockSetTheme).not.toHaveBeenCalled()
+  })
 })
 
 describe("useBuiltinThemes", () => {

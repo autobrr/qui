@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
@@ -18,6 +18,7 @@ import type { ThemeSettings } from "@/types"
  * server. localStorage stays as the instant-boot cache.
  */
 export function useThemeSettingsSync(): void {
+  const queryClient = useQueryClient()
   const builtins = useBuiltinThemes()
   // Last payload synced with the server, to avoid echoing an applied server
   // value straight back as a PUT.
@@ -56,9 +57,17 @@ export function useThemeSettingsSync(): void {
     localStorage.setItem("color-theme", data.themeId)
     // Skip unknown ids (e.g. a custom theme not registered yet) so we never
     // downgrade the local selection to the default theme.
-    if (!getThemeById(data.themeId)) return
+    const resolved = getThemeById(data.themeId)
+    if (!resolved) return
+    if (resolved.locked) {
+      // The cached catalog carries CSS only for the previously selected
+      // theme, but the server serves the selected theme's CSS even pre-auth.
+      // Refetch so a remote selection change can paint instead of sitting on
+      // the default until the hourly refresh.
+      void queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+    }
     void setTheme(data.themeId, data.mode, data.variation, true)
-  }, [data, builtins.isSuccess])
+  }, [data, builtins.isSuccess, queryClient])
 
   // Push: store local theme changes on the server.
   useEffect(() => {

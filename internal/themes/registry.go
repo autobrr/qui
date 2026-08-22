@@ -111,7 +111,30 @@ func parse(css, fallbackID string, fromPremiumDir bool) Theme {
 }
 
 // extractPreviewVars pulls the swatch variables out of one selector block.
+// Indirect values ("--primary: var(--variation-color)") resolve against the
+// block itself and then :root, so locked previews carry concrete colors that
+// render outside the stylesheet.
 func extractPreviewVars(css, selector string) map[string]string {
+	own := blockVars(css, selector)
+	if own == nil {
+		return nil
+	}
+	root := own
+	if selector != ":root" {
+		root = blockVars(css, ":root")
+	}
+
+	vars := make(map[string]string, 3)
+	for _, name := range []string{"--primary", "--secondary", "--accent"} {
+		if v, ok := resolveVar(own[name], own, root); ok {
+			vars[name] = v
+		}
+	}
+	return vars
+}
+
+// blockVars parses every custom property in the first block for selector.
+func blockVars(css, selector string) map[string]string {
 	start := strings.Index(css, selector+" {")
 	if start < 0 {
 		start = strings.Index(css, selector+"{")
@@ -124,17 +147,31 @@ func extractPreviewVars(css, selector string) map[string]string {
 		block = block[:end]
 	}
 
-	vars := make(map[string]string, 3)
+	vars := make(map[string]string)
 	for line := range strings.Lines(block) {
 		name, value, ok := strings.Cut(line, ":")
 		if !ok {
 			continue
 		}
 		name = strings.TrimSpace(name)
-		switch name {
-		case "--primary", "--secondary", "--accent":
-			vars[name] = strings.TrimSuffix(strings.TrimSpace(value), ";")
+		if !strings.HasPrefix(name, "--") {
+			continue
 		}
+		vars[name] = strings.TrimSuffix(strings.TrimSpace(value), ";")
 	}
 	return vars
+}
+
+// resolveVar follows var(--x) references through own, then root. An
+// unresolvable or cyclic reference drops the swatch.
+func resolveVar(value string, own, root map[string]string) (string, bool) {
+	for range 10 {
+		inner, isRef := strings.CutPrefix(value, "var(")
+		if !isRef {
+			return value, value != ""
+		}
+		name := strings.TrimSpace(strings.TrimSuffix(inner, ")"))
+		value = cmp.Or(own[name], root[name])
+	}
+	return "", false
 }

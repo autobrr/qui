@@ -86,3 +86,47 @@ func TestRegistryParse(t *testing.T) {
 	require.True(t, Exists("minimal"))
 	require.False(t, Exists("nope"))
 }
+
+// Locked previews render outside their stylesheet, so every swatch must be a
+// concrete color, never an unresolved var() reference (e.g. Catppuccin's
+// "--primary: var(--variation-color)").
+func TestPreviewVarsAreConcrete(t *testing.T) {
+	for _, theme := range All() {
+		for mode, vars := range map[string]map[string]string{"light": theme.Preview.Light, "dark": theme.Preview.Dark} {
+			for name, value := range vars {
+				require.NotContains(t, value, "var(", "theme %s %s preview %s is unresolved", theme.ID, mode, name)
+			}
+		}
+	}
+}
+
+func TestExtractPreviewVars(t *testing.T) {
+	css := `:root {
+  --variation-mauve: oklch(0.55 0.25 297);
+  --variation-color: var(--variation-mauve);
+  --primary: var(--variation-color);
+  --secondary: blue;
+  --cycle-a: var(--cycle-b);
+  --cycle-b: var(--cycle-a);
+  --accent: var(--cycle-a);
+}
+
+.dark {
+  --primary: var(--variation-color);
+  --secondary: navy;
+  --accent: var(--missing);
+}
+`
+	light := extractPreviewVars(css, ":root")
+	require.Equal(t, "oklch(0.55 0.25 297)", light["--primary"])
+	require.Equal(t, "blue", light["--secondary"])
+	require.NotContains(t, light, "--accent", "cyclic reference must drop the swatch")
+
+	// The dark block resolves through :root for variables it does not redefine.
+	dark := extractPreviewVars(css, ".dark")
+	require.Equal(t, "oklch(0.55 0.25 297)", dark["--primary"])
+	require.Equal(t, "navy", dark["--secondary"])
+	require.NotContains(t, dark, "--accent", "unresolvable reference must drop the swatch")
+
+	require.Nil(t, extractPreviewVars(css, ".missing"))
+}

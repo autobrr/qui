@@ -5,7 +5,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import { registerBuiltinThemes, getThemeById, type Theme } from "@/config/themes"
+import { registerBuiltinThemes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes"
 import { parseThemeCSS } from "@/utils/themeParser"
 import { setTheme } from "@/utils/theme"
 import type { BuiltinTheme } from "@/types"
@@ -56,10 +56,13 @@ function toTheme(entry: BuiltinTheme): Theme | null {
 export function applyBuiltinThemesPayload(payload: { themes: BuiltinTheme[] }): void {
   registerBuiltinThemes(payload.themes.map(toTheme).filter((t): t is Theme => t !== null))
 
-  const storedId = localStorage.getItem("color-theme")
-  if (storedId && getThemeById(storedId)) {
+  // A fresh profile has no stored selection; its boot paint used the bundled
+  // fallback, whose values can lag the server's default theme, so the fetched
+  // default repaints it.
+  const targetId = localStorage.getItem("color-theme") ?? getDefaultTheme().id
+  if (getThemeById(targetId)) {
     // System change: restoring existing state must not be pushed.
-    void setTheme(storedId, undefined, undefined, true)
+    void setTheme(targetId, undefined, undefined, true)
   }
 }
 
