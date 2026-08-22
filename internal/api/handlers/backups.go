@@ -100,7 +100,7 @@ func saveUploadToTemp(src io.Reader, filename string) (string, error) {
 	// anything that is not a plain extension is discarded rather than carried
 	// into the temp file pattern.
 	ext := filepath.Ext(filename)
-	if ext == "" || strings.ContainsAny(ext, `/\`) || !isPlainExtension(ext) {
+	if !isPlainExtension(ext) {
 		ext = ".tmp"
 	}
 
@@ -837,6 +837,7 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 		} else if strings.HasSuffix(baseName, ".torrent") {
 			safePath := safeArchiveEntryPath(name)
 			if safePath == "" {
+				log.Warn().Str("entry", name).Msg("Skipping archive entry that resolves outside the extraction directory")
 				continue
 			}
 			destPath := filepath.Join(tempDir, "torrents", safePath)
@@ -1015,7 +1016,8 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 		} else if strings.HasSuffix(baseName, ".torrent") {
 			safePath := safeArchiveEntryPath(name)
 			if safePath == "" {
-				// Skip unsafe paths but continue reading to consume the entry
+				log.Warn().Str("entry", name).Msg("Skipping archive entry that resolves outside the extraction directory")
+				// Consume the entry so the tar reader stays aligned.
 				_, _ = io.Copy(io.Discard, tarReader) //nolint:gosec // G110: the archive is one the authenticated user uploaded to restore their own backup
 				continue
 			}
