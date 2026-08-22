@@ -140,8 +140,10 @@ func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) 
 
 	rows, err := tx.Query(ctx, `
 		SELECT conrelid::regclass::text, confrelid::regclass::text
-		FROM pg_constraint
-		WHERE contype = 'f'
+		FROM pg_constraint c
+		JOIN pg_namespace n ON n.oid = c.connamespace
+		WHERE c.contype = 'f'
+		  AND n.nspname = current_schema()
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list postgres foreign keys: %w", err)
@@ -521,7 +523,7 @@ func listPostgresTables(ctx context.Context, pool *pgxpool.Pool) (map[string]str
 	rows, err := pool.Query(ctx, `
 		SELECT table_name
 		FROM information_schema.tables
-		WHERE table_schema = 'public'
+		WHERE table_schema = current_schema()
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list postgres tables: %w", err)
@@ -585,7 +587,7 @@ func copySQLiteTableToPostgres(ctx context.Context, sqliteDB *sql.DB, tx pgx.Tx,
 	columns = filteredColumns
 	sqliteTypes = filteredTypes
 	if len(columns) == 0 {
-		return 0, nil
+		return 0, fmt.Errorf("table %s has no columns in common with its postgres counterpart", table)
 	}
 
 	fks, err := postgresForeignKeysForTable(ctx, tx, table)
@@ -651,7 +653,9 @@ type postgresForeignKey struct {
 }
 
 func postgresForeignKeysForTable(ctx context.Context, tx pgx.Tx, table string) ([]postgresForeignKey, error) {
-	regclassName := "public." + table
+	// Unqualified so the regclass cast resolves against the connection's
+	// search_path rather than assuming the tables live in public.
+	regclassName := quoteIdent(table)
 
 	rows, err := tx.Query(ctx, `
 		SELECT confrelid::regclass::text,
@@ -737,7 +741,7 @@ func postgresTableColumnSet(ctx context.Context, tx pgx.Tx, table string) (map[s
 	rows, err := tx.Query(ctx, `
 		SELECT column_name
 		FROM information_schema.columns
-		WHERE table_schema = 'public'
+		WHERE table_schema = current_schema()
 		  AND table_name = $1
 	`, table)
 	if err != nil {
@@ -837,7 +841,7 @@ func resetPostgresIdentities(ctx context.Context, tx pgx.Tx) error {
 	rows, err := tx.Query(ctx, `
 		SELECT table_name, column_name
 		FROM information_schema.columns
-		WHERE table_schema = 'public'
+		WHERE table_schema = current_schema()
 		  AND is_identity = 'YES'
 	`)
 	if err != nil {
@@ -864,7 +868,9 @@ func resetPostgresIdentities(ctx context.Context, tx pgx.Tx) error {
 	rows.Close()
 
 	for _, identity := range identityColumns {
-		fullTable := quoteIdent("public") + "." + quoteIdent(identity.table)
+		// Unqualified so pg_get_serial_sequence resolves it against the
+		// connection's search_path, same as every other statement here.
+		fullTable := quoteIdent(identity.table)
 		query := fmt.Sprintf(`
 			SELECT setval(
 				pg_get_serial_sequence($1, $2),
