@@ -615,20 +615,20 @@ func TestGetBackupDownloadUrl(t *testing.T) {
 	defer func() { windowLocation = originalLocation }()
 
 	// Test without format (should not add query param)
-	url := getBackupDownloadUrl(1, 123)
+	url := getBackupDownloadURL(1, 123)
 	expected := "http://localhost:7476/api/instances/1/backups/runs/123/download"
 	assert.Equal(t, expected, url)
 
 	// Test with zip format (should not add query param since it's default)
-	url = getBackupDownloadUrl(1, 123, "zip")
+	url = getBackupDownloadURL(1, 123, "zip")
 	assert.Equal(t, expected, url)
 
 	// Test with other formats
-	url = getBackupDownloadUrl(1, 123, "tar.gz")
+	url = getBackupDownloadURL(1, 123, "tar.gz")
 	expected = "http://localhost:7476/api/instances/1/backups/runs/123/download?format=tar.gz"
 	assert.Equal(t, expected, url)
 
-	url = getBackupDownloadUrl(1, 123, "tar.zst")
+	url = getBackupDownloadURL(1, 123, "tar.zst")
 	expected = "http://localhost:7476/api/instances/1/backups/runs/123/download?format=tar.zst"
 	assert.Equal(t, expected, url)
 }
@@ -636,11 +636,11 @@ func TestGetBackupDownloadUrl(t *testing.T) {
 // Mock window.location for testing
 var windowLocation *url.URL
 
-func getBackupDownloadUrl(instanceId, runId int, format ...string) string {
+func getBackupDownloadURL(instanceID, runID int, format ...string) string {
 	u := &url.URL{
 		Scheme: windowLocation.Scheme,
 		Host:   windowLocation.Host,
-		Path:   fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceId, runId),
+		Path:   fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, runID),
 	}
 	if len(format) > 0 && format[0] != "" && format[0] != "zip" {
 		q := u.Query()
@@ -823,7 +823,7 @@ func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
 		err := copyStreamToFile(bytes.NewReader([]byte("second")), destPath)
 		require.ErrorIs(t, err, fs.ErrExist)
 
-		kept, err := os.ReadFile(destPath) //nolint:gosec // G703: a path this test just created under t.TempDir()
+		kept, err := os.ReadFile(destPath)
 		require.NoError(t, err)
 		assert.Equal(t, "first", string(kept), "the existing file must survive")
 	})
@@ -839,7 +839,7 @@ func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
 
 		require.ErrorIs(t, extractZipFileToDisk(reader.File[0], destPath), fs.ErrExist)
 
-		kept, err := os.ReadFile(destPath) //nolint:gosec // G703: a path this test just created under t.TempDir()
+		kept, err := os.ReadFile(destPath)
 		require.NoError(t, err)
 		assert.Equal(t, "first", string(kept), "the existing file must survive")
 	})

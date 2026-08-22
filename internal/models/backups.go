@@ -576,17 +576,17 @@ func (s *BackupStore) getRunForUpdate(ctx context.Context, tx dbinterface.TxQuer
 	}
 	run.CategoryCounts = counts
 
-	if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+	categories, err := unmarshalCategories(categoriesJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Categories = categories
 	}
+	run.Categories = categories
 
-	if tagList, err := unmarshalTags(tagsJSON); err != nil {
+	tagList, err := unmarshalTags(tagsJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Tags = tagList
 	}
+	run.Tags = tagList
 
 	if categoriesJSON.Valid {
 		run.categoriesJSON = &categoriesJSON.String
@@ -672,16 +672,16 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}
@@ -1353,16 +1353,16 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}
@@ -1441,16 +1441,16 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 		return nil, err
 	}
 	run.CategoryCounts = counts
-	if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+	categories, err := unmarshalCategories(categoriesJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Categories = categories
 	}
-	if tagList, err := unmarshalTags(tagsJSON); err != nil {
+	run.Categories = categories
+	tagList, err := unmarshalTags(tagsJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Tags = tagList
 	}
+	run.Tags = tagList
 	if categoriesJSON.Valid {
 		run.categoriesJSON = &categoriesJSON.String
 	}
@@ -1569,16 +1569,16 @@ func (s *BackupStore) getRunsChunk(ctx context.Context, runIDs []int64) ([]*Back
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}
@@ -1871,16 +1871,16 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}

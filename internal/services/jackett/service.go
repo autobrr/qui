@@ -2574,8 +2574,8 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 		}
 
 		// Check if indexer supports this capability (case-insensitive)
-		hasCapability := slices.ContainsFunc(idx.Capabilities, func(cap string) bool {
-			return strings.EqualFold(strings.TrimSpace(cap), capToCheck)
+		hasCapability := slices.ContainsFunc(idx.Capabilities, func(capability string) bool {
+			return strings.EqualFold(strings.TrimSpace(capability), capToCheck)
 		})
 		if hasCapability {
 			hasIDsAfterPruning = true
@@ -3443,8 +3443,8 @@ func supportsAnyCapability(current []string, required []string) bool {
 		if candidate == "" {
 			continue
 		}
-		if slices.ContainsFunc(current, func(cap string) bool {
-			return strings.EqualFold(strings.TrimSpace(cap), candidate)
+		if slices.ContainsFunc(current, func(capability string) bool {
+			return strings.EqualFold(strings.TrimSpace(capability), candidate)
 		}) {
 			return true
 		}
@@ -4103,6 +4103,8 @@ func (s *Service) detectContentType(req *TorznabSearchRequest) contentType {
 		return contentTypeApp
 	case rls.Game:
 		return contentTypeGame
+	default:
+		// rls.Unknown is inferred from the parsed fields below.
 	}
 
 	if release.Type == rls.Unknown {

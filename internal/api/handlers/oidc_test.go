@@ -58,14 +58,14 @@ func newOIDCDiscoveryServer(t *testing.T, codeChallenges []string) *httptest.Ser
 func newTestOIDCHandler(t *testing.T, issuer string) *OIDCHandler {
 	t.Helper()
 
-	// #nosec G101 -- test-only OIDC client config values.
+	// Test-only OIDC client config values.
 	cfg := &domain.Config{
 		OIDCEnabled:     true,
 		OIDCIssuer:      issuer,
 		OIDCClientID:    "client-id",
 		OIDCRedirectURL: "http://localhost/callback",
 	}
-	// #nosec G101 -- test-only placeholder used to satisfy OIDC config validation.
+	// Test-only placeholder used to satisfy OIDC config validation.
 	cfg.OIDCClientSecret = "placeholder"
 
 	handler, err := NewOIDCHandler(cfg, scs.New())

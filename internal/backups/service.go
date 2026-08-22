@@ -1845,7 +1845,8 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 			// Check if torrent file path was provided from temp directory
 			if torrentPaths != nil && item.ArchivePath != "" {
 				if tempPath, ok := torrentPaths[item.ArchivePath]; ok {
-					if err := s.copyTorrentFromTemp(tempPath, rootDir, rel); err == nil {
+					err := s.copyTorrentFromTemp(tempPath, rootDir, rel)
+					if err == nil {
 						if info, statErr := os.Stat(absPath); statErr == nil {
 							totalTorrentFileBytes += info.Size()
 						}
@@ -1853,9 +1854,8 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 						items = append(items, backupItem)
 						totalBytes += item.SizeBytes
 						continue
-					} else {
-						log.Warn().Err(err).Str("hash", item.Hash).Msg("Failed to copy from temp, will try qBittorrent")
 					}
+					log.Warn().Err(err).Str("hash", item.Hash).Msg("Failed to copy from temp, will try qBittorrent")
 				}
 			}
 

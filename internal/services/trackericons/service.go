@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+
+	// Registered for their side effect: image.Decode needs the gif and jpeg
+	// decoders to read icons that are not png.
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
@@ -23,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	// Same again for .ico, which browsers still serve as a favicon.
 	_ "github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
@@ -176,9 +180,8 @@ func QueueFetch(host, trackerURL string) {
 	go func(h string, tracker string) {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
-		if _, err := svc.GetIcon(ctx, h, tracker); err != nil {
-			// Intentionally ignore errors here; they are tracked internally for cooldown.
-		}
+		// Errors are ignored here; GetIcon tracks them internally for cooldown.
+		_, _ = svc.GetIcon(ctx, h, tracker)
 	}(sanitized, trackerURL)
 }
 

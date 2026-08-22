@@ -835,11 +835,11 @@ func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int
 
 	capabilities := make([]string, 0)
 	for rows.Next() {
-		var cap string
-		if err := rows.Scan(&cap); err != nil {
+		var capability string
+		if err := rows.Scan(&capability); err != nil {
 			return nil, fmt.Errorf("failed to scan capability: %w", err)
 		}
-		capabilities = append(capabilities, cap)
+		capabilities = append(capabilities, capability)
 	}
 
 	if err := rows.Err(); err != nil {

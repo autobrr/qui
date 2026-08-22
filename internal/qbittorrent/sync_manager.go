@@ -859,7 +859,7 @@ func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrac
 	}
 
 	// Deep copy to prevent data races when caller iterates over the maps
-	copy := &ValidatedTrackerMapping{
+	mappingCopy := &ValidatedTrackerMapping{
 		HashToDomains:  make(map[string]map[string]struct{}, len(original.HashToDomains)),
 		DomainToHashes: make(map[string]map[string]struct{}, len(original.DomainToHashes)),
 		UpdatedAt:      original.UpdatedAt,
@@ -871,7 +871,7 @@ func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrac
 		for domain := range domains {
 			domainsCopy[domain] = struct{}{}
 		}
-		copy.HashToDomains[hash] = domainsCopy
+		mappingCopy.HashToDomains[hash] = domainsCopy
 	}
 
 	for domain, hashes := range original.DomainToHashes {
@@ -879,10 +879,10 @@ func (sm *SyncManager) getValidatedTrackerMapping(instanceID int) *ValidatedTrac
 		for hash := range hashes {
 			hashesCopy[hash] = struct{}{}
 		}
-		copy.DomainToHashes[domain] = hashesCopy
+		mappingCopy.DomainToHashes[domain] = hashesCopy
 	}
 
-	return copy
+	return mappingCopy
 }
 
 // getAuthoritativeTrackerMapping returns the hydrated tracker mapping for an
@@ -1465,6 +1465,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			switch qbt.TorrentFilter(status) {
 			case qbt.TorrentFilterActive, qbt.TorrentFilterInactive, qbt.TorrentFilterChecking, qbt.TorrentFilterMoving, qbt.TorrentFilterError, qbt.TorrentFilterDownloading, qbt.TorrentFilterUploading:
 				needsManualStatusFiltering = true
+			default:
+				// Every other filter is one qBittorrent applies server-side.
 			}
 
 			if needsManualStatusFiltering {
@@ -3350,6 +3352,8 @@ func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
 			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
 				hasUnregistered = true
 			}
+		default:
+			// Anything else says nothing about registration either way.
 		}
 	}
 
@@ -4338,6 +4342,8 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 					req.readyPolls = 0
 					req.resumeConfirmedPolls = 0
 					continue
+				default:
+					// Every other state is one the poll can make progress from.
 				}
 
 				if req.awaitingResumeConfirmation {
@@ -5455,6 +5461,8 @@ func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent *qbt.Torrent,
 		pausedStates := torrentStateCategories[qbt.TorrentFilterPaused]
 		stoppedStates := torrentStateCategories[qbt.TorrentFilterStopped]
 		return slices.Contains(pausedStates, torrent.State) || slices.Contains(stoppedStates, torrent.State)
+	default:
+		// Grouped categories and direct state names fall through below.
 	}
 
 	// For grouped status categories, check if state is in the category
@@ -6329,6 +6337,8 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 			stats.Error++
 		case qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData:
 			stats.Checking++
+		default:
+			// Unknown or transitional states count towards the totals only.
 		}
 	}
 

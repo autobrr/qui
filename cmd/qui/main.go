@@ -185,14 +185,14 @@ func readPassword(prompt string) (string, error) {
 			return "", fmt.Errorf("failed to read password: %w", err)
 		}
 		return string(password), nil
-	} else {
-		fmt.Fprint(os.Stderr, prompt)
-		var password string
-		if _, err := fmt.Scanln(&password); err != nil {
-			return "", fmt.Errorf("failed to read password from stdin: %w", err)
-		}
-		return password, nil
 	}
+
+	fmt.Fprint(os.Stderr, prompt)
+	var password string
+	if _, err := fmt.Scanln(&password); err != nil {
+		return "", fmt.Errorf("failed to read password from stdin: %w", err)
+	}
+	return password, nil
 }
 
 func RunCreateUserCommand() *cobra.Command {
