@@ -4,8 +4,10 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // mediaIDExtractorVersion invalidates cached rows when the tag parsing or
@@ -134,19 +137,18 @@ func largestMKVPath(savePath string, files qbt.TorrentFiles) string {
 	// size and would cache a wrong "no tags" row over the complete file.
 	var mkvs qbt.TorrentFiles
 	for _, file := range files {
-		if file.Progress >= 1 && strings.HasSuffix(strings.ToLower(file.Name), ".mkv") {
+		if file.Progress >= 1 && file.Size > 0 && stringutils.HasSuffixFold(file.Name, ".mkv") {
 			mkvs = append(mkvs, file)
 		}
 	}
+	slices.SortStableFunc(mkvs, func(a, b qbt.TorrentFile) int {
+		return cmp.Compare(b.Size, a.Size)
+	})
 
 	var bestPath string
-	var bestSize int64
-	forEachLocalTorrentFile(savePath, mkvs, func(file qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
-		if file.Size > bestSize {
-			bestPath = fullPath
-			bestSize = file.Size
-		}
-		return true
+	forEachLocalTorrentFile(savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
+		bestPath = fullPath
+		return false
 	})
 	return bestPath
 }

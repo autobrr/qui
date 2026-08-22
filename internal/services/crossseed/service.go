@@ -8525,11 +8525,19 @@ func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jac
 // them holds a usable candidate; hits rejected by release/size filtering
 // count as nothing usable. Otherwise nil: the MediaInfo ID retry is skipped.
 func (s *Service) mediaIDRetryIndexers(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
-	ids := s.indexersWithoutUsableResults(requestedIDs, results, source, sourceSize, arrTitles, tolerancePercent, findIndividualEpisodes)
-	if len(ids) != len(requestedIDs) {
+	if len(requestedIDs) == 0 {
 		return nil
 	}
-	return ids
+	for _, r := range results {
+		if !slices.Contains(requestedIDs, r.IndexerID) {
+			continue
+		}
+		candidate := s.parseReleaseName(r.Title)
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+			return nil
+		}
+	}
+	return requestedIDs
 }
 
 func (s *Service) shouldRunTitleFallback(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes, rescueTitleMismatches bool) bool {
