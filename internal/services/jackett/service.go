@@ -160,6 +160,11 @@ type searchContext struct {
 	releaseName   string // Original full release name for debugging/history
 	skipHistory   bool   // Skip recording this search in history buffer
 	originalQuery string // Original query for fallback when ID params are pruned per-indexer
+
+	// omitCategoriesForIDs is set when buildSearchParams dropped the query for an
+	// ID-driven movie or TV search. The category filter is dropped with it, but only
+	// for indexers that keep at least one usable ID.
+	omitCategoriesForIDs bool
 }
 
 type searchPriorityKey struct{}
@@ -679,6 +684,8 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		releaseName:   req.ReleaseName,
 		skipHistory:   req.SkipHistory,
 		originalQuery: req.Query,
+
+		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -2439,44 +2446,44 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		}
 	}
 
-	// If no categories requested, continue with search
-	if len(requested) == 0 {
-		return false, false
-	}
+	// Map the requested categories onto this indexer. Nothing to map means the params
+	// keep the categories they were built with; the capability handling below still runs.
+	if len(requested) > 0 && len(idx.Categories) > 0 {
+		mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
 
-	// If indexer has no categories stored, continue (will use requested categories as-is)
-	if len(idx.Categories) == 0 {
-		return false, false
-	}
+		// Filter mapped categories through indexer's supported categories
+		filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
+		if !ok {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Ints("requested_categories", requested).
+				Ints("mapped_categories", mappedCategories).
+				Msg("Skipping torznab indexer due to unsupported categories")
+			return true, false
+		}
 
-	// Map requested categories to what this indexer actually supports
-	mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
+		// Update the params with the filtered categories
+		params["cat"] = formatCategoryList(filtered)
 
-	// Filter mapped categories through indexer's supported categories
-	filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
-	if !ok {
 		log.Debug().
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Ints("requested_categories", requested).
 			Ints("mapped_categories", mappedCategories).
-			Msg("Skipping torznab indexer due to unsupported categories")
-		return true, false
+			Ints("filtered_categories", filtered).
+			Msg("Applied category mapping and filtering for indexer")
 	}
-
-	// Update the params with the filtered categories
-	params["cat"] = formatCategoryList(filtered)
-
-	log.Debug().
-		Int("indexer_id", idx.ID).
-		Str("indexer", idx.Name).
-		Ints("requested_categories", requested).
-		Ints("mapped_categories", mappedCategories).
-		Ints("filtered_categories", filtered).
-		Msg("Applied category mapping and filtering for indexer")
 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
+
+	// Drop the category filter for an ID-driven search, but only while this indexer
+	// still has an ID to search by. applyCapabilitySpecificParams above prunes
+	// unsupported IDs and restores the title query; that fallback keeps its category.
+	if meta != nil && meta.omitCategoriesForIDs && hasTorznabIDParams(params) {
+		delete(params, "cat")
+	}
 
 	// Debug log parameters after capability/category restrictions. Backend-specific
 	// query workarounds may still run after this returns.
@@ -3034,8 +3041,9 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 		params.Set("limit", strconv.Itoa(req.Limit))
 	}
 
-	// Omit q parameter when doing ID-driven search (for cross-seed)
-	// This lets IDs drive matching instead of query string
+	// Omit q parameter when doing ID-driven search (for cross-seed) so the IDs drive
+	// matching. applyIndexerRestrictions drops cat per-indexer, keeping it for any
+	// indexer that has to fall back to the title search.
 	if req.OmitQueryForIDs {
 		hasIDs := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0
 		if hasIDs && (mode == "movie" || mode == "tvsearch") {

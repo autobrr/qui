@@ -130,8 +130,6 @@
     "switchedToMode": "已切換到{{mode}}模式",
     "switchedToTheme": "已切換到{{theme}}主題",
     "switchedToThemeVariation": "已切換到{{theme}}主題（{{variation}}）",
-    "unableToVerifyLicense": "無法驗證授權",
-    "licenseCheckFailed": "授權檢查失敗，進階主題切換暫時不可用。",
     "premiumThemeError": "這是進階主題。請前往設定 > 主題啟用授權。",
     "custom": "自訂"
   },

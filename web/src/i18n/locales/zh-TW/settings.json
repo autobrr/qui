@@ -433,8 +433,6 @@
       "lock": "鎖定"
     },
     "toasts": {
-      "verifyFailed": "授權驗證不可用",
-      "verifyFailedDescription": "進階主題切換暫時停用。",
       "premiumRequired": "需要進階授權",
       "premiumRequiredDescription": "新增有效的進階授權以解鎖進階主題。"
     },
