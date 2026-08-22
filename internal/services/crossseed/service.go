@@ -9314,8 +9314,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// still hold no usable candidate after every title pass above (no hits, or
 	// hits all rejected by release/size filtering) with an external ID
 	// embedded in the torrent's MKV metadata (cached per torrent in
-	// media_id_cache). Muxer tags carry no library-level trust, so this never
-	// replaces the title flow: it only runs after that flow comes up empty.
+	// media_id_cache). Runs last on cost, not trust: candidates are verified
+	// against the source name and size, so a wrong muxer tag cannot produce a
+	// wrong match, only queries that never verify.
 	if externalIDs == nil && !opts.DisableTorznab {
 		idIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
 		if len(idIndexerIDs) > 0 {
