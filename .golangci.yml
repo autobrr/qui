@@ -88,7 +88,7 @@ linters:
         linters:
           - gosec
         text: "G703"
-        source: "tmpFile\\.Name\\(\\)|filepath\\.Dir\\(destPath\\)|os\\.Create\\(destPath\\)|os\\.Open\\(archivePath\\)"
+        source: "tmpFile\\.Name\\(\\)|filepath\\.Dir\\(destPath\\)|os\\.Open\\(archivePath\\)"
 
       # The generated config template contains a commented-out password field.
       # Scoped to the template literal itself, which cannot carry a nolint.
