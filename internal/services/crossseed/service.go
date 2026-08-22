@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/cespare/xxhash/v2"
@@ -355,9 +356,14 @@ func initializeDomainMappings() map[string][]string {
 
 // Service provides cross-seed functionality
 type Service struct {
-	instanceStore             instanceProvider
-	syncManager               qbittorrentSync
-	filesManager              *filesmanager.Service
+	instanceStore instanceProvider
+	syncManager   qbittorrentSync
+	filesManager  *filesmanager.Service
+	// mediaIDCacheStore backs the MKV-metadata external-ID fallback; nil
+	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
+	// real MediaInfo analyzer.
+	mediaIDCacheStore         mediaIDCache
+	analyzeMediaFile          func(ctx context.Context, path string) (mediainfo.Report, error)
 	trackerCustomizationStore trackerCustomizationProvider
 	releaseCache              *ReleaseCache
 	// searchResultCache stores the most recent search results per torrent hash so that
@@ -620,6 +626,16 @@ func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Serv
 	return &Service{
 		automationStore: automationStore,
 	}
+}
+
+// SetMediaIDCacheStore wires the media_id_cache store that backs the
+// MKV-metadata external-ID fallback. Safe to call once at startup; without it
+// the fallback stays disabled.
+func (s *Service) SetMediaIDCacheStore(store *models.MediaIDCacheStore) {
+	if s == nil || store == nil {
+		return
+	}
+	s.mediaIDCacheStore = store
 }
 
 // SetActivityPublisher wires the qui server-event hub so cross-seed automation and
@@ -8505,6 +8521,25 @@ func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jac
 	return indexersWithoutResults(requestedIDs, usable)
 }
 
+// mediaIDRetryIndexers returns the requested indexers, but only when NONE of
+// them holds a usable candidate; hits rejected by release/size filtering
+// count as nothing usable. Otherwise nil: the MediaInfo ID retry is skipped.
+func (s *Service) mediaIDRetryIndexers(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
+	if len(requestedIDs) == 0 {
+		return nil
+	}
+	for _, r := range results {
+		if !slices.Contains(requestedIDs, r.IndexerID) {
+			continue
+		}
+		candidate := s.parseReleaseName(r.Title)
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+			return nil
+		}
+	}
+	return requestedIDs
+}
+
 func (s *Service) shouldRunTitleFallback(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes, rescueTitleMismatches bool) bool {
 	if len(results) == 0 {
 		return true
@@ -9279,6 +9314,62 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 							Ints("altIndexerIDs", altIndexerIDs).
 							Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
 						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
+					}
+				}
+			}
+		}
+	}
+
+	// MediaInfo ID retry: when ARR supplied no ID and no indexer holds a
+	// usable candidate after every title pass above (no hits, or hits all
+	// rejected by release/size filtering), fall back to an external ID
+	// embedded in the torrent's MKV metadata (cached per torrent in
+	// media_id_cache). Muxer tags carry no library-level trust, so this never
+	// replaces the title flow: it only runs after that flow comes up empty.
+	if externalIDs == nil && !opts.DisableTorznab {
+		idIndexerIDs := s.mediaIDRetryIndexers(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+		if len(idIndexerIDs) > 0 {
+			if mediaIDs := s.lookupMediaFileIDs(waitCtx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
+				idReq := *searchReq
+				if mediaIDs.IMDbID != "" {
+					idReq.IMDbID = mediaIDs.IMDbID
+				}
+				if mediaIDs.TVDbID > 0 {
+					idReq.TVDbID = strconv.Itoa(mediaIDs.TVDbID)
+				}
+				if mediaIDs.TMDbID > 0 {
+					idReq.TMDbID = mediaIDs.TMDbID
+				}
+				idReq.OmitQueryForIDs = true
+				// ID-only pass: the title flow already ran for this set; nothing
+				// to ask an indexer that cannot search by ID.
+				idReq.SkipIndexersWithoutIDs = true
+				idReq.IndexerIDs = idIndexerIDs
+				idReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
+				// Internal continuation of the primary search, like the
+				// alternate-title and connector passes above.
+				idReq.SkipHistory = true
+				if idResp, idErr := s.searchOnce(waitCtx, &idReq); idErr != nil {
+					log.Debug().
+						Err(idErr).
+						Str("torrentName", sourceTorrent.Name).
+						Ints("idIndexerIDs", idIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] MediaInfo ID retry failed; continuing with primary results")
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, idIndexerIDs)
+				} else if idResp != nil {
+					// This pass only targeted idIndexerIDs; un-cover the targeted
+					// indexers that missed it, leave the rest untouched.
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, subtractInts(idIndexerIDs, idResp.CoveredIndexerIDs))
+					if len(idResp.Results) > 0 {
+						// These results came from an ID query, so the "searched
+						// by title only" degradation notice no longer holds.
+						queryDegraded = ""
+						log.Debug().
+							Str("torrentName", sourceTorrent.Name).
+							Int("idResults", len(idResp.Results)).
+							Ints("idIndexerIDs", idIndexerIDs).
+							Msg("[CROSSSEED-SEARCH] MediaInfo ID retry returned additional candidates")
+						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, idResp)
 					}
 				}
 			}
