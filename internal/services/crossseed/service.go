@@ -8521,6 +8521,17 @@ func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jac
 	return indexersWithoutResults(requestedIDs, usable)
 }
 
+// mediaIDRetryIndexers returns the requested indexers, but only when NONE of
+// them holds a usable candidate; hits rejected by release/size filtering
+// count as nothing usable. Otherwise nil: the MediaInfo ID retry is skipped.
+func (s *Service) mediaIDRetryIndexers(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
+	ids := s.indexersWithoutUsableResults(requestedIDs, results, source, sourceSize, arrTitles, tolerancePercent, findIndividualEpisodes)
+	if len(ids) != len(requestedIDs) {
+		return nil
+	}
+	return ids
+}
+
 func (s *Service) shouldRunTitleFallback(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes, rescueTitleMismatches bool) bool {
 	if len(results) == 0 {
 		return true
@@ -9301,17 +9312,16 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	// MediaInfo ID retry: when ARR supplied no ID and every title pass above
-	// still found nothing usable, fall back to an external ID embedded in the
-	// torrent's MKV metadata (cached per torrent in media_id_cache). Muxer
-	// tags carry no library-level trust, so this never replaces the title
-	// flow: it only runs after that flow comes up empty, and only against
-	// the indexers that returned nothing usable.
-	if externalIDs == nil && !opts.DisableTorznab &&
-		s.shouldRunTitleFallback(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes, opts.RescueTitleMismatches) {
-		if mediaIDs := s.lookupMediaFileIDs(waitCtx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
-			idIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
-			if len(idIndexerIDs) > 0 {
+	// MediaInfo ID retry: when ARR supplied no ID and no indexer holds a
+	// usable candidate after every title pass above (no hits, or hits all
+	// rejected by release/size filtering), fall back to an external ID
+	// embedded in the torrent's MKV metadata (cached per torrent in
+	// media_id_cache). Muxer tags carry no library-level trust, so this never
+	// replaces the title flow: it only runs after that flow comes up empty.
+	if externalIDs == nil && !opts.DisableTorznab {
+		idIndexerIDs := s.mediaIDRetryIndexers(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+		if len(idIndexerIDs) > 0 {
+			if mediaIDs := s.lookupMediaFileIDs(waitCtx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
 				idReq := *searchReq
 				if mediaIDs.IMDbID != "" {
 					idReq.IMDbID = mediaIDs.IMDbID
