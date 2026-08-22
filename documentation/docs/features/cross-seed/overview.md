@@ -33,7 +33,7 @@ Optional: qui can also query OPS/RED directly via the trackers' Gazelle JSON API
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
 - This is especially helpful for content that is "AKA" type, and can have differing names depending on locale.
 
-Without *arr IDs, qui has a fallback. Some release groups embed IMDb/TMDb/TVDb tags in their MKV files. When a search finds no usable results, qui reads these tags from the torrent's largest `.mkv` file and retries the indexers that support ID-based search. This fallback needs [Local Filesystem Access](../instance-settings.md#local-filesystem-access) on the instance. qui caches the result per torrent, so it reads each file only once.
+Without *arr IDs, qui has a fallback. Some release groups embed IMDb/TMDb/TVDb tags in their MKV files. When a search finds no usable results, qui reads these tags from the torrent's largest `.mkv` file and retries the indexers that support ID-based search. This fallback needs [Local Filesystem Access](../instance-settings.md#local-filesystem-access) on the instance. qui caches each successful scan per torrent, so it reads the file only once. If a read fails, a later search tries again.
 
 ## Discovery Methods
 
