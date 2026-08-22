@@ -80,6 +80,20 @@ When the incoming torrent has extra files that are not present in the matched to
 
 If hardlink/reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter: qui first checks piece boundaries, then adds the torrent paused only when the check passes. Safe fallback adds require a full 100% recheck before auto-resume.
 
+### Pooled Partial Completion
+
+Enable **Automatically pool torrents with extra data** under Cross-Seed → Rules → Hardlink / Reflink Mode. The checkbox controls one global setting, remains available regardless of the per-instance mode selections, is off by default, and applies only to new partial hardlink or reflink additions; qui does not import existing partial torrents into pools.
+
+qui groups related members persistently by their original source torrent identity, not category, release name, save path, or the latest match. Each member keeps the managed link-tree root chosen when it was added, and unfinished work resumes after a qui restart.
+
+After each recheck, **Max auto-start download** under Rules → After injection → Post-injection behavior determines whether a member may acquire missing data. Over-budget members remain paused and can be reconsidered when another member supplies files or the limit changes. The existing sidecar allowance for samples, `.nfo` files, and subtitles still applies.
+
+Only one member downloads in a pool at a time. When a whole wanted file completes, qui can link or clone it into stopped related members, recheck each target, and resume only targets that qBittorrent verifies as complete. Exact file evidence is required; ambiguous names, moved roots, changed priorities, conflicting targets, and unsafe paths remain paused for review.
+
+If the active member's downloaded-byte counter makes no progress for 15 minutes, qui pauses it, retains all partial data, and gives it a 30-minute cooldown before retry. Another eligible member may run during that cooldown. Disabling pooled completion pauses only a downloader qui started; persisted pool state remains available if the setting is enabled again.
+
+Hardlink members require every originally linked file to verify completely before acquisition because repair could modify the source through the shared inode. A propagated hardlink that fails verification is removed only when the current qui process can prove it created that exact link; otherwise the member stays paused for manual recovery. Reflink members can safely repair incomplete clones through copy-on-write, so failed target verification keeps the clone and can return the member to normal pooled acquisition.
+
 ## Notes
 
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.

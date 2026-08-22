@@ -6966,7 +6966,10 @@ components:
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
-          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
+        pooledPartialCompletionEnabled:
+          type: boolean
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -7010,7 +7013,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
@@ -7111,7 +7114,11 @@ components:
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
-          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
+        pooledPartialCompletionEnabled:
+          type: boolean
+          default: false
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -7155,7 +7162,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           default: false
