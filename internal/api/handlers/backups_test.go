@@ -734,3 +734,63 @@ func TestExtractRejectsCollidingEntryNames(t *testing.T) {
 		require.ErrorContains(t, err, "extract to the same path")
 	})
 }
+
+// The manifest is matched on basename, so two entries in different directories
+// both claim the extraction's single manifest.json. Keeping the later one
+// silently picks which manifest governs the import.
+func TestExtractRejectsDuplicateManifests(t *testing.T) {
+	alpha := []byte(`{"items":[{"hash":"alpha"}]}`)
+	beta := []byte(`{"items":[{"hash":"beta"}]}`)
+
+	t.Run("zip", func(t *testing.T) {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		for _, entry := range []struct {
+			name string
+			body []byte
+		}{
+			{"a/manifest.json", alpha},
+			{"b/manifest.json", beta},
+		} {
+			w, err := zw.Create(entry.name)
+			require.NoError(t, err)
+			_, err = w.Write(entry.body)
+			require.NoError(t, err)
+		}
+		require.NoError(t, zw.Close())
+
+		archivePath := filepath.Join(t.TempDir(), "backup.zip")
+		require.NoError(t, os.WriteFile(archivePath, buf.Bytes(), 0o600))
+
+		_, err := extractZipToDisk(archivePath)
+		require.ErrorContains(t, err, "more than one manifest.json")
+	})
+
+	t.Run("tar", func(t *testing.T) {
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		for _, entry := range []struct {
+			name string
+			body []byte
+		}{
+			{"a/manifest.json", alpha},
+			{"b/manifest.json", beta},
+		} {
+			require.NoError(t, tw.WriteHeader(&tar.Header{
+				Name:     entry.name,
+				Mode:     0o600,
+				Size:     int64(len(entry.body)),
+				Typeflag: tar.TypeReg,
+			}))
+			_, err := tw.Write(entry.body)
+			require.NoError(t, err)
+		}
+		require.NoError(t, tw.Close())
+
+		archivePath := filepath.Join(t.TempDir(), "backup.tar")
+		require.NoError(t, os.WriteFile(archivePath, buf.Bytes(), 0o600))
+
+		_, err := extractTarToDisk(archivePath)
+		require.ErrorContains(t, err, "more than one manifest.json")
+	})
+}

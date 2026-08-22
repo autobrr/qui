@@ -797,6 +797,8 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 	// Entry names are normalised before they are joined, so two names that
 	// differ only in slash style resolve to one destination. Extracting both
 	// would leave the second entry's bytes sitting under the first entry's name.
+	// The manifest is matched on basename, so it collides the same way and is
+	// guarded separately below.
 	claimed := make(map[string]string)
 
 	for _, file := range reader.File {
@@ -808,6 +810,10 @@ func extractZipToDisk(archivePath string) (*ExtractedArchive, error) {
 		baseName := strings.ToLower(filepath.Base(name))
 
 		if baseName == "manifest.json" {
+			if result.ManifestPath != "" {
+				cleanup()
+				return nil, errors.New("archive carries more than one manifest.json")
+			}
 			destPath := filepath.Join(tempDir, "manifest.json")
 			if err := extractZipFileToDisk(file, destPath); err != nil {
 				cleanup()
@@ -977,6 +983,10 @@ func extractTarReaderToDisk(r io.Reader) (*ExtractedArchive, error) {
 		baseName := strings.ToLower(filepath.Base(name))
 
 		if baseName == "manifest.json" {
+			if result.ManifestPath != "" {
+				cleanup()
+				return nil, errors.New("archive carries more than one manifest.json")
+			}
 			destPath := filepath.Join(tempDir, "manifest.json")
 			if err := copyStreamToFile(tarReader, destPath); err != nil {
 				cleanup()
