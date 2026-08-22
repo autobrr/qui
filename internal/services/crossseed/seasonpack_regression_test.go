@@ -567,8 +567,9 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	// context.WithoutCancel inside rollbackSeasonPackTree. What this adds is the
 	// call site: a real ApplySeasonPackWebhook run whose add fails reaches that
 	// rollback with the threaded planBuild.backend and a cancelled ctx. (The
-	// fallback resolve at seasonpack.go:435 is only reachable when
-	// planBuild.backend is nil, so it stays out of scope here.)
+	// fallback resolve inside the AddTorrent failure branch of
+	// ApplySeasonPackWebhook is only reachable when planBuild.backend is nil,
+	// so it stays out of scope here.)
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	sourceDir := t.TempDir()
