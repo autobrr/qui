@@ -1697,6 +1697,8 @@ type reflinkCapableBackend struct {
 	*local.Backend
 }
 
+var _ fsops.Backend = reflinkCapableBackend{}
+
 func (reflinkCapableBackend) SupportsReflink(context.Context, string) (bool, string, error) {
 	return true, "", nil
 }
