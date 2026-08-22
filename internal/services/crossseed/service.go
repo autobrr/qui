@@ -9333,6 +9333,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					idReq.TMDbID = mediaIDs.TMDbID
 				}
 				idReq.OmitQueryForIDs = true
+				// ID-only pass: the title flow already ran for this set; nothing
+				// to ask an indexer that cannot search by ID.
+				idReq.SkipIndexersWithoutIDs = true
 				idReq.IndexerIDs = idIndexerIDs
 				idReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
 				// Internal continuation of the primary search, like the

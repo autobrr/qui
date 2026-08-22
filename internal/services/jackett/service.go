@@ -165,6 +165,9 @@ type searchContext struct {
 	// ID-driven movie or TV search. The category filter is dropped with it, but only
 	// for indexers that keep at least one usable ID.
 	omitCategoriesForIDs bool
+
+	// skipIndexersWithoutIDs mirrors TorznabSearchRequest.SkipIndexersWithoutIDs.
+	skipIndexersWithoutIDs bool
 }
 
 type searchPriorityKey struct{}
@@ -257,6 +260,9 @@ type searchCacheKeyPayload struct {
 	Album         string      `json:"album,omitempty"`
 	SearchMode    string      `json:"search_mode,omitempty"`
 	ContentType   contentType `json:"content_type"`
+	// SkipIndexersWithoutIDs changes which indexers a request reaches, so a
+	// flagged pass must not satisfy an unflagged one from cache (or vice versa).
+	SkipIndexersWithoutIDs bool `json:"skip_indexers_without_ids,omitempty"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -685,7 +691,8 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		skipHistory:   req.SkipHistory,
 		originalQuery: req.Query,
 
-		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
+		omitCategoriesForIDs:   req.OmitQueryForIDs && !params.Has("q"),
+		skipIndexersWithoutIDs: req.SkipIndexersWithoutIDs,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -1283,6 +1290,8 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Album:         strings.TrimSpace(req.Album),
 		SearchMode:    searchMode,
 		ContentType:   detectedType,
+
+		SkipIndexersWithoutIDs: req.SkipIndexersWithoutIDs,
 	}
 
 	fullFingerprint, baseFingerprint, err := buildSearchCacheFingerprints(payload)
@@ -2477,6 +2486,17 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
+
+	// An ID-only pass has nothing to ask an indexer that cannot search by any of
+	// its IDs: the title flow already searched it. Skip it as an intentional
+	// exclusion, which still counts as covered.
+	if meta != nil && meta.skipIndexersWithoutIDs && !hasTorznabIDParams(params) {
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Skipping torznab indexer without usable ID capability for ID-only search")
+		return true, false
+	}
 
 	// Drop the category filter for an ID-driven search, but only while this indexer
 	// still has an ID to search by. applyCapabilitySpecificParams above prunes
