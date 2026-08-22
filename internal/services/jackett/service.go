@@ -160,6 +160,11 @@ type searchContext struct {
 	releaseName   string // Original full release name for debugging/history
 	skipHistory   bool   // Skip recording this search in history buffer
 	originalQuery string // Original query for fallback when ID params are pruned per-indexer
+
+	// omitCategoriesForIDs is set when buildSearchParams dropped the query for an
+	// ID-driven movie or TV search. The category filter is dropped with it, but only
+	// for indexers that keep at least one usable ID.
+	omitCategoriesForIDs bool
 }
 
 type searchPriorityKey struct{}
@@ -679,6 +684,8 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		releaseName:   req.ReleaseName,
 		skipHistory:   req.SkipHistory,
 		originalQuery: req.Query,
+
+		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -2478,6 +2485,13 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
+	// Drop the category filter again for an ID-driven search, but only while this
+	// indexer still has an ID to search by. applyCapabilitySpecificParams above prunes
+	// unsupported IDs and restores the title query; that fallback keeps its category.
+	if meta != nil && meta.omitCategoriesForIDs && hasTorznabIDParams(params) {
+		delete(params, "cat")
+	}
+
 	// Debug log parameters after capability/category restrictions. Backend-specific
 	// query workarounds may still run after this returns.
 	log.Debug().
@@ -3034,15 +3048,17 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 		params.Set("limit", strconv.Itoa(req.Limit))
 	}
 
-	// Omit q parameter when doing ID-driven search (for cross-seed)
-	// This lets IDs drive matching instead of query string
+	// Omit the q and cat parameters when doing an ID-driven search (for cross-seed).
+	// This lets the IDs drive matching. A category filter would hide a release the ID
+	// matches but the tracker files outside the mapped category.
 	if req.OmitQueryForIDs {
 		hasIDs := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0
 		if hasIDs && (mode == "movie" || mode == "tvsearch") {
 			params.Del("q")
+			params.Del("cat")
 			log.Debug().
 				Str("search_mode", mode).
-				Msg("Omitting q parameter for ID-driven search")
+				Msg("Omitting q and cat parameters for ID-driven search")
 		}
 	}
 
