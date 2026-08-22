@@ -5260,7 +5260,15 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 // filename byte on Linux, and inventing a nested path from it makes
 // missing-files flag a file that exists (a skipped file is safe, a false
 // missing-files verdict can fire a destructive rule).
+//
+// basePath must be absolute in local form. An empty or relative save path would
+// otherwise join to a relative path that resolves against the process working
+// directory, so a file that exists would stat as missing.
 func buildFullPath(basePath, fileName string) (string, bool) {
+	base := filepath.FromSlash(basePath)
+	if base == "" || !filepath.IsAbs(base) {
+		return "", false
+	}
 	if fileName == "" || strings.ContainsRune(fileName, '\\') ||
 		strings.HasPrefix(fileName, "/") || hasWindowsDrivePrefix(fileName) {
 		return "", false
@@ -5269,7 +5277,7 @@ func buildFullPath(basePath, fileName string) (string, bool) {
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
-	return filepath.Join(filepath.FromSlash(basePath), filepath.FromSlash(cleaned)), true
+	return filepath.Join(base, filepath.FromSlash(cleaned)), true
 }
 
 func hasWindowsDrivePrefix(p string) bool {
