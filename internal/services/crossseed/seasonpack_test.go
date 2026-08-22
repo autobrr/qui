@@ -19,6 +19,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -180,7 +182,7 @@ func TestSelectSeasonPackBaseDir_ValidatesSingleDirAgainstSources(t *testing.T) 
 		{series: 1, episode: 1}: {sourcePath: sourcePath},
 	}
 
-	selected, err := selectSeasonPackBaseDir(baseDir, localFiles)
+	selected, err := selectSeasonPackBaseDir(context.Background(), local.NewBackend(), baseDir, localFiles)
 
 	require.ErrorIs(t, err, errLayoutMismatch)
 	require.Empty(t, selected)
@@ -543,6 +545,7 @@ func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals have AMZN")
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})
@@ -589,7 +592,9 @@ func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       &stubSeasonPackRunStore{},
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
 	checkResp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -598,6 +603,7 @@ func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, checkResp.Ready, "check must accept when collections agree")
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})
@@ -1221,6 +1227,7 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 		seasonPackRunStore:       store,
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1325,9 +1332,12 @@ func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1380,6 +1390,7 @@ func TestApplySeasonPackWebhook_HardFailsWhenCoverageDrifts(t *testing.T) {
 		seasonPackRunStore:       store,
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1434,12 +1445,13 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			capturedPlan = plan
-			return &hardlinktree.Created{}, nil
+			return &fsops.TreeCreateResult{}, nil
 		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1531,12 +1543,13 @@ func TestApplySeasonPackWebhook_SavePathHonorsDirPreset(t *testing.T) {
 				syncManager:              sm,
 				releaseCache:             NewReleaseCache(),
 				automationSettingsLoader: defaultSettings(true, 0.75),
-				seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+				seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					capturedPlan = plan
-					return &hardlinktree.Created{}, nil
+					return &fsops.TreeCreateResult{}, nil
 				},
 			}
 
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -1594,9 +1607,12 @@ func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1728,9 +1744,12 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return tt.settings, nil
 				},
-				seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+				seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+					return &fsops.TreeCreateResult{}, nil
+				},
 			}
 
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 				TorrentName: fix.packName,
 				TorrentData: fix.torrentData,
@@ -1782,12 +1801,13 @@ func TestApplySeasonPackWebhook_DemotesSizeMismatchedEpisodeToMissing(t *testing
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			capturedPlan = plan
-			return &hardlinktree.Created{}, nil
+			return &fsops.TreeCreateResult{}, nil
 		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1846,9 +1866,12 @@ func TestApplySeasonPackWebhook_PieceBoundaryVetoesDemotionOnUnalignedPack(t *te
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1896,9 +1919,12 @@ func TestApplySeasonPackWebhook_DriftsWhenDemotionDropsCoverageBelowThreshold(t 
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -1954,9 +1980,12 @@ func TestApplySeasonPackWebhook_TriesNextEpisodeCandidateAfterValidationFailure(
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -2005,9 +2034,12 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2064,10 +2096,13 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 				SkipPieceBoundarySafetyCheck: true,
 			}, nil
 		},
-		seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
-		recheckResumeChan:     make(chan *pendingResume, 1),
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
+		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2118,6 +2153,7 @@ func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
 		seasonPackRunStore:       store,
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
@@ -2179,10 +2215,13 @@ func TestApplySeasonPackWebhook_AllowsPartialPackAndQueuesRecheck(t *testing.T) 
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
-		recheckResumeChan:        make(chan *pendingResume, 1),
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
+		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2250,10 +2289,13 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
-		recheckResumeChan:        make(chan *pendingResume, 1),
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
+		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2316,12 +2358,13 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
-		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+		seasonPackLinkCreator: func(_ context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 			capturedPlan = plan
-			return &hardlinktree.Created{}, nil
+			return &fsops.TreeCreateResult{}, nil
 		},
 	}
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName,
 		TorrentData: torrentData,
@@ -2793,8 +2836,10 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       &stubSeasonPackRunStore{},
-		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) (*hardlinktree.Created, error) { return &hardlinktree.Created{}, nil },
-		arrService:               spy,
+		seasonPackLinkCreator: func(context.Context, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+			return &fsops.TreeCreateResult{}, nil
+		},
+		arrService: spy,
 	}
 
 	checkResp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
@@ -2804,6 +2849,7 @@ func TestApplySeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.
 	require.True(t, checkResp.Ready, "check must accept via ARR alternate titles")
 	require.Equal(t, 1, spy.seasonCalls, "check must make exactly one season lookup")
 
+	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
 	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
 		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
 	})

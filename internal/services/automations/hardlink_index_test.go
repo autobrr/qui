@@ -711,12 +711,28 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 	t.Parallel()
 
-	// Verify that buildFullPath + isPathInsideBase correctly handle dangerous save paths.
-	// Empty save path: buildFullPath("", "../etc/passwd") should not pass isPathInsideBase.
-	emptyBase := ""
-	traversal := buildFullPath(emptyBase, "../etc/passwd")
-	if isPathInsideBase(emptyBase, traversal) {
-		t.Error("expected empty base path to reject traversal")
+	// buildFullPath rejects traversal and absolute names in both POSIX and Windows form.
+	for _, name := range []string{
+		"../etc/passwd",
+		"..\\etc\\passwd",
+		"a/../../etc/passwd",
+		"/etc/passwd",
+		"\\evil\\path",
+		"\\\\server\\share\\file",
+		"C:/evil.mkv",
+		"c:\\evil.mkv",
+		// Backslash is a legal filename byte on Linux; rewriting it into a
+		// separator invents a path and yields false missing-files verdicts,
+		// so such names are rejected outright (skipped, never "missing").
+		`AC\DC - Back In Black.mkv`,
+		`dir/AC\DC.mkv`,
+	} {
+		if _, ok := buildFullPath("/data", name); ok {
+			t.Errorf("expected %q to be rejected", name)
+		}
+	}
+	if _, ok := buildFullPath("/data", "Show.S01/episode.mkv"); !ok {
+		t.Error("expected a normal relative name to be accepted")
 	}
 
 	// Relative save path: should be rejected by the filepath.IsAbs check in Phase 2.
@@ -744,5 +760,13 @@ func TestConditionsRequireLocalAccess_HardlinkScopeCross(t *testing.T) {
 	}
 	if ConditionUsesField(cond, FieldHardlinkScope) {
 		t.Error("expected ConditionUsesField to NOT detect HARDLINK_SCOPE for HARDLINK_SCOPE_CROSS condition")
+	}
+}
+
+func TestBuildFullPathRejectsNonAbsoluteBase(t *testing.T) {
+	for _, base := range []string{"", ".", "relative/dir"} {
+		if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); ok {
+			t.Errorf("buildFullPath(%q, ...) = ok, want rejected: a relative join resolves against the working directory", base)
+		}
 	}
 }

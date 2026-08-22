@@ -16,11 +16,17 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
+
+func testBackendPool(instance *models.Instance) *fsops.Pool {
+	return fsops.NewPool(&fakeInstanceStore{instance: instance}, local.NewBackend())
+}
 
 type fakeInstanceStore struct {
 	instance *models.Instance
@@ -80,7 +86,7 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 		FallbackToRegularMode:    false,
 	}
 
-	injector := NewInjector(nil, &failingTorrentAdder{err: errors.New("add failed")}, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, &failingTorrentAdder{err: errors.New("add failed")}, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -261,7 +267,7 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -345,7 +351,7 @@ func TestInjector_Inject_HardlinkMode_SelectsConcreteBaseDirFromCommaSeparatedLi
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -405,7 +411,7 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -472,7 +478,7 @@ func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -653,7 +659,7 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 	}
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, checker, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, checker, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -753,7 +759,7 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
 	}
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -830,7 +836,7 @@ func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
 	}
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -913,7 +919,7 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 	}
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -977,7 +983,7 @@ func TestInjector_Inject_RunningPartial_TriggersRecheckAndResumeWhenComplete(t *
 	}
 
 	manager := &recordingTorrentManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,

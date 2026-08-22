@@ -4,7 +4,6 @@
 package dirscan
 
 import (
-	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,7 +18,7 @@ func TestMergeWebhookScanRoots(t *testing.T) {
 	dir := "/data/media/tv"
 
 	require.Equal(t, dir, mergeWebhookScanRoots(dir, "", dir))
-	require.Equal(t, path.Join(dir, "Show"), mergeWebhookScanRoots(
+	require.Equal(t, filepath.Join(dir, "Show"), mergeWebhookScanRoots(
 		dir,
 		filepath.Join(dir, "Show", "Season 01"),
 		filepath.Join(dir, "Show", "Season 02"),
@@ -43,7 +42,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
-	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil)
+	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil)
 
 	dirPath := t.TempDir()
 	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{

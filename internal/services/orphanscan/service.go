@@ -22,6 +22,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
@@ -42,6 +43,7 @@ type Service struct {
 	store         *models.OrphanScanStore
 	syncManager   *qbittorrent.SyncManager
 	notifier      notifications.Notifier
+	backendPool   *fsops.Pool
 
 	activityPublisher activity.Publisher
 
@@ -62,7 +64,7 @@ type Service struct {
 }
 
 // NewService creates a new orphan scan service.
-func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, backendPool *fsops.Pool) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
 	}
@@ -78,6 +80,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		store:             store,
 		syncManager:       syncManager,
 		notifier:          notifier,
+		backendPool:       backendPool,
 		activityPublisher: activity.NopPublisher{},
 		instanceMu:        make(map[int]*sync.Mutex),
 		cancelFuncs:       make(map[int64]context.CancelFunc),
@@ -268,7 +271,7 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 
 	now := time.Now()
 	for _, inst := range instances {
-		// Gate 1: instance must be active and have local access
+		// Gate 1: instance must be active and have filesystem access
 		if !inst.IsActive || !inst.HasLocalFilesystemAccess {
 			continue
 		}
@@ -598,7 +601,17 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
+		if s.backendPool == nil {
+			s.failRun(ctx, runID, instanceID, "backend pool not configured")
+			return
+		}
+		backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
+		if backendErr != nil {
+			log.Error().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend")
+			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", backendErr))
+			return
+		}
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
@@ -876,6 +889,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var sawReadOnly bool
 	var sawPermissionDenied bool
 
+	// Resolve the backend once for the whole batch; per-file resolves would
+	// panic on a nil pool and hammer the store for no reason.
+	var deleteBackend fsops.Backend
+	backendErr := errors.New("filesystem backend pool not configured")
+	if s.backendPool != nil {
+		deleteBackend, backendErr = s.backendPool.GetBackend(ctx, instanceID)
+	}
+
 	// Delete files
 	for _, f := range files {
 		if ctx.Err() != nil {
@@ -892,7 +913,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm, ignorePaths)
+		if backendErr != nil {
+			s.updateFileStatus(ctx, f.ID, "failed", "backend unavailable")
+			failedDeletes++
+			continue
+		}
+		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
@@ -926,21 +952,25 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 	}
 
-	// Clean up empty directories
+	// Clean up empty directories, reusing the batch's backend.
 	var foldersDeleted int
-	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
-	for _, dir := range candidateDirs {
-		if ctx.Err() != nil {
-			break
-		}
+	if backendErr != nil {
+		log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: no backend for empty-dir cleanup")
+	} else {
+		candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
+		for _, dir := range candidateDirs {
+			if ctx.Err() != nil {
+				break
+			}
 
-		scanRoot := findScanRoot(dir, run.ScanPaths)
-		if scanRoot == "" {
-			continue
-		}
+			scanRoot := findScanRoot(dir, run.ScanPaths)
+			if scanRoot == "" {
+				continue
+			}
 
-		if err := safeDeleteEmptyDir(scanRoot, dir); err == nil {
-			foldersDeleted++
+			if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
+				foldersDeleted++
+			}
 		}
 	}
 
