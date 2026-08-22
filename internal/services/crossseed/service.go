@@ -363,7 +363,7 @@ type Service struct {
 	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
 	// real MediaInfo analyzer.
 	mediaIDCacheStore         mediaIDCache
-	analyzeMediaFile          func(path string) (mediainfo.Report, error)
+	analyzeMediaFile          func(ctx context.Context, path string) (mediainfo.Report, error)
 	trackerCustomizationStore trackerCustomizationProvider
 	releaseCache              *ReleaseCache
 	// searchResultCache stores the most recent search results per torrent hash so that

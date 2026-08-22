@@ -209,7 +209,7 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 	analyzeCalls := 0
 	svc := &Service{
 		mediaIDCacheStore: cache,
-		analyzeMediaFile: func(string) (mediainfo.Report, error) {
+		analyzeMediaFile: func(context.Context, string) (mediainfo.Report, error) {
 			analyzeCalls++
 			return report, analyzeErr
 		},

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -19,6 +20,12 @@ import (
 // mediaIDExtractorVersion invalidates cached rows when the tag parsing or
 // selection rules below change. Bump it on any behavioral change here.
 const mediaIDExtractorVersion = 1
+
+// mediaIDAnalyzeTimeout bounds one MKV metadata read so a slow network
+// mount degrades to "no ID" instead of holding the search slot. Local
+// reads finish in milliseconds. The context is observed between reads, so
+// a single read blocked in the OS still returns only when the OS completes it.
+const mediaIDAnalyzeTimeout = 30 * time.Second
 
 // mediaIDCache captures the media_id_cache store methods the service uses.
 type mediaIDCache interface {
@@ -66,14 +73,16 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 
 	analyze := s.analyzeMediaFile
 	if analyze == nil {
-		analyze = func(path string) (mediainfo.Report, error) {
+		analyze = func(ctx context.Context, path string) (mediainfo.Report, error) {
 			// Speed 0 skips codec/cluster probing; the Matroska Tags reads are ParseSpeed-independent.
 			// #nosec G304 -- path is constructed from the instance save path via resolveLocalTorrentFile.
-			return mediainfo.AnalyzeFile(path, mediainfo.WithParseSpeed(0))
+			return mediainfo.AnalyzeFileContext(ctx, path, mediainfo.WithParseSpeed(0))
 		}
 	}
 
-	report, err := analyze(filePath)
+	analyzeCtx, cancel := context.WithTimeout(ctx, mediaIDAnalyzeTimeout)
+	defer cancel()
+	report, err := analyze(analyzeCtx, filePath)
 	if err != nil {
 		log.Debug().Err(err).Str("torrentName", torrent.Name).Str("file", filePath).Msg("[CROSSSEED-SEARCH] MediaInfo analysis failed; not caching")
 		return nil
