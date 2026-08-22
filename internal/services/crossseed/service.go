@@ -7210,13 +7210,6 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	}
 
 	if titleMismatch || contentMismatch {
-		log.Warn().
-			Str("torrentName", torrentName).
-			Str("largestFile", largestFile.Name).
-			Str("fileContentType", fileContent.ContentType).
-			Str("torrentContentType", sourceContent.ContentType).
-			Bool("titleMismatch", titleMismatch).
-			Msg("[CROSSSEED-SEARCH] Largest file looked unrelated, falling back to torrent metadata for content detection")
 		return sourceRelease, false
 	}
 

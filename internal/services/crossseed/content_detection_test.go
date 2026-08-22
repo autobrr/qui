@@ -4,15 +4,47 @@
 package crossseed
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
+
+func TestSelectContentDetectionRelease_TitleMismatchDoesNotWarn(t *testing.T) {
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+	var buf bytes.Buffer
+	log.Logger = zerolog.New(&buf).Level(zerolog.WarnLevel)
+	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	t.Cleanup(func() {
+		log.Logger = previousLogger
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	service := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	const torrentName = "VA-Deep_Space_Explorations_23-24BIT-WEB-FLAC-2026-GRP"
+	sourceRelease := service.releaseCache.Parse(torrentName)
+	files := qbt.TorrentFiles{{
+		Name: torrentName + "/14-artist-clean_horizon_(extended_mix).flac",
+		Size: 1,
+	}}
+
+	selected, usedFile := service.selectContentDetectionRelease(torrentName, sourceRelease, files)
+
+	require.Same(t, sourceRelease, selected)
+	require.False(t, usedFile)
+	require.Empty(t, buf.String(), "an expected album/track title mismatch must not warn")
+}
 
 func TestAnalyzeTorrentForSearchAsync_RejectsUnrelatedLargestFile(t *testing.T) {
 	t.Parallel()
