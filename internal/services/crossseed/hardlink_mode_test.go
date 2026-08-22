@@ -1670,6 +1670,155 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "base directory")
 }
 
+// cancelOnAddSyncManager cancels the run's context from inside AddTorrent and
+// then fails the add, so the rollback that follows runs under a cancelled
+// context. It records how many entries the link base held at that moment, which
+// keeps the "base dir is empty afterwards" assertion non-vacuous.
+type cancelOnAddSyncManager struct {
+	*rootlessSavePathSyncManager
+	cancel       context.CancelFunc
+	err          error
+	watchDir     string
+	entriesAtAdd int
+}
+
+func (m *cancelOnAddSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	entries, _ := os.ReadDir(m.watchDir)
+	m.entriesAtAdd = len(entries)
+	m.cancel()
+	return nil, m.err
+}
+
+// reflinkCapableBackend reports reflink support and materializes the tree with
+// hardlinks, so the reflink path is exercised even though CI runners are not
+// expected to have reflink support. Every other method — RemoveTree included,
+// which is what the rollback assertion turns on — is the real local backend.
+type reflinkCapableBackend struct {
+	*local.Backend
+}
+
+func (reflinkCapableBackend) SupportsReflink(context.Context, string) (bool, string, error) {
+	return true, "", nil
+}
+
+func (b reflinkCapableBackend) ReflinkTree(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	return b.HardlinkTree(ctx, plan)
+}
+
+func TestProcessHardlinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	hardlinkBase := filepath.Join(tempDir, "hardlinks")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sync := &cancelOnAddSyncManager{
+		rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
+		cancel:                      cancel,
+		err:                         errors.New("add failed"),
+		watchDir:                    hardlinkBase,
+	}
+	s := &Service{
+		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          hardlinkBase,
+			},
+		}},
+		syncManager: sync,
+	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
+
+	result := s.processHardlinkMode(
+		ctx,
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact",
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	// One entry: the tree root the link mode created under the base dir.
+	require.Equal(t, 1, sync.entriesAtAdd, "link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
+
+	entries, err := os.ReadDir(hardlinkBase)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "a cancelled run must still roll back its partial hardlink tree")
+}
+
+func TestProcessReflinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	reflinkBase := filepath.Join(tempDir, "reflinks")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sync := &cancelOnAddSyncManager{
+		rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
+		cancel:                      cancel,
+		err:                         errors.New("add failed"),
+		watchDir:                    reflinkBase,
+	}
+	s := &Service{
+		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseReflinks:              true,
+				HardlinkBaseDir:          reflinkBase,
+			},
+		}},
+		syncManager: sync,
+	}
+	s.SetBackendPool(fsops.NewPool(s.instanceStore, reflinkCapableBackend{local.NewBackend()}))
+
+	result := s.processReflinkMode(
+		ctx,
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact",
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	// One entry: the tree root the link mode created under the base dir.
+	require.Equal(t, 1, sync.entriesAtAdd, "link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
+
+	entries, err := os.ReadDir(reflinkBase)
+	require.NoError(t, err)
+	assert.Empty(t, entries, "a cancelled run must still roll back its partial reflink tree")
+}
+
 func TestShouldWarnForReflinkCreateError(t *testing.T) {
 	t.Parallel()
 
