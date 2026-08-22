@@ -122,6 +122,27 @@ const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, stri
   }
 };
 
+// Cache the full applied theme so the next page load can paint it before the
+// theme registry arrives from the API (the anti-FOUC vars only cover the
+// background). Hydrated back in config/themes.ts.
+const cacheAppliedTheme = (theme: Theme): void => {
+  try {
+    localStorage.setItem("theme-cache", JSON.stringify({
+      id: theme.id,
+      name: theme.name,
+      description: theme.description,
+      isPremium: theme.isPremium,
+      lightOnly: theme.lightOnly,
+      variations: theme.variations,
+      cssVars: theme.cssVars,
+      isCustom: theme.isCustom,
+      rawCss: theme.rawCss,
+    }));
+  } catch {
+    // Ignore localStorage errors
+  }
+};
+
 // Core theme application logic
 const applyTheme = async (theme: Theme, variation: string | null, isDark: boolean, withTransition = false): Promise<void> => {
   const root = document.documentElement;
@@ -164,8 +185,6 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
       .forEach(prop => root.style.removeProperty(prop));
 
     applyCustomThemeStyle(theme.rawCss);
-    root.setAttribute("data-theme", theme.id);
-    applyCriticalBackground(root, cssVars);
   } else {
     // Built-in theme: drop any injected custom stylesheet and apply vars inline.
     removeCustomThemeStyle();
@@ -186,10 +205,11 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
         root.style.setProperty("--variation-color", variationColor);
       }
     }
-
-    root.setAttribute("data-theme", theme.id);
-    applyCriticalBackground(root, cssVars);
   }
+
+  root.setAttribute("data-theme", theme.id);
+  applyCriticalBackground(root, cssVars);
+  cacheAppliedTheme(theme);
 
   // Spreadsheet disguise: the tab title is a tell. Set/restore it on theme
   // application so every page (not just those running useTitleBarSpeeds)
@@ -255,53 +275,17 @@ const addMediaQueryListener = (
 };
 
 // Public API
-let validatedThemes: Set<string> | null = null;
-let isInitializing = true;
 
-export const setValidatedThemes = (themeIds: string[]): void => {
-  validatedThemes = new Set(themeIds);
-  isInitializing = false;
-};
-
-const isThemeAccessible = (themeId: string): boolean => {
-  const theme = getThemeById(themeId);
-
-  // Custom themes are registered only after a backend premium check, so being
-  // present in the registry is the access grant. An unregistered custom id
-  // (not yet fetched, or unlicensed) is not accessible and falls back to default.
-  if (theme?.isCustom) {
-    return true;
-  }
-
-  // During initialization (before license data loads), trust the stored theme
-  // This prevents the theme from resetting on hard refresh
-  if (isInitializing && !validatedThemes) {
-    // Allow the stored theme temporarily during initialization
-    // It will be validated once license data loads
-    return true;
-  }
-
-  // If we haven't received validation data yet but initialization is complete,
-  // only allow non-premium themes
-  if (!validatedThemes) {
-    return !theme?.isPremium;
-  }
-
-  // Check if theme is in validated list
-  return validatedThemes.has(themeId);
-};
-
+// License enforcement lives server-side: premium CSS is never served to an
+// unlicensed install, so a premium theme id can only ever resolve to a locked
+// preview stub here. The stored id is kept so the theme comes back when the
+// registry can serve it (license activated, custom theme file restored).
 export const getCurrentTheme = (): Theme => {
   const storedThemeId = getStoredThemeId();
   if (storedThemeId) {
     const theme = getThemeById(storedThemeId);
-    // Validate theme access
-    if (theme && isThemeAccessible(theme.id)) {
+    if (theme && !theme.locked) {
       return theme;
-    }
-    // If theme exists but not accessible, clear it from storage
-    if (theme && !isThemeAccessible(theme.id)) {
-      localStorage.removeItem(COLOR_THEME_KEY);
     }
   }
   return getDefaultTheme();
@@ -311,18 +295,23 @@ export const getCurrentThemeMode = (): ThemeMode => {
   return getStoredMode() || THEME_AUTO;
 };
 
-export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string): Promise<void> => {
+// isSystemChange marks applications that restore existing state (catalog
+// hydration, server pull) rather than a user selection, so the server sync
+// never pushes them.
+export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: string, isSystemChange = false): Promise<void> => {
   const theme = getThemeById(themeId);
 
-  // Validate theme access before applying
-  if (!theme || !isThemeAccessible(theme.id)) {
-    // Fall back to default theme if not accessible
+  // Unknown ids and locked premium stubs apply the default instead. The
+  // stored id is left alone so the selection survives until it resolves.
+  if (!theme || theme.locked) {
     const defaultTheme = getDefaultTheme();
     const currentMode = mode || getCurrentThemeMode();
 
-    setStoredThemeId(defaultTheme.id);
     if (mode) {
       setStoredMode(mode);
+    }
+    if (variation) {
+      setStoredVariation(themeId, variation);
     }
     // Get variation for default theme
     const currentVariation = getThemeVariation(defaultTheme.id);
@@ -334,7 +323,9 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
       (currentMode === THEME_AUTO && getSystemPreference().matches);
 
     await applyTheme(defaultTheme, currentVariation, isDark, false);
-    dispatchThemeChange(currentMode, defaultTheme, false, currentVariation);
+    // System-driven fallback, not a user selection: flagged so the server
+    // sync never overwrites the stored selection with the default.
+    dispatchThemeChange(currentMode, defaultTheme, true, currentVariation);
     return;
   }
 
@@ -356,7 +347,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
     (currentMode === THEME_AUTO && getSystemPreference().matches);
 
   await applyTheme(theme, currentVariation, isDark, false);
-  dispatchThemeChange(currentMode, theme, false, currentVariation);
+  dispatchThemeChange(currentMode, theme, isSystemChange, currentVariation);
 };
 
 export const setThemeMode = async (mode: ThemeMode): Promise<void> => {

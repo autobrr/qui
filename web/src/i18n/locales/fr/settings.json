@@ -435,8 +435,6 @@
       "lock": "Verrouillé"
     },
     "toasts": {
-      "verifyFailed": "Vérification de licence indisponible",
-      "verifyFailedDescription": "Le changement de thème premium est temporairement désactivé.",
       "premiumRequired": "Licence Premium requise",
       "premiumRequiredDescription": "Débloquez les thèmes premium en ajoutant une licence valide."
     },
