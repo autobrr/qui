@@ -1707,118 +1707,84 @@ func (b reflinkCapableBackend) ReflinkTree(ctx context.Context, plan *hardlinktr
 	return b.HardlinkTree(ctx, plan)
 }
 
-func TestProcessHardlinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T) {
-	tempDir := t.TempDir()
-	downloadsDir := filepath.Join(tempDir, "downloads")
-	hardlinkBase := filepath.Join(tempDir, "hardlinks")
-	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sync := &cancelOnAddSyncManager{
-		rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
-		cancel:                      cancel,
-		err:                         errors.New("add failed"),
-		watchDir:                    hardlinkBase,
+func TestProcessLinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*models.Instance)
+		backend   fsops.Backend
+		process   func(s *Service, ctx context.Context, matched *qbt.Torrent, files qbt.TorrentFiles, props *qbt.TorrentProperties) (used, success bool)
+	}{
+		{
+			name:      "hardlink",
+			configure: func(i *models.Instance) { i.UseHardlinks = true },
+			backend:   local.NewBackend(),
+			process: func(s *Service, ctx context.Context, matched *qbt.Torrent, files qbt.TorrentFiles, props *qbt.TorrentProperties) (bool, bool) {
+				result := s.processHardlinkMode(ctx, CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+					[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{},
+					matched, "exact", files, files, props, "category", "category.cross")
+				return result.Used, result.Success
+			},
+		},
+		{
+			name:      "reflink",
+			configure: func(i *models.Instance) { i.UseReflinks = true },
+			backend:   reflinkCapableBackend{local.NewBackend()},
+			process: func(s *Service, ctx context.Context, matched *qbt.Torrent, files qbt.TorrentFiles, props *qbt.TorrentProperties) (bool, bool) {
+				result := s.processReflinkMode(ctx, CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+					[]byte("torrent"), "hash123", "", "TorrentName", &CrossSeedRequest{},
+					matched, "exact", files, files, props, "category", "category.cross")
+				return result.Used, result.Success
+			},
+		},
 	}
-	s := &Service{
-		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{
-			1: {
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			downloadsDir := filepath.Join(tempDir, "downloads")
+			linkBase := filepath.Join(tempDir, "links")
+			require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			sync := &cancelOnAddSyncManager{
+				rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
+				cancel:                      cancel,
+				err:                         errors.New("add failed"),
+				watchDir:                    linkBase,
+			}
+			instance := &models.Instance{
 				ID:                       1,
 				Name:                     "qbt1",
 				HasLocalFilesystemAccess: true,
-				UseHardlinks:             true,
-				HardlinkBaseDir:          hardlinkBase,
-			},
-		}},
-		syncManager: sync,
+				HardlinkBaseDir:          linkBase,
+			}
+			tt.configure(instance)
+			s := &Service{
+				instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{1: instance}},
+				syncManager:   sync,
+			}
+			s.SetBackendPool(fsops.NewPool(s.instanceStore, tt.backend))
+
+			files := qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}}
+			used, success := tt.process(s, ctx,
+				&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+				files,
+				&qbt.TorrentProperties{SavePath: downloadsDir},
+			)
+
+			require.True(t, used)
+			require.False(t, success)
+			// One entry: the tree root the link mode created under the base dir.
+			require.Equal(t, 1, sync.entriesAtAdd, "link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
+
+			entries, err := os.ReadDir(linkBase)
+			require.NoError(t, err)
+			assert.Empty(t, entries, "a cancelled run must still roll back its partial link tree")
+		})
 	}
-	s.SetBackendPool(fsops.NewPool(s.instanceStore, local.NewBackend()))
-
-	result := s.processHardlinkMode(
-		ctx,
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"),
-		"hash123",
-		"",
-		"TorrentName",
-		&CrossSeedRequest{},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
-		"exact",
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"category",
-		"category.cross",
-	)
-
-	require.True(t, result.Used)
-	require.False(t, result.Success)
-	// One entry: the tree root the link mode created under the base dir.
-	require.Equal(t, 1, sync.entriesAtAdd, "link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
-
-	entries, err := os.ReadDir(hardlinkBase)
-	require.NoError(t, err)
-	assert.Empty(t, entries, "a cancelled run must still roll back its partial hardlink tree")
-}
-
-func TestProcessReflinkMode_RollsBackPartialTreeUnderCancelledContext(t *testing.T) {
-	tempDir := t.TempDir()
-	downloadsDir := filepath.Join(tempDir, "downloads")
-	reflinkBase := filepath.Join(tempDir, "reflinks")
-	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sync := &cancelOnAddSyncManager{
-		rootlessSavePathSyncManager: &rootlessSavePathSyncManager{},
-		cancel:                      cancel,
-		err:                         errors.New("add failed"),
-		watchDir:                    reflinkBase,
-	}
-	s := &Service{
-		instanceStore: &mockInstanceStore{instances: map[int]*models.Instance{
-			1: {
-				ID:                       1,
-				Name:                     "qbt1",
-				HasLocalFilesystemAccess: true,
-				UseReflinks:              true,
-				HardlinkBaseDir:          reflinkBase,
-			},
-		}},
-		syncManager: sync,
-	}
-	s.SetBackendPool(fsops.NewPool(s.instanceStore, reflinkCapableBackend{local.NewBackend()}))
-
-	result := s.processReflinkMode(
-		ctx,
-		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
-		[]byte("torrent"),
-		"hash123",
-		"",
-		"TorrentName",
-		&CrossSeedRequest{},
-		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
-		"exact",
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
-		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
-		&qbt.TorrentProperties{SavePath: downloadsDir},
-		"category",
-		"category.cross",
-	)
-
-	require.True(t, result.Used)
-	require.False(t, result.Success)
-	// One entry: the tree root the link mode created under the base dir.
-	require.Equal(t, 1, sync.entriesAtAdd, "link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
-
-	entries, err := os.ReadDir(reflinkBase)
-	require.NoError(t, err)
-	assert.Empty(t, entries, "a cancelled run must still roll back its partial reflink tree")
 }
 
 func TestShouldWarnForReflinkCreateError(t *testing.T) {
