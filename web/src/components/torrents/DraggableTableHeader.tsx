@@ -4,14 +4,14 @@
  */
 
 import { getColumnType, type ColumnFilter } from "@/lib/column-filter-utils"
-import type { Torrent } from "@/types"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { flexRender, type Header } from "@tanstack/react-table"
+import { flexRender } from "@tanstack/react-table"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { ColumnFilterPopover } from "./ColumnFilterPopover"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
+import type { TorrentTableHeader } from "./tanstackTableFeatures"
 
 {/* Auto-fit width for column headers on double-click*/}
 const TORRENT_ROW_CELL_MEASURE = "data-torrent-column-measure"
@@ -55,7 +55,7 @@ function measureTorrentColumnFitWidth(gridRoot: HTMLElement, columnId: string): 
 {/* Auto-fit width for column headers on double-click end*/}
 
 interface DraggableTableHeaderProps {
-  header: Header<Torrent, unknown>
+  header: TorrentTableHeader
   columnFilters?: ColumnFilter[]
   viewMode?: ViewMode
   onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void

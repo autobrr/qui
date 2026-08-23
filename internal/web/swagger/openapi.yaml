@@ -3071,6 +3071,50 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/themes:
+    get:
+      tags:
+        - Themes
+      summary: List built-in themes
+      description: List every built-in theme. Free themes always include their CSS. On a licensed instance, premium themes include CSS for an authenticated caller; an unauthenticated caller only receives the selected theme's CSS so the login page can paint, and every other premium theme is a locked stub with preview colors. Without a license every premium theme is a locked stub. Public endpoint, no authentication required.
+      security: []
+      responses:
+        '200':
+          description: Built-in themes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        premium:
+                          type: boolean
+                        css:
+                          type: string
+                          description: Full theme CSS. Absent on locked premium entries.
+                        preview:
+                          type: object
+                          description: Swatch colors for locked premium entries.
+                          properties:
+                            light:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            dark:
+                              type: object
+                              additionalProperties:
+                                type: string
+
   /api/themes/custom:
     get:
       tags:
@@ -3102,6 +3146,97 @@ paths:
           description: Premium access required
         '500':
           description: Failed to check premium access or read the custom themes directory
+
+  /api/themes/settings:
+    get:
+      tags:
+        - Themes
+      summary: Get stored theme selection
+      description: Get the theme selection stored in the database. Returns null when no selection is stored. Public endpoint, no authentication required, so the login page can apply the selected theme.
+      security: []
+      responses:
+        '200':
+          description: Stored theme selection, or null when none is stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeSettings'
+                nullable: true
+        '500':
+          description: Failed to load theme settings
+    put:
+      tags:
+        - Themes
+      summary: Store theme selection
+      description: Store the theme selection in the database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThemeSettings'
+      responses:
+        '200':
+          description: Theme selection stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeSettings'
+        '400':
+          description: Invalid payload, missing themeId, or invalid mode
+        '500':
+          description: Failed to save theme settings
+
+  /api/torrents/export:
+    post:
+      tags:
+        - Torrents
+      summary: Export torrents as a ZIP archive
+      description: |
+        Download selected .torrent files in one ZIP. Files are grouped by category and,
+        when multiple instances are selected, by instance. Failed exports are listed in
+        export-errors.txt while successful exports remain available.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targets
+              properties:
+                targets:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                        minimum: 1
+                      instanceName:
+                        type: string
+                      hash:
+                        type: string
+                        minLength: 1
+                      category:
+                        type: string
+                      filename:
+                        type: string
+                        description: Optional safe display filename, used by incognito exports.
+      responses:
+        '200':
+          description: ZIP archive containing exported torrents and any partial-failure report
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
 
   /api/torrents/cross-instance:
     get:
@@ -5693,6 +5828,20 @@ components:
       description: Directory scan run ID
 
   schemas:
+    ThemeSettings:
+      type: object
+      required:
+        - themeId
+      properties:
+        themeId:
+          type: string
+        mode:
+          type: string
+          enum: [auto, light, dark]
+          default: auto
+        variation:
+          type: string
+
     User:
       type: object
       properties:

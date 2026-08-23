@@ -40,14 +40,14 @@ func TestCache_ClearAll(t *testing.T) {
 	// Populate cache with multiple keys
 	keys := []string{"key1", "key2", "key3", "key4", "key5"}
 	for _, key := range keys {
-		cache.Set(key, fmt.Sprintf("value_%s", key), ttlcache.DefaultTTL)
+		cache.Set(key, "value_"+key, ttlcache.DefaultTTL)
 	}
 
 	// Verify all keys exist
 	for _, key := range keys {
 		cached, found := cache.Get(key)
 		assert.True(t, found, "Key should exist: %s", key)
-		assert.Equal(t, fmt.Sprintf("value_%s", key), cached)
+		assert.Equal(t, "value_"+key, cached)
 	}
 
 	// Delete all keys

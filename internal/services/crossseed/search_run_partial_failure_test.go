@@ -161,25 +161,23 @@ func TestSearchRunLoop_OneFailedCandidateDoesNotFailWholeRun(t *testing.T) {
 	require.NoError(t, err)
 
 	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-partial-failure", &hashFilteringSyncManager{
-		gazelleSkipHashSyncManager: gazelleSkipHashSyncManager{
-			torrents: []qbt.Torrent{brokenTorrent, sourceTorrent},
-			filesByHash: map[string]qbt.TorrentFiles{
-				sourceHashNorm: sourceFiles,
-				strings.ToLower(cachedCandidate.Hash): {
-					{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
-				},
+		torrents: []qbt.Torrent{brokenTorrent, sourceTorrent},
+		filesByHash: map[string]qbt.TorrentFiles{
+			sourceHashNorm: sourceFiles,
+			strings.ToLower(cachedCandidate.Hash): {
+				{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
 			},
-			cachedInstanceTorrents: []internalqb.CrossInstanceTorrentView{
-				{
-					TorrentView: &internalqb.TorrentView{
-						Torrent: &cachedCandidate,
-					},
-					InstanceID:   1,
-					InstanceName: "Local Node",
-				},
-			},
-			exportedTorrent: torrentBytes,
 		},
+		cachedInstanceTorrents: []internalqb.CrossInstanceTorrentView{
+			{
+				TorrentView: &internalqb.TorrentView{
+					Torrent: &cachedCandidate,
+				},
+				InstanceID:   1,
+				InstanceName: "Local Node",
+			},
+		},
+		exportedTorrent: torrentBytes,
 	})
 
 	runSearchLoopToCompletion(t, svc, state)
@@ -229,9 +227,7 @@ func TestSearchRunLoop_AllCandidatesFailedMarksRunFailed(t *testing.T) {
 	}
 
 	svc, state := newSearchRunLoopFixture(t, "crossseed-runloop-total-failure", &hashFilteringSyncManager{
-		gazelleSkipHashSyncManager: gazelleSkipHashSyncManager{
-			torrents: []qbt.Torrent{brokenTorrent},
-		},
+		torrents: []qbt.Torrent{brokenTorrent},
 	})
 
 	runSearchLoopToCompletion(t, svc, state)

@@ -249,6 +249,9 @@ func scanTorrentFiles(torrent qbt.Torrent, files qbt.TorrentFiles) *torrentFileI
 
 		fi, err := os.Lstat(fullPath)
 		if err != nil {
+			if f.Priority == 0 && os.IsNotExist(err) {
+				continue
+			}
 			info.allAccessible = false
 			continue
 		}

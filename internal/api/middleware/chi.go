@@ -34,7 +34,7 @@ var Recoverer = middleware.Recoverer
 // values from the client, or if you use this middleware without a reverse
 // proxy, malicious clients will be able to make you very sad (or, depending on
 // how you're using RemoteAddr, vulnerable to an attack of some sort).
-var RealIP = middleware.RealIP
+var RealIP = middleware.RealIP //nolint:staticcheck // SA1019: spoofable by design, which is why the auth-disabled CIDR allowlist runs before it in server.go; RemoteAddr past this point is for logs and throttling
 
 // ThrottleBacklog is a middleware that limits number of currently processed
 // requests at a time and provides a backlog for holding a finite number of

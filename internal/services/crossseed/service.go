@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/cespare/xxhash/v2"
@@ -355,9 +356,14 @@ func initializeDomainMappings() map[string][]string {
 
 // Service provides cross-seed functionality
 type Service struct {
-	instanceStore             instanceProvider
-	syncManager               qbittorrentSync
-	filesManager              *filesmanager.Service
+	instanceStore instanceProvider
+	syncManager   qbittorrentSync
+	filesManager  *filesmanager.Service
+	// mediaIDCacheStore backs the MKV-metadata external-ID fallback; nil
+	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
+	// real MediaInfo analyzer.
+	mediaIDCacheStore         mediaIDCache
+	analyzeMediaFile          func(ctx context.Context, path string) (mediainfo.Report, error)
 	trackerCustomizationStore trackerCustomizationProvider
 	releaseCache              *ReleaseCache
 	// searchResultCache stores the most recent search results per torrent hash so that
@@ -568,7 +574,7 @@ func NewService(
 	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
 		SetDefaultTTL(5 * time.Minute))
 
-	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	recheckCtx, recheckCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: service-lifetime context, cancelled on shutdown
 	var arrLookup arrLookupService
 	if !isNilARRLookupService(arrService) {
 		arrLookup = arrService
@@ -628,6 +634,16 @@ func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Serv
 		partialPoolWake:    make(chan partialPoolWake, 100),
 		partialPoolCreated: make(map[int64]*hardlinktree.Created),
 	}
+}
+
+// SetMediaIDCacheStore wires the media_id_cache store that backs the
+// MKV-metadata external-ID fallback. Safe to call once at startup; without it
+// the fallback stays disabled.
+func (s *Service) SetMediaIDCacheStore(store *models.MediaIDCacheStore) {
+	if s == nil || store == nil {
+		return
+	}
+	s.mediaIDCacheStore = store
 }
 
 // SetActivityPublisher wires the qui server-event hub so cross-seed automation and
@@ -773,11 +789,6 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("automation settings loader failed: %w", err)
 		}
-	}
-
-	// Check Jackett service connectivity (if configured)
-	if s.jackettService != nil {
-		// We could add a lightweight check here if Jackett service has a health check method
 	}
 
 	return nil
@@ -961,7 +972,7 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx               context.Context //nolint:containedctx // pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	ctx               context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
 	svc               *Service
 	sourceInstanceID  int
 	sourceHash        string
@@ -2789,8 +2800,7 @@ func completionRetryDelay(err error) (time.Duration, bool) {
 		return 0, false
 	}
 
-	var waitErr *jackett.RateLimitWaitError
-	if errors.As(err, &waitErr) {
+	if waitErr, ok := errors.AsType[*jackett.RateLimitWaitError](err); ok {
 		if waitErr.Wait > 0 {
 			return waitErr.Wait, true
 		}
@@ -7235,13 +7245,6 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	}
 
 	if titleMismatch || contentMismatch {
-		log.Warn().
-			Str("torrentName", torrentName).
-			Str("largestFile", largestFile.Name).
-			Str("fileContentType", fileContent.ContentType).
-			Str("torrentContentType", sourceContent.ContentType).
-			Bool("titleMismatch", titleMismatch).
-			Msg("[CROSSSEED-SEARCH] Largest file looked unrelated, falling back to torrent metadata for content detection")
 		return sourceRelease, false
 	}
 
@@ -7648,7 +7651,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 		if enableContentFiltering {
 			if len(capabilityIndexers) > 0 {
-				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
+				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState) //nolint:gosec // G118: async filtering must outlive the request that queued it
 			} else {
 				filteringState.Lock()
 				filteringState.FilteredIndexers = []int{}
@@ -8541,6 +8544,25 @@ func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jac
 	return indexersWithoutResults(requestedIDs, usable)
 }
 
+// mediaIDRetryIndexers returns the requested indexers, but only when NONE of
+// them holds a usable candidate; hits rejected by release/size filtering
+// count as nothing usable. Otherwise nil: the MediaInfo ID retry is skipped.
+func (s *Service) mediaIDRetryIndexers(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
+	if len(requestedIDs) == 0 {
+		return nil
+	}
+	for _, r := range results {
+		if !slices.Contains(requestedIDs, r.IndexerID) {
+			continue
+		}
+		candidate := s.parseReleaseName(r.Title)
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+			return nil
+		}
+	}
+	return requestedIDs
+}
+
 func (s *Service) shouldRunTitleFallback(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes, rescueTitleMismatches bool) bool {
 	if len(results) == 0 {
 		return true
@@ -9315,6 +9337,62 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 							Ints("altIndexerIDs", altIndexerIDs).
 							Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
 						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
+					}
+				}
+			}
+		}
+	}
+
+	// MediaInfo ID retry: when ARR supplied no ID and no indexer holds a
+	// usable candidate after every title pass above (no hits, or hits all
+	// rejected by release/size filtering), fall back to an external ID
+	// embedded in the torrent's MKV metadata (cached per torrent in
+	// media_id_cache). Muxer tags carry no library-level trust, so this never
+	// replaces the title flow: it only runs after that flow comes up empty.
+	if externalIDs == nil && !opts.DisableTorznab {
+		idIndexerIDs := s.mediaIDRetryIndexers(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+		if len(idIndexerIDs) > 0 {
+			if mediaIDs := s.lookupMediaFileIDs(waitCtx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
+				idReq := *searchReq
+				if mediaIDs.IMDbID != "" {
+					idReq.IMDbID = mediaIDs.IMDbID
+				}
+				if mediaIDs.TVDbID > 0 {
+					idReq.TVDbID = strconv.Itoa(mediaIDs.TVDbID)
+				}
+				if mediaIDs.TMDbID > 0 {
+					idReq.TMDbID = mediaIDs.TMDbID
+				}
+				idReq.OmitQueryForIDs = true
+				// ID-only pass: the title flow already ran for this set; nothing
+				// to ask an indexer that cannot search by ID.
+				idReq.SkipIndexersWithoutIDs = true
+				idReq.IndexerIDs = idIndexerIDs
+				idReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
+				// Internal continuation of the primary search, like the
+				// alternate-title and connector passes above.
+				idReq.SkipHistory = true
+				if idResp, idErr := s.searchOnce(waitCtx, &idReq); idErr != nil {
+					log.Debug().
+						Err(idErr).
+						Str("torrentName", sourceTorrent.Name).
+						Ints("idIndexerIDs", idIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] MediaInfo ID retry failed; continuing with primary results")
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, idIndexerIDs)
+				} else if idResp != nil {
+					// This pass only targeted idIndexerIDs; un-cover the targeted
+					// indexers that missed it, leave the rest untouched.
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, subtractInts(idIndexerIDs, idResp.CoveredIndexerIDs))
+					if len(idResp.Results) > 0 {
+						// These results came from an ID query, so the "searched
+						// by title only" degradation notice no longer holds.
+						queryDegraded = ""
+						log.Debug().
+							Str("torrentName", sourceTorrent.Name).
+							Int("idResults", len(idResp.Results)).
+							Ints("idIndexerIDs", idIndexerIDs).
+							Msg("[CROSSSEED-SEARCH] MediaInfo ID retry returned additional candidates")
+						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, idResp)
 					}
 				}
 			}
@@ -12235,7 +12313,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 			if normalizedDomain == normalizedSpecificDomain {
 				return true
 			}
-
 		}
 
 		// 3. Partial match: domain contains normalized indexer name or vice versa
@@ -15002,7 +15079,6 @@ func (s *Service) buildHardlinkDestDir(
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-
 	// Determine if isolation folder is needed based on torrent structure.
 	// Since hardlink mode always uses contentLayout=Original, we only need
 	// an isolation folder when the torrent doesn't have a common root folder.
@@ -15489,8 +15565,7 @@ func (s *Service) processReflinkMode(
 	// Materialize only after the coverage and plan gates so clearly invalid
 	// partial matches are skipped before probing filesystem capabilities.
 	created, err := s.materializeReflink(selectedBaseDir, plan)
-	var unsupportedErr *reflinkUnsupportedError
-	if errors.As(err, &unsupportedErr) {
+	if unsupportedErr, ok := errors.AsType[*reflinkUnsupportedError](err); ok {
 		log.Warn().
 			Str("reason", unsupportedErr.reason).
 			Str("baseDir", selectedBaseDir).

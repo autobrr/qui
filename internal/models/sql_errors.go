@@ -16,13 +16,11 @@ func isUniqueConstraintError(err error) bool {
 		return false
 	}
 
-	var sqlErr *sqlite.Error
-	if errors.As(err, &sqlErr) {
+	if sqlErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		return sqlErr.Code() == sqlitelib.SQLITE_CONSTRAINT_UNIQUE
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23505"
 	}
 
@@ -34,13 +32,11 @@ func isCheckConstraintError(err error) bool {
 		return false
 	}
 
-	var sqlErr *sqlite.Error
-	if errors.As(err, &sqlErr) {
+	if sqlErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		return sqlErr.Code() == sqlitelib.SQLITE_CONSTRAINT_CHECK
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23514"
 	}
 
@@ -52,13 +48,11 @@ func isForeignKeyConstraintError(err error) bool {
 		return false
 	}
 
-	var sqlErr *sqlite.Error
-	if errors.As(err, &sqlErr) {
+	if sqlErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		return sqlErr.Code() == sqlitelib.SQLITE_CONSTRAINT_FOREIGNKEY
 	}
 
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
+	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		return pgErr.Code == "23503"
 	}
 

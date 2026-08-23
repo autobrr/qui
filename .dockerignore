@@ -12,3 +12,4 @@ LICENSE
 AGENTS.md
 CLAUDE.md
 distrib/docker/docker-compose*.yml
+.themes-temp

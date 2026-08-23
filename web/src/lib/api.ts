@@ -122,6 +122,8 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   TransferInfo,
+  BuiltinTheme,
+  ThemeSettings,
   User,
   WarningResponse,
   WebSeed
@@ -1664,6 +1666,31 @@ class ApiClient {
     return { blob, filename }
   }
 
+  async exportTorrentsArchive(targets: Array<{
+    instanceId: number
+    instanceName: string
+    hash: string
+    category: string
+    filename?: string
+  }>): Promise<{ blob: Blob; filename: string | null }> {
+    const response = await ssoSafeFetch(`${API_BASE}/torrents/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets }),
+    })
+
+    if (!response.ok) {
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, "/torrents/export", message)
+      throw new Error(message)
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get("content-disposition")),
+    }
+  }
+
   async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
     return this.request<SortedPeersResponse>(`/instances/${instanceId}/torrents/${hash}/peers`)
   }
@@ -2013,12 +2040,29 @@ class ApiClient {
     return this.request("/license/refresh", { method: "POST" })
   }
 
+  // Built-in themes (public; premium CSS license-gated server-side)
+  async getBuiltinThemes(signal?: AbortSignal): Promise<{ themes: BuiltinTheme[] }> {
+    return this.request("/themes", { signal })
+  }
+
   // Custom themes (sideloaded CSS files; premium-gated server-side)
   async getCustomThemes(): Promise<{
     directory: string
     themes: Array<{ id: string; filename: string; css: string }>
   }> {
     return this.request("/themes/custom")
+  }
+
+  // Theme settings (theme selection stored in the database; writes premium-gated server-side)
+  async getThemeSettings(): Promise<ThemeSettings | null> {
+    return this.request<ThemeSettings | null>("/themes/settings")
+  }
+
+  async updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>("/themes/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
   }
 
   // Preferences endpoints

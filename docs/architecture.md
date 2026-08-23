@@ -8,6 +8,7 @@ Internal reference for agents and maintainers. Read this before changing cross-m
 - `internal/api/`: HTTP handlers, middleware, and routing.
 - `internal/qbittorrent/`: qBittorrent client pool and sync manager.
 - `internal/services/`: domain services such as cross-seed, Jackett/Torznab, reannounce, and tracker rules.
+- `internal/fsops/`: filesystem backend abstraction. Service callsites are migrating from direct `os.*` calls to an `fsops.Backend` (migration in #1915) resolved per instance via `fsops.Pool` — the local backend for instances with local filesystem access, a noop backend (every op returns `ErrNoFilesystemAccess`) otherwise. A future SSH-backed remote backend slots in at the pool (design: `docs/remote-backend-design.md`).
 - `internal/proxy/`: reverse proxy support for external apps.
 - `internal/backups/`: scheduled snapshots.
 - `internal/database/`: SQLite/Postgres migrations and database setup.

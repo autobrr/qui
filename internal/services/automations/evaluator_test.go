@@ -8,6 +8,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/releases"
 )

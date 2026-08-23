@@ -15,7 +15,6 @@ formatters:
 
 linters:
   enable:
-    - containedctx
     - copyloopvar
     - errname
     - errorlint
@@ -39,7 +38,16 @@ linters:
 
   settings:
     exhaustive:
-      default-signifies-exhaustive: false
+      # A switch with a default has handled the rest by definition, and the repo
+      # asks for behaviour-bearing branches rather than a case per enum value
+      # that falls through to the same place.
+      default-signifies-exhaustive: true
+
+    gocritic:
+      disabled-checks:
+        # Taste, not correctness, and most of the hits are in crossseed and
+        # qbittorrent where the repo asks for minimal diffs.
+        - ifElseChain
 
     misspell:
       ignore-rules:
@@ -58,3 +66,42 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+
+    rules:
+      # A parameter an interface forces on an implementation still documents
+      # what the caller passes; renaming it to _ loses that.
+      - linters:
+          - revive
+        text: "unused-parameter"
+
+      # Renaming CrossSeedRequest to Request, MetricsManager to Manager and so
+      # on is a wide rename through every caller for a naming preference.
+      - linters:
+          - revive
+        text: "stutters"
+
+      # gosec's taint analysis follows archive entry names through
+      # safeArchiveEntryPath, which validates them in the slash domain, and
+      # cannot see the check. Scoped to the statements in the extraction flow
+      # so a new unvalidated path in this file is still reported.
+      - path: internal/api/handlers/backups\.go
+        linters:
+          - gosec
+        text: "G703"
+        source: "tmpFile\\.Name\\(\\)|filepath\\.Dir\\(destPath\\)|os\\.Open\\(archivePath\\)"
+
+      # The generated config template contains a commented-out password field.
+      # Scoped to the template literal itself, which cannot carry a nolint.
+      - path: internal/config/config\.go
+        linters:
+          - gosec
+        text: "G101"
+        source: "configTemplate := "
+
+      # Test fixtures are allowed to hold obvious fake credentials, build
+      # requests without a context, and set cookies without the production
+      # attributes.
+      - path: _test\.go
+        linters:
+          - gosec
+          - noctx

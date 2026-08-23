@@ -163,13 +163,13 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 	d := New(50 * time.Millisecond)
 	defer d.Stop()
 
-	var executed int64
+	var executed atomic.Int64
 
 	// First sequence
 	firstDone := make(chan bool, 1)
 	for range 3 {
 		d.Do(func() {
-			atomic.AddInt64(&executed, 1)
+			executed.Add(1)
 			firstDone <- true
 		})
 		time.Sleep(10 * time.Millisecond)
@@ -178,7 +178,7 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 	// Wait for first sequence execution
 	select {
 	case <-firstDone:
-		firstCount := atomic.LoadInt64(&executed)
+		firstCount := executed.Load()
 		if firstCount != 1 {
 			t.Errorf("Expected 1 execution in first sequence, got %d", firstCount)
 		}
@@ -190,7 +190,7 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 	secondDone := make(chan bool, 1)
 	for range 2 {
 		d.Do(func() {
-			atomic.AddInt64(&executed, 1)
+			executed.Add(1)
 			secondDone <- true
 		})
 		time.Sleep(10 * time.Millisecond)
@@ -199,7 +199,7 @@ func TestDebouncer_MultipleSequences(t *testing.T) {
 	// Wait for second sequence execution
 	select {
 	case <-secondDone:
-		totalCount := atomic.LoadInt64(&executed)
+		totalCount := executed.Load()
 		if totalCount != 2 {
 			t.Errorf("Expected 2 total executions, got %d", totalCount)
 		}

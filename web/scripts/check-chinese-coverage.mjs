@@ -4,7 +4,14 @@ import path from "node:path"
 const webRoot = path.resolve(import.meta.dirname, "..")
 const localesRoot = path.join(webRoot, "src", "i18n", "locales")
 const enRoot = path.join(localesRoot, "en")
-const zhCNRoot = path.join(localesRoot, "zh-CN")
+
+const supportedLocales = ["zh-CN", "zh-TW"]
+const locale = process.argv[2]
+if (!supportedLocales.includes(locale)) {
+  console.error(`Unknown locale "${locale}". Use one of: ${supportedLocales.join(", ")}`)
+  process.exit(1)
+}
+const localeRoot = path.join(localesRoot, locale)
 
 const namespaces = [
   "common",
@@ -20,7 +27,7 @@ const namespaces = [
 ]
 
 // Technical terms, brand names, and abbreviations that are acceptable
-// to leave untranslated in zh-CN.
+// to leave untranslated in the Chinese locales.
 const passthroughTerms = new Set([
   "qBittorrent", "BitTorrent", "autobrr", "qui", "GitHub",
   "Prowlarr", "Jackett", "Sonarr", "Radarr", "Shoutrrr",
@@ -139,7 +146,7 @@ function checkMissingKeys(enFlat, zhFlat, namespace) {
   const errors = []
 
   // Build set of en plural bases that have _one/_other pairs (v4 CLDR style).
-  // For these, zh-CN only needs _other -- _one is not required.
+  // For these, Chinese only needs _other -- _one is not required.
   const v4PluralBases = new Set()
   for (const key of enFlat.keys()) {
     if (key.endsWith("_one")) {
@@ -151,7 +158,7 @@ function checkMissingKeys(enFlat, zhFlat, namespace) {
   }
 
   for (const [key, value] of enFlat) {
-    // Skip _one keys for v4 plural pairs -- zh-CN collapses to _other only.
+    // Skip _one keys for v4 plural pairs -- Chinese collapses to _other only.
     if (key.endsWith("_one") && v4PluralBases.has(key.slice(0, -4))) {
       continue
     }
@@ -170,7 +177,7 @@ function checkExtraKeys(enFlat, zhFlat, namespace) {
 
   for (const key of zhFlat.keys()) {
     if (!enFlat.has(key)) {
-      // If zh-CN has _other and en has _one/_other pair, that is fine.
+      // If the locale has _other and en has _one/_other pair, that is fine.
       if (key.endsWith("_other") && enFlat.has(`${key.slice(0, -6)}_one`)) {
         continue
       }
@@ -199,7 +206,7 @@ function checkInterpolation(enFlat, zhFlat, namespace) {
     for (const v of enVars) {
       if (localeSpecificVars.has(v)) continue
       if (!zhVars.has(v)) {
-        errors.push(`${namespace}.${key}: missing {{${v}}} in zh-CN`)
+        errors.push(`${namespace}.${key}: missing {{${v}}} in ${locale}`)
       }
     }
   }
@@ -331,7 +338,7 @@ function checkTextLength(enFlat, zhFlat, namespace) {
 
     if (zhClean.length > enClean.length * 1.5) {
       const ratio = Math.round((zhClean.length / enClean.length) * 100)
-      warnings.push(`${namespace}.${key}: zh-CN is ${ratio}% of en length (${zhClean.length} vs ${enClean.length} chars)`)
+      warnings.push(`${namespace}.${key}: ${locale} is ${ratio}% of en length (${zhClean.length} vs ${enClean.length} chars)`)
     }
   }
 
@@ -369,8 +376,8 @@ function checkPunctuation(zhFlat, namespace) {
 // Main
 // ---------------------------------------------------------------------------
 
-if (!fs.existsSync(zhCNRoot)) {
-  console.log("zh-CN locale directory not found, skipping coverage check.")
+if (!fs.existsSync(localeRoot)) {
+  console.log(`${locale} locale directory not found, skipping coverage check.`)
   process.exit(0)
 }
 
@@ -393,7 +400,7 @@ const warnings = {
 
 for (const ns of namespaces) {
   const enPath = path.join(enRoot, `${ns}.json`)
-  const zhPath = path.join(zhCNRoot, `${ns}.json`)
+  const zhPath = path.join(localeRoot, `${ns}.json`)
 
   if (!fs.existsSync(enPath)) {
     errors.missingKeys.push(`${ns}: English locale file missing`)
@@ -401,7 +408,7 @@ for (const ns of namespaces) {
   }
 
   if (!fs.existsSync(zhPath)) {
-    errors.missingKeys.push(`${ns}: zh-CN locale file missing`)
+    errors.missingKeys.push(`${ns}: ${locale} locale file missing`)
     continue
   }
 
@@ -441,11 +448,11 @@ const totalErrors = Object.values(errors).reduce((sum, arr) => sum + arr.length,
 const totalWarnings = Object.values(warnings).reduce((sum, arr) => sum + arr.length, 0)
 
 if (totalErrors === 0 && totalWarnings === 0) {
-  console.log("zh-CN translation coverage: all checks passed.")
+  console.log(`${locale} translation coverage: all checks passed.`)
   process.exit(0)
 }
 
-console.log("=== zh-CN Translation Coverage Report ===\n")
+console.log(`=== ${locale} Translation Coverage Report ===\n`)
 
 function printSection(label, items, severity) {
   if (items.length === 0) return

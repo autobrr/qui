@@ -160,6 +160,14 @@ type searchContext struct {
 	releaseName   string // Original full release name for debugging/history
 	skipHistory   bool   // Skip recording this search in history buffer
 	originalQuery string // Original query for fallback when ID params are pruned per-indexer
+
+	// omitCategoriesForIDs is set when buildSearchParams dropped the query for an
+	// ID-driven movie or TV search. The category filter is dropped with it, but only
+	// for indexers that keep at least one usable ID.
+	omitCategoriesForIDs bool
+
+	// skipIndexersWithoutIDs mirrors TorznabSearchRequest.SkipIndexersWithoutIDs.
+	skipIndexersWithoutIDs bool
 }
 
 type searchPriorityKey struct{}
@@ -252,6 +260,9 @@ type searchCacheKeyPayload struct {
 	Album         string      `json:"album,omitempty"`
 	SearchMode    string      `json:"search_mode,omitempty"`
 	ContentType   contentType `json:"content_type"`
+	// SkipIndexersWithoutIDs changes which indexers a request reaches, so a
+	// flagged pass must not satisfy an unflagged one from cache (or vice versa).
+	SkipIndexersWithoutIDs bool `json:"skip_indexers_without_ids,omitempty"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -375,7 +386,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	// Build the exec function for each indexer
 	execFn := func(execCtx context.Context, idxs []*models.TorznabIndexer, vals url.Values, m *searchContext) ([]Result, []int, error) {
 		if len(idxs) == 0 {
-			return nil, nil, fmt.Errorf("missing indexer")
+			return nil, nil, errors.New("missing indexer")
 		}
 		if s.searchExecutor != nil {
 			return s.searchExecutor(execCtx, idxs, vals, m)
@@ -635,7 +646,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		req.Artist != "" || req.Album != "" || req.Year > 0 || req.Season != nil || req.Episode != nil
 
 	if req.Query == "" && !hasAdvancedParams {
-		return fmt.Errorf("query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
+		return errors.New("query or advanced parameters (imdb_id, tvdb_id, tmdb_id, tvmaze_id, artist, album, year, season, episode) are required")
 	}
 
 	var detectedType contentType
@@ -679,6 +690,9 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		releaseName:   req.ReleaseName,
 		skipHistory:   req.SkipHistory,
 		originalQuery: req.Query,
+
+		omitCategoriesForIDs:   req.OmitQueryForIDs && !params.Has("q"),
+		skipIndexersWithoutIDs: req.SkipIndexersWithoutIDs,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -991,12 +1005,12 @@ const (
 // in the shared rate limiter to prevent hammering indexers.
 func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadRequest) ([]byte, error) {
 	if req.IndexerID <= 0 {
-		return nil, fmt.Errorf("indexer ID must be positive")
+		return nil, errors.New("indexer ID must be positive")
 	}
 
 	downloadURL := strings.TrimSpace(req.DownloadURL)
 	if downloadURL == "" {
-		return nil, fmt.Errorf("download URL is required")
+		return nil, errors.New("download URL is required")
 	}
 
 	cacheKey := strings.TrimSpace(req.GUID)
@@ -1178,8 +1192,7 @@ func isRetryableDownloadError(err error) bool {
 		return false
 	}
 
-	var dlErr *DownloadError
-	if errors.As(err, &dlErr) {
+	if dlErr, ok := errors.AsType[*DownloadError](err); ok {
 		return dlErr.StatusCode >= 500 && dlErr.StatusCode < 600
 	}
 
@@ -1277,6 +1290,8 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Album:         strings.TrimSpace(req.Album),
 		SearchMode:    searchMode,
 		ContentType:   detectedType,
+
+		SkipIndexersWithoutIDs: req.SkipIndexersWithoutIDs,
 	}
 
 	fullFingerprint, baseFingerprint, err := buildSearchCacheFingerprints(payload)
@@ -1352,7 +1367,7 @@ func (s *Service) fetchCacheEntry(ctx context.Context, sig *searchCacheSignature
 	if entry == nil || len(coverage) == 0 {
 		return nil, nil, false
 	}
-	go func(entryID int64) {
+	go func(entryID int64) { //nolint:gosec // G118: cache touch must outlive the lookup, bounded by its own timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		s.searchCache.Touch(ctx, entryID)
@@ -1605,7 +1620,7 @@ func buildSearchCacheFingerprints(payload searchCacheKeyPayload) (string, string
 
 func buildBaseFingerprintFromRaw(raw string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
-		return "", fmt.Errorf("empty fingerprint")
+		return "", errors.New("empty fingerprint")
 	}
 
 	var payload searchCacheKeyPayload
@@ -1721,7 +1736,7 @@ func (s *Service) GetRecentSearches(ctx context.Context, scope string, limit int
 // UpdateSearchCacheSettings updates the TTL configuration at runtime.
 func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int) (*models.TorznabSearchCacheSettings, error) {
 	if s == nil || s.searchCache == nil {
-		return nil, fmt.Errorf("search cache is not configured")
+		return nil, errors.New("search cache is not configured")
 	}
 	if ttlMinutes < MinSearchCacheTTLMinutes {
 		return nil, fmt.Errorf("ttlMinutes must be at least %d", MinSearchCacheTTLMinutes)
@@ -1763,7 +1778,7 @@ func (s *Service) UpdateSearchCacheSettings(ctx context.Context, ttlMinutes int)
 // SyncIndexerCaps fetches and persists Torznab capabilities and categories for an indexer.
 func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.TorznabIndexer, error) {
 	if indexerID <= 0 {
-		return nil, fmt.Errorf("indexer ID must be positive")
+		return nil, errors.New("indexer ID must be positive")
 	}
 
 	indexer, err := s.indexerStore.Get(ctx, indexerID)
@@ -1793,7 +1808,7 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 		return nil, fmt.Errorf("fetch torznab caps: %w", err)
 	}
 	if caps == nil {
-		return nil, fmt.Errorf("torznab caps response was empty")
+		return nil, errors.New("torznab caps response was empty")
 	}
 
 	if err := s.indexerStore.SetCapabilities(ctx, indexer.ID, caps.Capabilities); err != nil {
@@ -1876,8 +1891,7 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func asRateLimitWaitError(err error) (*RateLimitWaitError, bool) {
-	var waitErr *RateLimitWaitError
-	if errors.As(err, &waitErr) {
+	if waitErr, ok := errors.AsType[*RateLimitWaitError](err); ok {
 		return waitErr, true
 	}
 	return nil, false
@@ -1902,15 +1916,15 @@ func computeSearchTimeout(meta *searchContext, indexerCount int) time.Duration {
 
 func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
 	if idx == nil {
-		return fmt.Errorf("missing indexer")
+		return errors.New("missing indexer")
 	}
 
 	baseURL := strings.TrimSpace(idx.BaseURL)
 	if baseURL == "" || (!strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://")) {
-		return fmt.Errorf("invalid indexer base URL")
+		return errors.New("invalid indexer base URL")
 	}
 	if strings.Contains(baseURL, "api/v2.0/indexers/") && !strings.Contains(baseURL, "://") {
-		return fmt.Errorf("invalid indexer base URL")
+		return errors.New("invalid indexer base URL")
 	}
 	return nil
 }
@@ -1928,7 +1942,7 @@ type indexerExecOptions struct {
 
 func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext, opts indexerExecOptions) indexerExecResult {
 	if idx == nil {
-		return indexerExecResult{err: fmt.Errorf("missing indexer")}
+		return indexerExecResult{err: errors.New("missing indexer")}
 	}
 
 	apiKey, err := s.indexerStore.GetDecryptedAPIKey(idx)
@@ -2007,7 +2021,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 				Str("indexer", idx.Name).
 				Str("backend", string(idx.Backend)).
 				Msg("Skipping prowlarr indexer without numeric identifier")
-			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing prowlarr indexer identifier")}
+			return indexerExecResult{id: idx.ID, err: errors.New("missing prowlarr indexer identifier")}
 		}
 
 		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
@@ -2041,7 +2055,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 				Str("indexer", idx.Name).
 				Str("backend", string(idx.Backend)).
 				Msg("Skipping indexer without resolved identifier")
-			return indexerExecResult{id: idx.ID, err: fmt.Errorf("missing indexer identifier")}
+			return indexerExecResult{id: idx.ID, err: errors.New("missing indexer identifier")}
 		}
 
 		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
@@ -2200,7 +2214,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		if len(cooldownIndexers) > 0 {
 			return nil, nil, fmt.Errorf("all indexers are currently rate-limited. %d indexer(s) in cooldown", len(cooldownIndexers))
 		}
-		return nil, nil, fmt.Errorf("no indexers available for search")
+		return nil, nil, errors.New("no indexers available for search")
 	}
 
 	resultsChan := make(chan indexerExecResult, len(availableIndexers))
@@ -2293,7 +2307,7 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 // runIndexerSearch executes a search against a single indexer.
 func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
 	if idx == nil {
-		return nil, nil, fmt.Errorf("missing indexer")
+		return nil, nil, errors.New("missing indexer")
 	}
 
 	if err := validateIndexerBaseURL(idx); err != nil {
@@ -2441,44 +2455,55 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		}
 	}
 
-	// If no categories requested, continue with search
-	if len(requested) == 0 {
-		return false, false
-	}
+	// Map the requested categories onto this indexer. Nothing to map means the params
+	// keep the categories they were built with; the capability handling below still runs.
+	if len(requested) > 0 && len(idx.Categories) > 0 {
+		mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
 
-	// If indexer has no categories stored, continue (will use requested categories as-is)
-	if len(idx.Categories) == 0 {
-		return false, false
-	}
+		// Filter mapped categories through indexer's supported categories
+		filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
+		if !ok {
+			log.Debug().
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Ints("requested_categories", requested).
+				Ints("mapped_categories", mappedCategories).
+				Msg("Skipping torznab indexer due to unsupported categories")
+			return true, false
+		}
 
-	// Map requested categories to what this indexer actually supports
-	mappedCategories := s.MapCategoriesToIndexerCapabilities(ctx, idx, requested)
+		// Update the params with the filtered categories
+		params["cat"] = formatCategoryList(filtered)
 
-	// Filter mapped categories through indexer's supported categories
-	filtered, ok := filterCategoriesForIndexer(idx.Categories, mappedCategories)
-	if !ok {
 		log.Debug().
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Ints("requested_categories", requested).
 			Ints("mapped_categories", mappedCategories).
-			Msg("Skipping torznab indexer due to unsupported categories")
-		return true, false
+			Ints("filtered_categories", filtered).
+			Msg("Applied category mapping and filtering for indexer")
 	}
-
-	// Update the params with the filtered categories
-	params["cat"] = formatCategoryList(filtered)
-
-	log.Debug().
-		Int("indexer_id", idx.ID).
-		Str("indexer", idx.Name).
-		Ints("requested_categories", requested).
-		Ints("mapped_categories", mappedCategories).
-		Ints("filtered_categories", filtered).
-		Msg("Applied category mapping and filtering for indexer")
 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
+
+	// An ID-only pass has nothing to ask an indexer that cannot search by any of
+	// its IDs: the title flow already searched it. Skip it as an intentional
+	// exclusion, which still counts as covered.
+	if meta != nil && meta.skipIndexersWithoutIDs && !hasTorznabIDParams(params) {
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Skipping torznab indexer without usable ID capability for ID-only search")
+		return true, false
+	}
+
+	// Drop the category filter for an ID-driven search, but only while this indexer
+	// still has an ID to search by. applyCapabilitySpecificParams above prunes
+	// unsupported IDs and restores the title query; that fallback keeps its category.
+	if meta != nil && meta.omitCategoriesForIDs && hasTorznabIDParams(params) {
+		delete(params, "cat")
+	}
 
 	// Debug log parameters after capability/category restrictions. Backend-specific
 	// query workarounds may still run after this returns.
@@ -2549,8 +2574,8 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 		}
 
 		// Check if indexer supports this capability (case-insensitive)
-		hasCapability := slices.ContainsFunc(idx.Capabilities, func(cap string) bool {
-			return strings.EqualFold(strings.TrimSpace(cap), capToCheck)
+		hasCapability := slices.ContainsFunc(idx.Capabilities, func(capability string) bool {
+			return strings.EqualFold(strings.TrimSpace(capability), capToCheck)
 		})
 		if hasCapability {
 			hasIDsAfterPruning = true
@@ -3036,8 +3061,9 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 		params.Set("limit", strconv.Itoa(req.Limit))
 	}
 
-	// Omit q parameter when doing ID-driven search (for cross-seed)
-	// This lets IDs drive matching instead of query string
+	// Omit q parameter when doing ID-driven search (for cross-seed) so the IDs drive
+	// matching. applyIndexerRestrictions drops cat per-indexer, keeping it for any
+	// indexer that has to fall back to the title search.
 	if req.OmitQueryForIDs {
 		hasIDs := req.IMDbID != "" || req.TVDbID != "" || req.TMDbID > 0 || req.TVMazeID > 0
 		if hasIDs && (mode == "movie" || mode == "tvsearch") {
@@ -3417,8 +3443,8 @@ func supportsAnyCapability(current []string, required []string) bool {
 		if candidate == "" {
 			continue
 		}
-		if slices.ContainsFunc(current, func(cap string) bool {
-			return strings.EqualFold(strings.TrimSpace(cap), candidate)
+		if slices.ContainsFunc(current, func(capability string) bool {
+			return strings.EqualFold(strings.TrimSpace(capability), candidate)
 		}) {
 			return true
 		}
@@ -4077,6 +4103,8 @@ func (s *Service) detectContentType(req *TorznabSearchRequest) contentType {
 		return contentTypeApp
 	case rls.Game:
 		return contentTypeGame
+	default:
+		// rls.Unknown is inferred from the parsed fields below.
 	}
 
 	if release.Type == rls.Unknown {
@@ -4537,7 +4565,7 @@ func (s *Service) GetIndexerDomain(ctx context.Context, indexerName string) (str
 // getProwlarrIndexerDomain gets the tracker domain for a specific Prowlarr indexer
 func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.TorznabIndexer) (string, error) {
 	if indexer.Backend != models.TorznabBackendProwlarr {
-		return "", fmt.Errorf("indexer is not a Prowlarr indexer")
+		return "", errors.New("indexer is not a Prowlarr indexer")
 	}
 
 	// Get the API key for this indexer
@@ -4554,14 +4582,14 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 
 	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, 30)
 	if client.prowlarr == nil {
-		return "", fmt.Errorf("failed to create Prowlarr client")
+		return "", errors.New("failed to create Prowlarr client")
 	}
 
 	// Parse the indexer ID from the IndexerID field
 	// For Prowlarr, the IndexerID should be a numeric string
 	indexerIDStr := strings.TrimSpace(indexer.IndexerID)
 	if indexerIDStr == "" {
-		return "", fmt.Errorf("prowlarr indexer ID is empty")
+		return "", errors.New("prowlarr indexer ID is empty")
 	}
 
 	// Convert to int for the API call
@@ -4579,7 +4607,7 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 	// Extract the tracker domain from the indexer configuration
 	domain := prowlarr.ExtractDomainFromIndexerFields(detail.Fields)
 	if domain == "" {
-		return "", fmt.Errorf("could not extract domain from Prowlarr indexer fields")
+		return "", errors.New("could not extract domain from Prowlarr indexer fields")
 	}
 
 	return domain, nil

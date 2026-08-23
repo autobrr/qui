@@ -16,6 +16,7 @@ export type ActivityEventKind =
   | "indexer.activity"
   | "search.history"
   | "tracker.icons"
+  | "theme.settings"
 
 // ActivityEvent is a small qui-owned server signal. It carries identifiers only
 // (never payload data); the frontend reacts by invalidating the matching query.

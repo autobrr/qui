@@ -590,7 +590,7 @@ func (m *mockInstanceStore) Get(ctx context.Context, id int) (*models.Instance, 
 }
 
 func (m *mockInstanceStore) List(ctx context.Context) ([]*models.Instance, error) {
-	var result []*models.Instance
+	result := make([]*models.Instance, 0, len(m.instances))
 	for _, inst := range m.instances {
 		result = append(result, inst)
 	}

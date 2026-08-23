@@ -4,9 +4,8 @@
  */
 
 import { TableColumnHeader, type TableColumnHeaderProps } from "@/components/torrents/table/TableColumnHeader"
+import type { TorrentTable } from "@/components/torrents/tanstackTableFeatures"
 import type { ColumnFilter } from "@/lib/column-filter-utils"
-import type { Table } from "@tanstack/react-table"
-import type { Torrent } from "@/types"
 import { cleanup, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -20,13 +19,13 @@ vi.mock("@/components/torrents/DraggableTableHeader", () => ({
   },
 }))
 
-function fakeTable(columnIds: string[]): Table<Torrent> {
+function fakeTable(columnIds: string[]): TorrentTable {
   return {
     getHeaderGroups: () => [{
       id: "hg-0",
       headers: columnIds.map(id => ({ id: `h-${id}`, column: { id } })),
     }],
-  } as unknown as Table<Torrent>
+  } as unknown as TorrentTable
 }
 
 function filter(columnId: string, value: string): ColumnFilter {

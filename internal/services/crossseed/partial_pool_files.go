@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -312,8 +313,8 @@ func validatePartialPoolPathInsideRoot(root, target string) error {
 	if err != nil {
 		return fmt.Errorf("resolve partial pool path: %w", err)
 	}
-	for i := len(suffix) - 1; i >= 0; i-- {
-		resolvedExisting = filepath.Join(resolvedExisting, suffix[i])
+	for _, s := range slices.Backward(suffix) {
+		resolvedExisting = filepath.Join(resolvedExisting, s)
 	}
 	resolvedTarget = filepath.Join(resolvedExisting, filepath.Base(targetAbs))
 	if err := pathInside(resolvedRoot, resolvedTarget); err != nil {

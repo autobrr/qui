@@ -127,7 +127,7 @@ func TestDownloadError_ErrorsIs(t *testing.T) {
 	err := &DownloadError{StatusCode: 404, URL: "https://example.com"}
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
-	assert.True(t, errors.Is(wrapped, &DownloadError{}), "errors.Is should find DownloadError in wrapped error")
+	assert.ErrorIs(t, wrapped, &DownloadError{}, "errors.Is should find DownloadError in wrapped error")
 }
 
 func TestDownloadError_ErrorsAs(t *testing.T) {
@@ -135,7 +135,7 @@ func TestDownloadError_ErrorsAs(t *testing.T) {
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
 	var dlErr *DownloadError
-	require.True(t, errors.As(wrapped, &dlErr), "errors.As should extract DownloadError from wrapped error")
+	require.ErrorAs(t, wrapped, &dlErr, "errors.As should extract DownloadError from wrapped error")
 	assert.Equal(t, 429, dlErr.StatusCode)
 	assert.Equal(t, "https://example.com", dlErr.URL)
 }
@@ -162,14 +162,14 @@ func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
 	errStr := err.Error()
 
 	// The error message must NOT contain the secret API key
-	assert.False(t, strings.Contains(errStr, secretAPIKey),
+	assert.NotContains(t, errStr, secretAPIKey,
 		"Error message should not contain the secret API key. Got: %s", errStr)
 
 	// The error message SHOULD contain REDACTED if it includes the URL with apikey param
 	// Note: depending on where the error occurs, it may or may not include URL params.
 	// If it does include URL params, they should be redacted.
 	if strings.Contains(errStr, "apikey=") {
-		assert.True(t, strings.Contains(errStr, "apikey=REDACTED"),
+		assert.Contains(t, errStr, "apikey=REDACTED",
 			"Error message with apikey param should have value redacted. Got: %s", errStr)
 	}
 }

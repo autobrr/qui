@@ -112,7 +112,7 @@ func (s *Service) alignCrossSeedContentPaths(
 	shouldRename := shouldRenameTorrentDisplay(sourceRelease, matchedRelease) &&
 		trimmedMatchedName != "" &&
 		trimmedSourceName != trimmedMatchedName &&
-		!(isSingleFileToFolder && namesMatchIgnoringExtension(trimmedSourceName, trimmedMatchedName))
+		(!isSingleFileToFolder || !namesMatchIgnoringExtension(trimmedSourceName, trimmedMatchedName))
 
 	// Display name rename is best-effort - failure only affects UI label, not seeding functionality.
 	// Unlike folder/file renames which are critical for data location, we continue on failure here.

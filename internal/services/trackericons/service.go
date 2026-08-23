@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+
+	// Registered for their side effect: image.Decode needs the gif and jpeg
+	// decoders to read icons that are not png.
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
@@ -23,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	// Same again for .ico, which browsers still serve as a favicon.
 	_ "github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
@@ -96,7 +100,7 @@ type Service struct {
 // NewService creates a new tracker icon service rooted in the provided data directory.
 func NewService(dataDir, userAgent string) (*Service, error) {
 	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("data directory must be provided")
+		return nil, errors.New("data directory must be provided")
 	}
 
 	iconDir := filepath.Join(dataDir, iconDirName)
@@ -176,9 +180,8 @@ func QueueFetch(host, trackerURL string) {
 	go func(h string, tracker string) {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
-		if _, err := svc.GetIcon(ctx, h, tracker); err != nil {
-			// Intentionally ignore errors here; they are tracked internally for cooldown.
-		}
+		// Errors are ignored here; GetIcon tracks them internally for cooldown.
+		_, _ = svc.GetIcon(ctx, h, tracker)
 	}(sanitized, trackerURL)
 }
 
@@ -527,12 +530,7 @@ func (s *Service) writePNG(img image.Image, path string) error {
 	}()
 
 	// Write complete buffer atomically
-	if err := os.WriteFile(tmpName, buf.Bytes(), 0o644); err != nil {
-		return err
-	}
-
-	// Ensure final permissions are 0644 regardless of CreateTemp defaults
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	if err := os.WriteFile(tmpName, buf.Bytes(), 0o600); err != nil {
 		return err
 	}
 
@@ -773,7 +771,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 	withoutScheme := strings.TrimPrefix(dataURI, "data:")
 	parts := strings.SplitN(withoutScheme, ",", 2)
 	if len(parts) != 2 {
-		return nil, "", fmt.Errorf("invalid data URI")
+		return nil, "", errors.New("invalid data URI")
 	}
 
 	meta := parts[0]
@@ -789,7 +787,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 	}
 
 	if !strings.Contains(meta, "base64") {
-		return nil, "", fmt.Errorf("unsupported data URI encoding")
+		return nil, "", errors.New("unsupported data URI encoding")
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(payload)
@@ -802,7 +800,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 
 func decodeImage(data []byte, contentType, originalURL string) (image.Image, error) {
 	if strings.Contains(strings.ToLower(contentType), "svg") || strings.HasSuffix(strings.ToLower(originalURL), ".svg") {
-		return nil, fmt.Errorf("svg icons are not supported")
+		return nil, errors.New("svg icons are not supported")
 	}
 
 	const maxDimension = 1024

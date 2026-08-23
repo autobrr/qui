@@ -4,8 +4,7 @@
  */
 
 import { useTorrentTableVirtualization, type UseTorrentTableVirtualizationParams } from "@/hooks/torrent-table/useTorrentTableVirtualization"
-import type { Torrent } from "@/types"
-import type { Row } from "@tanstack/react-table"
+import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -23,8 +22,8 @@ const { virtualizerMock } = vi.hoisted(() => ({
 vi.mock("@tanstack/react-virtual", () => ({ useVirtualizer: () => virtualizerMock }))
 vi.mock("@/hooks/useKeyboardNavigation", () => ({ useKeyboardNavigation: () => {} }))
 
-function makeRows(n: number): Row<Torrent>[] {
-  return Array.from({ length: n }, (_, i) => ({ id: `r${i}` })) as unknown as Row<Torrent>[]
+function makeRows(n: number): TorrentRow[] {
+  return Array.from({ length: n }, (_, i) => ({ id: `r${i}` })) as unknown as TorrentRow[]
 }
 
 function baseProps(over: Partial<UseTorrentTableVirtualizationParams> = {}): UseTorrentTableVirtualizationParams {

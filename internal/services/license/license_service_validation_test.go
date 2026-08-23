@@ -5,7 +5,6 @@ package license
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -58,7 +57,7 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 
 	valid, err := service.ValidateLicenses(ctx)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, timeoutErr))
+	require.ErrorIs(t, err, timeoutErr)
 	assert.True(t, valid, "transient errors should not mark the license invalid")
 
 	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)

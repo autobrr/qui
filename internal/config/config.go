@@ -162,8 +162,7 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 	c.viper.SetConfigFile(configPath)
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
@@ -182,8 +181,7 @@ func (c *AppConfig) loadFromStandardLocations() error {
 	c.viper.AddConfigPath(GetDefaultConfigDir())
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
@@ -730,24 +728,24 @@ func setLogLevel(level string) {
 
 func baseLogWriter(version string) io.Writer {
 	if isDevBuild(version) {
-		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
-		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
-		writer.FormatTimestamp = func(i any) string {
-			if i == nil {
-				return ""
-			}
-			return fmt.Sprint(i)
-		}
-		writer.FormatMessage = func(i any) string {
-			if i == nil {
-				return ""
-			}
-			msg := strings.TrimSpace(fmt.Sprint(i))
-			if msg == "" {
-				return ""
-			}
-			return msg
-		}
+		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339,
+			PartsOrder: []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName},
+			FormatTimestamp: func(i any) string {
+				if i == nil {
+					return ""
+				}
+				return fmt.Sprint(i)
+			},
+			FormatMessage: func(i any) string {
+				if i == nil {
+					return ""
+				}
+				msg := strings.TrimSpace(fmt.Sprint(i))
+				if msg == "" {
+					return ""
+				}
+				return msg
+			}}
 		return writer
 	}
 	return os.Stderr
@@ -909,7 +907,7 @@ func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 		return
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // G703: the path comes from the operator's own *_FILE environment variable
 	if err != nil {
 		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
 	}

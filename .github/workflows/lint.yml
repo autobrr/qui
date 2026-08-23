@@ -55,7 +55,11 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      # continue-on-error so a gofix failure reports itself without taking the
+      # lint step with it: the job used to fail here and skip linting entirely.
       - name: Check gofix drift on changed Go files
+        continue-on-error: true
+        id: gofix
         run: |
           gofiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD; } | sort -u | grep '\.go$' || true)
           if [ -z "$gofiles" ]; then
@@ -99,5 +103,14 @@ jobs:
       - name: Lint backend
         uses: golangci/golangci-lint-action@v9.3.0
         with:
-          version: v2.11.1
-          only-new-issues: true
+          version: v2.13.0
+          # The backlog is zero as of this change, so the gate covers the whole
+          # repo rather than only changed lines. That is what stops drift
+          # accumulating unnoticed again — see #2380.
+          only-new-issues: false
+
+      - name: Fail if gofix drift was found
+        if: steps.gofix.outcome == 'failure'
+        run: |
+          echo "go fix reported drift on changed Go files; see the 'Check gofix drift' step above."
+          exit 1

@@ -4,10 +4,10 @@
  */
 
 import { createColumns, type TableViewMode } from "@/components/torrents/TorrentTableColumns"
+import type { TorrentTableColumnDef } from "@/components/torrents/tanstackTableFeatures"
 import type { SpeedUnit } from "@/lib/speedUnits"
 import type { TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import type { AppPreferences, Torrent } from "@/types"
-import type { ColumnDef } from "@tanstack/react-table"
 import type { TFunction } from "i18next"
 import { type RefObject, useMemo } from "react"
 
@@ -40,7 +40,7 @@ export interface UseTorrentTableColumnsParams {
 }
 
 export interface TorrentTableColumns {
-  columns: ColumnDef<Torrent>[]
+  columns: TorrentTableColumnDef[]
   torrentIdentityCounts: Map<string, number>
 }
 

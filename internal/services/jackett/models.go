@@ -42,8 +42,15 @@ type TorznabSearchRequest struct {
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
 	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
-	// OmitQueryForIDs when true, omits the q parameter if IDs are present (for cross-seed ID-driven searches)
+	// OmitQueryForIDs when true, omits q from a movie or TV search that carries IDs, and
+	// omits cat from every indexer that keeps a usable ID (for cross-seed ID-driven
+	// searches). An indexer that falls back to the title query keeps its category.
 	OmitQueryForIDs bool `json:"-"`
+	// SkipIndexersWithoutIDs when true, skips any indexer whose supported ID
+	// parameters all got pruned instead of restoring the title query for it.
+	// Set on ID-only passes (the cross-seed MediaInfo retry) where the title
+	// flow already searched every indexer; the skip counts as covered.
+	SkipIndexersWithoutIDs bool `json:"-"`
 	// SkipHistory prevents recording this search in the history buffer. It does NOT
 	// gate cache persistence; that concern is governed separately by SkipCachePersist.
 	SkipHistory bool `json:"-"`

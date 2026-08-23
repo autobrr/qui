@@ -43,7 +43,7 @@ docker run -d \
 - **Automations**: Rule-based torrent management with conditions and actions
 - **Backups & Restore**: Scheduled snapshots with multiple restore modes
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps
-- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, and Simplified Chinese, with automatic browser-language detection
+- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese, with automatic browser-language detection
 
 ## Community
 
@@ -62,6 +62,7 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 
 Purchase premium themes directly from Settings → Themes in your qui instance. Your license key is delivered instantly after checkout.
 If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
+A license also unlocks custom themes, which you can write yourself or take from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
 
 ### Donations
 
