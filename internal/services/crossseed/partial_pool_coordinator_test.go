@@ -175,31 +175,24 @@ func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 	require.NotNil(t, selectPartialPoolDownloader(pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold)), "the latest of many admissions renews the pool-wide hold")
 }
 
-func TestPartialPoolPendingRechecksDoNotPublishOptimisticFiles(t *testing.T) {
+func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
-	members := []struct {
-		key    string
-		status string
-	}{
-		{key: "candidate-alpha", status: models.CrossSeedPartialPoolMemberStatusVerifying},
-		{key: "candidate-beta", status: models.CrossSeedPartialPoolMemberStatusRechecking},
-		{key: "candidate-gamma", status: models.CrossSeedPartialPoolMemberStatusVerifying},
-		{key: "candidate-delta", status: models.CrossSeedPartialPoolMemberStatusRechecking},
-	}
+	keys := []string{"candidate-alpha", "candidate-beta", "candidate-gamma", "candidate-delta"}
 
-	snapshots := make(map[int64]*partialPoolMemberSnapshot, len(members))
+	snapshots := make(map[int64]*partialPoolMemberSnapshot, len(keys))
 	var poolID int64
-	for _, testMember := range members {
+	for index, key := range keys {
 		registration := partialPoolFilesystemRegistration(
 			instanceID,
-			testMember.key,
+			key,
 			models.CrossSeedPartialPoolModeReflink,
 			t.TempDir(),
-			testMember.status,
+			models.CrossSeedPartialPoolMemberStatusVerifying,
 			models.CrossSeedPartialPoolFileStatusMissing,
 			nil,
 		)
 		registration.Member.LastError = partialPoolRecheckPending
+		registration.Member.ReportedSeeders = index + 1
 		pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 		require.NoError(t, err)
 		poolID = pool.ID
@@ -239,39 +232,39 @@ func TestPartialPoolPendingRechecksDoNotPublishOptimisticFiles(t *testing.T) {
 
 	pool, err = store.GetPartialPool(t.Context(), poolID)
 	require.NoError(t, err)
-	lastRequestAt := pool.Members[0].UpdatedAt
-	for _, member := range pool.Members[1:] {
-		if member.UpdatedAt.After(lastRequestAt) {
-			lastRequestAt = member.UpdatedAt
+	for _, key := range keys {
+		member := partialPoolMemberByTorrentKey(pool, key)
+		require.NotNil(t, member)
+		require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
+		if key == "candidate-delta" {
+			require.Equal(t, partialPoolRecheckRequested, member.LastError)
+		} else {
+			require.Equal(t, partialPoolRecheckPending, member.LastError)
+		}
+		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
+	}
+	require.Equal(t, []string{"recheck:candidate-delta"}, sync.bulkActions)
+
+	selected := partialPoolMemberByTorrentKey(pool, "candidate-delta")
+	service.reconcilePartialPool(t.Context(), selected.UpdatedAt.Add(partialPoolRecheckObserveTimeout), pool, snapshots, 0)
+	pool, err = store.GetPartialPool(t.Context(), poolID)
+	require.NoError(t, err)
+	for _, key := range keys {
+		member := partialPoolMemberByTorrentKey(pool, key)
+		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
+		switch key {
+		case "candidate-delta":
+			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, member.Status)
+			require.Equal(t, partialPoolRecheckUnobserved, member.LastError)
+		case "candidate-gamma":
+			require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
+			require.Equal(t, partialPoolRecheckRequested, member.LastError)
+		default:
+			require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
+			require.Equal(t, partialPoolRecheckPending, member.LastError)
 		}
 	}
-	service.reconcilePartialPool(t.Context(), lastRequestAt.Add(partialPoolRecheckGrace), pool, snapshots, 0)
-
-	pool, err = store.GetPartialPool(t.Context(), poolID)
-	require.NoError(t, err)
-	for _, testMember := range members {
-		member := partialPoolMemberByTorrentKey(pool, testMember.key)
-		require.NotNil(t, member)
-		require.Equal(t, testMember.status, member.Status)
-		require.Equal(t, partialPoolRecheckRequested, member.LastError)
-		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
-	}
-	require.ElementsMatch(t, []string{
-		"recheck:candidate-alpha",
-		"recheck:candidate-beta",
-		"recheck:candidate-gamma",
-		"recheck:candidate-delta",
-	}, sync.bulkActions)
-
-	service.reconcilePartialPool(t.Context(), lastRequestAt.Add(partialPoolRecheckObserveTimeout), pool, snapshots, 0)
-	pool, err = store.GetPartialPool(t.Context(), poolID)
-	require.NoError(t, err)
-	for _, testMember := range members {
-		member := partialPoolMemberByTorrentKey(pool, testMember.key)
-		require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, member.Status)
-		require.Equal(t, partialPoolRecheckUnobserved, member.LastError)
-		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
-	}
+	require.Equal(t, []string{"recheck:candidate-delta", "recheck:candidate-gamma"}, sync.bulkActions)
 }
 
 func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {

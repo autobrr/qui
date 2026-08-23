@@ -35,7 +35,7 @@ const (
 	partialPoolRecheckGrace           = 2 * partialPoolSweepInterval
 	partialPoolAdmissionHold          = 2 * partialPoolSweepInterval
 
-	partialPoolRecheckPending    = "partial pool recheck pending"
+	partialPoolRecheckPending    = models.CrossSeedPartialPoolRecheckPending
 	partialPoolRecheckRequested  = "partial pool recheck requested"
 	partialPoolRecheckObserved   = "partial pool recheck observed"
 	partialPoolRecheckUnobserved = "piece-check start was not observed after the recheck request"
@@ -786,6 +786,15 @@ func partialPoolCompletionPublishable(member *models.CrossSeedPartialPoolMember)
 	}
 }
 
+// partialPoolInitialVerificationDeferred reports an admitted member whose
+// first piece check can wait until it is selected or receives propagated data.
+func partialPoolInitialVerificationDeferred(member *models.CrossSeedPartialPoolMember) bool {
+	return member != nil &&
+		member.Status == models.CrossSeedPartialPoolMemberStatusVerifying &&
+		member.LastError == partialPoolRecheckPending &&
+		!partialPoolMemberHasVerificationWork(member)
+}
+
 // partialPoolChecking reports any qBittorrent verification state, including
 // resume-data validation.
 func partialPoolChecking(state qbt.TorrentState) bool {
@@ -847,7 +856,7 @@ func (s *Service) reconcilePartialPool(
 			s.publishPartialPoolCompletedFiles(ctx, member, snapshot)
 		}
 	}
-	s.propagatePartialPoolFiles(ctx, pool, snapshots)
+	s.propagatePartialPoolFiles(ctx, pool, snapshots, admissionWindowClosed)
 
 	for _, member := range pool.Members {
 		if ctx.Err() != nil {
@@ -865,6 +874,9 @@ func (s *Service) reconcilePartialPool(
 		}
 		switch member.Status {
 		case models.CrossSeedPartialPoolMemberStatusVerifying:
+			if partialPoolInitialVerificationDeferred(member) && !partialPoolDataChecking(snapshot.torrent.State) {
+				continue
+			}
 			if !admissionWindowClosed && member.LastError == partialPoolRecheckPending && !partialPoolDataChecking(snapshot.torrent.State) {
 				continue
 			}
@@ -899,7 +911,7 @@ func (s *Service) reconcilePartialPool(
 		s.reapplyPartialPoolGate(ctx, member, snapshot, budget)
 	}
 
-	s.propagatePartialPoolFiles(ctx, pool, snapshots)
+	s.propagatePartialPoolFiles(ctx, pool, snapshots, admissionWindowClosed)
 	if ctx.Err() == nil {
 		s.selectAndResumePartialPoolDownloader(ctx, now, pool, snapshots, budget)
 	}
@@ -909,7 +921,7 @@ func (s *Service) reconcilePartialPool(
 		status = models.CrossSeedPartialPoolStatusActive
 	} else {
 		for _, member := range pool.Members {
-			if member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || partialPoolMemberHasVerificationWork(member) || member.LastError == partialPoolPropagationPause || partialPoolResumePending(member.LastError) || partialPoolRecoveryPending(member.LastError) {
+			if member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || partialPoolInitialVerificationDeferred(member) || partialPoolMemberHasVerificationWork(member) || member.LastError == partialPoolPropagationPause || partialPoolResumePending(member.LastError) || partialPoolRecoveryPending(member.LastError) {
 				status = models.CrossSeedPartialPoolStatusActive
 				break
 			}
@@ -1553,12 +1565,13 @@ func (s *Service) publishPartialPoolCompletedFiles(ctx context.Context, member *
 	}
 }
 
-func (s *Service) propagatePartialPoolFiles(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) {
+func (s *Service) propagatePartialPoolFiles(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot, admissionWindowClosed bool) {
 	if !s.partialPoolCoordinatorEnabled(ctx) {
 		return
 	}
 	for _, targetMember := range pool.Members {
-		if targetMember.Status != models.CrossSeedPartialPoolMemberStatusWaiting && targetMember.Status != models.CrossSeedPartialPoolMemberStatusBlocked && targetMember.Status != models.CrossSeedPartialPoolMemberStatusRechecking {
+		deferredVerification := admissionWindowClosed && partialPoolInitialVerificationDeferred(targetMember)
+		if targetMember.Status != models.CrossSeedPartialPoolMemberStatusWaiting && targetMember.Status != models.CrossSeedPartialPoolMemberStatusBlocked && targetMember.Status != models.CrossSeedPartialPoolMemberStatusRechecking && !deferredVerification {
 			continue
 		}
 		targetSnapshot := snapshots[targetMember.ID]
@@ -1619,7 +1632,14 @@ func (s *Service) propagatePartialPoolFiles(ctx context.Context, pool *models.Cr
 				continue
 			}
 			targetCurrent := targetSnapshot.fileByIndex[targetFile.FileIndex]
-			if targetCurrent.Priority == 0 || targetCurrent.Progress > 0 || targetFile.SizeBytes <= 0 {
+			if targetCurrent.Priority == 0 || targetFile.SizeBytes <= 0 {
+				continue
+			}
+			if deferredVerification {
+				if !targetFile.WantedAtAdmission || targetFile.MaterializedAtAdd {
+					continue
+				}
+			} else if targetCurrent.Progress > 0 {
 				continue
 			}
 			sourceFile := selectPartialPoolSourceFile(pool, targetMember, targetFile, snapshots)
@@ -1802,6 +1822,10 @@ func (s *Service) markPartialPoolPropagationManual(ctx context.Context, member *
 func (s *Service) claimPartialPoolRecheck(ctx context.Context, member *models.CrossSeedPartialPoolMember) {
 	reason := partialPoolRecheckPending
 	switch member.Status {
+	case models.CrossSeedPartialPoolMemberStatusVerifying:
+		if member.LastError != partialPoolRecheckPending {
+			return
+		}
 	case models.CrossSeedPartialPoolMemberStatusWaiting, models.CrossSeedPartialPoolMemberStatusBlocked:
 		if !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusRechecking, models.PartialPoolMemberMutation{LastError: &reason}) {
 			return
@@ -1816,6 +1840,7 @@ func (s *Service) claimPartialPoolRecheck(ctx context.Context, member *models.Cr
 
 type partialPoolSelection struct {
 	member        *models.CrossSeedPartialPoolMember
+	verified      bool
 	reusableBytes int64
 	unlocked      int
 	amountLeft    int64
@@ -1837,7 +1862,8 @@ func selectPartialPoolDownloader(pool *models.CrossSeedPartialPool, snapshots ma
 
 	var selections []partialPoolSelection
 	for _, member := range pool.Members {
-		if member.Status != models.CrossSeedPartialPoolMemberStatusWaiting || !partialPoolCooldownReady(member, now) {
+		deferredVerification := partialPoolInitialVerificationDeferred(member)
+		if (member.Status != models.CrossSeedPartialPoolMemberStatusWaiting && !deferredVerification) || !partialPoolCooldownReady(member, now) {
 			continue
 		}
 		snapshot := snapshots[member.ID]
@@ -1845,10 +1871,13 @@ func selectPartialPoolDownloader(pool *models.CrossSeedPartialPool, snapshots ma
 			continue
 		}
 		missing := partialPoolMissingWantedFiles(member, snapshot)
-		if len(missing) == 0 {
+		if len(missing) == 0 && !deferredVerification {
 			continue
 		}
-		selection := partialPoolSelection{member: member, amountLeft: snapshot.torrent.AmountLeft}
+		selection := partialPoolSelection{member: member, verified: !deferredVerification, amountLeft: snapshot.torrent.AmountLeft}
+		if deferredVerification {
+			selection.amountLeft = member.MissingBytes
+		}
 		for _, file := range missing {
 			if partialPoolFilePairsAnotherMissing(pool, member, file, snapshots) {
 				selection.reusableBytes += file.SizeBytes
@@ -1871,6 +1900,9 @@ func selectPartialPoolDownloader(pool *models.CrossSeedPartialPool, snapshots ma
 	}
 	sort.Slice(selections, func(i, j int) bool {
 		a, b := selections[i], selections[j]
+		if a.verified != b.verified {
+			return a.verified
+		}
 		if a.reusableBytes != b.reusableBytes {
 			return a.reusableBytes > b.reusableBytes
 		}
@@ -1905,14 +1937,16 @@ func partialPoolAdmissionWindowClosed(pool *models.CrossSeedPartialPool, now tim
 	return true
 }
 
-// partialPoolAdmissionReady holds downloader selection until every admitted
-// member has settled verification and the newest admission window has closed.
+// partialPoolAdmissionReady holds downloader selection until the newest
+// admission window has closed and every requested check has settled. Initial
+// checks that have not been selected yet do not hold the pool.
 func partialPoolAdmissionReady(pool *models.CrossSeedPartialPool, now time.Time) bool {
 	if !partialPoolAdmissionWindowClosed(pool, now) {
 		return false
 	}
 	for _, member := range pool.Members {
-		if member.Status == models.CrossSeedPartialPoolMemberStatusVerifying || member.Status == models.CrossSeedPartialPoolMemberStatusRechecking {
+		if member.Status == models.CrossSeedPartialPoolMemberStatusRechecking ||
+			(member.Status == models.CrossSeedPartialPoolMemberStatusVerifying && !partialPoolInitialVerificationDeferred(member)) {
 			return false
 		}
 	}
@@ -1932,9 +1966,17 @@ func partialPoolMissingWantedFiles(member *models.CrossSeedPartialPoolMember, sn
 		return nil
 	}
 	var missing []*models.CrossSeedPartialPoolMemberFile
+	deferredVerification := partialPoolInitialVerificationDeferred(member)
 	for _, file := range member.Files {
 		current, ok := snapshot.fileByIndex[file.FileIndex]
-		if !ok || current.Priority == 0 || current.Progress >= 1 || file.Status == models.CrossSeedPartialPoolFileStatusManual {
+		if !ok || current.Priority == 0 || file.Status == models.CrossSeedPartialPoolFileStatusManual {
+			continue
+		}
+		if deferredVerification {
+			if !file.WantedAtAdmission || file.MaterializedAtAdd || file.Status != models.CrossSeedPartialPoolFileStatusMissing {
+				continue
+			}
+		} else if current.Progress >= 1 {
 			continue
 		}
 		missing = append(missing, file)
@@ -1978,6 +2020,10 @@ func (s *Service) selectAndResumePartialPoolDownloader(ctx context.Context, now 
 		return
 	}
 	snapshot := snapshots[member.ID]
+	if partialPoolInitialVerificationDeferred(member) {
+		s.requestPartialPoolRecheck(ctx, now, member)
+		return
+	}
 	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(s))
 	if status != models.CrossSeedPartialPoolMemberStatusWaiting {
 		if status != member.Status {

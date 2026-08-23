@@ -245,7 +245,7 @@ func TestPartialPoolPropagationPersistsPauseIntent(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
-	service.propagatePartialPoolFiles(ctx, pool, snapshots)
+	service.propagatePartialPoolFiles(ctx, pool, snapshots, true)
 	require.Equal(t, []string{"pause:target"}, sync.bulkActions)
 
 	pool, err = store.GetPartialPool(ctx, pool.ID)
@@ -254,7 +254,7 @@ func TestPartialPoolPropagationPersistsPauseIntent(t *testing.T) {
 	require.Equal(t, partialPoolPropagationPause, target.LastError)
 }
 
-func TestPartialPoolCompletedFilesPropagateAndSettleEveryWaitingMember(t *testing.T) {
+func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	baseDir := t.TempDir()
 	files := []struct {
@@ -304,10 +304,11 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryWaitingMember(t *testin
 			key,
 			models.CrossSeedPartialPoolModeHardlink,
 			filepath.Join(baseDir, key),
-			models.CrossSeedPartialPoolMemberStatusWaiting,
+			models.CrossSeedPartialPoolMemberStatusVerifying,
 			models.CrossSeedPartialPoolFileStatusMissing,
 			nil,
 		)
+		registration.Member.LastError = partialPoolRecheckPending
 		registration.Files = registrationFiles(models.CrossSeedPartialPoolFileStatusMissing)
 		_, _, err = store.RegisterPartialPoolMember(t.Context(), registration)
 		require.NoError(t, err)
@@ -330,6 +331,15 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryWaitingMember(t *testin
 		if member.Status == models.CrossSeedPartialPoolMemberStatusComplete {
 			snapshot.torrent.Progress = 1
 			snapshot.torrent.State = qbt.TorrentStateUploading
+			for index := range snapshot.files {
+				snapshot.files[index].Progress = 1
+				snapshot.fileByIndex[index] = snapshot.files[index]
+			}
+		} else {
+			// qBittorrent can optimistically report a skip-checking add as
+			// complete before its first real piece check.
+			snapshot.torrent.Progress = 1
+			snapshot.torrent.State = qbt.TorrentStateStoppedUp
 			for index := range snapshot.files {
 				snapshot.files[index].Progress = 1
 				snapshot.fileByIndex[index] = snapshot.files[index]
@@ -372,7 +382,8 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryWaitingMember(t *testin
 	for _, key := range targetKeys {
 		target := partialPoolMemberByTorrentKey(pool, key)
 		require.NotNil(t, target)
-		require.Equal(t, models.CrossSeedPartialPoolMemberStatusRechecking, target.Status)
+		require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, target.Status)
+		require.Equal(t, partialPoolRecheckRequested, target.LastError)
 		for _, targetFile := range target.Files {
 			sourceFile := sourceFiles[targetFile.RelativePath]
 			require.NotNil(t, sourceFile)

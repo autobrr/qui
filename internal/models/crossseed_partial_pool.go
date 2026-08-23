@@ -15,7 +15,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
-// These constants define persisted partial pool modes and states.
+// These constants define persisted partial pool modes, states, and coordination markers.
 const (
 	CrossSeedPartialPoolStatusActive  = "active"
 	CrossSeedPartialPoolStatusDormant = "dormant"
@@ -40,6 +40,8 @@ const (
 	CrossSeedPartialPoolFileStatusVerifying   = "verifying"
 	CrossSeedPartialPoolFileStatusVerified    = "verified"
 	CrossSeedPartialPoolFileStatusManual      = "manual"
+
+	CrossSeedPartialPoolRecheckPending = "partial pool recheck pending"
 )
 
 // CrossSeedPartialPool groups partial link-mode torrents by their original source.
@@ -765,7 +767,18 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 			SELECT 1 FROM cross_seed_partial_pool_members other
 			WHERE other.pool_id = selected.pool_id
 			  AND (
-				other.status IN (?, ?, ?)
+				other.status IN (?, ?)
+				OR (
+					other.status = ?
+					AND (
+						other.last_error <> ?
+						OR EXISTS (
+							SELECT 1 FROM cross_seed_partial_pool_member_files file
+							WHERE file.member_id = other.id
+							  AND file.status IN (?, ?)
+						)
+					)
+				)
 				OR (other.status <> ? AND other.created_at > ?)
 			  )
 		  )
@@ -778,8 +791,11 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 		CrossSeedPartialPoolMemberStatusWaiting,
 		now,
 		CrossSeedPartialPoolMemberStatusAcquiring,
-		CrossSeedPartialPoolMemberStatusVerifying,
 		CrossSeedPartialPoolMemberStatusRechecking,
+		CrossSeedPartialPoolMemberStatusVerifying,
+		CrossSeedPartialPoolRecheckPending,
+		CrossSeedPartialPoolFileStatusPropagating,
+		CrossSeedPartialPoolFileStatusVerifying,
 		CrossSeedPartialPoolMemberStatusRemoved,
 		admissionCutoff,
 	)
