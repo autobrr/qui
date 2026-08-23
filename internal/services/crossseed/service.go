@@ -8548,6 +8548,17 @@ func (s *Service) hasUsableSearchResult(results []jackett.SearchResult, source n
 	return false
 }
 
+// clearSearchRequestIDs strips the external-ID parameters from a retry
+// request copied off an ID-driven primary, so its title query reaches every
+// indexer instead of being dropped for the ID-capable ones.
+func clearSearchRequestIDs(req *jackett.TorznabSearchRequest) {
+	req.IMDbID = ""
+	req.TVDbID = ""
+	req.TMDbID = 0
+	req.TVMazeID = 0
+	req.OmitQueryForIDs = false
+}
+
 // searchOnce runs a single Torznab search to completion and returns its response.
 // It is used for follow-up passes (e.g. the alternate connector-spelling query)
 // that need their own result set rather than the primary search's.
@@ -8989,6 +9000,23 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		arrTitles = arrResult.Titles
 	}
 
+	// When the arr path yields no ID, fall back to the external ID embedded in
+	// the torrent's MKV metadata (cached per torrent in media_id_cache) and run
+	// the primary search ID-first through the same mixed-mode path as arr IDs.
+	// The tag is trusted blind: candidates are verified against the source name
+	// and size, so a wrong muxer tag cannot produce a wrong match, and the
+	// title rescue pass below re-covers any indexer a wrong tag leaves empty.
+	tagSourcedIDs := false
+	if externalIDs == nil {
+		if mediaIDs := s.lookupMediaFileIDs(ctx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
+			externalIDs = mediaIDs
+			tagSourcedIDs = true
+			// The primary search now runs at ID quality, so the "searched by
+			// title only" degradation notice no longer holds.
+			queryDegraded = ""
+		}
+	}
+
 	searchReq := &jackett.TorznabSearchRequest{
 		Query:            query,
 		ReleaseName:      sourceTorrent.Name,
@@ -8998,7 +9026,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		ReturnAllResults: true,
 	}
 
-	// Apply IDs from ARR lookup and set OmitQueryForIDs flag
+	// Apply the arr- or tag-sourced IDs and set OmitQueryForIDs flag
 	if externalIDs != nil {
 		if externalIDs.IMDbID != "" {
 			searchReq.IMDbID = externalIDs.IMDbID
@@ -9217,13 +9245,57 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
+	// Title rescue for the tag-sourced ID primary: indexers that searched by
+	// ID never saw the title query, so a wrong or unrecognized muxer tag would
+	// end their search with nothing and no rescue. Re-query only those still
+	// holding nothing usable with the plain title. Indexers without ID caps
+	// already searched by title in the primary pass and are covered by the
+	// passes below.
+	if tagSourcedIDs {
+		idCapIndexerIDs := s.jackettService.IndexerIDsWithIDSearchCaps(waitCtx, searchReq)
+		rescueIndexerIDs := intersectInts(idCapIndexerIDs, s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes))
+		if len(rescueIndexerIDs) > 0 {
+			log.Debug().
+				Str("torrentName", sourceTorrent.Name).
+				Str("query", searchReq.Query).
+				Ints("rescueIndexerIDs", rescueIndexerIDs).
+				Msg("[CROSSSEED-SEARCH] Nothing usable from tag-sourced ID query; retrying with title")
+
+			rescueReq := *searchReq
+			clearSearchRequestIDs(&rescueReq)
+			rescueReq.IndexerIDs = rescueIndexerIDs
+			rescueReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
+			// Internal continuation of the primary search: skip history
+			// recording like the alternate-title pass below.
+			rescueReq.SkipHistory = true
+			if rescueResp, rescueErr := s.searchOnce(waitCtx, &rescueReq); rescueErr != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+				}
+				log.Debug().
+					Err(rescueErr).
+					Str("torrentName", sourceTorrent.Name).
+					Ints("rescueIndexerIDs", rescueIndexerIDs).
+					Msg("[CROSSSEED-SEARCH] Title rescue after ID primary failed; continuing with primary results")
+				coveredIndexerIDs = subtractInts(coveredIndexerIDs, rescueIndexerIDs)
+			} else if rescueResp != nil {
+				coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, rescueIndexerIDs, rescueResp.CoveredIndexerIDs)
+				if len(rescueResp.Results) > 0 {
+					searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, rescueResp)
+				}
+			}
+		}
+	}
+
 	// Alternate-title retry: a tracker can index the same content under a
 	// different title (localized, romanized, or an *arr scene alias). Re-query
 	// the indexers that still hold nothing usable with the first distinct
 	// alternate title; an indexer that already produced a usable candidate is
 	// left alone, because cross-seed success is per tracker, not per search.
-	// Skipped for ID-based searches, which do not rely on title text.
-	if !searchReq.OmitQueryForIDs {
+	// Skipped for arr-ID searches, which do not rely on title text; a
+	// tag-sourced ID primary keeps its title passes because the IDs came from
+	// the file, not a resolver, and the retry request drops them.
+	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
 		if altTitle, ok := AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name); ok {
 			altTitleIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altTitleIndexerIDs) > 0 {
@@ -9235,6 +9307,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					Msg("[CROSSSEED-SEARCH] Nothing usable for primary title; retrying with alternate title")
 
 				altTitleReq := *searchReq
+				clearSearchRequestIDs(&altTitleReq)
 				altTitleReq.Query = altTitle
 				altTitleReq.IndexerIDs = altTitleIndexerIDs
 				altTitleReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
@@ -9266,12 +9339,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// q only matches one spelling, so re-query the indexers that returned nothing
 	// for the primary spelling using the alternate connector and merge the extra
 	// candidates (the match loop dedupes by GUID/download URL). Skipped for
-	// ID-based searches, which do not rely on title text.
-	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
+	// arr-ID searches, which do not rely on title text; a tag-sourced ID
+	// primary keeps its title passes (see the alternate-title pass above).
+	if !opts.DisableTorznab && (!searchReq.OmitQueryForIDs || tagSourcedIDs) {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
 			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altIndexerIDs) > 0 {
 				altReq := *searchReq
+				clearSearchRequestIDs(&altReq)
 				altReq.Query = altQuery
 				altReq.IndexerIDs = altIndexerIDs
 				altReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan) // year actually searched (0 if yearless retry ran)
@@ -9303,64 +9378,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 							Ints("altIndexerIDs", altIndexerIDs).
 							Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
 						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
-					}
-				}
-			}
-		}
-	}
-
-	// MediaInfo ID retry: when ARR supplied no ID, re-query the indexers that
-	// still hold no usable candidate after every title pass above (no hits, or
-	// hits all rejected by release/size filtering) with an external ID
-	// embedded in the torrent's MKV metadata (cached per torrent in
-	// media_id_cache). Runs last on cost, not trust: candidates are verified
-	// against the source name and size, so a wrong muxer tag cannot produce a
-	// wrong match, only queries that never verify.
-	if externalIDs == nil && !opts.DisableTorznab {
-		idIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
-		if len(idIndexerIDs) > 0 {
-			if mediaIDs := s.lookupMediaFileIDs(waitCtx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
-				idReq := *searchReq
-				if mediaIDs.IMDbID != "" {
-					idReq.IMDbID = mediaIDs.IMDbID
-				}
-				if mediaIDs.TVDbID > 0 {
-					idReq.TVDbID = strconv.Itoa(mediaIDs.TVDbID)
-				}
-				if mediaIDs.TMDbID > 0 {
-					idReq.TMDbID = mediaIDs.TMDbID
-				}
-				idReq.OmitQueryForIDs = true
-				// ID-only pass: the title flow already ran for this set; nothing
-				// to ask an indexer that cannot search by ID.
-				idReq.SkipIndexersWithoutIDs = true
-				idReq.IndexerIDs = idIndexerIDs
-				idReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
-				// Internal continuation of the primary search, like the
-				// alternate-title and connector passes above.
-				idReq.SkipHistory = true
-				if idResp, idErr := s.searchOnce(waitCtx, &idReq); idErr != nil {
-					if ctxErr := ctx.Err(); ctxErr != nil {
-						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
-					}
-					log.Debug().
-						Err(idErr).
-						Str("torrentName", sourceTorrent.Name).
-						Ints("idIndexerIDs", idIndexerIDs).
-						Msg("[CROSSSEED-SEARCH] MediaInfo ID retry failed; continuing with primary results")
-					coveredIndexerIDs = subtractInts(coveredIndexerIDs, idIndexerIDs)
-				} else if idResp != nil {
-					coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, idIndexerIDs, idResp.CoveredIndexerIDs)
-					if len(idResp.Results) > 0 {
-						// These results came from an ID query, so the "searched
-						// by title only" degradation notice no longer holds.
-						queryDegraded = ""
-						log.Debug().
-							Str("torrentName", sourceTorrent.Name).
-							Int("idResults", len(idResp.Results)).
-							Ints("idIndexerIDs", idIndexerIDs).
-							Msg("[CROSSSEED-SEARCH] MediaInfo ID retry returned additional candidates")
-						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, idResp)
 					}
 				}
 			}

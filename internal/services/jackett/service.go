@@ -165,9 +165,6 @@ type searchContext struct {
 	// ID-driven movie or TV search. The category filter is dropped with it, but only
 	// for indexers that keep at least one usable ID.
 	omitCategoriesForIDs bool
-
-	// skipIndexersWithoutIDs mirrors TorznabSearchRequest.SkipIndexersWithoutIDs.
-	skipIndexersWithoutIDs bool
 }
 
 type searchPriorityKey struct{}
@@ -260,9 +257,6 @@ type searchCacheKeyPayload struct {
 	Album         string      `json:"album,omitempty"`
 	SearchMode    string      `json:"search_mode,omitempty"`
 	ContentType   contentType `json:"content_type"`
-	// SkipIndexersWithoutIDs changes which indexers a request reaches, so a
-	// flagged pass must not satisfy an unflagged one from cache (or vice versa).
-	SkipIndexersWithoutIDs bool `json:"skip_indexers_without_ids,omitempty"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -691,8 +685,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		skipHistory:   req.SkipHistory,
 		originalQuery: req.Query,
 
-		omitCategoriesForIDs:   req.OmitQueryForIDs && !params.Has("q"),
-		skipIndexersWithoutIDs: req.SkipIndexersWithoutIDs,
+		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -1290,8 +1283,6 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Album:         strings.TrimSpace(req.Album),
 		SearchMode:    searchMode,
 		ContentType:   detectedType,
-
-		SkipIndexersWithoutIDs: req.SkipIndexersWithoutIDs,
 	}
 
 	fullFingerprint, baseFingerprint, err := buildSearchCacheFingerprints(payload)
@@ -2487,17 +2478,6 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
-	// An ID-only pass has nothing to ask an indexer that cannot search by any of
-	// its IDs: the title flow already searched it. Skip it as an intentional
-	// exclusion, which still counts as covered.
-	if meta != nil && meta.skipIndexersWithoutIDs && !hasTorznabIDParams(params) {
-		log.Debug().
-			Int("indexer_id", idx.ID).
-			Str("indexer", idx.Name).
-			Msg("Skipping torznab indexer without usable ID capability for ID-only search")
-		return true, false
-	}
-
 	// Drop the category filter for an ID-driven search, but only while this indexer
 	// still has an ID to search by. applyCapabilitySpecificParams above prunes
 	// unsupported IDs and restores the title query; that fallback keeps its category.
@@ -2516,23 +2496,86 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	return false, false
 }
 
+// torznabIDParamDefs maps each torznab ID parameter to the capability that
+// advertises it per search mode. An empty capability means the param does not
+// apply to that mode and is pruned.
+var torznabIDParamDefs = []struct {
+	param    string
+	movieCap string
+	tvCap    string
+}{
+	{"imdbid", "movie-search-imdbid", "tv-search-imdbid"},
+	{"tvdbid", "", "tv-search-tvdbid"},                    // tvdbid only for tv
+	{"tmdbid", "movie-search-tmdbid", "tv-search-tmdbid"}, // tmdbid for both
+	{"tvmazeid", "", "tv-search-tvmazeid"},                // tvmazeid only for tv
+}
+
+// indexerKeepsRequestIDParams reports whether the indexer's capabilities keep
+// at least one of the request's ID parameters for the given search mode — the
+// condition under which applyCapabilitySpecificParams leaves the indexer on
+// the ID path instead of restoring the title query.
+func indexerKeepsRequestIDParams(idx *models.TorznabIndexer, req *TorznabSearchRequest, searchMode string) bool {
+	if searchMode != "movie" && searchMode != "tvsearch" {
+		return false
+	}
+	present := map[string]bool{
+		"imdbid":   req.IMDbID != "",
+		"tvdbid":   req.TVDbID != "",
+		"tmdbid":   req.TMDbID > 0,
+		"tvmazeid": req.TVMazeID > 0,
+	}
+	// applyCapabilitySpecificParams never prunes when the indexer's caps are
+	// unknown, so a caps-less indexer keeps every ID param it was sent.
+	if len(idx.Capabilities) == 0 {
+		return present["imdbid"] || present["tvdbid"] || present["tmdbid"] || present["tvmazeid"]
+	}
+	for _, def := range torznabIDParamDefs {
+		if !present[def.param] {
+			continue
+		}
+		capToCheck := def.tvCap
+		if searchMode == "movie" {
+			capToCheck = def.movieCap
+		}
+		if capToCheck == "" {
+			continue
+		}
+		if slices.ContainsFunc(idx.Capabilities, func(capability string) bool {
+			return strings.EqualFold(strings.TrimSpace(capability), capToCheck)
+		}) {
+			return true
+		}
+	}
+	return false
+}
+
+// IndexerIDsWithIDSearchCaps returns the subset of the request's indexers that
+// would search by one of its ID parameters instead of falling back to the
+// title query. Callers use it to target only ID-queried indexers when retrying
+// a mixed-mode search by title.
+func (s *Service) IndexerIDsWithIDSearchCaps(ctx context.Context, req *TorznabSearchRequest) []int {
+	detectedType := detectContentTypeFromCategories(req.Categories)
+	if detectedType == contentTypeUnknown {
+		detectedType = s.detectContentType(req)
+	}
+	searchMode := searchModeForContentType(detectedType)
+	indexers, err := s.resolveIndexerSelection(ctx, req.IndexerIDs)
+	if err != nil {
+		log.Debug().Err(err).Msg("Failed to resolve indexers for ID-capability check")
+		return nil
+	}
+	var ids []int
+	for _, idx := range indexers {
+		if indexerKeepsRequestIDParams(idx, req, searchMode) {
+			ids = append(ids, idx.ID)
+		}
+	}
+	return ids
+}
+
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
 	if meta == nil || len(idx.Capabilities) == 0 || len(params) == 0 {
 		return
-	}
-
-	// Define ID parameters and their corresponding capabilities by search mode
-	type idParamDef struct {
-		param    string
-		movieCap string
-		tvCap    string
-	}
-
-	idParams := []idParamDef{
-		{"imdbid", "movie-search-imdbid", "tv-search-imdbid"},
-		{"tvdbid", "", "tv-search-tvdbid"},                    // tvdbid only for tv
-		{"tmdbid", "movie-search-tmdbid", "tv-search-tmdbid"}, // tmdbid for both
-		{"tvmazeid", "", "tv-search-tvmazeid"},                // tvmazeid only for tv
 	}
 
 	// Track what IDs we started with and what we have after pruning
@@ -2541,7 +2584,7 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 	var prunedParams []string
 	var missingCapabilities []string
 
-	for _, def := range idParams {
+	for _, def := range torznabIDParamDefs {
 		// Check if this param is in the request
 		if _, exists := params[def.param]; !exists {
 			continue
