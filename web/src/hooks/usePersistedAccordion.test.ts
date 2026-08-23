@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { renderHook } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { usePersistedAccordion } from "./usePersistedAccordion"
 
@@ -23,11 +23,14 @@ describe("usePersistedAccordion", () => {
     expect(result.current[0]).toEqual(DEFAULT_ITEMS)
   })
 
-  it("falls back to defaults and repairs storage on malformed JSON", () => {
+  it("falls back to defaults on malformed JSON and repairs storage on the next toggle", () => {
     localStorage.setItem("qui-accordion", "{")
     const { result } = renderHook(() => usePersistedAccordion())
     expect(result.current[0]).toEqual(DEFAULT_ITEMS)
-    expect(localStorage.getItem("qui-accordion")).toBe(JSON.stringify(DEFAULT_ITEMS))
+
+    act(() => result.current[1](["status"]))
+
+    expect(localStorage.getItem("qui-accordion")).toBe(JSON.stringify(["status"]))
   })
 
   it("falls back to defaults on valid JSON of the wrong shape, even when seeded", () => {
@@ -37,10 +40,14 @@ describe("usePersistedAccordion", () => {
     expect(result.current[0]).toEqual(DEFAULT_ITEMS)
   })
 
-  it("seeds views into a pre-views stored array exactly once", () => {
+  it("seeds views into a pre-views stored array, marking seeded on the first toggle", () => {
     localStorage.setItem("qui-accordion", JSON.stringify(["status", "tags"]))
     const { result } = renderHook(() => usePersistedAccordion())
     expect(result.current[0]).toEqual(["views", "status", "tags"])
+
+    act(() => result.current[1](prev => prev.filter(item => item !== "tags")))
+
+    expect(result.current[0]).toEqual(["views", "status"])
     expect(localStorage.getItem("qui-accordion-views-seeded")).toBe("1")
   })
 
