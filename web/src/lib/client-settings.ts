@@ -93,10 +93,15 @@ function scheduleFlush(): void {
   }, FLUSH_DELAY_MS)
 }
 
+let flushInFlight = false
+
 async function flushPending(): Promise<void> {
-  if (!syncReady || pending.size === 0) return
+  if (flushInFlight || !syncReady || pending.size === 0) return
+  // Keys stay in pending while the PUT is in flight so a concurrent server
+  // apply cannot clobber the newer local value (the echo guard checks
+  // pending). On failure they simply stay queued for the next flush.
   const batch = Object.fromEntries(pending)
-  pending.clear()
+  flushInFlight = true
   try {
     // Plain fetch instead of the api client: keepalive lets the tab-hidden
     // flush finish, and this module must stay import-light (i18n boots on it).
@@ -107,12 +112,15 @@ async function flushPending(): Promise<void> {
       keepalive: true,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    // Drop what this PUT delivered.
+    for (const [key, raw] of Object.entries(batch)) {
+      if (pending.get(key) === raw) pending.delete(key)
+    }
+    scheduleFlush()
   } catch (error) {
     console.error("Failed to push client settings:", error)
-    // Requeue for the next flush; a newer write for the same key wins.
-    for (const [key, raw] of Object.entries(batch)) {
-      if (!pending.has(key)) pending.set(key, raw)
-    }
+  } finally {
+    flushInFlight = false
   }
 }
 
@@ -167,6 +175,7 @@ export function _resetClientSettingsForTests(): void {
   pending.clear()
   if (flushTimer !== null) clearTimeout(flushTimer)
   flushTimer = null
+  flushInFlight = false
   syncReady = false
 }
 
