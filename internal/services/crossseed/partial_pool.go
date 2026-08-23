@@ -119,10 +119,15 @@ func partialPoolParsedIdentity(torrentBytes []byte) (key, infohashV1, infohashV2
 	return key, infohashV1, infohashV2, descriptors, nil
 }
 
+// registerPartialPoolAdmission loads qBittorrent's authoritative file list,
+// joins it with the parsed and materialized file evidence, and atomically
+// persists the pool member before any recheck is requested. Added torrent IDs
+// are lookup hints only; metainfo hashes remain the durable member identity.
 func (s *Service) registerPartialPoolAdmission(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	torrentBytes []byte,
+	addedTorrentIDs []string,
 	req *CrossSeedRequest,
 	matchedTorrent *qbt.Torrent,
 	mode, rootPath string,
@@ -141,15 +146,25 @@ func (s *Service) registerPartialPoolAdmission(
 	}
 
 	memberAliases := normalizedHashes(memberKey, infohashV1, infohashV2)
-	addedTorrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, memberAliases)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resolve added partial pool torrent: %w", err)
+	fetchHash := ""
+	if responseIDs := normalizedHashes(addedTorrentIDs...); len(responseIDs) > 0 {
+		fetchHash = responseIDs[0]
+	} else {
+		addedTorrent, found, resolveErr := s.syncManager.HasTorrentByAnyHash(ctx, candidate.InstanceID, memberAliases)
+		if resolveErr != nil {
+			return nil, nil, fmt.Errorf("resolve added partial pool torrent: %w", resolveErr)
+		}
+		if found && addedTorrent != nil {
+			fetchHash = normalizeHash(addedTorrent.Hash)
+			if fetchHash == "" {
+				fetchHash = partialPoolCanonicalTorrentKey(addedTorrent)
+			}
+		}
 	}
-	fetchHash := memberKey
-	if found && addedTorrent != nil && normalizeHash(addedTorrent.Hash) != "" {
-		fetchHash = addedTorrent.Hash
+	if fetchHash == "" {
+		fetchHash = memberKey
 	}
-	refreshCtx := qbittorrent.WithForceFilesRefresh(ctx)
+	refreshCtx := qbittorrent.WithPostAddFileFetchRetry(qbittorrent.WithForceFilesRefresh(ctx))
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(refreshCtx, candidate.InstanceID, []string{fetchHash})
 	if err != nil {
 		return nil, nil, fmt.Errorf("refresh added partial pool files: %w", err)
@@ -218,18 +233,18 @@ func (s *Service) registerPartialPoolAdmission(
 	})
 }
 
-func (s *Service) recordPartialPoolRecheckRequested(ctx context.Context, member *models.CrossSeedPartialPoolMember) {
+// recordPartialPoolRecheckRequested durably claims a member's recheck before the
+// qBittorrent side effect. It returns false when the claim was not persisted.
+func (s *Service) recordPartialPoolRecheckRequested(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember) bool {
 	if s == nil || s.automationStore == nil || member == nil {
-		return
+		return false
 	}
 	reason := partialPoolRecheckRequested
-	_, _ = s.automationStore.TransitionPartialPoolMember(
-		ctx,
-		member.ID,
-		[]string{member.Status},
-		member.Status,
-		models.PartialPoolMemberMutation{LastError: &reason},
-	)
+	if !s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason}) {
+		return false
+	}
+	member.UpdatedAt = now
+	return true
 }
 
 func normalizedHashes(values ...string) []string {
@@ -346,7 +361,7 @@ func (s *Service) reconcilePartialPools(ctx context.Context, now time.Time, wake
 		if ctx.Err() != nil {
 			return
 		}
-		observed := s.observePartialPoolMembers(ctx, pool, inventories)
+		observed := s.observePartialPoolMembers(ctx, now, pool, inventories)
 		if len(observed) == 0 {
 			continue
 		}
@@ -420,8 +435,13 @@ func partialPoolInventoryTorrent(inventory partialPoolTorrentInventory, member *
 	return qbt.Torrent{}, false
 }
 
+// observePartialPoolMembers resolves durable members against the current
+// qBittorrent inventory and removes confirmed absences. A newly admitted
+// verifying member remains durable through the recheck grace so a stale
+// post-add inventory cannot remove it prematurely.
 func (s *Service) observePartialPoolMembers(
 	ctx context.Context,
+	now time.Time,
 	pool *models.CrossSeedPartialPool,
 	inventories map[int]partialPoolTorrentInventory,
 ) map[int64]qbt.Torrent {
@@ -433,6 +453,11 @@ func (s *Service) observePartialPoolMembers(
 		}
 		torrent, found := partialPoolInventoryTorrent(inventory, member)
 		if !found {
+			if member.Status == models.CrossSeedPartialPoolMemberStatusVerifying &&
+				member.LastError == partialPoolRecheckPending &&
+				now.Before(member.CreatedAt.Add(partialPoolRecheckGrace)) {
+				continue
+			}
 			for _, file := range member.Files {
 				s.deletePartialPoolCreated(file.ID)
 			}
@@ -574,8 +599,16 @@ func partialPoolTorrentComplete(torrent qbt.Torrent) bool {
 	return torrent.State != qbt.TorrentStateError && torrent.State != qbt.TorrentStateMissingFiles && torrent.Progress >= 1 && torrent.AmountLeft <= 0
 }
 
+// partialPoolChecking reports any qBittorrent verification state, including
+// resume-data validation.
 func partialPoolChecking(state qbt.TorrentState) bool {
-	return state == qbt.TorrentStateCheckingUp || state == qbt.TorrentStateCheckingDl || state == qbt.TorrentStateCheckingResumeData
+	return partialPoolDataChecking(state) || state == qbt.TorrentStateCheckingResumeData
+}
+
+// partialPoolDataChecking reports only piece verification, which can satisfy a
+// pending pool recheck. Resume-data validation does not verify file contents.
+func partialPoolDataChecking(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStateCheckingUp || state == qbt.TorrentStateCheckingDl
 }
 
 func partialPoolTransferCapable(state qbt.TorrentState) bool {
@@ -757,11 +790,18 @@ func (s *Service) finishPartialPoolRecoveryExhausted(ctx context.Context, member
 }
 
 func (s *Service) reconcilePartialPoolVerifying(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
-	if partialPoolChecking(snapshot.torrent.State) {
+	if member.LastError == partialPoolRecheckPending {
+		if partialPoolDataChecking(snapshot.torrent.State) {
+			s.recordPartialPoolRecheckRequested(ctx, now, member)
+			return
+		}
+		if snapshot.torrent.State == qbt.TorrentStateCheckingResumeData {
+			return
+		}
+		s.requestPartialPoolRecheck(ctx, now, member)
 		return
 	}
-	if member.LastError == partialPoolRecheckPending {
-		s.requestPartialPoolRecheck(ctx, now, member)
+	if partialPoolChecking(snapshot.torrent.State) {
 		return
 	}
 	if member.LastError == partialPoolRecheckRequested && now.Sub(member.UpdatedAt) < partialPoolRecheckGrace {
@@ -829,19 +869,19 @@ func (s *Service) reapplyPartialPoolGate(ctx context.Context, member *models.Cro
 	s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{MissingBytes: &missing, LastError: choosePartialPoolError(status, reason, &empty)})
 }
 
+// requestPartialPoolRecheck persists ownership before issuing the qBittorrent
+// action and moves the member to manual intervention if that action fails.
 func (s *Service) requestPartialPoolRecheck(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember) {
 	if ctx.Err() != nil || member == nil || !s.partialPoolCoordinatorEnabled(ctx) {
+		return
+	}
+	if !s.recordPartialPoolRecheckRequested(ctx, now, member) {
 		return
 	}
 	err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), member.InstanceID, partialPoolMemberHashes(member), "recheck")
 	if err != nil {
 		s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, "recheck request failed: "+err.Error())
 		member.Status = models.CrossSeedPartialPoolMemberStatusManual
-		return
-	}
-	reason := partialPoolRecheckRequested
-	if s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason}) {
-		member.UpdatedAt = now
 	}
 }
 
@@ -956,6 +996,13 @@ func (s *Service) reconcilePartialPoolRechecking(
 	budget int64,
 ) {
 	if member.LastError == partialPoolRecheckPending {
+		if partialPoolDataChecking(snapshot.torrent.State) {
+			s.recordPartialPoolRecheckRequested(ctx, now, member)
+			return
+		}
+		if snapshot.torrent.State == qbt.TorrentStateCheckingResumeData {
+			return
+		}
 		s.requestPartialPoolRecheck(ctx, now, member)
 		return
 	}

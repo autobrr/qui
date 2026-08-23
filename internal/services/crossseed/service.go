@@ -3201,20 +3201,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return err
 	}
 
-	if successCount > 0 {
-		log.Info().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Int("added", successCount).
-			Msg("[CROSSSEED-COMPLETION] Added cross-seed from completion search")
-	} else {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Completion search executed with no additions")
-	}
+	logCompletionSearchSummary(instanceID, torrent, successCount, failedCount, skippedCount)
 
 	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
 		completedAt := time.Now().UTC()
@@ -3269,6 +3256,25 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	return nil
+}
+
+// logCompletionSearchSummary emits every outcome count and promotes runs with
+// at least one addition from debug to info level.
+func logCompletionSearchSummary(instanceID int, torrent *qbt.Torrent, added, failed, skipped int) {
+	event := log.Debug()
+	message := "[CROSSSEED-COMPLETION] Completion search executed with no additions"
+	if added > 0 {
+		event = log.Info()
+		message = "[CROSSSEED-COMPLETION] Added cross-seed from completion search"
+	}
+	event.
+		Int("instanceID", instanceID).
+		Str("hash", torrent.Hash).
+		Str("name", torrent.Name).
+		Int("added", added).
+		Int("failed", failed).
+		Int("skipped", skipped).
+		Msg(message)
 }
 
 // StartSearchRun launches an on-demand search automation run for a single instance.
@@ -4488,7 +4494,7 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 		return true
 	}
 	for _, result := range response.Results {
-		if result.Success || result.Status == "exists" {
+		if result.Success || result.Status == "exists" || result.Status == "partial_pool_registration_error" {
 			return true
 		}
 	}
@@ -11876,7 +11882,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 
 	if resp.Success {
 		result.Status = models.CrossSeedSearchResultStatusAdded
-		result.Message = "added via " + match.Indexer
+		result.Message = extractSuccessMessage(resp.Results, match.Indexer)
 		if resp.titleRescueUsed {
 			result.Message += "; verification pending"
 		}
@@ -11904,6 +11910,17 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	result.Status = classifyFailedCrossSeedSearchResult(resp.Results)
 	return result, nil
+}
+
+// extractSuccessMessage returns the first non-empty successful instance detail,
+// falling back to a generic indexer message when none is available.
+func extractSuccessMessage(results []InstanceCrossSeedResult, indexer string) string {
+	for _, result := range results {
+		if result.Success && strings.TrimSpace(result.Message) != "" {
+			return result.Message
+		}
+	}
+	return "added via " + indexer
 }
 
 // classifyFailedCrossSeedSearchResult separates harmless no-add outcomes from
@@ -14915,7 +14932,8 @@ func (s *Service) processHardlinkMode(
 		Msg("[CROSSSEED] Hardlink mode: adding torrent")
 
 	// Add the torrent
-	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+	addResponse, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
+	if err != nil {
 		// Rollback only what this attempt created: the destination can be shared
 		// with an earlier successful add for the same release (discussion #2282)
 		if rollbackErr := created.Rollback(); rollbackErr != nil {
@@ -14932,6 +14950,10 @@ func (s *Service) processHardlinkMode(
 			Msg("[CROSSSEED] Hardlink mode: failed to add torrent, aborting")
 		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
 	}
+	var addedTorrentIDs []string
+	if addResponse != nil {
+		addedTorrentIDs = append([]string(nil), addResponse.AddedTorrentIds...)
+	}
 
 	var pooledMember *models.CrossSeedPartialPoolMember
 	var poolRegistrationErr error
@@ -14943,6 +14965,7 @@ func (s *Service) processHardlinkMode(
 				ctx,
 				candidate,
 				torrentBytes,
+				addedTorrentIDs,
 				req,
 				matchedTorrent,
 				models.CrossSeedPartialPoolModeHardlink,
@@ -14951,6 +14974,15 @@ func (s *Service) processHardlinkMode(
 				poolDescriptors,
 			)
 		}
+	}
+	if poolRegistrationErr != nil {
+		poolRegistrationErr = fmt.Errorf("register partial pool admission: %w", poolRegistrationErr)
+		log.Warn().
+			Err(poolRegistrationErr).
+			Str("mode", models.CrossSeedPartialPoolModeHardlink).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Partial pool registration failed after qBittorrent add")
 	}
 
 	// Build result message
@@ -14970,14 +15002,17 @@ func (s *Service) processHardlinkMode(
 	// Handle recheck and auto-resume when extras exist, or disc layout or the
 	// search decision requires verification
 	if recheckPolicy.requiresRecheck {
-		recheckHashes := []string{torrentHash}
-		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
-			recheckHashes = append(recheckHashes, torrentHashV2)
-		}
+		switch {
+		case poolRegistrationErr != nil:
+		case pooledMember != nil:
+			s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
+			statusMsg += " - pooled completion pending"
+		default:
+			recheckHashes := []string{torrentHash}
+			if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+				recheckHashes = append(recheckHashes, torrentHashV2)
+			}
 
-		if poolRegistrationErr != nil {
-			statusMsg += fmt.Sprintf(" - pooled completion registration failed; remains stopped for manual intervention: %v", poolRegistrationErr)
-		} else {
 			// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
 			// and which are missing (extras to download)
 			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
@@ -14990,14 +15025,6 @@ func (s *Service) processHardlinkMode(
 					Str("torrentHash", torrentHash).
 					Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
 				statusMsg += " - recheck failed, manual intervention required"
-				if pooledMember != nil {
-					s.markPartialPoolMemberManual(ctx, pooledMember.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, recheckErr.Error())
-					s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
-				}
-			case pooledMember != nil:
-				s.recordPartialPoolRecheckRequested(ctx, pooledMember)
-				s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
-				statusMsg += " - pooled completion pending"
 			case addPolicy.ShouldSkipAutoResume():
 				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 				log.Debug().
@@ -15038,17 +15065,25 @@ func (s *Service) processHardlinkMode(
 		// Disc layout without extras - add policy status suffix
 		statusMsg += addPolicy.StatusSuffix()
 	}
+	if poolRegistrationErr != nil {
+		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
+	}
 
 	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	success := poolRegistrationErr == nil
+	status := "added_hardlink"
+	if !success {
+		status = "partial_pool_registration_error"
+	}
 
 	return hardlinkModeResult{
 		Used:    true,
-		Success: true,
+		Success: success,
 		Result: InstanceCrossSeedResult{
 			InstanceID:   candidate.InstanceID,
 			InstanceName: candidate.InstanceName,
-			Success:      true,
-			Status:       "added_hardlink",
+			Success:      success,
+			Status:       status,
 			Message:      statusMsg,
 			MatchedTorrent: &MatchedTorrent{
 				Hash:     matchedTorrent.Hash,
@@ -15680,7 +15715,8 @@ func (s *Service) processReflinkMode(
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
 
 	// Add the torrent
-	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+	addResponse, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
+	if err != nil {
 		// Rollback only what this attempt created (discussion #2282)
 		if rollbackErr := created.Rollback(); rollbackErr != nil {
 			log.Warn().
@@ -15696,6 +15732,10 @@ func (s *Service) processReflinkMode(
 			Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
 		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
 	}
+	var addedTorrentIDs []string
+	if addResponse != nil {
+		addedTorrentIDs = append([]string(nil), addResponse.AddedTorrentIds...)
+	}
 
 	var pooledMember *models.CrossSeedPartialPoolMember
 	var poolRegistrationErr error
@@ -15707,6 +15747,7 @@ func (s *Service) processReflinkMode(
 				ctx,
 				candidate,
 				torrentBytes,
+				addedTorrentIDs,
 				req,
 				matchedTorrent,
 				models.CrossSeedPartialPoolModeReflink,
@@ -15715,6 +15756,15 @@ func (s *Service) processReflinkMode(
 				poolDescriptors,
 			)
 		}
+	}
+	if poolRegistrationErr != nil {
+		poolRegistrationErr = fmt.Errorf("register partial pool admission: %w", poolRegistrationErr)
+		log.Warn().
+			Err(poolRegistrationErr).
+			Str("mode", models.CrossSeedPartialPoolModeReflink).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Partial pool registration failed after qBittorrent add")
 	}
 
 	// Build result message
@@ -15734,14 +15784,17 @@ func (s *Service) processReflinkMode(
 	// Handle recheck and auto-resume when extras exist, or disc layout or the
 	// search decision requires verification
 	if recheckPolicy.requiresRecheck {
-		recheckHashes := []string{torrentHash}
-		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
-			recheckHashes = append(recheckHashes, torrentHashV2)
-		}
+		switch {
+		case poolRegistrationErr != nil:
+		case pooledMember != nil:
+			s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
+			statusMsg += " - pooled completion pending"
+		default:
+			recheckHashes := []string{torrentHash}
+			if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+				recheckHashes = append(recheckHashes, torrentHashV2)
+			}
 
-		if poolRegistrationErr != nil {
-			statusMsg += fmt.Sprintf(" - pooled completion registration failed; remains stopped for manual intervention: %v", poolRegistrationErr)
-		} else {
 			// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
 			// and which are missing (extras to download).
 			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
@@ -15754,14 +15807,6 @@ func (s *Service) processReflinkMode(
 					Str("torrentHash", torrentHash).
 					Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
 				statusMsg += " - recheck failed, manual intervention required"
-				if pooledMember != nil {
-					s.markPartialPoolMemberManual(ctx, pooledMember.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, recheckErr.Error())
-					s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
-				}
-			case pooledMember != nil:
-				s.recordPartialPoolRecheckRequested(ctx, pooledMember)
-				s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
-				statusMsg += " - pooled completion pending"
 			case addPolicy.ShouldSkipAutoResume():
 				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 				log.Debug().
@@ -15807,17 +15852,25 @@ func (s *Service) processReflinkMode(
 	if hasExtras && clonedFiles < totalFiles {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}
+	if poolRegistrationErr != nil {
+		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
+	}
 
 	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	success := poolRegistrationErr == nil
+	status := "added_reflink"
+	if !success {
+		status = "partial_pool_registration_error"
+	}
 
 	return reflinkModeResult{
 		Used:    true,
-		Success: true,
+		Success: success,
 		Result: InstanceCrossSeedResult{
 			InstanceID:   candidate.InstanceID,
 			InstanceName: candidate.InstanceName,
-			Success:      true,
-			Status:       "added_reflink",
+			Success:      success,
+			Status:       status,
 			Message:      statusMsg,
 			MatchedTorrent: &MatchedTorrent{
 				Hash:     matchedTorrent.Hash,

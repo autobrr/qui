@@ -148,13 +148,38 @@ func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
 	require.NoError(t, err)
 
 	service := &Service{automationStore: store}
-	observed := service.observePartialPoolMembers(t.Context(), pool, map[int]partialPoolTorrentInventory{
+	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
 		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
 	})
 	require.Empty(t, observed)
 
 	_, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.Error(t, err, "the last missing member removes its empty pool")
+}
+
+func TestObservePartialPoolMembersRemovesPendingAdmissionAfterVisibilityGrace(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"pending",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolFileStatusPresent,
+		nil,
+	)
+	registration.Member.LastError = partialPoolRecheckPending
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	service := &Service{automationStore: store}
+	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
+		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
+	})
+	require.Empty(t, observed)
+
+	_, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.Error(t, err, "pending admission must retain normal removal after its visibility grace")
 }
 
 func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
@@ -215,7 +240,7 @@ func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
 
 			sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{member.TorrentKey: files}}
 			service := &Service{automationStore: store, syncManager: sync}
-			observed := service.observePartialPoolMembers(t.Context(), pool, map[int]partialPoolTorrentInventory{
+			observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt, pool, map[int]partialPoolTorrentInventory{
 				instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{member.TorrentKey: torrent}},
 			})
 			require.Contains(t, observed, member.ID)
