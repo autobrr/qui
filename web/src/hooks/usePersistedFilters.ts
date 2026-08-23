@@ -22,26 +22,9 @@ const DEFAULT_INSTANCE: InstanceFilters = {
   expr: "",
 }
 
-const parseGlobalFilters = (raw: string): GlobalFilters => {
-  const parsed = JSON.parse(raw)
-  return {
-    status: parsed.status || [],
-    excludeStatus: parsed.excludeStatus || [],
-  }
-}
+const parseGlobalFilters = (raw: string): GlobalFilters => ({ ...DEFAULT_GLOBAL, ...JSON.parse(raw) })
 
-const parseInstanceFilters = (raw: string): InstanceFilters => {
-  const parsed = JSON.parse(raw)
-  return {
-    categories: parsed.categories || [],
-    excludeCategories: parsed.excludeCategories || [],
-    tags: parsed.tags || [],
-    excludeTags: parsed.excludeTags || [],
-    trackers: parsed.trackers || [],
-    excludeTrackers: parsed.excludeTrackers || [],
-    expr: parsed.expr || "",
-  }
-}
+const parseInstanceFilters = (raw: string): InstanceFilters => ({ ...DEFAULT_INSTANCE, ...JSON.parse(raw) })
 
 export function usePersistedFilters(instanceId: number) {
   const [globalFilters, setGlobalFilters] = useClientSetting<GlobalFilters>("qui-filters-global", {
@@ -64,16 +47,11 @@ export function usePersistedFilters(instanceId: number) {
   const setFilters = useCallback(
     (next: SetStateAction<TorrentFilters>) => {
       const resolved = typeof next === "function" ? next(filtersRef.current) : next
-      setGlobalFilters({ status: resolved.status, excludeStatus: resolved.excludeStatus })
-      setInstanceFilters({
-        categories: resolved.categories,
-        excludeCategories: resolved.excludeCategories,
-        tags: resolved.tags,
-        excludeTags: resolved.excludeTags,
-        trackers: resolved.trackers,
-        excludeTrackers: resolved.excludeTrackers,
-        expr: resolved.expr,
-      })
+      // Keep every instance-scoped field, including the derived
+      // expandedCategories the sidebar computes for subcategory requests.
+      const { status, excludeStatus, ...instance } = resolved
+      setGlobalFilters({ status, excludeStatus })
+      setInstanceFilters(instance)
     },
     [setGlobalFilters, setInstanceFilters]
   )

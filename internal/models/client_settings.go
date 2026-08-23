@@ -39,10 +39,17 @@ func (s *ClientSettingsStore) GetAll(ctx context.Context) (map[string]string, er
 	return settings, rows.Err()
 }
 
-// SetMany upserts the given settings, leaving keys not in the map untouched.
+// SetMany upserts the given settings atomically, leaving keys not in the map
+// untouched.
 func (s *ClientSettingsStore) SetMany(ctx context.Context, settings map[string]string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	for key, value := range settings {
-		_, err := s.db.ExecContext(ctx, `
+		_, err := tx.ExecContext(ctx, `
 			INSERT INTO client_settings (key, value)
 			VALUES (?, ?)
 			ON CONFLICT (key) DO UPDATE SET
@@ -53,5 +60,5 @@ func (s *ClientSettingsStore) SetMany(ctx context.Context, settings map[string]s
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
