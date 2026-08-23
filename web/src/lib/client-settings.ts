@@ -97,8 +97,45 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null
 // Opens after the first successful GET, so nothing fires while logged out.
 let syncReady = false
 
+// Durable outbox: the dirty key list mirrored to localStorage. The pagehide
+// keepalive PUT is not reliable (Chrome drops keepalive fetches from
+// service-worker-controlled pages on unload), so unacked writes must survive
+// the page. The next boot loads them back into pending, which both blocks the
+// stale server snapshot from reverting them and replays their push. Only keys
+// are stored; the values already live in localStorage under those keys.
+// ponytail: single outbox key is last-writer-wins across tabs, so one tab's
+// crash can drop another tab's unacked key; read-merge-write if that bites.
+const OUTBOX_KEY = "qui-client-settings-outbox"
+
+function persistPending(): void {
+  try {
+    if (pending.size === 0) localStorage.removeItem(OUTBOX_KEY)
+    else localStorage.setItem(OUTBOX_KEY, JSON.stringify([...pending.keys()]))
+  } catch {
+    // Best effort; losing the outbox only reopens the unload race.
+  }
+}
+
+function loadPersistedPending(): void {
+  try {
+    const raw = localStorage.getItem(OUTBOX_KEY)
+    if (!raw) return
+    for (const key of JSON.parse(raw) as string[]) {
+      // A key gone from localStorage has no value to replay; "" would push
+      // the cleared sentinel, so skip it.
+      const value = readRaw(key)
+      if (value !== null) pending.set(key, value)
+    }
+  } catch {
+    // Corrupt outbox: drop it, the values themselves are still in localStorage.
+  }
+}
+
+loadPersistedPending()
+
 function enqueuePush(key: string, raw: string): void {
   pending.set(key, raw)
+  persistPending()
   scheduleFlush()
 }
 
@@ -142,6 +179,7 @@ async function flushPending(): Promise<void> {
     for (const [key, raw] of Object.entries(batch)) {
       if (pending.get(key) === raw) pending.delete(key)
     }
+    persistPending()
   } catch (error) {
     console.error("Failed to push client settings:", error)
   } finally {
@@ -207,7 +245,8 @@ export function seedAndMarkReady(serverSettings: Record<string, string>): void {
   scheduleFlush()
 }
 
-// Test-only: reset module state between vitest cases.
+// Test-only: reset module state between vitest cases. Mirrors a fresh page
+// boot: in-memory state resets, then the persisted outbox loads back in.
 export function _resetClientSettingsForTests(): void {
   pending.clear()
   if (flushTimer !== null) clearTimeout(flushTimer)
@@ -215,6 +254,7 @@ export function _resetClientSettingsForTests(): void {
   flushInFlight = false
   flushRequestedInFlight = false
   syncReady = false
+  loadPersistedPending()
 }
 
 // --- React hook ---
