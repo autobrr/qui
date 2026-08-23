@@ -107,8 +107,8 @@ describe("push queue", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  // REGRESSION (itoqa on #2409/#2410): pending cleared before the PUT resolved,
-  // so a server apply during the in-flight window clobbered the newer value.
+  // REGRESSION: pending was cleared before the PUT resolved, so a server
+  // apply during the in-flight window clobbered the newer value.
   it("keeps in-flight keys guarded against a concurrent server apply", async () => {
     let resolvePut: (value: unknown) => void = () => {}
     fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
