@@ -19,6 +19,13 @@ if (globalThis.localStorage == null) {
     setItem: (key: string, value: string) => void store.set(key, value),
     removeItem: (key: string) => void store.delete(key),
     clear: () => store.clear(),
+    key: (index: number) => [...store.keys()][index] ?? null,
+  })
+  // jsdom's brand-checked `length` accessor throws on this stand-in instance;
+  // replace it with the store's size so key/length iteration works.
+  Object.defineProperty(Storage.prototype, "length", {
+    get: () => store.size,
+    configurable: true,
   })
   globalThis.localStorage = Object.create(Storage.prototype) as Storage
 }

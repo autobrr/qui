@@ -101,13 +101,13 @@ describe("useSpeedUnits listener cleanup", () => {
     unmount()
 
     expect(removeSpy).toHaveBeenCalledWith("storage", expect.any(Function))
-    expect(removeSpy).toHaveBeenCalledWith("speed-units-changed", expect.any(Function))
+    expect(removeSpy).toHaveBeenCalledWith("qui-client-setting-changed", expect.any(Function))
 
     // After unmount, external events must not throw or update the stale state.
     localStorage.setItem(STORAGE_KEY, "bits")
     expect(() => {
       window.dispatchEvent(new Event("storage"))
-      window.dispatchEvent(new Event("speed-units-changed"))
+      window.dispatchEvent(new CustomEvent("qui-client-setting-changed", { detail: { key: STORAGE_KEY } }))
     }).not.toThrow()
     expect(last()).toBe("bytes")
   })
