@@ -37,6 +37,10 @@ func TestResolveLocalTorrentFile(t *testing.T) {
 		{name: "posix traversal escaping the base", input: "a/../../etc/passwd"},
 		{name: "posix parent traversal", input: "../evil.mkv"},
 		{name: "posix absolute path", input: "/absolute.mkv"},
+		// path.Clean turns both "" and "." into ".", which would otherwise resolve
+		// to the save path itself: the empty-name row rides the same clause.
+		{name: "current dir", input: "."},
+		{name: "bare parent dir", input: ".."},
 		{name: "empty name", input: ""},
 	}
 

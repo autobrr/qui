@@ -340,6 +340,10 @@ func TestLocalLinkedMatchType_SourceBackendReresolveFailure_RecordedForStrictMod
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
 
 	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	// Exact count: it is what places the failure at the re-resolve rather than
+	// at an earlier lookup. A refactor that resolves the source backend once and
+	// threads it would drop this to 2 and delete the site under test, so this
+	// assertion is meant to be re-read, not just re-numbered.
 	require.Equal(t, 3, store.calls, "expected source, candidate and source re-resolve backend lookups")
 	require.ErrorIs(t, matchCtx.verificationErr, backendErr)
 	require.ErrorContains(t, matchCtx.verificationErr, "resolve filesystem backend for instance 1")
