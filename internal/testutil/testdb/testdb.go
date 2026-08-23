@@ -17,8 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/autobrr/qui/internal/database"
 )
 
 var (
