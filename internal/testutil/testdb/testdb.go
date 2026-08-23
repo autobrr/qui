@@ -105,6 +105,14 @@ func NewMigratedPostgres(t testing.TB, name string) *database.DB {
 }
 
 func postgresDSNWithSearchPath(dsn, schema string) (string, error) {
+	if _, err := pgxpool.ParseConfig(dsn); err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(dsn, "postgres://") && !strings.HasPrefix(dsn, "postgresql://") {
+		escapedSchema := strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(schema)
+		return dsn + " search_path='" + escapedSchema + "'", nil
+	}
+
 	parsed, err := url.Parse(dsn)
 	if err != nil {
 		return "", err
