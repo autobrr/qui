@@ -107,6 +107,43 @@ describe("push queue", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  // REGRESSION (itoqa on #2409/#2410): pending cleared before the PUT resolved,
+  // so a server apply during the in-flight window clobbered the newer value.
+  it("keeps in-flight keys guarded against a concurrent server apply", async () => {
+    let resolvePut: (value: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // PUT is in flight; a stale snapshot must not overwrite the newer value.
+    const changed = applyServerSettings({ "qui-test-bool": "false" })
+    expect(changed).toEqual([])
+    expect(localStorage.getItem("qui-test-bool")).toBe("true")
+
+    resolvePut({ ok: true, status: 200 })
+    await vi.runAllTimersAsync()
+    expect(localStorage.getItem("qui-test-bool")).toBe("true")
+  })
+
+  it("flushes a value written while a PUT for the same key is in flight", async () => {
+    let resolvePut: (value: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Newer write lands mid-flight; it must survive the first PUT's cleanup.
+    writeRaw("qui-test-bool", "false")
+    resolvePut({ ok: true, status: 200 })
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
+  })
+
   it("requeues a failed batch for the next flush", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 })
     seedAndMarkReady({})
