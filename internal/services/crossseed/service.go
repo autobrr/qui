@@ -459,8 +459,9 @@ type Service struct {
 	recheckResumeCancel context.CancelFunc
 
 	// Durable partial link-mode completion coordinator.
-	partialPoolWake    chan partialPoolWake
-	partialPoolCreated map[int64]*hardlinktree.Created
+	partialPoolWake      chan partialPoolWake
+	partialPoolCreatedMu sync.Mutex
+	partialPoolCreated   map[int64]*hardlinktree.Created
 
 	// Returns the season's episode total, the show's alias titles from the same
 	// lookup (series-wide + same-season), and whether the total resolved.

@@ -434,7 +434,7 @@ func (s *Service) observePartialPoolMembers(
 		torrent, found := partialPoolInventoryTorrent(inventory, member)
 		if !found {
 			for _, file := range member.Files {
-				delete(s.partialPoolCreated, file.ID)
+				s.deletePartialPoolCreated(file.ID)
 			}
 			_ = s.automationStore.MarkPartialPoolMemberRemoved(ctx, member.ID, "torrent no longer exists in qBittorrent")
 			continue
@@ -978,7 +978,7 @@ func (s *Service) reconcilePartialPoolRechecking(
 		current := snapshot.fileByIndex[file.FileIndex]
 		if current.Progress >= 1 {
 			s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{})
-			delete(s.partialPoolCreated, file.ID)
+			s.deletePartialPoolCreated(file.ID)
 			continue
 		}
 		if member.Mode == models.CrossSeedPartialPoolModeHardlink {
@@ -1008,7 +1008,7 @@ func (s *Service) reconcilePartialPoolRechecking(
 }
 
 func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *models.CrossSeedPartialPoolMemberFile, pool *models.CrossSeedPartialPool) bool {
-	created := s.partialPoolCreated[file.ID]
+	created := s.loadPartialPoolCreated(file.ID)
 	if created == nil || file.SourceFileID == nil {
 		return false
 	}
@@ -1028,9 +1028,30 @@ func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *mod
 	if err := created.Rollback(); err != nil {
 		return false
 	}
-	delete(s.partialPoolCreated, file.ID)
+	s.deletePartialPoolCreated(file.ID)
 	s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusMissing, models.PartialPoolFileMutation{SourceFileID: models.NullableInt64Update{Set: true}})
 	return true
+}
+
+func (s *Service) loadPartialPoolCreated(fileID int64) *hardlinktree.Created {
+	s.partialPoolCreatedMu.Lock()
+	defer s.partialPoolCreatedMu.Unlock()
+	return s.partialPoolCreated[fileID]
+}
+
+func (s *Service) storePartialPoolCreated(fileID int64, created *hardlinktree.Created) {
+	s.partialPoolCreatedMu.Lock()
+	defer s.partialPoolCreatedMu.Unlock()
+	if s.partialPoolCreated == nil {
+		s.partialPoolCreated = make(map[int64]*hardlinktree.Created)
+	}
+	s.partialPoolCreated[fileID] = created
+}
+
+func (s *Service) deletePartialPoolCreated(fileID int64) {
+	s.partialPoolCreatedMu.Lock()
+	defer s.partialPoolCreatedMu.Unlock()
+	delete(s.partialPoolCreated, fileID)
 }
 
 func partialPoolCreatedContains(created *hardlinktree.Created, target string) bool {
@@ -1244,12 +1265,12 @@ func (s *Service) publishPartialPoolCompletedFiles(ctx context.Context, member *
 		case models.CrossSeedPartialPoolFileStatusPresent,
 			models.CrossSeedPartialPoolFileStatusVerifying:
 			if s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{}) {
-				delete(s.partialPoolCreated, file.ID)
+				s.deletePartialPoolCreated(file.ID)
 			}
 		case models.CrossSeedPartialPoolFileStatusPropagating:
 			if s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{}) {
 				if s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{}) {
-					delete(s.partialPoolCreated, file.ID)
+					s.deletePartialPoolCreated(file.ID)
 				}
 			}
 		case models.CrossSeedPartialPoolFileStatusMissing, models.CrossSeedPartialPoolFileStatusAcquiring:
@@ -1477,10 +1498,7 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 	if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
-		if s.partialPoolCreated == nil {
-			s.partialPoolCreated = make(map[int64]*hardlinktree.Created)
-		}
-		s.partialPoolCreated[targetFile.ID] = created
+		s.storePartialPoolCreated(targetFile.ID, created)
 	}
 	s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
 	return true
@@ -1502,7 +1520,7 @@ func (s *Service) partialPoolMemberModeEnabled(ctx context.Context, member *mode
 
 func (s *Service) markPartialPoolPropagationManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, file *models.CrossSeedPartialPoolMemberFile, reason string) {
 	s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason})
-	delete(s.partialPoolCreated, file.ID)
+	s.deletePartialPoolCreated(file.ID)
 	s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
 	member.Status = models.CrossSeedPartialPoolMemberStatusManual
 }

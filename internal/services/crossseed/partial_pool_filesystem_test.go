@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -163,13 +164,36 @@ func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 		},
 	}
 	service.markPartialPoolPropagationManual(t.Context(), member, member.Files[0], "synthetic verification failure")
-	require.NotContains(t, service.partialPoolCreated, member.Files[0].ID)
+	require.Nil(t, service.loadPartialPoolCreated(member.Files[0].ID))
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, pool.Members[0].Status)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, pool.Members[0].Files[0].Status)
 	require.Equal(t, "synthetic verification failure", pool.Members[0].Files[0].LastError)
+}
+
+func TestPartialPoolCreatedConcurrentAccess(t *testing.T) {
+	service := &Service{}
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	for worker := range 8 {
+		fileID := int64(worker)
+		workers.Go(func() {
+			<-start
+			for range 100 {
+				service.storePartialPoolCreated(fileID, &hardlinktree.Created{})
+				_ = service.loadPartialPoolCreated(fileID)
+				service.deletePartialPoolCreated(fileID)
+			}
+		})
+	}
+	close(start)
+	workers.Wait()
+
+	for worker := range 8 {
+		require.Nil(t, service.loadPartialPoolCreated(int64(worker)))
+	}
 }
 
 func TestPartialPoolPropagationPersistsPauseIntent(t *testing.T) {
