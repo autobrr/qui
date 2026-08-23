@@ -138,12 +138,20 @@ func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) 
 		depsByName[table] = make(map[string]struct{})
 	}
 
+	// Both ends are read as bare relnames from the catalog and both are pinned
+	// to the active schema. regclass text output only qualifies what search_path
+	// cannot reach, so a foreign key referencing another schema's same-named
+	// table would otherwise read as a local dependency and can invent a cycle.
 	rows, err := tx.Query(ctx, `
-		SELECT conrelid::regclass::text, confrelid::regclass::text
+		SELECT child.relname, parent.relname
 		FROM pg_constraint c
-		JOIN pg_namespace n ON n.oid = c.connamespace
+		JOIN pg_class child ON child.oid = c.conrelid
+		JOIN pg_namespace child_ns ON child_ns.oid = child.relnamespace
+		JOIN pg_class parent ON parent.oid = c.confrelid
+		JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
 		WHERE c.contype = 'f'
-		  AND n.nspname = current_schema()
+		  AND child_ns.nspname = current_schema()
+		  AND parent_ns.nspname = current_schema()
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("list postgres foreign keys: %w", err)
@@ -152,15 +160,12 @@ func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) 
 
 	for rows.Next() {
 		var (
-			rawTable    string
-			rawRefTable string
+			table    string
+			refTable string
 		)
-		if err := rows.Scan(&rawTable, &rawRefTable); err != nil {
+		if err := rows.Scan(&table, &refTable); err != nil {
 			return nil, fmt.Errorf("scan postgres foreign key: %w", err)
 		}
-
-		table := normalizeRegclassTableName(rawTable)
-		refTable := normalizeRegclassTableName(rawRefTable)
 
 		if table == "" || refTable == "" || table == refTable {
 			continue
@@ -198,22 +203,6 @@ func orderPostgresImportTables(ctx context.Context, tx pgx.Tx, tables []string) 
 		ordered = append(ordered, meta.Name)
 	}
 	return ordered, nil
-}
-
-func normalizeRegclassTableName(value string) string {
-	if value == "" {
-		return ""
-	}
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if idx := strings.LastIndex(value, "."); idx >= 0 {
-		value = value[idx+1:]
-	}
-	value = strings.TrimPrefix(value, "\"")
-	value = strings.TrimSuffix(value, "\"")
-	return value
 }
 
 func validateMigrationOptions(opts SQLiteToPostgresMigrationOptions) (string, string, error) {
@@ -657,18 +646,25 @@ func postgresForeignKeysForTable(ctx context.Context, tx pgx.Tx, table string) (
 	// search_path rather than assuming the tables live in public.
 	regclassName := quoteIdent(table)
 
+	// The parent name comes back as a bare relname pinned to the active schema:
+	// it is used as a SQLite table name in the row filter below, so a foreign key
+	// referencing another schema must not be stripped down to a local-looking
+	// name and filter the copy against an unrelated table.
 	rows, err := tx.Query(ctx, `
-		SELECT confrelid::regclass::text,
+		SELECT parent.relname,
 			   ARRAY_AGG(child_col.attname ORDER BY ck.ord),
 			   ARRAY_AGG(parent_col.attname ORDER BY ck.ord)
 		FROM pg_constraint c
+		JOIN pg_class parent ON parent.oid = c.confrelid
+		JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
 		JOIN unnest(c.conkey) WITH ORDINALITY AS ck(attnum, ord) ON true
 		JOIN pg_attribute child_col ON child_col.attrelid = c.conrelid AND child_col.attnum = ck.attnum
 		JOIN unnest(c.confkey) WITH ORDINALITY AS fk(attnum, ord) ON fk.ord = ck.ord
 		JOIN pg_attribute parent_col ON parent_col.attrelid = c.confrelid AND parent_col.attnum = fk.attnum
 		WHERE c.contype = 'f'
 		  AND c.conrelid = $1::regclass
-		GROUP BY c.oid, c.confrelid
+		  AND parent_ns.nspname = current_schema()
+		GROUP BY c.oid, parent.relname
 	`, regclassName)
 	if err != nil {
 		return nil, fmt.Errorf("list postgres foreign keys for %s: %w", table, err)
@@ -678,14 +674,13 @@ func postgresForeignKeysForTable(ctx context.Context, tx pgx.Tx, table string) (
 	var fks []postgresForeignKey
 	for rows.Next() {
 		var (
-			rawParent     string
+			parentTable   string
 			childColumns  []string
 			parentColumns []string
 		)
-		if err := rows.Scan(&rawParent, &childColumns, &parentColumns); err != nil {
+		if err := rows.Scan(&parentTable, &childColumns, &parentColumns); err != nil {
 			return nil, fmt.Errorf("scan postgres foreign key for %s: %w", table, err)
 		}
-		parentTable := normalizeRegclassTableName(rawParent)
 		if parentTable == "" || parentTable == table {
 			continue
 		}

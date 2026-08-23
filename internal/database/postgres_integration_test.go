@@ -216,3 +216,51 @@ func dsnWithSearchPath(t *testing.T, dsn string, schema string) string {
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
 }
+
+// TestPostgresImportForeignKeysIgnoreOtherSchemas pins both catalog queries to
+// the active schema. A foreign key referencing another schema's same-named
+// table used to survive: regclass text output qualifies only what search_path
+// cannot reach, and stripping that qualifier turned the reference into a local
+// one. That invents an import dependency (here a cycle, which fails the order)
+// and hands the row filter a parent table that is not the one being referenced.
+func TestPostgresImportForeignKeysIgnoreOtherSchemas(t *testing.T) {
+	t.Parallel()
+
+	ctx, testDSN := openPostgresTestSchema(t)
+	pool, err := pgxpool.New(ctx, testDSN)
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+
+	var activeSchema string
+	require.NoError(t, pool.QueryRow(ctx, "SELECT current_schema()").Scan(&activeSchema))
+	decoySchema := activeSchema + "_decoy"
+	_, err = pool.Exec(ctx, "CREATE SCHEMA "+quoteIdent(decoySchema))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), fmt.Sprintf("DROP SCHEMA %s CASCADE", quoteIdent(decoySchema)))
+	})
+
+	// The decoy holds a table whose name collides with one in the active schema,
+	// so a stripped qualifier lands on the local table of the same name.
+	_, err = pool.Exec(ctx, fmt.Sprintf(`
+		CREATE TABLE %s.orphan_target (id integer PRIMARY KEY);
+		CREATE TABLE orphan_target (id integer PRIMARY KEY, linker_id integer);
+		CREATE TABLE linker (id integer PRIMARY KEY, decoy_id integer REFERENCES %s.orphan_target(id));
+		ALTER TABLE orphan_target ADD CONSTRAINT orphan_target_linker_fk FOREIGN KEY (linker_id) REFERENCES linker(id);
+	`, quoteIdent(decoySchema), quoteIdent(decoySchema)))
+	require.NoError(t, err)
+
+	tx, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+
+	// linker -> decoy.orphan_target is the cross-schema edge. Read as local it
+	// pairs with orphan_target -> linker into a cycle and the sort fails.
+	ordered, err := orderPostgresImportTables(ctx, tx, []string{"linker", "orphan_target"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"linker", "orphan_target"}, ordered)
+
+	fks, err := postgresForeignKeysForTable(ctx, tx, "linker")
+	require.NoError(t, err)
+	require.Empty(t, fks, "a foreign key into another schema must not filter the copy against a local table")
+}
