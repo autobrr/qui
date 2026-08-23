@@ -40,6 +40,8 @@ export function activityQueryKeys(event: ActivityEvent): QueryKey[] {
       return [["searchHistory"]]
     case "tracker.icons":
       return [["tracker-icons"]]
+    case "theme.settings":
+      return [["theme-settings"]]
     default:
       return []
   }
@@ -74,6 +76,7 @@ export const ACTIVITY_FEATURE_PREFIXES: QueryKey[] = [
   ["indexer-activity"],
   ["searchHistory"],
   ["tracker-icons"],
+  ["theme-settings"],
 ]
 
 /**

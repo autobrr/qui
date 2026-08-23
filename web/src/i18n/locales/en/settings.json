@@ -435,8 +435,6 @@
       "lock": "Lock"
     },
     "toasts": {
-      "verifyFailed": "License verification unavailable",
-      "verifyFailedDescription": "Premium theme switching is temporarily disabled.",
       "premiumRequired": "Premium license required",
       "premiumRequiredDescription": "Unlock premium themes by adding a valid premium license."
     },

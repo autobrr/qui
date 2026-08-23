@@ -139,3 +139,9 @@ Run all non-integration tests:
 ```shell
 go test -v ./...
 ```
+
+## AI-assisted contributions
+
+AI help is welcome. Fill in the AI disclosure section of the PR template honestly.
+
+We do not accept PRs authored by Gemini models. Their hallucination rate in past contributions was too high.

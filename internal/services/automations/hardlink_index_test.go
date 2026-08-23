@@ -762,3 +762,11 @@ func TestConditionsRequireLocalAccess_HardlinkScopeCross(t *testing.T) {
 		t.Error("expected ConditionUsesField to NOT detect HARDLINK_SCOPE for HARDLINK_SCOPE_CROSS condition")
 	}
 }
+
+func TestBuildFullPathRejectsNonAbsoluteBase(t *testing.T) {
+	for _, base := range []string{"", ".", "relative/dir"} {
+		if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); ok {
+			t.Errorf("buildFullPath(%q, ...) = ok, want rejected: a relative join resolves against the working directory", base)
+		}
+	}
+}

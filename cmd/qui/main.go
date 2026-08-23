@@ -536,6 +536,7 @@ func (app *Application) runServer() {
 	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+	themeSettingsStore := models.NewThemeSettingsStore(db)
 	filterViewStore := models.NewFilterViewStore(db)
 	logExclusionsStore := models.NewLogExclusionsStore(db)
 
@@ -667,6 +668,7 @@ func (app *Application) runServer() {
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	crossSeedService.SetActivityPublisher(activityHub)
+	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 
@@ -805,6 +807,7 @@ func (app *Application) runServer() {
 		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
+		ThemeSettingsStore:               themeSettingsStore,
 		FilterViewStore:                  filterViewStore,
 		LogExclusionsStore:               logExclusionsStore,
 		NotificationTargetStore:          notificationTargetStore,

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   getCurrentThemeMode,
   getCurrentTheme,
@@ -13,7 +13,7 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, isThemePremium, getThemeById } from "@/config/themes";
+import { themes, getThemeById } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Lock, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -27,9 +27,8 @@ import {
   DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes";
 import { useCustomThemes } from "@/hooks/useCustomThemes";
-import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 import { buildThemeCatalog } from "@/lib/theme-catalog";
 
 // Constants
@@ -64,33 +63,19 @@ const useThemeChange = () => {
 export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
   const { currentMode, currentTheme, isDark } = useThemeChange();
-  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
   const { customThemes } = useCustomThemes();
   const [open, setOpen] = useState(false);
 
-  const canSwitchPremium = canSwitchToPremiumTheme({
-    hasPremiumAccess,
-    isError,
-    isLoading,
-  });
+  // Subscribe so the list re-renders when the async theme registry lands;
+  // the registry array mutates in place, so it must not be a memo dep.
+  useBuiltinThemes();
+  const sortedThemes = buildThemeCatalog(themes, customThemes);
 
-  const sortedThemes = useMemo(() => {
-    return buildThemeCatalog(themes, customThemes);
-  }, [customThemes]);
-
-  const previewColorsCache = useMemo(() => new Map<string, {
-    primary: string;
-    secondary: string;
-    accent: string;
-    variations?: Array<{ id: string; color: string }>;
-  }>(), []);
-
+  // Pure property reads over ~two dozen themes: cheap enough to recompute per
+  // render, and a cache would go stale when the registry swaps an entry
+  // (license activation replacing a locked stub, custom theme refresh).
   const modeKey = isDark ? "dark" : "light";
-  const getPreviewColors = useCallback((theme: (typeof themes)[number]) => {
-    const cacheKey = `${modeKey}:${theme.id}`;
-    const cached = previewColorsCache.get(cacheKey);
-    if (cached) return cached;
-
+  const getPreviewColors = (theme: (typeof themes)[number]) => {
     const cssVars = modeKey === "dark" ? theme.cssVars.dark : theme.cssVars.light;
     const firstVariation = theme.variations?.[0];
     const resolveColor = (varName: "--primary" | "--secondary" | "--accent") => {
@@ -101,7 +86,7 @@ export const ThemeToggle: React.FC = () => {
       return value || "";
     };
 
-    const colors = {
+    return {
       primary: resolveColor("--primary"),
       secondary: resolveColor("--secondary"),
       accent: resolveColor("--accent"),
@@ -110,10 +95,7 @@ export const ThemeToggle: React.FC = () => {
         color: cssVars[`--variation-${id}`],
       })).filter((v) => v.color !== undefined),
     };
-
-    previewColorsCache.set(cacheKey, colors);
-    return colors;
-  }, [modeKey, previewColorsCache]);
+  };
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);
@@ -123,15 +105,10 @@ export const ThemeToggle: React.FC = () => {
   }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
-    const isPremium = isThemePremium(themeId);
-    if (isPremium && !canSwitchPremium) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        });
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"));
-      }
+    // The server is the authority: a premium theme without a license arrives
+    // as a locked stub with no CSS, so the locked flag is the gate.
+    if (getThemeById(themeId)?.locked) {
+      toast.error(t("themeToggle.premiumThemeError"));
       return;
     }
 
@@ -139,18 +116,11 @@ export const ThemeToggle: React.FC = () => {
 
     const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }));
-  }, [canSwitchPremium, isError, t]);
+  }, [t]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
-    const isPremium = isThemePremium(themeId);
-    if (isPremium && !canSwitchPremium) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        });
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"));
-      }
+    if (getThemeById(themeId)?.locked) {
+      toast.error(t("themeToggle.premiumThemeError"));
       return;
     }
 
@@ -160,7 +130,7 @@ export const ThemeToggle: React.FC = () => {
     const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
-  }, [canSwitchPremium, isError, t]);
+  }, [t]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -214,8 +184,7 @@ export const ThemeToggle: React.FC = () => {
         <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.theme")}</div>
         <div className="max-h-[max(8rem,calc(var(--radix-dropdown-menu-content-available-height)-16rem))] overflow-y-auto overscroll-contain pr-1">
           {sortedThemes.map((theme) => {
-            const isPremium = isThemePremium(theme.id);
-            const isLocked = isPremium && !canSwitchPremium;
+            const isLocked = !!theme.locked;
             const colors = getPreviewColors(theme);
             const isCurrentTheme = currentTheme.id === theme.id;
             const currentVariation = isCurrentTheme ? getThemeVariation(theme.id) : null;
