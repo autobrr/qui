@@ -2052,7 +2052,13 @@ func (m *StreamManager) syncTimeout(instanceID int) time.Duration {
 
 	state, ok := m.syncBackoff[instanceID]
 	if !ok || !state.primed || state.attempt > 0 {
-		return syncTimeoutFull
+		// The full budget is bounded by the pool's HTTP transport timeout when
+		// the operator configured a larger one (#2037 reasoning).
+		full := syncTimeoutFull
+		if m.clientPool != nil {
+			full = max(full, m.clientPool.ClientTimeout())
+		}
+		return full
 	}
 	return syncTimeoutIncremental
 }

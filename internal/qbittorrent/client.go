@@ -128,7 +128,12 @@ type Client struct {
 	activeTaskMu         sync.Mutex
 }
 
-func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
+// NewClientWithTimeout builds a pooled client. loginTimeout bounds only the
+// initial login and capability fetch; transportTimeout becomes the HTTP client
+// timeout for every request the client ever makes. Keeping them separate stops
+// a short creation budget (e.g. the 3s login warm) from being baked into the
+// transport for the life of the client.
+func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, loginTimeout, transportTimeout time.Duration) (*Client, error) {
 	// Strip credentials embedded in the host URL (user:pass@host) so they never
 	// reach go-qbt request URLs, whose error strings get logged verbatim all
 	// over qui. They move to basic auth, which is what URL userinfo means.
@@ -139,7 +144,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		Username:      username,
 		Password:      password,
 		APIKey:        apiKey,
-		Timeout:       int(timeout.Seconds()),
+		Timeout:       int(transportTimeout.Seconds()),
 		TLSSkipVerify: tlsSkipVerify,
 	}
 
@@ -155,7 +160,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 
 	qbtClient := qbt.NewClient(cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), loginTimeout)
 	defer cancel()
 
 	if err := qbtClient.LoginCtx(ctx); err != nil {
@@ -267,8 +272,9 @@ func (c *Client) IsHealthy() bool {
 }
 
 // handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
-// Deadline expiry is treated as a real sync failure so stream error handling can
-// mark cached health stale instead of preserving a stale healthy state.
+// Deadline expiry keeps the client healthy: a saturated instance answering slowly is not down,
+// and flipping it unhealthy sends every caller into the probe/backoff path (502 storms).
+// The error is still dispatched so the SSE loop backs off and escalates to the full sync budget.
 func (c *Client) handleSyncManagerError(err error) {
 	if err == nil {
 		return
@@ -279,6 +285,16 @@ func (c *Client) handleSyncManagerError(err error) {
 			Err(err).
 			Int("instanceID", c.instanceID).
 			Msg("Sync manager context stopped, keeping client health unchanged")
+		return
+	}
+
+	if isDeadlineExpired(err) {
+		log.Debug().
+			Err(err).
+			Int("instanceID", c.instanceID).
+			Msg("Sync timed out against a slow instance, keeping client health unchanged")
+
+		c.dispatchSyncError(err)
 		return
 	}
 
@@ -302,6 +318,24 @@ func isContextStopped(err error) bool {
 
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "context canceled")
+}
+
+// isDeadlineExpired recognizes request timeouts even after retry wrappers flatten the sentinel.
+// A deadline expiring against qBittorrent means the instance is slow, not down:
+// the connection was accepted and the server is working through its queue.
+// Hard failures (refused, DNS, EOF, dial i/o timeout) are the evidence of a
+// dead instance and deliberately stay unmatched here.
+func isDeadlineExpired(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "client.timeout exceeded")
 }
 
 func (c *Client) SupportsTorrentCreation() bool {
@@ -537,7 +571,10 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	}
 
 	if err := c.RefreshCapabilities(ctx); err != nil {
-		c.updateHealthStatus(false)
+		// Slow, not down: a timed-out probe keeps the current health state.
+		if !isDeadlineExpired(err) {
+			c.updateHealthStatus(false)
+		}
 		return errors.Wrap(err, "health check failed")
 	}
 

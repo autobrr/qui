@@ -122,6 +122,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseMaxOpenConns", 25)
 	c.viper.SetDefault("databaseMaxIdleConns", 5)
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
+	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
@@ -226,6 +227,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseMaxOpenConns", envPrefix+"DATABASE_MAX_OPEN_CONNS")
 	c.viper.BindEnv("databaseMaxIdleConns", envPrefix+"DATABASE_MAX_IDLE_CONNS")
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
+	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
@@ -345,6 +347,10 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.DatabaseMaxOpenConns = c.viper.GetInt("databaseMaxOpenConns")
 	c.Config.DatabaseMaxIdleConns = c.viper.GetInt("databaseMaxIdleConns")
 	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
+	c.Config.QbittorrentTimeout = c.viper.GetInt("qbittorrentTimeout")
+	if c.Config.QbittorrentTimeout <= 0 {
+		c.Config.QbittorrentTimeout = 60
+	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
@@ -536,6 +542,12 @@ sessionSecret = "{{ .sessionSecret }}"
 #databaseMaxOpenConns = 25
 #databaseMaxIdleConns = 5
 #databaseConnMaxLifetime = 300
+
+# HTTP timeout in seconds for requests qui makes to qBittorrent instances
+# (sync, health checks, capabilities). Raise it for very large or slow
+# instances whose responses take longer than 60 seconds.
+# Default: 60
+#qbittorrentTimeout = 60
 
 # Check for new releases via api.autobrr.com
 # Default: true

@@ -82,6 +82,12 @@ QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
 QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 ```
 
+## qBittorrent Connection
+
+```bash
+QUI__QBITTORRENT_TIMEOUT=60  # Optional: HTTP timeout in seconds for requests qui makes to qBittorrent instances (default: 60). Raise it for very large or slow instances.
+```
+
 ## Cross-Seed
 
 ```bash
