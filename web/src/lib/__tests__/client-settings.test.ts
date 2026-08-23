@@ -144,6 +144,32 @@ describe("push queue", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
   })
 
+  // REGRESSION: a flush whose timer fired during an in-flight PUT was
+  // swallowed; if that PUT then failed, the newer write stalled until the
+  // next write or tab-hide.
+  it("replays a flush swallowed during a failed in-flight PUT", async () => {
+    let rejectPut: (reason: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectPut = reject }))
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // New write mid-flight; its timer fires while the PUT is still pending.
+    writeRaw("qui-test-other", "1")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    rejectPut(new Error("network down"))
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      "qui-test-bool": "true",
+      "qui-test-other": "1",
+    })
+  })
+
   it("requeues a failed batch for the next flush", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 })
     seedAndMarkReady({})
