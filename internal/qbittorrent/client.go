@@ -272,7 +272,7 @@ func (c *Client) IsHealthy() bool {
 }
 
 // handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
-// Deadline expiry keeps the client healthy: a saturated instance answering slowly is not down,
+// Deadline expiry keeps the client healthy: it is treated as slow by design (see isDeadlineExpired),
 // and flipping it unhealthy sends every caller into the probe/backoff path (502 storms).
 // The error is still dispatched so the SSE loop backs off and escalates to the full sync budget.
 func (c *Client) handleSyncManagerError(err error) {
@@ -321,10 +321,14 @@ func isContextStopped(err error) bool {
 }
 
 // isDeadlineExpired recognizes request timeouts even after retry wrappers flatten the sentinel.
-// A deadline expiring against qBittorrent means the instance is slow, not down:
-// the connection was accepted and the server is working through its queue.
-// Hard failures (refused, DNS, EOF, dial i/o timeout) are the evidence of a
-// dead instance and deliberately stay unmatched here.
+// A deadline is ambiguous: usually a saturated instance working through its
+// queue, but it can also be a dial that never completed (a blackholed host).
+// The two are indistinguishable here: go-qbt's retry wrapper drops the error
+// chain, and a caller deadline firing before the 30s dial timeout yields the
+// same "context deadline exceeded" text either way. We deliberately classify
+// both as slow: stale data with a staleness badge beats backoff and 502s.
+// Hard failures (refused, DNS, EOF, a bare "dial tcp: i/o timeout") are
+// unambiguous evidence of a dead instance and stay unmatched here.
 func isDeadlineExpired(err error) bool {
 	if err == nil {
 		return false

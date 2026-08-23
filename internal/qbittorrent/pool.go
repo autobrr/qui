@@ -340,11 +340,11 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 
 		if err := client.HealthCheck(ctx); err != nil {
 			// A caller-cancelled probe (client disconnect / shutdown) is not
-			// evidence the instance is down, and a deadline means the instance is
-			// slow, not down — the server accepted the connection and is working
-			// through its queue. Only hard failures (refused, DNS, EOF, auth)
-			// record a failure and advance backoff. Both helpers match even after
-			// go-qbt's retry wrapper flattens the sentinel into a string.
+			// evidence the instance is down, and a deadline is treated as slow
+			// by design (ambiguous, see isDeadlineExpired). Only hard failures
+			// (refused, DNS, EOF, auth) record a failure and advance backoff.
+			// Both helpers match even after go-qbt's retry wrapper flattens the
+			// sentinel into a string.
 			if !isContextStopped(err) && !isDeadlineExpired(err) {
 				cp.trackFailure(instanceID, err)
 			}
