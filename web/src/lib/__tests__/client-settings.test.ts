@@ -202,6 +202,40 @@ describe("push queue", () => {
   })
 })
 
+describe("outbox persistence", () => {
+  it("replays a write whose unload flush never reached the server", async () => {
+    // A pagehide keepalive PUT can die in flight (Chrome drops keepalive
+    // fetches from service-worker-controlled pages on unload), so an instant
+    // reload after a write must recover from the persisted outbox.
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+
+    // Page dies before the debounced flush is acked; next boot, stale server.
+    _resetClientSettingsForTests()
+    fetchMock.mockClear()
+
+    applyServerSettings({ "qui-test-bool": "false" })
+    expect(localStorage.getItem("qui-test-bool")).toBe("true")
+
+    seedAndMarkReady({ "qui-test-bool": "false" })
+    await vi.runAllTimersAsync()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
+  })
+
+  it("an acked write leaves no outbox entry to replay", async () => {
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.runAllTimersAsync()
+
+    _resetClientSettingsForTests()
+
+    const changed = applyServerSettings({ "qui-test-bool": "false" })
+    expect(changed).toEqual(["qui-test-bool"])
+    expect(localStorage.getItem("qui-test-bool")).toBe("false")
+  })
+})
+
 describe("applyServerSettings", () => {
   it("writes changed keys, reports them, and notifies live hooks", () => {
     const { result } = renderHook(() => useClientSetting("qui-test-bool", boolSetting))
