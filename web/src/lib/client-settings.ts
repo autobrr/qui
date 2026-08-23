@@ -153,15 +153,23 @@ async function flushPending(): Promise<void> {
   }
 }
 
+function flushNow(): void {
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer)
+    flushTimer = null
+  }
+  void flushPending()
+}
+
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "hidden") return
-    if (flushTimer !== null) {
-      clearTimeout(flushTimer)
-      flushTimer = null
-    }
-    void flushPending()
+    if (document.visibilityState === "hidden") flushNow()
   })
+  // Chrome does not fire visibilitychange on a same-tab reload or navigation,
+  // so a write inside the debounce window would die with the page and the
+  // stale server snapshot would revert it at next boot. keepalive lets the
+  // PUT outlive the page.
+  window.addEventListener("pagehide", flushNow)
 }
 
 // --- server sync (called by useClientSettingsSync) ---

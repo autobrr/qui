@@ -107,6 +107,20 @@ describe("push queue", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  // REGRESSION: only visibilitychange flushed the queue, and a same-tab
+  // reload does not fire it, so a write inside the debounce window was lost
+  // and the stale server snapshot reverted it at next boot.
+  it("flushes pending writes on pagehide without waiting for the debounce", () => {
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
+  })
+
   // REGRESSION: pending was cleared before the PUT resolved, so a server
   // apply during the in-flight window clobbered the newer value.
   it("keeps in-flight keys guarded against a concurrent server apply", async () => {
