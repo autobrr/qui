@@ -5,7 +5,7 @@
 
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { makeFilters } from "@/test/mockFilters"
-import { act, renderHook } from "@testing-library/react"
+import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const GLOBAL_KEY = "qui-filters-global"
@@ -21,6 +21,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  cleanup()
   vi.restoreAllMocks()
 })
 
