@@ -9249,6 +9249,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				// like the alternate connector-spelling pass below.
 				altTitleReq.SkipHistory = true
 				if altResp, altErr := s.searchOnce(waitCtx, &altTitleReq); altErr != nil {
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+					}
 					log.Debug().
 						Err(altErr).
 						Str("altTitleQuery", altTitle).
@@ -9288,6 +9291,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				// passes reuse the Torznab result cache instead of re-hitting indexers.
 				altReq.SkipHistory = true
 				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+					}
 					log.Debug().
 						Err(altErr).
 						Str("altQuery", altQuery).
@@ -9341,6 +9347,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				// alternate-title and connector passes above.
 				idReq.SkipHistory = true
 				if idResp, idErr := s.searchOnce(waitCtx, &idReq); idErr != nil {
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+					}
 					log.Debug().
 						Err(idErr).
 						Str("torrentName", sourceTorrent.Name).
