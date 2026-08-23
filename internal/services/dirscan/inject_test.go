@@ -37,10 +37,12 @@ func (s *fakeInstanceStore) Get(_ context.Context, _ int) (*models.Instance, err
 }
 
 type failingTorrentAdder struct {
-	err error
+	err    error
+	called bool
 }
 
 func (a *failingTorrentAdder) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	a.called = true
 	return nil, a.err
 }
 
@@ -63,7 +65,20 @@ func (a *failingTorrentAdder) GetTorrentFilesBatch(_ context.Context, _ int, _ [
 	return nil, nil
 }
 
-func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
+// injectFixture is the on-disk source file, instance and partial-match request
+// shared by the partial-link-tree tests.
+type injectFixture struct {
+	hardlinkBase string
+	instance     *models.Instance
+	req          *InjectRequest
+}
+
+// newInjectFixture builds a partial match that reaches AddTorrent. Without
+// DownloadMissingFiles the partial match is rejected before the add, so the
+// add-failure rollbacks would never be exercised; the rejection test flips the
+// flag back off to take that earlier path.
+func newInjectFixture(t *testing.T) injectFixture {
+	t.Helper()
 	tmp := t.TempDir()
 
 	sourceDir := filepath.Join(tmp, "source")
@@ -85,8 +100,6 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 		HardlinkBaseDir:          hardlinkBase,
 		FallbackToRegularMode:    false,
 	}
-
-	injector := NewInjector(nil, &failingTorrentAdder{err: errors.New("add failed")}, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
 
 	req := &InjectRequest{
 		InstanceID:   1,
@@ -118,15 +131,81 @@ func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 			IsMatch:               true,
 			IsPartialMatch:        true,
 		},
-		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
+		DownloadMissingFiles: true,
 	}
 
-	_, err := injector.Inject(context.Background(), req)
+	return injectFixture{hardlinkBase: hardlinkBase, instance: instance, req: req}
+}
+
+func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
+	fx := newInjectFixture(t)
+
+	adder := &failingTorrentAdder{err: errors.New("add failed")}
+	injector := NewInjector(nil, adder, nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
+
+	_, err := injector.Inject(context.Background(), fx.req)
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
+	if !adder.called {
+		t.Fatalf("expected AddTorrent to be called; the rollback assertion would be vacuous")
+	}
 
-	entries, readErr := os.ReadDir(hardlinkBase)
+	entries, readErr := os.ReadDir(fx.hardlinkBase)
+	if readErr != nil {
+		t.Fatalf("readdir hardlink base: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected hardlink base dir to be empty after rollback, got %d entries", len(entries))
+	}
+}
+
+// cancellingTorrentAdder cancels the run's context from inside AddTorrent, so
+// the rollback that follows sees a cancelled ctx. It records how many entries
+// the link base held at that moment, which keeps the "tree is gone" assertion
+// non-vacuous. Every other method is failingTorrentAdder's no-op.
+type cancellingTorrentAdder struct {
+	*failingTorrentAdder
+	cancel       context.CancelFunc
+	watchDir     string
+	entriesAtAdd int
+}
+
+func (a *cancellingTorrentAdder) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	entries, _ := os.ReadDir(a.watchDir)
+	a.entriesAtAdd = len(entries)
+	a.cancel()
+	return nil, a.err
+}
+
+func TestInjector_Inject_RollsBackLinkTreeWhenAddFailsUnderCancelledContext(t *testing.T) {
+	fx := newInjectFixture(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	addErr := errors.New("add failed")
+	adder := &cancellingTorrentAdder{
+		failingTorrentAdder: &failingTorrentAdder{err: addErr},
+		cancel:              cancel,
+		watchDir:            fx.hardlinkBase,
+	}
+	injector := NewInjector(nil, adder, nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
+
+	_, err := injector.Inject(ctx, fx.req)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !errors.Is(err, addErr) {
+		t.Fatalf("expected the add failure to surface, got %v", err)
+	}
+	// One entry: the tree root the injector created under the base dir.
+	if adder.entriesAtAdd != 1 {
+		t.Fatalf("expected the link tree to exist when AddTorrent ran, got %d entries; the rollback assertion would be vacuous", adder.entriesAtAdd)
+	}
+
+	entries, readErr := os.ReadDir(fx.hardlinkBase)
 	if readErr != nil {
 		t.Fatalf("readdir hardlink base: %v", readErr)
 	}
@@ -814,65 +893,13 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
 }
 
 func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
-	tmp := t.TempDir()
-
-	sourceDir := filepath.Join(tmp, "source")
-	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
-		t.Fatalf("mkdir source: %v", err)
-	}
-	sourceFile := filepath.Join(sourceDir, "file.mkv")
-	if err := os.WriteFile(sourceFile, []byte("data"), 0o600); err != nil {
-		t.Fatalf("write source file: %v", err)
-	}
-
-	hardlinkBase := filepath.Join(tmp, "links")
-
-	instance := &models.Instance{
-		ID:                       1,
-		Name:                     "test",
-		HasLocalFilesystemAccess: true,
-		UseHardlinks:             true,
-		HardlinkBaseDir:          hardlinkBase,
-	}
+	fx := newInjectFixture(t)
+	fx.req.DownloadMissingFiles = false
 
 	manager := &safeRecordingManager{}
-	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil, testBackendPool(instance))
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: fx.instance}, nil, testBackendPool(fx.instance))
 
-	req := &InjectRequest{
-		InstanceID:   1,
-		TorrentBytes: []byte("x"),
-		ParsedTorrent: &ParsedTorrent{
-			Name:     "Example.Release",
-			InfoHash: "deadbeef",
-			Files: []TorrentFile{
-				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
-				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
-			},
-			PieceLength: 16384,
-		},
-		Searchee: &Searchee{
-			Name: "Example.Release",
-			Path: sourceDir,
-			Files: []*ScannedFile{{
-				Path:    sourceFile,
-				RelPath: "file.mkv",
-				Size:    4,
-			}},
-		},
-		MatchResult: &MatchResult{
-			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
-				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
-			}},
-			UnmatchedTorrentFiles: []TorrentFile{{Path: "Example.Release/extras.nfo", Size: 1}},
-			IsMatch:               true,
-			IsPartialMatch:        true,
-		},
-		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
-		DownloadMissingFiles: false,
-	}
-
-	_, err := injector.Inject(context.Background(), req)
+	_, err := injector.Inject(context.Background(), fx.req)
 	if err == nil {
 		t.Fatal("expected error for partial link tree with DownloadMissingFiles=false")
 	}
@@ -887,7 +914,7 @@ func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
 	}
 
 	// Link tree should have been cleaned up.
-	entries, readErr := os.ReadDir(hardlinkBase)
+	entries, readErr := os.ReadDir(fx.hardlinkBase)
 	if readErr != nil {
 		t.Fatalf("readdir: %v", readErr)
 	}
