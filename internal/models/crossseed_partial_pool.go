@@ -307,19 +307,32 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 		}
 	}
 
+	// Every admission and downloader claim takes the pool row first. Keeping
+	// that lock order prevents a claim from overlooking an uncommitted member
+	// on PostgreSQL and serializes competing claims before they inspect members.
+	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID); err != nil {
+		return nil, nil, fmt.Errorf("lock partial pool for registration: %w", err)
+	}
+	admittedAt := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, CrossSeedPartialPoolStatusActive, admittedAt, poolID); err != nil {
+		return nil, nil, fmt.Errorf("activate partial pool registration: %w", err)
+	}
+
 	member.PoolID = poolID
 	var memberID int64
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO cross_seed_partial_pool_members (
 			pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
 			mode, root_path, reported_seeders, status, missing_bytes,
-			started_by_pool, last_downloaded_bytes, last_progress_at, retry_after, last_error
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			started_by_pool, last_downloaded_bytes, last_progress_at, retry_after, last_error,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
 	`,
 		poolID, member.InstanceID, member.TorrentKey, member.InfoHashV1, member.InfoHashV2,
 		member.Mode, member.RootPath, member.ReportedSeeders, member.Status, member.MissingBytes,
 		databaseBoolArg(s.db, member.StartedByPool), member.LastDownloadedBytes, member.LastProgressAt, member.RetryAfter, member.LastError,
+		admittedAt, admittedAt,
 	).Scan(&memberID)
 	if err != nil {
 		if isUniqueConstraintError(err) {
@@ -376,9 +389,6 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 		}
 	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, CrossSeedPartialPoolStatusActive, poolID); err != nil {
-		return nil, nil, fmt.Errorf("activate partial pool: %w", err)
-	}
 	if err := tx.Commit(); err != nil {
 		return nil, nil, fmt.Errorf("commit partial pool registration: %w", err)
 	}
@@ -711,9 +721,40 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 	return changed == 1, err
 }
 
-// ClaimPartialPoolDownloader atomically enforces one acquiring member per pool.
-func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberID, downloadedBytes int64, now time.Time) (bool, error) {
-	result, err := s.db.ExecContext(ctx, `
+// ClaimPartialPoolDownloader locks the pool row before inspecting current pool
+// membership, then claims at most one eligible downloader.
+func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberID, downloadedBytes int64, now, admissionCutoff time.Time) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin partial pool downloader claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var poolID int64
+	if err := tx.QueryRowContext(ctx, `SELECT pool_id FROM cross_seed_partial_pool_members WHERE id = ?`, memberID).Scan(&poolID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("resolve partial pool downloader claim: %w", err)
+	}
+
+	lock, err := tx.ExecContext(ctx, `
+		UPDATE cross_seed_partial_pools
+		SET status = status
+		WHERE id = ?
+	`, poolID)
+	if err != nil {
+		return false, fmt.Errorf("lock partial pool downloader claim: %w", err)
+	}
+	locked, err := lock.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("inspect partial pool downloader lock: %w", err)
+	}
+	if locked != 1 {
+		return false, nil
+	}
+
+	result, err := tx.ExecContext(ctx, `
 		UPDATE cross_seed_partial_pool_members AS selected
 		SET status = ?, started_by_pool = ?, last_downloaded_bytes = ?,
 		    last_progress_at = ?, retry_after = NULL, last_error = '',
@@ -722,7 +763,11 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 		  AND (selected.retry_after IS NULL OR selected.retry_after <= ?)
 		  AND NOT EXISTS (
 			SELECT 1 FROM cross_seed_partial_pool_members other
-			WHERE other.pool_id = selected.pool_id AND other.status = ?
+			WHERE other.pool_id = selected.pool_id
+			  AND (
+				other.status IN (?, ?, ?)
+				OR (other.status <> ? AND other.created_at > ?)
+			  )
 		  )
 	`,
 		CrossSeedPartialPoolMemberStatusAcquiring,
@@ -733,12 +778,25 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 		CrossSeedPartialPoolMemberStatusWaiting,
 		now,
 		CrossSeedPartialPoolMemberStatusAcquiring,
+		CrossSeedPartialPoolMemberStatusVerifying,
+		CrossSeedPartialPoolMemberStatusRechecking,
+		CrossSeedPartialPoolMemberStatusRemoved,
+		admissionCutoff,
 	)
 	if err != nil {
 		return false, fmt.Errorf("claim partial pool downloader: %w", err)
 	}
 	changed, err := result.RowsAffected()
-	return changed == 1, err
+	if err != nil {
+		return false, err
+	}
+	if changed != 1 {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit partial pool downloader claim: %w", err)
+	}
+	return true, nil
 }
 
 // TransitionPartialPoolFile applies an expected-state compare-and-set.

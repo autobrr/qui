@@ -6,17 +6,24 @@ package models_test
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func newPartialPoolTestStore(t *testing.T) (*models.CrossSeedStore, *models.InstanceStore, int, int) {
 	t.Helper()
-	db := setupCrossSeedTestDB(t)
+	return newPartialPoolTestStoreWithDB(t, setupCrossSeedTestDB(t))
+}
+
+func newPartialPoolTestStoreWithDB(t *testing.T, db *database.DB) (*models.CrossSeedStore, *models.InstanceStore, int, int) {
+	t.Helper()
 	key := []byte("01234567890123456789012345678901")
 	instanceStore, err := models.NewInstanceStore(db, key)
 	require.NoError(t, err)
@@ -108,6 +115,10 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	ctx := context.Background()
 	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member-v1", "member-v2", "source"))
 	require.NoError(t, err)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, claimed, "a verification-owned member blocks the pool claim")
 
 	zero := int64(0)
 	changed, err := store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{MissingBytes: &zero})
@@ -117,24 +128,44 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, changed)
 
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now)
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, member.CreatedAt.Add(-time.Second))
+	require.NoError(t, err)
+	require.False(t, claimed, "a recent admission holds the whole pool")
+
+	_, peer, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, secondID, "peer", "peer", "", "member"))
+	require.NoError(t, err)
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, claimed, "one verification-owned peer holds every downloader")
+	changed, err = store.TransitionPartialPoolMember(ctx, peer.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.True(t, claimed)
 
 	reloaded, err := store.GetPartialPool(ctx, pool.ID)
 	require.NoError(t, err)
-	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, reloaded.Members[0].Status)
-	require.True(t, reloaded.Members[0].StartedByPool)
-	require.Equal(t, int64(321), *reloaded.Members[0].LastDownloadedBytes)
-	require.WithinDuration(t, now, *reloaded.Members[0].LastProgressAt, time.Second)
+	var claimedMember *models.CrossSeedPartialPoolMember
+	for _, candidate := range reloaded.Members {
+		if candidate.ID == member.ID {
+			claimedMember = candidate
+			break
+		}
+	}
+	require.NotNil(t, claimedMember)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, claimedMember.Status)
+	require.True(t, claimedMember.StartedByPool)
+	require.Equal(t, int64(321), *claimedMember.LastDownloadedBytes)
+	require.WithinDuration(t, now, *claimedMember.LastProgressAt, time.Second)
 
 	_, other, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, secondID, "other", "other", "", "member"))
 	require.NoError(t, err)
 	changed, err = store.TransitionPartialPoolMember(ctx, other.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
-	claimed, err = store.ClaimPartialPoolDownloader(ctx, other.ID, 0, now)
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, other.ID, 0, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.False(t, claimed, "one acquiring member excludes another claim in the same pool")
 
@@ -160,6 +191,112 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 
 	_, err = store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusManual}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 	require.Error(t, err)
+}
+
+func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgres(t *testing.T) {
+	db := testdb.NewMigratedPostgres(t, "partial-pool-concurrent-claims")
+	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
+	ctx := t.Context()
+
+	members := make([]*models.CrossSeedPartialPoolMember, 0, 4)
+	for i, key := range []string{"candidate-alpha", "candidate-beta", "candidate-gamma", "candidate-delta"} {
+		_, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, key, key, "", "source"))
+		require.NoError(t, err)
+		changed, err := store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+		require.NoError(t, err)
+		require.Truef(t, changed, "transition member %d", i)
+		members = append(members, member)
+	}
+
+	type claimResult struct {
+		claimed bool
+		err     error
+	}
+	start := make(chan struct{})
+	results := make(chan claimResult, len(members))
+	var wg sync.WaitGroup
+	now := time.Now().UTC()
+	for _, member := range members {
+		wg.Add(1)
+		go func(memberID int64) {
+			defer wg.Done()
+			<-start
+			claimed, err := store.ClaimPartialPoolDownloader(ctx, memberID, 0, now, now.Add(time.Hour))
+			results <- claimResult{claimed: claimed, err: err}
+		}(member.ID)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	claimedCount := 0
+	for result := range results {
+		require.NoError(t, result.err)
+		if result.claimed {
+			claimedCount++
+		}
+	}
+	require.Equal(t, 1, claimedCount, "all concurrent indexer members share one downloader owner")
+}
+
+func TestCrossSeedPartialPoolConcurrentRegistrationBlocksClaimPostgres(t *testing.T) {
+	db := testdb.NewMigratedPostgres(t, "partial-pool-registration-claim")
+	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
+	ctx := t.Context()
+
+	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "candidate-alpha", "candidate-alpha", "", "source"))
+	require.NoError(t, err)
+	changed, err := store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	_, err = db.ExecContext(ctx, `
+		CREATE FUNCTION delay_partial_pool_member_insert() RETURNS trigger
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_sleep(1);
+			RETURN NEW;
+		END;
+		$$
+	`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `
+		CREATE TRIGGER delay_partial_pool_member_insert
+		BEFORE INSERT ON cross_seed_partial_pool_members
+		FOR EACH ROW EXECUTE FUNCTION delay_partial_pool_member_insert()
+	`)
+	require.NoError(t, err)
+
+	peerRegistration := partialPoolRegistration(t, secondID, firstID, "candidate-beta", "candidate-beta", "", "source")
+	registrationDone := make(chan error, 1)
+	go func() {
+		_, _, registerErr := store.RegisterPartialPoolMember(ctx, peerRegistration)
+		registrationDone <- registerErr
+	}()
+	require.Eventually(t, func() bool {
+		var sleeping bool
+		queryErr := db.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity
+				WHERE pid <> pg_backend_pid()
+				  AND wait_event = 'PgSleep'
+				  AND query LIKE '%cross_seed_partial_pool_members%'
+			)
+		`).Scan(&sleeping)
+		return queryErr == nil && sleeping
+	}, 3*time.Second, 20*time.Millisecond, "registration did not reach the delayed insert")
+
+	claimed, claimErr := store.ClaimPartialPoolDownloader(ctx, member.ID, 0, time.Now().UTC(), time.Now().UTC().Add(time.Hour))
+	require.NoError(t, claimErr)
+	require.False(t, claimed, "a claim must re-read every member after the in-flight admission commits")
+	require.NoError(t, <-registrationDone)
+
+	reloaded, err := store.GetPartialPool(ctx, pool.ID)
+	require.NoError(t, err)
+	require.Len(t, reloaded.Members, 2)
+	for _, candidate := range reloaded.Members {
+		require.NotEqual(t, models.CrossSeedPartialPoolMemberStatusAcquiring, candidate.Status)
+	}
 }
 
 func TestCrossSeedPartialPoolRemovalPreservesOtherMembers(t *testing.T) {

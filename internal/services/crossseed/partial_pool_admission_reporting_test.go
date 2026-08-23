@@ -295,11 +295,11 @@ func TestPartialPoolCoordinatorAdoptsRunningRecheck(t *testing.T) {
 			}
 
 			require.Empty(t, sync.bulkActions, "an already-running qBittorrent check must be adopted")
-			require.Equal(t, partialPoolRecheckRequested, member.LastError)
+			require.Equal(t, partialPoolRecheckObserved, member.LastError)
 			require.Equal(t, now, member.UpdatedAt)
 			_, member, err = store.ResolvePartialPoolMember(t.Context(), instanceID, status)
 			require.NoError(t, err)
-			require.Equal(t, partialPoolRecheckRequested, member.LastError)
+			require.Equal(t, partialPoolRecheckObserved, member.LastError)
 		})
 	}
 }
@@ -394,6 +394,12 @@ func TestPartialPoolWakePreservesNewAdmissionUntilInventoryVisible(t *testing.T)
 	require.Empty(t, sync.bulkActions)
 
 	service.reconcilePartialPools(t.Context(), now.Add(time.Second), partialPoolWake{})
+	_, member, err = store.ResolvePartialPoolMember(t.Context(), instanceID, member.TorrentKey)
+	require.NoError(t, err)
+	require.Equal(t, partialPoolRecheckPending, member.LastError, "visible members remain stopped while the pool admission window is open")
+	require.Empty(t, sync.bulkActions)
+
+	service.reconcilePartialPools(t.Context(), member.CreatedAt.Add(partialPoolAdmissionHold), partialPoolWake{})
 	_, member, err = store.ResolvePartialPoolMember(t.Context(), instanceID, member.TorrentKey)
 	require.NoError(t, err)
 	require.Equal(t, partialPoolRecheckRequested, member.LastError)
