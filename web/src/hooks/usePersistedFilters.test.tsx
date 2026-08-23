@@ -127,7 +127,7 @@ describe("usePersistedFilters", () => {
 
   // REGRESSION (#2410): setFilters used to strip the sidebar's derived expandedCategories.
   it("keeps expandedCategories through setFilters and a storage round-trip", () => {
-    const { result } = renderHook(() => usePersistedFilters(4))
+    const { result, unmount } = renderHook(() => usePersistedFilters(4))
 
     act(() => {
       const [, setFilters] = result.current
@@ -143,6 +143,7 @@ describe("usePersistedFilters", () => {
     expect(result.current[0].expandedExcludeCategories).toEqual([])
 
     // A fresh mount reads them back from storage.
+    unmount()
     const remounted = renderHook(() => usePersistedFilters(4))
     expect(remounted.result.current[0].expandedCategories).toEqual(["movies", "movies/4k"])
   })
@@ -160,6 +161,7 @@ describe("usePersistedFilters", () => {
 
     // A second instance mounts and reads from storage. It inherits the shared
     // global status but must NOT see instance 1's categories.
+    hook1.unmount()
     const hook2 = renderHook(() => usePersistedFilters(2))
     const [filters2] = hook2.result.current
 
