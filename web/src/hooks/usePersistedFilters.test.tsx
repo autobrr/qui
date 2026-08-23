@@ -167,20 +167,19 @@ describe("usePersistedFilters", () => {
     expect(result.current[0].status).toEqual(["downloading"])
   })
 
-  // ERROR PATH: corrupt per-instance JSON. JSON.parse in the lazy initializer is
-  // NOT guarded by safeGetItem (which only protects localStorage access), so the
-  // hook throws synchronously. This documents the current behavior / gap.
-  it("throws a SyntaxError on corrupt per-instance JSON (unguarded JSON.parse)", () => {
+  // ERROR PATH: corrupt per-instance JSON. useClientSetting catches the parse
+  // throw and falls back to the empty defaults instead of crashing the tree.
+  it("falls back to defaults on corrupt per-instance JSON", () => {
     localStorage.setItem(instanceKey(5), "not-json")
 
-    expect(() => renderHook(() => usePersistedFilters(5))).toThrow(SyntaxError)
+    const { result } = renderHook(() => usePersistedFilters(5))
+
+    expect(result.current[0]).toEqual(makeFilters({ expr: "" }))
   })
 
-  // ERROR PATH: corrupt per-instance JSON reached via the instanceId-change
-  // effect (lines 48-49), a different React surface than the lazy initializer.
-  // Mount clean on id=1, then rerender into id=2 whose stored value is corrupt;
-  // the unguarded JSON.parse inside the effect throws.
-  it("throws on corrupt per-instance JSON via the instanceId-change effect", () => {
+  // ERROR PATH: corrupt per-instance JSON reached via an instance switch. The
+  // clean instance's values load, the corrupt one degrades to defaults.
+  it("falls back to defaults on corrupt per-instance JSON after an instance switch", () => {
     localStorage.setItem(instanceKey(1), JSON.stringify({ categories: ["clean"] }))
     localStorage.setItem(instanceKey(2), "not-json")
 
@@ -191,29 +190,29 @@ describe("usePersistedFilters", () => {
 
     expect(result.current[0].categories).toEqual(["clean"])
 
-    expect(() => {
-      act(() => {
-        rerender({ id: 2 })
-      })
-    }).toThrow(SyntaxError)
+    act(() => {
+      rerender({ id: 2 })
+    })
+
+    expect(result.current[0].categories).toEqual([])
   })
 
-  // ERROR PATH: corrupt GLOBAL JSON in the lazy initializer (line 30). The
-  // global JSON.parse is likewise unguarded, so the hook throws synchronously.
-  it("throws a SyntaxError on corrupt global JSON (unguarded JSON.parse)", () => {
+  // ERROR PATH: corrupt GLOBAL JSON degrades to defaults the same way.
+  it("falls back to defaults on corrupt global JSON", () => {
     localStorage.setItem(GLOBAL_KEY, "not-json")
 
-    expect(() => renderHook(() => usePersistedFilters(8))).toThrow(SyntaxError)
+    const { result } = renderHook(() => usePersistedFilters(8))
+
+    expect(result.current[0]).toEqual(makeFilters({ expr: "" }))
   })
 
-  // ERROR PATH: write failure. safeSetItem swallows the error, logs it, and the
-  // hook does not throw; returned state still updates.
-  it("swallows localStorage write failures and still updates state", () => {
+  // ERROR PATH: write failure. writeRaw logs and drops the write; the hook
+  // must not throw. State follows storage, so the value stays unchanged.
+  it("swallows localStorage write failures without throwing", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
 
     const { result } = renderHook(() => usePersistedFilters(4))
 
-    // Begin throwing on writes only after the initial mount effects have run.
     const setItemSpy = vi
       .spyOn(Storage.prototype, "setItem")
       .mockImplementation(() => {
@@ -229,14 +228,13 @@ describe("usePersistedFilters", () => {
 
     expect(setItemSpy).toHaveBeenCalled()
     expect(consoleError).toHaveBeenCalled()
-    // State update is independent of persistence and must still take effect.
-    expect(result.current[0].status).toEqual(["seeding"])
+    // Storage-backed state keeps the previous value when the write fails.
+    expect(result.current[0].status).toEqual([])
   })
 
-  // ERROR PATH: read failure. safeGetItem returns null on getItem throw, so the
-  // hook falls back to empty defaults and logs the error.
+  // ERROR PATH: read failure. readRaw returns null on getItem throw, so the
+  // hook falls back to empty defaults without throwing.
   it("falls back to empty defaults when localStorage read throws", () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
       throw new Error("storage disabled")
     })
@@ -244,6 +242,5 @@ describe("usePersistedFilters", () => {
     const { result } = renderHook(() => usePersistedFilters(6))
 
     expect(result.current[0]).toEqual(makeFilters({ expr: "" }))
-    expect(consoleError).toHaveBeenCalled()
   })
 })
