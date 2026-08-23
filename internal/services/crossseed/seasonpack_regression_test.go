@@ -551,6 +551,7 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 type cancelOnAddSeasonPackSyncManager struct {
 	*seasonPackSyncManager
 	cancel       context.CancelFunc
+	poolStore    *offlineAfterAddInstanceStore
 	watchDir     string
 	entriesAtAdd int
 }
@@ -559,17 +560,40 @@ func (s *cancelOnAddSeasonPackSyncManager) AddTorrent(ctx context.Context, insta
 	entries, _ := os.ReadDir(s.watchDir)
 	s.entriesAtAdd = len(entries)
 	s.cancel()
+	s.poolStore.offline = true
 	return s.seasonPackSyncManager.AddTorrent(ctx, instanceID, data, options)
+}
+
+// offlineAfterAddInstanceStore serves instance lookups until the run's add
+// fails, then fails every later one. That outage is what makes the threaded
+// planBuild.backend observable: with it, rollback runs on the backend that
+// built the tree; without it, the fallback resolve in the add-failure branch
+// hits the outage and the partial tree survives. The apply path resolves
+// backends sequentially in one goroutine, so the flag needs no mutex.
+type offlineAfterAddInstanceStore struct {
+	instances map[int]*models.Instance
+	offline   bool
+}
+
+func (s *offlineAfterAddInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	if s.offline {
+		return nil, errors.New("instance store offline")
+	}
+	instance, ok := s.instances[id]
+	if !ok {
+		return nil, models.ErrInstanceNotFound
+	}
+	return instance, nil
 }
 
 func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledContext(t *testing.T) {
 	// TestRollbackSeasonPackTree_RunsUnderCancelledContext already pins the
 	// context.WithoutCancel inside rollbackSeasonPackTree. What this adds is the
 	// call site: a real ApplySeasonPackWebhook run whose add fails reaches that
-	// rollback with the threaded planBuild.backend and a cancelled ctx. (The
-	// fallback resolve inside the AddTorrent failure branch of
-	// ApplySeasonPackWebhook is only reachable when planBuild.backend is nil,
-	// so it stays out of scope here.)
+	// rollback under a cancelled ctx, on the backend threaded through
+	// planBuild.backend. The instance store goes offline when the add fails, so
+	// the fallback resolve in that branch cannot stand in for the threaded
+	// backend: drop the threading and the rollback is skipped, leaving the tree.
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
 	sourceDir := t.TempDir()
@@ -607,13 +631,15 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	poolStore := &offlineAfterAddInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
 	sm := &cancelOnAddSeasonPackSyncManager{
 		seasonPackSyncManager: &seasonPackSyncManager{
 			fakeSyncManager: baseSM,
 			addErr:          errors.New("add failed"),
 		},
-		cancel:   cancel,
-		watchDir: baseDir,
+		cancel:    cancel,
+		poolStore: poolStore,
+		watchDir:  baseDir,
 	}
 
 	svc := &Service{
@@ -624,7 +650,7 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledCo
 		seasonPackRunStore:       store,
 	}
 
-	svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+	svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
 	resp, err := svc.ApplySeasonPackWebhook(ctx, &SeasonPackApplyRequest{
 		TorrentName: fix.packName,
 		TorrentData: fix.torrentData,
