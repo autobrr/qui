@@ -175,6 +175,51 @@ func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 	require.NotNil(t, selectPartialPoolDownloader(pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold)), "the latest of many admissions renews the pool-wide hold")
 }
 
+func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *testing.T) {
+	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
+	source := partialPoolTestMember(1, 1, "source", 1, partialPoolTestFile{"shared.mkv", 100})
+	source.Status = models.CrossSeedPartialPoolMemberStatusComplete
+	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusAvailable
+	target := partialPoolTestMember(2, 1, "target", 2, partialPoolTestFile{"shared.mkv", 100})
+	target.Status = models.CrossSeedPartialPoolMemberStatusVerifying
+	target.LastError = partialPoolRecheckPending
+	target.Files[0].WantedAtAdmission = true
+	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{source, target}}
+	for _, member := range pool.Members {
+		member.CreatedAt = now.Add(-partialPoolAdmissionHold)
+	}
+	snapshots := map[int64]*partialPoolMemberSnapshot{
+		source.ID: partialPoolTestSnapshot(source, 0),
+		target.ID: partialPoolTestSnapshot(target, 100),
+	}
+	snapshots[source.ID].torrent.State = qbt.TorrentStateCheckingUp
+	sourceSnapshot := snapshots[source.ID]
+	sourceSnapshot.files[0].Progress = 0.25
+	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+
+	require.Nil(t, selectPartialPoolDownloader(pool, snapshots, now), "transient checking progress must settle before propagation or lazy initial verification")
+
+	targetSnapshot := snapshots[target.ID]
+	targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
+	require.Same(t, target, selectPartialPoolDownloader(pool, snapshots, now), "a missingFiles target must fall back because it cannot receive propagation")
+	targetSnapshot.torrent.State = qbt.TorrentStateStoppedDl
+
+	sourceSnapshot.torrent.State = qbt.TorrentStateStoppedDl
+	sourceSnapshot.files[0].Progress = 0
+	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+	require.Same(t, target, selectPartialPoolDownloader(pool, snapshots, now), "stale durable availability must not strand the deferred member")
+
+	sourceSnapshot.torrent.State = qbt.TorrentStateCheckingUp
+	sourceSnapshot.files[0].Progress = 1
+	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+	delete(snapshots, source.ID)
+	require.Same(t, target, selectPartialPoolDownloader(pool, snapshots, now), "an unavailable source instance must not strand the deferred member")
+
+	snapshots[source.ID] = sourceSnapshot
+	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusMissing
+	require.Same(t, target, selectPartialPoolDownloader(pool, snapshots, now), "unavailable pool data must not strand the deferred member")
+}
+
 func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 	store, instanceID := newPartialPoolFilesystemStore(t)
 	keys := []string{"candidate-alpha", "candidate-beta", "candidate-gamma", "candidate-delta"}

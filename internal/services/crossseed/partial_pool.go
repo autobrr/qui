@@ -5,9 +5,11 @@ package crossseed
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -48,6 +50,13 @@ const (
 	partialPoolRecoveryAttempt   = "partial pool error recovery attempt "
 	partialPoolRecoveryExhausted = "partial pool error recovery attempts exhausted"
 	partialPoolRecoveryLimit     = 3
+
+	partialPoolReflinkStagingPrefix    = ".qui-partial-pool-reflink-"
+	partialPoolReflinkStagingOwner     = ".owner-v1"
+	partialPoolReflinkStagingOwnerData = "qui partial pool reflink staging v1\n"
+	partialPoolReflinkStagingClone     = "clone"
+	partialPoolReflinkProbeSource      = ".reflink_probe_src_"
+	partialPoolReflinkProbeDestination = ".reflink_probe_dst_"
 )
 
 type partialPoolWake struct {
@@ -629,10 +638,16 @@ func (s *Service) observePartialPoolMembers(
 				now.Before(member.CreatedAt.Add(partialPoolRecheckGrace)) {
 				continue
 			}
+			if err := cleanupPartialPoolMemberReflinkStaging(pool, member); err != nil {
+				log.Warn().Err(err).Int64("memberID", member.ID).Msg("Failed to clean partial pool reflink staging before member removal")
+				continue
+			}
 			for _, file := range member.Files {
 				s.deletePartialPoolCreated(file.ID)
 			}
-			_ = s.automationStore.MarkPartialPoolMemberRemoved(ctx, member.ID, "torrent no longer exists in qBittorrent")
+			if err := s.automationStore.MarkPartialPoolMemberRemoved(ctx, member.ID, "torrent no longer exists in qBittorrent"); err != nil && ctx.Err() == nil {
+				log.Warn().Err(err).Int64("memberID", member.ID).Msg("Failed to mark partial pool member removed")
+			}
 			continue
 		}
 		observed[member.ID] = torrent
@@ -1697,6 +1712,241 @@ func selectPartialPoolSourceFile(
 	return nil
 }
 
+// partialPoolReflinkStagingPaths returns deterministic staging paths adjacent
+// to the target so retries can find crash leftovers and replacement stays on
+// the same filesystem.
+func partialPoolReflinkStagingPaths(targetPath string) (string, string) {
+	digest := sha256.Sum256([]byte(filepath.Clean(targetPath)))
+	root := filepath.Join(filepath.Dir(targetPath), fmt.Sprintf("%s%x", partialPoolReflinkStagingPrefix, digest[:16]))
+	return root, filepath.Join(root, partialPoolReflinkStagingClone)
+}
+
+// partialPoolReflinkStagingOwnerPath returns the ownership marker beside a
+// staging root, where it remains discoverable if the root is missing.
+func partialPoolReflinkStagingOwnerPath(root string) string {
+	return root + partialPoolReflinkStagingOwner
+}
+
+// partialPoolReflinkStagingRootOwned reports whether root has the exact regular
+// ownership marker written by qui. A missing marker means unowned; an invalid
+// or unreadable marker returns an error.
+func partialPoolReflinkStagingRootOwned(root string) (bool, error) {
+	ownerPath := partialPoolReflinkStagingOwnerPath(root)
+	info, err := os.Lstat(ownerPath)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, errors.New("reflink staging ownership marker is invalid")
+	}
+	data, err := os.ReadFile(ownerPath)
+	if err != nil {
+		return false, err
+	}
+	if string(data) != partialPoolReflinkStagingOwnerData {
+		return false, errors.New("reflink staging ownership marker is invalid")
+	}
+	return true, nil
+}
+
+// ensurePartialPoolReflinkStagingRoot prepares an owned staging directory. It
+// refuses pre-existing unowned paths and syncs a new ownership marker before
+// creating the directory so an interrupted creation can be recovered safely.
+func ensurePartialPoolReflinkStagingRoot(root string) error {
+	info, err := os.Lstat(root)
+	rootMissing := os.IsNotExist(err)
+	if err != nil && !rootMissing {
+		return err
+	}
+	if !rootMissing && !info.IsDir() {
+		return errors.New("reflink staging path is not a directory")
+	}
+
+	owned, err := partialPoolReflinkStagingRootOwned(root)
+	if err != nil {
+		return err
+	}
+	if !rootMissing {
+		if !owned {
+			return errors.New("pre-existing reflink staging directory is not owned by qui")
+		}
+		return nil
+	}
+
+	createdOwner := false
+	if !owned {
+		ownerPath := partialPoolReflinkStagingOwnerPath(root)
+		marker, openErr := os.OpenFile(ownerPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if openErr != nil {
+			return openErr
+		}
+		if _, writeErr := marker.WriteString(partialPoolReflinkStagingOwnerData); writeErr != nil {
+			_ = marker.Close()
+			_ = os.Remove(ownerPath)
+			return writeErr
+		}
+		if syncErr := marker.Sync(); syncErr != nil {
+			_ = marker.Close()
+			_ = os.Remove(ownerPath)
+			return syncErr
+		}
+		if closeErr := marker.Close(); closeErr != nil {
+			_ = os.Remove(ownerPath)
+			return closeErr
+		}
+		createdOwner = true
+	}
+	if err := os.Mkdir(root, 0o700); err != nil {
+		if createdOwner {
+			_ = os.Remove(partialPoolReflinkStagingOwnerPath(root))
+		}
+		return err
+	}
+	return nil
+}
+
+// cleanPartialPoolReflinkStagingRoot removes recognized regular artifacts from
+// an owned staging root. Missing or unowned roots are preserved; unknown,
+// non-regular, or protected-file aliases are rejected.
+func cleanPartialPoolReflinkStagingRoot(root string, protectedPaths ...string) error {
+	owned, err := partialPoolReflinkStagingRootOwned(root)
+	if err != nil {
+		return err
+	}
+	rootInfo, err := os.Lstat(root)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !rootInfo.IsDir() {
+		if owned {
+			return errors.New("owned reflink staging path is not a directory")
+		}
+		return nil
+	}
+	if !owned {
+		return nil
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	removable := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if name != partialPoolReflinkStagingClone &&
+			!strings.HasPrefix(name, partialPoolReflinkProbeSource) &&
+			!strings.HasPrefix(name, partialPoolReflinkProbeDestination) {
+			return errors.New("reflink staging directory contains an unknown entry")
+		}
+		entryPath := filepath.Join(root, name)
+		entryInfo, statErr := os.Lstat(entryPath)
+		if statErr != nil {
+			return statErr
+		}
+		if !entryInfo.Mode().IsRegular() {
+			return errors.New("reflink staging entry is not a regular file")
+		}
+		for _, protectedPath := range protectedPaths {
+			protectedInfo, protectedErr := os.Lstat(protectedPath)
+			if os.IsNotExist(protectedErr) {
+				continue
+			}
+			if protectedErr != nil {
+				return protectedErr
+			}
+			if os.SameFile(entryInfo, protectedInfo) {
+				return errors.New("reflink staging entry aliases a protected file")
+			}
+		}
+		removable = append(removable, entryPath)
+	}
+	for _, entryPath := range removable {
+		if err := os.Remove(entryPath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// releasePartialPoolReflinkStagingRoot removes an empty owned root before its
+// ownership marker. Unowned roots are preserved, and unsafe or failed removal
+// is returned for a later retry.
+func releasePartialPoolReflinkStagingRoot(root string) error {
+	owned, err := partialPoolReflinkStagingRootOwned(root)
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return nil
+	}
+	ownerPath := partialPoolReflinkStagingOwnerPath(root)
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
+		return os.Remove(ownerPath)
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("owned reflink staging path is not a directory")
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 0 {
+		return errors.New("owned reflink staging directory is not empty")
+	}
+	if err := os.Remove(root); err != nil {
+		return err
+	}
+	return os.Remove(ownerPath)
+}
+
+// cleanupPartialPoolMemberReflinkStaging removes owned crash artifacts for a
+// reflink member. Errors are returned so durable member removal can wait and
+// retry without abandoning full-size staging files.
+func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, member *models.CrossSeedPartialPoolMember) error {
+	if member == nil || member.Mode != models.CrossSeedPartialPoolModeReflink {
+		return nil
+	}
+	for _, file := range member.Files {
+		targetPath, err := partialPoolLocalPath(member, file)
+		if err != nil {
+			return fmt.Errorf("resolve staging target: %w", err)
+		}
+		protectedPaths := []string{targetPath}
+		if file.SourceFileID != nil {
+			if sourceMember, sourceFile := partialPoolFileByID(pool, *file.SourceFileID); sourceMember != nil && sourceFile != nil {
+				sourcePath, sourceErr := partialPoolLocalPath(sourceMember, sourceFile)
+				if sourceErr != nil {
+					return fmt.Errorf("resolve staging source: %w", sourceErr)
+				}
+				protectedPaths = append(protectedPaths, sourcePath)
+			}
+		}
+		root, _ := partialPoolReflinkStagingPaths(targetPath)
+		if err := cleanPartialPoolReflinkStagingRoot(root, protectedPaths...); err != nil {
+			return err
+		}
+		if err := releasePartialPoolReflinkStagingRoot(root); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// finishPartialPoolPropagation validates and materializes one claimed pool
+// file. It reports success only when the target is ready for verification;
+// unsafe inputs or filesystem failures move the file and member to manual
+// handling, while unavailable live state remains retryable.
 func (s *Service) finishPartialPoolPropagation(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
@@ -1757,17 +2007,25 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 
+	replaceReflinkTarget := false
 	if targetInfo, statErr := os.Lstat(targetPath); statErr == nil {
 		if !targetInfo.Mode().IsRegular() {
 			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "a non-regular target already exists")
 			return false
 		}
-		if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink && !partialPoolSameFile(sourcePath, targetPath) {
-			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "a different target file already exists")
+		if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
+			if !partialPoolSameFile(sourcePath, targetPath) {
+				s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "a different target file already exists")
+				return false
+			}
+			s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+			return true
+		}
+		if os.SameFile(sourceInfo, targetInfo) {
+			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "reflink propagation target resolves to the source file")
 			return false
 		}
-		s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
-		return true
+		replaceReflinkTarget = true
 	} else if !os.IsNotExist(statErr) {
 		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "target path could not be inspected: "+statErr.Error())
 		return false
@@ -1778,18 +2036,51 @@ func (s *Service) finishPartialPoolPropagation(
 		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, err.Error())
 		return false
 	}
+	if targetMember.Mode == models.CrossSeedPartialPoolModeReflink {
+		// Reuse an ownership-marked target staging path so retries and later
+		// registrations remove crash leftovers. Existing qBittorrent placeholders
+		// remain intact until the same-filesystem rename succeeds.
+		stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
+		if stagingErr := ensurePartialPoolReflinkStagingRoot(stagingRoot); stagingErr != nil {
+			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "reflink staging could not be prepared: "+stagingErr.Error())
+			return false
+		}
+		if removeErr := cleanPartialPoolReflinkStagingRoot(stagingRoot, sourcePath, targetPath); removeErr != nil {
+			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "stale reflink target could not be removed: "+removeErr.Error())
+			return false
+		}
+		defer func() {
+			_ = cleanPartialPoolReflinkStagingRoot(stagingRoot, sourcePath, targetPath)
+			_ = releasePartialPoolReflinkStagingRoot(stagingRoot)
+		}()
+		plan.RootDir = stagingRoot
+		if replaceReflinkTarget {
+			plan.Files[0].TargetPath = stagingPath
+		}
+	}
 	if ctx.Err() != nil {
 		return false
 	}
 	var created *hardlinktree.Created
 	if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
 		created, err = hardlinktree.Create(plan)
+	} else if s.reflinkMaterializer != nil {
+		created, err = s.reflinkMaterializer(plan.RootDir, plan)
 	} else {
 		created, err = reflinktree.Create(plan)
 	}
 	if err != nil {
 		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "file propagation failed: "+err.Error())
 		return false
+	}
+	if replaceReflinkTarget {
+		if err := os.Rename(plan.Files[0].TargetPath, targetPath); err != nil {
+			if rollbackErr := created.Rollback(); rollbackErr != nil {
+				err = errors.Join(err, fmt.Errorf("rollback temporary reflink: %w", rollbackErr))
+			}
+			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "reflink target could not be replaced: "+err.Error())
+			return false
+		}
 	}
 	if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
 		s.storePartialPoolCreated(targetFile.ID, created)
@@ -1846,6 +2137,10 @@ type partialPoolSelection struct {
 	amountLeft    int64
 }
 
+// selectPartialPoolDownloader returns the highest-ranked member eligible to
+// own the pool download. It waits for admission and active transfers. During
+// lazy initial verification, it defers candidates with a live propagation
+// source unless qBittorrent already reports missing files.
 func selectPartialPoolDownloader(pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot, now time.Time) *models.CrossSeedPartialPoolMember {
 	if !partialPoolAdmissionReady(pool, now) {
 		return nil
@@ -1873,6 +2168,18 @@ func selectPartialPoolDownloader(pool *models.CrossSeedPartialPool, snapshots ma
 		missing := partialPoolMissingWantedFiles(member, snapshot)
 		if len(missing) == 0 && !deferredVerification {
 			continue
+		}
+		if deferredVerification && snapshot.torrent.State != qbt.TorrentStateMissingFiles {
+			waitForPropagation := false
+			for _, file := range missing {
+				if partialPoolFileHasAvailableSource(pool, member, file, snapshots) {
+					waitForPropagation = true
+					break
+				}
+			}
+			if waitForPropagation {
+				continue
+			}
 		}
 		selection := partialPoolSelection{member: member, verified: !deferredVerification, amountLeft: snapshot.torrent.AmountLeft}
 		if deferredVerification {
@@ -1991,6 +2298,35 @@ func partialPoolFilePairsAnotherMissing(pool *models.CrossSeedPartialPool, membe
 		}
 		for _, otherFile := range partialPoolMissingWantedFiles(other, snapshots[other.ID]) {
 			if partialPoolFilesPair(member, other, file, otherFile) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// partialPoolFileHasAvailableSource reports whether a live peer has a paired,
+// wanted file durably marked available or verified and currently complete or
+// checking.
+func partialPoolFileHasAvailableSource(pool *models.CrossSeedPartialPool, targetMember *models.CrossSeedPartialPoolMember, targetFile *models.CrossSeedPartialPoolMemberFile, snapshots map[int64]*partialPoolMemberSnapshot) bool {
+	for _, sourceMember := range pool.Members {
+		if sourceMember.ID == targetMember.ID || sourceMember.Status == models.CrossSeedPartialPoolMemberStatusManual || sourceMember.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
+			continue
+		}
+		sourceSnapshot := snapshots[sourceMember.ID]
+		if sourceSnapshot == nil || len(sourceSnapshot.files) == 0 || sourceSnapshot.torrent.State == qbt.TorrentStateError || sourceSnapshot.torrent.State == qbt.TorrentStateMissingFiles {
+			continue
+		}
+		sourceChecking := partialPoolChecking(sourceSnapshot.torrent.State)
+		for _, sourceFile := range sourceMember.Files {
+			if sourceFile.Status != models.CrossSeedPartialPoolFileStatusAvailable && sourceFile.Status != models.CrossSeedPartialPoolFileStatusVerified {
+				continue
+			}
+			current, ok := sourceSnapshot.fileByIndex[sourceFile.FileIndex]
+			if !ok || current.Priority == 0 || (!sourceChecking && current.Progress < 1) {
+				continue
+			}
+			if partialPoolFilesPair(sourceMember, targetMember, sourceFile, targetFile) {
 				return true
 			}
 		}
