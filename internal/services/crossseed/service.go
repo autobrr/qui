@@ -278,6 +278,7 @@ const (
 	selectedIndexerCapabilitySkipReason   = "selected indexers do not support required caps"
 	contentPrefilterRejectedContentStatus = "content_mismatch"
 	contentPrefilterRejectedSizeStatus    = "size_mismatch"
+	partialPoolRegistrationErrorStatus    = "partial_pool_registration_error"
 	crossSeedRenameWaitTimeout            = 15 * time.Second
 	crossSeedRenamePollInterval           = 200 * time.Millisecond
 	automationSettingsQueryTimeout        = 5 * time.Second
@@ -4494,7 +4495,7 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 		return true
 	}
 	for _, result := range response.Results {
-		if result.Success || result.Status == "exists" || result.Status == "partial_pool_registration_error" {
+		if result.Success || result.Status == "exists" || result.Status == partialPoolRegistrationErrorStatus {
 			return true
 		}
 	}
@@ -15082,7 +15083,7 @@ func (s *Service) processHardlinkMode(
 	success := poolRegistrationErr == nil
 	status := "added_hardlink"
 	if !success {
-		status = "partial_pool_registration_error"
+		status = partialPoolRegistrationErrorStatus
 	}
 
 	return hardlinkModeResult{
@@ -15869,7 +15870,7 @@ func (s *Service) processReflinkMode(
 	success := poolRegistrationErr == nil
 	status := "added_reflink"
 	if !success {
-		status = "partial_pool_registration_error"
+		status = partialPoolRegistrationErrorStatus
 	}
 
 	return reflinkModeResult{
