@@ -22,3 +22,18 @@ export function usePersistedInstanceSelection(storageNamespace: string) {
     serialize: serializeInstanceId,
   })
 }
+
+/**
+ * The selection an instance picker should hold given the current instance
+ * list. Keeps the saved selection while the list is still loading (undefined).
+ */
+export function resolveInstanceSelection(
+  instances: Array<{ id: number; connected: boolean }> | undefined,
+  selected: number | undefined
+): number | undefined {
+  if (!instances) return selected
+  if (instances.length === 0) return undefined
+  if (selected !== undefined && instances.some((i) => i.id === selected)) return selected
+  const fallback = instances.find((i) => i.connected) ?? instances[0]
+  return fallback.id
+}
