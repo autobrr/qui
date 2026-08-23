@@ -125,6 +125,28 @@ describe("usePersistedFilters", () => {
     })
   })
 
+  // REGRESSION (#2410): setFilters used to strip the sidebar's derived expandedCategories.
+  it("keeps expandedCategories through setFilters and a storage round-trip", () => {
+    const { result } = renderHook(() => usePersistedFilters(4))
+
+    act(() => {
+      const [, setFilters] = result.current
+      setFilters(prev => ({
+        ...prev,
+        categories: ["movies"],
+        expandedCategories: ["movies", "movies/4k"],
+        expandedExcludeCategories: [],
+      }))
+    })
+
+    expect(result.current[0].expandedCategories).toEqual(["movies", "movies/4k"])
+    expect(result.current[0].expandedExcludeCategories).toEqual([])
+
+    // A fresh mount reads them back from storage.
+    const remounted = renderHook(() => usePersistedFilters(4))
+    expect(remounted.result.current[0].expandedCategories).toEqual(["movies", "movies/4k"])
+  })
+
   it("isolates instance fields across instances but shares the global status", () => {
     const hook1 = renderHook(() => usePersistedFilters(1))
     act(() => {
