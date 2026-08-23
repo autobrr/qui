@@ -94,9 +94,16 @@ function scheduleFlush(): void {
 }
 
 let flushInFlight = false
+// A timer or tab-hide flush that fired while a PUT was in flight; replayed
+// once the PUT settles so the write it carried is not stalled.
+let flushRequestedInFlight = false
 
 async function flushPending(): Promise<void> {
-  if (flushInFlight || !syncReady || pending.size === 0) return
+  if (flushInFlight) {
+    flushRequestedInFlight = true
+    return
+  }
+  if (!syncReady || pending.size === 0) return
   // Keys stay in pending while the PUT is in flight so a concurrent server
   // apply cannot clobber the newer local value (the echo guard checks
   // pending). On failure they simply stay queued for the next flush.
@@ -112,15 +119,19 @@ async function flushPending(): Promise<void> {
       keepalive: true,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    // Drop what this PUT delivered.
+    // Drop what this PUT delivered. Entries replaced mid-flight stay queued;
+    // their own scheduleFlush timer (or the replay below) picks them up.
     for (const [key, raw] of Object.entries(batch)) {
       if (pending.get(key) === raw) pending.delete(key)
     }
-    scheduleFlush()
   } catch (error) {
     console.error("Failed to push client settings:", error)
   } finally {
     flushInFlight = false
+    if (flushRequestedInFlight) {
+      flushRequestedInFlight = false
+      scheduleFlush()
+    }
   }
 }
 
@@ -176,6 +187,7 @@ export function _resetClientSettingsForTests(): void {
   if (flushTimer !== null) clearTimeout(flushTimer)
   flushTimer = null
   flushInFlight = false
+  flushRequestedInFlight = false
   syncReady = false
 }
 
