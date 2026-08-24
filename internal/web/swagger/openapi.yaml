@@ -3187,6 +3187,50 @@ paths:
         '500':
           description: Failed to save theme settings
 
+  /api/client-settings:
+    get:
+      tags:
+        - Client Settings
+      summary: Get stored client settings
+      description: Get every stored frontend user setting as a key-value map of raw strings. The backend does not parse values.
+      responses:
+        '200':
+          description: All stored client settings
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '500':
+          description: Failed to load client settings
+    put:
+      tags:
+        - Client Settings
+      summary: Store client settings
+      description: Upsert the submitted settings. The payload is a partial key-value map; keys not present stay untouched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Settings stored; echoes the submitted map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Invalid payload, empty map, empty key, or body over 1 MiB
+        '500':
+          description: Failed to save client settings
+
   /api/torrents/export:
     post:
       tags:

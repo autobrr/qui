@@ -36,6 +36,7 @@ const (
 	KindSearchHistory      Kind = "search.history"
 	KindTrackerIcons       Kind = "tracker.icons"
 	KindThemeSettings      Kind = "theme.settings"
+	KindClientSettings     Kind = "client.settings"
 )
 
 // Event is a small, JSON-serializable signal that some qui-owned state changed.

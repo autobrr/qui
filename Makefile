@@ -19,7 +19,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
 GIT_TAG := $(shell git describe --abbrev=0 --tags)
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-BINARY_NAME = qui
+BINARY_NAME = qui$(if $(filter Windows_NT,$(OS)),.exe)
 BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
