@@ -90,7 +90,7 @@ See [Season Packs](./season-packs.md) for the full flow, setup requirements, and
 
 ## How do I see why a release was filtered?
 
-For a manual search, open the **Search breakdown** section in the search dialog. It appears under the results after each search. It shows:
+For a manual search, open the **Search breakdown** section in the search dialog. It appears under the results when Qui searched Torznab indexers. A Gazelle-only search does not show it. It shows:
 
 - One row for each indexer with its outcome: searched, incomplete, error, or excluded
 - The count for each rejection reason

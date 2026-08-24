@@ -673,8 +673,8 @@
     "missingInstance": "封鎖清單缺少實例",
     "trace": {
       "title": "搜尋明細",
-      "summaryBadge": "{{total}} 個候選，{{matches}} 個符合",
-      "summary": "共傳回 {{total}} 個候選。被拒絕：發布資訊不符 {{release}} 個，大小不符 {{size}} 個，內容過濾 {{late}} 個，重複 {{duplicates}} 個。剩餘 {{matches}} 個符合。",
+      "summaryBadge": "{{total}} 個候選，{{matches}} 個匹配項",
+      "summary": "共傳回 {{total}} 個候選。被拒絕：發布資訊不符 {{release}} 個，大小不符 {{size}} 個，內容過濾 {{late}} 個，重複 {{duplicates}} 個。剩餘 {{matches}} 個匹配項。",
       "indexersHeading": "索引器",
       "status": {
         "searched": "已搜尋",
