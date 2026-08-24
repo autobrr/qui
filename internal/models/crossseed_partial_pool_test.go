@@ -47,15 +47,14 @@ func partialPoolRegistration(t *testing.T, instanceID, sourceInstanceID int, tor
 		MatchedTorrentKey: sourceKey,
 		MatchedAliases:    []string{sourceKey},
 		Member: models.CrossSeedPartialPoolMember{
-			InstanceID:      instanceID,
-			TorrentKey:      torrentKey,
-			InfoHashV1:      v1,
-			InfoHashV2:      v2,
-			Mode:            models.CrossSeedPartialPoolModeHardlink,
-			RootPath:        filepath.Join(t.TempDir(), "pool"),
-			ReportedSeeders: 12,
-			Status:          models.CrossSeedPartialPoolMemberStatusVerifying,
-			MissingBytes:    200,
+			InstanceID:   instanceID,
+			TorrentKey:   torrentKey,
+			InfoHashV1:   v1,
+			InfoHashV2:   v2,
+			Mode:         models.CrossSeedPartialPoolModeHardlink,
+			RootPath:     filepath.Join(t.TempDir(), "pool"),
+			Status:       models.CrossSeedPartialPoolMemberStatusVerifying,
+			MissingBytes: 200,
 		},
 		Files: []models.CrossSeedPartialPoolMemberFile{
 			{FileIndex: 0, RelativePath: "Synthetic.Release/file.mkv", SizeBytes: 1000, PiecesRoot: "abcd", WantedAtAdmission: true, MaterializedAtAdd: true},
@@ -74,7 +73,6 @@ func TestCrossSeedPartialPoolRegistrationIsAliasIdempotent(t *testing.T) {
 	require.NotNil(t, member)
 	require.Equal(t, "source", pool.SourceTorrentKey)
 	require.Len(t, member.Files, 2)
-	require.Equal(t, 12, member.ReportedSeeders)
 
 	duplicate := registration
 	duplicate.Member.TorrentKey = "AAAA"
@@ -105,9 +103,15 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	require.True(t, claimed)
 	retryAfter := now.Add(time.Hour)
 	staleReason := "stale admission state"
+	staleReviewPause := true
+	staleResumeAttempts := int64(2)
+	staleRecoveryAttempts := int64(1)
 	changed, err = store.TransitionPartialPoolMember(t.Context(), member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
-		RetryAfter: models.NullableTimeUpdate{Set: true, Value: &retryAfter},
-		LastError:  &staleReason,
+		RetryAfter:         models.NullableTimeUpdate{Set: true, Value: &retryAfter},
+		ReviewPausePending: &staleReviewPause,
+		ResumeAttempts:     models.NullableInt64Update{Set: true, Value: &staleResumeAttempts},
+		RecoveryAttempts:   models.NullableInt64Update{Set: true, Value: &staleRecoveryAttempts},
+		LastError:          &staleReason,
 	})
 	require.NoError(t, err)
 	require.True(t, changed)
@@ -127,7 +131,6 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	reAdmission.Member.InfoHashV2 = "BBBB"
 	reAdmission.Member.Mode = models.CrossSeedPartialPoolModeReflink
 	reAdmission.Member.RootPath = filepath.Join(t.TempDir(), "new-pool")
-	reAdmission.Member.ReportedSeeders = 4
 	reAdmission.Member.MissingBytes = 77
 	reAdmission.Member.LastError = models.CrossSeedPartialPoolRecheckPending
 	reAdmission.Files = []models.CrossSeedPartialPoolMemberFile{{
@@ -146,11 +149,13 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	require.Equal(t, models.CrossSeedPartialPoolModeReflink, reloaded.Mode)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, reloaded.Status)
 	require.Equal(t, int64(77), reloaded.MissingBytes)
-	require.Equal(t, 4, reloaded.ReportedSeeders)
 	require.False(t, reloaded.StartedByPool)
 	require.Nil(t, reloaded.LastDownloadedBytes)
 	require.Nil(t, reloaded.LastProgressAt)
 	require.Nil(t, reloaded.RetryAfter)
+	require.False(t, reloaded.ReviewPausePending)
+	require.Nil(t, reloaded.ResumeAttempts)
+	require.Nil(t, reloaded.RecoveryAttempts)
 	require.Equal(t, models.CrossSeedPartialPoolRecheckPending, reloaded.LastError)
 	require.Len(t, reloaded.Files, 1)
 	require.Equal(t, 7, reloaded.Files[0].FileIndex)

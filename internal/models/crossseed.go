@@ -481,7 +481,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var runExternalProgramID sql.NullInt64
 	var enabled, startPaused int
 	var findIndividualEpisodes, useCategoryFromIndexer int
-	var pooledPartialCompletionEnabled databaseBool
+	var pooledPartialCompletionEnabled int
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
 	var skipRecheck, rescueTitleMismatches, skipPieceBoundarySafetyCheck int
@@ -647,7 +647,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.Enabled = SQLiteIntToBool(enabled)
 	settings.StartPaused = SQLiteIntToBool(startPaused)
 	settings.FindIndividualEpisodes = SQLiteIntToBool(findIndividualEpisodes)
-	settings.PooledPartialCompletionEnabled = pooledPartialCompletionEnabled.Bool()
+	settings.PooledPartialCompletionEnabled = SQLiteIntToBool(pooledPartialCompletionEnabled)
 	settings.UseCategoryFromIndexer = SQLiteIntToBool(useCategoryFromIndexer)
 	settings.InheritSourceTags = SQLiteIntToBool(inheritSourceTags)
 	settings.UseCrossCategoryAffix = SQLiteIntToBool(useCrossCategoryAffix)
@@ -1061,7 +1061,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		webhookSourceExcludeTagsJSON,
 		BoolToSQLite(settings.FindIndividualEpisodes),
 		settings.AutoResumeMaxDownloadMB,
-		databaseBoolArg(s.db, settings.PooledPartialCompletionEnabled),
+		BoolToSQLite(settings.PooledPartialCompletionEnabled),
 		BoolToSQLite(settings.UseCategoryFromIndexer),
 		runExternalProgramID,
 		categoryMappingRules,

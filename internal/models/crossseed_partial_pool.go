@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +54,9 @@ type CrossSeedPartialPool struct {
 	Members          []*CrossSeedPartialPoolMember
 }
 
-// CrossSeedPartialPoolMember is one qBittorrent torrent managed by a partial pool.
+// CrossSeedPartialPoolMember is one qBittorrent torrent managed by a partial
+// pool. Review and retry fields persist coordinator sub-state separately from
+// LastError diagnostics.
 type CrossSeedPartialPoolMember struct {
 	ID                  int64
 	PoolID              int64
@@ -65,13 +66,15 @@ type CrossSeedPartialPoolMember struct {
 	InfoHashV2          string
 	Mode                string
 	RootPath            string
-	ReportedSeeders     int
 	Status              string
 	MissingBytes        int64
 	StartedByPool       bool
 	LastDownloadedBytes *int64
 	LastProgressAt      *time.Time
 	RetryAfter          *time.Time
+	ReviewPausePending  bool
+	ResumeAttempts      *int64
+	RecoveryAttempts    *int64
 	LastError           string
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
@@ -129,6 +132,9 @@ type PartialPoolMemberMutation struct {
 	LastDownloadedBytes NullableInt64Update
 	LastProgressAt      NullableTimeUpdate
 	RetryAfter          NullableTimeUpdate
+	ReviewPausePending  *bool
+	ResumeAttempts      NullableInt64Update
+	RecoveryAttempts    NullableInt64Update
 	LastError           *string
 }
 
@@ -136,51 +142,6 @@ type PartialPoolMemberMutation struct {
 type PartialPoolFileMutation struct {
 	SourceFileID NullableInt64Update
 	LastError    *string
-}
-
-type databaseBool bool
-
-func (b *databaseBool) Scan(value any) error {
-	switch value := value.(type) {
-	case bool:
-		*b = databaseBool(value)
-	case int64:
-		*b = value != 0
-	case int:
-		*b = value != 0
-	case []byte:
-		return b.scanString(string(value))
-	case string:
-		return b.scanString(value)
-	case nil:
-		*b = false
-	default:
-		return fmt.Errorf("scan database boolean from %T", value)
-	}
-	return nil
-}
-
-func (b *databaseBool) scanString(value string) error {
-	value = strings.TrimSpace(value)
-	if n, err := strconv.Atoi(value); err == nil {
-		*b = n != 0
-		return nil
-	}
-	parsed, err := strconv.ParseBool(value)
-	if err != nil {
-		return err
-	}
-	*b = databaseBool(parsed)
-	return nil
-}
-
-func (b databaseBool) Bool() bool { return bool(b) }
-
-func databaseBoolArg(q any, value bool) any {
-	if dbinterface.DialectOf(q) == "postgres" {
-		return value
-	}
-	return BoolToSQLite(value)
 }
 
 func normalizePartialPoolKey(value string) string {
@@ -225,9 +186,6 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 	}
 	if len(registration.Files) == 0 {
 		return nil, nil, errors.New("partial pool member files are required")
-	}
-	if member.ReportedSeeders < 0 {
-		member.ReportedSeeders = 0
 	}
 	if member.Status == "" {
 		member.Status = CrossSeedPartialPoolMemberStatusVerifying
@@ -348,15 +306,17 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 		result, updateErr := tx.ExecContext(ctx, `
 			UPDATE cross_seed_partial_pool_members
 			SET torrent_key = ?, infohash_v1 = ?, infohash_v2 = ?, mode = ?,
-			    root_path = ?, reported_seeders = ?, status = ?, missing_bytes = ?,
+			    root_path = ?, status = ?, missing_bytes = ?,
 			    started_by_pool = ?, last_downloaded_bytes = NULL,
-			    last_progress_at = NULL, retry_after = NULL, last_error = ?,
+			    last_progress_at = NULL, retry_after = NULL,
+			    review_pause_pending = ?, resume_attempts = NULL,
+			    recovery_attempts = NULL, last_error = ?,
 			    created_at = ?, updated_at = ?
 			WHERE id = ? AND pool_id = ?
 		`,
 			member.TorrentKey, member.InfoHashV1, member.InfoHashV2, member.Mode,
-			member.RootPath, member.ReportedSeeders, member.Status, member.MissingBytes,
-			databaseBoolArg(s.db, false), member.LastError, admittedAt, admittedAt,
+			member.RootPath, member.Status, member.MissingBytes,
+			BoolToSQLite(false), BoolToSQLite(false), member.LastError, admittedAt, admittedAt,
 			memberID, poolID,
 		)
 		if updateErr != nil {
@@ -391,15 +351,17 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 		err = tx.QueryRowContext(ctx, `
 			INSERT INTO cross_seed_partial_pool_members (
 				pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
-				mode, root_path, reported_seeders, status, missing_bytes,
-				started_by_pool, last_downloaded_bytes, last_progress_at, retry_after, last_error,
+				mode, root_path, status, missing_bytes,
+				started_by_pool, last_downloaded_bytes, last_progress_at, retry_after,
+				review_pause_pending, resume_attempts, recovery_attempts, last_error,
 				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			RETURNING id
 		`,
 			poolID, member.InstanceID, member.TorrentKey, member.InfoHashV1, member.InfoHashV2,
-			member.Mode, member.RootPath, member.ReportedSeeders, member.Status, member.MissingBytes,
-			databaseBoolArg(s.db, member.StartedByPool), member.LastDownloadedBytes, member.LastProgressAt, member.RetryAfter, member.LastError,
+			member.Mode, member.RootPath, member.Status, member.MissingBytes,
+			BoolToSQLite(member.StartedByPool), member.LastDownloadedBytes, member.LastProgressAt, member.RetryAfter,
+			BoolToSQLite(member.ReviewPausePending), member.ResumeAttempts, member.RecoveryAttempts, member.LastError,
 			admittedAt, admittedAt,
 		).Scan(&memberID)
 		if err != nil {
@@ -426,7 +388,7 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`,
 			memberID, file.FileIndex, file.RelativePath, file.SizeBytes, piecesRoot,
-			databaseBoolArg(s.db, file.WantedAtAdmission), databaseBoolArg(s.db, file.MaterializedAtAdd),
+			BoolToSQLite(file.WantedAtAdmission), BoolToSQLite(file.MaterializedAtAdd),
 			file.Status, file.SourceFileID, file.LastError,
 		)
 		if err != nil {
@@ -521,8 +483,9 @@ func (s *CrossSeedStore) GetPartialPool(ctx context.Context, poolID int64) (*Cro
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
-		       mode, root_path, reported_seeders, status, missing_bytes,
+		       mode, root_path, status, missing_bytes,
 		       started_by_pool, last_downloaded_bytes, last_progress_at, retry_after,
+		       review_pause_pending, resume_attempts, recovery_attempts,
 		       last_error, created_at, updated_at
 		FROM cross_seed_partial_pool_members
 		WHERE pool_id = ? AND status <> ?
@@ -584,20 +547,22 @@ type rowScanner interface {
 
 func scanPartialPoolMember(scanner rowScanner) (*CrossSeedPartialPoolMember, error) {
 	member := &CrossSeedPartialPoolMember{}
-	var started databaseBool
-	var lastDownloaded sql.NullInt64
+	var started, reviewPausePending int
+	var lastDownloaded, resumeAttempts, recoveryAttempts sql.NullInt64
 	var lastProgress, retryAfter sql.NullTime
 	err := scanner.Scan(
 		&member.ID, &member.PoolID, &member.InstanceID, &member.TorrentKey,
 		&member.InfoHashV1, &member.InfoHashV2, &member.Mode, &member.RootPath,
-		&member.ReportedSeeders, &member.Status, &member.MissingBytes, &started,
-		&lastDownloaded, &lastProgress, &retryAfter, &member.LastError,
+		&member.Status, &member.MissingBytes, &started,
+		&lastDownloaded, &lastProgress, &retryAfter, &reviewPausePending,
+		&resumeAttempts, &recoveryAttempts, &member.LastError,
 		&member.CreatedAt, &member.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("scan partial pool member: %w", err)
 	}
-	member.StartedByPool = started.Bool()
+	member.StartedByPool = SQLiteIntToBool(started)
+	member.ReviewPausePending = SQLiteIntToBool(reviewPausePending)
 	if lastDownloaded.Valid {
 		value := lastDownloaded.Int64
 		member.LastDownloadedBytes = &value
@@ -610,13 +575,21 @@ func scanPartialPoolMember(scanner rowScanner) (*CrossSeedPartialPoolMember, err
 		value := retryAfter.Time
 		member.RetryAfter = &value
 	}
+	if resumeAttempts.Valid {
+		value := resumeAttempts.Int64
+		member.ResumeAttempts = &value
+	}
+	if recoveryAttempts.Valid {
+		value := recoveryAttempts.Int64
+		member.RecoveryAttempts = &value
+	}
 	return member, nil
 }
 
 func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, error) {
 	file := &CrossSeedPartialPoolMemberFile{}
 	var piecesRoot sql.NullString
-	var wanted, materialized databaseBool
+	var wanted, materialized int
 	var sourceFileID sql.NullInt64
 	err := scanner.Scan(
 		&file.ID, &file.MemberID, &file.FileIndex, &file.RelativePath,
@@ -629,8 +602,8 @@ func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, e
 	if piecesRoot.Valid {
 		file.PiecesRoot = piecesRoot.String
 	}
-	file.WantedAtAdmission = wanted.Bool()
-	file.MaterializedAtAdd = materialized.Bool()
+	file.WantedAtAdmission = SQLiteIntToBool(wanted)
+	file.MaterializedAtAdd = SQLiteIntToBool(materialized)
 	if sourceFileID.Valid {
 		value := sourceFileID.Int64
 		file.SourceFileID = &value
@@ -745,7 +718,7 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 	terminal := status == CrossSeedPartialPoolMemberStatusManual || status == CrossSeedPartialPoolMemberStatusComplete || status == CrossSeedPartialPoolMemberStatusRemoved
 	if mutation.StartedByPool != nil && !terminal {
 		sets = append(sets, "started_by_pool = ?")
-		args = append(args, databaseBoolArg(s.db, *mutation.StartedByPool))
+		args = append(args, BoolToSQLite(*mutation.StartedByPool))
 	}
 	if mutation.LastDownloadedBytes.Set {
 		sets = append(sets, "last_downloaded_bytes = ?")
@@ -759,13 +732,25 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 		sets = append(sets, "retry_after = ?")
 		args = append(args, mutation.RetryAfter.Value)
 	}
+	if mutation.ReviewPausePending != nil {
+		sets = append(sets, "review_pause_pending = ?")
+		args = append(args, BoolToSQLite(*mutation.ReviewPausePending))
+	}
+	if mutation.ResumeAttempts.Set {
+		sets = append(sets, "resume_attempts = ?")
+		args = append(args, mutation.ResumeAttempts.Value)
+	}
+	if mutation.RecoveryAttempts.Set {
+		sets = append(sets, "recovery_attempts = ?")
+		args = append(args, mutation.RecoveryAttempts.Value)
+	}
 	if mutation.LastError != nil {
 		sets = append(sets, "last_error = ?")
 		args = append(args, *mutation.LastError)
 	}
 	if terminal {
 		sets = append(sets, "started_by_pool = ?")
-		args = append(args, databaseBoolArg(s.db, false))
+		args = append(args, BoolToSQLite(false))
 	}
 	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(expected)), ",")
@@ -818,7 +803,8 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 	result, err := tx.ExecContext(ctx, `
 		UPDATE cross_seed_partial_pool_members AS selected
 		SET status = ?, started_by_pool = ?, last_downloaded_bytes = ?,
-		    last_progress_at = ?, retry_after = NULL, last_error = '',
+		    last_progress_at = ?, retry_after = NULL, review_pause_pending = ?,
+		    resume_attempts = NULL, recovery_attempts = NULL, last_error = '',
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE selected.id = ? AND selected.status = ?
 		  AND (selected.retry_after IS NULL OR selected.retry_after <= ?)
@@ -843,9 +829,10 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 		  )
 	`,
 		CrossSeedPartialPoolMemberStatusAcquiring,
-		databaseBoolArg(s.db, true),
+		BoolToSQLite(true),
 		downloadedBytes,
 		now,
+		BoolToSQLite(false),
 		memberID,
 		CrossSeedPartialPoolMemberStatusWaiting,
 		now,
@@ -974,9 +961,11 @@ func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, membe
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE cross_seed_partial_pool_members
-		SET status = ?, started_by_pool = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
+		SET status = ?, started_by_pool = ?, review_pause_pending = ?,
+		    resume_attempts = NULL, recovery_attempts = NULL,
+		    last_error = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ? AND status <> ?
-	`, CrossSeedPartialPoolMemberStatusRemoved, databaseBoolArg(s.db, false), reason, memberID, CrossSeedPartialPoolMemberStatusRemoved); err != nil {
+	`, CrossSeedPartialPoolMemberStatusRemoved, BoolToSQLite(false), BoolToSQLite(false), reason, memberID, CrossSeedPartialPoolMemberStatusRemoved); err != nil {
 		return err
 	}
 	var remaining int

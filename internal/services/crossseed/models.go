@@ -73,9 +73,6 @@ type CrossSeedRequest struct {
 	// SearchDecision is private provenance carried only by cached search results.
 	// It binds apply to the source torrent and every relaxation search admitted.
 	SearchDecision searchDecisionProvenance `json:"-"`
-	// ReportedSeeders is the indexer-reported count captured at admission.
-	// Direct add paths leave it at zero.
-	ReportedSeeders int `json:"-"`
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation

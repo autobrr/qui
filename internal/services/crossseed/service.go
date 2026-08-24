@@ -10287,7 +10287,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 				SearchDecision:               cachedResult.SearchDecision.bindSource(instanceID, hash),
-				ReportedSeeders:              max(cachedResult.Seeders, 0),
 			}
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
@@ -11890,7 +11889,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		SourceFilterExcludeCategories: append([]string(nil), state.opts.ExcludeCategories...),
 		SourceFilterExcludeTags:       append([]string(nil), state.opts.ExcludeTags...),
 		SearchDecision:                match.SearchDecision.bindSource(state.opts.InstanceID, torrent.Hash),
-		ReportedSeeders:               max(match.Seeders, 0),
 	}
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride

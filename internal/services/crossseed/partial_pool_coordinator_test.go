@@ -218,9 +218,9 @@ func TestPartialPoolWakeOverflowRequestsFullScan(t *testing.T) {
 func TestSelectPartialPoolDownloaderRanking(t *testing.T) {
 	now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{
-		partialPoolTestMember(1, 1, "alpha", 1, partialPoolTestFile{"shared-a.mkv", 100}, partialPoolTestFile{"shared-b.mkv", 200}),
-		partialPoolTestMember(2, 2, "beta", 50, partialPoolTestFile{"shared-a.mkv", 100}),
-		partialPoolTestMember(3, 3, "gamma", 100, partialPoolTestFile{"shared-b.mkv", 200}),
+		partialPoolTestMember(1, 1, "alpha", partialPoolTestFile{"shared-a.mkv", 100}, partialPoolTestFile{"shared-b.mkv", 200}),
+		partialPoolTestMember(2, 2, "beta", partialPoolTestFile{"shared-a.mkv", 100}),
+		partialPoolTestMember(3, 3, "gamma", partialPoolTestFile{"shared-b.mkv", 200}),
 	}}
 	snapshots := map[int64]*partialPoolMemberSnapshot{
 		1: partialPoolTestSnapshot(pool.Members[0], 300),
@@ -231,16 +231,16 @@ func TestSelectPartialPoolDownloaderRanking(t *testing.T) {
 
 	pool.Members[0].Files = pool.Members[0].Files[:1]
 	snapshots[1] = partialPoolTestSnapshot(pool.Members[0], 100)
-	require.Same(t, pool.Members[1], selectPartialPoolDownloader(pool, snapshots, now), "reported seeders break an otherwise equal tie")
+	require.Same(t, pool.Members[0], selectPartialPoolDownloader(pool, snapshots, now), "stable member identity breaks an otherwise equal tie")
 
 	snapshots[1].torrent.AmountLeft = 50
-	require.Same(t, pool.Members[0], selectPartialPoolDownloader(pool, snapshots, now), "smaller AmountLeft precedes reported seeders")
+	require.Same(t, pool.Members[0], selectPartialPoolDownloader(pool, snapshots, now), "smaller AmountLeft precedes stable identity")
 }
 
 func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
 	now := time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 	retryAfter := now.Add(partialPoolCooldown)
-	member := partialPoolTestMember(1, 1, "alpha", 0, partialPoolTestFile{"unique.bin", 10})
+	member := partialPoolTestMember(1, 1, "alpha", partialPoolTestFile{"unique.bin", 10})
 	member.RetryAfter = &retryAfter
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{member}}
 	snapshots := map[int64]*partialPoolMemberSnapshot{1: partialPoolTestSnapshot(member, 10)}
@@ -255,10 +255,10 @@ func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
 func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{
-		partialPoolTestMember(1, 1, "candidate-alpha", 1, partialPoolTestFile{"shared.mkv", 100}),
-		partialPoolTestMember(2, 1, "candidate-beta", 2, partialPoolTestFile{"shared.mkv", 100}),
-		partialPoolTestMember(3, 1, "candidate-gamma", 3, partialPoolTestFile{"shared.mkv", 100}),
-		partialPoolTestMember(4, 1, "candidate-delta", 4, partialPoolTestFile{"shared.mkv", 100}),
+		partialPoolTestMember(1, 1, "candidate-alpha", partialPoolTestFile{"shared.mkv", 100}),
+		partialPoolTestMember(2, 1, "candidate-beta", partialPoolTestFile{"shared.mkv", 100}),
+		partialPoolTestMember(3, 1, "candidate-gamma", partialPoolTestFile{"shared.mkv", 100}),
+		partialPoolTestMember(4, 1, "candidate-delta", partialPoolTestFile{"shared.mkv", 100}),
 	}}
 	snapshots := make(map[int64]*partialPoolMemberSnapshot, len(pool.Members))
 	for _, member := range pool.Members {
@@ -279,10 +279,10 @@ func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 
 func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-	source := partialPoolTestMember(1, 1, "source", 1, partialPoolTestFile{"shared.mkv", 100})
+	source := partialPoolTestMember(1, 1, "source", partialPoolTestFile{"shared.mkv", 100})
 	source.Status = models.CrossSeedPartialPoolMemberStatusComplete
 	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusAvailable
-	target := partialPoolTestMember(2, 1, "target", 2, partialPoolTestFile{"shared.mkv", 100})
+	target := partialPoolTestMember(2, 1, "target", partialPoolTestFile{"shared.mkv", 100})
 	target.Status = models.CrossSeedPartialPoolMemberStatusVerifying
 	target.LastError = partialPoolRecheckPending
 	target.Files[0].WantedAtAdmission = true
@@ -328,7 +328,7 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 
 	snapshots := make(map[int64]*partialPoolMemberSnapshot, len(keys))
 	var poolID int64
-	for index, key := range keys {
+	for _, key := range keys {
 		registration := partialPoolFilesystemRegistration(
 			instanceID,
 			key,
@@ -339,7 +339,6 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 			nil,
 		)
 		registration.Member.LastError = partialPoolRecheckPending
-		registration.Member.ReportedSeeders = index + 1
 		pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
 		require.NoError(t, err)
 		poolID = pool.ID
@@ -383,16 +382,16 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 		member := partialPoolMemberByTorrentKey(pool, key)
 		require.NotNil(t, member)
 		require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
-		if key == "candidate-delta" {
+		if key == "candidate-alpha" {
 			require.Equal(t, partialPoolRecheckRequested, member.LastError)
 		} else {
 			require.Equal(t, partialPoolRecheckPending, member.LastError)
 		}
 		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
 	}
-	require.Equal(t, []string{"recheck:candidate-delta"}, sync.bulkActions)
+	require.Equal(t, []string{"recheck:candidate-alpha"}, sync.bulkActions)
 
-	selected := partialPoolMemberByTorrentKey(pool, "candidate-delta")
+	selected := partialPoolMemberByTorrentKey(pool, "candidate-alpha")
 	requirePartialPoolReconciled(t, service, selected.UpdatedAt.Add(partialPoolRecheckObserveTimeout), pool, snapshots, 0)
 	pool, err = store.GetPartialPool(t.Context(), poolID)
 	require.NoError(t, err)
@@ -400,10 +399,10 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 		member := partialPoolMemberByTorrentKey(pool, key)
 		require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[0].Status)
 		switch key {
-		case "candidate-delta":
+		case "candidate-alpha":
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, member.Status)
 			require.Equal(t, partialPoolRecheckUnobserved, member.LastError)
-		case "candidate-gamma":
+		case "candidate-beta":
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
 			require.Equal(t, partialPoolRecheckRequested, member.LastError)
 		default:
@@ -411,7 +410,7 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 			require.Equal(t, partialPoolRecheckPending, member.LastError)
 		}
 	}
-	require.Equal(t, []string{"recheck:candidate-delta", "recheck:candidate-gamma"}, sync.bulkActions)
+	require.Equal(t, []string{"recheck:candidate-alpha", "recheck:candidate-beta"}, sync.bulkActions)
 }
 
 func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
@@ -1548,7 +1547,7 @@ func TestPartialPoolAdmissionHoldKeepsWaitingPoolActive(t *testing.T) {
 }
 
 func TestPartialPoolPostRecheckVerdictModeSafety(t *testing.T) {
-	hardlinkMember := partialPoolTestMember(1, 1, "hardlink", 0, partialPoolTestFile{"video.mkv", 100})
+	hardlinkMember := partialPoolTestMember(1, 1, "hardlink", partialPoolTestFile{"video.mkv", 100})
 	hardlinkMember.Mode = models.CrossSeedPartialPoolModeHardlink
 	hardlinkMember.Files[0].MaterializedAtAdd = true
 	hardlinkMember.Files[0].Status = models.CrossSeedPartialPoolFileStatusPresent
@@ -1565,7 +1564,7 @@ func TestPartialPoolPostRecheckVerdictModeSafety(t *testing.T) {
 	status, _ = partialPoolPostRecheckVerdict(hardlinkMember, hardlinkSnapshot, 50, normalizerForService(nil))
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, status, "a propagated hardlink must never be repaired in place")
 
-	reflinkMember := partialPoolTestMember(2, 1, "reflink", 0, partialPoolTestFile{"video.mkv", 100})
+	reflinkMember := partialPoolTestMember(2, 1, "reflink", partialPoolTestFile{"video.mkv", 100})
 	reflinkMember.Mode = models.CrossSeedPartialPoolModeReflink
 	reflinkMember.Files[0].MaterializedAtAdd = true
 	reflinkMember.Files[0].Status = models.CrossSeedPartialPoolFileStatusPresent
@@ -1578,7 +1577,7 @@ func TestPartialPoolPostRecheckVerdictModeSafety(t *testing.T) {
 	status, _ = partialPoolPostRecheckVerdict(reflinkMember, reflinkSnapshot, 10, normalizerForService(nil))
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, status)
 
-	discReflinkMember := partialPoolTestMember(3, 1, "disc-reflink", 0, partialPoolTestFile{"Synthetic.Release/BDMV/STREAM/00001.m2ts", 100})
+	discReflinkMember := partialPoolTestMember(3, 1, "disc-reflink", partialPoolTestFile{"Synthetic.Release/BDMV/STREAM/00001.m2ts", 100})
 	discReflinkMember.Mode = models.CrossSeedPartialPoolModeReflink
 	discReflinkMember.Files[0].MaterializedAtAdd = true
 	discReflinkMember.Files[0].Status = models.CrossSeedPartialPoolFileStatusPresent
@@ -1723,7 +1722,8 @@ func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
 			reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloaded.Members[0].Status)
-			require.Equal(t, partialPoolReviewPausePrefix+test.reason, reloaded.Members[0].LastError)
+			require.Equal(t, test.reason, reloaded.Members[0].LastError)
+			require.True(t, reloaded.Members[0].ReviewPausePending)
 		})
 	}
 }
@@ -1890,7 +1890,8 @@ func TestPartialPoolAdmissionDriftWaitsForSettledPause(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "live state must retain the recovery schedule")
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloaded.Members[0].Status)
-			require.Equal(t, partialPoolReviewPausePrefix+"qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.Equal(t, "qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.True(t, reloaded.Members[0].ReviewPausePending)
 
 			syncManager.mu.Lock()
 			syncManager.bulkActionErr = nil
@@ -1910,7 +1911,8 @@ func TestPartialPoolAdmissionDriftWaitsForSettledPause(t *testing.T) {
 			reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "restoring admission evidence must not discard the pending pause")
-			require.Equal(t, partialPoolReviewPausePrefix+"qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.Equal(t, "qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.True(t, reloaded.Members[0].ReviewPausePending)
 			require.Equal(t, []string{"pause:" + member.TorrentKey, "pause:" + member.TorrentKey}, syncManager.recordedActions())
 
 			syncManager.mu.Lock()
@@ -1922,6 +1924,7 @@ func TestPartialPoolAdmissionDriftWaitsForSettledPause(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status, "a fresh stopped observation may settle the review state")
 			require.Equal(t, "qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.False(t, reloaded.Members[0].ReviewPausePending)
 			require.Equal(t, []string{"pause:" + member.TorrentKey, "pause:" + member.TorrentKey}, syncManager.recordedActions())
 		})
 	}
@@ -2007,19 +2010,22 @@ func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {
 	reloaded, err := store.GetPartialPool(ctx, member.PoolID)
 	require.NoError(t, err)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusComplete, reloaded.Members[0].Status)
-	require.Equal(t, partialPoolResumeAttemptReason(1), reloaded.Members[0].LastError)
+	require.Empty(t, reloaded.Members[0].LastError)
+	require.Equal(t, int64(1), *reloaded.Members[0].ResumeAttempts)
 
 	snapshot.torrent.State = qbt.TorrentStateMissingFiles
 	handled, _ := service.reconcilePartialPoolExceptionalState(ctx, time.Now(), reloaded.Members[0], snapshot)
 	require.True(t, handled)
 	require.Equal(t, []string{"resume:dependent", "resume:dependent"}, sync.bulkActions)
-	require.Equal(t, partialPoolResumeAttemptReason(2), reloaded.Members[0].LastError)
+	require.Empty(t, reloaded.Members[0].LastError)
+	require.Equal(t, int64(2), *reloaded.Members[0].ResumeAttempts)
 
 	snapshot.torrent.State = qbt.TorrentStateUploading
 	service.reconcilePartialPoolComplete(ctx, reloaded.Members[0], snapshot)
 	reloaded, err = store.GetPartialPool(ctx, member.PoolID)
 	require.NoError(t, err)
 	require.Empty(t, reloaded.Members[0].LastError)
+	require.Nil(t, reloaded.Members[0].ResumeAttempts)
 }
 
 func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
@@ -2075,7 +2081,8 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 	for attempt := 1; attempt <= partialPoolRecoveryLimit; attempt++ {
 		handled, _ := service.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
 		require.True(t, handled)
-		require.Equal(t, partialPoolRecoveryAttemptReason(attempt), member.LastError)
+		require.Empty(t, member.LastError)
+		require.Equal(t, int64(attempt), *member.RecoveryAttempts)
 		now = member.UpdatedAt.Add(partialPoolRecheckGrace)
 	}
 	handled, _ := service.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
@@ -2097,6 +2104,7 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 	handled, _ = service.reconcilePartialPoolExceptionalState(ctx, recovered.UpdatedAt.Add(partialPoolRecheckGrace), recovered, recoveredSnapshot)
 	require.False(t, handled)
 	require.Empty(t, recovered.LastError)
+	require.Nil(t, recovered.RecoveryAttempts)
 
 	hardlinkMember := register("hardlink", models.CrossSeedPartialPoolModeHardlink)
 	hardlinkSnapshot := partialPoolTestSnapshot(hardlinkMember, 100)
@@ -2111,14 +2119,13 @@ type partialPoolTestFile struct {
 	size int64
 }
 
-func partialPoolTestMember(id int64, instanceID int, key string, seeders int, files ...partialPoolTestFile) *models.CrossSeedPartialPoolMember {
+func partialPoolTestMember(id int64, instanceID int, key string, files ...partialPoolTestFile) *models.CrossSeedPartialPoolMember {
 	member := &models.CrossSeedPartialPoolMember{
-		ID:              id,
-		InstanceID:      instanceID,
-		TorrentKey:      key,
-		Mode:            models.CrossSeedPartialPoolModeReflink,
-		Status:          models.CrossSeedPartialPoolMemberStatusWaiting,
-		ReportedSeeders: seeders,
+		ID:         id,
+		InstanceID: instanceID,
+		TorrentKey: key,
+		Mode:       models.CrossSeedPartialPoolModeReflink,
+		Status:     models.CrossSeedPartialPoolMemberStatusWaiting,
 	}
 	for index, file := range files {
 		member.Files = append(member.Files, &models.CrossSeedPartialPoolMemberFile{
