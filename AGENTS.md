@@ -31,8 +31,6 @@ Before changing cross-module data flow, service boundaries, API routing, or long
 - Go tests: always use `-race -count=1`
 - Full Go suite: `make test` (`go test -race -count=1 -v ./...`)
 - OpenAPI changes under `internal/web/swagger`: run `make test-openapi`
-- Leave `GOCACHE`, `GOMODCACHE`, and `GOTMPDIR` at their defaults under `~/.cache`. `/tmp` is a tmpfs here, so a cache under it spends RAM the running programs need.
-- `internal/services/crossseed` tests need `TMPDIR=/var/tmp/qui-tests`. Hardlink and reflink cases fail when the scratch dir sits on a different filesystem from the repo.
 
 CI runs `make test` on every push. Run the full suite locally only when asked, or when one change crosses many packages.
 
