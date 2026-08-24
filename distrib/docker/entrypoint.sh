@@ -1,10 +1,8 @@
 #!/bin/sh
 set -e
 
-# Apply UMASK if set (busybox umask errors don't trip set -e)
-if [ -n "$UMASK" ]; then
-    umask "$UMASK" || { echo >&2 "ERROR: invalid UMASK: $UMASK"; exit 1; }
-fi
+# UMASK is handled by the qui binary itself (applyUmask in cmd/qui),
+# so the entrypoint does not touch it.
 
 # Fail fast if only one of PUID/PGID is set
 if { [ -n "$PUID" ] && [ -z "$PGID" ]; } || { [ -z "$PUID" ] && [ -n "$PGID" ]; }; then
