@@ -47,23 +47,40 @@ container run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
-## Permissions (PUID/PGID/UMASK)
+## Permissions
 
-By default the container runs as root. To run as a specific user and make sure files in `/config` have correct ownership, set both `PUID` and `PGID` environment variables (required together).
+By default the container runs as root. There are two ways to run qui as a different user. Use one or the other, not both.
 
-When both are set, the entrypoint will:
+### `user:` (standard Docker)
 
-1. Create a user and group with the specified IDs
-2. Recursively `chown -R` the `/config` directory
-3. Run qui as that user
+Set `user:` in compose, or `--user` in docker run. Docker starts the container as that user directly.
 
-This makes sure the database, logs, and directories created by cross-seed hardlink mode get the expected ownership.
+```yaml title="docker-compose.yml"
+services:
+  qui:
+    image: ghcr.io/autobrr/qui:latest
+    user: "1000:1000"
+    volumes:
+      - ./qui:/config
+    ports:
+      - "7476:7476"
+```
 
-Optional: `UMASK` controls default permissions for files and directories qui creates (database, logs, backups, hardlink-mode directories). Common values:
+With this method, make sure that the host folder mounted at `/config` is writable for that user:
 
-- `022` - owner read/write, group/others read-only (typical default)
-- `002` - owner and group read/write, others read-only (group-writable)
-- `077` - owner only, no group/others access (private)
+```bash
+chown -R 1000:1000 ./qui
+```
+
+### PUID/PGID (automatic ownership)
+
+Set both `PUID` and `PGID` environment variables (required together). The entrypoint then:
+
+1. Creates a user and group with the specified IDs
+2. Runs `chown -R` on the `/config` directory
+3. Runs qui as that user
+
+The result is the same as `user:`, but the entrypoint corrects the ownership of `/config` for you. This helps when `/config` already contains root-owned files from an earlier run, or when the host folder has the wrong owner.
 
 ```yaml title="docker-compose.yml"
 services:
@@ -72,7 +89,6 @@ services:
     environment:
       PUID: "1000"
       PGID: "1000"
-      UMASK: "002" # optional
     volumes:
       - ./qui:/config
     ports:
@@ -83,15 +99,27 @@ services:
 docker run -d \
   -e PUID=1000 \
   -e PGID=1000 \
-  -e UMASK=002 \
   -p 7476:7476 \
   -v $(pwd)/config:/config \
   ghcr.io/autobrr/qui:latest
 ```
 
 :::note
-`user:` in compose and `--user` in docker run bypass the entrypoint's chown and privilege-drop behavior. Use `PUID`/`PGID` instead for correct `/config` ownership handling.
+Do not combine `user:` with `PUID`/`PGID`. The entrypoint can only create users and change ownership when the container starts as root. If you switch to `PUID`/`PGID`, remove any `user:` or `--user` setting first.
 :::
+
+### UMASK
+
+Optional, works with both methods. qui reads `UMASK` at startup and applies it to the files and directories that it creates, for example the cross-seed hardlink and reflink trees. If the value is not valid octal, qui logs a warning and keeps the inherited umask. Common values:
+
+- `022` - owner read/write, group/others read-only (typical default)
+- `002` - owner and group read/write, others read-only (group-writable)
+- `077` - owner only, no group/others access (private)
+
+Two limits apply:
+
+- Security-sensitive files (the database, `config.toml`, backup manifests) are always created owner-only (`0600`), regardless of `UMASK`.
+- Hardlinked files share the inode with the source file. They keep the owner and permissions of the original download. See [Directory permissions and umask](../features/cross-seed/troubleshooting.md#directory-permissions-and-umask) for details.
 
 ## Local Filesystem Access
 
@@ -112,7 +140,7 @@ Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm
 7. Enable **Advanced View** (top right)
 8. Set **Icon URL** to `https://raw.githubusercontent.com/autobrr/qui/main/web/public/icon.png`
 9. Set **WebUI** to `http://[IP]:[PORT:7476]`
-10. Add environment variables `PUID` = `99` and `PGID` = `100` so the entrypoint chowns `/config` and runs qui as `nobody` (do not use `--user`, it bypasses this)
+10. Add environment variables `PUID` = `99` and `PGID` = `100`. The entrypoint then corrects the ownership of `/config` and runs qui as uid 99 (`nobody` on Unraid). If **Extra Parameters** contains `--user`, remove it first (see [Permissions](#permissions))
 11. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
 12. Click **Apply** to pull the image and start the container
 
