@@ -10,7 +10,10 @@ RUN npm install -g corepack@latest && \
 
 WORKDIR /app/web
 
-COPY web/package.json web/pnpm-lock.yaml ./
+# pnpm-workspace.yaml carries the overrides that pnpm-lock.yaml records;
+# omitting it makes `pnpm install --frozen-lockfile` fail with
+# ERR_PNPM_LOCKFILE_CONFIG_MISMATCH (see #2415).
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web ./
