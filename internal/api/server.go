@@ -79,6 +79,7 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	clientSettingsStore              *models.ClientSettingsStore
 	themeSettingsStore               *models.ThemeSettingsStore
 	filterViewStore                  *models.FilterViewStore
 	logExclusionsStore               *models.LogExclusionsStore
@@ -122,6 +123,7 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	ClientSettingsStore              *models.ClientSettingsStore
 	ThemeSettingsStore               *models.ThemeSettingsStore
 	FilterViewStore                  *models.FilterViewStore
 	LogExclusionsStore               *models.LogExclusionsStore
@@ -188,6 +190,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		clientSettingsStore:              deps.ClientSettingsStore,
 		themeSettingsStore:               deps.ThemeSettingsStore,
 		filterViewStore:                  deps.FilterViewStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
@@ -379,6 +382,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
 	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
@@ -451,6 +455,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+
+			// Persisted frontend user settings (opaque key-value map)
+			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)
+			r.Put("/client-settings", clientSettingsHandler.UpdateClientSettings)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {
