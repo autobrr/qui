@@ -109,7 +109,13 @@ docker run -d \
 Do not combine `user:` with `PUID`/`PGID`. The entrypoint can only create users and change ownership when the container starts as root. If you switch to `PUID`/`PGID`, remove any `user:` or `--user` setting first.
 :::
 
-The entrypoint changes ownership of `/config` only, never anything outside it, so a wrong `PUID` cannot chown your media library.
+The entrypoint changes ownership of `/config` only, never anything outside it, so a wrong `PUID` cannot chown your media library. That also means a switch from root needs one manual step: if qui already created hardlink or reflink trees as root, chown those directories once yourself:
+
+```bash
+find /data/cross-seed -type d -exec chown 1000:1000 {} +
+```
+
+Directories only: hardlinked files share their inode with the source download, so a recursive `chown -R` here would change the owner of your library files too. qui only needs write access to the directories.
 
 ### UMASK
 
@@ -143,7 +149,7 @@ Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm
 7. Enable **Advanced View** (top right)
 8. Set **Icon URL** to `https://raw.githubusercontent.com/autobrr/qui/main/web/public/icon.png`
 9. Set **WebUI** to `http://[IP]:[PORT:7476]`
-10. Add environment variables `PUID` = `99` and `PGID` = `100`. The entrypoint then corrects the ownership of `/config` and runs qui as uid 99 (`nobody` on Unraid). If **Extra Parameters** contains `--user`, remove it first (see [Permissions](#permissions))
+10. Add environment variables `PUID` = `99` and `PGID` = `100`. The entrypoint then corrects the ownership of `/config` and runs qui as uid 99 (`nobody` on Unraid). If **Extra Parameters** contains `--user`, remove it first, and if qui ran as root before, fix your data directories once (see [Permissions](#permissions))
 11. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
 12. Click **Apply** to pull the image and start the container
 
