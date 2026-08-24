@@ -84,7 +84,7 @@ QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 
 ### SQLite or Postgres
 
-Both engines run the same features. A switch gives no performance benefit for most installs: qui runs SQLite in WAL mode with a separate read pool, so reads perform like Postgres. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
+Both engines run the same features. For most installs, a switch gives no performance benefit: qui runs SQLite in WAL mode with a separate read pool, so reads do not block on writes. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
 
 ## Cross-Seed
 
