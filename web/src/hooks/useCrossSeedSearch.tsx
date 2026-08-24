@@ -590,6 +590,7 @@ export function useCrossSeedSearch(instanceId: number) {
       cacheMetadata={crossSeedSearchResponse?.cache ?? null}
       partial={crossSeedSearchResponse?.partial ?? false}
       queryDegraded={crossSeedSearchResponse?.queryDegraded}
+      decisionTrace={crossSeedSearchResponse?.decisionTrace}
       onForceRefresh={canForceCrossSeedRefresh ? handleCrossSeedForceRefresh : undefined}
       canForceRefresh={canForceCrossSeedRefresh}
       refreshCooldownLabel={crossSeedRefreshLabel}

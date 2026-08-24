@@ -7840,6 +7840,76 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        decisionTrace:
+          $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
+
+    CrossSeedSearchDecisionTrace:
+      type: object
+      description: Explains why the Torznab passes accepted or rejected candidates. Absent when no Torznab search ran.
+      properties:
+        sourceSize:
+          type: integer
+          format: int64
+        tolerancePercent:
+          type: number
+        totalResults:
+          type: integer
+        sizeFiltered:
+          type: integer
+        releaseFiltered:
+          type: integer
+        lateContentFiltered:
+          type: integer
+        duplicateFiltered:
+          type: integer
+        finalMatches:
+          type: integer
+        rejectionCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        rejectedCandidates:
+          type: array
+          description: Capped at 5 candidates per rejection reason; rejectionCounts holds the full totals.
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchRejectedCandidate'
+        indexers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchIndexerOutcome'
+
+    CrossSeedSearchRejectedCandidate:
+      type: object
+      properties:
+        indexer:
+          type: string
+        indexerId:
+          type: integer
+        title:
+          type: string
+        size:
+          type: integer
+          format: int64
+        reason:
+          type: string
+
+    CrossSeedSearchIndexerOutcome:
+      type: object
+      properties:
+        indexerId:
+          type: integer
+        status:
+          type: string
+          enum:
+            - searched
+            - not_covered
+            - error
+            - excluded
+        detail:
+          type: string
+        candidates:
+          type: integer
+          description: Raw results this indexer contributed before filtering.
 
     CrossSeedApplySelection:
       type: object

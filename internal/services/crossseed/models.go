@@ -306,6 +306,10 @@ type TorrentSearchResponse struct {
 	// stamp per-indexer search history; an indexer missing here was rate
 	// limited or failed a pass and stays eligible for the next run.
 	CoveredIndexerIDs []int `json:"-"`
+	// DecisionTrace explains why the Torznab passes accepted or rejected
+	// candidates. Ephemeral diagnostics for the manual search dialog; unset
+	// when no Torznab search ran (Gazelle-only or failed searches).
+	DecisionTrace *SearchDecisionTrace `json:"decisionTrace,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.

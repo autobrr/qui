@@ -167,3 +167,26 @@ func TestSearchTorrentMatches_CallerDeadlineIsNotPartialSuccess(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Nil(t, resp)
 }
+
+// Regression (PR #2427 review): the Search breakdown explains the Torznab
+// funnel only. A Gazelle match reaches the response without passing through
+// that funnel, so it must not raise the reported match count.
+func TestSearchTorrentMatches_TraceExcludesGazelleFromFinalMatches(t *testing.T) {
+	emptyFeed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><title>Empty</title></channel></rss>`))
+	}))
+	t.Cleanup(emptyFeed.Close)
+
+	svc, instanceID, clients := newTorznabGazelleFixture(t, "crossseed-trace-gazelle-matches", emptyFeed.URL)
+
+	resp, _, _, err := svc.searchTorrentMatches(context.Background(), instanceID, torznabGazelleSourceHash, TorrentSearchOptions{
+		IndexerIDs: []int{1},
+	}, clients)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1, "the gazelle match still reaches the response")
+	require.NotNil(t, resp.DecisionTrace)
+	require.Equal(t, 0, resp.DecisionTrace.FinalMatches, "no torznab candidate was accepted")
+}

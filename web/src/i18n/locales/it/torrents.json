@@ -719,6 +719,25 @@
     "block": "Blocca",
     "addedToBlocklist": "Aggiunto alla lista di blocco",
     "missingInstance": "Istanza mancante per la lista di blocco",
+    "trace": {
+      "title": "Dettaglio della ricerca",
+      "summaryBadge": "{{total}} candidati, {{matches}} corrispondenze",
+      "summary": "{{total}} candidati restituiti. Rifiutati: {{release}} release non corrispondente, {{size}} dimensione non corrispondente, {{late}} filtro contenuti, {{duplicates}} duplicati. Restano {{matches}} corrispondenze.",
+      "indexersHeading": "Indexer",
+      "status": {
+        "searched": "cercato",
+        "notCovered": "incompleto",
+        "error": "errore",
+        "excluded": "escluso"
+      },
+      "candidateCount": "{{count}} candidati",
+      "rejectionsHeading": "Candidati rifiutati",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} altri con questo motivo",
+      "copyReport": "Copia report",
+      "copied": "Report copiato negli appunti",
+      "copyFailed": "Impossibile copiare il report"
+    },
     "scope": {
       "allIndexers": "Tutti gli indexer",
       "selectCustom": "Selezione personalizzata",
