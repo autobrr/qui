@@ -27,12 +27,15 @@ import (
 
 const mediaIDWiringSourceHash = "14a238e56ab06fed600c38d5068998d95e9338c2"
 
-// TestMediaIDRetrySkipsNonIDIndexers drives the full search flow against two
-// recording Torznab servers: one with an imdbid capability, one without. The
-// MediaInfo ID retry must query the capable indexer by ID and send NOTHING to
-// the other one; before SkipIndexersWithoutIDs the executor restored the title
-// query for it, re-running a search that had just returned zero results.
-func TestMediaIDRetrySkipsNonIDIndexers(t *testing.T) {
+// TestTagIDPrimaryMixedModeWithTitleRescue drives the full search flow against
+// two recording Torznab servers: one with an imdbid capability, one without.
+// With no arr ID available, the primary search must run ID-first from the
+// MKV tag in mixed mode: the ID-capable indexer searches by imdbid with no
+// title query, the title-only indexer gets the title query in the same pass.
+// When the ID results all fail verification, the title rescue pass must send
+// the plain title to the ID-queried indexer only; the title-only indexer
+// already searched by title and must not be re-run.
+func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 	const sourceName = "Signal.Static.1997.1080p.BluRay.DD5.1.x264-FIELDTEST"
 
 	// The ID query returns one (junk) candidate so the flow can observe a
@@ -134,23 +137,41 @@ func TestMediaIDRetrySkipsNonIDIndexers(t *testing.T) {
 	resp, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}}, nil)
 	require.NoError(t, err)
 	require.Empty(t, resp.QueryDegraded,
-		"a successful ID retry must clear the searched-by-title-only notice")
+		"a tag-sourced ID primary must clear the searched-by-title-only notice")
 
 	mu.Lock()
 	defer mu.Unlock()
 
-	var idPassRequests int
+	// Primary pass, mixed mode: ID query to the ID-capable indexer, title
+	// query to the other one.
+	require.NotEmpty(t, idCapableRequests)
+	require.NotEmpty(t, idCapableRequests[0].Get("imdbid"),
+		"primary must search the ID-capable indexer by ID")
+	require.NotEmpty(t, titleOnlyRequests)
+	require.NotEmpty(t, titleOnlyRequests[0].Get("q"),
+		"primary must search the title-only indexer by title in the same pass")
+
+	var idQueries, titleQueries int
 	for _, p := range idCapableRequests {
 		if p.Get("imdbid") != "" {
-			idPassRequests++
-			require.Empty(t, p.Get("q"), "ID pass must not carry a title query")
+			require.Empty(t, p.Get("q"), "an ID query must not carry a title query")
+			idQueries++
+		} else {
+			require.NotEmpty(t, p.Get("q"))
+			titleQueries++
 		}
 	}
-	require.Equal(t, 1, idPassRequests, "ID-capable indexer must get exactly one ID query")
+	require.Positive(t, idQueries, "ID-capable indexer must search by ID")
+	require.Equal(t, 1, titleQueries,
+		"the title rescue must send exactly one title query to the ID-queried indexer")
 
-	// The retry adds exactly one extra request, and only to the ID-capable
+	for _, p := range titleOnlyRequests {
+		require.Empty(t, p.Get("imdbid"), "title-only indexer must never receive an ID param")
+	}
+
+	// The rescue adds exactly one extra request, and only to the ID-queried
 	// indexer. Equal counts here mean the title-only indexer got a re-run of
-	// its failed title search: the regression this test pins.
+	// its already-searched title query: the waste this test pins.
 	require.Len(t, idCapableRequests, len(titleOnlyRequests)+1,
-		"the ID retry must reach only the ID-capable indexer")
+		"the title rescue must reach only the ID-queried indexer")
 }
