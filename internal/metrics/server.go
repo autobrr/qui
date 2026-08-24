@@ -24,17 +24,18 @@ type Server struct {
 }
 
 func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthUsersConfig string) *Server {
+	authConfigured := basicAuthUsersConfig != ""
 	s := &Server{
 		basicAuthUsers: make(map[string]string),
 		manager:        manager,
 	}
 
 	// Parse basic auth users
-	if basicAuthUsersConfig != "" {
+	if authConfigured {
 		for cred := range strings.SplitSeq(basicAuthUsersConfig, ",") {
-			parts := strings.Split(strings.TrimSpace(cred), ":")
-			if len(parts) == 2 {
-				s.basicAuthUsers[parts[0]] = parts[1]
+			username, password, ok := strings.Cut(strings.TrimSpace(cred), ":")
+			if ok {
+				s.basicAuthUsers[username] = password
 			} else {
 				log.Warn().Msgf("Invalid metrics basic auth credentials: %s", redact.BasicAuthUser(cred))
 			}
@@ -49,7 +50,7 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 	router.Use(middleware.Recoverer)
 
 	// Add basic auth if configured
-	if len(s.basicAuthUsers) > 0 {
+	if authConfigured {
 		router.Use(BasicAuth("metrics", s.basicAuthUsers))
 	}
 

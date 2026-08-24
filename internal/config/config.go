@@ -576,7 +576,8 @@ sessionSecret = "{{ .sessionSecret }}"
 
 # Basic authentication for metrics endpoint (optional)
 # Format: "username:password" or "user1:password1,user2:password2" for multiple users
-# Passwords are compared as plaintext. Protect this configuration file.
+# Passwords are plaintext and can contain colons. Usernames cannot contain colons.
+# Commas cannot appear in usernames or passwords. Protect this configuration file.
 # Example: "prometheus:secret"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""

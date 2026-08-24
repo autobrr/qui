@@ -31,7 +31,7 @@ QUI__METRICS_PORT=9074
 # QUI__METRICS_BASIC_AUTH_USERS="user:password"
 ```
 
-Qui accepts multiple basic-authentication users as a comma-separated list of `user:password` entries. Qui compares these passwords as plaintext.
+Qui accepts a comma-separated list of `user:password` entries. Passwords are plaintext and can contain colons. Usernames cannot contain colons. Commas cannot appear in usernames or passwords.
 
 Protect the configuration file or environment that contains the passwords.
 
