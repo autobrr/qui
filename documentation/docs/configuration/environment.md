@@ -117,7 +117,7 @@ QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.
 QUI__METRICS_ENABLED=true      # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1    # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
-QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+QUI__METRICS_BASIC_AUTH_USERS=user:password  # Optional: basic auth for metrics (plaintext password)
 ```
 
 ## Authentication
