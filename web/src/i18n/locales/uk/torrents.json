@@ -815,6 +815,25 @@
     "block": "Блокувати",
     "addedToBlocklist": "Додано до чорного списку",
     "missingInstance": "Відсутній екземпляр для списку блокувань",
+    "trace": {
+      "title": "Деталі пошуку",
+      "summaryBadge": "{{total}} кандидатів, {{matches}} збігів",
+      "summary": "Повернуто {{total}} кандидатів. Відхилено: {{release}} невідповідність релізу, {{size}} невідповідність розміру, {{late}} фільтр вмісту, {{duplicates}} дублікати. Залишилось {{matches}} збігів.",
+      "indexersHeading": "Індексери",
+      "status": {
+        "searched": "виконано пошук",
+        "notCovered": "неповний",
+        "error": "помилка",
+        "excluded": "виключено"
+      },
+      "candidateCount": "{{count}} кандидатів",
+      "rejectionsHeading": "Відхилені кандидати",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} ще з цієї причини",
+      "copyReport": "Копіювати звіт",
+      "copied": "Звіт скопійовано в буфер обміну",
+      "copyFailed": "Не вдалося скопіювати звіт"
+    },
     "scope": {
       "allIndexers": "Усі індексатори",
       "selectCustom": "Вибрати власні",

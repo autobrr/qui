@@ -30,6 +30,7 @@ import type {
   CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
   CrossSeedQueryDegradedReason,
+  CrossSeedSearchDecisionTrace,
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
@@ -1299,6 +1300,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
+      // Already camelCase over the wire, like cache.
+      decisionTrace?: CrossSeedSearchDecisionTrace
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -1356,6 +1359,7 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
+      decisionTrace: response.decisionTrace,
     }
   }
 

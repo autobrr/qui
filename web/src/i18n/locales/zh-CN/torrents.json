@@ -671,6 +671,25 @@
     "block": "屏蔽",
     "addedToBlocklist": "已添加到屏蔽列表",
     "missingInstance": "屏蔽列表缺少实例",
+    "trace": {
+      "title": "搜索明细",
+      "summaryBadge": "{{total}} 个候选，{{matches}} 个匹配",
+      "summary": "共返回 {{total}} 个候选。被拒绝：发布信息不符 {{release}} 个，大小不符 {{size}} 个，内容过滤 {{late}} 个，重复 {{duplicates}} 个。剩余 {{matches}} 个匹配。",
+      "indexersHeading": "索引器",
+      "status": {
+        "searched": "已搜索",
+        "notCovered": "未完成",
+        "error": "错误",
+        "excluded": "已排除"
+      },
+      "candidateCount": "{{count}} 个候选",
+      "rejectionsHeading": "被拒绝的候选",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "还有 {{count}} 个相同原因的候选",
+      "copyReport": "复制报告",
+      "copied": "报告已复制到剪贴板",
+      "copyFailed": "无法复制报告"
+    },
     "scope": {
       "allIndexers": "所有索引器",
       "selectCustom": "自定义选择",

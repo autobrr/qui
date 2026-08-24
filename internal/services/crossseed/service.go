@@ -9146,6 +9146,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
+	// Capture per-indexer failures for the decision trace. The callback is
+	// copied into every retry pass request, so later passes report here too.
+	traceIndexerErrs := &searchIndexerErrors{}
+	searchReq.OnComplete = traceIndexerErrs.record
+
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
 		onAllCompleteOnce.Do(func() {
 			if err != nil {
@@ -9382,7 +9387,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	exactSizeHardRejected := 0
 
 	sourceSizeForSearch := searchSourceSize(sourceTorrent)
+	traceRejections := &searchTraceRejections{}
+	traceCandidateCounts := make(map[int]int)
 	for _, res := range searchResults {
+		traceCandidateCounts[res.IndexerID]++
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		// Search has only the source torrent's full size and Torznab's advertised
 		// candidate size. Positive exact equality may replace a relaxable release
@@ -9404,11 +9412,15 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		if !decision.Accepted {
 			if decision.SizeRejected {
 				sizeFilteredCount++
+				traceRejections.add(res, "size mismatch", sizeFilteredCount)
 			} else {
 				releaseFilteredCount++
 				reason := decision.RejectReason
 				if reason == "" {
 					reason = decision.StrictMismatchReason
+				}
+				if reason == "" {
+					reason = "release mismatch"
 				}
 				recordReleaseRejection(
 					releaseFilterReasons,
@@ -9420,6 +9432,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					releaseFilterDebugInfoFrom(candidateRelease),
 					"[CROSSSEED-SEARCH] Candidate rejected by search classifier",
 				)
+				traceRejections.add(res, reason, releaseFilterReasons[reason])
 			}
 			if decision.StrictMismatchReason != "" && decision.SizeEvidence == searchSizeEvidenceExact {
 				exactSizeHardRejected++
@@ -9496,6 +9509,29 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Release filtering rejection summary")
 	}
 
+	buildDecisionTrace := func(finalMatches, duplicateFiltered int) *SearchDecisionTrace {
+		rejectionCounts := maps.Clone(releaseFilterReasons)
+		if sizeFilteredCount > 0 {
+			if rejectionCounts == nil {
+				rejectionCounts = make(map[string]int, 1)
+			}
+			rejectionCounts["size mismatch"] = sizeFilteredCount
+		}
+		return &SearchDecisionTrace{
+			SourceSize:          sourceSizeForSearch,
+			TolerancePercent:    tolerancePercent,
+			TotalResults:        totalResults,
+			SizeFiltered:        sizeFilteredCount,
+			ReleaseFiltered:     releaseFilteredCount,
+			LateContentFiltered: lateExcludedCount,
+			DuplicateFiltered:   duplicateFiltered,
+			FinalMatches:        finalMatches,
+			RejectionCounts:     rejectionCounts,
+			RejectedCandidates:  traceRejections.candidates,
+			Indexers:            buildSearchIndexerOutcomes(searchResp.RequestedIndexerIDs, coveredIndexerIDs, traceIndexerErrs.snapshot(), sourceInfo.ExcludedIndexers, traceCandidateCounts),
+		}
+	}
+
 	if len(scored) == 0 {
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
@@ -9507,6 +9543,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			JobID:             searchResp.JobID,
 			CoveredIndexerIDs: coveredIndexerIDs,
 			QueryDegraded:     queryDegraded,
+			DecisionTrace:     buildDecisionTrace(len(combined), 0),
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
@@ -9540,6 +9577,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		JobID:             searchResp.JobID,
 		CoveredIndexerIDs: coveredIndexerIDs,
 		QueryDegraded:     queryDegraded,
+		DecisionTrace:     buildDecisionTrace(len(combined), duplicateFilteredCount),
 	}, gazelleLookupAttempted, remoteRequestsMade, nil
 }
 
