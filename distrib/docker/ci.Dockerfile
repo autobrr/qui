@@ -68,15 +68,17 @@ ENV HOME="/config" \
 # curl and bash stay for the External Programs feature and existing container workflows.
 # ca-certificates: TLS connections to qBittorrent, trackers, update checks
 # tzdata: timezone display in logs and UI
-RUN apk --no-cache add ca-certificates curl tzdata bash
+# su-exec: privilege drop in the entrypoint when PUID/PGID are set
+RUN apk --no-cache add ca-certificates curl tzdata bash su-exec
 
 WORKDIR /config
 
 # Declare volume for persistent data
 VOLUME /config
 
-# Copy binary from build stage
+# Copy binary and entrypoint
 COPY --from=go-builder /app/qui /usr/local/bin/
+COPY distrib/docker/entrypoint.sh /entrypoint.sh
 
 EXPOSE 7476
 
@@ -84,5 +86,5 @@ EXPOSE 7476
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7476/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/qui"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]

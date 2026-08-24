@@ -2065,6 +2065,12 @@ class ApiClient {
     })
   }
 
+  // Client settings (frontend user settings stored in the database as opaque key-value pairs;
+  // writes go through the debounced push queue in lib/client-settings.ts, not this client)
+  async getClientSettings(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/client-settings")
+  }
+
   // Preferences endpoints
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
