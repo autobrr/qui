@@ -465,6 +465,9 @@ type Service struct {
 	partialPoolFullScanPending atomic.Bool
 	partialPoolCreatedMu       sync.Mutex
 	partialPoolCreated         map[int64]*hardlinktree.Created
+	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
+	// one source/target file pair until either root path changes or qui restarts.
+	partialPoolRejectedPairs sync.Map
 
 	// Returns the season's episode total, the show's alias titles from the same
 	// lookup (series-wide + same-season), and whether the total resolved.

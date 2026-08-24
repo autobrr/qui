@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -267,6 +268,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 		liveRefreshBlocked   bool
 		materializeErr       error
 		failureCategory      string
+		pairIncompatible     bool
 	}{
 		{name: "replaces stopped placeholder before recheck"},
 		{name: "replaces missingFiles placeholder before first recheck", missingFiles: true},
@@ -278,6 +280,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 		{name: "recovers waiting missingFiles propagation claim before downloader selection", targetAbsent: true, missingFiles: true, persistedPropagation: true, waiting: true},
 		{name: "recovers orphaned staging clone before replacement", orphanedStaging: true},
 		{name: "preserves placeholder when cloning fails", materializeErr: privateMaterializeErr, failureCategory: "materialization_failed"},
+		{name: "falls through after cross-filesystem clone failure", materializeErr: syscall.EXDEV, pairIncompatible: true},
 		{name: "rejects staging alias without deleting placeholder", stagingAliasesTarget: true},
 		{name: "rejects unowned staging without deleting placeholder", unownedStaging: true},
 		{name: "preserves unowned empty staging root", unownedEmptyRoot: true},
@@ -404,6 +407,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			liveRefreshBlocked := testCase.liveRefreshBlocked
 			sync := &recheckResumeSyncManager{filesByHash: filesByHash}
 			materializerRoot := ""
+			materializeCalls := 0
 			service := &Service{
 				automationStore: store,
 				partialPoolTorrentRefresher: func(ctx context.Context, snapshots map[int64]*partialPoolMemberSnapshot, members ...*models.CrossSeedPartialPoolMember) bool {
@@ -430,6 +434,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				}),
 				syncManager: sync,
 				reflinkMaterializer: func(root string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+					materializeCalls++
 					materializerRoot = root
 					if testCase.materializeErr != nil {
 						return nil, testCase.materializeErr
@@ -533,6 +538,18 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			}
 			if testCase.unownedEmptyRoot {
 				require.DirExists(t, stagingRoot)
+			}
+			if testCase.pairIncompatible {
+				require.Equal(t, placeholder, targetPayload)
+				require.Equal(t, 1, materializeCalls)
+				require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, target.Status)
+				require.Equal(t, partialPoolRecheckRequested, target.LastError)
+				require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, target.Files[0].Status)
+				require.Nil(t, target.Files[0].SourceFileID)
+				require.Empty(t, target.Files[0].LastError)
+				require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+				require.True(t, service.partialPoolPropagationPairRejected(source, source.Files[0], target, target.Files[0]))
+				return
 			}
 			if testCase.materializeErr != nil || testCase.stagingAliasesTarget || testCase.unownedStaging || testCase.unownedEmptyRoot {
 				require.Equal(t, placeholder, targetPayload)
