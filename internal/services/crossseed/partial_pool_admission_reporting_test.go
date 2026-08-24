@@ -393,7 +393,7 @@ func TestPartialPoolWakePreservesNewAdmissionUntilInventoryVisible(t *testing.T)
 	require.Equal(t, partialPoolRecheckPending, member.LastError)
 	require.Empty(t, sync.bulkActions)
 
-	service.reconcilePartialPools(t.Context(), now.Add(time.Second), partialPoolWake{})
+	service.reconcilePartialPools(t.Context(), now.Add(500*time.Millisecond), partialPoolWake{})
 	_, member, err = store.ResolvePartialPoolMember(t.Context(), instanceID, member.TorrentKey)
 	require.NoError(t, err)
 	require.Equal(t, partialPoolRecheckPending, member.LastError, "visible members remain stopped while the pool admission window is open")

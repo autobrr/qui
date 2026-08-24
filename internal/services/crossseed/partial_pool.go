@@ -28,14 +28,15 @@ import (
 )
 
 const (
-	partialPoolSweepInterval          = 10 * time.Second
+	partialPoolActiveRecoveryInterval = 10 * time.Second
+	partialPoolSettledAuditInterval   = 10 * time.Minute
 	partialPoolRecheckPollInterval    = 100 * time.Millisecond
 	partialPoolRecheckPollSyncTimeout = 5 * time.Second
 	partialPoolRecheckObserveTimeout  = 30 * time.Second
 	partialPoolStallWindow            = 15 * time.Minute
 	partialPoolCooldown               = 30 * time.Minute
-	partialPoolRecheckGrace           = 2 * partialPoolSweepInterval
-	partialPoolAdmissionHold          = 2 * partialPoolSweepInterval
+	partialPoolRecheckGrace           = 20 * time.Second
+	partialPoolAdmissionHold          = 2 * time.Second
 
 	partialPoolRecheckPending    = models.CrossSeedPartialPoolRecheckPending
 	partialPoolRecheckRequested  = "partial pool recheck requested"
@@ -45,6 +46,7 @@ const (
 	partialPoolBudgetPause       = "partial pool budget pause pending"
 	partialPoolModePause         = "partial pool mode pause pending"
 	partialPoolSafetyPause       = "partial pool safety pause pending"
+	partialPoolReviewPausePrefix = "partial pool review pause pending: "
 	partialPoolResumeAttempt     = "partial pool resume attempt "
 	partialPoolResumeExhausted   = "partial pool resume attempts exhausted"
 	partialPoolRecoveryAttempt   = "partial pool error recovery attempt "
@@ -72,6 +74,9 @@ func (s *Service) signalPartialPoolWake(wake partialPoolWake) {
 	select {
 	case s.partialPoolWake <- wake:
 	default:
+		// A queued wake will release the coordinator. Preserve the dropped
+		// scope as one coalesced full scan so dormant pools cannot be missed.
+		s.partialPoolFullScanPending.Store(true)
 	}
 }
 
@@ -298,26 +303,67 @@ func normalizedHashes(values ...string) []string {
 	return hashes
 }
 
-func (s *Service) markPartialPoolMemberManual(ctx context.Context, memberID int64, expected []string, reason string) {
-	if s == nil || s.automationStore == nil || memberID == 0 {
-		return
+// markPartialPoolMemberManual reports whether the manual transition was
+// durably persisted and updates the in-memory member only after that success.
+func (s *Service) markPartialPoolMemberManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string) bool {
+	if s == nil || s.automationStore == nil || member == nil {
+		return false
 	}
 	reason = strings.TrimSpace(reason)
-	_, _ = s.automationStore.TransitionPartialPoolMember(ctx, memberID, expected, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
+	return s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
 }
 
-func (s *Service) pausePartialPoolMemberForReview(ctx context.Context, member *models.CrossSeedPartialPoolMember, torrent qbt.Torrent, reason string) {
+// pausePartialPoolMemberForReview persists manual review immediately but only
+// reports settlement after a later inventory observes the torrent stopped.
+func (s *Service) pausePartialPoolMemberForReview(ctx context.Context, member *models.CrossSeedPartialPoolMember, torrent qbt.Torrent, reason string) bool {
 	if s == nil || member == nil || ctx.Err() != nil {
-		return
+		return false
 	}
-	if !isPausedOrStopped(torrent.State) {
+	if pendingReason, pending := partialPoolReviewPauseReason(member); pending {
+		reason = pendingReason
+	}
+	settled := isPausedOrStopped(torrent.State) || torrent.State == qbt.TorrentStateError || torrent.State == qbt.TorrentStateMissingFiles
+	if !settled {
 		_ = s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause")
 	}
 	reason = strings.TrimSpace(reason)
-	if member.Status == models.CrossSeedPartialPoolMemberStatusManual && member.LastError == reason {
-		return
+	storedReason := reason
+	if !settled {
+		storedReason = partialPoolReviewPausePrefix + reason
 	}
-	s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
+	if member.Status == models.CrossSeedPartialPoolMemberStatusManual && member.LastError == storedReason {
+		return settled
+	}
+	persisted := s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &storedReason})
+	return persisted && settled
+}
+
+// partialPoolReviewPauseReason returns the final manual-review reason while a
+// durable pause request still awaits a non-transferring torrent observation.
+func partialPoolReviewPauseReason(member *models.CrossSeedPartialPoolMember) (string, bool) {
+	if member == nil || member.Status != models.CrossSeedPartialPoolMemberStatusManual {
+		return "", false
+	}
+	reason, pending := strings.CutPrefix(member.LastError, partialPoolReviewPausePrefix)
+	reason = strings.TrimSpace(reason)
+	return reason, pending && reason != ""
+}
+
+// reconcilePartialPoolReviewPauses retries durable manual-review pauses before
+// file evidence can short-circuit the pass.
+func (s *Service) reconcilePartialPoolReviewPauses(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) {
+	for _, member := range pool.Members {
+		reason, pending := partialPoolReviewPauseReason(member)
+		if !pending {
+			continue
+		}
+		snapshot := snapshots[member.ID]
+		if snapshot == nil {
+			continue
+		}
+		snapshot.reviewPauseHandled = true
+		snapshot.stateRetryPending = !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, reason)
+	}
 }
 
 type partialPoolTorrentInventory struct {
@@ -326,9 +372,11 @@ type partialPoolTorrentInventory struct {
 }
 
 type partialPoolMemberSnapshot struct {
-	torrent     qbt.Torrent
-	files       qbt.TorrentFiles
-	fileByIndex map[int]qbt.TorrentFile
+	torrent            qbt.Torrent
+	files              qbt.TorrentFiles
+	fileByIndex        map[int]qbt.TorrentFile
+	stateRetryPending  bool
+	reviewPauseHandled bool
 }
 
 // RunPartialPoolCoordinator reconciles durable partial completion work until
@@ -338,8 +386,12 @@ func (s *Service) RunPartialPoolCoordinator(ctx context.Context) {
 		return
 	}
 
-	ticker := time.NewTicker(partialPoolSweepInterval)
-	defer ticker.Stop()
+	startedAt := time.Now()
+	pendingObservation, nextAdmission, retryFullScan := s.reconcilePartialPoolsScheduled(ctx, startedAt, partialPoolWake{}, true)
+	nextActiveRecovery := startedAt.Add(partialPoolActiveRecoveryInterval)
+	nextSettledAudit := startedAt.Add(partialPoolSettledAuditInterval)
+	reconcileTimer := time.NewTimer(partialPoolNextCoordinatorDelay(time.Now(), nextActiveRecovery, nextAdmission, nextSettledAudit))
+	defer reconcileTimer.Stop()
 	observationTimer := time.NewTimer(partialPoolRecheckPollInterval)
 	if !observationTimer.Stop() {
 		<-observationTimer.C
@@ -360,15 +412,39 @@ func (s *Service) RunPartialPoolCoordinator(ctx context.Context) {
 		}
 	}
 
-	scheduleObservation(s.reconcilePartialPools(ctx, time.Now(), partialPoolWake{}))
+	scheduleObservation(pendingObservation)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case wake := <-s.partialPoolWake:
-			scheduleObservation(s.reconcilePartialPools(ctx, time.Now(), wake))
-		case now := <-ticker.C:
-			scheduleObservation(s.reconcilePartialPools(ctx, now, partialPoolWake{}))
+			now := time.Now()
+			globalWake := wake.poolID <= 0 && (wake.instanceID <= 0 || wake.hash == "")
+			scanAll := globalWake || retryFullScan || s.partialPoolFullScanPending.Swap(false)
+			pending, wakeAdmission, retry := s.reconcilePartialPoolsScheduled(ctx, now, wake, scanAll)
+			retryFullScan = retry
+			if pending {
+				scheduleObservation(true)
+			}
+			if !wakeAdmission.IsZero() && (nextAdmission.IsZero() || wakeAdmission.Before(nextAdmission)) {
+				nextAdmission = wakeAdmission
+			}
+			resetPartialPoolCoordinatorTimer(reconcileTimer, time.Now(), nextActiveRecovery, nextAdmission, nextSettledAudit)
+		case now := <-reconcileTimer.C:
+			auditDue := !now.Before(nextSettledAudit)
+			recoveryDue := !now.Before(nextActiveRecovery)
+			scanAll := auditDue || retryFullScan || s.partialPoolFullScanPending.Swap(false)
+			pending, admission, retry := s.reconcilePartialPoolsScheduled(ctx, now, partialPoolWake{}, scanAll)
+			retryFullScan = retry
+			scheduleObservation(pending)
+			nextAdmission = admission
+			if recoveryDue {
+				nextActiveRecovery = now.Add(partialPoolActiveRecoveryInterval)
+			}
+			if auditDue {
+				nextSettledAudit = now.Add(partialPoolSettledAuditInterval)
+			}
+			resetPartialPoolCoordinatorTimer(reconcileTimer, time.Now(), nextActiveRecovery, nextAdmission, nextSettledAudit)
 		case now := <-observationC:
 			observationC = nil
 			scheduleObservation(s.observeRequestedPartialPoolRechecks(ctx, now))
@@ -377,20 +453,46 @@ func (s *Service) RunPartialPoolCoordinator(ctx context.Context) {
 }
 
 func (s *Service) reconcilePartialPools(ctx context.Context, now time.Time, wake partialPoolWake) bool {
+	globalWake := wake.poolID <= 0 && (wake.instanceID <= 0 || wake.hash == "")
+	pending, _, _ := s.reconcilePartialPoolsScheduled(ctx, now, wake, globalWake)
+	return pending
+}
+
+// reconcilePartialPoolsScheduled returns whether recheck observation is
+// pending, the next persisted admission deadline, and whether all pools need
+// another recovery pass.
+func (s *Service) reconcilePartialPoolsScheduled(ctx context.Context, now time.Time, wake partialPoolWake, scanAll bool) (bool, time.Time, bool) {
 	if ctx.Err() != nil {
-		return false
+		return false, time.Time{}, false
 	}
-	if wake.instanceID > 0 && wake.hash != "" {
-		if _, _, err := s.automationStore.ResolvePartialPoolMember(ctx, wake.instanceID, wake.hash); err != nil && ctx.Err() == nil {
+	var pools []*models.CrossSeedPartialPool
+	retryFullScan := false
+	if !scanAll && wake.instanceID > 0 && wake.hash != "" {
+		pool, _, err := s.automationStore.ResolvePartialPoolMember(ctx, wake.instanceID, wake.hash)
+		if err != nil && ctx.Err() == nil {
 			log.Debug().Err(err).Int("instanceID", wake.instanceID).Msg("Partial pool completion wake did not resolve a member")
+			retryFullScan = true
+		} else if pool != nil {
+			pools = []*models.CrossSeedPartialPool{pool}
 		}
-	} else if wake.poolID > 0 {
+	} else if !scanAll && wake.poolID > 0 {
 		if err := s.automationStore.SetPartialPoolStatus(ctx, wake.poolID, models.CrossSeedPartialPoolStatusActive); err != nil && ctx.Err() == nil {
 			log.Warn().Err(err).Int64("poolID", wake.poolID).Msg("Failed to activate partial completion pool")
+			retryFullScan = true
+		} else {
+			pool, err := s.automationStore.GetPartialPool(ctx, wake.poolID)
+			if err != nil {
+				if ctx.Err() == nil {
+					log.Warn().Err(err).Int64("poolID", wake.poolID).Msg("Failed to load targeted partial completion pool")
+					retryFullScan = true
+				}
+			} else {
+				pools = []*models.CrossSeedPartialPool{pool}
+			}
 		}
 	}
 	if ctx.Err() != nil {
-		return false
+		return false, time.Time{}, false
 	}
 
 	settings, err := s.GetAutomationSettings(ctx)
@@ -398,28 +500,66 @@ func (s *Service) reconcilePartialPools(ctx context.Context, now time.Time, wake
 		if err != nil && ctx.Err() == nil {
 			log.Warn().Err(err).Msg("Failed to load partial completion settings")
 		}
-		return false
+		return false, time.Time{}, retryFullScan || scanAll
 	}
-	pools, err := s.automationStore.ListPartialPoolsForReconciliation(ctx)
-	if err != nil {
-		if ctx.Err() == nil {
-			log.Warn().Err(err).Msg("Failed to list partial completion pools")
+	if scanAll || wake.instanceID <= 0 && wake.poolID <= 0 {
+		if scanAll {
+			pools, err = s.automationStore.ListPartialPoolsForReconciliation(ctx)
+		} else {
+			pools, err = s.automationStore.ListActivePartialPoolsForReconciliation(ctx)
 		}
-		return false
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Warn().Err(err).Msg("Failed to list partial completion pools")
+			}
+			return false, time.Time{}, retryFullScan || scanAll
+		}
 	}
+	nextAdmission := partialPoolNextAdmissionDeadline(pools, now)
 	if len(pools) == 0 {
 		_ = s.automationStore.PruneEmptyPartialPools(ctx)
-		return false
+		return false, nextAdmission, retryFullScan
 	}
 
 	inventories := s.loadPartialPoolTorrentInventories(ctx, pools)
 	pendingObservation := false
+	keepPoolActive := func(pool *models.CrossSeedPartialPool) {
+		if scanAll {
+			retryFullScan = true
+		}
+		if pool.Status == models.CrossSeedPartialPoolStatusActive {
+			return
+		}
+		err := s.automationStore.SetPartialPoolStatus(ctx, pool.ID, models.CrossSeedPartialPoolStatusActive)
+		if err != nil {
+			if ctx.Err() == nil {
+				log.Warn().Err(err).Int64("poolID", pool.ID).Msg("Failed to retain partial completion pool recovery schedule")
+				retryFullScan = true
+			}
+			return
+		}
+		pool.Status = models.CrossSeedPartialPoolStatusActive
+	}
 	for _, pool := range pools {
 		if ctx.Err() != nil {
-			return false
+			return false, nextAdmission, false
 		}
+		if pool.Status != models.CrossSeedPartialPoolStatusActive {
+			if err := s.automationStore.SetPartialPoolStatus(ctx, pool.ID, models.CrossSeedPartialPoolStatusActive); err != nil {
+				if ctx.Err() == nil {
+					log.Warn().Err(err).Int64("poolID", pool.ID).Msg("Failed to schedule partial completion pool before reconciliation")
+					retryFullScan = true
+				}
+				continue
+			}
+			pool.Status = models.CrossSeedPartialPoolStatusActive
+		}
+		evidenceComplete := partialPoolInventoriesComplete(pool, inventories)
 		observed := s.observePartialPoolMembers(ctx, now, pool, inventories)
 		if len(observed) == 0 {
+			if !evidenceComplete {
+				keepPoolActive(pool)
+			}
 			if settings.PooledPartialCompletionEnabled {
 				pendingObservation = pendingObservation || partialPoolRecheckObservationPending(pool)
 			}
@@ -427,11 +567,15 @@ func (s *Service) reconcilePartialPools(ctx context.Context, now time.Time, wake
 		}
 		pool, err = s.automationStore.GetPartialPool(ctx, pool.ID)
 		if err != nil {
+			if scanAll && ctx.Err() == nil {
+				retryFullScan = true
+			}
 			if settings.PooledPartialCompletionEnabled {
 				pendingObservation = pendingObservation || partialPoolRecheckObservationPending(pool)
 			}
 			continue
 		}
+		evidenceComplete = partialPoolInventoriesComplete(pool, inventories)
 		snapshots := make(map[int64]*partialPoolMemberSnapshot, len(pool.Members))
 		for _, member := range pool.Members {
 			if torrent, ok := partialPoolInventoryTorrent(inventories[member.InstanceID], member); ok {
@@ -440,17 +584,104 @@ func (s *Service) reconcilePartialPools(ctx context.Context, now time.Time, wake
 		}
 
 		if !settings.PooledPartialCompletionEnabled {
-			s.reconcileDisabledPartialPool(ctx, pool, snapshots)
-			_ = s.automationStore.SetPartialPoolStatus(ctx, pool.ID, models.CrossSeedPartialPoolStatusDormant)
+			pending, disableErr := s.reconcileDisabledPartialPool(ctx, pool, snapshots)
+			if disableErr != nil && ctx.Err() == nil {
+				log.Warn().Err(disableErr).Int64("poolID", pool.ID).Msg("Failed to stop disabled partial completion pool")
+				retryFullScan = true
+			}
+			if pending || !evidenceComplete {
+				keepPoolActive(pool)
+			} else {
+				err := s.automationStore.SetPartialPoolStatus(ctx, pool.ID, models.CrossSeedPartialPoolStatusDormant)
+				if err != nil {
+					if ctx.Err() == nil {
+						log.Warn().Err(err).Int64("poolID", pool.ID).Msg("Failed to persist disabled partial completion pool schedule")
+						retryFullScan = true
+					}
+				} else {
+					pool.Status = models.CrossSeedPartialPoolStatusDormant
+				}
+			}
 			continue
 		}
 
-		s.refreshPartialPoolFiles(ctx, pool, snapshots)
-		s.reconcilePartialPool(ctx, now, pool, snapshots, int64(max(settings.AutoResumeMaxDownloadMB, 0))<<20)
+		s.reconcilePartialPoolReviewPauses(ctx, pool, snapshots)
+		if !evidenceComplete {
+			keepPoolActive(pool)
+			pendingObservation = pendingObservation || partialPoolRecheckObservationPending(pool)
+			continue
+		}
+		if !s.refreshPartialPoolFiles(ctx, pool, snapshots) {
+			keepPoolActive(pool)
+			pendingObservation = pendingObservation || partialPoolRecheckObservationPending(pool)
+			continue
+		}
+		if err := s.reconcilePartialPool(ctx, now, pool, snapshots, int64(max(settings.AutoResumeMaxDownloadMB, 0))<<20); err != nil && ctx.Err() == nil {
+			log.Warn().Err(err).Int64("poolID", pool.ID).Msg("Failed to persist partial completion pool schedule")
+			retryFullScan = true
+		}
 		pendingObservation = pendingObservation || partialPoolRecheckObservationPending(pool)
 	}
 	_ = s.automationStore.PruneEmptyPartialPools(ctx)
-	return pendingObservation
+	return pendingObservation, nextAdmission, retryFullScan
+}
+
+// partialPoolInventoriesComplete reports whether every durable member resolved
+// in the current qBittorrent inventory, not merely whether its instance loaded.
+func partialPoolInventoriesComplete(pool *models.CrossSeedPartialPool, inventories map[int]partialPoolTorrentInventory) bool {
+	if pool == nil {
+		return false
+	}
+	for _, member := range pool.Members {
+		if member.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
+			continue
+		}
+		if _, found := partialPoolInventoryTorrent(inventories[member.InstanceID], member); !found {
+			return false
+		}
+	}
+	return true
+}
+
+func partialPoolNextAdmissionDeadline(pools []*models.CrossSeedPartialPool, now time.Time) time.Time {
+	var next time.Time
+	for _, pool := range pools {
+		var poolDeadline time.Time
+		for _, member := range pool.Members {
+			if member.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
+				continue
+			}
+			deadline := member.CreatedAt.Add(partialPoolAdmissionHold)
+			if deadline.After(poolDeadline) {
+				poolDeadline = deadline
+			}
+		}
+		if poolDeadline.After(now) && (next.IsZero() || poolDeadline.Before(next)) {
+			next = poolDeadline
+		}
+	}
+	return next
+}
+
+func partialPoolNextCoordinatorDelay(now, activeRecovery, admission, settledAudit time.Time) time.Duration {
+	next := activeRecovery
+	if !admission.IsZero() && admission.Before(next) {
+		next = admission
+	}
+	if settledAudit.Before(next) {
+		next = settledAudit
+	}
+	return max(next.Sub(now), 0)
+}
+
+func resetPartialPoolCoordinatorTimer(timer *time.Timer, now, activeRecovery, admission, settledAudit time.Time) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(partialPoolNextCoordinatorDelay(now, activeRecovery, admission, settledAudit))
 }
 
 func (s *Service) loadPartialPoolTorrentInventories(ctx context.Context, pools []*models.CrossSeedPartialPool) map[int]partialPoolTorrentInventory {
@@ -492,7 +723,7 @@ func (s *Service) observeRequestedPartialPoolRechecks(ctx context.Context, now t
 	if err != nil || settings == nil || !settings.PooledPartialCompletionEnabled {
 		return false
 	}
-	pools, err := s.automationStore.ListPartialPoolsForReconciliation(ctx)
+	pools, err := s.automationStore.ListActivePartialPoolsForReconciliation(ctx)
 	if err != nil {
 		return false
 	}
@@ -707,11 +938,13 @@ func (s *Service) observePartialPoolMembers(
 	return observed
 }
 
+// refreshPartialPoolFiles populates current file evidence and reports whether
+// every observed member returned a usable file list.
 func (s *Service) refreshPartialPoolFiles(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
 	snapshots map[int64]*partialPoolMemberSnapshot,
-) {
+) bool {
 	type memberRequest struct {
 		member *models.CrossSeedPartialPoolMember
 		hash   string
@@ -726,7 +959,9 @@ func (s *Service) refreshPartialPoolFiles(
 			continue
 		}
 		if normalizePathForComparison(snapshot.torrent.SavePath) != normalizePathForComparison(member.RootPath) {
-			s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, "qBittorrent save path no longer matches admitted root")
+			if !snapshot.reviewPauseHandled {
+				snapshot.stateRetryPending = !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, "qBittorrent save path no longer matches admitted root")
+			}
 			continue
 		}
 		hash := normalizeHash(snapshot.torrent.Hash)
@@ -741,9 +976,10 @@ func (s *Service) refreshPartialPoolFiles(
 		instanceIDs = append(instanceIDs, instanceID)
 	}
 	sort.Ints(instanceIDs)
+	complete := true
 	for _, instanceID := range instanceIDs {
 		if ctx.Err() != nil {
-			return
+			return false
 		}
 		requests := requestsByInstance[instanceID]
 		hashes := make([]string, 0, len(requests))
@@ -752,6 +988,7 @@ func (s *Service) refreshPartialPoolFiles(
 		}
 		filesByHash, err := s.syncManager.GetTorrentFilesBatch(qbittorrent.WithForceFilesRefresh(ctx), instanceID, hashes)
 		if err != nil {
+			complete = false
 			continue
 		}
 		for _, request := range requests {
@@ -767,7 +1004,12 @@ func (s *Service) refreshPartialPoolFiles(
 			fileByIndex, valid := partialPoolCurrentFiles(request.member, files)
 			if !valid {
 				if len(files) > 0 {
-					s.pausePartialPoolMemberForReview(ctx, request.member, snapshots[request.member.ID].torrent, "qBittorrent files or priorities no longer match admission")
+					snapshot := snapshots[request.member.ID]
+					if !snapshot.reviewPauseHandled {
+						snapshot.stateRetryPending = !s.pausePartialPoolMemberForReview(ctx, request.member, snapshot.torrent, "qBittorrent files or priorities no longer match admission")
+					}
+				} else {
+					complete = false
 				}
 				continue
 			}
@@ -776,6 +1018,7 @@ func (s *Service) refreshPartialPoolFiles(
 			snapshot.fileByIndex = fileByIndex
 		}
 	}
+	return complete
 }
 
 func partialPoolCurrentFiles(member *models.CrossSeedPartialPoolMember, files qbt.TorrentFiles) (map[int]qbt.TorrentFile, bool) {
@@ -885,40 +1128,97 @@ func partialPoolTransferCapable(state qbt.TorrentState) bool {
 	return isDownloadingOrQueued(state)
 }
 
-func (s *Service) reconcileDisabledPartialPool(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) {
+// reconcileDisabledPartialPool stops pool-owned transfers and reports whether
+// another observation is required before the pool can become dormant.
+func (s *Service) reconcileDisabledPartialPool(ctx context.Context, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot) (bool, error) {
+	pending := false
+	var firstErr error
 	for _, member := range pool.Members {
+		if reason, reviewPausePending := partialPoolReviewPauseReason(member); reviewPausePending {
+			snapshot := snapshots[member.ID]
+			if snapshot == nil || !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, reason) {
+				pending = true
+			}
+			continue
+		}
 		if member.Status != models.CrossSeedPartialPoolMemberStatusAcquiring || !member.StartedByPool {
 			continue
 		}
 		snapshot := snapshots[member.ID]
-		if snapshot == nil || partialPoolTorrentComplete(snapshot.torrent) {
+		if snapshot == nil {
+			pending = true
 			continue
 		}
-		if isPausedOrStopped(snapshot.torrent.State) {
+		if partialPoolChecking(snapshot.torrent.State) {
+			pending = true
+			continue
+		}
+		if partialPoolTorrentComplete(snapshot.torrent) {
+			missing := int64(0)
+			changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusComplete, models.PartialPoolMemberMutation{MissingBytes: &missing})
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("complete disabled partial pool member: %w", err)
+				}
+				pending = true
+				continue
+			}
+			if !changed {
+				pending = true
+				continue
+			}
+			member.Status = models.CrossSeedPartialPoolMemberStatusComplete
+			member.StartedByPool = false
+			member.MissingBytes = 0
+			continue
+		}
+		if isPausedOrStopped(snapshot.torrent.State) || snapshot.torrent.State == qbt.TorrentStateError || snapshot.torrent.State == qbt.TorrentStateMissingFiles {
 			stopped := false
-			_, _ = s.automationStore.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
+			changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
 				StartedByPool:       &stopped,
 				LastDownloadedBytes: models.NullableInt64Update{Set: true},
 				LastProgressAt:      models.NullableTimeUpdate{Set: true},
 			})
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("release disabled partial pool downloader: %w", err)
+				}
+				pending = true
+				continue
+			}
+			if !changed {
+				pending = true
+				continue
+			}
+			member.Status = models.CrossSeedPartialPoolMemberStatusWaiting
+			member.StartedByPool = false
+			member.LastDownloadedBytes = nil
+			member.LastProgressAt = nil
 			s.resetPartialPoolAcquiringFiles(ctx, member)
 			continue
 		}
 		if ctx.Err() != nil {
-			return
+			return pending, ctx.Err()
 		}
-		_ = s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause")
+		pending = true
+		if err := s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause"); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("pause disabled partial pool downloader: %w", err)
+		}
 	}
+	return pending, firstErr
 }
 
+// reconcilePartialPool applies current pool evidence and returns any failure
+// to persist the pool's next scheduling state.
 func (s *Service) reconcilePartialPool(
 	ctx context.Context,
 	now time.Time,
 	pool *models.CrossSeedPartialPool,
 	snapshots map[int64]*partialPoolMemberSnapshot,
 	budget int64,
-) {
+) error {
 	admissionWindowClosed := partialPoolAdmissionWindowClosed(pool, now)
+	stateRetryPending := s.reconcilePartialPoolManualFiles(ctx, pool)
 	for _, member := range pool.Members {
 		// qBittorrent can optimistically report a newly added torrent as
 		// complete before its first recheck. Verification-owned members publish
@@ -934,13 +1234,15 @@ func (s *Service) reconcilePartialPool(
 
 	for _, member := range pool.Members {
 		if ctx.Err() != nil {
-			return
+			return ctx.Err()
 		}
 		snapshot := snapshots[member.ID]
 		if snapshot == nil {
 			continue
 		}
-		if s.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot) {
+		handled, retry := s.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
+		stateRetryPending = stateRetryPending || retry
+		if handled {
 			continue
 		}
 		if len(snapshot.files) == 0 {
@@ -980,7 +1282,7 @@ func (s *Service) reconcilePartialPool(
 
 	for _, member := range pool.Members {
 		if ctx.Err() != nil {
-			return
+			return ctx.Err()
 		}
 		if member.Status != models.CrossSeedPartialPoolMemberStatusWaiting && member.Status != models.CrossSeedPartialPoolMemberStatusBlocked {
 			continue
@@ -993,97 +1295,134 @@ func (s *Service) reconcilePartialPool(
 	}
 
 	s.propagatePartialPoolFiles(ctx, now, pool, snapshots, admissionWindowClosed)
-	if ctx.Err() == nil {
-		s.selectAndResumePartialPoolDownloader(ctx, now, pool, snapshots, budget)
+	for _, snapshot := range snapshots {
+		if snapshot != nil && snapshot.stateRetryPending {
+			stateRetryPending = true
+			break
+		}
+	}
+	selectionPending := false
+	if ctx.Err() == nil && !stateRetryPending {
+		selectionPending = s.selectAndResumePartialPoolDownloader(ctx, now, pool, snapshots, budget)
 	}
 
 	status := models.CrossSeedPartialPoolStatusDormant
-	if !partialPoolAdmissionReady(pool, now) {
+	if !partialPoolAdmissionReady(pool, now) || stateRetryPending || selectionPending {
 		status = models.CrossSeedPartialPoolStatusActive
 	} else {
 		for _, member := range pool.Members {
-			if member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || partialPoolInitialVerificationDeferred(member) || partialPoolMemberHasVerificationWork(member) || member.LastError == partialPoolPropagationPause || partialPoolResumePending(member.LastError) || partialPoolRecoveryPending(member.LastError) {
+			cooldownPending := member.Status == models.CrossSeedPartialPoolMemberStatusWaiting && member.RetryAfter != nil
+			snapshot := snapshots[member.ID]
+			checking := snapshot != nil && partialPoolChecking(snapshot.torrent.State)
+			snapshotRetryPending := snapshot != nil && snapshot.stateRetryPending
+			if member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || partialPoolInitialVerificationDeferred(member) || partialPoolMemberHasVerificationWork(member) || cooldownPending || checking || snapshotRetryPending || member.LastError == partialPoolPropagationPause || partialPoolResumePending(member.LastError) || partialPoolRecoveryPending(member.LastError) {
 				status = models.CrossSeedPartialPoolStatusActive
 				break
 			}
 		}
 	}
-	_ = s.automationStore.SetPartialPoolStatus(ctx, pool.ID, status)
+	if err := s.automationStore.SetPartialPoolStatus(ctx, pool.ID, status); err != nil {
+		return fmt.Errorf("persist partial pool scheduling state: %w", err)
+	}
+	pool.Status = status
+	return nil
 }
 
-func (s *Service) reconcilePartialPoolExceptionalState(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) bool {
+// reconcilePartialPoolManualFiles repairs a file-first manual transition after
+// a failed member CAS and reports whether the durable retry is still pending.
+func (s *Service) reconcilePartialPoolManualFiles(ctx context.Context, pool *models.CrossSeedPartialPool) bool {
+	retryPending := false
+	for _, member := range pool.Members {
+		if member.Status == models.CrossSeedPartialPoolMemberStatusManual || member.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
+			continue
+		}
+		for _, file := range member.Files {
+			if file.Status != models.CrossSeedPartialPoolFileStatusManual {
+				continue
+			}
+			reason := strings.TrimSpace(file.LastError)
+			if reason == "" {
+				reason = "partial pool file requires manual review"
+			}
+			if !s.markPartialPoolMemberManual(ctx, member, reason) {
+				retryPending = true
+			}
+			break
+		}
+	}
+	return retryPending
+}
+
+func (s *Service) reconcilePartialPoolExceptionalState(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot) (bool, bool) {
 	if member == nil || snapshot == nil || member.Status == models.CrossSeedPartialPoolMemberStatusManual || member.Status == models.CrossSeedPartialPoolMemberStatusRemoved {
-		return false
+		return false, false
 	}
 	if snapshot.torrent.State == qbt.TorrentStateMissingFiles && member.Mode == models.CrossSeedPartialPoolModeHardlink {
 		if member.Status == models.CrossSeedPartialPoolMemberStatusVerifying || member.Status == models.CrossSeedPartialPoolMemberStatusRechecking {
-			return false
+			return false, false
 		}
 		reason := "hardlink partial pool member entered missingFiles state"
 		if member.Status == models.CrossSeedPartialPoolMemberStatusComplete {
-			s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason})
-		} else {
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			return true, !s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason})
 		}
-		return true
+		return true, !s.markPartialPoolMemberManual(ctx, member, reason)
 	}
 	if snapshot.torrent.State == qbt.TorrentStateMissingFiles &&
 		member.Mode == models.CrossSeedPartialPoolModeReflink &&
 		member.Status == models.CrossSeedPartialPoolMemberStatusComplete &&
 		partialPoolResumePending(member.LastError) {
 		s.requestPartialPoolResume(ctx, member)
-		return true
+		return true, false
 	}
 
 	attempts, recovering := partialPoolRecoveryAttemptCount(member.LastError)
 	if snapshot.torrent.State != qbt.TorrentStateError {
 		if !recovering {
-			return false
+			return false, false
 		}
 		if partialPoolDataChecking(snapshot.torrent.State) {
 			if member.Status != models.CrossSeedPartialPoolMemberStatusComplete {
 				s.recordPartialPoolRecheckObserved(ctx, now, member)
 			}
-			return true
+			return true, false
 		}
 		if snapshot.torrent.State == qbt.TorrentStateCheckingResumeData {
-			return true
+			return true, false
 		}
 		if now.Sub(member.UpdatedAt) < partialPoolRecheckGrace {
-			return true
+			return true, false
 		}
 		reason := ""
 		if member.Status == models.CrossSeedPartialPoolMemberStatusComplete {
 			reason = partialPoolResumeAttemptReason(0)
 		}
 		s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason})
-		return false
+		return false, false
 	}
 	if member.Status == models.CrossSeedPartialPoolMemberStatusComplete && !partialPoolResumePending(member.LastError) && !recovering {
-		return false
+		return false, false
 	}
 	if !s.partialPoolCoordinatorEnabled(ctx) {
-		return true
+		return true, false
 	}
 	if recovering && now.Sub(member.UpdatedAt) < partialPoolRecheckGrace {
-		return true
+		return true, false
 	}
 	if attempts >= partialPoolRecoveryLimit {
 		s.finishPartialPoolRecoveryExhausted(ctx, member, partialPoolRecoveryExhausted)
-		return true
+		return true, false
 	}
 
 	reason := partialPoolRecoveryAttemptReason(attempts + 1)
 	if !s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason}) {
-		return true
+		return true, true
 	}
 	member.UpdatedAt = now
 	_ = s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause")
 	if err := s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "recheck"); err != nil && attempts+1 >= partialPoolRecoveryLimit {
 		s.finishPartialPoolRecoveryExhausted(ctx, member, partialPoolRecoveryExhausted+": "+err.Error())
 	}
-	return true
+	return true, false
 }
 
 func (s *Service) finishPartialPoolRecoveryExhausted(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string) {
@@ -1091,8 +1430,7 @@ func (s *Service) finishPartialPoolRecoveryExhausted(ctx context.Context, member
 		s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason})
 		return
 	}
-	s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
-	member.Status = models.CrossSeedPartialPoolMemberStatusManual
+	s.markPartialPoolMemberManual(ctx, member, reason)
 }
 
 func (s *Service) reconcilePartialPoolVerifying(ctx context.Context, now time.Time, pool *models.CrossSeedPartialPool, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
@@ -1175,8 +1513,7 @@ func (s *Service) requestPartialPoolRecheck(ctx context.Context, now time.Time, 
 	}
 	err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), member.InstanceID, partialPoolMemberHashes(member), "recheck")
 	if err != nil {
-		s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, "recheck request failed: "+err.Error())
-		member.Status = models.CrossSeedPartialPoolMemberStatusManual
+		s.markPartialPoolMemberManual(ctx, member, "recheck request failed: "+err.Error())
 		return
 	}
 	log.Debug().
@@ -1393,8 +1730,7 @@ func (s *Service) settlePartialPoolRecheckFiles(
 			}
 			reason := "propagated hardlink failed verification; target ownership is not provable"
 			s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason})
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			s.markPartialPoolMemberManual(ctx, member, reason)
 			return false
 		}
 		reason := "propagated reflink failed verification; retained clone requires download repair"
@@ -1525,14 +1861,12 @@ func (s *Service) reconcilePartialPoolAcquiring(ctx context.Context, now time.Ti
 	}
 	if snapshot.torrent.State == qbt.TorrentStateMissingFiles {
 		if member.Mode != models.CrossSeedPartialPoolModeReflink {
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, "hardlink downloader entered missingFiles state")
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			s.markPartialPoolMemberManual(ctx, member, "hardlink downloader entered missingFiles state")
 			return
 		}
 		s.requestPartialPoolResume(ctx, member)
 		if strings.HasPrefix(member.LastError, partialPoolResumeExhausted) {
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, member.LastError)
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			s.markPartialPoolMemberManual(ctx, member, member.LastError)
 		}
 		return
 	}
@@ -1549,15 +1883,13 @@ func (s *Service) reconcilePartialPoolAcquiring(ctx context.Context, now time.Ti
 			if member.LastError == partialPoolSafetyPause {
 				reason = "a hardlinked file failed verification"
 			}
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, reason)
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			s.markPartialPoolMemberManual(ctx, member, reason)
 			return
 		}
 		if partialPoolResumePending(member.LastError) {
 			s.requestPartialPoolResume(ctx, member)
 			if strings.HasPrefix(member.LastError, partialPoolResumeExhausted) {
-				s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, member.LastError)
-				member.Status = models.CrossSeedPartialPoolMemberStatusManual
+				s.markPartialPoolMemberManual(ctx, member, member.LastError)
 			}
 			return
 		}
@@ -1632,8 +1964,7 @@ func (s *Service) reconcilePartialPoolAcquiring(ctx context.Context, now time.Ti
 		return
 	}
 	if err := s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause"); err != nil {
-		s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, "stalled downloader could not be paused: "+err.Error())
-		member.Status = models.CrossSeedPartialPoolMemberStatusManual
+		s.markPartialPoolMemberManual(ctx, member, "stalled downloader could not be paused: "+err.Error())
 	}
 }
 
@@ -1754,8 +2085,7 @@ func (s *Service) propagatePartialPoolFiles(ctx context.Context, now time.Time, 
 			}
 			if ctx.Err() == nil {
 				if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), targetMember.InstanceID, partialPoolMemberHashes(targetMember), "pause"); err != nil {
-					s.markPartialPoolMemberManual(ctx, targetMember.ID, []string{targetMember.Status}, "propagation target could not be paused: "+err.Error())
-					targetMember.Status = models.CrossSeedPartialPoolMemberStatusManual
+					s.markPartialPoolMemberManual(ctx, targetMember, "propagation target could not be paused: "+err.Error())
 				}
 			}
 			continue
@@ -2110,7 +2440,8 @@ func cleanupPartialPoolMemberReflinkStaging(pool *models.CrossSeedPartialPool, m
 // finishPartialPoolPropagation validates and materializes one claimed pool
 // file. It reports success only when the target is ready for verification;
 // unsafe inputs or filesystem failures move the file and member to manual
-// handling, while unavailable live state remains retryable.
+// handling, while unavailable live state remains retryable. A failed member
+// transition marks its snapshot so reconciliation retains the active schedule.
 func (s *Service) finishPartialPoolPropagation(
 	ctx context.Context,
 	pool *models.CrossSeedPartialPool,
@@ -2121,13 +2452,18 @@ func (s *Service) finishPartialPoolPropagation(
 	if ctx.Err() != nil || targetFile.SourceFileID == nil {
 		return false
 	}
+	targetSnapshot := snapshots[targetMember.ID]
+	markManual := func(failureCategory, reason string) {
+		if !s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, failureCategory, reason) && targetSnapshot != nil {
+			targetSnapshot.stateRetryPending = true
+		}
+	}
 	sourceMember, sourceFile := partialPoolFileByID(pool, *targetFile.SourceFileID)
 	if sourceMember == nil || sourceFile == nil {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "source_missing", "propagation source no longer exists")
+		markManual("source_missing", "propagation source no longer exists")
 		return false
 	}
 	sourceSnapshot := snapshots[sourceMember.ID]
-	targetSnapshot := snapshots[targetMember.ID]
 	if sourceSnapshot == nil || targetSnapshot == nil || len(sourceSnapshot.files) == 0 || len(targetSnapshot.files) == 0 {
 		return false
 	}
@@ -2156,31 +2492,31 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 	if sourceSnapshot.torrent.State == qbt.TorrentStateError || sourceSnapshot.torrent.State == qbt.TorrentStateMissingFiles || sourceCurrent.Progress < 1 {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "source_incomplete", "propagation source is no longer complete")
+		markManual("source_incomplete", "propagation source is no longer complete")
 		return false
 	}
 	if !partialPoolFilesPair(sourceMember, targetMember, sourceFile, targetFile) {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "file_pair_changed", "persisted source and target no longer satisfy file pairing")
+		markManual("file_pair_changed", "persisted source and target no longer satisfy file pairing")
 		return false
 	}
 	if !s.partialPoolMemberModeEnabled(ctx, sourceMember) || !s.partialPoolMemberModeEnabled(ctx, targetMember) {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "mode_disabled", "link mode or local filesystem access was disabled")
+		markManual("mode_disabled", "link mode or local filesystem access was disabled")
 		return false
 	}
 
 	sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
 	if err != nil {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "unsafe_source_path", "unsafe source path: "+err.Error())
+		markManual("unsafe_source_path", "unsafe source path: "+err.Error())
 		return false
 	}
 	targetPath, err := partialPoolLocalPath(targetMember, targetFile)
 	if err != nil {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "unsafe_target_path", "unsafe target path: "+err.Error())
+		markManual("unsafe_target_path", "unsafe target path: "+err.Error())
 		return false
 	}
 	sourceInfo, err := os.Lstat(sourcePath)
 	if err != nil || !sourceInfo.Mode().IsRegular() || sourceInfo.Size() != sourceFile.SizeBytes {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "source_file_invalid", "propagation source is missing, moved, or has the wrong size")
+		markManual("source_file_invalid", "propagation source is missing, moved, or has the wrong size")
 		return false
 	}
 	log.Debug().
@@ -2196,30 +2532,30 @@ func (s *Service) finishPartialPoolPropagation(
 	replaceReflinkTarget := false
 	if targetInfo, statErr := os.Lstat(targetPath); statErr == nil {
 		if !targetInfo.Mode().IsRegular() {
-			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "target_not_regular", "a non-regular target already exists")
+			markManual("target_not_regular", "a non-regular target already exists")
 			return false
 		}
 		if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
 			if !partialPoolSameFile(sourcePath, targetPath) {
-				s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "target_conflict", "a different target file already exists")
+				markManual("target_conflict", "a different target file already exists")
 				return false
 			}
 			s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
 			return true
 		}
 		if os.SameFile(sourceInfo, targetInfo) {
-			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "source_target_alias", "reflink propagation target resolves to the source file")
+			markManual("source_target_alias", "reflink propagation target resolves to the source file")
 			return false
 		}
 		replaceReflinkTarget = true
 	} else if !os.IsNotExist(statErr) {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "target_stat_failed", "target path could not be inspected: "+statErr.Error())
+		markManual("target_stat_failed", "target path could not be inspected: "+statErr.Error())
 		return false
 	}
 
 	plan, err := hardlinktree.BuildSingleFilePlan(targetMember.RootPath, targetFile.RelativePath, sourcePath)
 	if err != nil {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "plan_build_failed", err.Error())
+		markManual("plan_build_failed", err.Error())
 		return false
 	}
 	if targetMember.Mode == models.CrossSeedPartialPoolModeReflink {
@@ -2228,11 +2564,11 @@ func (s *Service) finishPartialPoolPropagation(
 		// remain intact until the same-filesystem rename succeeds.
 		stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
 		if stagingErr := ensurePartialPoolReflinkStagingRoot(stagingRoot); stagingErr != nil {
-			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "staging_prepare_failed", "reflink staging could not be prepared: "+stagingErr.Error())
+			markManual("staging_prepare_failed", "reflink staging could not be prepared: "+stagingErr.Error())
 			return false
 		}
 		if removeErr := cleanPartialPoolReflinkStagingRoot(stagingRoot, sourcePath, targetPath); removeErr != nil {
-			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "staging_cleanup_failed", "stale reflink target could not be removed: "+removeErr.Error())
+			markManual("staging_cleanup_failed", "stale reflink target could not be removed: "+removeErr.Error())
 			return false
 		}
 		defer func() {
@@ -2256,7 +2592,7 @@ func (s *Service) finishPartialPoolPropagation(
 		created, err = reflinktree.Create(plan)
 	}
 	if err != nil {
-		s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "materialization_failed", "file propagation failed: "+err.Error())
+		markManual("materialization_failed", "file propagation failed: "+err.Error())
 		return false
 	}
 	if replaceReflinkTarget {
@@ -2264,7 +2600,7 @@ func (s *Service) finishPartialPoolPropagation(
 			if rollbackErr := created.Rollback(); rollbackErr != nil {
 				err = errors.Join(err, fmt.Errorf("rollback temporary reflink: %w", rollbackErr))
 			}
-			s.markPartialPoolPropagationManual(ctx, targetMember, targetFile, "target_replace_failed", "reflink target could not be replaced: "+err.Error())
+			markManual("target_replace_failed", "reflink target could not be replaced: "+err.Error())
 			return false
 		}
 	}
@@ -2297,7 +2633,7 @@ func (s *Service) partialPoolMemberModeEnabled(ctx context.Context, member *mode
 	return member.Mode == models.CrossSeedPartialPoolModeReflink && instance.UseReflinks
 }
 
-func (s *Service) markPartialPoolPropagationManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, file *models.CrossSeedPartialPoolMemberFile, failureCategory, reason string) {
+func (s *Service) markPartialPoolPropagationManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, file *models.CrossSeedPartialPoolMemberFile, failureCategory, reason string) bool {
 	event := log.Debug().
 		Int64("poolID", member.PoolID).
 		Int64("memberID", member.ID).
@@ -2310,8 +2646,7 @@ func (s *Service) markPartialPoolPropagationManual(ctx context.Context, member *
 	event.Msg("Partial pool file propagation failed")
 	s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason})
 	s.deletePartialPoolCreated(file.ID)
-	s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
-	member.Status = models.CrossSeedPartialPoolMemberStatusManual
+	return s.markPartialPoolMemberManual(ctx, member, reason)
 }
 
 // preparePartialPoolRecheckForPropagation waits for an outstanding check to be
@@ -2645,32 +2980,41 @@ func partialPoolFilesUnlockMember(sourceMember *models.CrossSeedPartialPoolMembe
 	return len(targetFiles) > 0
 }
 
-func (s *Service) selectAndResumePartialPoolDownloader(ctx context.Context, now time.Time, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot, budget int64) {
+// selectAndResumePartialPoolDownloader reports whether an eligible downloader
+// could not be durably claimed and needs the active recovery schedule.
+func (s *Service) selectAndResumePartialPoolDownloader(ctx context.Context, now time.Time, pool *models.CrossSeedPartialPool, snapshots map[int64]*partialPoolMemberSnapshot, budget int64) bool {
 	member := selectPartialPoolDownloader(pool, snapshots, now)
 	if member == nil || ctx.Err() != nil {
-		return
+		return false
 	}
 	snapshot := snapshots[member.ID]
 	if partialPoolInitialVerificationDeferred(member) {
 		s.requestPartialPoolRecheck(ctx, now, member)
-		return
+		return false
 	}
 	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(s))
 	if status != models.CrossSeedPartialPoolMemberStatusWaiting {
 		if status != member.Status {
 			empty := ""
-			s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{LastError: choosePartialPoolError(status, reason, &empty)})
+			if !s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{LastError: choosePartialPoolError(status, reason, &empty)}) {
+				return true
+			}
 		}
-		return
+		return false
 	}
 	if !s.partialPoolMemberModeEnabled(ctx, member) {
-		s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusWaiting}, "link mode or local filesystem access was disabled")
-		member.Status = models.CrossSeedPartialPoolMemberStatusManual
-		return
+		reason = "link mode or local filesystem access was disabled"
+		return !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
 	}
 	claimed, err := s.automationStore.ClaimPartialPoolDownloader(ctx, member.ID, snapshot.torrent.Downloaded, now, now.Add(-partialPoolAdmissionHold))
-	if err != nil || !claimed {
-		return
+	if err != nil {
+		if ctx.Err() == nil {
+			log.Warn().Err(err).Int64("poolID", pool.ID).Int64("memberID", member.ID).Msg("Failed to claim partial pool downloader")
+		}
+		return true
+	}
+	if !claimed {
+		return true
 	}
 	log.Debug().
 		Int64("poolID", pool.ID).
@@ -2687,23 +3031,23 @@ func (s *Service) selectAndResumePartialPoolDownloader(ctx context.Context, now 
 	settings, settingsErr := s.GetAutomationSettings(ctx)
 	if settingsErr != nil || settings == nil || !settings.PooledPartialCompletionEnabled || !s.refreshPartialPoolMemberSnapshot(ctx, member, snapshot) {
 		s.releasePartialPoolDownloaderClaim(ctx, member, "pooled completion setting or current file evidence changed before resume")
-		return
+		return true
 	}
 	currentBudget := int64(max(settings.AutoResumeMaxDownloadMB, 0)) << 20
 	status, reason = partialPoolPostRecheckVerdict(member, snapshot, currentBudget, normalizerForService(s))
 	if status != models.CrossSeedPartialPoolMemberStatusWaiting {
 		if status == models.CrossSeedPartialPoolMemberStatusManual {
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, reason)
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			if !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason}) {
+				return true
+			}
 		} else {
 			s.releasePartialPoolDownloaderClaim(ctx, member, reason)
 		}
-		return
+		return false
 	}
 	if !s.partialPoolMemberModeEnabled(ctx, member) {
-		s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, "link mode or local filesystem access was disabled")
-		member.Status = models.CrossSeedPartialPoolMemberStatusManual
-		return
+		reason = "link mode or local filesystem access was disabled"
+		return !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
 	}
 	for _, file := range partialPoolMissingWantedFiles(member, snapshot) {
 		if file.Status == models.CrossSeedPartialPoolFileStatusMissing {
@@ -2712,13 +3056,16 @@ func (s *Service) selectAndResumePartialPoolDownloader(ctx context.Context, now 
 		}
 	}
 	if ctx.Err() != nil {
-		return
+		return false
 	}
 	s.requestPartialPoolResume(ctx, member)
 	if strings.HasPrefix(member.LastError, partialPoolResumeExhausted) {
-		s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, member.LastError)
-		member.Status = models.CrossSeedPartialPoolMemberStatusManual
+		reason = member.LastError
+		if !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason}) {
+			return true
+		}
 	}
+	return false
 }
 
 func (s *Service) releasePartialPoolDownloaderClaim(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string) {

@@ -178,7 +178,7 @@ func TestPartialPoolHardlinkMissingFilesSettlesRollbackBeforeExceptionalState(t 
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
-			service.reconcilePartialPool(t.Context(), target.CreatedAt.Add(partialPoolAdmissionHold), pool, map[int64]*partialPoolMemberSnapshot{
+			requirePartialPoolReconciled(t, service, target.CreatedAt.Add(partialPoolAdmissionHold), pool, map[int64]*partialPoolMemberSnapshot{
 				source.ID: sourceSnapshot,
 				target.ID: targetSnapshot,
 			}, target.Files[0].SizeBytes)
@@ -446,10 +446,11 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				reconcileAt = target.CreatedAt
 			}
 			reconcileAt = reconcileAt.Add(partialPoolAdmissionHold)
-			service.reconcilePartialPool(t.Context(), reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
+			requirePartialPoolReconciled(t, service, reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
 				source.ID: sourceSnapshot,
 				target.ID: targetSnapshot,
 			}, int64(len(payload)))
+
 			if testCase.liveRefreshBlocked {
 				pool, err = store.GetPartialPool(t.Context(), pool.ID)
 				require.NoError(t, err)
@@ -461,7 +462,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				require.Empty(t, sync.bulkActions)
 
 				liveRefreshBlocked = false
-				service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, map[int64]*partialPoolMemberSnapshot{
+				requirePartialPoolReconciled(t, service, reconcileAt.Add(time.Second), pool, map[int64]*partialPoolMemberSnapshot{
 					source.ID: sourceSnapshot,
 					target.ID: targetSnapshot,
 				}, int64(len(payload)))
@@ -477,10 +478,11 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				require.Empty(t, sync.bulkActions)
 
 				targetLiveState = qbt.TorrentStateCheckingDl
-				service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, map[int64]*partialPoolMemberSnapshot{
+				requirePartialPoolReconciled(t, service, reconcileAt.Add(time.Second), pool, map[int64]*partialPoolMemberSnapshot{
 					source.ID: sourceSnapshot,
 					target.ID: targetSnapshot,
 				}, int64(len(payload)))
+
 				pool, err = store.GetPartialPool(t.Context(), pool.ID)
 				require.NoError(t, err)
 				source = partialPoolMemberByTorrentKey(pool, "source")
@@ -491,7 +493,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				require.Empty(t, sync.bulkActions)
 
 				targetLiveState = qbt.TorrentStateMissingFiles
-				service.reconcilePartialPool(t.Context(), reconcileAt.Add(2*time.Second), pool, map[int64]*partialPoolMemberSnapshot{
+				requirePartialPoolReconciled(t, service, reconcileAt.Add(2*time.Second), pool, map[int64]*partialPoolMemberSnapshot{
 					source.ID: sourceSnapshot,
 					target.ID: targetSnapshot,
 				}, int64(len(payload)))
@@ -513,7 +515,7 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				sourceSnapshot.files[0].Progress = 1
 				sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
 				filesByHash[source.TorrentKey] = sourceSnapshot.files
-				service.reconcilePartialPool(t.Context(), reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
+				requirePartialPoolReconciled(t, service, reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
 					source.ID: sourceSnapshot,
 					target.ID: targetSnapshot,
 				}, int64(len(payload)))
@@ -696,7 +698,7 @@ func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
 		source.ID: sourceSnapshot,
 		target.ID: targetSnapshot,
 	}
-	service.reconcilePartialPool(t.Context(), reconcileAt, pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt, pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -712,7 +714,7 @@ func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
 	sourceSnapshot.files[1].Progress = 1
 	sourceSnapshot.fileByIndex[1] = sourceSnapshot.files[1]
 	filesByHash[source.TorrentKey] = sourceSnapshot.files
-	service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -853,7 +855,7 @@ func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t
 		checkingSource.ID: checkingSnapshot,
 		target.ID:         targetSnapshot,
 	}
-	service.reconcilePartialPool(t.Context(), reconcileAt, pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt, pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -875,7 +877,7 @@ func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t
 	checkingSnapshot.files[0].Progress = 1
 	checkingSnapshot.fileByIndex[checkingSource.Files[0].FileIndex] = checkingSnapshot.files[0]
 	filesByHash[checkingSource.TorrentKey] = checkingSnapshot.files
-	service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -1207,7 +1209,7 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 	}
 	require.NotNil(t, sourceMember)
 	snapshots[sourceMember.ID].torrent.State = qbt.TorrentStateCheckingUp
-	service.reconcilePartialPool(t.Context(), reconcileAt, pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt, pool, snapshots, 1<<20)
 	require.Empty(t, sync.bulkActions, "a checking source must settle before propagation or lazy initial verification")
 	for _, member := range pool.Members {
 		if member.ID == sourceMember.ID {
@@ -1219,7 +1221,7 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 	}
 
 	snapshots[sourceMember.ID].torrent.State = qbt.TorrentStateUploading
-	service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -1258,7 +1260,7 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 		target := partialPoolMemberByTorrentKey(pool, key)
 		snapshots[target.ID].torrent.State = qbt.TorrentStateCheckingDl
 	}
-	service.reconcilePartialPool(t.Context(), reconcileAt.Add(2*time.Second), pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt.Add(2*time.Second), pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -1274,7 +1276,7 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 			snapshot.fileByIndex[index] = snapshot.files[index]
 		}
 	}
-	service.reconcilePartialPool(t.Context(), reconcileAt.Add(3*time.Second), pool, snapshots, 1<<20)
+	requirePartialPoolReconciled(t, service, reconcileAt.Add(3*time.Second), pool, snapshots, 1<<20)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)

@@ -392,6 +392,25 @@ func TestCrossSeedPartialPoolRegistrationRollsBackAtomically(t *testing.T) {
 	require.Empty(t, pools)
 }
 
+func TestCrossSeedPartialPoolActiveReconciliationListing(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	activePool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolRegistration(t, firstID, firstID, "active-member", "active-member", "", "active-source"))
+	require.NoError(t, err)
+	dormantPool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolRegistration(t, secondID, secondID, "dormant-member", "dormant-member", "", "dormant-source"))
+	require.NoError(t, err)
+	require.NotEqual(t, activePool.ID, dormantPool.ID)
+	require.NoError(t, store.SetPartialPoolStatus(t.Context(), dormantPool.ID, models.CrossSeedPartialPoolStatusDormant))
+
+	pools, err := store.ListActivePartialPoolsForReconciliation(t.Context())
+	require.NoError(t, err)
+	require.Len(t, pools, 1)
+	require.Equal(t, activePool.ID, pools[0].ID)
+
+	pools, err = store.ListPartialPoolsForReconciliation(t.Context())
+	require.NoError(t, err)
+	require.Len(t, pools, 2, "startup recovery and settled audits retain dormant pools")
+}
+
 func TestCrossSeedPartialPoolRegistrationReportsInvalidFileField(t *testing.T) {
 	tests := []struct {
 		name    string

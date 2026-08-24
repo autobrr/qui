@@ -14,6 +14,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -24,6 +25,7 @@ type partialPoolPollingSyncManager struct {
 	mu                sync.Mutex
 	torrent           qbt.Torrent
 	actions           []string
+	firstActionAt     time.Time
 	reads             int
 	checkingAfterRead int
 }
@@ -44,6 +46,9 @@ func (m *partialPoolPollingSyncManager) BulkAction(_ context.Context, _ int, has
 	defer m.mu.Unlock()
 	for _, hash := range hashes {
 		m.actions = append(m.actions, action+":"+hash)
+		if m.firstActionAt.IsZero() {
+			m.firstActionAt = time.Now()
+		}
 	}
 	if action == "recheck" {
 		m.torrent.State = qbt.TorrentStateCheckingDl
@@ -69,6 +74,12 @@ func (m *partialPoolPollingSyncManager) actionCount(action string) int {
 	return count
 }
 
+func (m *partialPoolPollingSyncManager) actionTime() time.Time {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.firstActionAt
+}
+
 type failingPartialPoolRecheckSyncManager struct {
 	recheckResumeSyncManager
 }
@@ -81,6 +92,78 @@ func (m *failingPartialPoolRecheckSyncManager) BulkAction(ctx context.Context, i
 		return errors.New("synthetic recheck failure")
 	}
 	return nil
+}
+
+type scopedPartialPoolSyncManager struct {
+	recheckResumeSyncManager
+
+	mu                    sync.Mutex
+	torrents              []qbt.Torrent
+	torrentsErr           error
+	torrentsByInstance    map[int][]qbt.Torrent
+	torrentsErrByInstance map[int]error
+	bulkActionErr         error
+	actions               []string
+}
+
+func (m *scopedPartialPoolSyncManager) GetTorrents(_ context.Context, instanceID int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.torrentsErrByInstance[instanceID]; err != nil {
+		return nil, err
+	}
+	if m.torrentsErr != nil {
+		return nil, m.torrentsErr
+	}
+	if m.torrentsByInstance != nil {
+		return append([]qbt.Torrent(nil), m.torrentsByInstance[instanceID]...), nil
+	}
+	return append([]qbt.Torrent(nil), m.torrents...), nil
+}
+
+func (m *scopedPartialPoolSyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, hash := range hashes {
+		m.actions = append(m.actions, action+":"+hash)
+	}
+	return m.bulkActionErr
+}
+
+func (m *scopedPartialPoolSyncManager) recordedActions() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.actions...)
+}
+
+func requirePartialPoolReconciled(
+	t *testing.T,
+	service *Service,
+	now time.Time,
+	pool *models.CrossSeedPartialPool,
+	snapshots map[int64]*partialPoolMemberSnapshot,
+	budget int64,
+) {
+	t.Helper()
+	require.NoError(t, service.reconcilePartialPool(t.Context(), now, pool, snapshots, budget))
+}
+
+func newPartialPoolCoordinatorStore(t *testing.T, names ...string) (*models.CrossSeedStore, []*models.Instance, *database.DB) {
+	t.Helper()
+	db := testdb.NewMigratedSQLite(t, "partial-pool-coordinator")
+	key := []byte("01234567890123456789012345678901")
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, key)
+	require.NoError(t, err)
+	local := true
+	instances := make([]*models.Instance, 0, len(names))
+	for _, name := range names {
+		instance, createErr := instanceStore.Create(t.Context(), name, "http://127.0.0.1/"+name, "user", "pass", nil, nil, false, &local)
+		require.NoError(t, createErr)
+		instances = append(instances, instance)
+	}
+	return store, instances, db
 }
 
 func TestPartialPoolProgressDecision(t *testing.T) {
@@ -111,6 +194,25 @@ func TestPartialPoolProgressDecision(t *testing.T) {
 	_, _, update, stalled = partialPoolProgressDecision(now, 100, &baseline, &started, false)
 	require.False(t, update)
 	require.False(t, stalled, "non-transfer-capable time does not count")
+}
+
+func TestPartialPoolCoordinatorDelayUsesAbsoluteDeadlines(t *testing.T) {
+	startedAt := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	activeRecovery := startedAt.Add(partialPoolActiveRecoveryInterval)
+	admission := startedAt.Add(partialPoolAdmissionHold)
+	settledAudit := startedAt.Add(partialPoolSettledAuditInterval)
+
+	require.Equal(t, partialPoolAdmissionHold, partialPoolNextCoordinatorDelay(startedAt, activeRecovery, admission, settledAudit))
+	require.Equal(t, time.Second, partialPoolNextCoordinatorDelay(startedAt.Add(9*time.Second), activeRecovery, time.Time{}, settledAudit), "a targeted wake must not restart the active recovery cadence")
+}
+
+func TestPartialPoolWakeOverflowRequestsFullScan(t *testing.T) {
+	service := &Service{partialPoolWake: make(chan partialPoolWake, 1)}
+	service.signalPartialPoolWake(partialPoolWake{poolID: 1})
+	service.signalPartialPoolWake(partialPoolWake{poolID: 2})
+
+	require.True(t, service.partialPoolFullScanPending.Load(), "a dropped targeted wake must retain all-pool recovery scope")
+	require.Equal(t, int64(1), (<-service.partialPoolWake).poolID)
 }
 
 func TestSelectPartialPoolDownloaderRanking(t *testing.T) {
@@ -268,12 +370,12 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 		}
 	}
 	requestedAt := latestAdmission.Add(partialPoolAdmissionHold)
-	service.reconcilePartialPool(t.Context(), requestedAt.Add(-time.Nanosecond), pool, snapshots, 0)
+	requirePartialPoolReconciled(t, service, requestedAt.Add(-time.Nanosecond), pool, snapshots, 0)
 	require.Empty(t, sync.bulkActions, "no member may start checking while the pool is still admitting indexer candidates")
 
 	pool, err = store.GetPartialPool(t.Context(), poolID)
 	require.NoError(t, err)
-	service.reconcilePartialPool(t.Context(), requestedAt, pool, snapshots, 0)
+	requirePartialPoolReconciled(t, service, requestedAt, pool, snapshots, 0)
 
 	pool, err = store.GetPartialPool(t.Context(), poolID)
 	require.NoError(t, err)
@@ -291,7 +393,7 @@ func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {
 	require.Equal(t, []string{"recheck:candidate-delta"}, sync.bulkActions)
 
 	selected := partialPoolMemberByTorrentKey(pool, "candidate-delta")
-	service.reconcilePartialPool(t.Context(), selected.UpdatedAt.Add(partialPoolRecheckObserveTimeout), pool, snapshots, 0)
+	requirePartialPoolReconciled(t, service, selected.UpdatedAt.Add(partialPoolRecheckObserveTimeout), pool, snapshots, 0)
 	pool, err = store.GetPartialPool(t.Context(), poolID)
 	require.NoError(t, err)
 	for _, key := range keys {
@@ -375,6 +477,869 @@ func TestPartialPoolCoordinatorActivelyObservesRequestedRecheck(t *testing.T) {
 		return settled.Status == models.CrossSeedPartialPoolMemberStatusComplete && settled.Files[0].Status == models.CrossSeedPartialPoolFileStatusAvailable
 	}, 2*time.Second, 20*time.Millisecond)
 	require.Zero(t, syncManager.actionCount("recheck:"+member.TorrentKey))
+}
+
+func TestPartialPoolCoordinatorUsesPersistedAdmissionDeadline(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	rootPath := t.TempDir()
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"deadline-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		rootPath,
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.LastError = partialPoolRecheckPending
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	files := qbt.TorrentFiles{{
+		Index:    member.Files[0].FileIndex,
+		Name:     member.Files[0].RelativePath,
+		Size:     member.Files[0].SizeBytes,
+		Priority: 1,
+	}}
+	syncManager := &partialPoolPollingSyncManager{
+		filesByHash: map[string]qbt.TorrentFiles{member.TorrentKey: files},
+		torrent: qbt.Torrent{
+			Hash:       member.TorrentKey,
+			SavePath:   rootPath,
+			State:      qbt.TorrentStateStoppedDl,
+			AmountLeft: member.MissingBytes,
+		},
+	}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		partialPoolWake: make(chan partialPoolWake, 10),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	go service.RunPartialPoolCoordinator(ctx)
+
+	require.Eventually(t, func() bool {
+		return syncManager.actionCount("recheck:"+member.TorrentKey) == 1
+	}, partialPoolAdmissionHold+2*time.Second, 20*time.Millisecond, "the exact admission timer must start verification before the old 10-second cadence")
+	actionAt := syncManager.actionTime()
+	require.False(t, actionAt.Before(member.CreatedAt.Add(partialPoolAdmissionHold)), "initial verification must remain held throughout the persisted admission window")
+	require.True(t, actionAt.Before(member.CreatedAt.Add(partialPoolActiveRecoveryInterval)), "initial verification must not wait for the fallback recovery cadence")
+
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, partialPoolRecheckRequested, partialPoolMemberByTorrentKey(reloaded, member.TorrentKey).LastError)
+}
+
+func TestPartialPoolTargetedWakeDoesNotReconcileDormantPool(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	register := func(key, source string) (*models.CrossSeedPartialPool, *models.CrossSeedPartialPoolMember) {
+		registration := partialPoolFilesystemRegistration(
+			instanceID,
+			key,
+			models.CrossSeedPartialPoolModeReflink,
+			t.TempDir(),
+			models.CrossSeedPartialPoolMemberStatusVerifying,
+			models.CrossSeedPartialPoolFileStatusMissing,
+			nil,
+		)
+		registration.SourceInstanceID = 0
+		registration.SourceTorrentKey = ""
+		registration.SourceAliases = nil
+		registration.MatchedTorrentKey = source
+		registration.MatchedAliases = []string{source}
+		registration.Member.LastError = partialPoolRecheckPending
+		pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+		require.NoError(t, err)
+		return pool, member
+	}
+	targetPool, target := register("target-candidate", "target-source")
+	dormantPool, dormant := register("dormant-candidate", "dormant-source")
+	require.NotEqual(t, targetPool.ID, dormantPool.ID)
+	require.NoError(t, store.SetPartialPoolStatus(t.Context(), dormantPool.ID, models.CrossSeedPartialPoolStatusDormant))
+
+	files := func(member *models.CrossSeedPartialPoolMember) qbt.TorrentFiles {
+		return qbt.TorrentFiles{{
+			Index:    member.Files[0].FileIndex,
+			Name:     member.Files[0].RelativePath,
+			Size:     member.Files[0].SizeBytes,
+			Priority: 1,
+		}}
+	}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{
+			{Hash: target.TorrentKey, SavePath: target.RootPath, State: qbt.TorrentStateStoppedDl, AmountLeft: target.MissingBytes},
+			{Hash: dormant.TorrentKey, SavePath: dormant.RootPath, State: qbt.TorrentStateStoppedDl, AmountLeft: dormant.MissingBytes},
+		},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{
+		target.TorrentKey:  files(target),
+		dormant.TorrentKey: files(dormant),
+	}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+	latestAdmission := target.CreatedAt
+	if dormant.CreatedAt.After(latestAdmission) {
+		latestAdmission = dormant.CreatedAt
+	}
+	now := latestAdmission.Add(partialPoolAdmissionHold)
+	service.reconcilePartialPools(t.Context(), now, partialPoolWake{poolID: targetPool.ID})
+
+	require.Equal(t, []string{"recheck:" + target.TorrentKey}, syncManager.recordedActions())
+	reloadedDormant, err := store.GetPartialPool(t.Context(), dormantPool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloadedDormant.Status)
+	require.Equal(t, partialPoolRecheckPending, partialPoolMemberByTorrentKey(reloadedDormant, dormant.TorrentKey).LastError)
+
+	service.reconcilePartialPools(t.Context(), now, partialPoolWake{})
+	require.Equal(t, []string{"recheck:" + target.TorrentKey, "recheck:" + dormant.TorrentKey}, syncManager.recordedActions(), "a global settings wake must recover dormant pools")
+}
+
+func TestPartialPoolTargetedWakeFailureRequestsFullScanRetry(t *testing.T) {
+	store, _ := newPartialPoolFilesystemStore(t)
+	service := &Service{
+		automationStore: store,
+		syncManager:     &recheckResumeSyncManager{},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+
+	_, _, retryFullScan := service.reconcilePartialPoolsScheduled(t.Context(), time.Now(), partialPoolWake{poolID: 999999}, false)
+	require.True(t, retryFullScan, "a failed dormant-pool activation must retain recovery scope")
+}
+
+func TestPartialPoolFullScanRetainsDormantInventoryFailure(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"inventory-retry-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.NoError(t, store.SetPartialPoolStatus(t.Context(), pool.ID, models.CrossSeedPartialPoolStatusDormant))
+
+	service := &Service{
+		automationStore: store,
+		syncManager:     &scopedPartialPoolSyncManager{torrentsErr: errors.New("temporary inventory failure")},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+
+	_, _, retryFullScan := service.reconcilePartialPoolsScheduled(t.Context(), member.CreatedAt.Add(partialPoolAdmissionHold), partialPoolWake{}, true)
+	require.True(t, retryFullScan, "a startup inventory failure must retain full recovery scope")
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "durable scheduling must also include the pool in active recovery")
+}
+
+func TestPartialPoolFullScanRetainsDormantFileRefreshFailure(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"file-retry-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.NoError(t, store.SetPartialPoolStatus(t.Context(), pool.ID, models.CrossSeedPartialPoolStatusDormant))
+
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateStoppedDl,
+			AmountLeft: member.MissingBytes,
+		}},
+	}
+	syncManager.filesErr = errors.New("temporary file refresh failure")
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+
+	_, _, retryFullScan := service.reconcilePartialPoolsScheduled(t.Context(), member.CreatedAt.Add(partialPoolAdmissionHold), partialPoolWake{}, true)
+	require.True(t, retryFullScan, "a startup file refresh failure must retain full recovery scope")
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "a waiting member without a cooldown must remain scheduled")
+}
+
+func TestPartialPoolIncompleteInventoryBlocksDownloaderSelection(t *testing.T) {
+	store, instances, _ := newPartialPoolCoordinatorStore(t, "unseen-transfer", "visible-candidate")
+	for _, instance := range instances {
+		instance.HasLocalFilesystemAccess = true
+		instance.UseReflinks = true
+	}
+
+	unseenRegistration := partialPoolFilesystemRegistration(
+		instances[0].ID,
+		"unseen-transfer-member",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	unseenRegistration.Member.LastError = partialPoolRecheckPending
+	unseenRegistration.Member.MissingBytes = unseenRegistration.Files[0].SizeBytes
+	pool, unseen, err := store.RegisterPartialPoolMember(t.Context(), unseenRegistration)
+	require.NoError(t, err)
+
+	visibleRegistration := partialPoolFilesystemRegistration(
+		instances[1].ID,
+		"visible-waiting-member",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	visibleRegistration.Member.MissingBytes = visibleRegistration.Files[0].SizeBytes
+	visibleRegistration.SourceInstanceID = unseen.InstanceID
+	visibleRegistration.SourceTorrentKey = unseen.TorrentKey
+	visibleRegistration.SourceAliases = []string{unseen.TorrentKey}
+	joinedPool, visible, err := store.RegisterPartialPoolMember(t.Context(), visibleRegistration)
+	require.NoError(t, err)
+	require.Equal(t, pool.ID, joinedPool.ID)
+	require.NoError(t, store.SetPartialPoolStatus(t.Context(), pool.ID, models.CrossSeedPartialPoolStatusDormant))
+
+	files := func(member *models.CrossSeedPartialPoolMember) qbt.TorrentFiles {
+		return qbt.TorrentFiles{{
+			Index:    member.Files[0].FileIndex,
+			Name:     member.Files[0].RelativePath,
+			Size:     member.Files[0].SizeBytes,
+			Priority: 1,
+		}}
+	}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrentsByInstance: map[int][]qbt.Torrent{
+			unseen.InstanceID: {},
+			visible.InstanceID: {{
+				Hash:       visible.TorrentKey,
+				SavePath:   visible.RootPath,
+				State:      qbt.TorrentStateStoppedDl,
+				AmountLeft: visible.MissingBytes,
+			}},
+		},
+		torrentsErrByInstance: map[int]error{unseen.InstanceID: errors.New("temporary source inventory failure")},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{
+		unseen.TorrentKey:  files(unseen),
+		visible.TorrentKey: files(visible),
+	}
+	service := &Service{
+		automationStore: store,
+		instanceStore:   newOrderedInstanceStore(instances...),
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				PooledPartialCompletionEnabled: true,
+				AutoResumeMaxDownloadMB:        1,
+			}, nil
+		},
+	}
+	latestAdmission := unseen.CreatedAt
+	if visible.CreatedAt.After(latestAdmission) {
+		latestAdmission = visible.CreatedAt
+	}
+	now := latestAdmission.Add(partialPoolAdmissionHold)
+
+	_, _, retryFullScan := service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	require.True(t, retryFullScan)
+	require.Empty(t, syncManager.recordedActions(), "partial evidence must not select the visible downloader")
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+
+	syncManager.mu.Lock()
+	syncManager.torrentsErrByInstance = nil
+	syncManager.mu.Unlock()
+	_, _, retryFullScan = service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	require.True(t, retryFullScan, "a loaded but stale inventory must retain full recovery scope")
+	require.Empty(t, syncManager.recordedActions(), "a newly admitted member missing from a loaded inventory must block selection")
+}
+
+func TestPartialPoolStatusPersistenceFailureRequestsFullScanRetry(t *testing.T) {
+	store, instances, db := newPartialPoolCoordinatorStore(t, "status-retry")
+	instance := instances[0]
+
+	registration := partialPoolFilesystemRegistration(
+		instance.ID,
+		"status-retry-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.LastError = partialPoolRecheckPending
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.NoError(t, store.SetPartialPoolStatus(t.Context(), pool.ID, models.CrossSeedPartialPoolStatusDormant))
+	_, err = db.ExecContext(t.Context(), `
+		CREATE TRIGGER fail_partial_pool_schedule_update
+		BEFORE UPDATE OF status ON cross_seed_partial_pools
+		WHEN OLD.status = 'active' AND NEW.status = 'active'
+		BEGIN
+			SELECT RAISE(ABORT, 'synthetic partial pool status failure');
+		END
+	`)
+	require.NoError(t, err)
+
+	files := qbt.TorrentFiles{{
+		Index:    member.Files[0].FileIndex,
+		Name:     member.Files[0].RelativePath,
+		Size:     member.Files[0].SizeBytes,
+		Priority: 1,
+	}}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateStoppedDl,
+			AmountLeft: member.MissingBytes,
+		}},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+
+	_, _, retryFullScan := service.reconcilePartialPoolsScheduled(t.Context(), member.CreatedAt.Add(partialPoolAdmissionHold), partialPoolWake{}, true)
+	require.True(t, retryFullScan, "a failed dormant-to-active write must retain full recovery scope")
+	require.Equal(t, []string{"recheck:" + member.TorrentKey}, syncManager.recordedActions())
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "the pre-reconciliation activation keeps recheck observation scheduled")
+	require.Equal(t, partialPoolRecheckRequested, reloaded.Members[0].LastError)
+}
+
+func TestPartialPoolClaimFailureKeepsActiveRecoverySchedule(t *testing.T) {
+	store, instances, db := newPartialPoolCoordinatorStore(t, "claim-retry")
+	instance := instances[0]
+	instance.UseReflinks = true
+	registration := partialPoolFilesystemRegistration(
+		instance.ID,
+		"claim-retry-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	_, err = db.ExecContext(t.Context(), `
+		CREATE TRIGGER fail_partial_pool_downloader_claim
+		BEFORE UPDATE OF status ON cross_seed_partial_pool_members
+		WHEN OLD.status = 'waiting' AND NEW.status = 'acquiring'
+		BEGIN
+			SELECT RAISE(ABORT, 'synthetic partial pool claim failure');
+		END
+	`)
+	require.NoError(t, err)
+
+	files := qbt.TorrentFiles{{
+		Index:    member.Files[0].FileIndex,
+		Name:     member.Files[0].RelativePath,
+		Size:     member.Files[0].SizeBytes,
+		Priority: 1,
+	}}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateStoppedDl,
+			AmountLeft: member.MissingBytes,
+		}},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
+	service := &Service{
+		automationStore: store,
+		instanceStore:   newOrderedInstanceStore(instance),
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				PooledPartialCompletionEnabled: true,
+				AutoResumeMaxDownloadMB:        1,
+			}, nil
+		},
+	}
+	now := member.CreatedAt.Add(partialPoolAdmissionHold)
+
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, reloaded.Members[0].Status)
+	require.Empty(t, syncManager.recordedActions())
+
+	_, err = db.ExecContext(t.Context(), `DROP TRIGGER fail_partial_pool_downloader_claim`)
+	require.NoError(t, err)
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, reloaded.Members[0].Status)
+	require.Equal(t, []string{"resume:" + member.TorrentKey}, syncManager.recordedActions())
+}
+
+func TestPartialPoolManualPersistenceFailureKeepsActiveRecoverySchedule(t *testing.T) {
+	store, instances, db := newPartialPoolCoordinatorStore(t, "manual-retry")
+	instance := instances[0]
+	registration := partialPoolFilesystemRegistration(
+		instance.ID,
+		"manual-retry-candidate",
+		models.CrossSeedPartialPoolModeHardlink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	_, err = db.ExecContext(t.Context(), `
+		CREATE TRIGGER fail_partial_pool_manual_transition
+		BEFORE UPDATE OF status ON cross_seed_partial_pool_members
+		WHEN OLD.status = 'waiting' AND NEW.status = 'manual'
+		BEGIN
+			SELECT RAISE(ABORT, 'synthetic partial pool manual failure');
+		END
+	`)
+	require.NoError(t, err)
+
+	files := qbt.TorrentFiles{{
+		Index:    member.Files[0].FileIndex,
+		Name:     member.Files[0].RelativePath,
+		Size:     member.Files[0].SizeBytes,
+		Priority: 1,
+	}}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateMissingFiles,
+			AmountLeft: member.MissingBytes,
+		}},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				PooledPartialCompletionEnabled: true,
+				AutoResumeMaxDownloadMB:        1,
+			}, nil
+		},
+	}
+	now := member.CreatedAt.Add(partialPoolAdmissionHold)
+
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, reloaded.Members[0].Status)
+
+	_, err = db.ExecContext(t.Context(), `DROP TRIGGER fail_partial_pool_manual_transition`)
+	require.NoError(t, err)
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloaded.Members[0].Status)
+}
+
+func TestPartialPoolPropagationManualFailureKeepsActiveRecoverySchedule(t *testing.T) {
+	store, instances, db := newPartialPoolCoordinatorStore(t, "propagation-manual-retry")
+	instance := instances[0]
+	instance.UseReflinks = true
+	pool, source, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+		instance.ID,
+		"source",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusComplete,
+		models.CrossSeedPartialPoolFileStatusAvailable,
+		nil,
+	))
+	require.NoError(t, err)
+	targetRegistration := partialPoolFilesystemRegistration(
+		instance.ID,
+		"propagation-manual-retry-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	targetRegistration.Member.MissingBytes = targetRegistration.Files[0].SizeBytes
+	joinedPool, target, err := store.RegisterPartialPoolMember(t.Context(), targetRegistration)
+	require.NoError(t, err)
+	require.Equal(t, pool.ID, joinedPool.ID)
+	_, err = db.ExecContext(t.Context(), `
+		CREATE TRIGGER fail_partial_pool_propagation_manual_transition
+		BEFORE UPDATE OF status ON cross_seed_partial_pool_members
+		WHEN OLD.status = 'waiting' AND NEW.status = 'manual'
+		BEGIN
+			SELECT RAISE(ABORT, 'synthetic partial pool propagation manual failure');
+		END
+	`)
+	require.NoError(t, err)
+
+	files := func(member *models.CrossSeedPartialPoolMember, progress float32) qbt.TorrentFiles {
+		return qbt.TorrentFiles{{
+			Index:    member.Files[0].FileIndex,
+			Name:     member.Files[0].RelativePath,
+			Size:     member.Files[0].SizeBytes,
+			Priority: 1,
+			Progress: progress,
+		}}
+	}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{
+			{Hash: source.TorrentKey, SavePath: source.RootPath, State: qbt.TorrentStateStoppedUp, Progress: 1},
+			{Hash: target.TorrentKey, SavePath: target.RootPath, State: qbt.TorrentStateStoppedDl, AmountLeft: target.MissingBytes},
+		},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{
+		source.TorrentKey: files(source, 1),
+		target.TorrentKey: files(target, 0),
+	}
+	service := &Service{
+		automationStore:             store,
+		instanceStore:               newOrderedInstanceStore(instance),
+		syncManager:                 syncManager,
+		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				PooledPartialCompletionEnabled: true,
+				AutoResumeMaxDownloadMB:        1,
+			}, nil
+		},
+	}
+	now := target.CreatedAt.Add(partialPoolAdmissionHold)
+
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	reloadedTarget := partialPoolMemberByTorrentKey(reloaded, target.TorrentKey)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, reloadedTarget.Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, reloadedTarget.Files[0].Status)
+
+	_, err = db.ExecContext(t.Context(), `DROP TRIGGER fail_partial_pool_propagation_manual_transition`)
+	require.NoError(t, err)
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	reloadedTarget = partialPoolMemberByTorrentKey(reloaded, target.TorrentKey)
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloadedTarget.Status)
+}
+
+func TestPartialPoolDisabledCoordinatorWaitsForStoppedDownloader(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"disabled-downloader",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusAcquiring,
+		models.CrossSeedPartialPoolFileStatusAcquiring,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	registration.Member.StartedByPool = true
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateDownloading,
+			AmountLeft: member.MissingBytes,
+		}},
+		bulkActionErr: errors.New("temporary pause failure"),
+	}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
+		},
+	}
+	now := member.CreatedAt.Add(partialPoolAdmissionHold)
+
+	_, _, retryFullScan := service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, false)
+	require.True(t, retryFullScan, "a failed pause must retain explicit recovery scope")
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, reloaded.Members[0].Status)
+
+	syncManager.bulkActionErr = nil
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "a successful pause request still requires stopped-state observation")
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, reloaded.Members[0].Status)
+
+	syncManager.torrents[0].State = qbt.TorrentStateStoppedDl
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(2*partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, reloaded.Members[0].Status)
+	require.False(t, reloaded.Members[0].StartedByPool)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, reloaded.Members[0].Files[0].Status)
+	require.Equal(t, []string{"pause:" + member.TorrentKey, "pause:" + member.TorrentKey}, syncManager.recordedActions())
+}
+
+func TestPartialPoolDisabledCoordinatorWaitsForSettledCompletion(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"disabled-checking",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusAcquiring,
+		models.CrossSeedPartialPoolFileStatusAcquiring,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	registration.Member.StartedByPool = true
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateCheckingDl,
+			Progress:   1,
+			AmountLeft: 0,
+		}},
+	}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
+		},
+	}
+	now := member.CreatedAt.Add(partialPoolAdmissionHold)
+
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, false)
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, reloaded.Members[0].Status)
+	require.True(t, reloaded.Members[0].StartedByPool)
+	require.Empty(t, syncManager.recordedActions())
+
+	syncManager.torrents[0].State = qbt.TorrentStateStoppedUp
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusComplete, reloaded.Members[0].Status)
+	require.False(t, reloaded.Members[0].StartedByPool)
+	require.Zero(t, reloaded.Members[0].MissingBytes)
+	require.Empty(t, syncManager.recordedActions())
+}
+
+func TestPartialPoolDisabledCoordinatorReleasesNonTransferTerminalState(t *testing.T) {
+	for _, state := range []qbt.TorrentState{qbt.TorrentStateError, qbt.TorrentStateMissingFiles} {
+		t.Run(string(state), func(t *testing.T) {
+			store, instanceID := newPartialPoolFilesystemStore(t)
+			registration := partialPoolFilesystemRegistration(
+				instanceID,
+				"disabled-terminal-"+string(state),
+				models.CrossSeedPartialPoolModeReflink,
+				t.TempDir(),
+				models.CrossSeedPartialPoolMemberStatusAcquiring,
+				models.CrossSeedPartialPoolFileStatusAcquiring,
+				nil,
+			)
+			registration.Member.MissingBytes = registration.Files[0].SizeBytes
+			registration.Member.StartedByPool = true
+			pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+			require.NoError(t, err)
+
+			syncManager := &scopedPartialPoolSyncManager{
+				torrents: []qbt.Torrent{{
+					Hash:       member.TorrentKey,
+					SavePath:   member.RootPath,
+					State:      state,
+					AmountLeft: member.MissingBytes,
+				}},
+			}
+			service := &Service{
+				automationStore: store,
+				syncManager:     syncManager,
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: false}, nil
+				},
+			}
+
+			_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), member.CreatedAt.Add(partialPoolAdmissionHold), partialPoolWake{}, true)
+			reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+			require.NoError(t, err)
+			require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status)
+			require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, reloaded.Members[0].Status)
+			require.False(t, reloaded.Members[0].StartedByPool)
+			require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, reloaded.Members[0].Files[0].Status)
+			require.Empty(t, syncManager.recordedActions())
+		})
+	}
+}
+
+func TestPartialPoolCoordinatorKeepsExternalCheckOnActiveSchedule(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"external-checking",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	files := qbt.TorrentFiles{{
+		Index:    member.Files[0].FileIndex,
+		Name:     member.Files[0].RelativePath,
+		Size:     member.Files[0].SizeBytes,
+		Priority: 1,
+	}}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateCheckingDl,
+			AmountLeft: member.MissingBytes,
+		}},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
+	service := &Service{
+		automationStore: store,
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+	now := member.CreatedAt.Add(partialPoolAdmissionHold)
+
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, reloaded.Members[0].Status)
+
+	syncManager.torrents[0].State = qbt.TorrentStateStoppedDl
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, reloaded.Members[0].Status)
+	require.Empty(t, syncManager.recordedActions())
+}
+
+func TestPartialPoolExpiredCooldownSurvivesTransientFileRefreshFailure(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	retryAfter := time.Now().UTC().Add(-time.Second)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"cooldown-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	registration.Member.RetryAfter = &retryAfter
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	files := qbt.TorrentFiles{{
+		Index:    member.Files[0].FileIndex,
+		Name:     member.Files[0].RelativePath,
+		Size:     member.Files[0].SizeBytes,
+		Priority: 1,
+	}}
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       member.TorrentKey,
+			SavePath:   member.RootPath,
+			State:      qbt.TorrentStateStoppedDl,
+			AmountLeft: member.MissingBytes,
+		}},
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{member.TorrentKey: files}
+	syncManager.filesErr = errors.New("temporary file refresh failure")
+	service := &Service{
+		automationStore: store,
+		instanceStore: newOrderedInstanceStore(&models.Instance{
+			ID:                       instanceID,
+			HasLocalFilesystemAccess: true,
+			UseReflinks:              true,
+		}),
+		syncManager: syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				PooledPartialCompletionEnabled: true,
+				AutoResumeMaxDownloadMB:        1,
+			}, nil
+		},
+	}
+
+	now := member.CreatedAt.Add(partialPoolAdmissionHold)
+	service.reconcilePartialPools(t.Context(), now, partialPoolWake{})
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, pool.Status, "the expired cooldown must remain on the active recovery schedule")
+
+	syncManager.filesErr = nil
+	_, _, _ = service.reconcilePartialPoolsScheduled(t.Context(), now.Add(partialPoolActiveRecoveryInterval), partialPoolWake{}, false)
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusAcquiring, pool.Members[0].Status)
+	require.Equal(t, []string{"resume:" + member.TorrentKey}, syncManager.recordedActions())
 }
 
 func TestPartialPoolInitialPropagationSettlesBeforeDownloaderRepair(t *testing.T) {
@@ -477,7 +1442,7 @@ func TestPartialPoolInitialPropagationSettlesBeforeDownloaderRepair(t *testing.T
 				},
 			}
 			reconcileAt := target.CreatedAt.Add(partialPoolAdmissionHold)
-			service.reconcilePartialPool(t.Context(), reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
+			requirePartialPoolReconciled(t, service, reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
 				source.ID: sourceSnapshot,
 				target.ID: targetSnapshot,
 			}, 1<<20)
@@ -529,7 +1494,7 @@ func TestPartialPoolFailedRecheckCannotPublishOptimisticCompletion(t *testing.T)
 		},
 	}
 	requestAt := member.CreatedAt.Add(partialPoolAdmissionHold)
-	service.reconcilePartialPool(t.Context(), requestAt, pool, map[int64]*partialPoolMemberSnapshot{member.ID: snapshot}, 0)
+	requirePartialPoolReconciled(t, service, requestAt, pool, map[int64]*partialPoolMemberSnapshot{member.ID: snapshot}, 0)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -538,7 +1503,7 @@ func TestPartialPoolFailedRecheckCannotPublishOptimisticCompletion(t *testing.T)
 	require.NotEmpty(t, failed.LastError)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, failed.Files[0].Status)
 
-	service.reconcilePartialPool(t.Context(), requestAt.Add(partialPoolRecheckObserveTimeout), pool, map[int64]*partialPoolMemberSnapshot{member.ID: snapshot}, 0)
+	requirePartialPoolReconciled(t, service, requestAt.Add(partialPoolRecheckObserveTimeout), pool, map[int64]*partialPoolMemberSnapshot{member.ID: snapshot}, 0)
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
 	failed = partialPoolMemberByTorrentKey(pool, member.TorrentKey)
@@ -568,13 +1533,13 @@ func TestPartialPoolAdmissionHoldKeepsWaitingPoolActive(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
-	service.reconcilePartialPool(
-		t.Context(),
+	requirePartialPoolReconciled(
+		t, service,
+
 		member.CreatedAt.Add(partialPoolAdmissionHold-time.Nanosecond),
 		pool,
 		map[int64]*partialPoolMemberSnapshot{member.ID: snapshot},
-		member.Files[0].SizeBytes,
-	)
+		member.Files[0].SizeBytes)
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -754,10 +1719,210 @@ func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {
 			require.Equal(t, test.wantFilesCalls, sync.filesCalls)
 			require.Equal(t, []string{"pause:" + member.TorrentKey}, sync.bulkActions)
 			require.Empty(t, snapshots[member.ID].files)
+			require.True(t, snapshots[member.ID].stateRetryPending)
 			reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
 			require.NoError(t, err)
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloaded.Members[0].Status)
-			require.Equal(t, test.reason, reloaded.Members[0].LastError)
+			require.Equal(t, partialPoolReviewPausePrefix+test.reason, reloaded.Members[0].LastError)
+		})
+	}
+}
+
+func TestPartialPoolAdmissionDriftPersistenceFailureBlocksDownloaderSelection(t *testing.T) {
+	store, instances, db := newPartialPoolCoordinatorStore(t, "drift-selection")
+	instance := instances[0]
+	instance.HasLocalFilesystemAccess = true
+	instance.UseReflinks = true
+	pool, drifted, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+		instance.ID,
+		"source",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusComplete,
+		models.CrossSeedPartialPoolFileStatusAvailable,
+		nil,
+	))
+	require.NoError(t, err)
+	candidateRegistration := partialPoolFilesystemRegistration(
+		instance.ID,
+		"waiting-candidate",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	candidateRegistration.Member.MissingBytes = candidateRegistration.Files[0].SizeBytes
+	joinedPool, candidate, err := store.RegisterPartialPoolMember(t.Context(), candidateRegistration)
+	require.NoError(t, err)
+	require.Equal(t, pool.ID, joinedPool.ID)
+	_, err = db.ExecContext(t.Context(), `
+		CREATE TRIGGER fail_partial_pool_drift_manual_transition
+		BEFORE UPDATE OF status ON cross_seed_partial_pool_members
+		WHEN OLD.status = 'complete' AND NEW.status = 'manual'
+		BEGIN
+			SELECT RAISE(ABORT, 'synthetic drift manual failure');
+		END
+	`)
+	require.NoError(t, err)
+
+	syncManager := &scopedPartialPoolSyncManager{
+		torrents: []qbt.Torrent{
+			{
+				Hash:       drifted.TorrentKey,
+				SavePath:   filepath.Join(drifted.RootPath, "moved"),
+				State:      qbt.TorrentStateDownloading,
+				Progress:   1,
+				AmountLeft: 0,
+			},
+			{
+				Hash:       candidate.TorrentKey,
+				SavePath:   candidate.RootPath,
+				State:      qbt.TorrentStateStoppedDl,
+				AmountLeft: candidate.MissingBytes,
+			},
+		},
+		bulkActionErr: errors.New("synthetic pause failure"),
+	}
+	syncManager.filesByHash = map[string]qbt.TorrentFiles{
+		candidate.TorrentKey: {{
+			Index:    candidate.Files[0].FileIndex,
+			Name:     candidate.Files[0].RelativePath,
+			Size:     candidate.Files[0].SizeBytes,
+			Priority: 1,
+		}},
+	}
+	service := &Service{
+		automationStore: store,
+		instanceStore:   newOrderedInstanceStore(instance),
+		syncManager:     syncManager,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				PooledPartialCompletionEnabled: true,
+				AutoResumeMaxDownloadMB:        1,
+			}, nil
+		},
+	}
+	now := candidate.CreatedAt.Add(partialPoolAdmissionHold)
+	if drifted.CreatedAt.After(candidate.CreatedAt) {
+		now = drifted.CreatedAt.Add(partialPoolAdmissionHold)
+	}
+
+	service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+	require.Equal(t, []string{"pause:" + drifted.TorrentKey}, syncManager.recordedActions(), "retryable drift state must block a second downloader")
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusComplete, partialPoolMemberByTorrentKey(reloaded, drifted.TorrentKey).Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, partialPoolMemberByTorrentKey(reloaded, candidate.TorrentKey).Status)
+}
+
+func TestPartialPoolAdmissionDriftWaitsForSettledPause(t *testing.T) {
+	for _, test := range []struct {
+		name                   string
+		bulkActionErr          error
+		disableBeforeRetry     bool
+		failFilesBeforeRetry   bool
+		changeFilesBeforeRetry bool
+	}{
+		{name: "accepted then files refresh failed", failFilesBeforeRetry: true},
+		{name: "pause failed then pooling disabled", bulkActionErr: errors.New("synthetic pause failure"), disableBeforeRetry: true},
+		{name: "later file drift preserves reason", changeFilesBeforeRetry: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, instances, _ := newPartialPoolCoordinatorStore(t, "drift-pause")
+			instance := instances[0]
+			instance.HasLocalFilesystemAccess = true
+			instance.UseReflinks = true
+			rootPath := t.TempDir()
+			registration := partialPoolFilesystemRegistration(
+				instance.ID,
+				"drift-pause-member",
+				models.CrossSeedPartialPoolModeReflink,
+				rootPath,
+				models.CrossSeedPartialPoolMemberStatusAcquiring,
+				models.CrossSeedPartialPoolFileStatusMissing,
+				nil,
+			)
+			registration.Member.StartedByPool = true
+			registration.Member.MissingBytes = registration.Files[0].SizeBytes
+			pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+			require.NoError(t, err)
+
+			torrent := qbt.Torrent{
+				Hash:       member.TorrentKey,
+				SavePath:   filepath.Join(rootPath, "moved"),
+				State:      qbt.TorrentStateDownloading,
+				AmountLeft: member.MissingBytes,
+			}
+			syncManager := &scopedPartialPoolSyncManager{
+				torrents:      []qbt.Torrent{torrent},
+				bulkActionErr: test.bulkActionErr,
+			}
+			syncManager.filesByHash = map[string]qbt.TorrentFiles{
+				member.TorrentKey: {{
+					Index:    member.Files[0].FileIndex,
+					Name:     member.Files[0].RelativePath,
+					Size:     member.Files[0].SizeBytes,
+					Priority: 1,
+				}},
+			}
+			enabled := true
+			newService := func() *Service {
+				return &Service{
+					automationStore: store,
+					instanceStore:   newOrderedInstanceStore(instance),
+					syncManager:     syncManager,
+					automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+						return &models.CrossSeedAutomationSettings{
+							PooledPartialCompletionEnabled: enabled,
+							AutoResumeMaxDownloadMB:        1,
+						}, nil
+					},
+				}
+			}
+			service := newService()
+			now := member.CreatedAt.Add(partialPoolAdmissionHold)
+
+			service.reconcilePartialPoolsScheduled(t.Context(), now, partialPoolWake{}, true)
+			require.Equal(t, []string{"pause:" + member.TorrentKey}, syncManager.recordedActions())
+			reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+			require.NoError(t, err)
+			require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "live state must retain the recovery schedule")
+			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloaded.Members[0].Status)
+			require.Equal(t, partialPoolReviewPausePrefix+"qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+
+			syncManager.mu.Lock()
+			syncManager.bulkActionErr = nil
+			syncManager.torrents[0].SavePath = rootPath
+			syncManager.mu.Unlock()
+			if test.disableBeforeRetry {
+				enabled = false
+			}
+			if test.failFilesBeforeRetry {
+				syncManager.filesErr = errors.New("synthetic files refresh failure")
+			}
+			if test.changeFilesBeforeRetry {
+				syncManager.filesByHash[member.TorrentKey][0].Priority = 0
+			}
+			service = newService()
+			service.reconcilePartialPoolsScheduled(t.Context(), now.Add(time.Second), partialPoolWake{}, false)
+			reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+			require.NoError(t, err)
+			require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status, "restoring admission evidence must not discard the pending pause")
+			require.Equal(t, partialPoolReviewPausePrefix+"qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.Equal(t, []string{"pause:" + member.TorrentKey, "pause:" + member.TorrentKey}, syncManager.recordedActions())
+
+			syncManager.mu.Lock()
+			syncManager.torrents[0].State = qbt.TorrentStateStoppedDl
+			syncManager.mu.Unlock()
+			syncManager.filesErr = nil
+			service.reconcilePartialPoolsScheduled(t.Context(), now.Add(2*time.Second), partialPoolWake{}, false)
+			reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+			require.NoError(t, err)
+			require.Equal(t, models.CrossSeedPartialPoolStatusDormant, reloaded.Status, "a fresh stopped observation may settle the review state")
+			require.Equal(t, "qBittorrent save path no longer matches admitted root", reloaded.Members[0].LastError)
+			require.Equal(t, []string{"pause:" + member.TorrentKey, "pause:" + member.TorrentKey}, syncManager.recordedActions())
 		})
 	}
 }
@@ -782,7 +1947,7 @@ func TestPartialPoolManualMemberCompletesAfterEvidenceValidation(t *testing.T) {
 	service := &Service{automationStore: store, syncManager: sync}
 	snapshots := map[int64]*partialPoolMemberSnapshot{member.ID: {torrent: torrent}}
 	service.refreshPartialPoolFiles(t.Context(), pool, snapshots)
-	service.reconcilePartialPool(t.Context(), time.Now(), pool, snapshots, 0)
+	requirePartialPoolReconciled(t, service, time.Now(), pool, snapshots, 0)
 
 	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
 	require.NoError(t, err)
@@ -845,7 +2010,8 @@ func TestPartialPoolCompletedDependentResumesDurably(t *testing.T) {
 	require.Equal(t, partialPoolResumeAttemptReason(1), reloaded.Members[0].LastError)
 
 	snapshot.torrent.State = qbt.TorrentStateMissingFiles
-	require.True(t, service.reconcilePartialPoolExceptionalState(ctx, time.Now(), reloaded.Members[0], snapshot))
+	handled, _ := service.reconcilePartialPoolExceptionalState(ctx, time.Now(), reloaded.Members[0], snapshot)
+	require.True(t, handled)
 	require.Equal(t, []string{"resume:dependent", "resume:dependent"}, sync.bulkActions)
 	require.Equal(t, partialPoolResumeAttemptReason(2), reloaded.Members[0].LastError)
 
@@ -907,11 +2073,13 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 	snapshot.torrent.State = qbt.TorrentStateError
 	now := member.UpdatedAt.Add(partialPoolRecheckGrace)
 	for attempt := 1; attempt <= partialPoolRecoveryLimit; attempt++ {
-		require.True(t, service.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot))
+		handled, _ := service.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
+		require.True(t, handled)
 		require.Equal(t, partialPoolRecoveryAttemptReason(attempt), member.LastError)
 		now = member.UpdatedAt.Add(partialPoolRecheckGrace)
 	}
-	require.True(t, service.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot))
+	handled, _ := service.reconcilePartialPoolExceptionalState(ctx, now, member, snapshot)
+	require.True(t, handled)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, member.Status)
 	require.Equal(t, []string{
 		"pause:bounded", "recheck:bounded",
@@ -923,15 +2091,18 @@ func TestPartialPoolExceptionalStateRecovery(t *testing.T) {
 	recoveredSnapshot := partialPoolTestSnapshot(recovered, 100)
 	recoveredSnapshot.torrent.Hash = recovered.TorrentKey
 	recoveredSnapshot.torrent.State = qbt.TorrentStateError
-	require.True(t, service.reconcilePartialPoolExceptionalState(ctx, recovered.UpdatedAt.Add(partialPoolRecheckGrace), recovered, recoveredSnapshot))
+	handled, _ = service.reconcilePartialPoolExceptionalState(ctx, recovered.UpdatedAt.Add(partialPoolRecheckGrace), recovered, recoveredSnapshot)
+	require.True(t, handled)
 	recoveredSnapshot.torrent.State = qbt.TorrentStateStoppedDl
-	require.False(t, service.reconcilePartialPoolExceptionalState(ctx, recovered.UpdatedAt.Add(partialPoolRecheckGrace), recovered, recoveredSnapshot))
+	handled, _ = service.reconcilePartialPoolExceptionalState(ctx, recovered.UpdatedAt.Add(partialPoolRecheckGrace), recovered, recoveredSnapshot)
+	require.False(t, handled)
 	require.Empty(t, recovered.LastError)
 
 	hardlinkMember := register("hardlink", models.CrossSeedPartialPoolModeHardlink)
 	hardlinkSnapshot := partialPoolTestSnapshot(hardlinkMember, 100)
 	hardlinkSnapshot.torrent.State = qbt.TorrentStateMissingFiles
-	require.True(t, service.reconcilePartialPoolExceptionalState(ctx, time.Now(), hardlinkMember, hardlinkSnapshot))
+	handled, _ = service.reconcilePartialPoolExceptionalState(ctx, time.Now(), hardlinkMember, hardlinkSnapshot)
+	require.True(t, handled)
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, hardlinkMember.Status)
 }
 

@@ -598,15 +598,31 @@ func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, e
 // ListPartialPoolsForReconciliation loads every pool with a non-removed
 // member. Manual and complete members remain observable for completion/removal.
 func (s *CrossSeedStore) ListPartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
+	return s.listPartialPoolsForReconciliation(ctx, "")
+}
+
+// ListActivePartialPoolsForReconciliation loads scheduled pools with a
+// non-removed member.
+func (s *CrossSeedStore) ListActivePartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
+	return s.listPartialPoolsForReconciliation(ctx, CrossSeedPartialPoolStatusActive)
+}
+
+func (s *CrossSeedStore) listPartialPoolsForReconciliation(ctx context.Context, status string) ([]*CrossSeedPartialPool, error) {
+	statusFilter := ""
+	args := []any{CrossSeedPartialPoolMemberStatusRemoved}
+	if status != "" {
+		statusFilter = "p.status = ? AND"
+		args = append([]any{status}, args...)
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id
 		FROM cross_seed_partial_pools p
-		WHERE EXISTS (
+		WHERE `+statusFilter+` EXISTS (
 			SELECT 1 FROM cross_seed_partial_pool_members m
 			WHERE m.pool_id = p.id AND m.status <> ?
-		)
+			)
 		ORDER BY p.id
-	`, CrossSeedPartialPoolMemberStatusRemoved)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list partial pools: %w", err)
 	}
