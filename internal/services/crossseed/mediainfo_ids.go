@@ -146,7 +146,8 @@ func largestMKVPath(savePath string, files qbt.TorrentFiles) string {
 	})
 
 	var bestPath string
-	forEachLocalTorrentFile(savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
+	// Best-effort lookup: an unresolvable name just means no mediainfo source here.
+	_ = forEachLocalTorrentFile(savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
 		bestPath = fullPath
 		return false
 	})
