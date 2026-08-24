@@ -9369,6 +9369,13 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
+	// Count raw results before the late content filter drops any; the breakdown subtracts LateContentFiltered from this total.
+	totalResults := len(searchResults)
+	traceCandidateCounts := make(map[int]int)
+	for _, res := range searchResults {
+		traceCandidateCounts[res.IndexerID]++
+	}
+
 	searchResults, lateFilterSnapshot, lateExcludedCount = s.filterSearchResultsByLateContentFilter(instanceID, sourceTorrent, searchResults)
 	if lateFilterSnapshot != nil {
 		sourceInfo.AvailableIndexers = lateFilterSnapshot.CapabilityIndexers
@@ -9388,9 +9395,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	sourceSizeForSearch := searchSourceSize(sourceTorrent)
 	traceRejections := &searchTraceRejections{}
-	traceCandidateCounts := make(map[int]int)
 	for _, res := range searchResults {
-		traceCandidateCounts[res.IndexerID]++
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		// Search has only the source torrent's full size and Torznab's advertised
 		// candidate size. Positive exact equality may replace a relaxable release
@@ -9486,7 +9491,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	scored = deduplicateScoredTorrentSearchResults(scored)
 
 	// Log filtering statistics
-	totalResults := len(searchResults)
 	matchedResults := len(scored)
 	log.Debug().
 		Str("torrentName", sourceTorrent.Name).
@@ -9543,7 +9547,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			JobID:             searchResp.JobID,
 			CoveredIndexerIDs: coveredIndexerIDs,
 			QueryDegraded:     queryDegraded,
-			DecisionTrace:     buildDecisionTrace(len(combined), 0),
+			DecisionTrace:     buildDecisionTrace(0, 0),
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
@@ -9577,7 +9581,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		JobID:             searchResp.JobID,
 		CoveredIndexerIDs: coveredIndexerIDs,
 		QueryDegraded:     queryDegraded,
-		DecisionTrace:     buildDecisionTrace(len(combined), duplicateFilteredCount),
+		DecisionTrace:     buildDecisionTrace(len(results), duplicateFilteredCount),
 	}, gazelleLookupAttempted, remoteRequestsMade, nil
 }
 

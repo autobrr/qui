@@ -50,6 +50,8 @@ type SearchIndexerOutcome struct {
 
 // SearchDecisionTrace explains why a search accepted or rejected candidates.
 // It travels with the response for the manual search dialog and is never persisted.
+// Every count covers the Torznab passes only. Gazelle results reach the response
+// without passing through this funnel.
 type SearchDecisionTrace struct {
 	SourceSize          int64                     `json:"sourceSize"`
 	TolerancePercent    float64                   `json:"tolerancePercent"`
