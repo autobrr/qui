@@ -7512,10 +7512,12 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 	// Get all available indexers first
 	var allIndexers []int
+	indexerDiscoveryFailed := false
 	if s.jackettService != nil {
 		indexersResponse, err := s.jackettService.GetIndexers(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to get indexers during async analysis")
+			indexerDiscoveryFailed = true
 		} else {
 			for _, indexer := range indexersResponse.Indexers {
 				if indexer.Configured {
@@ -7585,12 +7587,10 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		FilteringState: filteringState,
 	}
 
-	// Cache the live state before any indexer lookups: even when no indexers
-	// are available, the correctly typed state must replace a stale entry left
-	// by a previous content type (#2313). Capability-only runs
-	// (enableContentFiltering=false) skip the cache: their local state gets
-	// marked completed below without content filtering having run.
-	if s.asyncFilteringCache != nil && enableContentFiltering {
+	// Publish the correctly typed state so it replaces a stale entry (#2313).
+	// Skipped when discovery failed (it would cache an empty run) or when
+	// content filtering is off (the state completes below without filtering).
+	if s.asyncFilteringCache != nil && enableContentFiltering && !indexerDiscoveryFailed {
 		s.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, hash), filteringState, ttlcache.DefaultTTL)
 	}
 
@@ -7709,6 +7709,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 
 	// No cache write here: the cache already holds this state (or a newer run's
 	// state that replaced it, which a finished worker must not clobber, #2313).
+	// An entry that expired mid-run stays gone; the next request refilters.
 
 	log.Debug().
 		Str("torrentHash", hash).

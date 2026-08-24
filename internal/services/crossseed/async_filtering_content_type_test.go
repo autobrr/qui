@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -160,6 +162,56 @@ func TestFinishedWorkerCannotRestoreReplacedCacheEntry(t *testing.T) {
 	cached, found := svc.asyncFilteringCache.Get(key)
 	require.True(t, found)
 	require.Same(t, stateB, cached, "finished worker must not clobber the newer cache entry")
+}
+
+// failingListIndexerStore errors on List, the call AnalyzeTorrentForSearchAsync
+// uses for indexer discovery.
+type failingListIndexerStore struct {
+	failingEnabledIndexerStore
+}
+
+func (s *failingListIndexerStore) List(context.Context) ([]*models.TorznabIndexer, error) {
+	return nil, s.err
+}
+
+// A failed indexer lookup must not be cached: it would complete as an empty
+// run and suppress searches for the whole TTL.
+func TestAnalyzeAsyncDoesNotCacheFailedIndexerDiscovery(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	hash := "deadbeefcafe"
+	movieName := "Example.Movie.2019.1080p.BluRay.x264-GROUP"
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	staleState := &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		FilteredIndexers:      []int{7},
+		contentType:           "audiobook",
+	}
+	cache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+	cache.Set(asyncFilteringCacheKey(instanceID, hash), staleState, ttlcache.DefaultTTL)
+
+	svc := &Service{
+		instanceStore:  &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		jackettService: jackett.NewService(&failingListIndexerStore{failingEnabledIndexerStore{err: errors.New("temporarily unreachable")}}),
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{{
+			Hash: hash, Name: movieName, Progress: 1, Size: 1000,
+		}}, map[string]qbt.TorrentFiles{
+			hash: {{Name: movieName + ".mkv", Size: 1000}},
+		}),
+		asyncFilteringCache: cache,
+		releaseCache:        NewReleaseCache(),
+		stringNormalizer:    stringutils.NewDefaultNormalizer(),
+	}
+
+	result, err := svc.AnalyzeTorrentForSearchAsync(context.Background(), instanceID, hash, true)
+	require.NoError(t, err)
+
+	cached, found := svc.asyncFilteringCache.Get(asyncFilteringCacheKey(instanceID, hash))
+	require.True(t, found)
+	require.NotSame(t, result.FilteringState, cached, "failed discovery run must not enter the cache")
 }
 
 // AnalyzeTorrentForSearchAsync only reuses a completed cached run for the same
