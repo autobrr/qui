@@ -69,7 +69,9 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 		automationStore:    store,
 		partialPoolCreated: map[int64]*hardlinktree.Created{target.Files[0].ID: created},
 	}
-	require.True(t, service.rollbackLivePartialPoolHardlink(ctx, target.Files[0], pool))
+	rolledBack, retry := service.rollbackLivePartialPoolHardlink(ctx, target.Files[0], pool)
+	require.True(t, rolledBack)
+	require.False(t, retry)
 	require.NoFileExists(t, targetPath)
 
 	pool, err = store.GetPartialPool(ctx, pool.ID)
@@ -77,8 +79,31 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	target = partialPoolMemberByTorrentKey(pool, "target")
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, target.Files[0].Status)
 	require.Nil(t, target.Files[0].SourceFileID)
+	require.Nil(t, service.loadPartialPoolCreated(target.Files[0].ID))
 
 	changed, err := store.TransitionPartialPoolFile(ctx, target.Files[0].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &sourceFileID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	created, err = hardlinktree.Create(plan)
+	require.NoError(t, err)
+	changed, err = store.TransitionPartialPoolFile(ctx, target.Files[0].ID, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+	service.storePartialPoolCreated(target.Files[0].ID, created)
+	require.NoError(t, created.Rollback())
+	require.NoFileExists(t, targetPath)
+
+	pool, err = store.GetPartialPool(ctx, pool.ID)
+	require.NoError(t, err)
+	target = partialPoolMemberByTorrentKey(pool, "target")
+	rolledBack, retry = service.rollbackLivePartialPoolHardlink(ctx, target.Files[0], pool)
+	require.True(t, rolledBack, "an already-removed owned target must finish its durable rollback")
+	require.False(t, retry)
+	require.Nil(t, service.loadPartialPoolCreated(target.Files[0].ID))
+
+	changed, err = store.TransitionPartialPoolFile(ctx, target.Files[0].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &sourceFileID},
 	})
 	require.NoError(t, err)
@@ -93,8 +118,81 @@ func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	require.NoError(t, err)
 	target = partialPoolMemberByTorrentKey(pool, "target")
 	restarted := &Service{automationStore: store, partialPoolCreated: make(map[int64]*hardlinktree.Created)}
-	require.False(t, restarted.rollbackLivePartialPoolHardlink(ctx, target.Files[0], pool))
+	rolledBack, retry = restarted.rollbackLivePartialPoolHardlink(ctx, target.Files[0], pool)
+	require.False(t, rolledBack)
+	require.False(t, retry)
 	require.FileExists(t, targetPath, "a restart loses ownership proof and must leave the hardlink untouched")
+}
+
+func TestPartialPoolHardlinkMissingFilesSettlesRollbackBeforeExceptionalState(t *testing.T) {
+	for _, status := range []string{
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolMemberStatusRechecking,
+	} {
+		t.Run(status, func(t *testing.T) {
+			store, instanceID := newPartialPoolFilesystemStore(t)
+			sourceRoot := t.TempDir()
+			targetRoot := t.TempDir()
+			pool, source, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
+				instanceID,
+				"source",
+				models.CrossSeedPartialPoolModeHardlink,
+				sourceRoot,
+				models.CrossSeedPartialPoolMemberStatusComplete,
+				models.CrossSeedPartialPoolFileStatusAvailable,
+				nil,
+			))
+			require.NoError(t, err)
+			sourceFileID := source.Files[0].ID
+			targetRegistration := partialPoolFilesystemRegistration(
+				instanceID,
+				"target-"+status,
+				models.CrossSeedPartialPoolModeHardlink,
+				targetRoot,
+				status,
+				models.CrossSeedPartialPoolFileStatusVerifying,
+				&sourceFileID,
+			)
+			targetRegistration.Member.LastError = partialPoolRecheckObserved
+			_, target, err := store.RegisterPartialPoolMember(t.Context(), targetRegistration)
+			require.NoError(t, err)
+
+			pool, err = store.GetPartialPool(t.Context(), pool.ID)
+			require.NoError(t, err)
+			source = partialPoolMemberByTorrentKey(pool, source.TorrentKey)
+			target = partialPoolMemberByTorrentKey(pool, target.TorrentKey)
+			sourceSnapshot := partialPoolTestSnapshot(source, 0)
+			sourceSnapshot.torrent.State = qbt.TorrentStateStoppedUp
+			sourceSnapshot.files[0].Progress = 1
+			sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+			targetSnapshot := partialPoolTestSnapshot(target, target.Files[0].SizeBytes)
+			targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
+			targetSnapshot.files[0].Progress = 0
+			targetSnapshot.fileByIndex[0] = targetSnapshot.files[0]
+
+			sync := &recheckResumeSyncManager{}
+			service := &Service{
+				automationStore: store,
+				syncManager:     sync,
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+				},
+			}
+			service.reconcilePartialPool(t.Context(), target.CreatedAt.Add(partialPoolAdmissionHold), pool, map[int64]*partialPoolMemberSnapshot{
+				source.ID: sourceSnapshot,
+				target.ID: targetSnapshot,
+			}, target.Files[0].SizeBytes)
+
+			pool, err = store.GetPartialPool(t.Context(), pool.ID)
+			require.NoError(t, err)
+			target = partialPoolMemberByTorrentKey(pool, target.TorrentKey)
+			require.Equal(t, status, target.Status)
+			require.Equal(t, partialPoolRecheckRequested, target.LastError)
+			require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, target.Files[0].Status)
+			require.Nil(t, target.Files[0].SourceFileID)
+			require.Equal(t, []string{"recheck:" + target.TorrentKey}, sync.bulkActions)
+		})
+	}
 }
 
 func TestPartialPoolReflinkVerificationFailureKeepsTargetForRepair(t *testing.T) {

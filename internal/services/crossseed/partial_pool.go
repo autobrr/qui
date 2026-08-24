@@ -958,7 +958,7 @@ func (s *Service) reconcilePartialPool(
 			if !admissionWindowClosed && member.LastError == partialPoolRecheckPending && !partialPoolDataChecking(snapshot.torrent.State) {
 				continue
 			}
-			s.reconcilePartialPoolVerifying(ctx, now, member, snapshot, budget)
+			s.reconcilePartialPoolVerifying(ctx, now, pool, member, snapshot, budget)
 		case models.CrossSeedPartialPoolMemberStatusRechecking:
 			if partialPoolMemberHasPropagationWork(member) {
 				continue
@@ -1016,6 +1016,9 @@ func (s *Service) reconcilePartialPoolExceptionalState(ctx context.Context, now 
 		return false
 	}
 	if snapshot.torrent.State == qbt.TorrentStateMissingFiles && member.Mode == models.CrossSeedPartialPoolModeHardlink {
+		if member.Status == models.CrossSeedPartialPoolMemberStatusVerifying || member.Status == models.CrossSeedPartialPoolMemberStatusRechecking {
+			return false
+		}
 		reason := "hardlink partial pool member entered missingFiles state"
 		if member.Status == models.CrossSeedPartialPoolMemberStatusComplete {
 			s.transitionPartialPoolMember(ctx, member, member.Status, models.PartialPoolMemberMutation{LastError: &reason})
@@ -1092,7 +1095,7 @@ func (s *Service) finishPartialPoolRecoveryExhausted(ctx context.Context, member
 	member.Status = models.CrossSeedPartialPoolMemberStatusManual
 }
 
-func (s *Service) reconcilePartialPoolVerifying(ctx context.Context, now time.Time, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
+func (s *Service) reconcilePartialPoolVerifying(ctx context.Context, now time.Time, pool *models.CrossSeedPartialPool, member *models.CrossSeedPartialPoolMember, snapshot *partialPoolMemberSnapshot, budget int64) {
 	if !s.partialPoolRecheckSettled(ctx, now, member, snapshot) {
 		return
 	}
@@ -1100,6 +1103,9 @@ func (s *Service) reconcilePartialPoolVerifying(ctx context.Context, now time.Ti
 	if partialPoolTorrentComplete(snapshot.torrent) {
 		s.publishPartialPoolCompletedFiles(ctx, member, snapshot)
 		s.completeAndResumePartialPoolMember(ctx, member, snapshot)
+		return
+	}
+	if !s.settlePartialPoolRecheckFiles(ctx, now, pool, member, snapshot) {
 		return
 	}
 	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(s))
@@ -1344,34 +1350,8 @@ func (s *Service) reconcilePartialPoolRechecking(
 		return
 	}
 
-	for _, file := range member.Files {
-		if file.Status != models.CrossSeedPartialPoolFileStatusVerifying {
-			continue
-		}
-		current := snapshot.fileByIndex[file.FileIndex]
-		if current.Progress >= 1 {
-			s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{})
-			s.deletePartialPoolCreated(file.ID)
-			continue
-		}
-		if member.Mode == models.CrossSeedPartialPoolModeHardlink {
-			if s.rollbackLivePartialPoolHardlink(ctx, file, pool) {
-				reason := partialPoolRecheckPending
-				s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusRechecking, models.PartialPoolMemberMutation{LastError: &reason})
-				s.requestPartialPoolRecheck(ctx, now, member)
-				return
-			}
-			reason := "propagated hardlink failed verification; target ownership is not provable"
-			s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason})
-			s.markPartialPoolMemberManual(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusRechecking}, reason)
-			member.Status = models.CrossSeedPartialPoolMemberStatusManual
-			return
-		}
-		reason := "propagated reflink failed verification; retained clone requires download repair"
-		s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusMissing, models.PartialPoolFileMutation{
-			SourceFileID: models.NullableInt64Update{Set: true},
-			LastError:    &reason,
-		})
+	if !s.settlePartialPoolRecheckFiles(ctx, now, pool, member, snapshot) {
+		return
 	}
 
 	status, reason := partialPoolPostRecheckVerdict(member, snapshot, budget, normalizerForService(s))
@@ -1380,30 +1360,107 @@ func (s *Service) reconcilePartialPoolRechecking(
 	s.transitionPartialPoolMember(ctx, member, status, models.PartialPoolMemberMutation{MissingBytes: &missing, LastError: choosePartialPoolError(status, reason, &empty)})
 }
 
-func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *models.CrossSeedPartialPoolMemberFile, pool *models.CrossSeedPartialPool) bool {
-	created := s.loadPartialPoolCreated(file.ID)
-	if created == nil || file.SourceFileID == nil {
-		return false
+// settlePartialPoolRecheckFiles durably resolves propagated files after a
+// settled piece check. It returns true only when every verifying file is
+// settled and no hardlink rollback requires another check.
+func (s *Service) settlePartialPoolRecheckFiles(
+	ctx context.Context,
+	now time.Time,
+	pool *models.CrossSeedPartialPool,
+	member *models.CrossSeedPartialPoolMember,
+	snapshot *partialPoolMemberSnapshot,
+) bool {
+	for _, file := range member.Files {
+		if file.Status != models.CrossSeedPartialPoolFileStatusVerifying {
+			continue
+		}
+		current := snapshot.fileByIndex[file.FileIndex]
+		if current.Progress >= 1 {
+			if !s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{}) {
+				return false
+			}
+			s.deletePartialPoolCreated(file.ID)
+			continue
+		}
+		if member.Mode == models.CrossSeedPartialPoolModeHardlink {
+			rolledBack, retry := s.rollbackLivePartialPoolHardlink(ctx, file, pool)
+			if retry {
+				return false
+			}
+			if rolledBack {
+				s.requestPartialPoolRecheck(ctx, now, member)
+				return false
+			}
+			reason := "propagated hardlink failed verification; target ownership is not provable"
+			s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusManual, models.PartialPoolFileMutation{LastError: &reason})
+			s.markPartialPoolMemberManual(ctx, member.ID, []string{member.Status}, reason)
+			member.Status = models.CrossSeedPartialPoolMemberStatusManual
+			return false
+		}
+		reason := "propagated reflink failed verification; retained clone requires download repair"
+		if !s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusMissing, models.PartialPoolFileMutation{
+			SourceFileID: models.NullableInt64Update{Set: true},
+			LastError:    &reason,
+		}) {
+			return false
+		}
 	}
-	sourceMember, sourceFile := partialPoolFileByID(pool, *file.SourceFileID)
+	return true
+}
+
+// rollbackLivePartialPoolHardlink removes an owned target, or adopts an
+// already-absent target, before atomically recording the missing file and its
+// pending follow-up check. rolledBack is true only after that state commits;
+// retry asks the caller to retain verification ownership, while two false
+// results mean the live target cannot be removed safely.
+func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *models.CrossSeedPartialPoolMemberFile, pool *models.CrossSeedPartialPool) (rolledBack, retry bool) {
 	targetMember := partialPoolMemberForFile(pool, file)
-	if sourceMember == nil || sourceFile == nil || targetMember == nil {
-		return false
-	}
-	sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
-	if err != nil {
-		return false
+	if targetMember == nil {
+		return false, false
 	}
 	targetPath, err := partialPoolLocalPath(targetMember, file)
-	if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(sourcePath, targetPath) || ctx.Err() != nil {
-		return false
+	if err != nil {
+		return false, false
 	}
-	if err := created.Rollback(); err != nil {
-		return false
+	if ctx.Err() != nil {
+		return false, true
 	}
+	targetMissing := false
+	if _, err := os.Lstat(targetPath); os.IsNotExist(err) {
+		targetMissing = true
+	} else if err != nil {
+		return false, false
+	}
+
+	if !targetMissing {
+		created := s.loadPartialPoolCreated(file.ID)
+		if created == nil || file.SourceFileID == nil {
+			return false, false
+		}
+		sourceMember, sourceFile := partialPoolFileByID(pool, *file.SourceFileID)
+		if sourceMember == nil || sourceFile == nil {
+			return false, false
+		}
+		sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
+		if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(sourcePath, targetPath) {
+			return false, false
+		}
+		if err := created.Rollback(); err != nil {
+			if _, statErr := os.Lstat(targetPath); os.IsNotExist(statErr) {
+				return false, true
+			}
+			return false, false
+		}
+	}
+	changed, err := s.automationStore.TransitionPartialPoolHardlinkRollback(ctx, targetMember.ID, file.ID, targetMember.Status)
+	if err != nil || !changed {
+		return false, true
+	}
+	file.Status = models.CrossSeedPartialPoolFileStatusMissing
+	file.SourceFileID = nil
+	targetMember.LastError = partialPoolRecheckPending
 	s.deletePartialPoolCreated(file.ID)
-	s.transitionPartialPoolFile(ctx, file, models.CrossSeedPartialPoolFileStatusMissing, models.PartialPoolFileMutation{SourceFileID: models.NullableInt64Update{Set: true}})
-	return true
+	return true, false
 }
 
 func (s *Service) loadPartialPoolCreated(fileID int64) *hardlinktree.Created {

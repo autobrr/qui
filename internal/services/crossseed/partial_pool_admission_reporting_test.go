@@ -256,7 +256,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			require.Equal(t, pool.ID, wake.poolID, "registration must be durable before its wake is consumed")
 
 			now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-			service.reconcilePartialPoolVerifying(t.Context(), now, member, &partialPoolMemberSnapshot{
+			service.reconcilePartialPoolVerifying(t.Context(), now, pool, member, &partialPoolMemberSnapshot{
 				torrent: qbt.Torrent{State: qbt.TorrentStateStoppedDl},
 			}, 0)
 			require.Equal(t, 1, sync.recheckCalls)
@@ -289,7 +289,7 @@ func TestPartialPoolCoordinatorAdoptsRunningRecheck(t *testing.T) {
 			snapshot := &partialPoolMemberSnapshot{torrent: qbt.Torrent{State: state}}
 
 			if status == models.CrossSeedPartialPoolMemberStatusVerifying {
-				service.reconcilePartialPoolVerifying(t.Context(), now, member, snapshot, 0)
+				service.reconcilePartialPoolVerifying(t.Context(), now, pool, member, snapshot, 0)
 			} else {
 				service.reconcilePartialPoolRechecking(t.Context(), now, pool, member, snapshot, 0)
 			}
@@ -324,7 +324,7 @@ func TestPartialPoolCoordinatorKeepsResumeDataPendingUntilStopped(t *testing.T) 
 			reconcile := func(state qbt.TorrentState) {
 				snapshot := &partialPoolMemberSnapshot{torrent: qbt.Torrent{State: state}}
 				if status == models.CrossSeedPartialPoolMemberStatusVerifying {
-					service.reconcilePartialPoolVerifying(t.Context(), now, member, snapshot, 0)
+					service.reconcilePartialPoolVerifying(t.Context(), now, pool, member, snapshot, 0)
 				} else {
 					service.reconcilePartialPoolRechecking(t.Context(), now, pool, member, snapshot, 0)
 				}

@@ -850,6 +850,57 @@ func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID i
 	return changed == 1, err
 }
 
+// TransitionPartialPoolHardlinkRollback atomically marks a verifying file
+// missing, clears its source, and records the member's pending follow-up check.
+// It returns false without committing when either compare-and-set no longer
+// matches, and returns an error for invalid input or database failures.
+func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Context, memberID, fileID int64, memberStatus string) (bool, error) {
+	if memberID == 0 || fileID == 0 || (memberStatus != CrossSeedPartialPoolMemberStatusVerifying && memberStatus != CrossSeedPartialPoolMemberStatusRechecking) {
+		return false, errors.New("partial pool hardlink rollback requires valid member and file state")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin partial pool hardlink rollback: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	fileResult, err := tx.ExecContext(ctx, `
+		UPDATE cross_seed_partial_pool_member_files
+		SET status = ?, source_file_id = NULL, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND member_id = ? AND status = ?
+	`, CrossSeedPartialPoolFileStatusMissing, fileID, memberID, CrossSeedPartialPoolFileStatusVerifying)
+	if err != nil {
+		return false, fmt.Errorf("record partial pool hardlink rollback file: %w", err)
+	}
+	fileChanged, err := fileResult.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if fileChanged != 1 {
+		return false, nil
+	}
+
+	memberResult, err := tx.ExecContext(ctx, `
+		UPDATE cross_seed_partial_pool_members
+		SET last_error = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND status = ?
+	`, CrossSeedPartialPoolRecheckPending, memberID, memberStatus)
+	if err != nil {
+		return false, fmt.Errorf("record partial pool hardlink rollback member: %w", err)
+	}
+	memberChanged, err := memberResult.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if memberChanged != 1 {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit partial pool hardlink rollback: %w", err)
+	}
+	return true, nil
+}
+
 // MarkPartialPoolMemberRemoved records qBittorrent removal and deletes the pool
 // only when no member remains.
 func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, memberID int64, reason string) error {

@@ -206,6 +206,44 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCrossSeedPartialPoolHardlinkRollbackTransitionIsAtomic(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	ctx := context.Background()
+	_, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member-v1", "member-v2", "source"))
+	require.NoError(t, err)
+	file := member.Files[1]
+	sourceFileID := member.Files[0].ID
+
+	changed, err := store.TransitionPartialPoolFile(ctx, file.ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &sourceFileID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	changed, err = store.TransitionPartialPoolFile(ctx, file.ID, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, file.ID, models.CrossSeedPartialPoolMemberStatusRechecking)
+	require.NoError(t, err)
+	require.False(t, changed)
+	_, member, err = store.ResolvePartialPoolMember(ctx, secondID, "member")
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
+	require.Empty(t, member.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, member.Files[1].Status, "the file update must roll back when the member CAS fails")
+	require.NotNil(t, member.Files[1].SourceFileID)
+
+	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, member.Files[1].ID, member.Status)
+	require.NoError(t, err)
+	require.True(t, changed)
+	_, member, err = store.ResolvePartialPoolMember(ctx, secondID, "member")
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, member.Status)
+	require.Equal(t, models.CrossSeedPartialPoolRecheckPending, member.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, member.Files[1].Status)
+	require.Nil(t, member.Files[1].SourceFileID)
+}
+
 func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgres(t *testing.T) {
 	db := testdb.NewMigratedPostgres(t, "partial-pool-concurrent-claims")
 	store, _, firstID, secondID := newPartialPoolTestStoreWithDB(t, db)
