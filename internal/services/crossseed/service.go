@@ -7585,6 +7585,15 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		FilteringState: filteringState,
 	}
 
+	// Cache the live state before any indexer lookups: even when no indexers
+	// are available, the correctly typed state must replace a stale entry left
+	// by a previous content type (#2313). Capability-only runs
+	// (enableContentFiltering=false) skip the cache: their local state gets
+	// marked completed below without content filtering having run.
+	if s.asyncFilteringCache != nil && enableContentFiltering {
+		s.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, hash), filteringState, ttlcache.DefaultTTL)
+	}
+
 	log.Trace().
 		Str("torrentHash", hash).
 		Int("instanceID", instanceID).
@@ -7605,16 +7614,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		filteringState.CapabilitiesCompleted = true
 		filteringState.Unlock()
 		torrentInfo.AvailableIndexers = capabilityIndexers
-
-		// Cache the live state: the background worker mutates it under its
-		// lock, so the slot always shows current progress, and a worker whose
-		// entry was replaced keeps mutating its own detached state without
-		// being able to write itself back into the cache (#2313). Capability-only
-		// runs (enableContentFiltering=false) skip the cache: their local state
-		// gets marked completed below without content filtering having run.
-		if s.asyncFilteringCache != nil && enableContentFiltering {
-			s.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, hash), filteringState, ttlcache.DefaultTTL)
-		}
 
 		log.Trace().
 			Str("torrentHash", hash).

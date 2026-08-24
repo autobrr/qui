@@ -207,4 +207,9 @@ func TestAnalyzeAsyncReusesOnlyMatchingContentType(t *testing.T) {
 	require.NoError(t, err)
 	require.NotSame(t, cachedState, result.FilteringState, "different content type must not reuse the cached run")
 	require.NotEqual(t, []int{7}, result.TorrentInfo.FilteredIndexers)
+
+	// no indexers available here (nil jackett)
+	cached, found := svc.asyncFilteringCache.Get(asyncFilteringCacheKey(instanceID, hash))
+	require.True(t, found)
+	require.Same(t, result.FilteringState, cached, "fresh analysis must replace the stale differently typed cache entry")
 }
