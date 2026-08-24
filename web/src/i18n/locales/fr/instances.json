@@ -319,6 +319,12 @@
       "maxActiveTorrentsDescription": "Nombre total maximum de torrents actifs",
       "maxCheckingTorrents": "Vérifications Max",
       "maxCheckingTorrentsDescription": "Nombre maximal de torrents en vérification simultanée",
+      "dontCountSlowTorrents": "Ne Pas Compter les Torrents Lents",
+      "dontCountSlowTorrentsDescription": "Les torrents lents ne comptent pas dans les limites actives ci-dessus",
+      "slowTorrentDlRateThreshold": "Seuil de Débit de Téléchargement (KiB/s)",
+      "slowTorrentUlRateThreshold": "Seuil de Débit d'Envoi (KiB/s)",
+      "slowTorrentInactiveTimer": "Minuteur d'Inactivité du Torrent (secondes)",
+      "slowTorrentInactiveTimerDescription": "Durée pendant laquelle les deux débits doivent rester sous les seuils avant que le torrent soit considéré comme lent",
       "validation": {
         "maxActiveDownloads": "Le max de téléchargements actifs doit être supérieur à -1",
         "maxActiveUploads": "Le max d'envois actifs doit être supérieur à -1",

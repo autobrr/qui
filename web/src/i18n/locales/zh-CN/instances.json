@@ -319,6 +319,12 @@
       "maxActiveTorrentsDescription": "活跃种子总数上限",
       "maxCheckingTorrents": "最大校验种子数",
       "maxCheckingTorrentsDescription": "同时校验的种子最大数量",
+      "dontCountSlowTorrents": "不计入慢速种子",
+      "dontCountSlowTorrentsDescription": "慢速种子不计入上述活跃数量限制",
+      "slowTorrentDlRateThreshold": "下载速率阈值 (KiB/s)",
+      "slowTorrentUlRateThreshold": "上传速率阈值 (KiB/s)",
+      "slowTorrentInactiveTimer": "种子不活跃计时 (秒)",
+      "slowTorrentInactiveTimerDescription": "两项速率需持续低于阈值多久才将种子视为慢速",
       "validation": {
         "maxActiveDownloads": "最大活跃下载数必须大于 -1",
         "maxActiveUploads": "最大活跃上传数必须大于 -1",
