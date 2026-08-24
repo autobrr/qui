@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useMemo, useRef, useSyncExternalStore } from "react"
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react"
 import { getApiBaseUrl } from "@/lib/base-url"
 
 /**
@@ -38,6 +38,15 @@ const SYNCED_KEYS = new Set<string>([
 const SYNCED_PREFIXES = [
   "qui-start-paused-instance-",
   "qui-cross-seed-blocklist-",
+  // "qui-filters-" covers "qui-filters-global" and the per-instance keys.
+  "qui-column-visibility:",
+  "qui-column-order:",
+  "qui-column-sorting:",
+  "qui-column-sizing:",
+  "qui-column-filters-",
+  "qui-collapsed-categories-",
+  "qui-filters-",
+  "qui:torrent-mobile-sort:",
 ]
 
 function isSyncedKey(key: string): boolean {
@@ -248,6 +257,25 @@ export function parseJsonBoolean(raw: string): boolean {
   return parsed
 }
 
+// Module-level so the setter's useCallback identity stays stable when no
+// custom serializer is passed.
+const defaultSerialize = (value: unknown): string => JSON.stringify(value)
+
+/**
+ * Drop a pre-instance-scoping shared localStorage key once the caller uses
+ * instance-scoped keys. Local-only: legacy keys are never synced.
+ */
+export function useDropLegacyKey(baseKey: string, enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled) return
+    try {
+      localStorage.removeItem(baseKey)
+    } catch (error) {
+      console.error("Failed to clear legacy state key:", baseKey, error)
+    }
+  }, [baseKey, enabled])
+}
+
 interface ClientSettingOptions<T> {
   defaultValue: T
   /** Raw string to value; throw to fall back to defaultValue. Pass a stable function. */
@@ -263,7 +291,7 @@ interface ClientSettingOptions<T> {
  */
 export function useClientSetting<T>(
   key: string,
-  { defaultValue, parse, serialize = (value) => JSON.stringify(value) }: ClientSettingOptions<T>
+  { defaultValue, parse, serialize = defaultSerialize }: ClientSettingOptions<T>
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const subscribe = useCallback(
     (callback: () => void) => {
