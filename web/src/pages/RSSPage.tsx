@@ -79,7 +79,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
-import { usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
+import { resolveInstanceSelection, usePersistedInstanceSelection } from "@/hooks/usePersistedInstanceSelection"
 import {
   rssKeys,
   useAddRSSFeed,
@@ -134,28 +134,9 @@ export function RSSPage({
 
   // Auto-select/validate instance selection
   useEffect(() => {
-    if (!instances || instances.length === 0) {
-      if (selectedInstanceId !== undefined) {
-        setSelectedInstanceId(undefined)
-      }
-      return
-    }
-
-    if (selectedInstanceId !== undefined) {
-      const exists = instances.some((i) => i.id === selectedInstanceId)
-      if (exists) {
-        return
-      }
-      const fallbackInstance = instances.find((i) => i.connected) ?? instances[0]
-      setSelectedInstanceId(fallbackInstance?.id)
-      return
-    }
-
-    const firstConnected = instances.find((i) => i.connected)
-    if (firstConnected) {
-      setSelectedInstanceId(firstConnected.id)
-    } else if (instances[0]) {
-      setSelectedInstanceId(instances[0].id)
+    const next = resolveInstanceSelection(instances, selectedInstanceId)
+    if (next !== selectedInstanceId) {
+      setSelectedInstanceId(next)
     }
   }, [selectedInstanceId, setSelectedInstanceId, instances])
 

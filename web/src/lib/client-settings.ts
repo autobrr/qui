@@ -34,6 +34,13 @@ const SYNCED_KEYS = new Set<string>([
   "qui-datetime-preferences",
   "qui-titlebar-speeds-enabled",
   "qui.language",
+  "qui-sidebar-collapsed",
+  "qui-filter-sidebar-collapsed",
+  "qui-accordion",
+  "qui-accordion-views-seeded",
+  "qui-torrent-view-mode",
+  "qui-unified-instance-filter",
+  "torrent-details-last-tab",
 ])
 const SYNCED_PREFIXES = [
   "qui-start-paused-instance-",
@@ -47,6 +54,8 @@ const SYNCED_PREFIXES = [
   "qui-collapsed-categories-",
   "qui-filters-",
   "qui:torrent-mobile-sort:",
+  "qui-show-empty-",
+  "qui-selected-instance-",
 ]
 
 function isSyncedKey(key: string): boolean {
