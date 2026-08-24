@@ -31,14 +31,15 @@ if [ -n "$PUID" ] && [ -n "$PGID" ]; then
         adduser -D -H -u "$PUID" -G "$GROUP_NAME" -s /sbin/nologin qui
     fi
 
-    # Fix ownership of /config (skip if already correct)
+    # Fix ownership of anything in /config not owned by PUID:PGID.
+    # A full-tree scan, not just the root dir: a correctly-owned mount can
+    # still hold root-owned files from a run before PUID/PGID were set.
     mkdir -p /config
-    current_uid=$(stat -c %u /config 2>/dev/null || echo "")
-    current_gid=$(stat -c %g /config 2>/dev/null || echo "")
-    if [ -z "$current_uid" ] || [ -z "$current_gid" ] || \
-       [ "$current_uid" -ne "$PUID" ] || [ "$current_gid" -ne "$PGID" ]; then
-        chown -R "$PUID:$PGID" /config
-    fi
+    # chown -h so symlinks are not followed (a link out of /config must not
+    # chown its target). A file that cannot be chowned (read-only mount) is
+    # not fatal: warn and let qui decide if it can live with it.
+    find /config \( ! -user "$PUID" -o ! -group "$PGID" \) -exec chown -h "$PUID:$PGID" {} + \
+        || echo >&2 "WARN: could not fix ownership of some files under /config"
 
     # Drop privileges and exec qui
     exec su-exec "$PUID:$PGID" /usr/local/bin/qui "$@"
