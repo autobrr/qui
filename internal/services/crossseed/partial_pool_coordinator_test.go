@@ -201,7 +201,7 @@ func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *test
 
 	targetSnapshot := snapshots[target.ID]
 	targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
-	require.Same(t, target, selectPartialPoolDownloader(pool, snapshots, now), "a missingFiles target must fall back because it cannot receive propagation")
+	require.Nil(t, selectPartialPoolDownloader(pool, snapshots, now), "a missingFiles reflink target must wait for available pool data before its first recheck")
 	targetSnapshot.torrent.State = qbt.TorrentStateStoppedDl
 
 	sourceSnapshot.torrent.State = qbt.TorrentStateStoppedDl

@@ -445,14 +445,15 @@ type Service struct {
 	seasonPackRunStore seasonPackRunCreator
 
 	// test hooks
-	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
-	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
-	reflinkMaterializer     func(baseDir string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
-	postInjectionHook       func(context.Context, int, string)
-	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
+	crossSeedInvoker            func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	seasonPackApplier           func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	torrentDownloadFunc         func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker     func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator       func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
+	reflinkMaterializer         func(baseDir string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
+	partialPoolTorrentRefresher func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
+	postInjectionHook           func(context.Context, int, string)
+	filesShareAllocation        func(sourcePath, candidatePath string) (bool, error)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume

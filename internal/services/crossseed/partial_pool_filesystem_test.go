@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -148,6 +151,7 @@ func TestPartialPoolReflinkVerificationFailureKeepsTargetForRepair(t *testing.T)
 }
 
 func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(t *testing.T) {
+	privateMaterializeErr := errors.New("synthetic clone failure: C:/PRIVATE_SAVE_PATH_MARKER/Synthetic.Release/video.mkv")
 	tests := []struct {
 		name                 string
 		orphanedStaging      bool
@@ -155,18 +159,40 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 		unownedStaging       bool
 		unownedEmptyRoot     bool
 		targetAbsent         bool
+		missingFiles         bool
+		persistedPropagation bool
+		sourceChecking       bool
+		waiting              bool
+		rechecking           bool
+		recheckState         string
+		delayedCheck         bool
+		liveRefreshBlocked   bool
 		materializeErr       error
+		failureCategory      string
 	}{
-		{name: "replaces placeholder before recheck"},
+		{name: "replaces stopped placeholder before recheck"},
+		{name: "replaces missingFiles placeholder before first recheck", missingFiles: true},
+		{name: "recovers missingFiles propagation claim before first recheck", missingFiles: true, persistedPropagation: true},
+		{name: "waits for delayed requested check before recovering propagation", targetAbsent: true, missingFiles: true, persistedPropagation: true, recheckState: partialPoolRecheckRequested, delayedCheck: true},
+		{name: "invalidates observed recheck after persisted propagation", targetAbsent: true, missingFiles: true, persistedPropagation: true, rechecking: true, recheckState: partialPoolRecheckObserved},
+		{name: "retries persisted propagation while source is checking", targetAbsent: true, missingFiles: true, persistedPropagation: true, sourceChecking: true},
+		{name: "retries persisted propagation after live state refresh failure", targetAbsent: true, missingFiles: true, persistedPropagation: true, liveRefreshBlocked: true},
+		{name: "recovers waiting missingFiles propagation claim before downloader selection", targetAbsent: true, missingFiles: true, persistedPropagation: true, waiting: true},
 		{name: "recovers orphaned staging clone before replacement", orphanedStaging: true},
-		{name: "preserves placeholder when cloning fails", materializeErr: errors.New("synthetic clone failure")},
+		{name: "preserves placeholder when cloning fails", materializeErr: privateMaterializeErr, failureCategory: "materialization_failed"},
 		{name: "rejects staging alias without deleting placeholder", stagingAliasesTarget: true},
 		{name: "rejects unowned staging without deleting placeholder", unownedStaging: true},
 		{name: "preserves unowned empty staging root", unownedEmptyRoot: true},
-		{name: "materializes absent target through owned probe root", targetAbsent: true},
+		{name: "materializes missingFiles target with missing parent", targetAbsent: true, missingFiles: true},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
+			var debugLogs bytes.Buffer
+			if testCase.failureCategory != "" || testCase.recheckState != "" {
+				previousLogger := log.Logger
+				log.Logger = zerolog.New(&debugLogs).Level(zerolog.DebugLevel)
+				defer func() { log.Logger = previousLogger }()
+			}
 			store, instanceID := newPartialPoolFilesystemStore(t)
 			baseDir := t.TempDir()
 			sourceRoot := filepath.Join(baseDir, "source")
@@ -181,9 +207,11 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			}
 			require.NoError(t, os.MkdirAll(filepath.Dir(sourcePath), 0o755))
 			require.NoError(t, os.WriteFile(sourcePath, payload, 0o600))
-			require.NoError(t, os.MkdirAll(filepath.Dir(targetPath), 0o755))
 			if !testCase.targetAbsent {
+				require.NoError(t, os.MkdirAll(filepath.Dir(targetPath), 0o755))
 				require.NoError(t, os.WriteFile(targetPath, placeholder, 0o600))
+			} else {
+				require.NoDirExists(t, filepath.Dir(targetPath))
 			}
 
 			pool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
@@ -196,16 +224,26 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				nil,
 			))
 			require.NoError(t, err)
+			targetStatus := models.CrossSeedPartialPoolMemberStatusVerifying
+			if testCase.waiting {
+				targetStatus = models.CrossSeedPartialPoolMemberStatusWaiting
+			} else if testCase.rechecking {
+				targetStatus = models.CrossSeedPartialPoolMemberStatusRechecking
+			}
 			targetRegistration := partialPoolFilesystemRegistration(
 				instanceID,
 				"target",
 				models.CrossSeedPartialPoolModeReflink,
 				targetRoot,
-				models.CrossSeedPartialPoolMemberStatusVerifying,
+				targetStatus,
 				models.CrossSeedPartialPoolFileStatusMissing,
 				nil,
 			)
-			targetRegistration.Member.LastError = partialPoolRecheckPending
+			if testCase.recheckState != "" {
+				targetRegistration.Member.LastError = testCase.recheckState
+			} else if !testCase.waiting {
+				targetRegistration.Member.LastError = partialPoolRecheckPending
+			}
 			_, _, err = store.RegisterPartialPoolMember(t.Context(), targetRegistration)
 			require.NoError(t, err)
 
@@ -215,6 +253,17 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			target := partialPoolMemberByTorrentKey(pool, "target")
 			require.NotNil(t, source)
 			require.NotNil(t, target)
+			if testCase.persistedPropagation {
+				changed, transitionErr := store.TransitionPartialPoolFile(t.Context(), target.Files[0].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+					SourceFileID: models.NullableInt64Update{Set: true, Value: &source.Files[0].ID},
+				})
+				require.NoError(t, transitionErr)
+				require.True(t, changed)
+				pool, err = store.GetPartialPool(t.Context(), pool.ID)
+				require.NoError(t, err)
+				source = partialPoolMemberByTorrentKey(pool, "source")
+				target = partialPoolMemberByTorrentKey(pool, "target")
+			}
 			stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
 			if testCase.orphanedStaging || testCase.stagingAliasesTarget {
 				require.NoError(t, ensurePartialPoolReflinkStagingRoot(stagingRoot))
@@ -236,18 +285,46 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 			sourceSnapshot.torrent.Progress = 1
 			sourceSnapshot.files[0].Progress = 1
 			sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+			if testCase.sourceChecking {
+				sourceSnapshot.torrent.State = qbt.TorrentStateCheckingUp
+				sourceSnapshot.files[0].Progress = 0.5
+				sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+			}
 			targetSnapshot := partialPoolTestSnapshot(target, int64(len(payload)))
 			targetSnapshot.torrent.Hash = target.TorrentKey
 			targetSnapshot.torrent.SavePath = target.RootPath
 			targetSnapshot.torrent.State = qbt.TorrentStateStoppedDl
+			if testCase.missingFiles {
+				targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
+			}
 			filesByHash := map[string]qbt.TorrentFiles{
 				source.TorrentKey: sourceSnapshot.files,
 				target.TorrentKey: targetSnapshot.files,
 			}
+			sourceLiveState := sourceSnapshot.torrent.State
+			targetLiveState := targetSnapshot.torrent.State
+			liveRefreshBlocked := testCase.liveRefreshBlocked
 			sync := &recheckResumeSyncManager{filesByHash: filesByHash}
 			materializerRoot := ""
 			service := &Service{
 				automationStore: store,
+				partialPoolTorrentRefresher: func(ctx context.Context, snapshots map[int64]*partialPoolMemberSnapshot, members ...*models.CrossSeedPartialPoolMember) bool {
+					if liveRefreshBlocked {
+						return false
+					}
+					if !partialPoolTestRefreshTorrentStates(ctx, snapshots, members...) {
+						return false
+					}
+					for _, member := range members {
+						switch member.ID {
+						case source.ID:
+							snapshots[member.ID].torrent.State = sourceLiveState
+						case target.ID:
+							snapshots[member.ID].torrent.State = targetLiveState
+						}
+					}
+					return true
+				},
 				instanceStore: newOrderedInstanceStore(&models.Instance{
 					ID:                       instanceID,
 					HasLocalFilesystemAccess: true,
@@ -275,6 +352,74 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				source.ID: sourceSnapshot,
 				target.ID: targetSnapshot,
 			}, int64(len(payload)))
+			if testCase.liveRefreshBlocked {
+				pool, err = store.GetPartialPool(t.Context(), pool.ID)
+				require.NoError(t, err)
+				source = partialPoolMemberByTorrentKey(pool, "source")
+				target = partialPoolMemberByTorrentKey(pool, "target")
+				require.Equal(t, partialPoolRecheckPending, target.LastError)
+				require.Equal(t, models.CrossSeedPartialPoolFileStatusPropagating, target.Files[0].Status)
+				require.NoDirExists(t, filepath.Dir(targetPath))
+				require.Empty(t, sync.bulkActions)
+
+				liveRefreshBlocked = false
+				service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, map[int64]*partialPoolMemberSnapshot{
+					source.ID: sourceSnapshot,
+					target.ID: targetSnapshot,
+				}, int64(len(payload)))
+			}
+			if testCase.delayedCheck {
+				pool, err = store.GetPartialPool(t.Context(), pool.ID)
+				require.NoError(t, err)
+				source = partialPoolMemberByTorrentKey(pool, "source")
+				target = partialPoolMemberByTorrentKey(pool, "target")
+				require.Equal(t, partialPoolRecheckRequested, target.LastError)
+				require.Equal(t, models.CrossSeedPartialPoolFileStatusPropagating, target.Files[0].Status)
+				require.NoDirExists(t, filepath.Dir(targetPath))
+				require.Empty(t, sync.bulkActions)
+
+				targetLiveState = qbt.TorrentStateCheckingDl
+				service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, map[int64]*partialPoolMemberSnapshot{
+					source.ID: sourceSnapshot,
+					target.ID: targetSnapshot,
+				}, int64(len(payload)))
+				pool, err = store.GetPartialPool(t.Context(), pool.ID)
+				require.NoError(t, err)
+				source = partialPoolMemberByTorrentKey(pool, "source")
+				target = partialPoolMemberByTorrentKey(pool, "target")
+				require.Equal(t, partialPoolRecheckObserved, target.LastError)
+				require.Equal(t, models.CrossSeedPartialPoolFileStatusPropagating, target.Files[0].Status)
+				require.NoDirExists(t, filepath.Dir(targetPath))
+				require.Empty(t, sync.bulkActions)
+
+				targetLiveState = qbt.TorrentStateMissingFiles
+				service.reconcilePartialPool(t.Context(), reconcileAt.Add(2*time.Second), pool, map[int64]*partialPoolMemberSnapshot{
+					source.ID: sourceSnapshot,
+					target.ID: targetSnapshot,
+				}, int64(len(payload)))
+			}
+			if testCase.sourceChecking {
+				pool, err = store.GetPartialPool(t.Context(), pool.ID)
+				require.NoError(t, err)
+				source = partialPoolMemberByTorrentKey(pool, "source")
+				target = partialPoolMemberByTorrentKey(pool, "target")
+				require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, target.Status)
+				require.Equal(t, partialPoolRecheckPending, target.LastError)
+				require.Equal(t, models.CrossSeedPartialPoolFileStatusPropagating, target.Files[0].Status)
+				require.NotNil(t, target.Files[0].SourceFileID)
+				require.Equal(t, source.Files[0].ID, *target.Files[0].SourceFileID)
+				require.NoDirExists(t, filepath.Dir(targetPath))
+				require.Empty(t, sync.bulkActions)
+
+				sourceLiveState = qbt.TorrentStateUploading
+				sourceSnapshot.files[0].Progress = 1
+				sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+				filesByHash[source.TorrentKey] = sourceSnapshot.files
+				service.reconcilePartialPool(t.Context(), reconcileAt, pool, map[int64]*partialPoolMemberSnapshot{
+					source.ID: sourceSnapshot,
+					target.ID: targetSnapshot,
+				}, int64(len(payload)))
+			}
 
 			pool, err = store.GetPartialPool(t.Context(), pool.ID)
 			require.NoError(t, err)
@@ -294,16 +439,355 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 				require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, target.Status)
 				require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, target.Files[0].Status)
 				require.Empty(t, sync.bulkActions)
+				if testCase.failureCategory != "" {
+					require.Contains(t, debugLogs.String(), `"failureCategory":"`+testCase.failureCategory+`"`)
+					require.NotContains(t, debugLogs.String(), "PRIVATE_SAVE_PATH_MARKER")
+				}
 				return
 			}
 			require.Equal(t, payload, targetPayload)
 			require.Equal(t, stagingRoot, materializerRoot)
-			require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, target.Status)
+			expectedStatus := models.CrossSeedPartialPoolMemberStatusVerifying
+			if testCase.waiting || testCase.rechecking {
+				expectedStatus = models.CrossSeedPartialPoolMemberStatusRechecking
+			}
+			require.Equal(t, expectedStatus, target.Status)
 			require.Equal(t, partialPoolRecheckRequested, target.LastError)
 			require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
 			require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+			if testCase.recheckState != "" {
+				expectedResetState := testCase.recheckState
+				if testCase.delayedCheck {
+					expectedResetState = partialPoolRecheckObserved
+					require.Contains(t, debugLogs.String(), `"message":"Partial pool recheck observed"`)
+				}
+				require.NotContains(t, debugLogs.String(), `"message":"Reconciling partial completion pool"`)
+				require.NotContains(t, debugLogs.String(), `"message":"Partial pool file propagation waiting`)
+				require.Contains(t, debugLogs.String(), `"previousRecheckState":"`+expectedResetState+`"`)
+				require.Contains(t, debugLogs.String(), `"message":"Partial pool recheck invalidated for pending file propagation"`)
+			}
 		})
 	}
+}
+
+func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	baseDir := t.TempDir()
+	files := []struct {
+		path    string
+		payload []byte
+	}{
+		{path: "Synthetic.Release/video.mkv", payload: []byte("synthetic video payload")},
+		{path: "Synthetic.Release/sample.mkv", payload: []byte("synthetic sample payload")},
+	}
+
+	sourceRoot := filepath.Join(baseDir, "source")
+	sourceRegistration := partialPoolFilesystemRegistration(
+		instanceID,
+		"source",
+		models.CrossSeedPartialPoolModeReflink,
+		sourceRoot,
+		models.CrossSeedPartialPoolMemberStatusComplete,
+		models.CrossSeedPartialPoolFileStatusAvailable,
+		nil,
+	)
+	sourceRegistration.Files = make([]models.CrossSeedPartialPoolMemberFile, 0, len(files))
+	for index, file := range files {
+		sourcePath := filepath.Join(sourceRoot, filepath.FromSlash(file.path))
+		require.NoError(t, os.MkdirAll(filepath.Dir(sourcePath), 0o755))
+		require.NoError(t, os.WriteFile(sourcePath, file.payload, 0o600))
+		sourceRegistration.Files = append(sourceRegistration.Files, models.CrossSeedPartialPoolMemberFile{
+			FileIndex:         index,
+			RelativePath:      file.path,
+			SizeBytes:         int64(len(file.payload)),
+			WantedAtAdmission: true,
+			Status:            models.CrossSeedPartialPoolFileStatusAvailable,
+		})
+	}
+	pool, source, err := store.RegisterPartialPoolMember(t.Context(), sourceRegistration)
+	require.NoError(t, err)
+	require.Len(t, source.Files, len(files))
+
+	targetRoot := filepath.Join(baseDir, "target")
+	sourceVideoID := source.Files[0].ID
+	sourceSampleID := source.Files[1].ID
+	targetRegistration := partialPoolFilesystemRegistration(
+		instanceID,
+		"target",
+		models.CrossSeedPartialPoolModeReflink,
+		targetRoot,
+		models.CrossSeedPartialPoolMemberStatusWaiting,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	targetRegistration.Member.MissingBytes = int64(len(files[1].payload))
+	targetRegistration.Files = []models.CrossSeedPartialPoolMemberFile{
+		{
+			FileIndex:         0,
+			RelativePath:      files[0].path,
+			SizeBytes:         int64(len(files[0].payload)),
+			WantedAtAdmission: true,
+			Status:            models.CrossSeedPartialPoolFileStatusVerifying,
+			SourceFileID:      &sourceVideoID,
+		},
+		{
+			FileIndex:         1,
+			RelativePath:      files[1].path,
+			SizeBytes:         int64(len(files[1].payload)),
+			WantedAtAdmission: true,
+			Status:            models.CrossSeedPartialPoolFileStatusPropagating,
+			SourceFileID:      &sourceSampleID,
+		},
+	}
+	_, _, err = store.RegisterPartialPoolMember(t.Context(), targetRegistration)
+	require.NoError(t, err)
+	targetVideoPath := filepath.Join(targetRoot, filepath.FromSlash(files[0].path))
+	require.NoError(t, os.MkdirAll(filepath.Dir(targetVideoPath), 0o755))
+	require.NoError(t, os.WriteFile(targetVideoPath, files[0].payload, 0o600))
+	targetSamplePath := filepath.Join(targetRoot, filepath.FromSlash(files[1].path))
+	require.NoFileExists(t, targetSamplePath)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	source = partialPoolMemberByTorrentKey(pool, "source")
+	target := partialPoolMemberByTorrentKey(pool, "target")
+	require.NotNil(t, source)
+	require.NotNil(t, target)
+	sourceSnapshot := partialPoolTestSnapshot(source, 0)
+	sourceSnapshot.torrent.Hash = source.TorrentKey
+	sourceSnapshot.torrent.SavePath = source.RootPath
+	sourceSnapshot.torrent.State = qbt.TorrentStateCheckingUp
+	sourceSnapshot.torrent.Progress = 1
+	sourceSnapshot.files[0].Progress = 1
+	sourceSnapshot.files[1].Progress = 0.5
+	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+	sourceSnapshot.fileByIndex[1] = sourceSnapshot.files[1]
+	targetSnapshot := partialPoolTestSnapshot(target, int64(len(files[1].payload)))
+	targetSnapshot.torrent.Hash = target.TorrentKey
+	targetSnapshot.torrent.SavePath = target.RootPath
+	targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
+	targetSnapshot.files[0].Progress = 1
+	targetSnapshot.fileByIndex[0] = targetSnapshot.files[0]
+	filesByHash := map[string]qbt.TorrentFiles{
+		source.TorrentKey: sourceSnapshot.files,
+		target.TorrentKey: targetSnapshot.files,
+	}
+	sync := &recheckResumeSyncManager{filesByHash: filesByHash}
+	service := &Service{
+		automationStore:             store,
+		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
+		instanceStore: newOrderedInstanceStore(&models.Instance{
+			ID:                       instanceID,
+			HasLocalFilesystemAccess: true,
+			UseReflinks:              true,
+		}),
+		syncManager: sync,
+		reflinkMaterializer: func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+			return hardlinktree.Create(plan)
+		},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+	reconcileAt := source.CreatedAt
+	if target.CreatedAt.After(reconcileAt) {
+		reconcileAt = target.CreatedAt
+	}
+	reconcileAt = reconcileAt.Add(partialPoolAdmissionHold)
+	snapshots := map[int64]*partialPoolMemberSnapshot{
+		source.ID: sourceSnapshot,
+		target.ID: targetSnapshot,
+	}
+	service.reconcilePartialPool(t.Context(), reconcileAt, pool, snapshots, 1<<20)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	target = partialPoolMemberByTorrentKey(pool, "target")
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, target.Status)
+	require.Empty(t, target.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusPropagating, target.Files[1].Status)
+	require.Empty(t, sync.bulkActions)
+	require.NoFileExists(t, targetSamplePath)
+
+	sourceSnapshot.torrent.State = qbt.TorrentStateUploading
+	sourceSnapshot.files[1].Progress = 1
+	sourceSnapshot.fileByIndex[1] = sourceSnapshot.files[1]
+	filesByHash[source.TorrentKey] = sourceSnapshot.files
+	service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	target = partialPoolMemberByTorrentKey(pool, "target")
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusRechecking, target.Status)
+	require.Equal(t, partialPoolRecheckRequested, target.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[1].Status)
+	require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+	require.FileExists(t, targetSamplePath)
+}
+
+func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t *testing.T) {
+	var debugLogs bytes.Buffer
+	previousLogger := log.Logger
+	log.Logger = zerolog.New(&debugLogs).Level(zerolog.DebugLevel)
+	defer func() { log.Logger = previousLogger }()
+
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	baseDir := t.TempDir()
+	files := []struct {
+		path    string
+		payload []byte
+	}{
+		{path: "Synthetic.Release/video.mkv", payload: []byte("synthetic video payload")},
+		{path: "Synthetic.Release/sample.mkv", payload: []byte("synthetic sample")},
+	}
+
+	registerSource := func(key string, fileIndex int) (*models.CrossSeedPartialPool, *models.CrossSeedPartialPoolMember) {
+		t.Helper()
+		root := filepath.Join(baseDir, key)
+		file := files[fileIndex]
+		localPath := filepath.Join(root, filepath.FromSlash(file.path))
+		require.NoError(t, os.MkdirAll(filepath.Dir(localPath), 0o755))
+		require.NoError(t, os.WriteFile(localPath, file.payload, 0o600))
+		registration := partialPoolFilesystemRegistration(
+			instanceID,
+			key,
+			models.CrossSeedPartialPoolModeReflink,
+			root,
+			models.CrossSeedPartialPoolMemberStatusComplete,
+			models.CrossSeedPartialPoolFileStatusAvailable,
+			nil,
+		)
+		registration.Files = []models.CrossSeedPartialPoolMemberFile{{
+			FileIndex:         fileIndex,
+			RelativePath:      file.path,
+			SizeBytes:         int64(len(file.payload)),
+			WantedAtAdmission: true,
+			Status:            models.CrossSeedPartialPoolFileStatusAvailable,
+		}}
+		pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+		require.NoError(t, err)
+		return pool, member
+	}
+
+	pool, _ := registerSource("source", 0)
+	registerSource("source-checking", 1)
+
+	targetRoot := filepath.Join(baseDir, "target")
+	targetRegistration := partialPoolFilesystemRegistration(
+		instanceID,
+		"target",
+		models.CrossSeedPartialPoolModeReflink,
+		targetRoot,
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolFileStatusMissing,
+		nil,
+	)
+	targetRegistration.Member.LastError = partialPoolRecheckPending
+	targetRegistration.Member.MissingBytes = int64(len(files[0].payload) + len(files[1].payload))
+	targetRegistration.Files = make([]models.CrossSeedPartialPoolMemberFile, 0, len(files))
+	for index, file := range files {
+		targetRegistration.Files = append(targetRegistration.Files, models.CrossSeedPartialPoolMemberFile{
+			FileIndex:         index,
+			RelativePath:      file.path,
+			SizeBytes:         int64(len(file.payload)),
+			WantedAtAdmission: true,
+			Status:            models.CrossSeedPartialPoolFileStatusMissing,
+		})
+	}
+	_, _, err := store.RegisterPartialPoolMember(t.Context(), targetRegistration)
+	require.NoError(t, err)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	source := partialPoolMemberByTorrentKey(pool, "source")
+	checkingSource := partialPoolMemberByTorrentKey(pool, "source-checking")
+	target := partialPoolMemberByTorrentKey(pool, "target")
+	require.NotNil(t, source)
+	require.NotNil(t, checkingSource)
+	require.NotNil(t, target)
+
+	sourceSnapshot := partialPoolTestSnapshot(source, 0)
+	sourceSnapshot.torrent.Hash = source.TorrentKey
+	sourceSnapshot.torrent.SavePath = source.RootPath
+	sourceSnapshot.torrent.State = qbt.TorrentStateUploading
+	sourceSnapshot.torrent.Progress = 1
+	sourceSnapshot.files[0].Progress = 1
+	sourceSnapshot.fileByIndex[source.Files[0].FileIndex] = sourceSnapshot.files[0]
+	checkingSnapshot := partialPoolTestSnapshot(checkingSource, 0)
+	checkingSnapshot.torrent.Hash = checkingSource.TorrentKey
+	checkingSnapshot.torrent.SavePath = checkingSource.RootPath
+	checkingSnapshot.torrent.State = qbt.TorrentStateCheckingUp
+	checkingSnapshot.torrent.Progress = 1
+	checkingSnapshot.files[0].Progress = 0.5
+	checkingSnapshot.fileByIndex[checkingSource.Files[0].FileIndex] = checkingSnapshot.files[0]
+	targetSnapshot := partialPoolTestSnapshot(target, target.MissingBytes)
+	targetSnapshot.torrent.Hash = target.TorrentKey
+	targetSnapshot.torrent.SavePath = target.RootPath
+	targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
+
+	filesByHash := map[string]qbt.TorrentFiles{
+		source.TorrentKey:         sourceSnapshot.files,
+		checkingSource.TorrentKey: checkingSnapshot.files,
+		target.TorrentKey:         targetSnapshot.files,
+	}
+	sync := &recheckResumeSyncManager{filesByHash: filesByHash}
+	service := &Service{
+		automationStore:             store,
+		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
+		instanceStore: newOrderedInstanceStore(&models.Instance{
+			ID:                       instanceID,
+			HasLocalFilesystemAccess: true,
+			UseReflinks:              true,
+		}),
+		syncManager: sync,
+		reflinkMaterializer: func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+			return hardlinktree.Create(plan)
+		},
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+		},
+	}
+	reconcileAt := target.CreatedAt.Add(partialPoolAdmissionHold)
+	snapshots := map[int64]*partialPoolMemberSnapshot{
+		source.ID:         sourceSnapshot,
+		checkingSource.ID: checkingSnapshot,
+		target.ID:         targetSnapshot,
+	}
+	service.reconcilePartialPool(t.Context(), reconcileAt, pool, snapshots, 1<<20)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	target = partialPoolMemberByTorrentKey(pool, "target")
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, target.Status)
+	require.Equal(t, partialPoolRecheckPending, target.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, target.Files[1].Status)
+	require.Empty(t, sync.bulkActions)
+	require.Contains(t, debugLogs.String(), `"message":"Partial pool file propagation completed"`)
+	require.Contains(t, debugLogs.String(), `"initialVerification":true`)
+	require.NotContains(t, debugLogs.String(), `"message":"Reconciling partial completion pool"`)
+	require.NotContains(t, debugLogs.String(), `"message":"Partial pool recheck deferred`)
+	require.NotContains(t, debugLogs.String(), `"message":"Partial pool file propagation waiting`)
+	require.FileExists(t, filepath.Join(targetRoot, filepath.FromSlash(files[0].path)))
+	require.NoFileExists(t, filepath.Join(targetRoot, filepath.FromSlash(files[1].path)))
+
+	checkingSnapshot.torrent.State = qbt.TorrentStateUploading
+	checkingSnapshot.files[0].Progress = 1
+	checkingSnapshot.fileByIndex[checkingSource.Files[0].FileIndex] = checkingSnapshot.files[0]
+	filesByHash[checkingSource.TorrentKey] = checkingSnapshot.files
+	service.reconcilePartialPool(t.Context(), reconcileAt.Add(time.Second), pool, snapshots, 1<<20)
+
+	pool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	target = partialPoolMemberByTorrentKey(pool, "target")
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, target.Status)
+	require.Equal(t, partialPoolRecheckRequested, target.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[0].Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, target.Files[1].Status)
+	require.Equal(t, []string{"recheck:target"}, sync.bulkActions)
+	require.FileExists(t, filepath.Join(targetRoot, filepath.FromSlash(files[1].path)))
 }
 
 func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd(t *testing.T) {
@@ -411,7 +895,7 @@ func TestPartialPoolManualPropagationDropsCreatedHandle(t *testing.T) {
 			member.Files[0].ID: {},
 		},
 	}
-	service.markPartialPoolPropagationManual(t.Context(), member, member.Files[0], "synthetic verification failure")
+	service.markPartialPoolPropagationManual(t.Context(), member, member.Files[0], "verification_failed", "synthetic verification failure")
 	require.Nil(t, service.loadPartialPoolCreated(member.Files[0].ID))
 
 	pool, err = store.GetPartialPool(t.Context(), pool.ID)
@@ -491,7 +975,7 @@ func TestPartialPoolPropagationPersistsPauseIntent(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
 	}
-	service.propagatePartialPoolFiles(ctx, pool, snapshots, true)
+	service.propagatePartialPoolFiles(ctx, time.Now(), pool, snapshots, true)
 	require.Equal(t, []string{"pause:target"}, sync.bulkActions)
 
 	pool, err = store.GetPartialPool(ctx, pool.ID)
@@ -597,7 +1081,8 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 
 	sync := &recheckResumeSyncManager{filesByHash: filesByHash}
 	service := &Service{
-		automationStore: store,
+		automationStore:             store,
+		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
 		instanceStore: newOrderedInstanceStore(&models.Instance{
 			ID:                       instanceID,
 			HasLocalFilesystemAccess: true,
@@ -711,6 +1196,22 @@ func TestPartialPoolCompletedFilesPropagateAndSettleEveryDeferredMember(t *testi
 		require.Equal(t, 1, actionCounts["recheck:"+key], "settling an observed member must not request another recheck")
 		require.Equal(t, 1, actionCounts["resume:"+key])
 	}
+}
+
+func partialPoolTestRefreshTorrentStates(
+	ctx context.Context,
+	snapshots map[int64]*partialPoolMemberSnapshot,
+	members ...*models.CrossSeedPartialPoolMember,
+) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	for _, member := range members {
+		if member == nil || snapshots[member.ID] == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func newPartialPoolFilesystemStore(t *testing.T) (*models.CrossSeedStore, int) {
