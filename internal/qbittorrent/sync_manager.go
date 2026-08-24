@@ -2598,10 +2598,8 @@ func waitForPostAddRecheckReady(
 		if syncErr != nil {
 			log.Trace().Err(syncErr).Int("instanceID", instanceID).
 				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
-		} else {
-			if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
-				return nil
-			}
+		} else if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
+			return nil
 		}
 
 		if attempt == maxAttempts {
