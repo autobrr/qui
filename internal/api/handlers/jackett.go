@@ -791,10 +791,8 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		CacheMode:        jackett.CacheModeBypass,
 		SkipHistory:      true,
 		SkipCachePersist: true,
-		OnAllComplete: func(_ *jackett.SearchResponse, searchErr error) {
-			// The results are irrelevant for a connectivity test, but the error is
-			// the actual test outcome.
-			testDone <- searchErr
+		OnAllComplete: func(resp *jackett.SearchResponse, searchErr error) {
+			testDone <- indexerTestOutcome(resp, searchErr)
 		},
 	}
 
@@ -827,6 +825,21 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// indexerTestOutcome turns a completed test search into the test result. A nil
+// search error alone is not a pass: the service reports timed-out, skipped and
+// rate-limited indexers as a partial success with the indexer absent from the
+// covered set (a deadline-exceeded search even arrives with a nil error), so the
+// requested indexer must also be covered for the test to count as ok.
+func indexerTestOutcome(resp *jackett.SearchResponse, searchErr error) error {
+	if searchErr != nil {
+		return searchErr
+	}
+	if !resp.FullyCovered() {
+		return errors.New("indexer did not complete the test search")
+	}
+	return nil
 }
 
 func (h *JackettHandler) updateTestStatusWithTimeout(id int, status string, errorMsg *string) error {

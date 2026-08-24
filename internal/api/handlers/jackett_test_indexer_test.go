@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -96,6 +97,44 @@ func TestTestIndexerReportsSearchOutcome(t *testing.T) {
 				require.NotNil(t, stored.LastTestError)
 				require.NotEmpty(t, *stored.LastTestError)
 			}
+		})
+	}
+}
+
+// The service reports timed-out, rate-limited and skipped indexers as a partial
+// success: OnAllComplete gets a nil error with the indexer absent from the
+// covered set (a deadline-exceeded search even arrives with a nil error). A nil
+// error alone must therefore not count as a pass.
+func TestIndexerTestOutcome(t *testing.T) {
+	searchErr := errors.New("search failed")
+
+	tests := []struct {
+		name    string
+		resp    *jackett.SearchResponse
+		err     error
+		wantErr string
+	}{
+		{name: "search error passes through", err: searchErr, wantErr: "search failed"},
+		{name: "nil response is not a pass", wantErr: "did not complete"},
+		{
+			name:    "uncovered indexer is not a pass",
+			resp:    &jackett.SearchResponse{RequestedIndexerIDs: []int{7}, CoveredIndexerIDs: []int{}},
+			wantErr: "did not complete",
+		},
+		{
+			name: "covered indexer passes",
+			resp: &jackett.SearchResponse{RequestedIndexerIDs: []int{7}, CoveredIndexerIDs: []int{7}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := indexerTestOutcome(tt.resp, tt.err)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
 }
