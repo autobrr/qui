@@ -36,6 +36,12 @@ An exact reported size is evidence, not byte verification. qui still checks the 
 
 By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
 
+### Prowlarr filters remove expected results
+
+qui searches the selected Prowlarr indexer directly. If that indexer has a search filter enabled, such as freeleech only, the filter also applies to cross-seed searches. The tracker can return no results even when matching cross-seed candidates exist.
+
+Prowlarr does not support per-search filter overrides. Add a second entry for the tracker in Prowlarr with the filter disabled, then select that second entry in qui.
+
 ## Cross-seed search run statuses
 
 Library scan and completion search rows use **added**, **skipped**, or **failed** as the top-level outcome. Open the row details to see the per-attempt status and message.
