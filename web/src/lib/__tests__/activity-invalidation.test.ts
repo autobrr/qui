@@ -29,6 +29,7 @@ const ALL_KINDS_MAP = {
   "search.history": true,
   "tracker.icons": true,
   "theme.settings": true,
+  "client.settings": true,
 } satisfies Record<ActivityEvent["kind"], true>
 
 const ALL_KINDS = Object.keys(ALL_KINDS_MAP) as ActivityEvent["kind"][]

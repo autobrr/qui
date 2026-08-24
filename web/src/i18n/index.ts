@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { writeRaw } from "@/lib/client-settings"
 import { spreadsheetPostProcessor } from "@/lib/spreadsheet-disguise"
 import i18n, { type ResourceKey, type ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
@@ -98,11 +99,8 @@ function getStoredLanguage(): AppLanguage | null {
 }
 
 function persistLanguage(lng: AppLanguage) {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, lng)
-  } catch (error) {
-    console.error("Failed to save language preference to localStorage:", error)
-  }
+  // writeRaw caches locally and queues the server push (issue #2406).
+  writeRaw(LANGUAGE_STORAGE_KEY, lng)
 }
 
 // Monotonic token so that rapid language switches can't apply out of order: a slow
