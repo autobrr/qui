@@ -51,6 +51,8 @@ container run -d \
 
 By default the container runs as root. You can run qui as a different user in two ways. Use one or the other, not both.
 
+With either method, qui needs write access to more than `/config`. Cross-seed hardlink and reflink mode create files in their base directory, and orphan scan deletes from your scan paths. Those paths live on the data volumes (see [Local Filesystem Access](#local-filesystem-access)), so run qui as the user that owns that data, or as a member of its group.
+
 ### `user:` (standard Docker)
 
 Set `user:` in compose, or `--user` in docker run. Docker starts the container as that user.
@@ -71,7 +73,6 @@ With this method, make sure that the host folder mounted at `/config` is writabl
 ```bash
 chown -R 1000:1000 ./qui
 ```
-
 ### PUID/PGID (automatic ownership)
 
 Set both `PUID` and `PGID` environment variables (required together). The entrypoint then:
@@ -107,6 +108,8 @@ docker run -d \
 :::note
 Do not combine `user:` with `PUID`/`PGID`. The entrypoint can only create users and change ownership when the container starts as root. If you switch to `PUID`/`PGID`, remove any `user:` or `--user` setting first.
 :::
+
+The entrypoint changes ownership of `/config` only, never anything outside it, so a wrong `PUID` cannot chown your media library.
 
 ### UMASK
 
