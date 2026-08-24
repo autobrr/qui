@@ -63,6 +63,43 @@ func TestFindLocalMatches_UnresolvableFileName_FailsClosedInStrictMode(t *testin
 	require.Len(t, response.Matches, 1)
 }
 
+// The candidate's names can be the unresolvable ones while the source's are fine.
+// The source here has a hardlinked file (so the candidate FileID pass actually runs),
+// and the candidate torrent's list holds only a backslash name: without the recording
+// in localLinkedMatchType the check would read "not hardlinked" and strict mode would
+// fail open on exactly the torrent that might be the cross-seed.
+func TestFindLocalMatches_UnresolvableCandidateName_FailsClosedInStrictMode(t *testing.T) {
+	fileName := "Movie.2023.1080p.WEB.mkv"
+	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
+
+	candidateName := `AC\DC - Back In Black.mkv`
+	source := qbt.Torrent{
+		Hash:        hlSourceHash,
+		Name:        "Movie.2023.1080p.WEB-GROUP",
+		SavePath:    sourceDir,
+		ContentPath: sourceDir,
+	}
+	candidate := *hardlinkTestCandidate(candidateDir)
+	syncManager := &reflinkFindLocalMatchesSyncManager{
+		localMatchSyncManager: localMatchSyncManager{files: map[string]qbt.TorrentFiles{
+			normalizeHash(hlSourceHash):    {{Name: fileName, Size: 4}},
+			normalizeHash(hlCandidateHash): {{Name: candidateName, Size: 4}},
+		}},
+		source:    source,
+		candidate: candidate,
+	}
+	service := &Service{
+		instanceStore: newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true}),
+		syncManager:   syncManager,
+		releaseCache:  NewReleaseCache(),
+	}
+
+	_, err := service.FindLocalMatches(context.Background(), 1, source.Hash, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to verify local file relationship")
+	require.Contains(t, err.Error(), strconv.Quote(candidateName))
+}
+
 // A resolved name whose file is not on disk is normal for an incomplete torrent and
 // must stay a best-effort skip, or every partial download would trip strict mode.
 func TestFindLocalMatches_MissingLocalFile_StaysBestEffort(t *testing.T) {
