@@ -109,7 +109,7 @@ docker run -d \
 Do not combine `user:` with `PUID`/`PGID`. The entrypoint can only create users and change ownership when the container starts as root. If you switch to `PUID`/`PGID`, remove any `user:` or `--user` setting first.
 :::
 
-The entrypoint changes ownership of `/config` only, never anything outside it, so a wrong `PUID` cannot chown your media library. That also means a switch from root needs one manual step: if qui already created hardlink or reflink trees as root, chown those directories once yourself:
+The entrypoint walks `/config` only, never your data volumes, so a wrong `PUID` cannot chown your media library. That also means a switch from root needs one manual step: if qui already created hardlink or reflink trees as root, chown those directories once yourself:
 
 ```bash
 find /data/cross-seed -type d -exec chown 1000:1000 {} +
