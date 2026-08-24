@@ -81,10 +81,10 @@ func TestFindLocalMatches_UnresolvableCandidateName_FailsClosedInStrictMode(t *t
 	}
 	candidate := *hardlinkTestCandidate(candidateDir)
 	syncManager := &reflinkFindLocalMatchesSyncManager{
-		localMatchSyncManager: localMatchSyncManager{files: map[string]qbt.TorrentFiles{
+		files: map[string]qbt.TorrentFiles{
 			normalizeHash(hlSourceHash):    {{Name: fileName, Size: 4}},
 			normalizeHash(hlCandidateHash): {{Name: candidateName, Size: 4}},
-		}},
+		},
 		source:    source,
 		candidate: candidate,
 	}
