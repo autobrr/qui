@@ -49,11 +49,11 @@ container run -d \
 
 ## Permissions
 
-By default the container runs as root. There are two ways to run qui as a different user. Use one or the other, not both.
+By default the container runs as root. You can run qui as a different user in two ways. Use one or the other, not both.
 
 ### `user:` (standard Docker)
 
-Set `user:` in compose, or `--user` in docker run. Docker starts the container as that user directly.
+Set `user:` in compose, or `--user` in docker run. Docker starts the container as that user.
 
 ```yaml title="docker-compose.yml"
 services:
@@ -76,7 +76,7 @@ chown -R 1000:1000 ./qui
 
 Set both `PUID` and `PGID` environment variables (required together). The entrypoint then:
 
-1. Creates a user and group with the specified IDs
+1. Creates a user and group with those IDs
 2. Runs `chown -R` on the `/config` directory
 3. Runs qui as that user
 
@@ -116,10 +116,10 @@ Optional, works with both methods. qui reads `UMASK` at startup and applies it t
 - `002` - owner and group read/write, others read-only (group-writable)
 - `077` - owner only, no group/others access (private)
 
-Two limits apply:
+Two exceptions:
 
-- Security-sensitive files (the database, `config.toml`, backup manifests) are always created owner-only (`0600`), regardless of `UMASK`.
-- Hardlinked files share the inode with the source file. They keep the owner and permissions of the original download. See [Directory permissions and umask](../features/cross-seed/troubleshooting.md#directory-permissions-and-umask) for details.
+- qui always creates security-sensitive files (the database, `config.toml`, backup manifests) owner-only (`0600`), regardless of `UMASK`.
+- Hardlinked files share the inode with the source file. They keep the owner and permissions of the original download. See [Directory permissions and umask](../features/cross-seed/troubleshooting.md#directory-permissions-and-umask).
 
 ## Local Filesystem Access
 
