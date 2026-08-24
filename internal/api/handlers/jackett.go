@@ -778,7 +778,9 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	// itself. The timeout bounds the detached context, and the completion
 	// callback releases it as soon as the search is actually done.
 	testCtx, cancelTest := context.WithTimeout(context.Background(), 30*time.Second) //nolint:gosec // G118: deliberately outlives the request, see above
+	defer cancelTest()
 
+	resultCh := make(chan error, 1)
 	testReq := &jackett.TorznabSearchRequest{
 		Query:            "test",
 		Limit:            1,
@@ -786,16 +788,13 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		CacheMode:        jackett.CacheModeBypass,
 		SkipHistory:      true,
 		SkipCachePersist: true,
-		OnAllComplete: func(*jackett.SearchResponse, error) {
-			// Results are irrelevant for a connectivity test; this is only here
-			// to stop holding the detached context once the search finishes.
-			cancelTest()
+		OnAllComplete: func(_ *jackett.SearchResponse, searchErr error) {
+			resultCh <- searchErr
 		},
 	}
 
-	if err = h.service.SearchGeneric(testCtx, testReq); err != nil {
-		cancelTest()
-	}
+	scheduleErr := h.service.SearchGeneric(testCtx, testReq)
+	err = waitForIndexerTestResult(testCtx, scheduleErr, resultCh)
 
 	// Update test status in database
 	if err != nil {
@@ -815,6 +814,22 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// waitForIndexerTestResult returns the error from scheduling the search, or
+// the error delivered to OnAllComplete. SearchGeneric is asynchronous: a nil
+// return only means the job was queued, so treating it as success made
+// POST .../test report ok for indexers that then failed (#2388).
+func waitForIndexerTestResult(ctx context.Context, scheduleErr error, result <-chan error) error {
+	if scheduleErr != nil {
+		return scheduleErr
+	}
+	select {
+	case err := <-result:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (h *JackettHandler) updateTestStatusWithTimeout(id int, status string, errorMsg *string) error {
