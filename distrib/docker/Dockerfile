@@ -1,5 +1,5 @@
 # Build stage
-FROM node:22.18-alpine AS frontend-builder
+FROM node:24.15-alpine AS frontend-builder
 
 # Install git for cloning
 RUN apk add --no-cache git
@@ -10,7 +10,7 @@ RUN npm install -g corepack@latest && \
 
 WORKDIR /app/web
 
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web ./
