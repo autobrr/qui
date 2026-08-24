@@ -2456,7 +2456,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	if action == "recheck" && postAddRetry {
-		recheckInProgress, err := waitForPostAddRecheckReady(
+		if err := waitForPostAddRecheckReady(
 			retryCtx,
 			syncManager,
 			canonicalHashes,
@@ -2464,15 +2464,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			postAddRecheckReadyAttempts,
 			postAddRecheckReadyInterval,
 			postAddRecheckSyncTimeout,
-		)
-		if err != nil {
+		); err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return err
 			}
 			return fmt.Errorf("%w: %s", err, action)
-		}
-		if recheckInProgress {
-			return nil
 		}
 	}
 
@@ -2564,9 +2560,8 @@ func bulkActionRetryAttempts(ctx context.Context, resolved, requested int) int {
 }
 
 // waitForPostAddRecheckReady refreshes qBittorrent state until every hash is
-// visible and no longer checking resume data. Its boolean result reports that
-// all resolved torrents are already performing a piece check, so callers must
-// not issue another recheck.
+// visible and no longer checking resume data. A running piece check is ready:
+// the caller still issues the explicitly requested recheck.
 func waitForPostAddRecheckReady(
 	ctx context.Context,
 	syncManager bulkActionTorrentSyncer,
@@ -2575,7 +2570,7 @@ func waitForPostAddRecheckReady(
 	maxAttempts int,
 	retryInterval time.Duration,
 	syncTimeout time.Duration,
-) (bool, error) {
+) error {
 	overallCtx, cancel := context.WithTimeout(ctx, postAddRecheckReadyTimeout(maxAttempts, retryInterval, syncTimeout))
 	defer cancel()
 
@@ -2591,27 +2586,26 @@ func waitForPostAddRecheckReady(
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if err := waitErr(); err != nil {
-			return false, err
+			return err
 		}
 
 		syncCtx, cancel := context.WithTimeout(overallCtx, syncTimeout)
 		syncErr := syncManager.Sync(syncCtx)
 		cancel()
 		if err := waitErr(); err != nil {
-			return false, err
+			return err
 		}
 		if syncErr != nil {
 			log.Trace().Err(syncErr).Int("instanceID", instanceID).
 				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
 		} else {
-			ready, recheckInProgress := postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes)
-			if ready {
-				return recheckInProgress, nil
+			if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
+				return nil
 			}
 		}
 
 		if attempt == maxAttempts {
-			return false, errPostAddRecheckNotReady
+			return errPostAddRecheckNotReady
 		}
 
 		log.Trace().Int("instanceID", instanceID).Int("attempt", attempt).
@@ -2619,12 +2613,12 @@ func waitForPostAddRecheckReady(
 
 		select {
 		case <-overallCtx.Done():
-			return false, waitErr()
+			return waitErr()
 		case <-time.After(retryInterval):
 		}
 	}
 
-	return false, errPostAddRecheckNotReady
+	return errPostAddRecheckNotReady
 }
 
 func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time.Duration) time.Duration {
@@ -2636,24 +2630,19 @@ func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time
 }
 
 // postAddRecheckReady reports whether every hash is visible and past resume-data
-// validation. The second result is true only when every torrent is already
-// performing a piece check.
-func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) (bool, bool) {
-	recheckInProgress := len(hashes) > 0
+// validation.
+func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) bool {
 	for _, hash := range hashes {
 		torrent, found := resolveTorrentByVariantHash(torrentMap, hash)
 		if !found {
-			return false, false
+			return false
 		}
 		if torrent.State == qbt.TorrentStateCheckingResumeData {
-			return false, false
-		}
-		if torrent.State != qbt.TorrentStateCheckingUp && torrent.State != qbt.TorrentStateCheckingDl {
-			recheckInProgress = false
+			return false
 		}
 	}
 
-	return true, recheckInProgress
+	return true
 }
 
 func (sm *SyncManager) buildManagedDeleteCleanupTargets(

@@ -98,6 +98,8 @@ type InstanceCrossSeedResult struct {
 	Message string `json:"message,omitempty"`
 	// MatchedTorrent is the existing torrent that matched (if any)
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
+	// partialPoolPending keeps pool-only reporting out of ordinary search results.
+	partialPoolPending bool
 }
 
 // MatchedTorrent represents an existing torrent that matches the cross-seed candidate

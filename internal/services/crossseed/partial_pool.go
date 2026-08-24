@@ -76,12 +76,6 @@ func (s *Service) signalPartialPoolWake(wake partialPoolWake) {
 	}
 }
 
-// partialPoolAdmissionRequiresComplete preserves the zero-budget hardlink gate
-// while allowing disc-layout reflinks to repair missing data within budget.
-func partialPoolAdmissionRequiresComplete(mode string, verifyBeforeSeed, discLayout bool) bool {
-	return verifyBeforeSeed || (mode == models.CrossSeedPartialPoolModeHardlink && discLayout)
-}
-
 func (s *Service) partialPoolAdmissionEnabled(ctx context.Context, instance *models.Instance, hasExtras bool, req *CrossSeedRequest, requireComplete bool) bool {
 	if s == nil || s.automationStore == nil || instance == nil || req == nil || !hasExtras || requireComplete ||
 		req.SkipRecheck || req.SkipAutoResume || !instance.HasLocalFilesystemAccess {
@@ -961,7 +955,7 @@ func (s *Service) refreshPartialPoolFiles(
 		if !ok {
 			continue
 		}
-		if normalizePathForComparison(snapshot.torrent.SavePath) != normalizePathForComparison(member.RootPath) {
+		if !partialPoolRootsEqual(snapshot.torrent.SavePath, member.RootPath) {
 			if !snapshot.reviewPauseHandled {
 				snapshot.stateRetryPending = !s.pausePartialPoolMemberForReview(ctx, member, snapshot.torrent, "qBittorrent save path no longer matches admitted root")
 			}
@@ -1022,6 +1016,17 @@ func (s *Service) refreshPartialPoolFiles(
 		}
 	}
 	return complete
+}
+
+// partialPoolRootsEqual compares normalized roots using local host path case
+// semantics. Unix roots remain case-sensitive; Windows roots use case folding.
+func partialPoolRootsEqual(left, right string) bool {
+	left = normalizePath(left)
+	right = normalizePath(right)
+	if os.PathSeparator == '\\' {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func partialPoolCurrentFiles(member *models.CrossSeedPartialPoolMember, files qbt.TorrentFiles) (map[int]qbt.TorrentFile, bool) {
@@ -1502,9 +1507,9 @@ func partialPoolPostRecheckVerdict(
 				return models.CrossSeedPartialPoolMemberStatusManual, "a hardlinked file failed verification"
 			}
 		}
-		if PolicyForSourceFiles(snapshot.files).DiscLayout {
-			budget = 0
-		}
+	}
+	if PolicyForSourceFiles(snapshot.files).DiscLayout {
+		budget = 0
 	}
 	if !postRecheckBudgetSatisfied(snapshot.torrent, budget, snapshot.files, normalizer) {
 		return models.CrossSeedPartialPoolMemberStatusBlocked, "post-recheck missing bytes exceed the auto-start budget"

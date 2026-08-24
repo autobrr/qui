@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -1586,15 +1587,17 @@ func TestPartialPoolPostRecheckVerdictModeSafety(t *testing.T) {
 	discReflinkSnapshot.fileByIndex[0] = discReflinkSnapshot.files[0]
 
 	status, _ = partialPoolPostRecheckVerdict(discReflinkMember, discReflinkSnapshot, 50, normalizerForService(nil))
-	require.Equal(t, models.CrossSeedPartialPoolMemberStatusWaiting, status, "disc reflinks may repair missing bytes within budget")
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, status, "disc layouts retain the existing zero-budget safety gate")
 	status, _ = partialPoolPostRecheckVerdict(discReflinkMember, discReflinkSnapshot, 10, normalizerForService(nil))
 	require.Equal(t, models.CrossSeedPartialPoolMemberStatusBlocked, status)
 }
 
-func TestPartialPoolAdmissionRequiresCompleteByMode(t *testing.T) {
-	require.True(t, partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeHardlink, false, true))
-	require.False(t, partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeReflink, false, true))
-	require.True(t, partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeReflink, true, true))
+func TestPartialPoolRootsEqualUsesHostCaseSemantics(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "PoolRoot")
+	require.True(t, partialPoolRootsEqual(root, filepath.ToSlash(root)+"/."))
+
+	caseVariant := filepath.Join(filepath.Dir(root), "poolroot")
+	require.Equal(t, os.PathSeparator == '\\', partialPoolRootsEqual(root, caseVariant))
 }
 
 func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {

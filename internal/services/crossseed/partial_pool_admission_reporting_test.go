@@ -243,6 +243,7 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 			}
 
 			require.True(t, result.Success, result.Message)
+			require.True(t, result.partialPoolPending)
 			require.Equal(t, "added_"+mode, result.Status)
 			require.Contains(t, result.Message, "pooled completion pending")
 			require.Equal(t, []string{responseID}, sync.fetchedHashes)
@@ -480,6 +481,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 			}
 
 			require.False(t, result.Success)
+			require.False(t, result.partialPoolPending)
 			require.Equal(t, "partial_pool_registration_error", result.Status)
 			require.Contains(t, result.Message, "qBittorrent added torrent")
 			require.Contains(t, result.Message, "pooled registration failed")
@@ -503,7 +505,7 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 	}
 }
 
-func TestExecuteCrossSeedSearchAttemptPreservesSuccessfulDetail(t *testing.T) {
+func TestExecuteCrossSeedSearchAttemptPreservesPooledSuccessfulDetail(t *testing.T) {
 	service := &Service{
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
 			return []byte("torrent"), nil
@@ -514,8 +516,8 @@ func TestExecuteCrossSeedSearchAttemptPreservesSuccessfulDetail(t *testing.T) {
 				titleRescueUsed: true,
 				Results: []InstanceCrossSeedResult{
 					{Success: false, Message: "failed detail"},
-					{Success: true},
-					{Success: true, Message: "Added via hardlink mode - pooled completion pending"},
+					{Success: true, Message: "ordinary add detail"},
+					{Success: true, Message: "Added via hardlink mode - pooled completion pending", partialPoolPending: true},
 				},
 			}, nil
 		},
@@ -534,7 +536,7 @@ func TestExecuteCrossSeedSearchAttemptPreservesSuccessfulDetail(t *testing.T) {
 }
 
 func TestExtractSuccessMessageFallbackAndFailureClassification(t *testing.T) {
-	require.Equal(t, "added via Indexer", extractSuccessMessage([]InstanceCrossSeedResult{{Success: true}}, "Indexer"))
+	require.Equal(t, "added via Indexer", extractSuccessMessage([]InstanceCrossSeedResult{{Success: true, Message: "ordinary add detail"}}, "Indexer"))
 	manual := "qBittorrent added torrent, but pooled registration failed; torrent remains stopped for manual intervention"
 	results := []InstanceCrossSeedResult{{Success: false, Status: "partial_pool_registration_error", Message: manual}}
 	require.Equal(t, models.CrossSeedSearchResultStatusFailed, classifyFailedCrossSeedSearchResult(results))

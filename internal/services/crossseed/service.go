@@ -11933,11 +11933,11 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	return result, nil
 }
 
-// extractSuccessMessage returns the first non-empty successful instance detail,
-// falling back to a generic indexer message when none is available.
+// extractSuccessMessage returns pooled-completion detail only for the result
+// that owns it. Ordinary successful searches retain the generic indexer text.
 func extractSuccessMessage(results []InstanceCrossSeedResult, indexer string) string {
 	for _, result := range results {
-		if result.Success && strings.TrimSpace(result.Message) != "" {
+		if result.Success && result.partialPoolPending && strings.TrimSpace(result.Message) != "" {
 			return result.Message
 		}
 	}
@@ -14848,8 +14848,8 @@ func (s *Service) processHardlinkMode(
 		return handleError(fmt.Sprintf("Failed to build hardlink plan: %v", err))
 	}
 	addPolicy := PolicyForSourceFiles(sourceFiles)
-	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req,
-		partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeHardlink, verifyBeforeSeed, addPolicy.DiscLayout))
+	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
+	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, recheckPolicy.requireComplete)
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
 	if pooledCompletion {
@@ -14895,9 +14895,6 @@ func (s *Service) processHardlinkMode(
 	options["autoTMM"] = "false"
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
-
-	// Compute recheck policy from source files (e.g., disc layout detection)
-	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
 
 	if addPolicy.DiscLayout {
 		log.Info().
@@ -15107,11 +15104,12 @@ func (s *Service) processHardlinkMode(
 		Used:    true,
 		Success: success,
 		Result: InstanceCrossSeedResult{
-			InstanceID:   candidate.InstanceID,
-			InstanceName: candidate.InstanceName,
-			Success:      success,
-			Status:       status,
-			Message:      statusMsg,
+			InstanceID:         candidate.InstanceID,
+			InstanceName:       candidate.InstanceName,
+			Success:            success,
+			Status:             status,
+			Message:            statusMsg,
+			partialPoolPending: pooledMember != nil,
 			MatchedTorrent: &MatchedTorrent{
 				Hash:     matchedTorrent.Hash,
 				Name:     matchedTorrent.Name,
@@ -15617,8 +15615,8 @@ func (s *Service) processReflinkMode(
 		return handleMaterializationError(fmt.Sprintf("Failed to build reflink plan: %v", err))
 	}
 	addPolicy := PolicyForSourceFiles(sourceFiles)
-	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req,
-		partialPoolAdmissionRequiresComplete(models.CrossSeedPartialPoolModeReflink, verifyBeforeSeed, addPolicy.DiscLayout))
+	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
+	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, recheckPolicy.requireComplete)
 	var poolDescriptors []partialPoolFileDescriptor
 	var poolDescriptorErr error
 	if pooledCompletion {
@@ -15675,9 +15673,6 @@ func (s *Service) processReflinkMode(
 	options["autoTMM"] = "false"
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
-
-	// Compute recheck policy from source files (e.g., disc layout detection)
-	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
 
 	if addPolicy.DiscLayout {
 		log.Info().
@@ -15894,11 +15889,12 @@ func (s *Service) processReflinkMode(
 		Used:    true,
 		Success: success,
 		Result: InstanceCrossSeedResult{
-			InstanceID:   candidate.InstanceID,
-			InstanceName: candidate.InstanceName,
-			Success:      success,
-			Status:       status,
-			Message:      statusMsg,
+			InstanceID:         candidate.InstanceID,
+			InstanceName:       candidate.InstanceName,
+			Success:            success,
+			Status:             status,
+			Message:            statusMsg,
+			partialPoolPending: pooledMember != nil,
 			MatchedTorrent: &MatchedTorrent{
 				Hash:     matchedTorrent.Hash,
 				Name:     matchedTorrent.Name,

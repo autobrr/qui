@@ -1084,15 +1084,14 @@ func TestWaitForPostAddRecheckReadyWaitsForResumeDataCheck(t *testing.T) {
 		},
 	}
 
-	recheckInProgress, err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
 
 	require.NoError(t, err)
-	require.False(t, recheckInProgress)
 	require.Equal(t, 2, syncer.syncCalls)
 	require.Equal(t, 2, syncer.mapCalls)
 }
 
-func TestWaitForPostAddRecheckReadyFreshCheckingIsAlreadyInProgress(t *testing.T) {
+func TestWaitForPostAddRecheckReadyFreshCheckingAllowsRequestedRecheck(t *testing.T) {
 	t.Parallel()
 
 	for _, state := range []qbt.TorrentState{qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl} {
@@ -1106,10 +1105,9 @@ func TestWaitForPostAddRecheckReadyFreshCheckingIsAlreadyInProgress(t *testing.T
 				},
 			}
 
-			recheckInProgress, err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
+			err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
 
 			require.NoError(t, err)
-			require.True(t, recheckInProgress)
 			require.Equal(t, 1, syncer.syncCalls)
 			require.Equal(t, 1, syncer.mapCalls)
 		})
@@ -1128,10 +1126,9 @@ func TestWaitForPostAddRecheckReadyFreshStoppedNeedsRecheck(t *testing.T) {
 		},
 	}
 
-	recheckInProgress, err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
 
 	require.NoError(t, err)
-	require.False(t, recheckInProgress)
 	require.Equal(t, 1, syncer.syncCalls)
 	require.Equal(t, 1, syncer.mapCalls)
 }
@@ -1145,7 +1142,7 @@ func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
 		},
 	}
 
-	_, err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.Equal(t, 2, syncer.syncCalls)
@@ -1164,7 +1161,7 @@ func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
 		},
 	}
 
-	_, err := waitForPostAddRecheckReady(ctx, syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+	err := waitForPostAddRecheckReady(ctx, syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
 
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, syncer.syncCalls)
@@ -1181,7 +1178,7 @@ func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
 		blockSyncUntilDone: true,
 	}
 
-	_, err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Hour, time.Nanosecond)
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Hour, time.Nanosecond)
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.Equal(t, 1, syncer.syncCalls)
@@ -1198,7 +1195,7 @@ func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
 		blockSyncUntilDone: true,
 	}
 
-	_, err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.Equal(t, 1, syncer.syncCalls)
@@ -1208,10 +1205,9 @@ func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
 func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
 	t.Parallel()
 
-	ready, recheckInProgress := postAddRecheckReady(map[string]qbt.Torrent{}, []string{"abc"})
+	ready := postAddRecheckReady(map[string]qbt.Torrent{}, []string{"abc"})
 
 	require.False(t, ready)
-	require.False(t, recheckInProgress)
 }
 
 func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
