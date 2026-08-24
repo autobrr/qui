@@ -775,9 +775,14 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	// cluttering search history or persisting a bogus "test" entry into the Torznab result cache.
 	// Detached from the request: SearchGeneric returns as soon as the task is
 	// scheduled, so the request context would cancel the search out from under
-	// itself. The timeout bounds the detached context, and the completion
-	// callback releases it as soon as the search is actually done.
-	testCtx, cancelTest := context.WithTimeout(context.Background(), 30*time.Second) //nolint:gosec // G118: deliberately outlives the request, see above
+	// itself. The timeout bounds the detached context, and the handler waits for
+	// the completion callback before returning.
+	testCtx, cancelTest := context.WithTimeout(context.Background(), 30*time.Second) //nolint:gosec // G118: deliberately detached from the request, see above
+	defer cancelTest()
+
+	// Buffered so the search never blocks handing over its outcome, even if we
+	// already gave up waiting for it.
+	testDone := make(chan error, 1)
 
 	testReq := &jackett.TorznabSearchRequest{
 		Query:            "test",
@@ -786,15 +791,22 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		CacheMode:        jackett.CacheModeBypass,
 		SkipHistory:      true,
 		SkipCachePersist: true,
-		OnAllComplete: func(*jackett.SearchResponse, error) {
-			// Results are irrelevant for a connectivity test; this is only here
-			// to stop holding the detached context once the search finishes.
-			cancelTest()
+		OnAllComplete: func(_ *jackett.SearchResponse, searchErr error) {
+			// The results are irrelevant for a connectivity test, but the error is
+			// the actual test outcome.
+			testDone <- searchErr
 		},
 	}
 
-	if err = h.service.SearchGeneric(testCtx, testReq); err != nil {
-		cancelTest()
+	// SearchGeneric only reports failures it catches before scheduling the
+	// search; everything else (connection refused, HTTP errors, error documents)
+	// arrives on the callback.
+	if err = h.service.SearchGeneric(testCtx, testReq); err == nil {
+		select {
+		case err = <-testDone:
+		case <-testCtx.Done():
+			err = errors.New("indexer test timed out")
+		}
 	}
 
 	// Update test status in database
