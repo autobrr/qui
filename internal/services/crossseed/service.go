@@ -6151,6 +6151,20 @@ func (s *Service) processCrossSeedCandidate(
 		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
+	// When we pin an explicit savepath, the cross-seed data already lives there and
+	// this add relies on an in-place recheck to reach 100%. If the target instance
+	// has a temp/incomplete "download path" enabled (Preferences > Downloads > "Keep
+	// incomplete torrents in"), qBittorrent would otherwise route the still-incomplete
+	// torrent to that temp dir, so the recheck hashes an empty directory, stays at 0%,
+	// never completes (and so never moves to savepath), and the recheck-resume worker
+	// eventually abandons it paused at 0% ("Recheck resume absolute timeout reached").
+	// Pin the incomplete path to savepath too so the recheck reads the real files.
+	// Only meaningful alongside an explicit savepath (autoTMM off), mirroring how the
+	// manual add API pairs savepath/autoTMM/useDownloadPath (see handlers/torrents.go).
+	if options["savepath"] != "" {
+		options["useDownloadPath"] = "false"
+	}
+
 	// Add the torrent
 	_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 	if err != nil {

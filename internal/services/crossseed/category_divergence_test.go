@@ -128,4 +128,8 @@ func TestProcessCrossSeedCandidate_DivergentCrossCategoryPinsSavePath(t *testing
 	// location so qBittorrent reuses the existing files instead of re-downloading.
 	require.Equal(t, "false", base.addedOptions["autoTMM"], "autoTMM must be disabled when the cross category save path diverges")
 	require.Equal(t, "/downloads/tv/Show.S01E01", base.addedOptions["savepath"])
+	// ...and the temp/incomplete download path is disabled for the add, so the in-place
+	// recheck reads the pinned savepath instead of the instance's (empty) temp dir. Without
+	// this, an instance with "Keep incomplete torrents in" set would stall the cross-seed at 0%.
+	require.Equal(t, "false", base.addedOptions["useDownloadPath"], "explicit savepath must disable the temp/incomplete download path so the recheck reads the pinned dir")
 }
