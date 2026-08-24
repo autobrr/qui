@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package jackett
 
 import (
@@ -10,16 +13,24 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// torznabCaps captures the parsed capability and category data from a Torznab caps response.
-type torznabCaps struct {
+// TorznabCaps captures the parsed capability and category data from a Torznab caps response.
+type TorznabCaps struct {
 	Capabilities []string
 	Categories   []models.TorznabIndexerCategory
+	LimitDefault int
+	LimitMax     int
 }
+
+const defaultTorznabLimit = 100
 
 type torznabCapsResponse struct {
 	XMLName    xml.Name              `xml:"caps"`
 	Searching  torznabSearchingCaps  `xml:"searching"`
 	Categories []torznabCategoryNode `xml:"categories>category"`
+	Limits     struct {
+		Default string `xml:"default,attr"`
+		Max     string `xml:"max,attr"`
+	} `xml:"limits"`
 }
 
 type torznabSearchingCaps struct {
@@ -47,13 +58,16 @@ type torznabSubcatNode struct {
 	Name string `xml:"name,attr"`
 }
 
-func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
+func parseTorznabCaps(r io.Reader) (*TorznabCaps, error) {
 	var resp torznabCapsResponse
 	if err := xml.NewDecoder(r).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("decode caps response: %w", err)
 	}
 
-	caps := &torznabCaps{}
+	caps := &TorznabCaps{
+		LimitDefault: defaultTorznabLimit,
+		LimitMax:     defaultTorznabLimit,
+	}
 
 	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "search", resp.Searching.Search)
 	caps.Capabilities = appendSearchCapabilities(caps.Capabilities, "tv-search", resp.Searching.TVSearch)
@@ -83,6 +97,22 @@ func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
 				ParentCategory: &parent,
 			})
 		}
+	}
+
+	// Parse limits if present
+	if resp.Limits.Default != "" {
+		if v, err := strconv.Atoi(resp.Limits.Default); err == nil && v > 0 {
+			caps.LimitDefault = v
+		}
+	}
+	if resp.Limits.Max != "" {
+		if v, err := strconv.Atoi(resp.Limits.Max); err == nil && v > 0 {
+			caps.LimitMax = v
+		}
+	}
+
+	if caps.LimitMax > 0 && caps.LimitDefault > caps.LimitMax {
+		caps.LimitDefault = caps.LimitMax
 	}
 
 	return caps, nil

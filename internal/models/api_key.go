@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -65,7 +65,7 @@ func (s *APIKeyStore) Create(ctx context.Context, name string) (string, *APIKey,
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern the name
 	ids, err := dbinterface.InternStringNullable(ctx, tx, &name)
@@ -204,7 +204,7 @@ func (s *APIKeyStore) UpdateLastUsed(ctx context.Context, id int) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `
 		UPDATE api_keys 
@@ -238,7 +238,7 @@ func (s *APIKeyStore) Delete(ctx context.Context, id int) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `DELETE FROM api_keys WHERE id = ?`
 

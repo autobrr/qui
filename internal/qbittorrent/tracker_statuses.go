@@ -1,13 +1,24 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
+
+import (
+	"regexp"
+	"strings"
+)
+
+// urlPattern matches http:// and https:// URLs to strip them from tracker messages.
+// This prevents false positives when URLs contain words like "forbidden" or "down"
+// (e.g., "https://site.com/forbidden-world-1982" should not match "forbidden").
+var urlPattern = regexp.MustCompile(`(?i)https?://\S+`)
 
 // defaultUnregisteredStatuses lists tracker messages we map to the Unregistered health state.
 var defaultUnregisteredStatuses = []string{
 	"complete season uploaded",
 	"dead",
 	"dupe",
+	"grab internal",
 	"i'm sorry dave, i can't do that",
 	"infohash not found",
 	"internal available",
@@ -19,6 +30,7 @@ var defaultUnregisteredStatuses = []string{
 	"problem with description",
 	"problem with file",
 	"problem with pack",
+	"repack available",
 	"retitled",
 	"season pack",
 	"specifically banned",
@@ -26,6 +38,7 @@ var defaultUnregisteredStatuses = []string{
 	"torrent existiert nicht",
 	"torrent has been deleted",
 	"torrent has been nuked",
+	"torrent has been rejected",
 	"torrent introuvable",
 	"torrent is not authorized for use on this tracker",
 	"torrent is not found",
@@ -38,6 +51,7 @@ var defaultUnregisteredStatuses = []string{
 	"não registrado",
 	"upgraded",
 	"uploaded",
+	"nem található",
 }
 
 // trackerDownStatuses lists tracker messages indicating an outage.
@@ -86,6 +100,13 @@ func TrackerMessageMatchesUnregistered(message string) bool {
 }
 
 // TrackerMessageMatchesDown reports whether the tracker message indicates tracker outage.
+// URLs are stripped from the message before matching to avoid false positives from
+// torrent names containing words like "forbidden" or "down" in replacement URLs.
 func TrackerMessageMatchesDown(message string) bool {
+	// Only a message with "://" can contain a URL, and almost none do, so the
+	// regex and its per-call allocation are skipped for the rest.
+	if strings.Contains(message, "://") {
+		message = urlPattern.ReplaceAllString(message, "")
+	}
 	return trackerMessageMatches(message, trackerDownStatuses)
 }

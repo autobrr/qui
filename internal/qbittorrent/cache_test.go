@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -40,14 +40,14 @@ func TestCache_ClearAll(t *testing.T) {
 	// Populate cache with multiple keys
 	keys := []string{"key1", "key2", "key3", "key4", "key5"}
 	for _, key := range keys {
-		cache.Set(key, fmt.Sprintf("value_%s", key), ttlcache.DefaultTTL)
+		cache.Set(key, "value_"+key, ttlcache.DefaultTTL)
 	}
 
 	// Verify all keys exist
 	for _, key := range keys {
 		cached, found := cache.Get(key)
 		assert.True(t, found, "Key should exist: %s", key)
-		assert.Equal(t, fmt.Sprintf("value_%s", key), cached)
+		assert.Equal(t, "value_"+key, cached)
 	}
 
 	// Delete all keys
@@ -70,7 +70,7 @@ func TestCache_HighCapacity(t *testing.T) {
 
 	// Test storing many items (simulate torrent cache entries)
 	numItems := 2000
-	for i := 0; i < numItems; i++ {
+	for i := range numItems {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		value := &TorrentResponse{
 			Torrents: createTestTorrentViews(50),
@@ -81,7 +81,7 @@ func TestCache_HighCapacity(t *testing.T) {
 
 	// Verify items are stored
 	storedCount := 0
-	for i := 0; i < numItems; i++ {
+	for i := range numItems {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		if _, found := cache.Get(key); found {
 			storedCount++
@@ -105,10 +105,10 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 
 	// Concurrent writes
 	done := make(chan bool, numGoroutines)
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := 0; i < itemsPerGoroutine; i++ {
+			for i := range itemsPerGoroutine {
 				key := fmt.Sprintf("goroutine_%d_item_%d", goroutineID, i)
 				value := fmt.Sprintf("value_%d_%d", goroutineID, i)
 				cache.Set(key, value, ttlcache.DefaultTTL)
@@ -122,10 +122,10 @@ func TestCache_ConcurrentAccess(t *testing.T) {
 	}
 
 	// Concurrent reads
-	for g := 0; g < numGoroutines; g++ {
+	for g := range numGoroutines {
 		go func(goroutineID int) {
 			defer func() { done <- true }()
-			for i := 0; i < itemsPerGoroutine; i++ {
+			for i := range itemsPerGoroutine {
 				key := fmt.Sprintf("goroutine_%d_item_%d", goroutineID, i)
 				if cached, found := cache.Get(key); found {
 					expectedValue := fmt.Sprintf("value_%d_%d", goroutineID, i)
@@ -161,6 +161,8 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 			Error:              5,
 			TotalDownloadSpeed: 1000000,
 			TotalUploadSpeed:   500000,
+			TotalDownloadData:  1000000000,
+			TotalUploadData:    50000000,
 			TotalRemainingSize: 5000000000,
 			TotalSeedingSize:   10000000000,
 		},
@@ -355,19 +357,21 @@ func createTestTorrents(count int) []qbt.Torrent {
 	torrents := make([]qbt.Torrent, count)
 	for i := range count {
 		torrents[i] = qbt.Torrent{
-			Hash:     fmt.Sprintf("hash%d", i),
-			Name:     fmt.Sprintf("test-torrent-%d", i),
-			Size:     int64(1000000 + i*100000), // Varying sizes
-			Progress: float64(i) / float64(count),
-			DlSpeed:  int64(i * 1000),
-			UpSpeed:  int64(i * 500),
-			State:    qbt.TorrentStateDownloading,
-			Category: fmt.Sprintf("category%d", i%3),
-			Tags:     fmt.Sprintf("tag%d", i%2),
-			AddedOn:  int64(1600000000 + i*3600), // Different timestamps
-			Ratio:    float64(i) * 0.1,
-			ETA:      int64(3600 * (count - i)),
-			Tracker:  fmt.Sprintf("http://tracker%d.example.com/announce", i%2),
+			Hash:              fmt.Sprintf("hash%d", i),
+			Name:              fmt.Sprintf("test-torrent-%d", i),
+			Size:              int64(1000000 + i*100000), // Varying sizes
+			Progress:          float64(i) / float64(count),
+			DlSpeed:           int64(i * 1000),
+			UpSpeed:           int64(i * 500),
+			DownloadedSession: int64(i * 2000),
+			UploadedSession:   int64(i * 1500),
+			State:             qbt.TorrentStateDownloading,
+			Category:          fmt.Sprintf("category%d", i%3),
+			Tags:              fmt.Sprintf("tag%d", i%2),
+			AddedOn:           int64(1600000000 + i*3600), // Different timestamps
+			Ratio:             float64(i) * 0.1,
+			ETA:               int64(3600 * (count - i)),
+			Tracker:           fmt.Sprintf("http://tracker%d.example.com/announce", i%2),
 		}
 	}
 	return torrents
@@ -379,8 +383,8 @@ func createTestTorrentViews(count int) []TorrentView {
 
 func createTestTorrentViewsFromSlice(torrents []qbt.Torrent) []TorrentView {
 	views := make([]TorrentView, len(torrents))
-	for i, torrent := range torrents {
-		views[i] = TorrentView{Torrent: torrent}
+	for i := range torrents {
+		views[i] = TorrentView{Torrent: &torrents[i]}
 	}
 	return views
 }
@@ -417,7 +421,7 @@ func BenchmarkCache_Get(b *testing.B) {
 		Total:    1000,
 	}
 
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		key := fmt.Sprintf("torrents:%d:0:50", i)
 		cache.Set(key, response, time.Minute)
 	}
@@ -468,13 +472,13 @@ func BenchmarkCache_DeleteAll(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Populate cache
-		for j := 0; j < 100; j++ {
+		for j := range 100 {
 			key := fmt.Sprintf("torrents:%d:%d:10", i, j)
 			cache.Set(key, response, time.Minute)
 		}
 
 		// Delete all keys (this is what we're benchmarking)
-		for j := 0; j < 100; j++ {
+		for j := range 100 {
 			key := fmt.Sprintf("torrents:%d:%d:10", i, j)
 			cache.Delete(key)
 		}

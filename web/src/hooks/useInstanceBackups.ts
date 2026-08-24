@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import type { BackupRun, BackupRunsResponse, BackupSettings, RestoreMode, RestorePlan, RestoreResult } from "@/types"
 
@@ -35,6 +36,7 @@ export function useUpdateBackupSettings(instanceId: number) {
       keepMonthly: number
       includeCategories: boolean
       includeTags: boolean
+      includeSavePaths: boolean
     }) => api.updateBackupSettings(instanceId, data),
     onSuccess: (settings: BackupSettings) => {
       queryClient.setQueryData<BackupSettings>(["instance-backups", instanceId, "settings"], settings)
@@ -83,6 +85,8 @@ export function useBackupRuns(
   const offset = options?.offset
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0
 
+  useActivityStream(shouldEnable)
+
   return useQuery({
     queryKey: ["instance-backups", instanceId, "runs", limit ?? null, offset ?? null],
     queryFn: () =>
@@ -95,10 +99,10 @@ export function useBackupRuns(
       const response = query.state.data as BackupRunsResponse | undefined
       const runs = response?.runs
       if (!runs) {
-        return 5_000
+        return false
       }
       const hasActiveRun = runs.some((run: BackupRun) => run.status === "pending" || run.status === "running")
-      return hasActiveRun ? 500 : 15_000
+      return hasActiveRun ? 500 : false
     },
   })
 }

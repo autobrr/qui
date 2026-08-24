@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package timeouts
 
 import (
@@ -20,10 +23,7 @@ func AdaptiveSearchTimeout(indexerCount int) time.Duration {
 	if indexerCount <= 1 {
 		return DefaultSearchTimeout
 	}
-	extra := time.Duration(indexerCount-1) * PerIndexerSearchTimeout
-	if extra < 0 {
-		extra = 0
-	}
+	extra := max(time.Duration(indexerCount-1)*PerIndexerSearchTimeout, 0)
 	timeout := DefaultSearchTimeout + extra
 	if timeout > MaxSearchTimeout {
 		return MaxSearchTimeout

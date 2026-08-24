@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -13,7 +13,8 @@ export function useInstances() {
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
-    refetchInterval: 30000, // Refetch every 30 seconds
+    // Instance list rarely changes; real-time connection status now comes from SSE
+    refetchInterval: 2 * 60 * 1000, // Refetch every 2 minutes
   })
 
   const createMutation = useMutation({
@@ -54,9 +55,7 @@ export function useInstances() {
       // flag to avoid UI flicker (testConnection will refresh it)
       queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
         if (!old) return [updatedInstance]
-        return old.map(i => i.id === updatedInstance.id
-          ? { ...updatedInstance, connected: i.connected }
-          : i)
+        return old.map(i => i.id === updatedInstance.id? { ...updatedInstance, connected: i.connected }: i)
       })
 
       // Test connection immediately to get actual status
@@ -86,14 +85,12 @@ export function useInstances() {
 
       if (previousInstances) {
         queryClient.setQueryData<InstanceResponse[]>(["instances"], previousInstances.map(instance =>
-          instance.id === id
-            ? {
-                ...instance,
-                isActive,
-                connected: false,
-                connectionStatus: isActive ? "" : "disabled",
-              }
-            : instance,
+          instance.id === id? {
+            ...instance,
+            isActive,
+            connected: false,
+            connectionStatus: isActive ? "" : "disabled",
+          }: instance
         ))
       }
 
@@ -162,9 +159,7 @@ export function useInstances() {
     },
   })
 
-  const updatingStatusId = statusMutation.isPending
-    ? statusMutation.variables?.id ?? null
-    : null
+  const updatingStatusId = statusMutation.isPending? statusMutation.variables?.id ?? null: null
 
   return {
     instances: instances as InstanceResponse[] | undefined,

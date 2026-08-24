@@ -1,0 +1,79 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package jackett
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+func TestSearchResponse_FullyCovered(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		requested []int
+		covered   []int
+		want      bool
+	}{
+		{name: "all requested covered", requested: []int{1, 2}, covered: []int{1, 2}, want: true},
+		{name: "extra covered ids are fine", requested: []int{1}, covered: []int{1, 2}, want: true},
+		{name: "missing one requested", requested: []int{1, 2}, covered: []int{1}, want: false},
+		{name: "nothing covered", requested: []int{1}, covered: nil, want: false},
+		{name: "nothing requested is vacuously covered", requested: nil, covered: nil, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			resp := &SearchResponse{RequestedIndexerIDs: tt.requested, CoveredIndexerIDs: tt.covered}
+			require.Equal(t, tt.want, resp.FullyCovered())
+		})
+	}
+
+	require.False(t, (*SearchResponse)(nil).FullyCovered())
+}
+
+func TestFilterIndexersForCapabilities_MirrorsExecutorGate(t *testing.T) {
+	t.Parallel()
+
+	indexers := []*models.TorznabIndexer{
+		{ID: 1, Enabled: true, Capabilities: []string{"movie-search"}},
+		{ID: 2, Enabled: true, Capabilities: []string{"music-search"}},
+		// No stored caps or categories yet: the executor fetches metadata and
+		// applies its own gate, so the pre-filter must keep this indexer.
+		{ID: 3, Enabled: true},
+		{ID: 4, Enabled: true, Capabilities: []string{"audio-search"}},
+	}
+	svc := NewService(&mockTorznabIndexerStore{indexers: indexers})
+	ctx := context.Background()
+
+	t.Run("keeps indexers without stored caps", func(t *testing.T) {
+		got, err := svc.FilterIndexersForCapabilities(ctx, nil, []string{"movie-search"}, nil)
+		require.NoError(t, err)
+		require.Equal(t, []int{1, 3}, got)
+	})
+
+	t.Run("any required cap is enough", func(t *testing.T) {
+		got, err := svc.FilterIndexersForCapabilities(ctx, nil, []string{"music-search", "audio-search"}, nil)
+		require.NoError(t, err)
+		require.Equal(t, []int{2, 3, 4}, got)
+	})
+
+	t.Run("keeps indexers without stored categories", func(t *testing.T) {
+		withCategories := []*models.TorznabIndexer{
+			{ID: 1, Enabled: true, Categories: []models.TorznabIndexerCategory{{CategoryID: 2000}}},
+			{ID: 2, Enabled: true, Categories: []models.TorznabIndexerCategory{{CategoryID: 3000}}},
+			{ID: 3, Enabled: true},
+		}
+		svc := NewService(&mockTorznabIndexerStore{indexers: withCategories})
+		got, err := svc.FilterIndexersForCapabilities(ctx, nil, nil, []int{2000})
+		require.NoError(t, err)
+		require.Equal(t, []int{1, 3}, got)
+	})
+}

@@ -1,7 +1,11 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -74,7 +78,6 @@ func TestProcessAutomationCandidatePropagatesEpisodeFlag(t *testing.T) {
 	settings := &models.CrossSeedAutomationSettings{
 		StartPaused:            true,
 		RSSAutomationTags:      []string{"cross-seed"},
-		IgnorePatterns:         []string{},
 		TargetInstanceIDs:      []int{instanceID},
 		FindIndividualEpisodes: true,
 	}
@@ -116,12 +119,11 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	service := &Service{
 		syncManager:         sync,
 		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}),
+		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{
-				IgnorePatterns: []string{"*.nfo"},
-			}, nil
+			settings := models.DefaultCrossSeedAutomationSettings()
+			return settings, nil
 		},
 	}
 
@@ -132,6 +134,12 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		DownloadURL: "https://example.invalid/episode.torrent",
 		GUID:        "guid-2",
 		Size:        2048,
+		SearchDecision: searchDecisionProvenance{
+			Class:                searchCandidateClassExactSizeFallback,
+			StrictMismatchReason: "collection mismatch",
+			RelaxedDifferences:   []string{"collection"},
+			SourceTitles:         []string{"ARR Alias"},
+		},
 	}
 	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
 
@@ -169,7 +177,38 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
-	require.Equal(t, []string{"*.nfo"}, captured.IgnorePatterns)
+	require.Equal(t, searchCandidateClassExactSizeFallback, captured.SearchDecision.Class)
+	require.Equal(t, instanceID, captured.SearchDecision.SourceInstanceID)
+	require.Equal(t, sourceTorrent.Hash, captured.SearchDecision.SourceHash)
+	require.Equal(t, cached.SearchDecision.StrictMismatchReason, captured.SearchDecision.StrictMismatchReason)
+	require.Equal(t, cached.SearchDecision.RelaxedDifferences, captured.SearchDecision.RelaxedDifferences)
+	require.Equal(t, cached.SearchDecision.SourceTitles, captured.SearchDecision.SourceTitles)
+}
+
+func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+	}
+
+	const (
+		instanceID = 3
+		hash       = "abc123"
+	)
+
+	service.cacheSearchResults(instanceID, hash, []TorrentSearchResult{
+		{
+			IndexerID:   99,
+			Title:       "Previous.Result",
+			DownloadURL: "https://example.invalid/previous.torrent",
+		},
+	})
+	service.cacheSearchResults(instanceID, hash, nil)
+
+	cached := service.getCachedSearchResults(instanceID, hash)
+	require.NotNil(t, cached)
+	require.Empty(t, cached.results)
 }
 
 type episodeInstanceStore struct {
@@ -230,6 +269,10 @@ func (f *episodeSyncManager) GetTorrentFilesBatch(_ context.Context, instanceID 
 	return result, nil
 }
 
+func (*episodeSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
+}
+
 func (*episodeSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
 	return nil, false, nil
 }
@@ -248,8 +291,8 @@ func (f *episodeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.Ap
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (f *episodeSyncManager) BulkAction(context.Context, int, []string, string) error {

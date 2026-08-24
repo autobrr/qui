@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package swagger
@@ -61,7 +61,7 @@ func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	html := strings.ReplaceAll(swaggerHTML, "{{OPENAPI_URL}}", openAPIPath)
 	html = strings.ReplaceAll(html, "{{FAVICON_URL}}", faviconPath)
 
-	w.Write([]byte(html))
+	_, _ = w.Write([]byte(html))
 }
 
 // GetOpenAPISpec returns the embedded OpenAPI spec for testing
@@ -105,5 +105,5 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		spec["servers"] = servers
 	}
 
-	json.NewEncoder(w).Encode(spec)
+	_ = json.NewEncoder(w).Encode(spec)
 }

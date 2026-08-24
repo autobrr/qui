@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -10,18 +10,26 @@ import { Torrents } from "@/pages/Torrents"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
 import { Power } from "lucide-react"
 import { useLayoutEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { z } from "zod"
 
 const instanceSearchSchema = z.object({
   modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
+  torrent: z.string().optional(),
+  tab: z.string().optional(),
 })
 
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
+  staticData: {
+    titleKey: "page.routeTitle",
+    titleNs: "torrents",
+  },
 })
 
 function InstanceTorrents() {
+  const { t } = useTranslation(["common", "settings", "torrents"])
   const { instanceId } = Route.useParams()
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
@@ -47,7 +55,11 @@ function InstanceTorrents() {
     }
   }, [instanceIdNumber, resetLayoutRouteState, setLayoutRouteState, shouldShowInstanceControls])
 
-  const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => {
+  const handleSearchChange = (newSearch: {
+    modal?: "add-torrent" | "create-torrent" | "tasks" | undefined
+    torrent?: string
+    tab?: string
+  }) => {
     navigate({
       search: newSearch,
       replace: true,
@@ -55,15 +67,15 @@ function InstanceTorrents() {
   }
 
   if (isLoading) {
-    return <div className="p-6">Loading instances...</div>
+    return <div className="p-6">{t("routes.instanceTorrents.loadingInstances", { ns: "torrents" })}</div>
   }
 
   if (!instance) {
     return (
       <div className="p-6">
-        <h1>Instance not found</h1>
-        <p>Instance ID: {instanceId}</p>
-        <p>Available instances: {instances?.map(i => i.id).join(", ")}</p>
+        <h1>{t("routes.instanceTorrents.instanceNotFound", { ns: "torrents" })}</h1>
+        <p>{t("routes.instanceTorrents.instanceId", { ns: "torrents" })}: {instanceId}</p>
+        <p>{t("routes.instanceTorrents.availableInstances", { ns: "torrents" })}: {instances?.map(i => i.id).join(", ")}</p>
         <Navigate to="/settings" search={{ tab: "instances" }} />
       </div>
     )
@@ -100,6 +112,8 @@ interface InstanceDisabledNoticeProps {
 }
 
 function InstanceDisabledNotice({ instanceName, onManageInstances }: InstanceDisabledNoticeProps) {
+  const { t } = useTranslation(["common", "torrents"])
+
   return (
     <div className="flex h-full items-center justify-center px-4 py-12">
       <div className="max-w-xl text-center space-y-4">
@@ -107,13 +121,16 @@ function InstanceDisabledNotice({ instanceName, onManageInstances }: InstanceDis
           <Power className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-semibold">Instance disabled</h1>
+          <h1 className="text-2xl font-semibold">{t("routes.instanceTorrents.instanceDisabled", { ns: "torrents" })}</h1>
           <p className="text-muted-foreground">
-            {instanceName} is currently disabled. Enable it from Settings &gt; Instances to resume torrent management.
+            {t("routes.instanceTorrents.instanceDisabledDescription", {
+              ns: "torrents",
+              name: instanceName,
+            })}
           </p>
         </div>
         <Button onClick={onManageInstances} size="sm">
-          Manage Instances
+          {t("nav.manageInstances", { ns: "common" })}
         </Button>
       </div>
     </div>

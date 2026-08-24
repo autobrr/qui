@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package trackericons
@@ -27,7 +27,7 @@ func TestPreloadIconsFromDisk(t *testing.T) {
         "www.alias.example": "data:image/png;base64,` + tinyPNG + `"
     };`
 
-	require.NoError(t, os.WriteFile(filepath.Join(iconDir, "preload.json"), []byte(preload), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(iconDir, "preload.json"), []byte(preload), 0o600))
 
 	svc, err := NewService(dataDir, "test-agent")
 	require.NoError(t, err)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -13,14 +13,18 @@ import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
+import { useTranslation } from "react-i18next"
+import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
+import { useCustomThemes } from "@/hooks/useCustomThemes"
 
 function AppLayoutContent() {
+  const { t } = useTranslation("common")
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
+  const { isFooterVisible } = useMobileScroll()
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-[100dvh] bg-background">
       {/* Desktop Sidebar - Collapsible */}
       <div className={cn(
         "hidden lg:flex transition-all duration-300 ease-out overflow-hidden",
@@ -51,13 +55,14 @@ function AppLayoutContent() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              {sidebarCollapsed ? t("sidebar.showSidebar") : t("sidebar.hideSidebar")}
             </TooltipContent>
           </Tooltip>
         </Header>
         <main className={cn(
-          "flex-1 overflow-y-auto",
-          "pb-16 lg:pb-0"
+          "flex-1 overflow-y-auto transition-[padding] duration-300",
+          isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
+          "lg:pb-0"
         )}>
           <Outlet />
         </main>
@@ -70,6 +75,8 @@ function AppLayoutContent() {
 }
 
 export function AppLayout() {
+  // Registers and applies stored custom themes for authenticated users.
+  useCustomThemes()
   return (
     <LayoutRouteProvider>
       <TorrentSelectionProvider>

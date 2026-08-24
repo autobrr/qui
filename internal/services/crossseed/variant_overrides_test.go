@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -199,6 +199,15 @@ func TestReleasesMatch_PROPERBlockedForMovies(t *testing.T) {
 		"vanilla movie should NOT match PROPER movie")
 	require.False(t, s.releasesMatch(&movieProper, &movie, false),
 		"PROPER movie should NOT match vanilla movie")
+}
+
+func TestVariantMismatchReasonIsDeterministic(t *testing.T) {
+	source := &rls.Release{Collection: "IMAX", Other: []string{"HYBRID"}}
+	candidate := &rls.Release{}
+
+	for range 100 {
+		require.Equal(t, "HYBRID", strictVariantOverrides.findMismatch(source, candidate))
+	}
 }
 
 func TestReleasesMatch_IMAXBlockedEvenForSeasonPacks(t *testing.T) {

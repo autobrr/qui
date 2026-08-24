@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package filesmanager
@@ -6,6 +6,7 @@ package filesmanager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -15,6 +16,16 @@ import (
 
 	"github.com/autobrr/qui/internal/dbinterface"
 )
+
+// InstanceLister lists all qBittorrent instances
+type InstanceLister interface {
+	ListInstanceIDs(ctx context.Context) ([]int, error)
+}
+
+// TorrentHashProvider provides current torrent hashes for an instance
+type TorrentHashProvider interface {
+	GetAllTorrentHashes(ctx context.Context, instanceID int) ([]string, error)
+}
 
 // Service manages cached torrent file information
 type Service struct {
@@ -77,7 +88,7 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 	}
 
 	syncInfoMap, err := s.repo.GetSyncInfoBatch(ctx, instanceID, unique)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, fmt.Errorf("failed to get sync info batch: %w", err)
 	}
 
@@ -195,16 +206,16 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 
 		now := time.Now()
 		cacheKey := newCacheKey(instanceID, hash)
-		//shouldLog := false
+		// shouldLog := false
 
 		s.mu.Lock()
 		if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
 			s.lastCacheLog[cacheKey] = now
-			//shouldLog = true
+			// shouldLog = true
 		}
 		s.mu.Unlock()
 
-		//if shouldLog {
+		// if shouldLog {
 		//	log.Trace().
 		//		Int("instanceID", instanceID).
 		//		Str("hash", hash).
@@ -252,6 +263,65 @@ func (s *Service) CleanupRemovedTorrentsCache(ctx context.Context, instanceID in
 	return deleted, nil
 }
 
+// StartOrphanCleanup starts a background goroutine that periodically removes orphaned
+// cache entries (entries for torrents that no longer exist in qBittorrent).
+// Runs cleanup on startup and then hourly.
+func (s *Service) StartOrphanCleanup(ctx context.Context, instances InstanceLister, hashes TorrentHashProvider) {
+	go func() {
+		// Run cleanup on startup after a short delay to let instances connect
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
+		}
+
+		s.runOrphanCleanup(ctx, instances, hashes)
+
+		// Then run hourly
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s.runOrphanCleanup(ctx, instances, hashes)
+			}
+		}
+	}()
+}
+
+func (s *Service) runOrphanCleanup(ctx context.Context, instances InstanceLister, hashes TorrentHashProvider) {
+	instanceIDs, err := instances.ListInstanceIDs(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("filesmanager: cache maintenance skipped, failed to list instances")
+		return
+	}
+
+	var totalDeleted int
+	for _, instanceID := range instanceIDs {
+		currentHashes, err := hashes.GetAllTorrentHashes(ctx, instanceID)
+		if err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).
+				Msg("filesmanager: cache maintenance skipped for instance")
+			continue
+		}
+
+		deleted, err := s.CleanupRemovedTorrentsCache(ctx, instanceID, currentHashes)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).
+				Msg("filesmanager: cache maintenance failed for instance")
+			continue
+		}
+		totalDeleted += deleted
+	}
+
+	if totalDeleted > 0 {
+		log.Info().Int("totalDeleted", totalDeleted).Msg("filesmanager: pruned stale cache entries")
+	}
+}
+
 // GetCacheStats returns statistics about the cache
 func (s *Service) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
 	return s.repo.GetCacheStats(ctx, instanceID)
@@ -265,11 +335,7 @@ func cacheIsFresh(info *SyncInfo) bool {
 	// Use a fixed cache duration for simplicity
 	cacheFreshDuration := 5 * time.Minute
 
-	if time.Since(info.LastSyncedAt) > cacheFreshDuration {
-		return false
-	}
-
-	return true
+	return time.Since(info.LastSyncedAt) <= cacheFreshDuration
 }
 
 func convertCachedFiles(cached []CachedFile) qbt.TorrentFiles {

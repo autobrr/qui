@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package api
@@ -21,19 +21,26 @@ import (
 
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/api/sse"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/services/arr"
+	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
-	"github.com/autobrr/qui/internal/services/trackerrules"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -45,6 +52,7 @@ type Server struct {
 	logger  zerolog.Logger
 	config  *config.AppConfig
 	version string
+	started time.Time
 
 	authService                      *auth.Service
 	sessionManager                   *scs.SessionManager
@@ -54,21 +62,37 @@ type Server struct {
 	reannounceService                *reannounce.Service
 	clientAPIKeyStore                *models.ClientAPIKeyStore
 	externalProgramStore             *models.ExternalProgramStore
+	externalProgramService           *externalprograms.Service
 	clientPool                       *qbittorrent.ClientPool
 	syncManager                      *qbittorrent.SyncManager
 	licenseService                   *license.Service
 	updateService                    *update.Service
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
+	streamManager                    *sse.StreamManager
 	filesManager                     *filesmanager.Service
 	crossSeedService                 *crossseed.Service
 	jackettService                   *jackett.Service
 	torznabIndexerStore              *models.TorznabIndexerStore
-	trackerRuleStore                 *models.TrackerRuleStore
-	trackerRuleService               *trackerrules.Service
+	automationStore                  *models.AutomationStore
+	automationActivityStore          *models.AutomationActivityStore
+	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	clientSettingsStore              *models.ClientSettingsStore
+	themeSettingsStore               *models.ThemeSettingsStore
+	filterViewStore                  *models.FilterViewStore
+	logExclusionsStore               *models.LogExclusionsStore
+	notificationTargetStore          *models.NotificationTargetStore
+	notificationService              *notifications.Service
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
+	seasonPackRunStore               *models.SeasonPackRunStore
+	orphanScanStore                  *models.OrphanScanStore
+	orphanScanService                *orphanscan.Service
+	dirScanService                   *dirscan.Service
+	arrInstanceStore                 *models.ArrInstanceStore
+	arrService                       *arr.Service
+	activityHub                      *activity.Hub
 }
 
 type Dependencies struct {
@@ -82,6 +106,7 @@ type Dependencies struct {
 	ReannounceService                *reannounce.Service
 	ClientAPIKeyStore                *models.ClientAPIKeyStore
 	ExternalProgramStore             *models.ExternalProgramStore
+	ExternalProgramService           *externalprograms.Service
 	ClientPool                       *qbittorrent.ClientPool
 	SyncManager                      *qbittorrent.SyncManager
 	WebHandler                       *web.Handler
@@ -93,30 +118,60 @@ type Dependencies struct {
 	CrossSeedService                 *crossseed.Service
 	JackettService                   *jackett.Service
 	TorznabIndexerStore              *models.TorznabIndexerStore
-	TrackerRuleStore                 *models.TrackerRuleStore
-	TrackerRuleService               *trackerrules.Service
+	AutomationStore                  *models.AutomationStore
+	AutomationActivityStore          *models.AutomationActivityStore
+	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	ClientSettingsStore              *models.ClientSettingsStore
+	ThemeSettingsStore               *models.ThemeSettingsStore
+	FilterViewStore                  *models.FilterViewStore
+	LogExclusionsStore               *models.LogExclusionsStore
+	NotificationTargetStore          *models.NotificationTargetStore
+	NotificationService              *notifications.Service
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
+	SeasonPackRunStore               *models.SeasonPackRunStore
+	OrphanScanStore                  *models.OrphanScanStore
+	OrphanScanService                *orphanscan.Service
+	DirScanService                   *dirscan.Service
+	ArrInstanceStore                 *models.ArrInstanceStore
+	ArrService                       *arr.Service
+	ActivityHub                      *activity.Hub
 }
 
 func NewServer(deps *Dependencies) *Server {
+	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.InstanceStore)
+	if deps.ClientPool != nil {
+		deps.ClientPool.SetSyncEventSink(streamManager)
+	}
+	if deps.ActivityHub != nil {
+		streamManager.SetActivityHub(deps.ActivityHub)
+	}
+
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
 			ReadTimeout:       60 * time.Second,
-			WriteTimeout:      120 * time.Second,
-			IdleTimeout:       180 * time.Second,
+			// No WriteTimeout: it is an absolute deadline on the whole response,
+			// so it aborts large file downloads (DownloadTorrentContentFile) and
+			// long-lived SSE streams once they run past a fixed bound, regardless
+			// of any reverse proxy. ReadHeaderTimeout/ReadTimeout/IdleTimeout still
+			// bound slow-header and idle connections; on a single-user self-hosted
+			// instance the response-side slow-client protection is not worth the cost.
+			WriteTimeout: 0,
+			IdleTimeout:  180 * time.Second,
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
 		version:                          deps.Version,
+		started:                          time.Now().UTC(),
 		authService:                      deps.AuthService,
 		sessionManager:                   deps.SessionManager,
 		instanceStore:                    deps.InstanceStore,
 		instanceReannounce:               deps.InstanceReannounce,
 		clientAPIKeyStore:                deps.ClientAPIKeyStore,
 		externalProgramStore:             deps.ExternalProgramStore,
+		externalProgramService:           deps.ExternalProgramService,
 		reannounceCache:                  deps.ReannounceCache,
 		clientPool:                       deps.ClientPool,
 		syncManager:                      deps.SyncManager,
@@ -124,32 +179,39 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:                    deps.UpdateService,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
+		streamManager:                    streamManager,
 		filesManager:                     deps.FilesManager,
 		crossSeedService:                 deps.CrossSeedService,
 		reannounceService:                deps.ReannounceService,
 		jackettService:                   deps.JackettService,
 		torznabIndexerStore:              deps.TorznabIndexerStore,
-		trackerRuleStore:                 deps.TrackerRuleStore,
-		trackerRuleService:               deps.TrackerRuleService,
+		automationStore:                  deps.AutomationStore,
+		automationActivityStore:          deps.AutomationActivityStore,
+		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		clientSettingsStore:              deps.ClientSettingsStore,
+		themeSettingsStore:               deps.ThemeSettingsStore,
+		filterViewStore:                  deps.FilterViewStore,
+		logExclusionsStore:               deps.LogExclusionsStore,
+		notificationTargetStore:          deps.NotificationTargetStore,
+		notificationService:              deps.NotificationService,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
+		seasonPackRunStore:               deps.SeasonPackRunStore,
+		orphanScanStore:                  deps.OrphanScanStore,
+		orphanScanService:                deps.OrphanScanService,
+		dirScanService:                   deps.DirScanService,
+		arrInstanceStore:                 deps.ArrInstanceStore,
+		arrService:                       deps.ArrService,
+		activityHub:                      deps.ActivityHub,
 	}
 
 	return &s
 }
 
-func (s *Server) ListenAndServe() error {
-	return s.open(nil)
-}
-
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
 func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
 	return s.open(ready)
-}
-
-func (s *Server) Open() error {
-	return s.open(nil)
 }
 
 func (s *Server) open(ready chan<- struct{}) error {
@@ -174,6 +236,7 @@ func (s *Server) open(ready chan<- struct{}) error {
 }
 
 func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error {
+	//nolint:noctx // the listener outlives every request; a ListenConfig context would only bound the bind itself
 	listener, err := net.Listen(protocol, addr)
 	if err != nil {
 		return err
@@ -212,6 +275,13 @@ func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error 
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
+	}
+
 	return s.server.Shutdown(ctx)
 }
 
@@ -220,8 +290,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 	// Global middleware
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
-	//r.Use(middleware.Logger(s.logger))
+	// r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
+	// Enforce auth-disabled IP allowlist against the direct TCP peer.
+	// This runs before RealIP so forwarded headers cannot bypass restrictions.
+	r.Use(middleware.RequireAuthDisabledIPAllowlist(s.config.Config))
 	r.Use(middleware.RealIP)
 
 	// HTTP compression - handles gzip, brotli, zstd, deflate automatically
@@ -234,19 +307,38 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		r.Use(compressor)
+		// SSE responses must never go through this compressor. Its writer buffers
+		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
+		// cuts the stream handler's http.NewResponseController off from the socket
+		// and silently disables the per-write deadline that evicts stalled clients.
+		// Bypass compression for event-stream requests (EventSource always sends
+		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
+		// without coupling to specific paths. /api/stream compresses itself instead:
+		// see gzipSessionWriter in internal/api/sse.
+		r.Use(func(next http.Handler) http.Handler {
+			compressed := compressor(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
+					next.ServeHTTP(w, req)
+					return
+				}
+				compressed.ServeHTTP(w, req)
+			})
+		})
 	}
 
-	// CORS - mirror autobrr's permissive credentials setup
-	corsMiddleware := cors.New(cors.Options{
-		AllowCredentials: true,
-		AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key"},
-		AllowOriginFunc:  func(origin string) bool { return true },
-		MaxAge:           300,
-		Debug:            false,
-	})
-	r.Use(corsMiddleware.Handler)
+	// CORS is disabled by default. Enable only for explicit trusted origins.
+	if len(s.config.Config.CORSAllowedOrigins) > 0 {
+		corsMiddleware := cors.New(cors.Options{
+			AllowCredentials: true,
+			AllowedOrigins:   s.config.Config.CORSAllowedOrigins,
+			AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
+			MaxAge:           300,
+			Debug:            false,
+		})
+		r.Use(corsMiddleware.Handler)
+	}
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
@@ -258,20 +350,43 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
-	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService)
+	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
-	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.clientPool, s.config.Config)
-	versionHandler := handlers.NewVersionHandler(s.updateService)
+	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
+	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
+	versionHandler := handlers.NewVersionHandler(s.updateService, s.version)
+	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
-	trackerRulesHandler := handlers.NewTrackerRuleHandler(s.trackerRuleStore, s.trackerRuleService)
-	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
+		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
+		return s.config.Config.IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
+	}, s.activityHub)
+	crossSeedHandler := handlers.NewCrossSeedHandler(
+		s.crossSeedService,
+		s.instanceCrossSeedCompletionStore,
+		s.instanceStore,
+		s.seasonPackRunStore,
+	)
+	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
+	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
+	var dirScanHandler *handlers.DirScanHandler
+	if s.dirScanService != nil {
+		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
+	}
+	trackerCustomizationHandler := handlers.NewTrackerCustomizationHandler(s.trackerCustomizationStore, s.syncManager.InvalidateTrackerDisplayNameCache)
+	rssHandler := handlers.NewRSSHandler(s.syncManager)
+	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
+	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
+	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
+	logsHandler := handlers.NewLogsHandler(s.config)
+	notificationsHandler := handlers.NewNotificationsHandler(s.notificationTargetStore, s.notificationService)
 
 	// Torznab/Jackett handler
 	var jackettHandler *handlers.JackettHandler
@@ -304,9 +419,27 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			}
 		})
 
-		// Protected routes
+		// Built-in theme catalog and stored selection: public so the login
+		// page can paint the selected theme before auth. Premium CSS is
+		// license-gated inside; writes stay authenticated.
+		r.Get("/themes", themesHandler.ListThemes)
+		r.Get("/themes/settings", themesHandler.GetThemeSettings)
+
+		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
+		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
+
+		// Cross-seed routes (query param auth for select endpoints)
+		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
+
+		// Dir scan webhook (query param auth for external triggers like *arr custom scripts)
+		if dirScanHandler != nil {
+			r.Route("/dir-scan/webhook", func(r chi.Router) {
+				r.With(apiKeyQueryMiddleware, authMiddleware).Post("/scan", dirScanHandler.WebhookTriggerScan)
+			})
+		}
+
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.IsAuthenticated(s.authService, s.sessionManager))
+			r.Use(authMiddleware)
 
 			r.Get("/tracker-icons", trackerIconHandler.GetTrackerIcons)
 
@@ -317,8 +450,15 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			r.Route("/license", licenseHandler.Routes)
 
-			// Cross-seed routes
-			crossSeedHandler.Routes(r)
+			// Sideloaded custom themes (premium-gated inside the handler)
+			r.Get("/themes/custom", themesHandler.ListCustomThemes)
+
+			// Persisted theme selection (reads are public above)
+			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+
+			// Persisted frontend user settings (opaque key-value map)
+			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)
+			r.Put("/client-settings", clientSettingsHandler.UpdateClientSettings)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {
@@ -348,6 +488,28 @@ func (s *Server) Handler() (*chi.Mux, error) {
 				r.Post("/execute", externalProgramsHandler.ExecuteExternalProgram)
 			})
 
+			// Notification targets and events
+			r.Route("/notifications", func(r chi.Router) {
+				r.Get("/events", notificationsHandler.ListEvents)
+				r.Get("/targets", notificationsHandler.ListTargets)
+				r.Post("/targets", notificationsHandler.CreateTarget)
+				r.Put("/targets/{id}", notificationsHandler.UpdateTarget)
+				r.Delete("/targets/{id}", notificationsHandler.DeleteTarget)
+				r.Post("/targets/{id}/test", notificationsHandler.TestTarget)
+			})
+
+			// ARR (Sonarr/Radarr) instance management
+			r.Route("/arr", func(r chi.Router) {
+				r.Get("/instances", arrHandler.ListInstances)
+				r.Post("/instances", arrHandler.CreateInstance)
+				r.Get("/instances/{id}", arrHandler.GetInstance)
+				r.Put("/instances/{id}", arrHandler.UpdateInstance)
+				r.Delete("/instances/{id}", arrHandler.DeleteInstance)
+				r.Post("/instances/{id}/test", arrHandler.TestInstance)
+				r.Post("/test", arrHandler.TestConnection)
+				r.Post("/resolve", arrHandler.Resolve)
+			})
+
 			// Tracker customizations (nicknames and merged domains)
 			r.Route("/tracker-customizations", func(r chi.Router) {
 				r.Get("/", trackerCustomizationHandler.List)
@@ -360,8 +522,27 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/dashboard-settings", dashboardSettingsHandler.Get)
 			r.Put("/dashboard-settings", dashboardSettingsHandler.Update)
 
-			// Version endpoint for update checks
+			// Saved filter views (named TorrentFilters snapshots)
+			r.Route("/filter-views", func(r chi.Router) {
+				r.Get("/", filterViewHandler.List)
+				r.Post("/", filterViewHandler.Create)
+				r.Put("/{id}", filterViewHandler.Update)
+				r.Delete("/{id}", filterViewHandler.Delete)
+			})
+
+			// Log exclusions (muted log message patterns)
+			r.Get("/log-exclusions", logExclusionsHandler.Get)
+			r.Put("/log-exclusions", logExclusionsHandler.Update)
+
+			// Log settings and streaming
+			logsHandler.Routes(r)
+
+			// Version endpoints (current running version + update checks)
+			r.Get("/version", versionHandler.GetVersion)
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
+			r.Get("/application/info", applicationHandler.GetInfo)
+
+			r.Get("/stream", s.streamManager.Serve)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
@@ -374,6 +555,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
+					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
@@ -383,6 +565,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Post("/bulk-action", torrentsHandler.BulkAction)
 						r.Post("/add-peers", torrentsHandler.AddPeers)
 						r.Post("/ban-peers", torrentsHandler.BanPeers)
+						r.Post("/field", torrentsHandler.GetTorrentField)
 
 						r.Route("/{hash}", func(r chi.Router) {
 							// Torrent details
@@ -394,15 +577,19 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Delete("/trackers", torrentsHandler.RemoveTorrentTrackers)
 							r.Get("/peers", torrentsHandler.GetTorrentPeers)
 							r.Get("/webseeds", torrentsHandler.GetTorrentWebSeeds)
+							r.Get("/pieces", torrentsHandler.GetTorrentPieceStates)
 							r.Get("/files", torrentsHandler.GetTorrentFiles)
 							r.Put("/files", torrentsHandler.SetTorrentFilePriority)
 							r.Put("/rename", torrentsHandler.RenameTorrent)
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
+							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
 						})
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)
+					r.Get("/transfer-info", instancesHandler.GetTransferInfo)
 					r.Get("/reannounce/activity", instancesHandler.GetReannounceActivity)
 					r.Get("/reannounce/candidates", instancesHandler.GetReannounceCandidates)
 
@@ -428,17 +615,29 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					// Trackers
 					r.Get("/trackers", torrentsHandler.GetActiveTrackers)
 
-					// Tracker rules
-					r.Route("/tracker-rules", func(r chi.Router) {
-						r.Get("/", trackerRulesHandler.List)
-						r.Post("/", trackerRulesHandler.Create)
-						r.Put("/order", trackerRulesHandler.Reorder)
-						r.Post("/apply", trackerRulesHandler.ApplyNow)
+					// Automations
+					r.Route("/automations", func(r chi.Router) {
+						r.Get("/", automationsHandler.List)
+						r.Post("/", automationsHandler.Create)
+						r.Put("/order", automationsHandler.Reorder)
+						r.Post("/apply", automationsHandler.ApplyNow)
+						r.Post("/dry-run", automationsHandler.DryRunNow)
+						r.Post("/preview", automationsHandler.PreviewDeleteRule)
+						r.Post("/validate-regex", automationsHandler.ValidateRegex)
+						r.Get("/activity", automationsHandler.ListActivity)
+						r.Get("/activity/{activityId}", automationsHandler.GetActivityRun)
+						r.Delete("/activity", automationsHandler.DeleteActivity)
 
 						r.Route("/{ruleID}", func(r chi.Router) {
-							r.Put("/", trackerRulesHandler.Update)
-							r.Delete("/", trackerRulesHandler.Delete)
+							r.Put("/", automationsHandler.Update)
+							r.Delete("/", automationsHandler.Delete)
 						})
+					})
+
+					// RSS management
+					r.Route("/rss", func(r chi.Router) {
+						rssHandler.Routes(r)
+						r.Get("/events", rssSSEHandler.HandleSSE)
 					})
 
 					// Preferences
@@ -469,19 +668,58 @@ func (s *Server) Handler() (*chi.Mux, error) {
 						r.Get("/runs/{runID}/items/{torrentHash}/download", backupsHandler.DownloadTorrentBlob)
 						r.Delete("/runs/{runID}", backupsHandler.DeleteRun)
 					})
+
+					// Orphan file scanning
+					r.Route("/orphan-scan", func(r chi.Router) {
+						r.Get("/settings", orphanScanHandler.GetSettings)
+						r.Put("/settings", orphanScanHandler.UpdateSettings)
+						r.Post("/scan", orphanScanHandler.TriggerScan)
+						r.Get("/runs", orphanScanHandler.ListRuns)
+						r.Route("/runs/{runID}", func(r chi.Router) {
+							r.Get("/", orphanScanHandler.GetRun)
+							r.Post("/confirm", orphanScanHandler.ConfirmDeletion)
+							r.Delete("/", orphanScanHandler.CancelRun)
+						})
+					})
 				})
 			})
+
+			// Directory scanner (global, not per-instance)
+			if dirScanHandler != nil {
+				r.Route("/dir-scan", func(r chi.Router) {
+					r.Get("/settings", dirScanHandler.GetSettings)
+					r.Patch("/settings", dirScanHandler.UpdateSettings)
+					r.Route("/directories", func(r chi.Router) {
+						r.Get("/", dirScanHandler.ListDirectories)
+						r.Post("/", dirScanHandler.CreateDirectory)
+						r.Route("/{directoryID}", func(r chi.Router) {
+							r.Get("/", dirScanHandler.GetDirectory)
+							r.Patch("/", dirScanHandler.UpdateDirectory)
+							r.Delete("/", dirScanHandler.DeleteDirectory)
+							r.Post("/reset-files", dirScanHandler.ResetFiles)
+							r.Post("/requeue-no-match", dirScanHandler.RequeueNoMatch)
+							r.Post("/scan", dirScanHandler.TriggerScan)
+							r.Delete("/scan", dirScanHandler.CancelScan)
+							r.Get("/status", dirScanHandler.GetStatus)
+							r.Get("/runs", dirScanHandler.ListRuns)
+							r.Get("/runs/{runID}/injections", dirScanHandler.ListRunInjections)
+							r.Get("/files", dirScanHandler.ListFiles)
+						})
+					})
+				})
+			}
 
 			// Global torrent operations (cross-instance)
 			r.Route("/torrents", func(r chi.Router) {
 				r.Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
+				r.Post("/export", torrentsHandler.ExportTorrentArchive)
 			})
-
 		})
 	})
 
-	// Proxy routes (outside of /api and not requiring authentication)
-	proxyHandler.Routes(r)
+	// Proxy routes (outside of /api and not requiring authentication).
+	// Wrapped so proxy traffic gets the same status and latency record as /api.
+	proxyHandler.Routes(r.With(middleware.Logger(s.logger)))
 
 	swaggerHandler, err := swagger.NewHandler(s.config.Config.BaseURL)
 	if err != nil {
@@ -500,7 +738,11 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	r.Get("/healthz/readiness", healthHandler.HandleReady)
 	r.Get("/healthz/liveness", healthHandler.HandleLiveness)
 
-	r.Mount(baseURL+"api", apiRouter)
+	apiMount := "/api"
+	if baseURL != "/" {
+		apiMount = strings.TrimSuffix(baseURL, "/") + "/api"
+	}
+	r.Mount(apiMount, apiRouter)
 
 	// Initialize web handler (for embedded frontend)
 	// This MUST be registered AFTER API routes to avoid catch-all intercepting /api/* paths
@@ -522,7 +764,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
+			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
 		})
 		//	// Redirect root to base URL
 		//	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package web
@@ -24,13 +24,13 @@ type Handler struct {
 
 func init() {
 	// Ensure MIME types are properly registered
-	mime.AddExtensionType(".js", "application/javascript")
-	mime.AddExtensionType(".css", "text/css")
-	mime.AddExtensionType(".html", "text/html")
-	mime.AddExtensionType(".json", "application/json")
-	mime.AddExtensionType(".svg", "image/svg+xml")
-	mime.AddExtensionType(".woff", "font/woff")
-	mime.AddExtensionType(".woff2", "font/woff2")
+	_ = mime.AddExtensionType(".js", "application/javascript")
+	_ = mime.AddExtensionType(".css", "text/css")
+	_ = mime.AddExtensionType(".html", "text/html")
+	_ = mime.AddExtensionType(".json", "application/json")
+	_ = mime.AddExtensionType(".svg", "image/svg+xml")
+	_ = mime.AddExtensionType(".woff", "font/woff")
+	_ = mime.AddExtensionType(".woff2", "font/woff2")
 }
 
 func NewHandler(version, baseURL string, embedFS fs.FS) *Handler {
@@ -68,6 +68,21 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/pwa-512x512.png", h.serveAssets)
 	r.Get("/swizzin.png", h.serveAssets)
 	r.Get("/napster.png", h.serveAssets)
+
+	// Redirect /index.html to the SPA root so SSO proxies that preserve
+	// the original request path (Pangolin, Cloudflare Access, etc.) don't
+	// land on a client-side 404.
+	spaRoot := h.baseURL
+	if spaRoot == "" {
+		spaRoot = "/"
+	}
+	r.Get("/index.html", func(w http.ResponseWriter, r *http.Request) {
+		target := spaRoot
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently) //nolint:gosec // G710: same-origin relative target built from the configured base path; the query is carried through unchanged
+	})
 
 	// SPA routes
 	r.Get("/", h.serveSPA)
@@ -156,12 +171,13 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 		basePrefix := strings.TrimSuffix(h.baseURL, "/")
 
 		// Modify service worker files to use correct base URL
-		if path == "registerSW.js" {
+		switch path {
+		case "registerSW.js":
 			// Fix service worker registration paths
 			modifiedContent = strings.ReplaceAll(modifiedContent, `'/sw.js'`, `'`+basePrefix+`/sw.js'`)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"/sw.js"`, `"`+basePrefix+`/sw.js"`)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `scope: '/'`, `scope: '`+basePrefix+`/'`)
-		} else if path == "manifest.webmanifest" {
+		case "manifest.webmanifest":
 			// Fix manifest paths (icons, start_url, etc.)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"start_url":"/"`, `"start_url":"`+basePrefix+`/"`)
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"start_url": "/"`, `"start_url": "`+basePrefix+`/"`)
@@ -171,7 +187,7 @@ func (h *Handler) serveAssets(w http.ResponseWriter, r *http.Request) {
 			modifiedContent = strings.ReplaceAll(modifiedContent, `"src": "pwa-`, `"src": "`+basePrefix+`/pwa-`)
 		}
 
-		w.Write([]byte(modifiedContent))
+		_, _ = w.Write([]byte(modifiedContent))
 	} else {
 		// Serve the file normally
 		http.ServeContent(w, r, path, stat.ModTime(), file.(io.ReadSeeker))
@@ -242,5 +258,5 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 
 	// Set content type and write response
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(modifiedContent))
+	_, _ = w.Write([]byte(modifiedContent))
 }

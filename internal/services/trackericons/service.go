@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package trackericons
@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+
+	// Registered for their side effect: image.Decode needs the gif and jpeg
+	// decoders to read icons that are not png.
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
@@ -23,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	// Same again for .ico, which browsers still serve as a favicon.
 	_ "github.com/mat/besticon/v3/ico"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/draw"
@@ -31,6 +35,7 @@ import (
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
 
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
@@ -40,6 +45,7 @@ const (
 	maxIconBytes int64 = 1 << 20 // 1 MiB
 
 	fetchTimeout    = 15 * time.Second
+	requestTimeout  = 5 * time.Second
 	failureCooldown = 30 * time.Minute
 )
 
@@ -70,6 +76,8 @@ type Service struct {
 
 	failureMu   sync.Mutex
 	lastFailure map[string]time.Time
+
+	activityPublisher activity.Publisher
 }
 
 // Flow overview:
@@ -92,7 +100,7 @@ type Service struct {
 // NewService creates a new tracker icon service rooted in the provided data directory.
 func NewService(dataDir, userAgent string) (*Service, error) {
 	if strings.TrimSpace(dataDir) == "" {
-		return nil, fmt.Errorf("data directory must be provided")
+		return nil, errors.New("data directory must be provided")
 	}
 
 	iconDir := filepath.Join(dataDir, iconDirName)
@@ -101,9 +109,10 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	svc := &Service{
-		iconDir:     iconDir,
-		client:      &http.Client{Timeout: fetchTimeout},
-		lastFailure: make(map[string]time.Time),
+		iconDir:           iconDir,
+		client:            &http.Client{Timeout: fetchTimeout},
+		lastFailure:       make(map[string]time.Time),
+		activityPublisher: activity.NopPublisher{},
 	}
 
 	if trimmed := strings.TrimSpace(userAgent); trimmed != "" {
@@ -117,6 +126,15 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	return svc, nil
+}
+
+// SetActivityPublisher wires the qui server-event hub so newly cached tracker
+// icons are pushed to connected clients instead of polled. Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 func SetGlobal(svc *Service) {
@@ -162,14 +180,17 @@ func QueueFetch(host, trackerURL string) {
 	go func(h string, tracker string) {
 		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
-		if _, err := svc.GetIcon(ctx, h, tracker); err != nil {
-			// Intentionally ignore errors here; they are tracked internally for cooldown.
-		}
+		// Errors are ignored here; GetIcon tracks them internally for cooldown.
+		_, _ = svc.GetIcon(ctx, h, tracker)
 	}(sanitized, trackerURL)
 }
 
 // ListIcons returns all cached tracker icons as base64-encoded data URLs.
 func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	entries, err := os.ReadDir(s.iconDir)
 	if err != nil {
 		return nil, fmt.Errorf("read icon directory: %w", err)
@@ -177,28 +198,46 @@ func (s *Service) ListIcons(ctx context.Context) (map[string]string, error) {
 
 	icons := make(map[string]string)
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".png") {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		if entry.IsDir() {
 			continue
 		}
 
-		iconPath := filepath.Join(s.iconDir, entry.Name())
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if strings.ToLower(ext) != ".png" {
+			continue
+		}
+
+		// Extract tracker host from filename (strip extension, normalise casing).
+		host := sanitizeHost(strings.TrimSuffix(name, ext))
+		if host == "" {
+			continue
+		}
+
+		iconPath := filepath.Join(s.iconDir, name)
 		data, err := os.ReadFile(iconPath)
 		if err != nil {
 			continue
 		}
 
-		// Extract tracker name from filename (remove .png extension)
-		trackerName := strings.TrimSuffix(entry.Name(), ".png")
 		encoded := base64.StdEncoding.EncodeToString(data)
 		dataURL := "data:image/png;base64," + encoded
-		icons[trackerName] = dataURL
-		if after, ok := strings.CutPrefix(trackerName, "www."); ok {
-			trimmed := after
-			if trimmed != "" {
-				if _, exists := icons[trimmed]; !exists {
-					icons[trimmed] = dataURL
-				}
-			}
+		icons[host] = dataURL
+
+		// Mirror common www/bare hostname variants so icons resolve regardless of
+		// which variant the torrent client reports.
+		var alias string
+		if bare, ok := strings.CutPrefix(host, "www."); ok && bare != "" {
+			alias = bare
+		} else {
+			alias = "www." + host
+		}
+		if _, exists := icons[alias]; !exists {
+			icons[alias] = dataURL
 		}
 	}
 
@@ -231,12 +270,18 @@ func (s *Service) GetIcon(ctx context.Context, host, trackerURL string) (string,
 			return "", ErrIconNotFound
 		}
 
+		ctxWasDone := ctx != nil && ctx.Err() != nil
 		err := s.fetchAndStoreIcon(ctx, sanitized, trackerURL)
 		if err != nil {
-			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			shouldRecordFailure := !errors.Is(err, context.Canceled)
+			if ctxWasDone && errors.Is(err, context.DeadlineExceeded) {
+				shouldRecordFailure = false
+			}
+			if shouldRecordFailure {
 				s.recordFailure(sanitized)
 			}
 			if errors.Is(err, ErrIconNotFound) {
+				log.Trace().Str("host", sanitized).Err(err).Msg("Tracker icon fetch failed")
 				return "", ErrIconNotFound
 			}
 			return "", fmt.Errorf("fetch tracker icon: %w", err)
@@ -274,6 +319,7 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 
 	iconPath := s.iconPath(host)
 	attempted := make(map[string]struct{})
+	var lastErr error
 	hostCandidates := generateHostCandidates(host)
 	if len(hostCandidates) == 0 {
 		hostCandidates = []string{sanitizeHost(host)}
@@ -308,12 +354,18 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 				}
 			}
 
-			fallback := baseURL.ResolveReference(&url.URL{Path: "/favicon.ico"}).String()
-			if _, ok := attempted[fallback]; !ok {
-				if _, seen := localSeen[fallback]; !seen {
-					localSeen[fallback] = struct{}{}
-					iconURLs = append(iconURLs, fallback)
+			// Common fallbacks for sites that don't advertise <link rel="icon"> or
+			// don't serve /favicon.ico.
+			for _, fallbackPath := range []string{"/favicon.ico", "/favicon.png", "/apple-touch-icon.png"} {
+				fallback := baseURL.ResolveReference(&url.URL{Path: fallbackPath}).String()
+				if _, ok := attempted[fallback]; ok {
+					continue
 				}
+				if _, seen := localSeen[fallback]; seen {
+					continue
+				}
+				localSeen[fallback] = struct{}{}
+				iconURLs = append(iconURLs, fallback)
 			}
 		}
 
@@ -322,11 +374,16 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 
 			data, contentType, err := s.fetchIconBytes(ctx, iconURL)
 			if err != nil {
+				// Prefer retaining more specific errors over generic timeouts.
+				if lastErr == nil || !errors.Is(err, context.DeadlineExceeded) {
+					lastErr = err
+				}
 				continue
 			}
 
 			img, err := decodeImage(data, contentType, iconURL)
 			if err != nil {
+				lastErr = err
 				continue
 			}
 
@@ -335,15 +392,27 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 				return err
 			}
 
+			// Signal connected clients that a new tracker icon was cached so they
+			// refetch the icon set instead of polling. Global event, no ids.
+			if s.activityPublisher != nil {
+				s.activityPublisher.Publish(activity.Event{Kind: activity.KindTrackerIcons})
+			}
+
 			return nil
 		}
 	}
 
+	if lastErr != nil {
+		return fmt.Errorf("%w: %w", ErrIconNotFound, lastErr)
+	}
 	return ErrIconNotFound
 }
 
 func (s *Service) discoverIcons(ctx context.Context, baseURL *url.URL) ([]string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL.String(), nil)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -408,7 +477,10 @@ func (s *Service) fetchIconBytes(ctx context.Context, iconURL string) ([]byte, s
 		return parseDataURI(iconURL)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iconURL, nil)
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, iconURL, nil)
 	if err != nil {
 		return nil, "", err
 	}
@@ -458,12 +530,7 @@ func (s *Service) writePNG(img image.Image, path string) error {
 	}()
 
 	// Write complete buffer atomically
-	if err := os.WriteFile(tmpName, buf.Bytes(), 0o644); err != nil {
-		return err
-	}
-
-	// Ensure final permissions are 0644 regardless of CreateTemp defaults
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	if err := os.WriteFile(tmpName, buf.Bytes(), 0o600); err != nil {
 		return err
 	}
 
@@ -480,6 +547,17 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 	host = sanitizeHost(host)
 	if host == "" {
 		return nil
+	}
+
+	// Avoid probing http:// unless the announce URL is explicitly http://.
+	// In some environments outbound port 80 is blocked/blackholed, which causes
+	// repeated context deadline exceeded errors and prevents successful https
+	// candidates from being attempted.
+	allowHTTP := false
+	if trackerURL != "" {
+		if u, err := url.Parse(trackerURL); err == nil && strings.EqualFold(u.Scheme, "http") {
+			allowHTTP = true
+		}
 	}
 
 	seen := make(map[string]struct{})
@@ -508,14 +586,18 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 			default:
 				if u.Host != "" {
 					add((&url.URL{Scheme: "https", Host: u.Host}).String())
-					add((&url.URL{Scheme: "http", Host: u.Host}).String())
+					if allowHTTP {
+						add((&url.URL{Scheme: "http", Host: u.Host}).String())
+					}
 				}
 			}
 		}
 	}
 
 	add((&url.URL{Scheme: "https", Host: host}).String())
-	add((&url.URL{Scheme: "http", Host: host}).String())
+	if allowHTTP {
+		add((&url.URL{Scheme: "http", Host: host}).String())
+	}
 
 	var urls []*url.URL
 	for _, raw := range ordered {
@@ -631,7 +713,15 @@ func generateHostCandidates(host string) []string {
 		candidates = append(candidates, candidate)
 	}
 
-	add(sanitized)
+	addWithWWW := func(candidate string) {
+		add(candidate)
+		// Also try the www alias for base domains (e.g. example.org -> www.example.org).
+		if !strings.HasPrefix(candidate, "www.") && strings.Count(candidate, ".") == 1 {
+			add("www." + candidate)
+		}
+	}
+
+	addWithWWW(sanitized)
 
 	current := sanitized
 	for {
@@ -642,15 +732,11 @@ func generateHostCandidates(host string) []string {
 		if strings.Count(next, ".") == 0 {
 			break
 		}
-		add(next)
+		addWithWWW(next)
 		current = next
 		if strings.Count(current, ".") == 1 {
 			break
 		}
-	}
-
-	if !strings.HasPrefix(sanitized, "www.") && strings.Count(sanitized, ".") == 1 {
-		add("www." + sanitized)
 	}
 
 	return candidates
@@ -685,7 +771,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 	withoutScheme := strings.TrimPrefix(dataURI, "data:")
 	parts := strings.SplitN(withoutScheme, ",", 2)
 	if len(parts) != 2 {
-		return nil, "", fmt.Errorf("invalid data URI")
+		return nil, "", errors.New("invalid data URI")
 	}
 
 	meta := parts[0]
@@ -701,7 +787,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 	}
 
 	if !strings.Contains(meta, "base64") {
-		return nil, "", fmt.Errorf("unsupported data URI encoding")
+		return nil, "", errors.New("unsupported data URI encoding")
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(payload)
@@ -714,7 +800,7 @@ func parseDataURI(dataURI string) ([]byte, string, error) {
 
 func decodeImage(data []byte, contentType, originalURL string) (image.Image, error) {
 	if strings.Contains(strings.ToLower(contentType), "svg") || strings.HasSuffix(strings.ToLower(originalURL), ".svg") {
-		return nil, fmt.Errorf("svg icons are not supported")
+		return nil, errors.New("svg icons are not supported")
 	}
 
 	const maxDimension = 1024

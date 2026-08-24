@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -12,11 +12,12 @@ import type { WebSeed } from "@/types"
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  useReactTable,
+  tableFeatures,
+  useTable
 } from "@tanstack/react-table"
 import { Copy, Loader2, Search, X } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface WebSeedsTableProps {
@@ -25,18 +26,20 @@ interface WebSeedsTableProps {
   incognitoMode: boolean
 }
 
-const columnHelper = createColumnHelper<WebSeed>()
+const webSeedTableFeatures = tableFeatures({})
+const columnHelper = createColumnHelper<typeof webSeedTableFeatures, WebSeed>()
 
 export const WebSeedsTable = memo(function WebSeedsTable({
   webseeds,
   loading,
   incognitoMode,
 }: WebSeedsTableProps) {
+  const { t } = useTranslation("torrents")
   const [searchQuery, setSearchQuery] = useState("")
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => columnHelper.columns([
     columnHelper.accessor("url", {
-      header: "URL",
+      header: t("webSeedsTable.url"),
       cell: (info) => {
         const url = info.getValue()
         if (incognitoMode) {
@@ -58,7 +61,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
         )
       },
     }),
-  ], [incognitoMode])
+  ]), [incognitoMode, t])
 
   const filteredData = useMemo(() => {
     const data = webseeds || []
@@ -67,16 +70,16 @@ export const WebSeedsTable = memo(function WebSeedsTable({
     return data.filter((ws) => ws.url.toLowerCase().includes(query))
   }, [webseeds, searchQuery])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: webSeedTableFeatures,
     data: filteredData,
     columns,
-    getCoreRowModel: getCoreRowModel(),
   })
 
   const handleCopyUrl = (webseed: WebSeed) => {
     if (incognitoMode) return
     copyTextToClipboard(webseed.url)
-    toast.success("URL copied to clipboard")
+    toast.success(t("webSeedsTable.toast.urlCopied"))
   }
 
   if (loading && !webseeds) {
@@ -90,7 +93,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
   if (!webseeds || webseeds.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No HTTP sources
+        {t("webSeedsTable.noHttpSources")}
       </div>
     )
   }
@@ -103,7 +106,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Search URLs..."
+            placeholder={t("webSeedsTable.searchUrls")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-6 w-40 pl-7 pr-7 text-xs"
@@ -118,9 +121,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
           )}
         </div>
         <span className="ml-auto text-muted-foreground">
-          {searchQuery
-            ? `${filteredData.length} of ${webseeds.length}`
-            : `${webseeds.length} HTTP source${webseeds.length !== 1 ? "s" : ""}`}
+          {searchQuery? t("webSeedsTable.filteredCount", { filtered: filteredData.length, total: webseeds.length }): t("webSeedsTable.httpSources", { count: webseeds.length, plural: webseeds.length !== 1 ? "s" : "" })}
         </span>
       </div>
 
@@ -146,7 +147,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
                 <ContextMenu key={row.id}>
                   <ContextMenuTrigger asChild>
                     <tr className="border-b border-border/50 hover:bg-muted/30 cursor-default">
-                      {row.getVisibleCells().map((cell) => (
+                      {row.getAllCells().map((cell) => (
                         <td key={cell.id} className="px-2 py-1.5">
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
@@ -159,7 +160,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
                       disabled={incognitoMode}
                     >
                       <Copy className="h-3.5 w-3.5 mr-2" />
-                      Copy URL
+                      {t("webSeedsTable.copyUrl")}
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>

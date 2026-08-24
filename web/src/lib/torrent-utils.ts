@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -129,6 +129,27 @@ export function getCommonTags(torrents: Torrent[]): string[] {
   return Object.keys(tagCounts).filter(tag => tagCounts[tag] === torrents.length)
 }
 
+export function parseTorrentTags(tags?: string | null): string[] {
+  if (!tags) return []
+  return tags.split(",").map(tag => tag.trim()).filter(Boolean)
+}
+
+export function torrentHasTag(torrent: Torrent, tag: string): boolean {
+  const normalized = tag.trim()
+  if (!normalized) return false
+  return parseTorrentTags(torrent.tags).includes(normalized)
+}
+
+export function anyTorrentHasTag(torrents: Torrent[], tag: string): boolean {
+  if (torrents.length === 0) return false
+  return torrents.some(torrent => torrentHasTag(torrent, tag))
+}
+
+export function getTorrentHashesWithTag(torrents: Torrent[], tag: string): string[] {
+  if (torrents.length === 0) return []
+  return torrents.filter(torrent => torrentHasTag(torrent, tag)).map(torrent => torrent.hash)
+}
+
 /**
  * Get common category from selected torrents (if all have the same category)
  */
@@ -177,4 +198,17 @@ export function getTotalSize(torrents: Torrent[]): number {
 
   // Use reduce to sum up all torrent sizes
   return torrents.reduce((total, torrent) => total + (torrent.size || 0), 0)
+}
+
+/**
+ * Resolve how a boolean toggle (force start, sequential download, auto TMM)
+ * should be presented for the current selection. `stateUnknown` is true when
+ * rows in the selection are still unloaded, so the sampled values say nothing
+ * about the rest.
+ */
+export function getToggleSelectionState(values: boolean[], stateUnknown: boolean): { allEnabled: boolean; mixed: boolean } {
+  return {
+    allEnabled: values.length > 0 && values.every(Boolean),
+    mixed: stateUnknown || values.some(value => value !== values[0]),
+  }
 }

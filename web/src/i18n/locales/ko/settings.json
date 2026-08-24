@@ -1,0 +1,1022 @@
+{
+  "title": "설정",
+  "description": "애플리케이션 환경설정 및 보안을 관리합니다",
+  "tabs": {
+    "application": "애플리케이션",
+    "instances": "인스턴스",
+    "indexers": "인덱서",
+    "searchCache": "검색 캐시",
+    "integrations": "통합",
+    "clientProxy": "클라이언트 프록시",
+    "apiKeys": "API 키",
+    "externalPrograms": "외부 프로그램",
+    "notifications": "알림",
+    "dateTime": "시간 및 언어",
+    "premiumThemes": "프리미엄 테마",
+    "security": "보안",
+    "logs": "로그"
+  },
+  "language": {
+    "cardTitle": "언어",
+    "cardDescription": "선호하는 표시 언어를 선택하세요"
+  },
+  "changePassword": {
+    "currentPassword": "현재 비밀번호",
+    "newPassword": "새 비밀번호",
+    "confirmPassword": "새 비밀번호 확인",
+    "submit": "비밀번호 변경",
+    "submitting": "변경 중...",
+    "toasts": {
+      "success": "비밀번호가 변경되었습니다",
+      "error": "비밀번호를 변경하지 못했습니다. 현재 비밀번호를 확인하세요."
+    },
+    "validation": {
+      "currentRequired": "현재 비밀번호는 필수입니다",
+      "newRequired": "새 비밀번호는 필수입니다",
+      "minLength": "비밀번호는 8자 이상이어야 합니다",
+      "confirmRequired": "비밀번호를 확인해 주세요",
+      "mismatch": "비밀번호가 일치하지 않습니다"
+    }
+  },
+  "instances": {
+    "title": "인스턴스",
+    "description": "qBittorrent 연결 설정을 관리합니다",
+    "addButton": "인스턴스 추가",
+    "loading": "인스턴스 불러오는 중...",
+    "empty": "아직 구성된 인스턴스가 없습니다",
+    "addFirst": "첫 번째 인스턴스 추가",
+    "titleBarSpeeds": {
+      "label": "제목 표시줄 속도",
+      "description": "브라우저 탭 제목에 다운로드/업로드 속도를 표시합니다"
+    },
+    "addDialog": {
+      "title": "인스턴스 추가",
+      "description": "새 qBittorrent 인스턴스를 구성합니다",
+      "cancel": "취소",
+      "submit": "인스턴스 추가",
+      "adding": "추가 중..."
+    },
+    "toasts": {
+      "reorderFailed": "인스턴스 순서를 변경하지 못했습니다"
+    }
+  },
+  "integrations": {
+    "title": "ARR 통합",
+    "description": "외부 ID를 사용한 향상된 cross-seed 검색을 위해 Sonarr 및 Radarr 인스턴스를 구성합니다"
+  },
+  "clientApiKeys": {
+    "cardTitle": "클라이언트 프록시 API 키",
+    "cardDescription": "외부 애플리케이션이 qui를 통해 qBittorrent 인스턴스에 연결하기 위한 API 키를 관리합니다",
+    "createButton": "클라이언트 API 키 생성",
+    "loading": "클라이언트 API 키 불러오는 중...",
+    "loadFailed": "클라이언트 API 키를 불러올 수 없습니다",
+    "featureUnavailable": "이 버전에서는 기능을 사용할 수 없을 수 있습니다",
+    "unknownError": "오류가 발생했습니다",
+    "instanceDeleted": "인스턴스 삭제됨",
+    "empty": "아직 생성된 클라이언트 API 키가 없습니다",
+    "idLabel": "ID: {{id}}",
+    "labels": {
+      "created": "생성됨:",
+      "lastUsed": "마지막 사용:",
+      "host": "호스트:",
+      "showHost": "호스트 표시",
+      "hideHost": "호스트 숨기기"
+    },
+    "createDialog": {
+      "title": "클라이언트 API 키 생성",
+      "description": "특정 클라이언트가 qBittorrent 인스턴스에 연결하기 위한 API 키를 생성합니다.",
+      "clientNameLabel": "클라이언트 이름",
+      "clientNamePlaceholder": "예: autobrr, tqm, sonarr, radarr, cross-seed",
+      "instanceLabel": "qBittorrent 인스턴스",
+      "instancePlaceholder": "인스턴스 선택",
+      "creating": "생성 중..."
+    },
+    "newKey": {
+      "title": "API 키가 생성되었습니다",
+      "warning": "이 정보는 한 번만 표시됩니다. 대화 상자를 닫기 전에 비밀번호 관리자에 저장하세요.",
+      "proxyUrl": "프록시 URL",
+      "showProxyUrl": "프록시 URL 표시",
+      "hideProxyUrl": "프록시 URL 숨기기",
+      "copyProxyUrl": "프록시 URL 복사",
+      "done": "완료"
+    },
+    "deleteDialog": {
+      "title": "클라이언트 API 키를 삭제하시겠습니까?",
+      "description": "이 작업은 취소할 수 없습니다. 이 키를 사용하는 모든 애플리케이션이 qBittorrent 인스턴스에 접근할 수 없게 됩니다.",
+      "cancel": "취소",
+      "delete": "삭제",
+      "deleteLabel": "API 키 {{name}} 삭제"
+    },
+    "toasts": {
+      "created": "클라이언트 API 키가 생성되었습니다",
+      "createFailed": "클라이언트 API 키를 생성하지 못했습니다",
+      "deleted": "클라이언트 API 키가 삭제되었습니다",
+      "deleteFailed": "클라이언트 API 키를 삭제하지 못했습니다: {{error}}",
+      "clientNameRequired": "클라이언트 이름은 필수입니다",
+      "selectInstance": "qBittorrent 인스턴스를 선택해 주세요",
+      "proxyCopied": "프록시 URL이 클립보드에 복사되었습니다",
+      "copyFailed": "클립보드에 복사하지 못했습니다"
+    }
+  },
+  "apiKeys": {
+    "cardTitle": "API 키",
+    "loadingAuthMode": "인증 모드 불러오는 중...",
+    "authDisabledTitle": "기본 인증이 비활성화된 동안에는 API 키를 사용할 수 없습니다",
+    "authDisabledDescription": "리버스 프록시와 CIDR 허용 목록을 통과하는 요청은 qui API를 직접 사용할 수 있습니다.",
+    "cardDescription": "외부 접근을 위한 API 키를 관리합니다",
+    "apiDocs": "API 문서",
+    "description": "API 키를 사용하면 외부 애플리케이션이 qBittorrent 인스턴스에 접근할 수 있습니다.",
+    "createButton": "API 키 생성",
+    "loading": "API 키 불러오는 중...",
+    "empty": "아직 생성된 API 키가 없습니다",
+    "createDialog": {
+      "title": "API 키 생성",
+      "description": "용도를 기억할 수 있도록 API 키에 설명이 포함된 이름을 지정하세요.",
+      "nameLabel": "이름",
+      "namePlaceholder": "예: 자동화 스크립트",
+      "nameRequired": "이름은 필수입니다",
+      "submit": "API 키 생성",
+      "creating": "생성 중..."
+    },
+    "newKey": {
+      "label": "새 API 키",
+      "warning": "지금 이 키를 저장하세요. 다시 볼 수 없습니다.",
+      "done": "완료"
+    },
+    "deleteDialog": {
+      "title": "API 키를 삭제하시겠습니까?",
+      "description": "이 작업은 취소할 수 없습니다. 이 키를 사용하는 모든 애플리케이션이 접근할 수 없게 됩니다.",
+      "cancel": "취소",
+      "delete": "삭제"
+    },
+    "toasts": {
+      "created": "API 키가 생성되었습니다",
+      "createFailed": "API 키를 생성하지 못했습니다",
+      "deleted": "API 키가 삭제되었습니다",
+      "deleteFailed": "API 키를 삭제하지 못했습니다",
+      "copied": "API 키가 클립보드에 복사되었습니다",
+      "copyFailed": "클립보드에 복사하지 못했습니다"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "외부 프로그램",
+    "cardDescription": "토렌트 컨텍스트 메뉴에서 실행할 수 있는 외부 프로그램 또는 스크립트를 구성합니다",
+    "createButton": "외부 프로그램 생성",
+    "createTitle": "외부 프로그램 생성",
+    "createDescription": "토렌트 컨텍스트 메뉴에서 실행할 수 있는 외부 프로그램 또는 스크립트를 구성합니다.",
+    "loading": "외부 프로그램 불러오는 중...",
+    "loadFailed": "외부 프로그램을 불러오지 못했습니다",
+    "unknownError": "알 수 없는 오류",
+    "empty": "구성된 외부 프로그램이 없습니다. 시작하려면 하나 생성하세요.",
+    "enabled": "활성화됨",
+    "disabled": "비활성화됨",
+    "created": "생성됨 {{date}}",
+    "updated": "업데이트됨 {{date}}",
+    "programPath": "프로그램 경로:",
+    "argumentsTemplate": "인수 템플릿:",
+    "editTitle": "외부 프로그램 편집",
+    "deleteTitle": "외부 프로그램 삭제",
+    "delete": "삭제",
+    "deleteConflictIntro": "이 프로그램은 다음 자동화 규칙에서 사용됩니다:",
+    "deleteConflictDescription": "계속 진행하면 이 자동화 규칙에서 외부 프로그램 작업이 제거됩니다.",
+    "deleteDescription": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "deleteAnyway": "그래도 삭제",
+    "nameLabel": "이름 *",
+    "namePlaceholder": "내 외부 프로그램",
+    "pathLabel": "프로그램 경로 *",
+    "pathPlaceholder": "/usr/bin/my-script.sh 또는 C:\\Scripts\\my-script.bat",
+    "pathDescription": "실행 파일의 전체 경로",
+    "argumentsLabel": "인수 템플릿",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "argumentsDescription": "인수를 포함한 스크립트의 전체 경로",
+    "availablePlaceholders": "사용 가능한 자리 표시자:",
+    "pathMappings": "경로 매핑",
+    "remotePathPlaceholder": "원격 경로 (예: /mnt/remote-storage)",
+    "localPathPlaceholder": "로컬 경로 (예: /home/user/mounts/remote)",
+    "removePathMapping": "경로 매핑 제거",
+    "addPathMapping": "경로 매핑 추가",
+    "pathMappingsDescription": "경로 매핑은 원격 경로를 로컬 마운트 지점으로 변환합니다. qBittorrent이 원격에 있고 로컬 qui 서버에서 외부 프로그램을 실행할 때 유용합니다. 경로는 가장 긴 접두사부터 일치됩니다. 원격 qBittorrent 인스턴스와 동일한 경로 구분자 스타일을 사용하세요(Linux는 /, Windows는 \\).",
+    "launchInTerminal": "터미널 창에서 실행",
+    "launchInTerminalDescription": "활성화하면 프로그램이 새 터미널 창에서 열립니다. GUI 애플리케이션이나 터미널 출력이 필요 없는 프로그램은 비활성화하세요.",
+    "enableProgram": "이 프로그램 활성화",
+    "cancel": "취소",
+    "saving": "저장 중...",
+    "updateButton": "업데이트",
+    "createSubmit": "생성",
+    "ariaLabels": {
+      "edit": "{{name}} 편집",
+      "delete": "{{name}} 삭제"
+    },
+    "toasts": {
+      "created": "외부 프로그램이 생성되었습니다",
+      "createFailed": "외부 프로그램을 생성하지 못했습니다: {{error}}",
+      "updated": "외부 프로그램이 업데이트되었습니다",
+      "updateFailed": "외부 프로그램을 업데이트하지 못했습니다: {{error}}",
+      "deleted": "외부 프로그램이 삭제되었습니다",
+      "deleteFailed": "외부 프로그램을 삭제하지 못했습니다: {{error}}"
+    },
+    "validation": {
+      "nameRequired": "프로그램 이름은 필수입니다",
+      "pathRequired": "프로그램 경로는 필수입니다"
+    },
+    "placeholders": {
+      "hash": "토렌트 해시",
+      "name": "토렌트 이름",
+      "savePath": "저장 경로",
+      "contentPath": "콘텐츠 경로",
+      "category": "카테고리",
+      "tags": "태그(쉼표로 구분)",
+      "state": "토렌트 상태",
+      "size": "크기(바이트)",
+      "progress": "진행률(0-1)",
+      "comment": "토렌트 설명"
+    }
+  },
+  "notifications": {
+    "cardTitle": "알림",
+    "cardDescription": "Shoutrrr가 지원하는 모든 서비스를 통해 알림 및 상태 업데이트를 보냅니다",
+    "addButton": "알림 대상 추가",
+    "loading": "알림 대상 불러오는 중…",
+    "loadFailed": "알림 대상을 불러오지 못했습니다",
+    "empty": "구성된 알림 대상이 없습니다. 알림을 받으려면 하나 추가하세요.",
+    "allEvents": "모든 이벤트",
+    "showList": "목록 표시",
+    "hideList": "목록 숨기기",
+    "badges": {
+      "enabled": "활성화됨",
+      "disabled": "비활성화됨"
+    },
+    "groups": {
+      "torrent": "토렌트",
+      "maintenance": "유지 관리",
+      "crossSeed": "Cross-seed",
+      "automations": "자동화",
+      "other": "기타",
+      "unknown": "알 수 없음"
+    },
+    "form": {
+      "name": "이름",
+      "namePlaceholder": "내 Discord",
+      "url": "Shoutrrr URL",
+      "urlPlaceholder": "discord://token@id 또는 notifiarrapi://apikey",
+      "urlDescriptionPrefix": "Shoutrrr가 지원하는 모든 URL 체계를 사용하세요. Notifiarr API는 다음을 사용합니다",
+      "urlDescriptionSuffix": "Discord 웹훅 URL은 자동으로 다음으로 변환됩니다",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "활성화됨",
+      "events": "이벤트",
+      "selectAll": "모두 선택",
+      "select": "선택",
+      "clear": "지우기",
+      "loadingEventTypes": "이벤트 유형 불러오는 중…"
+    },
+    "dialog": {
+      "newTitle": "새 알림 대상",
+      "newDescription": "qui가 알림 및 상태 업데이트를 보낼 위치를 구성합니다.",
+      "editTitle": "알림 대상 편집",
+      "editDescription": "이 대상의 전송 설정을 업데이트합니다.",
+      "deleteTitle": "알림 대상을 삭제하시겠습니까?",
+      "deleteDescription": "{{name}}이(가) 제거됩니다. 필요하면 나중에 다시 추가할 수 있습니다.",
+      "cancel": "취소",
+      "saving": "저장 중…",
+      "save": "저장",
+      "delete": "삭제"
+    },
+    "validation": {
+      "nameRequired": "이름은 필수입니다",
+      "urlRequired": "알림 URL은 필수입니다",
+      "selectEvent": "이벤트를 하나 이상 선택하세요"
+    },
+    "toasts": {
+      "created": "알림 대상이 생성되었습니다",
+      "createFailed": "알림 대상을 생성하지 못했습니다",
+      "updated": "알림 대상이 업데이트되었습니다",
+      "updateFailed": "알림 대상을 업데이트하지 못했습니다",
+      "deleted": "알림 대상이 삭제되었습니다",
+      "deleteFailed": "알림 대상을 삭제하지 못했습니다",
+      "testSent": "테스트 알림을 보냈습니다",
+      "testFailed": "테스트 알림을 보내지 못했습니다"
+    },
+    "ariaLabels": {
+      "sendTest": "{{name}}에 테스트 전송",
+      "edit": "{{name}} 편집",
+      "delete": "{{name}} 삭제"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "날짜 및 시간 환경설정",
+    "cardDescription": "시간대, 날짜 형식 및 시간 표시 환경설정을 구성합니다",
+    "timezone": "시간대",
+    "timezoneDescription": "정확한 시간 표시를 위해 로컬 시간대를 선택하세요",
+    "selectTimezone": "시간대 선택",
+    "detected": "감지됨",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "미주",
+      "Europe": "유럽",
+      "Asia": "아시아",
+      "Africa": "아프리카",
+      "Oceania": "오세아니아"
+    },
+    "timeFormat": "시간 형식",
+    "use12Hour": "12시간 형식 사용(AM/PM)",
+    "use12HourDescription": "12시간 및 24시간 시간 표시를 전환합니다",
+    "dateFormat": "날짜 형식",
+    "dateFormatDescription": "애플리케이션 전반에서 날짜가 표시되는 방식을 선택합니다",
+    "selectDateFormat": "날짜 형식 선택",
+    "isoFormat": "ISO 8601 (YYYY-MM-DD)",
+    "usFormat": "미국 형식 (MM/DD/YYYY)",
+    "euFormat": "유럽 형식 (DD/MM/YYYY)",
+    "relativeFormat": "상대적 (예: \"2시간 전\")",
+    "preview": "미리 보기",
+    "previewDescription": "애플리케이션에서 날짜와 시간이 표시되는 방식입니다",
+    "savePreferences": "환경설정 저장",
+    "toasts": {
+      "success": "날짜 및 시간 환경설정이 저장되었습니다",
+      "error": "날짜 및 시간 환경설정을 저장하지 못했습니다"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "비밀번호 변경",
+      "description": "계정 비밀번호를 업데이트합니다"
+    },
+    "browserIntegration": {
+      "title": "브라우저 통합",
+      "description": "브라우저가 마그넷 링크를 처리하는 방식을 구성합니다",
+      "registerDescription": "qui를 브라우저의 마그넷 링크 핸들러로 등록합니다. 이를 통해 마그넷 링크를 qui에서 직접 열 수 있습니다.",
+      "registerButton": "핸들러로 등록",
+      "toasts": {
+        "requested": "마그넷 핸들러 등록을 요청했습니다",
+        "failed": "마그넷 핸들러 등록에 실패했습니다"
+      }
+    }
+  },
+  "logs": {
+    "title": "로그",
+    "description": "실시간 로그를 보고 로그 설정을 구성합니다",
+    "settingsSrOnly": "로그 설정 열기",
+    "configuration": {
+      "title": "구성",
+      "description": "로그 수준, 출력 경로 및 회전 설정을 조정합니다.",
+      "level": "로그 수준",
+      "levelPlaceholder": "로그 수준 선택",
+      "path": "로그 파일 경로",
+      "pathPlaceholder": "stdout만 사용하려면 비워 두세요",
+      "maxSize": "최대 크기(MB)",
+      "maxBackups": "최대 백업 수",
+      "saving": "저장 중...",
+      "saveSettings": "설정 저장"
+    },
+    "viewer": {
+      "connected": "연결됨",
+      "disconnected": "연결 끊김",
+      "searchPlaceholder": "로그 검색...",
+      "allLevels": "모든 수준",
+      "all": "전체",
+      "none": "없음",
+      "levelCount_other": "{{count}}개 수준",
+      "mutedCount_other": "{{count}}개 음소거됨",
+      "mutedMessages": "음소거된 메시지",
+      "clearAll": "모두 지우기",
+      "clear": "지우기",
+      "autoScroll": "자동 스크롤",
+      "noEntriesMatch": "현재 필터와 일치하는 항목이 없습니다",
+      "waiting": "로그 항목을 기다리는 중...",
+      "showing": "{{total}}개 항목 중 {{shown}}개 표시 ({{max}} {{mode}})",
+      "maxLive": "최대",
+      "maxPaused": "일시 정지 중 최대",
+      "oldestEntriesDropped": "• 가장 오래된 항목이 삭제됨",
+      "muteSimilarEntries": "유사한 항목 음소거"
+    },
+    "entryDialog": {
+      "title": "로그 항목",
+      "rawLine": "원시 로그 줄",
+      "copyRaw": "원시 복사",
+      "copyJson": "JSON 복사",
+      "close": "닫기"
+    },
+    "toasts": {
+      "settingsUpdated": "로그 설정이 업데이트되었습니다",
+      "settingsFailed": "로그 설정을 업데이트하지 못했습니다",
+      "jsonCopied": "JSON 로그 항목이 복사되었습니다",
+      "rawCopied": "원시 로그 항목이 복사되었습니다",
+      "copyFailed": "로그 항목을 복사하지 못했습니다"
+    },
+    "files": {
+      "title": "로그 파일",
+      "downloadSrOnly": "{{filename}} 다운로드",
+      "toasts": {
+        "downloadFailed": "{{filename}} 다운로드에 실패했습니다"
+      }
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "테마 선택",
+      "loadingDescription": "사용 가능한 테마 불러오는 중...",
+      "description": "사용 가능한 테마 중에서 선택하세요. 프리미엄 테마에는 유효한 라이선스가 필요합니다.",
+      "verificationUnavailable": "라이선스 확인을 사용할 수 없습니다. 프리미엄 테마 전환이 일시적으로 비활성화되었습니다.",
+      "freeBadge": "무료",
+      "freeThemes": "무료 테마",
+      "premiumBadge": "프리미엄",
+      "premiumThemes": "프리미엄 테마",
+      "notLoaded": "프리미엄 테마가 로드되지 않음",
+      "notLoadedDescription": "구성",
+      "notLoadedAnd": "한 후 실행",
+      "premium": "프리미엄",
+      "pro": "Pro",
+      "free": "무료",
+      "locked": "잠김",
+      "lock": "잠금"
+    },
+    "toasts": {
+      "premiumRequired": "프리미엄 라이선스가 필요합니다",
+      "premiumRequiredDescription": "유효한 프리미엄 라이선스를 추가하여 프리미엄 테마를 잠금 해제하세요."
+    },
+    "license": {
+      "loadingTitle": "라이선스 관리",
+      "loadingDescription": "테마 라이선스 불러오는 중...",
+      "managementTitle": "라이선스 관리",
+      "managementDescription": "테마 라이선스 및 프리미엄 접근을 관리합니다",
+      "providers": {
+        "dodoPortal": "Dodo 포털",
+        "polarPortal": "Polar 포털",
+        "legacyPolarPortal": "레거시 Polar 포털"
+      },
+      "status": {
+        "unlockTitle": "프리미엄 테마 잠금 해제",
+        "unlockDescription": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
+        "activeTitle": "프리미엄 접근 활성화됨",
+        "activeDescription": "현재 및 향후 모든 프리미엄 테마에 접근할 수 있습니다",
+        "activationRequiredTitle": "라이선스 활성화 필요",
+        "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다"
+      },
+      "portalHelp": {
+        "prefix": "DodoPayments에서 구매한 다음, 여기에 라이선스 키를 입력하세요. 키를 분실한 경우",
+        "suffix": "에서 복구할 수 있습니다."
+      },
+      "discord": {
+        "title": "Discord 혜택",
+        "prefix": "비공개 채널에 접근하려면",
+        "afterRole": "역할을 받으세요.",
+        "openDiscord": "qui Discord 열기",
+        "opensInNewTab": "(새 탭에서 열림)",
+        "afterLink": "를 클릭한 다음,",
+        "copyVerifyAriaLabel": "/verify 명령 복사",
+        "copyVerifyTitle": "클릭하여 복사",
+        "verifyCommand": "/verify",
+        "afterVerify": "명령을",
+        "channel": "#qui",
+        "suffix": " 채널에서 실행하고, 라이선스 이메일로 로그인하세요."
+      },
+      "details": {
+        "productAdded": "{{productName}} • 추가됨 {{date}}",
+        "productStatusAndAdded": "{{productName}} • 상태: {{status}} • 추가됨 {{date}}"
+      },
+      "invalid": {
+        "polarPrefix": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 활성화된 다른 컴퓨터에서 비활성화하거나 다음을 통해 활성화를 관리하세요:",
+        "polarSuffix": ".",
+        "dodo": "이 라이선스는 이 컴퓨터에서 활성화되지 않았습니다. 여기서 사용하려면 다시 활성화를 클릭하세요. 활성화 한도에 도달한 경우, 현재 활성화된 다른 컴퓨터에서 비활성화하세요."
+      },
+      "actions": {
+        "addLicense": "라이선스 추가",
+        "remove": "제거",
+        "removing": "제거 중...",
+        "getPremium": "프리미엄 받기",
+        "reactivate": "라이선스 다시 활성화",
+        "activating": "활성화 중...",
+        "copyLicenseKey": "라이선스 키 복사",
+        "activate": "라이선스 활성화",
+        "validating": "검증 중...",
+        "openDodoCheckout": "DodoPayments 결제 열기",
+        "openDodoPortal": "Dodo 포털 열기"
+      },
+      "deleteDialog": {
+        "title": "라이선스를 제거하시겠습니까?",
+        "description": "이 컴퓨터에서 이 라이선스를 제거하시겠습니까? qui는 원격 활성화 슬롯도 해제하려고 시도하지만, 해당 요청이 실패하더라도 로컬 제거는 완료됩니다.",
+        "keyLabel": "제거할 라이선스 키:",
+        "recoverPrefix": "필요한 경우 나중에 다음에서 복구할 수 있습니다:"
+      },
+      "addDialog": {
+        "title": "프리미엄 라이선스 추가",
+        "description": "모든 프리미엄 테마를 잠금 해제하려면 프리미엄 테마 라이선스 키를 입력하세요.",
+        "label": "라이선스 키",
+        "placeholder": "프리미엄 테마 라이선스 키를 입력하세요",
+        "recoverKey": "키 복구?",
+        "validation": {
+          "required": "라이선스 키는 필수입니다"
+        }
+      },
+      "paymentDialog": {
+        "title": "프리미엄 라이선스 받기",
+        "description": "원하는 만큼 지불(최소 $9.99) • 평생 라이선스 • 모든 테마",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "결제 방법 선택",
+            "cardTitle": "카드 또는 현지 결제 수단",
+            "cardDescription": "DodoPayments에서 직접 결제합니다. 결제 후 qui로 돌아옵니다.",
+            "cryptoTitle": "암호화폐",
+            "cryptoDescription": "암호화폐 결제도 DodoPayments 결제에서 완료됩니다.",
+            "xmrHelp": "XMR은 수동입니다: Discord로 문의하거나 s0up4200@pm.me로 이메일을 보내세요.",
+            "cryptoSteps": {
+              "readmePrefix": "기부할 때는",
+              "readmeSuffix": "의 주소를 사용하세요.",
+              "verifyPrefix": "할인 코드를 받으려면",
+              "verifySuffix": "에서 인증하세요.",
+              "applyCode": "DodoPayments 결제를 열고, 할인 코드 칸에 코드를 붙여 넣은 다음, 적용을 클릭하세요.",
+              "completeCheckout": "총액이 $0.00인지 확인한 다음 결제를 완료하세요."
+            }
+          },
+          "findLicenseKey": {
+            "title": "라이선스 키 찾기",
+            "description": "라이선스 키는 결제 후 표시됩니다. 나중에 Dodo 고객 포털에서도 복구할 수 있습니다."
+          },
+          "activateLicense": {
+            "title": "라이선스 활성화",
+            "description": "결제 후 여기로 돌아오면, 라이선스 추가를 사용하여 키를 활성화하세요."
+          }
+        }
+      },
+      "copiedVerify": "확인 명령이 복사되었습니다",
+      "failedCopyVerify": "확인 명령을 복사하지 못했습니다",
+      "toasts": {
+        "activationSuccess": "라이선스가 활성화되었습니다!",
+        "activationSuccessPremium": "프리미엄 접근이 활성화되었습니다! 감사합니다!",
+        "paymentCompleted": "결제가 완료되었습니다. 설정을 완료하려면 프리미엄 라이선스 키를 추가하세요.",
+        "paymentNotCompleted": "결제가 성공적으로 완료되지 않았습니다.",
+        "returnedFromCheckout": "결제에서 돌아왔습니다. 준비되면 프리미엄 라이선스 키를 추가하세요.",
+        "keyCopied": "라이선스 키가 클립보드에 복사되었습니다",
+        "copyFailed": "라이선스 키를 복사하지 못했습니다",
+        "removedFromMachine": "이 컴퓨터에서 라이선스가 제거되었습니다",
+        "refreshedAll": "모든 라이선스가 새로 고쳐졌습니다",
+        "refreshFailed": "라이선스를 새로 고치지 못했습니다"
+      }
+    },
+    "custom": {
+      "badge": "사용자 지정",
+      "title": "사용자 지정 테마",
+      "lockedTitle": "사용자 지정 테마는 프리미엄 기능입니다",
+      "lockedDescription": "프리미엄을 잠금 해제하면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
+      "unlockCta": "프리미엄 잠금 해제",
+      "directoryLabel": "테마 디렉터리",
+      "refresh": "새로 고침",
+      "detectedCount": "찾은 테마: {{total}}개",
+      "parseErrorsTitle": "다음 파일을 분석할 수 없습니다:",
+      "noneFound": "사용자 지정 테마를 찾을 수 없습니다. 테마 디렉터리에 .css 파일을 넣고 새로 고침을 클릭하세요.",
+      "loadError": "사용자 지정 테마를 불러오지 못했습니다. 서버 로그와 테마 디렉터리 권한을 확인하세요."
+    }
+  },
+  "arrInstances": {
+    "addButton": "ARR 인스턴스 추가",
+    "addDialog": {
+      "title": "ARR 인스턴스 추가",
+      "description": "cross-seed 검색 중 ID 조회를 위해 Sonarr 또는 Radarr 인스턴스를 구성합니다."
+    },
+    "editDialog": {
+      "title": "ARR 인스턴스 편집"
+    },
+    "deleteDialog": {
+      "title": "ARR 인스턴스를 삭제하시겠습니까?",
+      "description": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다."
+    },
+    "badges": {
+      "enabled": "활성화됨",
+      "disabled": "비활성화됨",
+      "connected": "연결됨",
+      "failed": "실패"
+    },
+    "loading": "ARR 인스턴스 불러오는 중...",
+    "loadFailed": "ARR 인스턴스를 불러오지 못했습니다",
+    "empty": "구성된 ARR 인스턴스가 없습니다. ID 기반 cross-seed 검색을 활성화하려면 Sonarr 또는 Radarr 인스턴스를 추가하세요.",
+    "created": "생성됨 {{date}}",
+    "sonarrInstances": "Sonarr 인스턴스",
+    "radarrInstances": "Radarr 인스턴스",
+    "unknownError": "알 수 없는 오류",
+    "actions": {
+      "testConnection": "연결 테스트",
+      "testing": "테스트 중...",
+      "cancel": "취소",
+      "delete": "삭제",
+      "create": "생성",
+      "update": "업데이트",
+      "saving": "저장 중..."
+    },
+    "form": {
+      "type": "유형 *",
+      "selectType": "유형 선택",
+      "name": "이름 *",
+      "namePlaceholder": "내 {{type}}",
+      "baseUrl": "기본 URL *",
+      "baseUrlDescription": "{{type}} 인스턴스의 기본 URL",
+      "apiKey": "API 키 *",
+      "apiKeyOptional": "API 키(현재 값을 유지하려면 비워 두기)",
+      "apiKeyPlaceholder": "API 키 입력",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "{{type}}의 설정 > 일반에서 찾을 수 있습니다",
+      "basicAuth": "기본 인증",
+      "basicAuthDescription": "리버스 프록시 뒤에 있는 ARR에 HTTP 기본 인증을 사용합니다.",
+      "basicUsername": "기본 사용자 이름",
+      "basicUsernamePlaceholder": "사용자 이름",
+      "basicPassword": "기본 비밀번호",
+      "basicPasswordPlaceholder": "비밀번호",
+      "basicPasswordPlaceholderEdit": "<redacted>",
+      "basicPasswordKeep": "기존 비밀번호를 유지하려면 <redacted>로 두세요.",
+      "priority": "우선순위",
+      "priorityDescription": "우선순위가 높은 인스턴스가 먼저 쿼리됩니다",
+      "timeoutSeconds": "제한 시간(초)",
+      "enabled": "이 인스턴스 활성화",
+      "types": {
+        "sonarr": "Sonarr (TV 프로그램)",
+        "radarr": "Radarr (영화)",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      }
+    },
+    "validation": {
+      "nameRequired": "이름은 필수입니다",
+      "baseUrlRequired": "기본 URL은 필수입니다",
+      "apiKeyRequired": "API 키는 필수입니다",
+      "baseUrlAndApiKeyRequired": "연결을 테스트하려면 기본 URL과 API 키가 필요합니다",
+      "basicUsernameRequired": "기본 인증 사용자 이름은 필수입니다",
+      "basicPasswordRequired": "연결을 테스트하려면 기본 인증 비밀번호가 필요합니다",
+      "basicPasswordRequiredSubmit": "기본 인증 비밀번호는 필수입니다",
+      "basicPasswordKeepOrEnter": "새 기본 인증 비밀번호를 입력하거나 기존 비밀번호를 유지하세요"
+    },
+    "ariaLabels": {
+      "testConnection": "{{name}} 연결 테스트",
+      "edit": "{{name}} 편집",
+      "delete": "{{name}} 삭제"
+    },
+    "toasts": {
+      "created": "ARR 인스턴스가 생성되었습니다",
+      "createFailed": "ARR 인스턴스를 생성하지 못했습니다: {{error}}",
+      "updated": "ARR 인스턴스가 업데이트되었습니다",
+      "updateFailed": "ARR 인스턴스를 업데이트하지 못했습니다: {{error}}",
+      "deleted": "ARR 인스턴스가 삭제되었습니다",
+      "deleteFailed": "ARR 인스턴스를 삭제하지 못했습니다: {{error}}",
+      "connectionSuccess": "연결에 성공했습니다",
+      "connectionFailed": "연결 실패: {{error}}",
+      "testFailed": "연결을 테스트하지 못했습니다: {{error}}"
+    }
+  },
+  "indexers": {
+    "title": "Torznab 인덱서",
+    "addIndexer": "인덱서 추가",
+    "autodiscoverProwlarr": "Prowlarr에서 자동 검색",
+    "noIndexers": "아직 구성된 인덱서가 없습니다.",
+    "noIndexersDescription": "자동화된 cross-seed 검색을 활성화하려면 Torznab 호환 인덱서를 추가하세요.",
+    "deleteIndexer": "인덱서 삭제",
+    "deleteIndexerDescription": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "deleteAllIndexers": "모든 인덱서 삭제",
+    "deleteAllDescription": "인덱서 {{count}}개를 모두 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+    "toast": {
+      "loadFailed": "인덱서를 불러오지 못했습니다",
+      "deletedSuccess": "인덱서가 삭제되었습니다",
+      "deleteFailed": "인덱서를 삭제하지 못했습니다",
+      "allDeletedSuccess": "모든 인덱서가 삭제되었습니다",
+      "allDeletedFailed": "모든 인덱서를 삭제하지 못했습니다",
+      "deleteAllSuccess": "인덱서 {{count}}개를 모두 삭제했습니다",
+      "deleteAllPartial": "인덱서 {{success}}개 삭제, {{failed}}개 실패: {{names}}",
+      "testSuccess": "연결 테스트에 성공했습니다",
+      "noIndexersToTest": "테스트할 인덱서가 없습니다",
+      "testing": "인덱서 {{count}}개 테스트 중...",
+      "testAllSuccess": "인덱서 {{count}}개 모두 테스트에 성공했습니다",
+      "testAllPartial": "{{success}}개 통과, {{failed}}개 실패",
+      "failedIndexers": "실패한 인덱서: {{names}}",
+      "capsSynced": "백엔드에서 기능이 동기화되었습니다",
+      "failedToSyncCaps": "기능을 동기화하지 못했습니다"
+    },
+    "priorityLabels": {
+      "interactive": "대화형",
+      "rss": "RSS",
+      "completion": "완료",
+      "background": "백그라운드"
+    },
+    "contentTypeLabels": {
+      "movie": "영화",
+      "tv": "TV",
+      "tv_daily": "TV(일일)",
+      "xxx": "성인",
+      "music": "음악",
+      "audiobook": "오디오북",
+      "book": "도서",
+      "comic": "만화",
+      "magazine": "잡지",
+      "education": "교육",
+      "app": "앱",
+      "game": "게임",
+      "unknown": "알 수 없음"
+    },
+    "page": {
+      "summary": "{{enabled}}개 활성화됨, {{capabilities}}개 기능 보유",
+      "description": "Jackett, Prowlarr 또는 기본 트래커 엔드포인트로 구동되는 Torznab 인덱서를 관리합니다",
+      "deleteAll": "모두 삭제",
+      "discover": "검색",
+      "addSingle": "단일 추가"
+    },
+    "dialog": {
+      "addTitle": "인덱서 추가",
+      "editTitle": "인덱서 편집",
+      "addDescription": "cross-seed 검색을 위한 새 Torznab 인덱서를 추가합니다",
+      "editDescription": "인덱서 설정을 업데이트합니다",
+      "labels": {
+        "name": "이름",
+        "backend": "백엔드",
+        "baseUrl": "기본 URL",
+        "indexerId": "인덱서 ID",
+        "apiKey": "API 키",
+        "priority": "우선순위",
+        "timeout": "제한 시간(초)",
+        "enabled": "활성화됨",
+        "basicAuth": "기본 인증",
+        "basicAuthDescription": "리버스 프록시 뒤에 있는 Torznab에 HTTP 기본 인증을 사용합니다.",
+        "basicUsername": "기본 사용자 이름",
+        "basicPassword": "기본 비밀번호"
+      },
+      "placeholders": {
+        "name": "내 인덱서",
+        "selectBackend": "백엔드 선택",
+        "apiKeyEdit": "기존 값을 유지하려면 비워 두기",
+        "apiKeyCreate": "API 키",
+        "indexerIdProwlarr": "Prowlarr 인덱서 ID (예: 1)",
+        "indexerIdJackett": "선택적 Jackett 인덱서 ID (예: aither)",
+        "username": "사용자 이름",
+        "password": "비밀번호"
+      },
+      "hints": {
+        "indexerIdProwlarr": "Prowlarr의 인덱서 세부 정보 페이지에서 숫자 ID를 입력하세요.",
+        "indexerIdJackett": "Jackett에서는 선택 사항입니다. qui가 자동으로 도출하도록 비워 두세요.",
+        "basicPasswordKeep": "기존 비밀번호를 유지하려면 <redacted>로 두세요."
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "기본 Torznab"
+      },
+      "buttons": {
+        "save": "저장",
+        "add": "추가",
+        "saving": "저장 중...",
+        "cancel": "취소"
+      },
+      "toast": {
+        "createdSuccess": "인덱서가 생성되었습니다",
+        "createdWithWarnings": "경고와 함께 인덱서가 생성되었습니다: {{warnings}}",
+        "updatedSuccess": "인덱서가 업데이트되었습니다",
+        "updatedWithWarnings": "경고와 함께 인덱서가 업데이트되었습니다: {{warnings}}",
+        "failedCreate": "인덱서를 생성하지 못했습니다",
+        "failedEdit": "인덱서를 편집하지 못했습니다",
+        "basicUsernameRequired": "기본 인증 사용자 이름은 필수입니다",
+        "basicPasswordRequired": "기본 인증 비밀번호는 필수입니다",
+        "basicPasswordRequiredOrKeep": "기본 인증 비밀번호는 필수입니다(또는 <redacted> 유지)"
+      }
+    },
+    "autodiscovery": {
+      "title": "인덱서 검색",
+      "descriptionInput": "Jackett 또는 Prowlarr에 연결하여 구성된 인덱서를 검색합니다",
+      "descriptionSelect": "가져올 인덱서를 선택하세요",
+      "labels": {
+        "indexerUrl": "인덱서 URL",
+        "apiKey": "API 키",
+        "basicAuth": "기본 인증",
+        "basicAuthDescription": "리버스 프록시 뒤에 있는 Jackett/Prowlarr에 HTTP 기본 인증을 사용합니다.",
+        "basicUsername": "기본 사용자 이름",
+        "basicPassword": "기본 비밀번호"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "인덱서 API 키",
+        "username": "사용자 이름",
+        "password": "비밀번호"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr 기본값은 http://localhost:9696, Jackett은 http://localhost:9117입니다."
+      },
+      "buttons": {
+        "cancel": "취소",
+        "discover": "검색",
+        "discovering": "검색 중...",
+        "back": "뒤로",
+        "importing": "가져오는 중...",
+        "import": "인덱서 {{count}}개 가져오기",
+        "importPlural": "인덱서 {{count}}개 가져오기",
+        "selectAll": "모두 선택",
+        "deselectAll": "모두 선택 해제"
+      },
+      "selectionCount": "{{total}}개 중 {{selected}}개 선택됨",
+      "noIndexersFound": "인덱서를 찾을 수 없습니다",
+      "willUpdate": "업데이트 예정",
+      "typeLabel": "유형:",
+      "backendLabel": "백엔드:",
+      "notConfigured": "(구성되지 않음)",
+      "unknownError": "알 수 없는 오류",
+      "toast": {
+        "urlRequired": "인덱서 URL은 필수입니다",
+        "basicAuthRequired": "기본 인증에는 사용자 이름과 비밀번호가 필요합니다",
+        "urlRequiredBeforeImport": "가져오기 전에 인덱서 URL을 입력하세요",
+        "discoveredWithExisting": "인덱서 {{total}}개를 찾았습니다({{existing}}개는 이미 존재함)",
+        "discovered": "인덱서 {{count}}개를 찾았습니다",
+        "discoverFailed": "인덱서를 검색하지 못했습니다: {{error}}",
+        "importSuccess": "성공: {{details}}",
+        "importWithWarnings": "{{details}} (경고 {{warningCount}}개)",
+        "moreWarnings": "...그리고 경고 {{count}}개 더",
+        "importErrors": "{{details}}",
+        "moreErrors": "...그리고 오류 {{count}}개 더",
+        "created": "{{count}}개 생성됨",
+        "updated": "{{count}}개 업데이트됨",
+        "failed": "{{count}}개 실패"
+      },
+      "savedConnections": {
+        "title": "저장된 연결",
+        "description": "이전에 가져온 서버를 사용하세요. API 키는 서버에 보관됩니다.",
+        "manual": "직접 입력",
+        "storedKey": "이 서버에 저장된 API 키를 사용합니다.",
+        "indexerCount_other": "인덱서 {{count}}개"
+      }
+    },
+    "table": {
+      "name": "이름",
+      "backend": "백엔드",
+      "priority": "우선순위",
+      "status": "상태",
+      "testStatus": "테스트 상태",
+      "capabilities": "기능",
+      "timeout": "제한 시간",
+      "actions": "작업",
+      "enabled": "활성화됨",
+      "disabled": "비활성화됨",
+      "working": "정상",
+      "failed": "실패",
+      "untested": "테스트 안 됨",
+      "testAll": "모두 테스트",
+      "filters": "필터",
+      "clearFilters": "필터 지우기",
+      "showingCount": "인덱서 {{total}}개 중 {{shown}}개 표시",
+      "loading": "불러오는 중...",
+      "noIndexers": "구성된 인덱서가 없습니다. 시작하려면 하나 추가하세요.",
+      "noMatch": "현재 필터와 일치하는 인덱서가 없습니다",
+      "noCapabilities": "기능 없음",
+      "sync": "동기화",
+      "collapse": "접기",
+      "filterStatus": "상태",
+      "filterTestStatus": "테스트 상태",
+      "filterBackend": "백엔드",
+      "filterAll": "전체",
+      "filterEnabledOnly": "활성화된 것만",
+      "filterDisabledOnly": "비활성화된 것만",
+      "filterWorkingOnly": "정상인 것만",
+      "filterFailedOnly": "실패한 것만",
+      "filterUntestedOnly": "테스트 안 된 것만",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "기본",
+      "tooltipTest": "연결 테스트",
+      "tooltipSyncCaps": "기능 동기화",
+      "tooltipEdit": "편집",
+      "tooltipDelete": "삭제",
+      "tooltipSyncCapsFromBackend": "백엔드에서 기능 동기화",
+      "capability": "기능: {{name}}",
+      "clickToShowAllCapabilities": "클릭하여 기능 {{count}}개 모두 표시"
+    },
+    "activity": {
+      "title": "스케줄러 활동",
+      "idle": "대기",
+      "queueLength": "대기열",
+      "workers": "워커",
+      "cooldown": "대기 시간",
+      "running": "실행 중",
+      "queued": "대기 중",
+      "rateLimited": "속도 제한됨",
+      "noActiveTasks": "활성 작업 또는 속도 제한 없음",
+      "andMore": "...그리고 {{count}}개 더",
+      "workersStatus": "워커 {{used}}/{{total}}",
+      "runningCount": "{{count}}개 실행 중",
+      "queuedCount": "{{count}}개 대기 중",
+      "cooldownCount": "쿨다운 {{count}}개",
+      "ready": "준비됨",
+      "left": "{{time}} 남음"
+    },
+    "searchHistory": {
+      "title": "검색 기록",
+      "searches": "검색 {{count}}회",
+      "searchesWithErrors": "검색 {{count}}회, 오류 {{errors}}개",
+      "noSearchesYet": "아직 검색 없음",
+      "successful": "{{count}}개 성공",
+      "failed": "{{count}}개 실패",
+      "source": "소스: {{source}}",
+      "results": "결과 {{count}}개",
+      "detail": {
+        "release": "릴리스",
+        "results": "결과",
+        "duration": "소요 시간",
+        "priority": "우선순위",
+        "crossSeed": "Cross-seed",
+        "added": "추가됨 {{count}}",
+        "error": "오류",
+        "searchParameters": "검색 매개변수",
+        "mode": "모드:",
+        "type": "유형:",
+        "job": "작업 {{id}}",
+        "statusSuccess": "성공",
+        "statusFailed": "실패",
+        "statusSkipped": "건너뜀",
+        "statusRateLimited": "속도 제한됨",
+        "season": "시즌",
+        "episode": "에피소드"
+      }
+    }
+  },
+  "searchCache": {
+    "title": "검색 캐시",
+    "description": "Torznab 인덱서의 캐시된 검색 결과입니다.",
+    "refreshStats": "새로 고침",
+    "configTitle": "캐시 구성",
+    "configDescription": "검색 결과를 캐시하는 기간을 조정합니다.",
+    "cacheTTL": "캐시 TTL(분)",
+    "saving": "저장 중...",
+    "saveTTL": "저장",
+    "ttlHelper": "최소 {{min}}분. 값이 클수록 인덱서 부하가 줄어듭니다.",
+    "entries": "항목",
+    "hitCount": "적중 횟수",
+    "approxSize": "대략적인 크기",
+    "ttl": "TTL",
+    "newestEntry": "최신 항목",
+    "lastUsed": "마지막 사용",
+    "enabled": "활성화됨",
+    "disabled": "비활성화됨",
+    "ttlValue": "{{minutes}}분",
+    "timestamps": {
+      "justNow": "방금 전",
+      "ago": "{{duration}} 전",
+      "inFuture": "{{duration}} 후"
+    },
+    "toasts": {
+      "ttlUpdated": "캐시 TTL이 {{minutes}}분으로 업데이트되었습니다",
+      "ttlUpdateFailed": "캐시 TTL을 업데이트하지 못했습니다",
+      "invalidNumber": "유효한 숫자를 입력해 주세요",
+      "ttlMinimum": "TTL은 최소 {{min}}분 이상이어야 합니다"
+    }
+  },
+  "application": {
+    "loading": "불러오는 중...",
+    "loadFailed": "애플리케이션 정보를 불러오지 못했습니다",
+    "build": {
+      "title": "빌드",
+      "description": "버전 및 빌드 세부 정보입니다.",
+      "refresh": "새로 고침",
+      "version": "버전",
+      "commit": "커밋",
+      "buildDate": "빌드 날짜",
+      "updateStatus": "업데이트 상태",
+      "statuses": {
+        "unknown": "알 수 없음",
+        "unknownDetail": "업데이트 상태를 확인할 수 없습니다",
+        "disabled": "비활성화됨",
+        "disabledDetail": "업데이트 확인이 비활성화되어 있습니다",
+        "devBuild": "개발 빌드",
+        "checking": "확인 중...",
+        "checkingDetail": "업데이트 확인 중",
+        "updateAvailable": "업데이트 사용 가능",
+        "upToDate": "최신 상태",
+        "upToDateDetail": "최신 버전을 실행 중입니다",
+        "notCheckedYet": "아직 확인되지 않음",
+        "lastChecked": "마지막 확인 {{date}}"
+      }
+    },
+    "runtime": {
+      "title": "런타임",
+      "description": "서버 런타임 정보입니다.",
+      "uptime": "가동 시간",
+      "runtime": "런타임"
+    },
+    "auth": {
+      "title": "인증",
+      "description": "인증 구성입니다.",
+      "currentSessionAuth": "현재 세션",
+      "unknown": "알 수 없음",
+      "loading": "불러오는 중...",
+      "unavailable": "사용 불가",
+      "yes": "예",
+      "no": "아니요",
+      "oidcEnabled": "OIDC 활성화됨",
+      "builtInLoginEnabled": "기본 로그인",
+      "oidcIssuerHost": "OIDC 발급자"
+    },
+    "storage": {
+      "title": "저장소",
+      "description": "데이터베이스 및 파일 시스템 경로입니다.",
+      "database": "데이터베이스",
+      "bind": "바인드 주소",
+      "configDir": "구성 디렉터리",
+      "dataDir": "데이터 디렉터리"
+    },
+    "copyTitle": "{{label}} 복사",
+    "toasts": {
+      "copied": "{{label}}이(가) 클립보드에 복사되었습니다",
+      "copyFailed": "{{label}}을(를) 복사하지 못했습니다"
+    }
+  }
+}

@@ -1,0 +1,203 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "search": "Ricerca",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automazioni",
+    "backups": "Backup",
+    "rss": "RSS",
+    "settings": "Impostazioni",
+    "logs": "Log",
+    "instances": "Istanze",
+    "generalSettings": "Impostazioni generali",
+    "manageInstances": "Gestisci istanze",
+    "appearance": "Aspetto",
+    "instanceBackups": "Backup delle istanze"
+  },
+  "sidebar": {
+    "instances": "Istanze",
+    "allInstancesDisabled": "Tutte le istanze sono disabilitate",
+    "noInstancesConfigured": "Nessuna istanza configurata",
+    "logout": "Esci",
+    "version": "Versione {{version}}",
+    "language": "Lingua",
+    "viewOnGitHub": "Visualizza su GitHub",
+    "rssRunning": "RSS in esecuzione",
+    "rssEnabled": "RSS abilitato",
+    "scanRunning": "Scansione in esecuzione",
+    "showSidebar": "Mostra barra laterale",
+    "hideSidebar": "Nascondi barra laterale"
+  },
+  "header": {
+    "currentInstance": "Istanza attuale: {{name}}. Clicca per cambiare istanza.",
+    "connected": "Connesso",
+    "disconnected": "Disconnesso",
+    "noActiveInstances": "Nessuna istanza attiva",
+    "showFilters": "Mostra filtri",
+    "hideFilters": "Nascondi filtri",
+    "addTorrent": "Aggiungi torrent",
+    "createTorrent": "Crea torrent",
+    "torrentCreationTasks": "Attività di creazione torrent",
+    "instanceSettings": "Impostazioni istanza",
+    "addToInstance": "Aggiungi all'istanza",
+    "createForInstance": "Crea per l'istanza",
+    "tasksForInstance": "Attività per l'istanza",
+    "settingsForInstance": "Impostazioni per l'istanza",
+    "clearSearch": "Svuota ricerca",
+    "searchTorrents": "Cerca torrent... ({{shortcutKey}})",
+    "globPattern": "Pattern glob...",
+    "smartSearchTitle": "Funzionalità di ricerca intelligente:",
+    "smartSearchGlob": "Pattern glob:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "Corrispondenza approssimativa:",
+    "smartSearchFuzzyExample": "\"breaking bad\" trova \"Breaking.Bad\"",
+    "smartSearchDots": "Gestisce punti, trattini bassi e parentesi quadre",
+    "smartSearchFields": "Cerca nel nome, nella categoria e nei tag",
+    "smartSearchEnter": "Premi Invio per la ricerca istantanea",
+    "smartSearchAuto": "Ricerca automatica dopo una pausa di 500ms",
+    "torrentCreationTasksTitle": "Attività di creazione torrent",
+    "updateAvailable": "Aggiornamento disponibile",
+    "updateVersion": "Versione {{version}}",
+    "rssRunning": "RSS in esecuzione",
+    "rssEnabled": "RSS abilitato",
+    "scanRunning": "Scansione in esecuzione",
+    "allScope": "TUTTI",
+    "unified": "Unificato"
+  },
+  "unifiedScope": {
+    "unified": "Unificato",
+    "collapseScope": "Comprimi ambito unificato",
+    "expandScope": "Espandi ambito unificato",
+    "allActive": "Tutti gli attivi ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "Dashboard",
+    "clients": "Client",
+    "settings": "Impostazioni",
+    "qbittorrentClients": "Client qBittorrent",
+    "instances": "Istanze",
+    "noActiveInstances": "Nessuna istanza attiva",
+    "loading": "Caricamento...",
+    "noActiveClients": "Nessun client attivo",
+    "updateAvailable": "Aggiornamento disponibile",
+    "updateVersion": "Versione {{version}}",
+    "rssRunning": "RSS in esecuzione",
+    "rssEnabled": "RSS abilitato",
+    "scanRunning": "Scansione in esecuzione",
+    "logout": "Esci",
+    "version": "Versione {{version}}",
+    "viewOnGitHub": "Visualizza su GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Annulla",
+    "close": "Chiudi",
+    "create": "Crea",
+    "copyPath": "Copia percorso",
+    "scrollToTop": "Scorri in alto",
+    "search": "Cerca",
+    "select": "Seleziona",
+    "toggle": "Attiva/disattiva"
+  },
+  "placeholders": {
+    "search": "Cerca...",
+    "selectItems": "Seleziona elementi..."
+  },
+  "feedback": {
+    "noResultsFound": "Nessun risultato trovato."
+  },
+  "status": {
+    "disabled": "Disabilitato",
+    "notContacted": "Non contattato",
+    "working": "Funzionante",
+    "updating": "Aggiornamento in corso",
+    "error": "Errore",
+    "unknown": "Sconosciuto",
+    "trackerError": "Errore del tracker",
+    "unreachable": "Irraggiungibile"
+  },
+  "themeToggle": {
+    "changeTheme": "Cambia tema",
+    "appearance": "Aspetto",
+    "mode": "Modalità",
+    "light": "Chiaro",
+    "dark": "Scuro",
+    "system": "Sistema",
+    "theme": "Tema",
+    "premium": "Premium",
+    "switchedToMode": "Passato alla modalità {{mode}}",
+    "switchedToTheme": "Passato al tema {{theme}}",
+    "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
+    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza.",
+    "custom": "Personalizzato"
+  },
+  "updateBanner": {
+    "updateAvailable": "Aggiornamento disponibile",
+    "versionAvailable": "La versione {{version}} è ora disponibile",
+    "viewRelease": "Visualizza la release",
+    "dismiss": "Ignora"
+  },
+  "notFound": {
+    "title": "Ops! Persi nello sciame?",
+    "subtitle": "Sembra che ti sia avventurato nell'ignoto.",
+    "bugReport": "Se pensi che si tratti di un bug piuttosto che di un collegamento mancante,",
+    "reportTo": "non esitare a segnalarlo al nostro",
+    "githubRepository": "repository GitHub",
+    "getBackOnTrack": "Altrimenti, lascia che ti rimettiamo sulla giusta strada!",
+    "returnToDashboard": "Torna alla dashboard"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Registra qui come gestore dei link magnet",
+    "register": "Registra",
+    "dismiss": "Ignora",
+    "registrationRequested": "Registrazione del gestore magnet richiesta",
+    "registrationFailed": "Registrazione del gestore magnet non riuscita",
+    "guidance": {
+      "standalone": "Apri qui in una normale scheda del browser per effettuare la registrazione (l'invito può comparire nella barra degli indirizzi, che le PWA non mostrano).",
+      "chromium": "Chrome spesso lo mostra come una piccola icona di gestore di protocollo nella barra degli indirizzi; se non appare nulla, abilita i gestori di protocollo in chrome://settings/handlers.",
+      "default": "Se il browser te lo chiede, accetta per completare la registrazione."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Maggiori informazioni"
+  },
+  "numberInput": {
+    "unlimited": "Illimitato",
+    "useUnlimited": " (usa -1 per illimitato)"
+  },
+  "dateTime": {
+    "na": "N/D",
+    "justNow": "Proprio ora",
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "past": "{{value}} fa",
+    "future": "tra {{value}}",
+    "units": {
+      "second_one": "{{count}} secondo",
+      "second_other": "{{count}} secondi",
+      "minute_one": "{{count}} minuto",
+      "minute_other": "{{count}} minuti",
+      "hour_one": "{{count}} ora",
+      "hour_other": "{{count}} ore",
+      "day_one": "{{count}} giorno",
+      "day_other": "{{count}} giorni",
+      "week_one": "{{count}} settimana",
+      "week_other": "{{count}} settimane",
+      "month_one": "{{count}} mese",
+      "month_other": "{{count}} mesi",
+      "year_one": "{{count}} anno",
+      "year_other": "{{count}} anni"
+    }
+  },
+  "support": {
+    "title": "Sostieni qui",
+    "description": "Hai già i temi e vuoi dare una mano in più? Tutto in qui è già tuo. Un abbonamento non sblocca funzionalità, finanzia il tempo dedicato a svilupparle.",
+    "perkPrefix": "I sostenitori ottengono il ruolo",
+    "perkSuffix": "su Discord e la nostra eterna gratitudine.",
+    "yearly": "{{price}} / anno",
+    "monthly": "{{price}} / mese",
+    "notLicense": "I temi premium sono un acquisto unico separato."
+  }
+}

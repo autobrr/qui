@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package backups
@@ -113,6 +113,7 @@ type SnapshotTorrent struct {
 	Tags        []string `json:"tags,omitempty"`
 	ArchivePath string   `json:"archivePath,omitempty"`
 	BlobPath    string   `json:"blobPath,omitempty"`
+	SavePath    string   `json:"savePath,omitempty"`
 	SizeBytes   int64    `json:"sizeBytes,omitempty"`
 	InfoHashV1  *string  `json:"infoHashV1,omitempty"`
 	InfoHashV2  *string  `json:"infoHashV2,omitempty"`
@@ -142,6 +143,7 @@ type LiveTorrent struct {
 	TrackerURLs []string `json:"trackerUrls,omitempty"`
 	InfoHashV1  string   `json:"infoHashV1,omitempty"`
 	InfoHashV2  string   `json:"infoHashV2,omitempty"`
+	SavePath    string   `json:"savePath,omitempty"`
 	SizeBytes   int64    `json:"sizeBytes,omitempty"`
 }
 
@@ -157,6 +159,9 @@ type LiveState struct {
 func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode RestoreMode, opts *RestorePlanOptions) (*RestorePlan, error) {
 	if s == nil {
 		return nil, errors.New("nil backup service")
+	}
+	if s.reader == nil {
+		return nil, errors.New("sync manager unavailable")
 	}
 
 	if mode == "" {
@@ -189,7 +194,7 @@ func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode Restore
 
 // ParseRestoreMode normalizes the provided mode string and ensures it is supported.
 func ParseRestoreMode(value string) (RestoreMode, error) {
-	mode := RestoreMode(strings.ToLower(strings.TrimSpace(value)))
+	mode := RestoreMode(normalizeLowerTrim(value))
 	if mode == "" {
 		return RestoreModeIncremental, nil
 	}
@@ -219,7 +224,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 
 	exclude := make(map[string]struct{}, len(opts.ExcludeHashes))
 	for _, hash := range opts.ExcludeHashes {
-		normalized := strings.TrimSpace(strings.ToLower(hash))
+		normalized := normalizeLowerTrim(hash)
 		if normalized == "" {
 			continue
 		}
@@ -236,7 +241,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, item := range items {
-			hash := strings.TrimSpace(strings.ToLower(item.Manifest.Hash))
+			hash := normalizeLowerTrim(item.Manifest.Hash)
 			if _, skip := exclude[hash]; skip {
 				continue
 			}
@@ -251,7 +256,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, item := range items {
-			hash := strings.TrimSpace(strings.ToLower(item.Hash))
+			hash := normalizeLowerTrim(item.Hash)
 			if _, skip := exclude[hash]; skip {
 				continue
 			}
@@ -266,7 +271,7 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 		}
 		filtered := items[:0]
 		for _, hash := range items {
-			normalized := strings.TrimSpace(strings.ToLower(hash))
+			normalized := normalizeLowerTrim(hash)
 			if _, skip := exclude[normalized]; skip {
 				continue
 			}
@@ -278,7 +283,6 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 	plan.Torrents.Add = filterTorrentSpecs(plan.Torrents.Add)
 	plan.Torrents.Update = filterTorrentUpdates(plan.Torrents.Update)
 	plan.Torrents.Delete = filterHashes(plan.Torrents.Delete)
-
 }
 
 // buildRestorePlan compares snapshot and live state to determine the actions needed to reach parity.
@@ -318,7 +322,7 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 
 	torrents := make(map[string]SnapshotTorrent, len(manifest.Items))
 	for _, item := range manifest.Items {
-		hash := strings.ToLower(strings.TrimSpace(item.Hash))
+		hash := normalizeLowerTrim(item.Hash)
 		if hash == "" {
 			continue
 		}
@@ -333,6 +337,7 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 			Tags:        copyTags,
 			ArchivePath: item.ArchivePath,
 			BlobPath:    item.TorrentBlob,
+			SavePath:    item.SavePath,
 			SizeBytes:   item.SizeBytes,
 			InfoHashV1:  item.InfoHashV1,
 			InfoHashV2:  item.InfoHashV2,
@@ -367,17 +372,17 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 }
 
 func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState, error) {
-	categories, err := s.syncManager.GetCategories(ctx, instanceID)
+	categories, err := s.reader.GetCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load categories: %w", err)
 	}
 
-	tags, err := s.syncManager.GetTags(ctx, instanceID)
+	tags, err := s.reader.GetTags(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load tags: %w", err)
 	}
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.reader.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}
@@ -405,7 +410,7 @@ func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState
 
 	liveTorrents := make(map[string]LiveTorrent, len(torrents))
 	for _, torrent := range torrents {
-		hash := strings.ToLower(strings.TrimSpace(torrent.Hash))
+		hash := normalizeLowerTrim(torrent.Hash)
 		if hash == "" {
 			continue
 		}
@@ -418,6 +423,7 @@ func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState
 			TrackerURLs: uniqueTrackerURLs(torrent.Trackers),
 			InfoHashV1:  strings.TrimSpace(torrent.InfohashV1),
 			InfoHashV2:  strings.TrimSpace(torrent.InfohashV2),
+			SavePath:    strings.TrimSpace(torrent.SavePath),
 			SizeBytes:   torrent.TotalSize,
 		}
 	}
@@ -549,7 +555,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 	plan := TorrentPlan{}
 
 	for hash, snap := range snapshot {
-		normalizedHash := strings.ToLower(strings.TrimSpace(hash))
+		normalizedHash := normalizeLowerTrim(hash)
 		if normalizedHash == "" {
 			continue
 		}
@@ -579,7 +585,7 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 
 	if includeDeletes {
 		for hash := range live {
-			normalizedHash := strings.ToLower(strings.TrimSpace(hash))
+			normalizedHash := normalizeLowerTrim(hash)
 			if normalizedHash == "" {
 				continue
 			}
@@ -590,10 +596,10 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 	}
 
 	sort.Slice(plan.Add, func(i, j int) bool {
-		return strings.ToLower(plan.Add[i].Manifest.Hash) < strings.ToLower(plan.Add[j].Manifest.Hash)
+		return normalizeLowerTrim(plan.Add[i].Manifest.Hash) < normalizeLowerTrim(plan.Add[j].Manifest.Hash)
 	})
 	sort.Slice(plan.Update, func(i, j int) bool {
-		return strings.ToLower(plan.Update[i].Hash) < strings.ToLower(plan.Update[j].Hash)
+		return normalizeLowerTrim(plan.Update[i].Hash) < normalizeLowerTrim(plan.Update[j].Hash)
 	})
 	sort.Strings(plan.Delete)
 
@@ -602,11 +608,12 @@ func buildTorrentPlan(snapshot map[string]SnapshotTorrent, live map[string]LiveT
 
 func snapshotTorrentToManifestItem(t SnapshotTorrent) ManifestItem {
 	manifest := ManifestItem{
-		Hash:        strings.ToLower(strings.TrimSpace(t.Hash)),
+		Hash:        normalizeLowerTrim(t.Hash),
 		Name:        t.Name,
 		ArchivePath: t.ArchivePath,
 		SizeBytes:   t.SizeBytes,
 		TorrentBlob: t.BlobPath,
+		SavePath:    t.SavePath,
 	}
 	if t.Category != nil {
 		categoryCopy := strings.TrimSpace(*t.Category)
@@ -652,6 +659,18 @@ func computeTorrentChanges(snapshot SnapshotTorrent, live LiveTorrent) []DiffCha
 			Current:   cloneStringSlice(live.Tags),
 			Desired:   cloneStringSlice(snapshot.Tags),
 		})
+	}
+
+	if desiredSave := strings.TrimSpace(snapshot.SavePath); desiredSave != "" {
+		if normalizeSavePathForCompare(desiredSave) != normalizeSavePathForCompare(live.SavePath) {
+			changes = append(changes, DiffChange{
+				Field:     "savePath",
+				Supported: false,
+				Current:   strings.TrimSpace(live.SavePath),
+				Desired:   desiredSave,
+				Message:   "save path differs; relocate the torrent manually to avoid moving existing data",
+			})
+		}
 	}
 
 	if snapshot.InfoHashV1 != nil {
@@ -701,6 +720,7 @@ func cloneLiveTorrent(t LiveTorrent) LiveTorrent {
 		TrackerURLs: cloneStringSlice(t.TrackerURLs),
 		InfoHashV1:  t.InfoHashV1,
 		InfoHashV2:  t.InfoHashV2,
+		SavePath:    t.SavePath,
 		SizeBytes:   t.SizeBytes,
 	}
 }

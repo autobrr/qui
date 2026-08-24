@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -13,10 +13,12 @@ import (
 
 	"github.com/autobrr/go-qbittorrent/errors"
 	"github.com/avast/retry-go"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
-func (c *Client) getRawCtx(ctx context.Context, reqUrl string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqUrl, nil)
+func (c *Client) getRawCtx(ctx context.Context, reqURL string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not build request")
 	}
@@ -27,28 +29,29 @@ func (c *Client) getRawCtx(ctx context.Context, reqUrl string) (*http.Response, 
 
 	resp, err := c.retryDo(ctx, req)
 	if err != nil {
-		return nil, errors.Wrap(err, "error making get request: %v", reqUrl)
+		err = redact.URLError(err)
+		return nil, errors.Wrap(err, "error making get request: %v", redact.URLString(reqURL))
 	}
 
 	return resp, nil
 }
 
 func (c *Client) getCtx(ctx context.Context, endpoint string, opts map[string]string) (*http.Response, error) {
-	return c.getRawCtx(ctx, c.buildUrl(endpoint, opts))
+	return c.getRawCtx(ctx, c.buildURL(endpoint, opts))
 }
 
-func (c *Client) buildUrl(endpoint string, params map[string]string) string {
-	var joinedUrl string
+func (c *Client) buildURL(endpoint string, params map[string]string) string {
+	var joinedURL string
 
 	if c.cfg.DirectMode {
 		if endpoint != "" && endpoint != "/" {
-			joinedUrl, _ = url.JoinPath(c.cfg.Host, endpoint)
+			joinedURL, _ = url.JoinPath(c.cfg.Host, endpoint)
 		} else {
-			joinedUrl = c.cfg.Host
+			joinedURL = c.cfg.Host
 		}
 	} else {
 		apiBase := "/api/v2.0/indexers/"
-		joinedUrl, _ = url.JoinPath(c.cfg.Host, apiBase, endpoint)
+		joinedURL, _ = url.JoinPath(c.cfg.Host, apiBase, endpoint)
 	}
 
 	queryParams := url.Values{}
@@ -56,10 +59,10 @@ func (c *Client) buildUrl(endpoint string, params map[string]string) string {
 		queryParams.Add(key, value)
 	}
 
-	parsedUrl, _ := url.Parse(joinedUrl)
-	parsedUrl.RawQuery = queryParams.Encode()
+	parsedURL, _ := url.Parse(joinedURL)
+	parsedURL.RawQuery = queryParams.Encode()
 
-	return parsedUrl.String()
+	return parsedURL.String()
 }
 
 // drainAndClose drains and closes the response body to ensure HTTP connection reuse
@@ -118,9 +121,12 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 
 		retry.Delay(time.Second * 3)
 
-		return err
+		// Redact sensitive params from URL errors to prevent secret leakage in logs
+		return redact.URLError(err)
 	},
-		retry.OnRetry(func(n uint, err error) { c.log.Printf("%q: attempt %d - %v\n", err, n, req.URL.String()) }),
+		retry.OnRetry(func(n uint, err error) {
+			c.log.Printf("%q: attempt %d - %v\n", err, n, redact.URLString(req.URL.String()))
+		}),
 		retry.Attempts(5),
 		retry.MaxJitter(time.Second*1),
 	)

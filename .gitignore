@@ -40,30 +40,55 @@ package-lock.json
 web/build
 bin/
 dist/
+/qui
+/build/
+/web-dist.tar.gz
 .run/
 .dev/
 tmp/
-.golangci.yml
 web/eslint-sarif-report.sarif
+web/coverage/
 test/mockindexer/feeds/*
 test/mockindexer/files/*
 cpu.pprof
 
+internal/themes/assets/premium/*
+# Legacy fetch target for premium themes; keeps old checkouts from staging them.
 web/src/themes/premium/
+# Premium theme fetch scratch dir; its .git config embeds the repo token.
+.themes-temp/
 
 # Preserve files
 !.gitkeep
 
-web/src/themes/premium/*
 docs/*
 !docs/CROSS_SEEDING.md
+!docs/architecture.md
+!docs/linting.md
+!docs/remote-backend-design.md
 .mcp_unused.json
 config.toml
 .env
+.envrc
 .mcp.json
 components.json
 .cache/
+.worktrees/
 tracker-icons/*
 .device-id-*
 backups/*
 .gocache/*
+.gomodcache/*
+.golangci-cache/*
+torrentfiles/*
+analyses/*
+
+# Local reference dumps
+dodopayments.txt
+polar.txt
+
+# Customer exports (PII) - never commit
+polar-scripts/
+
+# Local-only planning notes
+plans/

@@ -1,25 +1,23 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package filesmanager
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func setupFilesManagerDB(t *testing.T) (*database.DB, context.Context) {
 	t.Helper()
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "filesmanager-service")
 
 	// Seed instance row to satisfy foreign key constraints for cache writes
 	var (
@@ -32,7 +30,7 @@ func setupFilesManagerDB(t *testing.T) (*database.DB, context.Context) {
 	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-host").Scan(&hostID))
 	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "instance-username").Scan(&usernameID))
 
-	_, err = db.ExecContext(ctx, "INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, ?)", 1, instanceNameID, hostID, usernameID, "enc")
+	_, err := db.ExecContext(ctx, "INSERT INTO instances (id, name_id, host_id, username_id, password_encrypted) VALUES (?, ?, ?, ?, ?)", 1, instanceNameID, hostID, usernameID, "enc")
 	require.NoError(t, err)
 
 	return db, ctx
@@ -77,7 +75,7 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 		"hash-c": "charlie.mkv",
 	}
 
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		// Reset cache tables to isolate each attempt.
 		_, err := db.ExecContext(ctx, "DELETE FROM torrent_files_cache; DELETE FROM torrent_files_sync;")
 		require.NoError(t, err)

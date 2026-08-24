@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -20,6 +20,7 @@ import { getTorrentTaskPollInterval } from "@/lib/torrent-task-polling"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Clock, Download, Loader2, Trash2, XCircle } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface TorrentCreationTasksProps {
@@ -41,6 +42,7 @@ const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
 }
 
 export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {
+  const { t } = useTranslation("torrents")
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
@@ -58,10 +60,10 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
   const downloadMutation = useMutation({
     mutationFn: (taskID: string) => api.downloadTorrentFile(instanceId, taskID),
     onSuccess: () => {
-      toast.success("Torrent file download started")
+      toast.success(t("creationTasks.toast.downloadStarted"))
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to download torrent file")
+      toast.error(error.message || t("creationTasks.toast.downloadFailed"))
     },
   })
 
@@ -70,17 +72,17 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
-      toast.success("Torrent creation task deleted")
+      toast.success(t("creationTasks.toast.taskDeleted"))
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to delete torrent creation task")
+      toast.error(error.message || t("creationTasks.toast.taskDeleteFailed"))
     },
   })
 
   if (isLoading) {
     return (
       <div className="p-4 text-center text-muted-foreground">
-        Loading tasks...
+        {t("creationTasks.loadingTasks")}
       </div>
     )
   }
@@ -88,7 +90,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
   if (!tasks || tasks.length === 0) {
     return (
       <div className="p-4 text-center text-muted-foreground">
-        No torrent creation tasks found
+        {t("creationTasks.noTasks")}
       </div>
     )
   }
@@ -112,12 +114,12 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {task.status}
+                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
                     </span>
                   </Badge>
                   {task.private && (
                     <Badge variant="outline" className="text-xs">
-                      Private
+                      {t("creationTasks.private")}
                     </Badge>
                   )}
                 </div>
@@ -176,11 +178,11 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Source</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Progress</TableHead>
-              <TableHead>Added</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.source")}</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.status")}</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.progress")}</TableHead>
+              <TableHead>{t("creationTasks.tableHeaders.added")}</TableHead>
+              <TableHead className="text-right">{t("creationTasks.tableHeaders.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -193,7 +195,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                     </div>
                     {task.private && (
                       <Badge variant="outline" className="text-xs">
-                        Private
+                        {t("creationTasks.private")}
                       </Badge>
                     )}
                     {task.errorMessage && (
@@ -205,7 +207,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {task.status}
+                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
                     </span>
                   </Badge>
                 </TableCell>

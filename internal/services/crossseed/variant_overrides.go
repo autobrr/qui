@@ -1,10 +1,11 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
 
 import (
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -156,29 +157,21 @@ func variantTokens(value string) []string {
 	return tokens
 }
 
-func (o variantOverrides) variantsCompatible(source, candidate *rls.Release) bool {
-	sourceVariants := o.releaseVariants(source)
-	if len(sourceVariants) == 0 {
-		return true
-	}
-	candidateVariants := o.releaseVariants(candidate)
-	for key := range sourceVariants {
-		if _, ok := candidateVariants[key]; !ok {
-			return false
-		}
-	}
-	return true
-}
-
-// findMismatch returns the first variant in source that is missing from candidate.
-// Returns empty string if all variants match.
+// findMismatch returns the alphabetically first variant in source that is
+// missing from candidate. Stable ordering keeps replay diagnostics reproducible.
+// It returns an empty string if all variants match.
 func (o variantOverrides) findMismatch(source, candidate *rls.Release) string {
 	sourceVariants := o.releaseVariants(source)
 	if len(sourceVariants) == 0 {
 		return ""
 	}
 	candidateVariants := o.releaseVariants(candidate)
+	keys := make([]string, 0, len(sourceVariants))
 	for key := range sourceVariants {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
 		if _, ok := candidateVariants[key]; !ok {
 			return key
 		}

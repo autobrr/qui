@@ -1,0 +1,15 @@
+services:
+  qui:
+    image: ghcr.io/autobrr/qui:latest
+    container_name: qui
+    restart: unless-stopped
+    ports:
+      - "7476:7476"
+    volumes:
+      - ./qui:/config
+    #environment:
+      # Run as this user/group and chown /config (set both or neither)
+      #PUID: "1000"
+      #PGID: "1000"
+      # File creation mask, for example 002 for group-writable files
+      #UMASK: "002"

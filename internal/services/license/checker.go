@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package license
@@ -65,28 +65,11 @@ func (lc *Checker) validateLicense(ctx context.Context) {
 	if !isValid {
 		// Set grace period
 		if lc.graceUntil.IsZero() {
-			lc.graceUntil = time.Now().Add(7 * 24 * time.Hour) // 7 day grace
+			lc.graceUntil = time.Now().Add(offlineGracePeriod)
 			log.Warn().Time("grace_until", lc.graceUntil).Msg("License invalid - grace period started")
 		}
 	} else {
 		// Reset grace period on valid license
 		lc.graceUntil = time.Time{}
 	}
-}
-
-func (lc *Checker) IsValid() bool {
-	lc.mu.RLock()
-	defer lc.mu.RUnlock()
-
-	// If license is valid, always allow
-	if lc.isValid.Load() {
-		return true
-	}
-
-	// If license is invalid but we're in grace period, allow
-	if !lc.graceUntil.IsZero() && time.Now().Before(lc.graceUntil) {
-		return true
-	}
-
-	return false
 }

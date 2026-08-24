@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package reannounce
@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 )
 
 // Config controls the background scan cadence and debounce behavior.
@@ -47,6 +48,8 @@ type Service struct {
 	historySkipped   map[int][]ActivityEvent
 	historyMu        sync.RWMutex
 	historyCap       int
+
+	activityPublisher activity.Publisher
 }
 
 type reannounceJob struct {
@@ -62,6 +65,7 @@ const (
 	ActivityOutcomeSkipped   ActivityOutcome = "skipped"
 	ActivityOutcomeFailed    ActivityOutcome = "failed"
 	ActivityOutcomeSucceeded ActivityOutcome = "succeeded"
+	ActivityOutcomeStarted   ActivityOutcome = "started"
 )
 
 // ActivityEvent records a single reannounce attempt outcome per instance/hash.
@@ -122,22 +126,32 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, settingsStore *
 		cfg.HistorySize = DefaultConfig().HistorySize
 	}
 	svc := &Service{
-		cfg:              cfg,
-		instanceStore:    instanceStore,
-		settingsStore:    settingsStore,
-		settingsCache:    cache,
-		clientPool:       clientPool,
-		syncManager:      syncManager,
-		j:                make(map[int]map[string]*reannounceJob),
-		historySucceeded: make(map[int][]ActivityEvent),
-		historyFailed:    make(map[int][]ActivityEvent),
-		historySkipped:   make(map[int][]ActivityEvent),
-		historyCap:       cfg.HistorySize,
+		cfg:               cfg,
+		instanceStore:     instanceStore,
+		settingsStore:     settingsStore,
+		settingsCache:     cache,
+		clientPool:        clientPool,
+		syncManager:       syncManager,
+		j:                 make(map[int]map[string]*reannounceJob),
+		historySucceeded:  make(map[int][]ActivityEvent),
+		historyFailed:     make(map[int][]ActivityEvent),
+		historySkipped:    make(map[int][]ActivityEvent),
+		historyCap:        cfg.HistorySize,
+		activityPublisher: activity.NopPublisher{},
 	}
 	svc.now = time.Now
 	svc.runJob = svc.executeJob
 	svc.spawn = func(fn func()) { go fn() }
 	return svc
+}
+
+// SetActivityPublisher wires the qui server-event hub so reannounce activity is
+// pushed to connected clients instead of polled. Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 // Start launches the background monitoring loop.
@@ -301,7 +315,8 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		}
 
 		// Check if torrent is still in initial wait period
-		inInitialWait := settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds)
+		age := now.Unix() - torrent.AddedOn
+		inInitialWait := settings.InitialWaitSeconds > 0 && age < int64(settings.InitialWaitSeconds)
 
 		healthy := s.hasHealthyTracker(torrent.Trackers)
 		updating := s.trackersUpdating(torrent.Trackers)
@@ -373,20 +388,22 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	}
 	now := s.currentTime()
 	job.lastRequested = now
-	if job.isRunning {
-		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "already running")
-		return true
-	}
 
 	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
 	debounceWindow := s.effectiveDebounceWindow(settings)
 
+	if job.isRunning {
+		return true
+	}
+
 	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
 		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
-			reason := "debounced during cooldown window"
+			var reason string
 			if isAggressive {
 				reason = "debounced during retry interval window"
+			} else {
+				reason = "debounced during cooldown window"
 			}
 			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
 			return true
@@ -444,12 +461,15 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		MaxAttempts:     settings.MaxRetries,
 		DeleteOnFailure: false,
 	}
+
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeStarted, fmt.Sprintf("reannounce job started (max %d retries)", opts.MaxAttempts))
+
 	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: retry failed")
 		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
 		return
 	}
-	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce requested")
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce job succeeded")
 }
 
 func (s *Service) finishJob(instanceID int, hash string) {
@@ -532,7 +552,8 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 		return false
 	}
 	// Check initial wait - torrent must be old enough
-	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
+	age := s.currentTime().Unix() - torrent.AddedOn
+	if settings.InitialWaitSeconds > 0 && age < int64(settings.InitialWaitSeconds) {
 		return false
 	}
 	return true
@@ -551,8 +572,11 @@ func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.In
 		return false
 	}
 
-	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
-		return false
+	if settings.MaxAgeSeconds > 0 {
+		age := s.currentTime().Unix() - torrent.AddedOn
+		if age > int64(settings.MaxAgeSeconds) {
+			return false
+		}
 	}
 
 	// 1. Check exclusions first
@@ -782,19 +806,11 @@ func normalizeHashes(hashes []string) []string {
 	return result
 }
 
-// DebugState returns current job counts for observability.
-func (s *Service) DebugState() string {
-	s.jobsMu.Lock()
-	defer s.jobsMu.Unlock()
-	return fmt.Sprintf("instances=%d", len(s.j))
-}
-
 func (s *Service) recordActivity(instanceID int, hash string, torrentName string, trackers string, outcome ActivityOutcome, reason string) {
 	if s == nil || instanceID == 0 {
 		return
 	}
 	s.historyMu.Lock()
-	defer s.historyMu.Unlock()
 
 	// Initialize maps if needed
 	if s.historySucceeded == nil {
@@ -835,11 +851,21 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 		if len(s.historyFailed[instanceID]) > limit*2 {
 			s.historyFailed[instanceID] = s.historyFailed[instanceID][len(s.historyFailed[instanceID])-limit*2:]
 		}
-	case ActivityOutcomeSkipped:
+	case ActivityOutcomeSkipped, ActivityOutcomeStarted:
 		s.historySkipped[instanceID] = append(s.historySkipped[instanceID], event)
 		if len(s.historySkipped[instanceID]) > limit {
 			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]
 		}
+	}
+	s.historyMu.Unlock()
+
+	// Signal connected clients that this instance's reannounce activity changed so
+	// they refetch instead of polling. Published after releasing the lock.
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{
+			Kind:       activity.KindReannounceActivity,
+			InstanceID: instanceID,
+		})
 	}
 }
 

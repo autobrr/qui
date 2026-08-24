@@ -1,9 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
+
+import { useClientSetting } from "@/lib/client-settings"
 
 const STORAGE_KEY = "qui-torrent-view-mode"
 const ALL_VIEW_MODES = ["normal", "dense", "compact", "ultra-compact"] as const
@@ -21,6 +23,11 @@ function sanitizeAllowedModes(allowedModes?: readonly ViewMode[]): ViewMode[] {
   return filtered.length > 0 ? filtered : [...ALL_VIEW_MODES]
 }
 
+const parseViewMode = (raw: string): ViewMode => {
+  if (ALL_VIEW_MODES.includes(raw as ViewMode)) return raw as ViewMode
+  throw new Error("invalid view mode")
+}
+
 export function usePersistedCompactViewState(
   defaultMode: ViewMode = "normal",
   allowedModesInput?: readonly ViewMode[]
@@ -28,93 +35,27 @@ export function usePersistedCompactViewState(
   const allowedModes = useMemo(() => sanitizeAllowedModes(allowedModesInput), [allowedModesInput])
   const effectiveDefaultMode = allowedModes.includes(defaultMode) ? defaultMode : allowedModes[0]
 
-  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
-    if (typeof window === "undefined") {
-      return effectiveDefaultMode
-    }
-
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY)
-      if (stored && allowedModes.includes(stored as ViewMode)) {
-        return stored as ViewMode
-      }
-    } catch (error) {
-      console.error("Failed to load view mode state from localStorage:", error)
-    }
-
-    return effectiveDefaultMode
+  // The stored mode is global across every consumer; `allowedModes` only narrows what
+  // this consumer can render. Never persist the narrowing, or a mounted-but-hidden
+  // consumer (e.g. MobileFooterNav on desktop) clobbers the user's choice on reload.
+  const [storedMode, setStoredMode] = useClientSetting<ViewMode>(STORAGE_KEY, {
+    defaultValue: effectiveDefaultMode,
+    parse: parseViewMode,
+    serialize: String,
   })
 
-  const setViewMode = useCallback((updater: ViewMode | ((prev: ViewMode) => ViewMode)) => {
-    setViewModeState(prev => {
-      const requested = typeof updater === "function" ? updater(prev) : updater
-      return allowedModes.includes(requested) ? requested : allowedModes[0]
-    })
-  }, [allowedModes])
+  const viewMode = allowedModes.includes(storedMode) ? storedMode : effectiveDefaultMode
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    try {
-      window.localStorage.setItem(STORAGE_KEY, viewMode)
-    } catch (error) {
-      console.error("Failed to save view mode state to localStorage:", error)
-    }
-
-    const evt = new CustomEvent(STORAGE_KEY, { detail: { viewMode } })
-    window.dispatchEvent(evt)
-  }, [viewMode])
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    const handleEvent = (e: Event) => {
-      const custom = e as CustomEvent<{ viewMode: ViewMode }>
-      const nextMode = custom.detail?.viewMode
-
-      if (!nextMode) {
-        return
-      }
-
-      if (allowedModes.includes(nextMode)) {
-        setViewModeState(prev => (prev === nextMode ? prev : nextMode))
-        return
-      }
-
-      if (allowedModes.length > 0) {
-        setViewMode(allowedModes[0])
-      }
-    }
-
-    window.addEventListener(STORAGE_KEY, handleEvent as EventListener)
-    return () => window.removeEventListener(STORAGE_KEY, handleEvent as EventListener)
-  }, [allowedModes, setViewMode])
-
-  useEffect(() => {
-    if (allowedModes.includes(viewMode)) {
-      return
-    }
-
-    if (allowedModes.length > 0) {
-      setViewMode(allowedModes[0])
-    }
-  }, [allowedModes, setViewMode, viewMode])
+  const setViewMode = useCallback(
+    (requested: ViewMode) => {
+      setStoredMode(allowedModes.includes(requested) ? requested : allowedModes[0])
+    },
+    [allowedModes, setStoredMode]
+  )
 
   const cycleViewMode = useCallback(() => {
-    if (allowedModes.length === 0) {
-      return
-    }
-
-    setViewMode(prev => {
-      const currentIndex = allowedModes.indexOf(prev)
-      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % allowedModes.length
-      return allowedModes[nextIndex]
-    })
-  }, [allowedModes, setViewMode])
+    setViewMode(allowedModes[(allowedModes.indexOf(viewMode) + 1) % allowedModes.length])
+  }, [allowedModes, setViewMode, viewMode])
 
   return {
     viewMode,

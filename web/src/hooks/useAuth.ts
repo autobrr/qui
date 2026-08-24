@@ -1,8 +1,9 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { navigateAfterAuth } from "@/lib/add-intent"
 import { api } from "@/lib/api"
 import type { User } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -24,7 +25,10 @@ export function useAuth() {
       api.login(username, password, rememberMe),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
-      navigate({ to: "/dashboard" })
+      // Refetch the theme catalog now that the session can unlock the full
+      // premium CSS: the pre-login fetch only carried the selected theme.
+      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      navigateAfterAuth(navigate)
     },
   })
 
@@ -33,7 +37,8 @@ export function useAuth() {
       api.setup(username, password),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
-      navigate({ to: "/dashboard" })
+      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
+      navigateAfterAuth(navigate)
     },
   })
 

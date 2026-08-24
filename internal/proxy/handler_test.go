@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package proxy
@@ -6,11 +6,16 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -71,13 +76,11 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 	}
 
 	for _, baseCase := range baseCases {
-
 		t.Run(baseCase.name, func(t *testing.T) {
 			h := NewHandler(nil, nil, nil, nil, nil, nil, baseCase.baseURL)
 			require.NotNil(t, h)
 
 			for _, tc := range instanceCases {
-
 				t.Run(tc.name, func(t *testing.T) {
 					req := httptest.NewRequest("GET", baseCase.requestPath, nil)
 
@@ -188,4 +191,262 @@ func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	require.False(t, parseErrorLogged.Load(), "expected sync/maindata response to parse successfully")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, payload, rec.Body.Bytes())
+}
+
+func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
+	t.Helper()
+
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	require.NotNil(t, handler)
+
+	rt, ok := handler.proxy.Transport.(*RetryTransport)
+	require.True(t, ok, "expected handler to configure RetryTransport")
+	require.NotNil(t, rt.baseSelector, "expected RetryTransport selector to be configured")
+
+	var selectedCalled atomic.Bool
+	selected := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		selectedCalled.Store(true)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/api/v2/torrents/add", strings.NewReader("x"))
+	ctx := context.WithValue(req.Context(), proxyContextKey, &proxyContext{
+		httpClient: &http.Client{Transport: selected},
+	})
+	req = req.WithContext(ctx)
+
+	resp, err := handler.proxy.Transport.RoundTrip(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.True(t, selectedCalled.Load(), "expected instance transport to be used")
+	require.NoError(t, resp.Body.Close())
+}
+
+func TestProxyContextApplyAuthHeaders_APIKey(t *testing.T) {
+	t.Helper()
+
+	cases := []struct {
+		name              string
+		pc                *proxyContext
+		incomingAuth      string
+		wantAuthorization string
+	}{
+		{
+			name:              "api key sets bearer header",
+			pc:                &proxyContext{apiKey: "secret-key"},
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "api key overrides incoming authorization",
+			pc:                &proxyContext{apiKey: "secret-key"},
+			incomingAuth:      "Basic ZGFuZ2VyOnp1bw==",
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "api key overrides basic auth",
+			pc:                &proxyContext{apiKey: "secret-key", basicAuth: &basicAuthCredentials{username: "u", password: "p"}},
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "no api key and no basic auth strips authorization",
+			pc:                &proxyContext{},
+			incomingAuth:      "Bearer should-be-removed",
+			wantAuthorization: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api/v2/torrents/info", nil)
+			if tc.incomingAuth != "" {
+				req.Header.Set("Authorization", tc.incomingAuth)
+			}
+
+			tc.pc.applyAuthHeaders(req)
+
+			require.Equal(t, tc.wantAuthorization, req.Header.Get("Authorization"))
+		})
+	}
+}
+
+func TestParseCSVQueryValues(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("filter", "unregistered, tracker_down")
+	queryParams.Add("filter", "downloading")
+	queryParams.Add("filter", "tracker_down")
+	queryParams.Add("filter", "")
+
+	parsed := parseCSVQueryValues(queryParams, "filter")
+	require.True(t, slices.Equal([]string{"unregistered", "tracker_down", "downloading"}, parsed))
+}
+
+func TestParseCSVQueryValues_PreservesCategoryCasing(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("category", "TV, Movies")
+	queryParams.Add("category", "Movies")
+
+	parsed := parseCSVQueryValues(queryParams, "category")
+	require.True(t, slices.Equal([]string{"TV", "Movies"}, parsed))
+}
+
+func TestSplitStatusFilters(t *testing.T) {
+	t.Helper()
+
+	status, excludeStatus := splitStatusFilters([]string{"Unregistered", "downloading", "tracker_down", "active", "TRACKER_DOWN", "active"})
+	require.True(t, slices.Equal([]string{"downloading", "active"}, status))
+	require.True(t, slices.Equal([]string{"unregistered", "tracker_down"}, excludeStatus))
+}
+
+func TestParseHashesQueryValues(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("hashes", "abc|def, ghi")
+	queryParams.Add("hashes", "all")
+	queryParams.Add("hashes", "DEF|jkl")
+
+	hashes := parseHashesQueryValues(queryParams)
+	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI", "JKL"}, hashes))
+}
+
+func TestBuildTorrentSearchFilters_EnhancedAndLegacyCompatibility(t *testing.T) {
+	t.Helper()
+
+	queryParams := url.Values{}
+	queryParams.Add("status", "active, downloading")
+	queryParams.Add("excludeStatus", "paused")
+	queryParams.Add("excludestatus", "stalledDL")
+	queryParams.Add("filter", "unregistered,tracker_down,seeding")
+	queryParams.Add("category", "Anime")
+	queryParams.Add("categories", "TV, Movies")
+	queryParams.Add("excludeCategories", "archive")
+	queryParams.Add("excludecategories", "temp")
+	queryParams.Add("tag", "manual")
+	queryParams.Add("tags", "autobrr")
+	queryParams.Add("excludeTags", "skip")
+	queryParams.Add("excludetags", "hold")
+	queryParams.Add("trackers", "tracker-a,tracker-b")
+	queryParams.Add("excludeTrackers", "tracker-c")
+	queryParams.Add("excludetrackers", "tracker-d")
+	queryParams.Add("hashes", "abc|def")
+	queryParams.Add("hashes", "DEF|ghi")
+	queryParams.Set("expr", " ratio > 1 ")
+
+	filters := buildTorrentSearchFilters(queryParams)
+
+	require.True(t, slices.Equal([]string{"active", "downloading", "seeding"}, filters.Status))
+	require.True(t, slices.Equal([]string{"paused", "stalleddl", "unregistered", "tracker_down"}, filters.ExcludeStatus))
+	require.True(t, slices.Equal([]string{"Anime", "TV", "Movies"}, filters.Categories))
+	require.True(t, slices.Equal([]string{"archive", "temp"}, filters.ExcludeCategories))
+	require.True(t, slices.Equal([]string{"manual", "autobrr"}, filters.Tags))
+	require.True(t, slices.Equal([]string{"skip", "hold"}, filters.ExcludeTags))
+	require.True(t, slices.Equal([]string{"tracker-a", "tracker-b"}, filters.Trackers))
+	require.True(t, slices.Equal([]string{"tracker-c", "tracker-d"}, filters.ExcludeTrackers))
+	require.True(t, slices.Equal([]string{"ABC", "DEF", "GHI"}, filters.Hashes))
+	require.Equal(t, "ratio > 1", filters.Expr)
+}
+
+func TestNormalizeContentPathRelativeInput(t *testing.T) {
+	t.Helper()
+
+	testCases := []struct {
+		name      string
+		input     string
+		wantError bool
+	}{
+		{name: "valid", input: "folder/file.mkv", wantError: false},
+		{name: "empty", input: "", wantError: true},
+		{name: "traversal", input: "../escape.mkv", wantError: true},
+		{name: "windows-traversal", input: "..\\escape.mkv", wantError: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized, err := normalizeContentPathRelativeInput(tc.input)
+			if tc.wantError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, filepath.FromSlash(tc.input), normalized)
+		})
+	}
+}
+
+func TestParseProxyMediaInfoContentPath_JSON(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"contentPath": "folder/file.mkv"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_JSON_LegacyAlias(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{"content_path": "folder/file.mkv"})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_JSON_PrefersCanonicalWhenBothPresent(t *testing.T) {
+	t.Helper()
+
+	body, err := json.Marshal(map[string]string{
+		"contentPath":  "folder/canonical.mkv",
+		"content_path": "folder/legacy.mkv",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/canonical.mkv"), contentPath)
+}
+
+func TestParseProxyMediaInfoContentPath_Form(t *testing.T) {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/test/api/v2/torrents/mediainfo", strings.NewReader("content_path=folder%2Ffile.mkv"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	contentPath, err := parseProxyMediaInfoContentPath(req)
+	require.NoError(t, err)
+	require.Equal(t, filepath.FromSlash("folder/file.mkv"), contentPath)
+}
+
+func TestFindExistingProxyContentFile(t *testing.T) {
+	t.Helper()
+
+	root := t.TempDir()
+	goodPath := filepath.Join(root, "good.mkv")
+	require.NoError(t, os.WriteFile(goodPath, []byte("ok"), 0o600))
+
+	found, ok := findExistingProxyContentFile([]string{filepath.Join(root, "missing.mkv"), goodPath})
+	require.True(t, ok)
+	require.Equal(t, goodPath, found)
 }

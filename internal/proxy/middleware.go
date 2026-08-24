@@ -1,10 +1,11 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package proxy
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -103,21 +104,11 @@ func cleanupStaleDebouncers() {
 func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Debug().
-				Str("fullPath", r.URL.Path).
-				Str("method", r.Method).
-				Msg("ClientAPIKeyMiddleware called")
-
 			// Extract API key from URL path parameter
 			apiKey := chi.URLParam(r, "api-key")
-			log.Debug().
-				Str("apiKey", apiKey).
-				Bool("isEmpty", apiKey == "").
-				Msg("Extracted API key from URL parameter")
 
 			if apiKey == "" {
 				log.Warn().
-					Str("path", r.URL.Path).
 					Str("user_agent", userAgentOrUnknown(r)).
 					Msg("Missing API key in proxy request")
 				http.Error(w, "Missing API key", http.StatusUnauthorized)
@@ -128,9 +119,8 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 			ctx := r.Context()
 			clientAPIKey, err := store.ValidateKey(ctx, apiKey)
 			if err != nil {
-				if err == models.ErrClientAPIKeyNotFound {
+				if errors.Is(err, models.ErrClientAPIKeyNotFound) {
 					log.Warn().
-						Str("key_prefix", apiKey[:min(8, len(apiKey))]).
 						Str("user_agent", userAgentOrUnknown(r)).
 						Msg("Invalid client API key")
 					http.Error(w, "Invalid API key", http.StatusUnauthorized)
@@ -151,13 +141,6 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 					}
 				})
 			}
-
-			log.Debug().
-				Str("client", clientAPIKey.ClientName).
-				Int("instanceId", clientAPIKey.InstanceID).
-				Str("method", r.Method).
-				Str("path", r.URL.Path).
-				Msg("Client API key validated successfully")
 
 			// Add client API key and instance ID to request context
 			ctx = context.WithValue(ctx, ClientAPIKeyContextKey, clientAPIKey)
@@ -183,11 +166,4 @@ func GetInstanceIDFromContext(ctx context.Context) int {
 		return id
 	}
 	return 0
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

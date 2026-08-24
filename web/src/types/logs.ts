@@ -1,0 +1,27 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+// Log Settings Types
+export interface LogSettings {
+  level: string
+  path: string
+  maxSize: number
+  maxBackups: number
+  configPath?: string
+  locked?: Record<string, string>
+}
+
+export interface LogSettingsUpdate {
+  level?: string
+  path?: string
+  maxSize?: number
+  maxBackups?: number
+}
+
+export interface LogFile {
+  name: string
+  sizeBytes: number
+  modTime: string
+}

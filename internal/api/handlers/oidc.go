@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -6,10 +6,14 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,6 +35,10 @@ const (
 var (
 	oidcNewProvider = oidc.NewProvider
 	oidcSleep       = time.Sleep
+	oidcReadRandom  = func(b []byte) error {
+		_, err := io.ReadFull(rand.Reader, b)
+		return err
+	}
 )
 
 type OIDCHandler struct {
@@ -56,7 +64,6 @@ type OIDCClaims struct {
 type OIDCConfigResponse struct {
 	Enabled             bool   `json:"enabled"`
 	AuthorizationURL    string `json:"authorizationUrl"`
-	State               string `json:"state"`
 	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
 	IssuerURL           string `json:"issuerUrl"`
 }
@@ -71,22 +78,22 @@ func NewOIDCHandler(cfg *domain.Config, sessionManager *scs.SessionManager) (*OI
 
 	if cfg.OIDCIssuer == "" {
 		log.Error().Msg("OIDC issuer is empty")
-		return nil, fmt.Errorf("OIDC issuer is required")
+		return nil, errors.New("OIDC issuer is required")
 	}
 
 	if cfg.OIDCClientID == "" {
 		log.Error().Msg("OIDC client ID is empty")
-		return nil, fmt.Errorf("OIDC client ID is required")
+		return nil, errors.New("OIDC client ID is required")
 	}
 
 	if cfg.OIDCClientSecret == "" {
 		log.Error().Msg("OIDC client secret is empty")
-		return nil, fmt.Errorf("OIDC client secret is required")
+		return nil, errors.New("OIDC client secret is required")
 	}
 
 	if cfg.OIDCRedirectURL == "" {
 		log.Error().Msg("OIDC redirect URL is empty")
-		return nil, fmt.Errorf("OIDC redirect URL is required")
+		return nil, errors.New("OIDC redirect URL is required")
 	}
 
 	scopes := []string{"openid", "profile", "email"}
@@ -191,12 +198,24 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 }
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
-	// Get the config first
-	config := h.GetConfigResponse()
+	// Clear any prior authorization state before generating a new config response.
+	h.sessionManager.Remove(r.Context(), "oidc_state")
+	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
 
-	// Store state in session for later validation
+	// Get the config first
+	config, state, pkceVerifier, err := h.GetConfigResponse()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to build OIDC config response")
+		RespondError(w, http.StatusInternalServerError, "failed to build OIDC config response")
+		return
+	}
+
+	// Store state and PKCE verifier in session for later validation
 	// This is needed even if user is already authenticated, in case they're re-authenticating
-	h.sessionManager.Put(r.Context(), "oidc_state", config.State)
+	h.sessionManager.Put(r.Context(), "oidc_state", state)
+	if pkceVerifier != "" {
+		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", pkceVerifier)
+	}
 
 	RespondJSON(w, http.StatusOK, config)
 }
@@ -225,6 +244,10 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Clear the state from session after successful validation
 	h.sessionManager.Remove(r.Context(), "oidc_state")
 
+	// Retrieve and clear the PKCE verifier stored during the authorization request
+	pkceVerifier := h.sessionManager.GetString(r.Context(), "oidc_pkce_verifier")
+	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
+
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		log.Error().Msg("authorization code is missing from callback request")
@@ -232,7 +255,12 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oauth2Token, err := h.oauthConfig.Exchange(r.Context(), code)
+	var exchangeOpts []oauth2.AuthCodeOption
+	if pkceVerifier != "" {
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
+	}
+
+	oauth2Token, err := h.oauthConfig.Exchange(r.Context(), code, exchangeOpts...)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to exchange token")
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to exchange token: %v", err))
@@ -373,7 +401,11 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if h.config.BaseURL != "" && h.config.BaseURL != "/" {
 		// Use configured base URL
-		frontendURL = h.config.BaseURL + "/dashboard"
+		base := strings.TrimSuffix(h.config.BaseURL, "/")
+		if base == "" {
+			base = "/"
+		}
+		frontendURL = base + "/dashboard"
 	}
 
 	log.Trace().
@@ -407,25 +439,53 @@ func isValidRedirectURL(candidateURL, configuredURL string) bool {
 	return candidate.Host == configured.Host
 }
 
-func generateRandomState() string {
+func generateRandomState() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to a less secure random state
-		b = make([]byte, 32)
-		_, _ = rand.Read(b)
+	if err := oidcReadRandom(b); err != nil {
+		return "", err
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
-func (h *OIDCHandler) GetConfigResponse() OIDCConfigResponse {
-	state := generateRandomState()
-	authURL := h.oauthConfig.AuthCodeURL(state)
+func generatePKCEVerifier() (string, error) {
+	b := make([]byte, 32)
+	if err := oidcReadRandom(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func (h *OIDCHandler) supportsPKCE() bool {
+	var claims struct {
+		CodeChallenges []string `json:"code_challenge_methods_supported"`
+	}
+	if err := h.provider.Claims(&claims); err != nil {
+		return false
+	}
+	return slices.Contains(claims.CodeChallenges, "S256")
+}
+
+func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, string, error) {
+	state, err := generateRandomState()
+	if err != nil {
+		return OIDCConfigResponse{}, "", "", err
+	}
+
+	var authURL, verifier string
+	if h.supportsPKCE() {
+		verifier, err = generatePKCEVerifier()
+		if err != nil {
+			return OIDCConfigResponse{}, "", "", err
+		}
+		authURL = h.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+	} else {
+		authURL = h.oauthConfig.AuthCodeURL(state)
+	}
 
 	return OIDCConfigResponse{
 		Enabled:             h.config.OIDCEnabled,
 		AuthorizationURL:    authURL,
-		State:               state,
 		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
 		IssuerURL:           h.config.OIDCIssuer,
-	}
+	}, state, verifier, nil
 }

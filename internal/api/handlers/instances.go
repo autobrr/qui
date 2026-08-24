@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -61,7 +62,7 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 				return
 			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
-			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
+			RespondError(w, http.StatusServiceUnavailable, instanceCapabilitiesClientErrorMessage(err))
 			return
 		}
 	}
@@ -77,6 +78,13 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 
 	capabilities := NewInstanceCapabilitiesResponse(client)
 	RespondJSON(w, http.StatusOK, capabilities)
+}
+
+func instanceCapabilitiesClientErrorMessage(err error) string {
+	if message, ok := internalqbittorrent.InstanceHealthBlockerMessage(err); ok {
+		return message
+	}
+	return "Failed to load instance capabilities"
 }
 
 // GetReannounceActivity returns recent reannounce events for an instance.
@@ -140,6 +148,82 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
+// transferInfoResponse adds qBittorrent's all-time totals, which only
+// /sync/maindata carries, to the /transfer/info statistics. The totals are
+// pointers so the fallback path omits them instead of reporting zero.
+type transferInfoResponse struct {
+	qbt.TransferInfo
+	AlltimeDl *int64 `json:"alltime_dl,omitempty"`
+	AlltimeUl *int64 `json:"alltime_ul,omitempty"`
+}
+
+// newTransferInfoResponse exposes only the transfer fields and the totals: the
+// rest of the server state belongs to the dashboard payload, not to a stats
+// endpoint clients poll every few seconds.
+func newTransferInfoResponse(state *qbt.ServerState) transferInfoResponse {
+	return transferInfoResponse{
+		ConnectionStatus: qbt.ConnectionStatus(state.ConnectionStatus),
+		DHTNodes:         state.DhtNodes,
+		DlInfoData:       state.DlInfoData,
+		DlInfoSpeed:      state.DlInfoSpeed,
+		DlRateLimit:      state.DlRateLimit,
+		UpInfoData:       state.UpInfoData,
+		UpInfoSpeed:      state.UpInfoSpeed,
+		UpRateLimit:      state.UpRateLimit,
+		AlltimeDl:        &state.AlltimeDl,
+		AlltimeUl:        &state.AlltimeUl,
+	}
+}
+
+// GetTransferInfo returns lightweight transfer stats for an instance.
+func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	client, err := h.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "instances:getTransferInfo") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for transfer info")
+		RespondError(w, http.StatusServiceUnavailable, "Failed to load transfer info")
+		return
+	}
+
+	// Prefer the synced server state: one maindata sync answers this endpoint and
+	// the all-time totals, sparing clients a full torrent-list request for the
+	// totals alone. The cache only advances on a completed sync, so instances
+	// nobody is streaming need this explicit one to report live speeds. Sync with
+	// the request context rather than the library's checked accessor, which syncs
+	// on context.Background() and would outlive this handler's deadline against a
+	// saturated WebUI. A failed sync still leaves the last good state to serve.
+	if syncManager := client.GetSyncManager(); syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to sync before reading server state; serving cached state")
+		}
+
+		if state := client.GetCachedServerState(); state != nil {
+			RespondJSON(w, http.StatusOK, newTransferInfoResponse(state))
+			return
+		}
+	}
+
+	info, err := client.GetTransferInfoCtx(ctx)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get transfer info")
+		RespondError(w, http.StatusInternalServerError, "Failed to get transfer info")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, transferInfoResponse{TransferInfo: *info})
+}
+
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
 	if len(instances) == 0 {
 		return []InstanceResponse{}
@@ -159,24 +243,30 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 	}
 
 	responses := make([]InstanceResponse, len(instances))
-	for i := range len(instances) {
+	for i := range instances {
 		select {
 		case res := <-resultCh:
 			responses[res.index] = res.response
 		case <-ctx.Done():
 			// Handle context cancellation gracefully
 			responses[i] = InstanceResponse{
-				ID:                 instances[i].ID,
-				Name:               instances[i].Name,
-				Host:               instances[i].Host,
-				Username:           instances[i].Username,
-				BasicUsername:      instances[i].BasicUsername,
-				TLSSkipVerify:      instances[i].TLSSkipVerify,
-				Connected:          false,
-				HasDecryptionError: false,
-				SortOrder:          instances[i].SortOrder,
-				IsActive:           instances[i].IsActive,
-				ReannounceSettings: payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
+				ID:                       instances[i].ID,
+				Name:                     instances[i].Name,
+				Host:                     instances[i].Host,
+				Username:                 instances[i].Username,
+				HasAPIKey:                instances[i].APIKeyEncrypted != "",
+				BasicUsername:            instances[i].BasicUsername,
+				TLSSkipVerify:            instances[i].TLSSkipVerify,
+				HasLocalFilesystemAccess: instances[i].HasLocalFilesystemAccess,
+				UseHardlinks:             instances[i].UseHardlinks,
+				HardlinkBaseDir:          instances[i].HardlinkBaseDir,
+				HardlinkDirPreset:        instances[i].HardlinkDirPreset,
+				UseReflinks:              instances[i].UseReflinks,
+				Connected:                false,
+				HasDecryptionError:       false,
+				SortOrder:                instances[i].SortOrder,
+				IsActive:                 instances[i].IsActive,
+				ReannounceSettings:       payloadFromModel(models.DefaultInstanceReannounceSettings(instances[i].ID)),
 				ConnectionStatus: func(active bool) string {
 					if !active {
 						return "disabled"
@@ -199,9 +289,9 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	var connectionStatus string
 	if !instance.IsActive {
 		connectionStatus = "disabled"
-	} else if client != nil {
-		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
-			connectionStatus = strings.ToLower(status)
+	} else if client != nil && h.syncManager != nil {
+		if status := internalqbittorrent.NormalizeConnectionStatus(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
+			connectionStatus = status
 		}
 	}
 
@@ -209,20 +299,26 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	hasDecryptionError := slices.Contains(decryptionErrorInstances, instance.ID)
 
 	response := InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          healthy,
-		HasDecryptionError: hasDecryptionError,
-		ConnectionStatus:   connectionStatus,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-	}
+		ID:                       instance.ID,
+		Name:                     instance.Name,
+		Host:                     instance.Host,
+		Username:                 instance.Username,
+		HasAPIKey:                instance.APIKeyEncrypted != "",
+		BasicUsername:            instance.BasicUsername,
+		TLSSkipVerify:            instance.TLSSkipVerify,
+		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
+		UseHardlinks:             instance.UseHardlinks,
+		HardlinkBaseDir:          instance.HardlinkBaseDir,
+		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		UseReflinks:              instance.UseReflinks,
+		FallbackToRegularMode:    instance.FallbackToRegularMode,
+		Connected:                healthy,
+		HasDecryptionError:       hasDecryptionError,
+		ConnectionStatus:         connectionStatus,
+		SortOrder:                instance.SortOrder,
+		IsActive:                 instance.IsActive,
 
-	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
+		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
 	// Fetch recent errors for disconnected instances
 	if instance.IsActive && !healthy {
@@ -245,17 +341,24 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		connectionStatus = "disabled"
 	}
 	return InstanceResponse{
-		ID:                 instance.ID,
-		Name:               instance.Name,
-		Host:               instance.Host,
-		Username:           instance.Username,
-		BasicUsername:      instance.BasicUsername,
-		TLSSkipVerify:      instance.TLSSkipVerify,
-		Connected:          false, // Will be updated asynchronously
-		HasDecryptionError: false,
-		SortOrder:          instance.SortOrder,
-		IsActive:           instance.IsActive,
-		ConnectionStatus:   connectionStatus,
+		ID:                       instance.ID,
+		Name:                     instance.Name,
+		Host:                     instance.Host,
+		Username:                 instance.Username,
+		HasAPIKey:                instance.APIKeyEncrypted != "",
+		BasicUsername:            instance.BasicUsername,
+		TLSSkipVerify:            instance.TLSSkipVerify,
+		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
+		UseHardlinks:             instance.UseHardlinks,
+		HardlinkBaseDir:          instance.HardlinkBaseDir,
+		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		UseReflinks:              instance.UseReflinks,
+		FallbackToRegularMode:    instance.FallbackToRegularMode,
+		Connected:                false, // Will be updated asynchronously
+		HasDecryptionError:       false,
+		SortOrder:                instance.SortOrder,
+		IsActive:                 instance.IsActive,
+		ConnectionStatus:         connectionStatus,
 	}
 }
 
@@ -322,26 +425,35 @@ func (h *InstancesHandler) persistReannounceSettings(ctx context.Context, instan
 
 // CreateInstanceRequest represents a request to create a new instance
 type CreateInstanceRequest struct {
-	Name               string                             `json:"name"`
-	Host               string                             `json:"host"`
-	Username           string                             `json:"username"`
-	Password           string                             `json:"password"`
-	BasicUsername      *string                            `json:"basicUsername,omitempty"`
-	BasicPassword      *string                            `json:"basicPassword,omitempty"`
-	TLSSkipVerify      bool                               `json:"tlsSkipVerify,omitempty"`
-	ReannounceSettings *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
+	Name                     string                             `json:"name"`
+	Host                     string                             `json:"host"`
+	Username                 string                             `json:"username"`
+	Password                 string                             `json:"password"`
+	APIKey                   string                             `json:"apiKey,omitempty"`
+	BasicUsername            *string                            `json:"basicUsername,omitempty"`
+	BasicPassword            *string                            `json:"basicPassword,omitempty"`
+	TLSSkipVerify            bool                               `json:"tlsSkipVerify,omitempty"`
+	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
 // UpdateInstanceRequest represents a request to update an instance
 type UpdateInstanceRequest struct {
-	Name               string                             `json:"name"`
-	Host               string                             `json:"host"`
-	Username           string                             `json:"username"`
-	Password           string                             `json:"password,omitempty"` // Optional for updates
-	BasicUsername      *string                            `json:"basicUsername,omitempty"`
-	BasicPassword      *string                            `json:"basicPassword,omitempty"`
-	TLSSkipVerify      *bool                              `json:"tlsSkipVerify,omitempty"`
-	ReannounceSettings *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
+	Name                     string                             `json:"name"`
+	Host                     string                             `json:"host"`
+	Username                 string                             `json:"username"`
+	Password                 string                             `json:"password,omitempty"` // Optional for updates
+	APIKey                   *string                            `json:"apiKey,omitempty"`
+	BasicUsername            *string                            `json:"basicUsername,omitempty"`
+	BasicPassword            *string                            `json:"basicPassword,omitempty"`
+	TLSSkipVerify            *bool                              `json:"tlsSkipVerify,omitempty"`
+	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	UseHardlinks             *bool                              `json:"useHardlinks,omitempty"`
+	HardlinkBaseDir          *string                            `json:"hardlinkBaseDir,omitempty"`
+	HardlinkDirPreset        *string                            `json:"hardlinkDirPreset,omitempty"`
+	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
+	FallbackToRegularMode    *bool                              `json:"fallbackToRegularMode,omitempty"`
+	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
 type UpdateInstanceStatusRequest struct {
@@ -350,19 +462,26 @@ type UpdateInstanceStatusRequest struct {
 
 // InstanceResponse represents an instance in API responses
 type InstanceResponse struct {
-	ID                 int                               `json:"id"`
-	Name               string                            `json:"name"`
-	Host               string                            `json:"host"`
-	Username           string                            `json:"username"`
-	BasicUsername      *string                           `json:"basicUsername,omitempty"`
-	TLSSkipVerify      bool                              `json:"tlsSkipVerify"`
-	Connected          bool                              `json:"connected"`
-	HasDecryptionError bool                              `json:"hasDecryptionError"`
-	RecentErrors       []models.InstanceError            `json:"recentErrors,omitempty"`
-	ConnectionStatus   string                            `json:"connectionStatus,omitempty"`
-	SortOrder          int                               `json:"sortOrder"`
-	IsActive           bool                              `json:"isActive"`
-	ReannounceSettings InstanceReannounceSettingsPayload `json:"reannounceSettings"`
+	ID                       int                               `json:"id"`
+	Name                     string                            `json:"name"`
+	Host                     string                            `json:"host"`
+	Username                 string                            `json:"username"`
+	HasAPIKey                bool                              `json:"hasApiKey"`
+	BasicUsername            *string                           `json:"basicUsername,omitempty"`
+	TLSSkipVerify            bool                              `json:"tlsSkipVerify"`
+	HasLocalFilesystemAccess bool                              `json:"hasLocalFilesystemAccess"`
+	UseHardlinks             bool                              `json:"useHardlinks"`
+	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
+	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
+	UseReflinks              bool                              `json:"useReflinks"`
+	FallbackToRegularMode    bool                              `json:"fallbackToRegularMode"`
+	Connected                bool                              `json:"connected"`
+	HasDecryptionError       bool                              `json:"hasDecryptionError"`
+	RecentErrors             []models.InstanceError            `json:"recentErrors,omitempty"`
+	ConnectionStatus         string                            `json:"connectionStatus,omitempty"`
+	SortOrder                int                               `json:"sortOrder"`
+	IsActive                 bool                              `json:"isActive"`
+	ReannounceSettings       InstanceReannounceSettingsPayload `json:"reannounceSettings"`
 }
 
 // InstanceReannounceSettingsPayload carries tracker monitoring config.
@@ -536,7 +655,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess, req.APIKey)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -554,7 +673,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID)
+	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusCreated, response)
 }
@@ -602,8 +721,68 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
 
+	// Handle redacted API key - if redacted, preserve the existing API key
+	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
+		req.APIKey = nil
+	}
+
+	// Validate hardlink/reflink settings
+	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
+	if req.HasLocalFilesystemAccess != nil {
+		effectiveLocalAccess = *req.HasLocalFilesystemAccess
+	}
+	effectiveUseHardlinks := existingInstance.UseHardlinks
+	if req.UseHardlinks != nil {
+		effectiveUseHardlinks = *req.UseHardlinks
+	}
+	effectiveUseReflinks := existingInstance.UseReflinks
+	if req.UseReflinks != nil {
+		effectiveUseReflinks = *req.UseReflinks
+	}
+	effectiveHardlinkBaseDir := existingInstance.HardlinkBaseDir
+	if req.HardlinkBaseDir != nil {
+		effectiveHardlinkBaseDir = *req.HardlinkBaseDir
+	}
+
+	// Mutual exclusivity: cannot enable both hardlink and reflink modes
+	if effectiveUseHardlinks && effectiveUseReflinks {
+		RespondError(w, http.StatusBadRequest, "Cannot enable both hardlink and reflink modes - they are mutually exclusive")
+		return
+	}
+
+	if effectiveUseHardlinks {
+		if !effectiveLocalAccess {
+			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without local filesystem access")
+			return
+		}
+		if effectiveHardlinkBaseDir == "" {
+			RespondError(w, http.StatusBadRequest, "Cannot enable hardlink mode without a base directory")
+			return
+		}
+	}
+
+	if effectiveUseReflinks {
+		if !effectiveLocalAccess {
+			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without local filesystem access")
+			return
+		}
+		if effectiveHardlinkBaseDir == "" {
+			RespondError(w, http.StatusBadRequest, "Cannot enable reflink mode without a base directory")
+			return
+		}
+	}
+
 	// Update instance
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify)
+	updateParams := &models.InstanceUpdateParams{
+		TLSSkipVerify:            req.TLSSkipVerify,
+		HasLocalFilesystemAccess: req.HasLocalFilesystemAccess,
+		UseHardlinks:             req.UseHardlinks,
+		HardlinkBaseDir:          req.HardlinkBaseDir,
+		HardlinkDirPreset:        req.HardlinkDirPreset,
+		UseReflinks:              req.UseReflinks,
+		FallbackToRegularMode:    req.FallbackToRegularMode,
+	}
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams, req.APIKey)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -634,7 +813,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID)
+	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -698,7 +877,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	} else {
 		// Clear backoff state and errors when re-enabling instance
 		h.clientPool.ResetFailureTracking(instanceID)
-		go h.testConnectionAsync(instanceID)
+		go h.testConnectionAsync(instanceID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 	}
 
 	response := h.buildQuickInstanceResponse(instance)

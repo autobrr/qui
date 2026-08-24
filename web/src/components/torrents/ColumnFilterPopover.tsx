@@ -1,10 +1,17 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { Button } from "@/components/ui/button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -15,6 +22,7 @@ import { type ColumnFilter, getDefaultOperation, getOperations } from "@/lib/col
 import { cn } from "@/lib/utils"
 import { CaseSensitive, Check, Filter, X } from "lucide-react"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface ColumnFilterPopoverProps {
   columnId: string
@@ -64,36 +72,24 @@ const SPEED_UNITS: { value: SpeedUnit; label: string }[] = [
   { value: "TiB/s", label: "TiB/s" },
 ]
 
-const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
-  { value: "seconds", label: "Seconds" },
-  { value: "minutes", label: "Minutes" },
-  { value: "hours", label: "Hours" },
-  { value: "days", label: "Days" },
-]
+const DURATION_UNITS: DurationUnit[] = ["seconds", "minutes", "hours", "days"]
 
-const TORRENT_STATES: { value: string; label: string }[] = [
-  { value: "downloading", label: "Downloading" },
-  { value: "uploading", label: "Seeding" },
-  { value: "forcedUP", label: "Forced (UP)" },
-  { value: "forcedDL", label: "Forced (DL)" },
-  { value: "pausedUP", label: "Paused (UP)" },
-  { value: "pausedDL", label: "Paused (DL)" },
-  { value: "stoppedUP", label: "Stopped (UP)" },
-  { value: "stoppedDL", label: "Stopped (DL)" },
-  { value: "queuedUP", label: "Queued (UP)" },
-  { value: "queuedDL", label: "Queued (DL)" },
-  { value: "stalledUP", label: "Stalled (UP)" },
-  { value: "stalledDL", label: "Stalled (DL)" },
-  { value: "error", label: "Error" },
-  { value: "missingFiles", label: "Missing Files" },
-  { value: "checkingUP", label: "Checking (UP)" },
-  { value: "checkingDL", label: "Checking (DL)" },
-  { value: "moving", label: "Moving" },
-  { value: "checkingResumeData", label: "Checking Resume Data" },
-  { value: "allocating", label: "Allocating" },
-  { value: "metaDL", label: "Fetching Metadata" },
-  { value: "unknown", label: "Unknown" },
-]
+// Grouped torrent states matching FilterSidebar categories
+// These are expanded to individual qBittorrent states in columnFilterToExpr
+const TORRENT_STATES = [
+  "downloading",
+  "uploading",
+  "completed",
+  "stopped",
+  "paused",
+  "active",
+  "stalled",
+  "stalled_uploading",
+  "stalled_downloading",
+  "errored",
+  "checking",
+  "moving",
+] as const
 
 interface ValueInputProps {
   columnType: ColumnType
@@ -118,6 +114,7 @@ function ValueInput({
   options,
   multiSelect,
 }: ValueInputProps) {
+  const { t } = useTranslation("torrents")
   const isSizeColumn = columnType === "size"
   const isSpeedColumn = columnType === "speed"
   const isDurationColumn = columnType === "duration"
@@ -133,7 +130,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter size..."
+          placeholder={t("columnFilter.enterSize")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -163,7 +160,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter speed..."
+          placeholder={t("columnFilter.enterSpeed")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -193,7 +190,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter duration..."
+          placeholder={t("columnFilter.enterDuration")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -205,9 +202,9 @@ function ValueInput({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {DURATION_UNITS.map((u) => (
-              <SelectItem key={u.value} value={u.value}>
-                {u.label}
+            {DURATION_UNITS.map((durationUnit) => (
+              <SelectItem key={durationUnit} value={durationUnit}>
+                {t(`columnFilter.units.${durationUnit}`)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -223,7 +220,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter percentage..."
+          placeholder={t("columnFilter.enterPercentage")}
           onKeyDown={onKeyDown}
           className="pr-8"
         />
@@ -241,35 +238,36 @@ function ValueInput({
         onValueChange={onChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select value" />
+          <SelectValue placeholder={t("columnFilter.selectValue")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="true">True</SelectItem>
-          <SelectItem value="false">False</SelectItem>
+          <SelectItem value="true">{t("columnFilter.true")}</SelectItem>
+          <SelectItem value="false">{t("columnFilter.false")}</SelectItem>
         </SelectContent>
       </Select>
     )
   }
 
   if (isEnumColumn) {
-    const enumOptions = options || TORRENT_STATES
+    const enumOptions = options || TORRENT_STATES.map((state) => ({
+      value: state,
+      label: t(`columnFilter.states.${state === "stalled_uploading" ? "stalledUp" : state === "stalled_downloading" ? "stalledDown" : state}`),
+    }))
 
     if (multiSelect) {
       const selectedValues = value ? value.split(",") : []
 
       const handleSelect = (optionValue: string) => {
-        const newSelected = selectedValues.includes(optionValue)
-          ? selectedValues.filter(v => v !== optionValue)
-          : [...selectedValues, optionValue]
+        const newSelected = selectedValues.includes(optionValue)? selectedValues.filter(v => v !== optionValue): [...selectedValues, optionValue]
         onChange(newSelected.join(","))
       }
 
       return (
         <div className="flex flex-col gap-1">
           <Command className="border rounded-md">
-            <CommandInput placeholder="Search..." className="h-8" />
+            <CommandInput placeholder={t("columnFilter.search")} className="h-8" />
             <CommandList className="max-h-[200px]">
-              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandEmpty>{t("columnFilter.noResults")}</CommandEmpty>
               <CommandGroup>
                 {enumOptions.map((option) => {
                   const isSelected = selectedValues.includes(option.value)
@@ -281,9 +279,7 @@ function ValueInput({
                       <div
                         className={cn(
                           "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                          isSelected
-                            ? "bg-primary text-primary-foreground"
-                            : "opacity-50 [&_svg]:invisible"
+                          isSelected? "bg-primary text-primary-foreground": "opacity-50 [&_svg]:invisible"
                         )}
                       >
                         <Check className={cn("h-4 w-4")} />
@@ -297,12 +293,13 @@ function ValueInput({
           </Command>
           {selectedValues.length > 0 && (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() => onChange("")}
               className="h-8 w-full"
             >
-              Clear filters
+              {t("columnFilter.clearFilters")}
             </Button>
           )}
         </div>
@@ -315,7 +312,7 @@ function ValueInput({
         onValueChange={onChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select status" />
+          <SelectValue placeholder={t("columnFilter.selectStatus")} />
         </SelectTrigger>
         <SelectContent>
           {enumOptions.map((option) => (
@@ -335,7 +332,7 @@ function ValueInput({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter value..."
+          placeholder={t("columnFilter.enterValue")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -351,7 +348,7 @@ function ValueInput({
               <CaseSensitive className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{caseSensitive ? "Match case (click to ignore)" : "Ignore case (click to match)"}</TooltipContent>
+          <TooltipContent>{caseSensitive ? t("columnFilter.matchCase") : t("columnFilter.ignoreCase")}</TooltipContent>
         </Tooltip>
       </div>
     )
@@ -362,7 +359,7 @@ function ValueInput({
       type={columnType === "number" ? "number" : columnType === "date" ? "date" : "text"}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={`Enter ${columnType === "number" ? "number" : "value"}...`}
+      placeholder={columnType === "number" ? t("columnFilter.enterNumber") : t("columnFilter.enterValue")}
       onKeyDown={onKeyDown}
     />
   )
@@ -377,6 +374,7 @@ export function ColumnFilterPopover({
   options,
   multiSelect,
 }: ColumnFilterPopoverProps) {
+  const { t } = useTranslation("torrents")
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const lastScrollPosition = useRef({ left: 0, top: 0 })
 
@@ -531,7 +529,7 @@ export function ColumnFilterPopover({
           size="icon"
           ref={triggerRef}
           className={`h-6 w-6 p-0 transition-opacity ${hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
-            }`}
+          }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)
@@ -550,20 +548,20 @@ export function ColumnFilterPopover({
       >
         <div className="grid gap-4">
           <div className="space-y-2">
-            <h4 className="font-medium leading-none">Filter {columnName}</h4>
+            <h4 className="font-medium leading-none">{t("columnFilter.filterColumn", { column: columnName })}</h4>
             <p className="text-sm text-muted-foreground">
-              Set conditions to filter this column
+              {t("columnFilter.setConditions")}
             </p>
           </div>
           {!multiSelect && (
             <div className="grid gap-2">
-              <Label htmlFor="operation">Operation</Label>
+              <Label htmlFor="operation">{t("columnFilter.operation")}</Label>
               <Select
                 value={operation}
                 onValueChange={(value) => setOperation(value as FilterOperation)}
               >
                 <SelectTrigger id="operation">
-                  <SelectValue placeholder="Select operation" />
+                  <SelectValue placeholder={t("columnFilter.selectOperation")} />
                 </SelectTrigger>
                 <SelectContent>
                   {operations.map((op) => (
@@ -576,7 +574,7 @@ export function ColumnFilterPopover({
             </div>
           )}
           <div className="grid gap-2">
-            <Label htmlFor="value">{isBetweenOperation ? "From" : "Value"}</Label>
+            <Label htmlFor="value">{isBetweenOperation ? t("columnFilter.from") : t("columnFilter.value")}</Label>
             <ValueInput
               columnType={columnType}
               value={value}
@@ -602,7 +600,7 @@ export function ColumnFilterPopover({
           </div>
           {isBetweenOperation && (
             <div className="grid gap-2">
-              <Label htmlFor="value2">To</Label>
+              <Label htmlFor="value2">{t("columnFilter.to")}</Label>
               <ValueInput
                 columnType={columnType}
                 value={value2}
@@ -628,7 +626,7 @@ export function ColumnFilterPopover({
           )}
           <div className="flex gap-2">
             <Button onClick={handleApply} className="flex-1">
-              Apply Filter
+              {t("columnFilter.applyFilter")}
             </Button>
             {hasActiveFilter && (
               <Button onClick={handleClear} variant="outline" size="icon">

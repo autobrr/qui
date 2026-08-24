@@ -1,0 +1,11 @@
+allowBuilds:
+  '@tailwindcss/oxide': true
+  esbuild: true
+  msw: false
+
+# Transitive dev/test tooling pinned past Dependabot advisories. None of these
+# ship in the embedded web/dist bundle or run in the deployed Go binary.
+overrides:
+  undici: '^7.28.0' # jsdom<-vitest test runner; GHSA-vmh5/hm92/pr7r/p88m/35p6/g8m3
+  '@babel/core': '^7.29.6' # eslint-plugin-react-hooks lint time; GHSA-4x5r-pxfx-6jf8
+  serialize-javascript: '^7.0.5' # terser<-workbox build time; GHSA-qj8w-gfj5-8c6v

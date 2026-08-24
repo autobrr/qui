@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -31,6 +32,7 @@ import (
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func newRequestWithParams(method, path string, params map[string]string) *http.Request {
@@ -54,13 +56,11 @@ func newRequestWithParamsAndQuery(method, path string, params map[string]string,
 	return req
 }
 
-func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string, func()) {
+func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string) {
 	t.Helper()
 
 	// Create test database
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
+	db := testdb.NewMigratedSQLite(t, "backups-handler")
 
 	// Create test data directory
 	dataDir := t.TempDir()
@@ -72,15 +72,11 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 		PollInterval: 0,
 		WorkerCount:  1,
 	}
-	service := backups.NewService(backupStore, nil, nil, cfg)
+	service := backups.NewService(backupStore, nil, nil, cfg, nil)
 
 	handler := NewBackupsHandler(service)
 
-	cleanup := func() {
-		require.NoError(t, db.Close())
-	}
-
-	return handler, db, dataDir, cleanup
+	return handler, db, dataDir
 }
 
 func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instanceID int) *models.BackupRun {
@@ -152,7 +148,7 @@ func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instance
 	manifestPath := filepath.Join("backups", fmt.Sprintf("instance-%d", instanceID), "manual", fmt.Sprintf("run-%d", run.ID), "manifest.json")
 	absManifestPath := filepath.Join(dataDir, manifestPath)
 	require.NoError(t, os.MkdirAll(filepath.Dir(absManifestPath), 0755))
-	require.NoError(t, os.WriteFile(absManifestPath, manifestData, 0644))
+	require.NoError(t, os.WriteFile(absManifestPath, manifestData, 0o600))
 
 	// Update run with manifest path
 	err = store.UpdateRunMetadata(ctx, run.ID, func(r *models.BackupRun) error {
@@ -183,13 +179,12 @@ func createTestTorrentFiles(t *testing.T, dataDir string) {
 	file1 := filepath.Join(subdir1, "abcd123456789.torrent")
 	file2 := filepath.Join(subdir2, "efgh987654321.torrent")
 
-	require.NoError(t, os.WriteFile(file1, testData, 0644))
-	require.NoError(t, os.WriteFile(file2, testData, 0644))
+	require.NoError(t, os.WriteFile(file1, testData, 0o600))
+	require.NoError(t, os.WriteFile(file2, testData, 0o600))
 }
 
 func TestDownloadRun_InvalidInstanceID(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/invalid/backups/runs/1/download", map[string]string{
 		"instanceID": "invalid",
@@ -204,8 +199,7 @@ func TestDownloadRun_InvalidInstanceID(t *testing.T) {
 }
 
 func TestDownloadRun_InvalidRunID(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/1/backups/runs/invalid/download", map[string]string{
 		"instanceID": "1",
@@ -220,8 +214,7 @@ func TestDownloadRun_InvalidRunID(t *testing.T) {
 }
 
 func TestDownloadRun_BackupNotFound(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/1/backups/runs/999/download", map[string]string{
 		"instanceID": "1",
@@ -236,8 +229,7 @@ func TestDownloadRun_BackupNotFound(t *testing.T) {
 }
 
 func TestDownloadRun_BackupNotAvailable(t *testing.T) {
-	handler, db, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, _ := setupTestBackupHandler(t)
 
 	// Create a test instance
 	ctx := context.Background()
@@ -274,8 +266,7 @@ func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 }
 
 func TestDownloadRun_UnsupportedFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -302,8 +293,7 @@ func TestDownloadRun_UnsupportedFormat(t *testing.T) {
 }
 
 func TestDownloadRun_ZIPFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -347,8 +337,7 @@ func TestDownloadRun_ZIPFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarGzFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -398,8 +387,7 @@ func TestDownloadRun_TarGzFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarZstFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -449,8 +437,7 @@ func TestDownloadRun_TarZstFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarBrFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -497,8 +484,7 @@ func TestDownloadRun_TarBrFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarXzFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -547,8 +533,7 @@ func TestDownloadRun_TarXzFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -594,8 +579,7 @@ func TestDownloadRun_TarFormat(t *testing.T) {
 }
 
 func TestDownloadRun_DefaultFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -631,20 +615,20 @@ func TestGetBackupDownloadUrl(t *testing.T) {
 	defer func() { windowLocation = originalLocation }()
 
 	// Test without format (should not add query param)
-	url := getBackupDownloadUrl(1, 123)
+	url := getBackupDownloadURL(1, 123)
 	expected := "http://localhost:7476/api/instances/1/backups/runs/123/download"
 	assert.Equal(t, expected, url)
 
 	// Test with zip format (should not add query param since it's default)
-	url = getBackupDownloadUrl(1, 123, "zip")
+	url = getBackupDownloadURL(1, 123, "zip")
 	assert.Equal(t, expected, url)
 
 	// Test with other formats
-	url = getBackupDownloadUrl(1, 123, "tar.gz")
+	url = getBackupDownloadURL(1, 123, "tar.gz")
 	expected = "http://localhost:7476/api/instances/1/backups/runs/123/download?format=tar.gz"
 	assert.Equal(t, expected, url)
 
-	url = getBackupDownloadUrl(1, 123, "tar.zst")
+	url = getBackupDownloadURL(1, 123, "tar.zst")
 	expected = "http://localhost:7476/api/instances/1/backups/runs/123/download?format=tar.zst"
 	assert.Equal(t, expected, url)
 }
@@ -652,11 +636,11 @@ func TestGetBackupDownloadUrl(t *testing.T) {
 // Mock window.location for testing
 var windowLocation *url.URL
 
-func getBackupDownloadUrl(instanceId, runId int, format ...string) string {
+func getBackupDownloadURL(instanceID, runID int, format ...string) string {
 	u := &url.URL{
 		Scheme: windowLocation.Scheme,
 		Host:   windowLocation.Host,
-		Path:   fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceId, runId),
+		Path:   fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, runID),
 	}
 	if len(format) > 0 && format[0] != "" && format[0] != "zip" {
 		q := u.Query()
@@ -666,76 +650,197 @@ func getBackupDownloadUrl(instanceId, runId int, format ...string) string {
 	return u.String()
 }
 
-func TestValidateBlobPath(t *testing.T) {
-	baseDir := t.TempDir()
+// Archive entry names are attacker-controlled, so the check must reject POSIX
+// and Windows escapes regardless of which OS the extraction runs on.
+func TestSafeArchiveEntryPath(t *testing.T) {
+	tests := []struct {
+		name  string
+		entry string
+		want  string
+	}{
+		{"plain name", "example.torrent", "example.torrent"},
+		{"nested name", "torrents/example.torrent", filepath.Join("torrents", "example.torrent")},
+		{"dot segments that stay inside", "torrents/./example.torrent", filepath.Join("torrents", "example.torrent")},
+		{"posix traversal", "../../etc/passwd", ""},
+		{"posix traversal mid-path", "torrents/../../etc/passwd", ""},
+		{"posix absolute", "/etc/passwd", ""},
+		{"windows traversal", `..\..\Windows\System32\evil.torrent`, ""},
+		{"windows absolute", `C:\Windows\System32\evil.torrent`, ""},
+		{"windows unc", `\\server\share\evil.torrent`, ""},
+		{"empty", "   ", ""},
+		{"bare dot", ".", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, safeArchiveEntryPath(tt.entry))
+		})
+	}
+}
+
+// archiveEntry is one file to put in a test archive.
+type archiveEntry struct {
+	name string
+	body []byte
+}
+
+func buildTestZip(t *testing.T, entries []archiveEntry) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, entry := range entries {
+		w, err := zw.Create(entry.name)
+		require.NoError(t, err)
+		_, err = w.Write(entry.body)
+		require.NoError(t, err)
+	}
+	require.NoError(t, zw.Close())
+
+	archivePath := filepath.Join(t.TempDir(), "backup.zip")
+	require.NoError(t, os.WriteFile(archivePath, buf.Bytes(), 0o600))
+	return archivePath
+}
+
+func buildTestTar(t *testing.T, entries []archiveEntry) string {
+	t.Helper()
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, entry := range entries {
+		require.NoError(t, tw.WriteHeader(&tar.Header{
+			Name:     entry.name,
+			Mode:     0o600,
+			Size:     int64(len(entry.body)),
+			Typeflag: tar.TypeReg,
+		}))
+		_, err := tw.Write(entry.body)
+		require.NoError(t, err)
+	}
+	require.NoError(t, tw.Close())
+
+	archivePath := filepath.Join(t.TempDir(), "backup.tar")
+	require.NoError(t, os.WriteFile(archivePath, buf.Bytes(), 0o600))
+	return archivePath
+}
+
+// An archive whose entries resolve to one destination is ambiguous about which
+// payload belongs to which manifest item, so extraction refuses it rather than
+// letting the later entry replace the earlier one. Case-only differences count:
+// they are the same file on Windows and on a default macOS volume, and an
+// archive that imports on one host and not another is worse than a refusal.
+func TestExtractRejectsCollidingEntryNames(t *testing.T) {
+	manifest := archiveEntry{name: "manifest.json", body: []byte(`{"items":[]}`)}
 
 	tests := []struct {
-		name     string
-		blobPath string
-		wantSafe bool
+		name    string
+		entries []archiveEntry
+		wantErr string
 	}{
 		{
-			name:     "valid relative path",
-			blobPath: "backups/torrents/ab/cd/test.torrent",
-			wantSafe: true,
+			name: "slash style",
+			entries: []archiveEntry{
+				manifest,
+				{name: "a/b.torrent", body: []byte("alpha")},
+				{name: `a\b.torrent`, body: []byte("beta")},
+			},
+			wantErr: "extract to the same path",
 		},
 		{
-			name:     "valid simple path",
-			blobPath: "test.torrent",
-			wantSafe: true,
+			name: "case only",
+			entries: []archiveEntry{
+				manifest,
+				{name: "a/b.torrent", body: []byte("alpha")},
+				{name: "a/B.torrent", body: []byte("beta")},
+			},
+			wantErr: "extract to the same path",
 		},
 		{
-			name:     "empty path",
-			blobPath: "",
-			wantSafe: false,
+			name: "duplicate manifests",
+			entries: []archiveEntry{
+				{name: "a/manifest.json", body: []byte(`{"items":[{"hash":"alpha"}]}`)},
+				{name: "b/manifest.json", body: []byte(`{"items":[{"hash":"beta"}]}`)},
+			},
+			wantErr: "more than one manifest.json",
 		},
 		{
-			name:     "traversal with ../",
-			blobPath: "../../../etc/passwd",
-			wantSafe: false,
-		},
-		{
-			name:     "traversal in middle",
-			blobPath: "backups/../../../etc/passwd",
-			wantSafe: false,
-		},
-		{
-			name:     "absolute path unix",
-			blobPath: "/etc/passwd",
-			wantSafe: false,
-		},
-		{
-			name:     "double dot only",
-			blobPath: "..",
-			wantSafe: false,
-		},
-		{
-			name:     "dot dot slash",
-			blobPath: "../",
-			wantSafe: false,
-		},
-		{
-			name:     "hidden traversal with dot segments",
-			blobPath: "backups/./../../etc/passwd",
-			wantSafe: false,
+			name: "duplicate manifests across slash styles",
+			entries: []archiveEntry{
+				{name: "a/manifest.json", body: []byte(`{"items":[{"hash":"alpha"}]}`)},
+				{name: `b\manifest.json`, body: []byte(`{"items":[{"hash":"beta"}]}`)},
+			},
+			wantErr: "more than one manifest.json",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := validateBlobPath(baseDir, tt.blobPath)
-			if tt.wantSafe {
-				assert.NotEmpty(t, result, "expected safe path to return non-empty result")
-				assert.True(t, filepath.IsAbs(result), "expected absolute path")
-			} else {
-				assert.Empty(t, result, "expected unsafe path to return empty result")
-			}
+			t.Run("zip", func(t *testing.T) {
+				_, err := extractZipToDisk(buildTestZip(t, tt.entries))
+				require.ErrorContains(t, err, tt.wantErr)
+			})
+
+			t.Run("tar", func(t *testing.T) {
+				_, err := extractTarToDisk(buildTestTar(t, tt.entries))
+				require.ErrorContains(t, err, tt.wantErr)
+			})
 		})
 	}
+}
 
-	// Test empty baseDir separately (not using shared baseDir)
-	t.Run("empty baseDir", func(t *testing.T) {
-		result := validateBlobPath("", "some/valid/path.torrent")
-		assert.Empty(t, result, "expected empty baseDir to return empty result")
+// A valid archive still extracts: the guards above must not reject entries that
+// only look similar.
+func TestExtractAcceptsDistinctEntryNames(t *testing.T) {
+	entries := []archiveEntry{
+		{name: "manifest.json", body: []byte(`{"items":[]}`)},
+		{name: "a/one.torrent", body: []byte("one")},
+		{name: "b/two.torrent", body: []byte("two")},
+	}
+
+	t.Run("zip", func(t *testing.T) {
+		extracted, err := extractZipToDisk(buildTestZip(t, entries))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = os.RemoveAll(extracted.TempDir) })
+		assert.Len(t, extracted.TorrentPaths, 2)
+	})
+
+	t.Run("tar", func(t *testing.T) {
+		extracted, err := extractTarToDisk(buildTestTar(t, entries))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = os.RemoveAll(extracted.TempDir) })
+		assert.Len(t, extracted.TorrentPaths, 2)
+	})
+}
+
+// The claim map catches destinations that collide as strings, case folded. The
+// writers are the backstop for whatever else a filesystem folds together, so
+// they must refuse an existing destination rather than truncate it.
+func TestExtractionWritersRefuseExistingDestination(t *testing.T) {
+	t.Run("copyStreamToFile", func(t *testing.T) {
+		destPath := filepath.Join(t.TempDir(), "one.torrent")
+		require.NoError(t, os.WriteFile(destPath, []byte("first"), 0o600))
+
+		err := copyStreamToFile(bytes.NewReader([]byte("second")), destPath)
+		require.ErrorIs(t, err, fs.ErrExist)
+
+		kept, err := os.ReadFile(destPath)
+		require.NoError(t, err)
+		assert.Equal(t, "first", string(kept), "the existing file must survive")
+	})
+
+	t.Run("extractZipFileToDisk", func(t *testing.T) {
+		archivePath := buildTestZip(t, []archiveEntry{{name: "one.torrent", body: []byte("second")}})
+		reader, err := zip.OpenReader(archivePath)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = reader.Close() })
+
+		destPath := filepath.Join(t.TempDir(), "one.torrent")
+		require.NoError(t, os.WriteFile(destPath, []byte("first"), 0o600))
+
+		require.ErrorIs(t, extractZipFileToDisk(reader.File[0], destPath), fs.ErrExist)
+
+		kept, err := os.ReadFile(destPath)
+		require.NoError(t, err)
+		assert.Equal(t, "first", string(kept), "the existing file must survive")
 	})
 }

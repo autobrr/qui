@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package prowlarr
@@ -7,20 +7,25 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	gojackett "github.com/autobrr/qui/pkg/gojackett"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 // Config holds the options for constructing a Client.
 type Config struct {
 	Host       string
 	APIKey     string
+	BasicUser  string
+	BasicPass  string
 	Timeout    int
 	HTTPClient *http.Client
 	UserAgent  string
@@ -37,6 +42,8 @@ type TorznabError struct {
 type Client struct {
 	host       string
 	apiKey     string
+	basicUser  string
+	basicPass  string
 	httpClient *http.Client
 	userAgent  string
 	version    string
@@ -66,6 +73,8 @@ func NewClient(cfg Config) *Client {
 	return &Client{
 		host:       strings.TrimRight(cfg.Host, "/"),
 		apiKey:     cfg.APIKey,
+		basicUser:  strings.TrimSpace(cfg.BasicUser),
+		basicPass:  strings.TrimSpace(cfg.BasicPass),
 		httpClient: client,
 		userAgent:  ua,
 		version:    version,
@@ -109,10 +118,10 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	var rss gojackett.Rss
 
 	if strings.TrimSpace(indexerID) == "" {
-		return rss, fmt.Errorf("prowlarr indexer ID is required")
+		return rss, errors.New("prowlarr indexer ID is required")
 	}
 	if c.httpClient == nil {
-		return rss, fmt.Errorf("prowlarr HTTP client is not configured")
+		return rss, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -143,11 +152,14 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("failed to build prowlarr request: %w", err)
 	}
 	req.URL.RawQuery = query.Encode()
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return rss, fmt.Errorf("prowlarr request failed: %w", err)
+		return rss, fmt.Errorf("prowlarr request failed: %w", redact.URLError(err))
 	}
 	defer resp.Body.Close()
 
@@ -182,7 +194,7 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 // GetIndexers retrieves all configured indexers from the Prowlarr instance.
 func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+		return nil, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -200,6 +212,9 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
@@ -212,7 +227,7 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	case http.StatusOK:
 		// continue
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("prowlarr endpoint not found (404)")
+		return nil, errors.New("prowlarr endpoint not found (404)")
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return nil, fmt.Errorf("prowlarr returned %d (unauthorized)", resp.StatusCode)
 	default:
@@ -230,13 +245,13 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 // GetIndexer retrieves detailed information about a specific indexer from Prowlarr
 func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+		return nil, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	endpoint, err := url.JoinPath(c.host, "api", "v1", "indexer", fmt.Sprintf("%d", indexerID))
+	endpoint, err := url.JoinPath(c.host, "api", "v1", "indexer", strconv.Itoa(indexerID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prowlarr endpoint: %w", err)
 	}
@@ -247,6 +262,9 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	}
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 
@@ -273,38 +291,6 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	}
 
 	return &payload, nil
-}
-
-// GetTrackerDomains extracts actual tracker domains from Prowlarr indexers
-func (c *Client) GetTrackerDomains(ctx context.Context) ([]string, error) {
-	indexers, err := c.GetIndexers(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get indexers: %w", err)
-	}
-
-	var domains []string
-	domainMap := make(map[string]bool)
-
-	for _, indexer := range indexers {
-		if !indexer.Enable {
-			continue
-		}
-
-		// Get detailed indexer information to extract the tracker URL
-		detail, err := c.GetIndexer(ctx, indexer.ID)
-		if err != nil {
-			continue // Skip this indexer if we can't get details
-		}
-
-		// Extract tracker domain from indexer fields
-		domain := ExtractDomainFromIndexerFields(detail.Fields)
-		if domain != "" && !domainMap[domain] {
-			domainMap[domain] = true
-			domains = append(domains, domain)
-		}
-	}
-
-	return domains, nil
 }
 
 // ExtractDomainFromIndexerFields extracts the tracker domain from Prowlarr indexer configuration fields

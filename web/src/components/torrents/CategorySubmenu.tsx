@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -23,6 +23,7 @@ import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Folder, Search, X } from "lucide-react"
 import { memo, useDeferredValue, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface CategorySubmenuProps {
@@ -37,7 +38,7 @@ interface CategorySubmenuProps {
 
 // Threshold for when to use virtualization vs simple rendering
 // Below this, simple CSS scrolling is faster
-const VIRTUALIZATION_THRESHOLD = 50
+const VIRTUALIZATION_THRESHOLD = 250
 
 export const CategorySubmenu = memo(function CategorySubmenu({
   type,
@@ -48,10 +49,16 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   currentCategory,
   useSubcategories = false,
 }: CategorySubmenuProps) {
+  const { t } = useTranslation("torrents")
+  // Store callback in ref so it doesn't trigger re-renders
+  const onSetCategoryRef = useRef(onSetCategory)
+  onSetCategoryRef.current = onSetCategory
+
   const [searchQuery, setSearchQuery] = useState("")
   // Use deferred value to prevent search from blocking the UI
   const deferredSearchQuery = useDeferredValue(searchQuery)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  // Use state ref so the virtualizer re-initializes
+  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null)
 
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
@@ -128,7 +135,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   // Only initialize virtualizer if we need it
   const virtualizer = useVirtualizer({
     count: shouldUseVirtualization ? filteredCategories.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
+    getScrollElement: () => scrollContainer,
     estimateSize: () => 36,
     overscan: 5,
   })
@@ -137,7 +144,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   const renderCategoryItem = (category: { name: string; displayName: string; level: number }) => (
     <MenuItem
       key={category.name}
-      onClick={() => onSetCategory(category.name)}
+      onClick={() => onSetCategoryRef.current(category.name)}
       disabled={isPending}
       className={cn(
         "flex items-center gap-2",
@@ -164,17 +171,17 @@ export const CategorySubmenu = memo(function CategorySubmenu({
     <Sub>
       <SubTrigger disabled={isPending}>
         <Folder className="mr-4 h-4 w-4" />
-        Set Category
+        {t("categorySubmenu.setCategory")}
       </SubTrigger>
       <SubContent className="p-0 min-w-[240px]">
         {/* Remove Category option */}
         <MenuItem
-          onClick={() => onSetCategory("")}
+          onClick={() => onSetCategoryRef.current("")}
           disabled={isPending}
         >
           <X className="mr-2 h-4 w-4" />
           <span className="text-muted-foreground italic">
-            (No category) {hashCount > 1 ? `(${hashCount})` : ""}
+            {hashCount > 1 ? t("categorySubmenu.noCategoryBatch", { count: hashCount }) : t("categorySubmenu.noCategory")}
           </span>
         </MenuItem>
 
@@ -189,7 +196,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
                   <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search categories..."
+                      placeholder={t("categorySubmenu.searchCategories")}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.stopPropagation()}
@@ -207,7 +214,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Category list - use virtualization only for large lists */}
         {hasCategories && (
           <div
-            ref={scrollContainerRef}
+            ref={setScrollContainer}
             className="max-h-[300px] overflow-y-auto"
           >
             {hasFilteredCategories ? (
@@ -248,7 +255,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
               )
             ) : (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                No categories found
+                {t("categorySubmenu.noCategoriesFound")}
               </div>
             )}
           </div>
@@ -257,6 +264,16 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         {/* Creating new categories from this menu is disabled. */}
       </SubContent>
     </Sub>
+  )
+}, (prevProps, nextProps) => {
+  // Custom comparison that ignores onSetCategory reference changes
+  return (
+    prevProps.type === nextProps.type &&
+    prevProps.hashCount === nextProps.hashCount &&
+    prevProps.availableCategories === nextProps.availableCategories &&
+    prevProps.isPending === nextProps.isPending &&
+    prevProps.currentCategory === nextProps.currentCategory &&
+    prevProps.useSubcategories === nextProps.useSubcategories
   )
 })
 

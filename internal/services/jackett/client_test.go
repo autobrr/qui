@@ -1,11 +1,14 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -124,7 +127,7 @@ func TestDownloadError_ErrorsIs(t *testing.T) {
 	err := &DownloadError{StatusCode: 404, URL: "https://example.com"}
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
-	assert.True(t, errors.Is(wrapped, &DownloadError{}), "errors.Is should find DownloadError in wrapped error")
+	assert.ErrorIs(t, wrapped, &DownloadError{}, "errors.Is should find DownloadError in wrapped error")
 }
 
 func TestDownloadError_ErrorsAs(t *testing.T) {
@@ -132,7 +135,54 @@ func TestDownloadError_ErrorsAs(t *testing.T) {
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
 	var dlErr *DownloadError
-	require.True(t, errors.As(wrapped, &dlErr), "errors.As should extract DownloadError from wrapped error")
+	require.ErrorAs(t, wrapped, &dlErr, "errors.As should extract DownloadError from wrapped error")
 	assert.Equal(t, 429, dlErr.StatusCode)
 	assert.Equal(t, "https://example.com", dlErr.URL)
+}
+
+// TestDiscoverJackettIndexers_RedactsAPIKey is a regression test for issue #839.
+// It verifies that API keys in error messages are redacted when discovery fails.
+func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
+	const secretAPIKey = "SUPERSECRETAPIKEY12345"
+
+	// Create a test server that will be immediately closed to guarantee connection failure
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Should never reach here since we close the server
+		t.Error("Request should not reach handler")
+	}))
+	// Close immediately to guarantee connection failure
+	server.Close()
+
+	// Try to discover indexers against the closed server
+	_, err := DiscoverJackettIndexers(context.Background(), server.URL, secretAPIKey, nil, nil)
+
+	// We expect an error since the server is closed
+	require.Error(t, err, "Expected an error when connecting to closed server")
+
+	errStr := err.Error()
+
+	// The error message must NOT contain the secret API key
+	assert.NotContains(t, errStr, secretAPIKey,
+		"Error message should not contain the secret API key. Got: %s", errStr)
+
+	// The error message SHOULD contain REDACTED if it includes the URL with apikey param
+	// Note: depending on where the error occurs, it may or may not include URL params.
+	// If it does include URL params, they should be redacted.
+	if strings.Contains(errStr, "apikey=") {
+		assert.Contains(t, errStr, "apikey=REDACTED",
+			"Error message with apikey param should have value redacted. Got: %s", errStr)
+	}
+}
+
+func TestMagnetDownloadError_RedactsTrackerPasskeys(t *testing.T) {
+	rawMagnet := "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&tr=https%3A%2F%2Ftracker.example.com%2Fannounce%3Fpasskey%3DDEADBEEF01"
+	err := &MagnetDownloadError{MagnetURL: rawMagnet}
+
+	msg := err.Error()
+	assert.NotContains(t, msg, "DEADBEEF01")
+	assert.Contains(t, msg, "tracker.example.com")
+	assert.Contains(t, msg, "c12fe1c06bba254a9dc9f519b335aa7c1367a88a")
+
+	// The field itself must stay raw: the manual-add handler consumes it.
+	assert.Equal(t, rawMagnet, err.MagnetURL)
 }

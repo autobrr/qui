@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -32,13 +32,16 @@ export function SelectAllHotkey({
     }
 
     const platformIsMac =
-      typeof isMac === "boolean"
-        ? isMac
-        : typeof window !== "undefined" &&
+      typeof isMac === "boolean"? isMac: typeof window !== "undefined" &&
           /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
 
     const handleSelectAllHotkey = (event: KeyboardEvent) => {
       if (event.key !== "a" && event.key !== "A") {
+        return
+      }
+
+      // Shift/Alt combos are browser shortcuts (e.g. Cmd+Shift+A tab search), not select-all
+      if (event.shiftKey || event.altKey) {
         return
       }
 
