@@ -33,12 +33,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
 
+export interface TorrentsSearch {
+  modal?: "add-torrent" | "create-torrent" | "tasks"
+  torrent?: string
+  tab?: string
+  instance?: number
+}
+
 interface TorrentsProps {
   instanceId: number
   instanceName: string
   isAllInstancesView?: boolean
-  search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }
-  onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }) => void
+  search: TorrentsSearch
+  onSearchChange: (search: TorrentsSearch) => void
 }
 
 export function Torrents({ instanceId, instanceName, isAllInstancesView = false, search, onSearchChange }: TorrentsProps) {
@@ -95,14 +102,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   // sheet whose history entry it owns.
   const urlTorrentRef = useRef<string | undefined>(undefined)
 
-  // Push a history entry for the sheet so mobile Back closes it instead of
-  // leaving the page
-  const pushMobileDetailsEntry = useCallback((torrent: Torrent, initialTab?: string) => {
-    navigate({
-      to: ".",
-      search: (prev) => ({ ...prev, torrent: torrent.hash, tab: initialTab }),
-    })
-  }, [navigate])
   const getTorrentInstanceId = useCallback((torrent: Torrent | null | undefined) => {
     if (!torrent) {
       return instanceId
@@ -117,13 +116,32 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [instanceId])
   const selectedTorrentInstanceId = getTorrentInstanceId(selectedTorrent)
 
+  // Push a history entry for the sheet so mobile Back closes it instead of
+  // leaving the page. The unified view also records the owning instance, since
+  // the same hash can exist on several instances.
+  const pushMobileDetailsEntry = useCallback((torrent: Torrent, initialTab?: string) => {
+    navigate({
+      to: ".",
+      search: (prev) => ({
+        ...prev,
+        torrent: torrent.hash,
+        tab: initialTab,
+        instance: isAllInstances ? getTorrentInstanceId(torrent) : undefined,
+      }),
+    })
+  }, [getTorrentInstanceId, isAllInstances, navigate])
+
   // Handle deep link to a specific torrent (from cross-seed navigation)
   useEffect(() => {
     if (!search.torrent) return
     // Already selected (mobile keeps the hash in the URL); nothing to fetch
-    if (selectedTorrent?.hash === search.torrent) return
+    if (
+      selectedTorrent?.hash === search.torrent &&
+      (!search.instance || getTorrentInstanceId(selectedTorrent) === search.instance)
+    ) return
     let cancelled = false
 
+    const clearDeepLinkParams = () => onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
     const hash = search.torrent
     const tab = search.tab
     const escapedHash = hash.replaceAll("\"", "\\\"")
@@ -143,7 +161,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       },
       limit: 1,
       // Deep links should resolve even when the saved unified scope excludes the owning instance.
-      instanceIds: activeInstanceIds.length > 0 ? activeInstanceIds : undefined,
+      instanceIds: search.instance? [search.instance]: activeInstanceIds.length > 0 ? activeInstanceIds : undefined,
     }).then((response) => response.crossInstanceTorrents?.[0] ?? response.cross_instance_torrents?.[0] ?? null): api.getTorrents(instanceId, {
       filters: {
         expr: `Hash == "${escapedHash}"`,
@@ -172,27 +190,19 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
       // Mobile keeps the params: Back closes the sheet and refresh restores it
       if (torrent && isMobile) return
       // Clear the search params after consuming
-      onSearchChange({
-        ...search,
-        torrent: undefined,
-        tab: undefined,
-      })
+      clearDeepLinkParams()
     }).catch(() => {
       if (cancelled) {
         return
       }
       // Silently fail - torrent might not exist
-      onSearchChange({
-        ...search,
-        torrent: undefined,
-        tab: undefined,
-      })
+      clearDeepLinkParams()
     })
 
     return () => {
       cancelled = true
     }
-  }, [activeInstanceIds, instanceId, isAllInstances, isMobile, onSearchChange, search, selectedTorrent])
+  }, [activeInstanceIds, getTorrentInstanceId, instanceId, isAllInstances, isMobile, onSearchChange, search, selectedTorrent])
 
   // Navigate to a cross-seed match torrent
   const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
@@ -314,7 +324,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     setInitialDetailsTab(undefined)
     if (urlTorrentRef.current) {
       urlTorrentRef.current = undefined
-      onSearchChange({ ...search, torrent: undefined, tab: undefined })
+      onSearchChange({ ...search, torrent: undefined, tab: undefined, instance: undefined })
     }
   }, [onSearchChange, search])
 
