@@ -9,8 +9,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
-
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
@@ -42,31 +40,34 @@ func (di *DelugeImport) Migrate() error {
 	}
 
 	if !di.opts.DryRun {
-		if err := MkDirIfNotExists(di.opts.QbitDir); err != nil {
+		if err := os.MkdirAll(di.opts.QbitDir, os.ModePerm); err != nil {
 			return errors.Wrapf(err, "qbit directory error: %s", di.opts.QbitDir)
 		}
 	}
 
-	// deluge itself falls back to the .bak copy and the pre-1.3 location
-	resumeFilePath := ""
+	// deluge itself falls back to the .bak copy and the pre-1.3 location,
+	// including when the main file exists but is corrupt
+	var fastresumeFile map[string]any
 	for _, candidate := range []string{
 		filepath.Join(sourceDir, "torrents.fastresume"),
 		filepath.Join(sourceDir, "torrents.fastresume.bak"),
 		filepath.Join(sourceDir, "..", "torrents.fastresume"),
 	} {
-		if _, err := os.Stat(candidate); err == nil {
-			resumeFilePath = candidate
-			break
+		if _, err := os.Stat(candidate); err != nil {
+			continue
 		}
-	}
-	if resumeFilePath == "" {
-		return errors.Errorf("could not find deluge fastresume file in: %s", sourceDir)
-	}
 
-	fastresumeFile, err := decodeFastresumeFile(resumeFilePath)
-	if err != nil {
-		log.Error().Err(err).Msgf("Could not decode deluge fastresume file: %s", resumeFilePath)
-		return err
+		decoded, err := decodeFastresumeFile(candidate)
+		if err != nil {
+			log.Warn().Err(err).Msgf("Could not decode deluge fastresume file, trying next candidate: %s", candidate)
+			continue
+		}
+
+		fastresumeFile = decoded
+		break
+	}
+	if fastresumeFile == nil {
+		return errors.Errorf("could not find a readable deluge fastresume file in: %s", sourceDir)
 	}
 
 	labels := readDelugeLabels(sourceDir)
@@ -102,7 +103,7 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
-		var fastResume qbittorrent.Fastresume
+		var fastResume Fastresume
 
 		strValue, ok := value.(string)
 		if !ok {
@@ -146,7 +147,13 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
-		numPieces := metaInfo.NumPieces()
+		// a corrupt entry with an unusable save path would import a torrent
+		// qBittorrent resolves against its own default download dir
+		if !filepath.IsAbs(filepath.Clean(fastResume.SavePath)) {
+			log.Warn().Msgf("(%d/%d) %s has an unusable save path %q, skipping", positionNum, totalJobs, torrentID, fastResume.SavePath)
+			skipped++
+			continue
+		}
 
 		// complete means every piece of every wanted file has its have-bit
 		// set; files with priority 0 may legitimately be missing
@@ -195,9 +202,11 @@ func (di *DelugeImport) Migrate() error {
 		// libtorrent 1.0-era resume data (deluge 1.3.x) folds the session-wide
 		// shutdown pause into every torrent's paused flag, so it reads 1 for
 		// the whole library and the real state only exists in the
-		// torrents.state pickle; resume everything for those sources. Newer
-		// libtorrent records accurate per-torrent flags, keep them.
-		if strings.HasPrefix(fastResume.LibTorrentVersion, "0.") || strings.HasPrefix(fastResume.LibTorrentVersion, "1.0") {
+		// torrents.state pickle; resume everything for those sources, and for
+		// data too old or stripped to carry a version at all. Newer libtorrent
+		// records accurate per-torrent flags, keep them.
+		ltVersion := fastResume.LibTorrentVersion
+		if ltVersion == "" || strings.HasPrefix(ltVersion, "0.") || strings.HasPrefix(ltVersion, "1.0") {
 			fastResume.Paused = 0
 			fastResume.AutoManaged = 1
 		}
@@ -218,7 +227,6 @@ func (di *DelugeImport) Migrate() error {
 
 		// pieces overlapping only deselected files stay unset; drop the
 		// source's partial-piece list so it cannot contradict the bitfield
-		fastResume.NumPieces = int64(numPieces)
 		fastResume.Pieces = pieces
 		fastResume.Unfinished = nil
 
@@ -256,7 +264,7 @@ func (di *DelugeImport) Migrate() error {
 // delugePieces converts the decoded libtorrent resume pieces (one byte per
 // piece, bit 0 = have) into a qBittorrent piece bitfield and reports whether
 // every piece of every wanted (non-zero priority) file is present
-func delugePieces(fr *qbittorrent.Fastresume, info *metainfo.Info) (string, bool) {
+func delugePieces(fr *Fastresume, info *metainfo.Info) (string, bool) {
 	numPieces := info.NumPieces()
 	if numPieces == 0 || info.PieceLength <= 0 {
 		return "", false
@@ -301,16 +309,20 @@ func delugePieces(fr *qbittorrent.Fastresume, info *metainfo.Info) (string, bool
 // one level above the state dir. The file is two concatenated JSON documents:
 // a version dict followed by the config data
 func readDelugeLabels(stateDir string) map[string]string {
-	f, err := os.Open(filepath.Join(stateDir, "..", "label.conf"))
+	path := filepath.Join(stateDir, "..", "label.conf")
+
+	f, err := os.Open(path)
 	if err != nil {
+		// no label plugin state means no labels
 		return nil
 	}
 	defer f.Close()
 
 	dec := json.NewDecoder(f)
 
-	var version map[string]any
+	var version json.RawMessage
 	if err := dec.Decode(&version); err != nil {
+		log.Warn().Err(err).Msgf("Could not parse deluge label config, labels will not be migrated: %s", path)
 		return nil
 	}
 
@@ -318,6 +330,7 @@ func readDelugeLabels(stateDir string) map[string]string {
 		TorrentLabels map[string]string `json:"torrent_labels"`
 	}
 	if err := dec.Decode(&data); err != nil {
+		log.Warn().Err(err).Msgf("Could not parse deluge label config, labels will not be migrated: %s", path)
 		return nil
 	}
 

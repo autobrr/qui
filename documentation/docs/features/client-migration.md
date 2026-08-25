@@ -27,7 +27,7 @@ Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in
 The `--qbit-dir` is qBittorrent's session directory, commonly `~/.local/share/qBittorrent/BT_backup` on Linux, `%LOCALAPPDATA%\qBittorrent\BT_backup` on Windows, or `/config/qBittorrent/BT_backup` in Docker images.
 
 :::warning
-The save paths recorded by the source client are carried over as-is. qBittorrent must see the downloaded data at those same paths — when moving between machines or containers, keep the mount layout identical or the torrents will show as missing files.
+The save paths recorded by the source client are carried over as-is. qBittorrent must see the downloaded data at those same paths — when moving between machines or containers, keep the mount layout identical or the torrents will show as missing files. For the same reason, run the migration on the same OS family as the source client: a Unix session dir cannot be imported on a Windows host.
 :::
 
 ## Deluge
@@ -62,6 +62,7 @@ Supported: rTorrent 0.9.x through 0.16.x, with or without ruTorrent.
 - Both directory layouts work: the standard one where the torrent's folder sits inside the download directory, and `d.directory_base` layouts where files live directly in it.
 - Trackers keep their tiers from the torrent file; trackers you disabled in rTorrent stay out, trackers you added at runtime come along.
 - Stopped torrents stay stopped. Unfinished magnet downloads are skipped.
+- rTorrent keeps no cumulative seeding counter, so seeding time is approximated as time since seeding began — including time the client was offline. Check your share limits before importing a long-lived library.
 
 ## Transmission
 
@@ -73,7 +74,7 @@ qui migrate transmission \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 ```
 
-Supported: Transmission 2.x through 4.x, including the legacy name-based session file naming from 2.x.
+Supported: Transmission 2.4 through 4.x, including the legacy name-based session file naming from 2.x. Resume files last written by versions older than 2.4 use legacy progress and limit formats and are skipped.
 
 - Transmission labels become qBittorrent **tags**.
 - Paused torrents stay paused; per-torrent ratio and speed limits carry over.

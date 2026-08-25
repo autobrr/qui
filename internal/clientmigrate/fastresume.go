@@ -1,13 +1,12 @@
-package qbittorrent
+package clientmigrate
 
 import (
 	"bufio"
-	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/autobrr/go-torrent/bencode"
+	"github.com/pkg/errors"
 )
 
 // Fastresume represents a qBittorrent fastresume file
@@ -73,42 +72,33 @@ type Fastresume struct {
 	UploadRateLimit           int64      `bencode:"upload_rate_limit"`
 	URLList                   []string   `bencode:"url-list"`
 	Unfinished                *[]any     `bencode:"unfinished,omitempty"`
-	WithoutLabels             bool       `bencode:"-"`
-	WithoutTags               bool       `bencode:"-"`
-	HasFiles                  bool       `bencode:"-"`
 	TorrentFilePath           string     `bencode:"-"`
-	Path                      string     `bencode:"-"`
-	NumPieces                 int64      `bencode:"-"`
-	PieceLength               int64      `bencode:"-"`
 	MappedFiles               []string   `bencode:"mapped_files,omitempty"`
 }
 
 // Encode qBittorrent fastresume file
 func (fr *Fastresume) Encode(path string) error {
-	dir := filepath.Dir(path)
-
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		log.Printf("os create dir error: %v", err)
-		return err
+	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
+		return errors.Wrapf(err, "could not create directory for: %s", path)
 	}
 
 	file, err := os.Create(path)
 	if err != nil {
-		log.Printf("os create error: %v", err)
 		return err
 	}
-
-	defer file.Close()
 
 	bufferedWriter := bufio.NewWriter(file)
-	enc := bencode.NewEncoder(bufferedWriter)
-	if err := enc.Encode(fr); err != nil {
-		log.Printf("encode error: %v", err)
-		return err
+	if err := bencode.NewEncoder(bufferedWriter).Encode(fr); err != nil {
+		file.Close()
+		return errors.Wrapf(err, "could not encode fastresume: %s", path)
 	}
 
-	bufferedWriter.Flush()
-	return nil
+	if err := bufferedWriter.Flush(); err != nil {
+		file.Close()
+		return errors.Wrapf(err, "could not write fastresume: %s", path)
+	}
+
+	return file.Close()
 }
 
 // ConvertFilePriority for each file set priority
@@ -126,13 +116,4 @@ func (fr *Fastresume) ConvertFilePriority(numFiles int) {
 	}
 
 	fr.FilePriority = newPrioList
-}
-
-// FillPieces set pieces as complete/done so fastresume doesn't recheck
-func (fr *Fastresume) FillPieces() {
-	b := strings.Builder{}
-	for i := int64(0); i < fr.NumPieces; i++ {
-		b.WriteString("\x01")
-	}
-	fr.Pieces = b.String()
 }

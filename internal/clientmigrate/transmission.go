@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
-
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
@@ -40,7 +38,7 @@ func (i *TransmissionImport) Migrate() error {
 	}
 
 	if !i.opts.DryRun {
-		if err := MkDirIfNotExists(i.opts.QbitDir); err != nil {
+		if err := os.MkdirAll(i.opts.QbitDir, os.ModePerm); err != nil {
 			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
 		}
 	}
@@ -81,6 +79,15 @@ func (i *TransmissionImport) Migrate() error {
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s", match)
 			failed++
+			continue
+		}
+
+		// v2 and hybrid torrents cannot round-trip through this format: the
+		// v1 infohash naming is wrong for v2-only, and the block bitfield
+		// covers the padded v1 stream while UpvertedFiles is the v2 tree view
+		if metaInfo.MetaVersion == 2 {
+			log.Warn().Msgf("(%d/%d) %s is a BitTorrent v2 torrent, not supported by this importer, skipping", positionNum, totalJobs, metaInfo.BestName())
+			skipped++
 			continue
 		}
 
@@ -134,7 +141,7 @@ func (i *TransmissionImport) Migrate() error {
 		// qBittorrent would resume it
 		paused := boolToInt(resumeFile.Paused)
 
-		newFastResume := qbittorrent.Fastresume{
+		newFastResume := Fastresume{
 			ActiveTime:                resumeFile.DownloadingTimeSeconds + resumeFile.SeedingTimeSeconds,
 			AddedTime:                 resumeFile.AddedDate,
 			Allocation:                "sparse",
@@ -158,7 +165,6 @@ func (i *TransmissionImport) Migrate() error {
 			NumComplete:               16777215,
 			NumDownloaded:             16777215,
 			NumIncomplete:             0,
-			NumPieces:                 int64(metaInfo.NumPieces()),
 			Paused:                    paused,
 			Peers:                     "",
 			Peers6:                    "",
@@ -183,18 +189,14 @@ func (i *TransmissionImport) Migrate() error {
 			UploadMode:                0,
 			UploadRateLimit:           transmissionSpeedLimit(resumeFile.SpeedLimitUp),
 			URLList:                   file.UrlList,
-
-			// destination is the parent directory in every Transmission
-			// version: file subpaths already start with the torrent name
-			Path: resumeFile.Destination,
 		}
 
-		if metaInfo.Files != nil {
-			newFastResume.HasFiles = true
+		// destination is the parent directory in every Transmission version:
+		// file subpaths already start with the torrent name
+		if metaInfo.IsDir() {
 			// legacy and should be removed sometime with 4.3.X
 			newFastResume.QbtHasRootFolder = 1
 		} else {
-			newFastResume.HasFiles = false
 			newFastResume.QbtHasRootFolder = 0
 		}
 
@@ -246,8 +248,8 @@ func transmissionPieces(resume *TransmissionResumeFile, info *metainfo.Info) (st
 	files := info.UpvertedFiles()
 
 	blockSize := min(info.PieceLength, 16384)
-	blocksPerPiece := int((info.PieceLength + blockSize - 1) / blockSize)
-	numBlocks := int((info.TotalLength() + blockSize - 1) / blockSize)
+	totalLength := info.TotalLength()
+	numBlocks := int((totalLength + blockSize - 1) / blockSize)
 
 	haveBlock := func(int) bool { return true }
 	switch resume.Progress.Blocks {
@@ -293,12 +295,16 @@ func transmissionPieces(resume *TransmissionResumeFile, info *metainfo.Info) (st
 		}
 	}
 
+	// map pieces to blocks by byte range: blocks are laid out over the whole
+	// torrent stream and need not align to piece boundaries
 	pieces := make([]byte, numPieces)
 	for p := range numPieces {
-		start := p * blocksPerPiece
-		end := min(start+blocksPerPiece, numBlocks)
+		startByte := int64(p) * info.PieceLength
+		endByte := min(startByte+info.PieceLength, totalLength)
+		start := int(startByte / blockSize)
+		end := int((endByte - 1) / blockSize)
 		pieces[p] = 1
-		for b := start; b < end; b++ {
+		for b := start; b <= end && b < numBlocks; b++ {
 			if !haveBlock(b) {
 				pieces[p] = 0
 				break

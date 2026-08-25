@@ -1,13 +1,15 @@
 package clientmigrate
 
 import (
+	"archive/tar"
 	"context"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/mholt/archives"
+	"github.com/klauspost/compress/gzip"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -48,16 +50,14 @@ func New(opts Options) Migrater {
 
 func (m Migrater) Migrate(ctx context.Context) error {
 	var (
-		dryRun     = m.opts.DryRun
-		qbitDir    = m.opts.QbitDir
-		source     = m.opts.Source
-		sourceDir  = m.opts.SourceDir
-		skipBackup = m.opts.SkipBackup
+		dryRun    = m.opts.DryRun
+		source    = m.opts.Source
+		sourceDir = m.opts.SourceDir
 	)
 
 	// Backup data before running
-	if !skipBackup {
-		if err := m.Backup(ctx, source, dryRun, sourceDir, qbitDir); err != nil {
+	if !m.opts.SkipBackup {
+		if err := m.Backup(); err != nil {
 			log.Error().Err(err).Msgf("Could not backup files")
 			return err
 		}
@@ -83,8 +83,14 @@ func (m Migrater) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, sourceDir string, qbitDir string) error {
+func (m Migrater) Backup() error {
 	log.Info().Msg("prepare to backup torrent data before import..")
+
+	var (
+		source    = m.opts.Source
+		sourceDir = m.opts.SourceDir
+		qbitDir   = m.opts.QbitDir
+	)
 
 	timeStamp := time.Now().Format("20060102150405")
 
@@ -93,17 +99,17 @@ func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, source
 	sourceBackupArchive := filepath.Join(backupDir, source+"_backup_"+timeStamp+".tar.gz")
 	qbitBackupArchive := filepath.Join(backupDir, "qBittorrent_backup_"+timeStamp+".tar.gz")
 
-	if dryRun {
+	if m.opts.DryRun {
 		log.Info().Msgf("dry-run: creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 		log.Info().Msgf("dry-run: creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
 	} else {
-		if err := MkDirIfNotExists(backupDir); err != nil {
+		if err := os.MkdirAll(backupDir, os.ModePerm); err != nil {
 			return errors.Wrap(err, "could not create backup directory")
 		}
 
 		log.Info().Msgf("creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 
-		if err := m.archiveDir(ctx, sourceDir, sourceBackupArchive); err != nil {
+		if err := archiveDir(sourceDir, sourceBackupArchive); err != nil {
 			return errors.Wrapf(err, "could not create %s backup of directory: %s to %s", source, sourceDir, sourceBackupArchive)
 		}
 
@@ -113,7 +119,7 @@ func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, source
 		} else {
 			log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
 
-			if err := m.archiveDir(ctx, qbitDir, qbitBackupArchive); err != nil {
+			if err := archiveDir(qbitDir, qbitBackupArchive); err != nil {
 				return errors.Wrapf(err, "could not create qBittorrent backup of directory: %s", qbitDir)
 			}
 		}
@@ -124,41 +130,80 @@ func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, source
 	return nil
 }
 
-func (m Migrater) archiveDir(ctx context.Context, dir, archiveName string) error {
-	// map files on disk to their paths in the archive using default settings (second arg)
-	files, err := archives.FilesFromDisk(ctx, nil, map[string]string{
-		dir: "",
-	})
+// archiveDir writes every regular file under dir into a tar.gz archive with
+// paths relative to dir
+func archiveDir(dir, archiveName string) error {
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return err
 	}
+	defer root.Close()
 
-	// create the output file we'll write to
 	out, err := os.Create(archiveName)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
-	format := archives.CompressedArchive{
-		Compression: archives.Gz{},
-		Archival:    archives.Tar{},
+	gz := gzip.NewWriter(out)
+	tw := tar.NewWriter(gz)
+
+	walkErr := fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = path
+
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+
+		f, err := root.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+
+		_, err = io.Copy(tw, f)
+		return err
+	})
+	if walkErr != nil {
+		out.Close()
+		return errors.Wrapf(walkErr, "could not create backup archive: %s", archiveName)
 	}
 
-	// create the archive
-	err = format.Archive(ctx, out, files)
-	if err != nil {
-		return errors.Wrapf(err, "could not create backup archive: %s", out.Name())
+	if err := tw.Close(); err != nil {
+		out.Close()
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		out.Close()
+		return err
 	}
 
-	return nil
+	return out.Close()
 }
 
 // logImportSummary logs the per-importer end result with accurate counts
 func logImportSummary(dryRun bool, imported, failed, skipped, total int) {
 	switch {
 	case dryRun:
-		log.Info().Msgf("dry-run: would import %d of %d torrents, %d skipped", imported, total, skipped)
+		log.Info().Msgf("dry-run: would import %d of %d torrents, %d failed, %d skipped", imported, total, failed, skipped)
 	case failed > 0 || skipped > 0:
 		log.Warn().Msgf("imported %d of %d torrents, %d failed, %d skipped", imported, total, failed, skipped)
 	default:
@@ -195,23 +240,6 @@ func firstNonZero(values ...int64) int64 {
 	}
 
 	return 0
-}
-
-// MkDirIfNotExists check if export dir exists, if not then lets create it
-func MkDirIfNotExists(dir string) error {
-	if _, err := os.Stat(dir); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-				return err
-			}
-
-			return nil
-		}
-
-		return err
-	}
-
-	return nil
 }
 
 // CopyFile copies the contents of the file named src to the file named

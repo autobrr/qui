@@ -131,7 +131,7 @@ Notes:
 - Stop the source client and qBittorrent before migrating; start qBittorrent afterwards and it will pick up the imported torrents.
 - Only fully downloaded torrents are imported. Partial torrents are skipped with a warning so no incorrect piece state ever reaches qBittorrent.
 - Preserved per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state, Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
-- Supported source versions: Transmission 2.x-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x and newer.
+- Supported source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x and newer.
 - Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in the current working directory first.
 - Torrents already present in the target `BT_backup` are skipped, so re-running is safe.
 

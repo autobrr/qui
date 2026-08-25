@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
-
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/stretchr/testify/assert"
 )
@@ -43,36 +41,36 @@ func TestDelugePieces(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		fr           qbittorrent.Fastresume
+		fr           Fastresume
 		wantPieces   string
 		wantComplete bool
 	}{
 		{
 			name:         "complete",
-			fr:           qbittorrent.Fastresume{Pieces: "\x01\x01\x01", FilePriority: []int{1, 1}},
+			fr:           Fastresume{Pieces: "\x01\x01\x01", FilePriority: []int{1, 1}},
 			wantPieces:   "\x01\x01\x01",
 			wantComplete: true,
 		},
 		{
 			name:         "missing wanted piece",
-			fr:           qbittorrent.Fastresume{Pieces: "\x01\x00\x01", FilePriority: []int{1, 1}},
+			fr:           Fastresume{Pieces: "\x01\x00\x01", FilePriority: []int{1, 1}},
 			wantPieces:   "\x01\x00\x01",
 			wantComplete: false,
 		},
 		{
 			name:         "never checked, short pieces",
-			fr:           qbittorrent.Fastresume{Pieces: "", FilePriority: []int{1, 1}},
+			fr:           Fastresume{Pieces: "", FilePriority: []int{1, 1}},
 			wantComplete: false,
 		},
 		{
 			name:         "deselected file, wanted pieces present",
-			fr:           qbittorrent.Fastresume{Pieces: "\x01\x01\x00", FilePriority: []int{1, 0}},
+			fr:           Fastresume{Pieces: "\x01\x01\x00", FilePriority: []int{1, 0}},
 			wantPieces:   "\x01\x01\x00",
 			wantComplete: true,
 		},
 		{
 			name:         "verified seed-mode bit set",
-			fr:           qbittorrent.Fastresume{Pieces: "\x03\x03\x03", FilePriority: []int{1, 1}},
+			fr:           Fastresume{Pieces: "\x03\x03\x03", FilePriority: []int{1, 1}},
 			wantPieces:   "\x01\x01\x01",
 			wantComplete: true,
 		},
@@ -193,6 +191,29 @@ func TestTransmissionPieces(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTransmissionPiecesMultiBlockPieces(t *testing.T) {
+	t.Parallel()
+
+	// 32 KiB pieces over a 48 KiB file: piece 0 = blocks 0-1, piece 1 = block 2
+	info := metainfo.Info{
+		Name:        "Test.Torrent.2024.1080p.WEB-TEST.mkv",
+		PieceLength: 32768,
+		Pieces:      make([]byte, 2*20),
+		Length:      49152,
+	}
+
+	resume := TransmissionResumeFile{Progress: TransmissionResumeFileProgress{Blocks: "all"}}
+	pieces, complete := transmissionPieces(&resume, &info)
+	assert.True(t, complete)
+	assert.Equal(t, "\x01\x01", pieces)
+
+	// blocks 0 and 2 present, block 1 missing: piece 0 incomplete
+	resume = TransmissionResumeFile{Progress: TransmissionResumeFileProgress{Blocks: "\xa0"}}
+	pieces, complete = transmissionPieces(&resume, &info)
+	assert.False(t, complete)
+	assert.Equal(t, "\x00\x01", pieces)
 }
 
 func TestTransmissionFilePriorities(t *testing.T) {

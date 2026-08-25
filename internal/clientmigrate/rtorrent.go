@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/autobrr/qui/internal/qbittorrent"
-
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
@@ -48,7 +46,7 @@ func (i *RTorrentImport) Migrate() error {
 	}
 
 	if !i.opts.DryRun {
-		if err := MkDirIfNotExists(i.opts.QbitDir); err != nil {
+		if err := os.MkdirAll(i.opts.QbitDir, os.ModePerm); err != nil {
 			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
 		}
 	}
@@ -123,8 +121,6 @@ func (i *RTorrentImport) Migrate() error {
 			continue
 		}
 
-		numPieces := metaInfo.NumPieces()
-
 		// complete means every piece of every wanted (non-off) file is
 		// present; files with priority 0 may legitimately be missing
 		pieces, complete := rtorrentPieces(resumeFile, &metaInfo)
@@ -143,8 +139,10 @@ func (i *RTorrentImport) Migrate() error {
 		}
 		dir = filepath.Clean(dir)
 
+		// also catches POSIX session paths on a Windows host: cross-OS
+		// migration cannot work because the save paths would be unusable
 		if !filepath.IsAbs(dir) {
-			log.Warn().Msgf("(%d/%d) %s has a relative download directory %q, skipping", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
+			log.Warn().Msgf("(%d/%d) %s download directory %q is not an absolute path on this OS, skipping", positionNum, totalJobs, metaInfo.Name, rtFile.Directory)
 			skipped++
 			continue
 		}
@@ -188,7 +186,7 @@ func (i *RTorrentImport) Migrate() error {
 			paused = 0
 		}
 
-		newFastResume := qbittorrent.Fastresume{
+		newFastResume := Fastresume{
 			ActiveTime:                seedingDuration,
 			AddedTime:                 addedTime,
 			Allocation:                "sparse",
@@ -212,7 +210,6 @@ func (i *RTorrentImport) Migrate() error {
 			NumComplete:               16777215,
 			NumDownloaded:             16777215,
 			NumIncomplete:             0,
-			NumPieces:                 int64(numPieces),
 			Paused:                    paused,
 			Peers:                     "",
 			Peers6:                    "",
@@ -237,18 +234,13 @@ func (i *RTorrentImport) Migrate() error {
 			UploadMode:                0,
 			UploadRateLimit:           -1,
 			URLList:                   file.UrlList,
-
-			Path: dir,
 		}
 
 		if metaInfo.IsDir() {
-			newFastResume.HasFiles = true
-
 			if filepath.Base(dir) == metaInfo.Name {
 				// normal d.directory.set layout: directory includes the
 				// torrent's top folder, qBittorrent expects the parent
 				savePath := filepath.Dir(dir)
-				newFastResume.Path = savePath
 				newFastResume.SavePath = savePath
 				newFastResume.QbtSavePath = savePath
 				// legacy and should be removed sometime with 4.3.X
@@ -269,7 +261,6 @@ func (i *RTorrentImport) Migrate() error {
 				newFastResume.MappedFiles = mapped
 			}
 		} else {
-			newFastResume.HasFiles = false
 			newFastResume.QbtHasRootFolder = 0
 		}
 
