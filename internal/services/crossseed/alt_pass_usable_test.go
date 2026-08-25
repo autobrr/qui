@@ -103,7 +103,11 @@ func TestSearchResultUsable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidateName)
-			got := s.searchResultUsable(&source, &candidate, tt.sourceName, tt.sourceSize, tt.candidateName, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes)
+			got := s.searchResultUsable(
+				namedRelease{release: &source, rawName: tt.sourceName},
+				namedRelease{release: &candidate, rawName: tt.candidateName},
+				tt.sourceSize, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes,
+			)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -133,31 +137,51 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 
 	// Indexer 1 returned a raw hit (so the old logic omitted it), but it is junk;
 	// indexer 3 returned nothing. Both must be re-queried; only indexer 2 is done.
-	got := s.indexersWithoutUsableResults([]int{1, 2, 3}, results, &source, sourceName, size, nil, 5, false)
+	got := s.indexersWithoutUsableResults(
+		[]int{1, 2, 3}, results,
+		namedRelease{release: &source, rawName: sourceName},
+		size, nil, 5, false,
+	)
 	require.Equal(t, []int{1, 3}, got)
 
 	// Sanity: the raw helper would have skipped indexer 1 (the P1 bug).
 	require.Equal(t, []int{3}, indexersWithoutResults([]int{1, 2, 3}, results))
 }
 
-func TestShouldRunTitleFallbackForRescueOnly(t *testing.T) {
+// TestHasUsableSearchResult pins the retry-ladder gate. The yearless and
+// alternate-title passes run whenever nothing usable came back, which includes
+// the case that blocked them before: hits arrived but release and size
+// filtering rejected every one.
+func TestHasUsableSearchResult(t *testing.T) {
 	service := &Service{
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	const (
 		sourceName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
-		rescueName = "Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
 		size       = int64(4_000_000_000)
 	)
 	source := rls.ParseString(sourceName)
-	rescue := jackett.SearchResult{Title: rescueName, Size: size}
-	normal := jackett.SearchResult{Title: sourceName, Size: size}
-	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
+	sourceView := namedRelease{release: &source, rawName: sourceName}
 
-	require.True(t, service.shouldRunTitleFallback(nil, &source, sourceName, size, nil, 5, false, false))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, false))
-	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, &source, sourceName, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, &source, sourceName, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, &source, sourceName, size, nil, 5, false, true))
+	match := jackett.SearchResult{Title: sourceName, Size: size}
+	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
+	wrongSize := jackett.SearchResult{Title: sourceName, Size: size * 2}
+
+	tests := []struct {
+		name    string
+		results []jackett.SearchResult
+		want    bool
+	}{
+		{name: "no results", results: nil, want: false},
+		{name: "junk only", results: []jackett.SearchResult{junk}, want: false},
+		{name: "junk and wrong size", results: []jackett.SearchResult{junk, wrongSize}, want: false},
+		{name: "usable match", results: []jackett.SearchResult{match}, want: true},
+		{name: "junk plus usable match", results: []jackett.SearchResult{junk, match}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, service.hasUsableSearchResult(tt.results, sourceView, size, nil, 5, false))
+		})
+	}
 }

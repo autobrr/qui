@@ -685,6 +685,8 @@
     "expires": "Läuft ab {{time}}",
     "refreshFromIndexers": "Von Indexern aktualisieren",
     "partialResults": "Teilergebnisse – einige Indexer haben nicht geantwortet",
+    "arrLookupFailed": "Metadaten-ID-Abfrage fehlgeschlagen – nur Titelsuche, Ergebnisse können unvollständig sein",
+    "arrNoIds": "Keine Metadaten-IDs für dieses Release gefunden – nur Titelsuche",
     "searchScope": "Suchbereich",
     "noIndexers": "Keine Torznab-Indexer verfügbar",
     "noIndexersHelp": "Füge in den Einstellungen Torznab-Indexer hinzu oder aktiviere sie, um nach Cross-Seeds zu suchen.",
@@ -717,6 +719,25 @@
     "block": "Blockieren",
     "addedToBlocklist": "Zur Blockliste hinzugefügt",
     "missingInstance": "Fehlende Instanz für Blockliste",
+    "trace": {
+      "title": "Suchaufschlüsselung",
+      "summaryBadge": "{{total}} Kandidaten, {{matches}} Treffer",
+      "summary": "{{total}} Kandidaten zurückgegeben. Abgelehnt: {{release}} Release-Abweichung, {{size}} Größenabweichung, {{late}} Inhaltsfilter, {{duplicates}} Duplikate. {{matches}} Treffer verbleiben.",
+      "indexersHeading": "Indexer",
+      "status": {
+        "searched": "durchsucht",
+        "notCovered": "unvollständig",
+        "error": "Fehler",
+        "excluded": "ausgeschlossen"
+      },
+      "candidateCount": "{{count}} Kandidaten",
+      "rejectionsHeading": "Abgelehnte Kandidaten",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} weitere mit diesem Grund",
+      "copyReport": "Bericht kopieren",
+      "copied": "Bericht in die Zwischenablage kopiert",
+      "copyFailed": "Bericht konnte nicht kopiert werden"
+    },
     "scope": {
       "allIndexers": "Alle Indexer",
       "selectCustom": "Benutzerdefiniert auswählen",

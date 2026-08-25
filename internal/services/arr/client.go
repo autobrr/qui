@@ -88,7 +88,7 @@ func (c *Client) Ping(ctx context.Context) error {
 
 	// Validate we got a valid response with app name
 	if status.AppName == "" {
-		return fmt.Errorf("invalid response: missing appName")
+		return errors.New("invalid response: missing appName")
 	}
 
 	return nil
@@ -146,6 +146,30 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 		return c.parseSonarrResponse(ctx, resp.Body)
 	case models.ArrInstanceTypeRadarr:
 		return c.parseRadarrResponse(ctx, resp.Body)
+	default:
+		return nil, fmt.Errorf("unsupported instance type: %s", c.instanceType)
+	}
+}
+
+// LookupByTerm queries the ARR title-search endpoint (Radarr /api/v3/movie/lookup,
+// Sonarr /api/v3/series/lookup) and returns IDs/titles from the best-matching
+// candidate, or nil when no candidate matches term (and year, when known).
+func (c *Client) LookupByTerm(ctx context.Context, term string, year int) (*ExternalIDsLookupResult, error) {
+	params := url.Values{}
+	params.Set("term", term)
+	switch c.instanceType {
+	case models.ArrInstanceTypeRadarr:
+		var movies []RadarrMovie
+		if err := c.getJSON(ctx, "/api/v3/movie/lookup", params, &movies); err != nil {
+			return nil, err
+		}
+		return lookupResultFromRadarrMovie(selectRadarrLookupMatch(term, year, movies)), nil
+	case models.ArrInstanceTypeSonarr:
+		var series []SonarrSeries
+		if err := c.getJSON(ctx, "/api/v3/series/lookup", params, &series); err != nil {
+			return nil, err
+		}
+		return c.sonarrSeriesLookupResult(ctx, selectSonarrLookupMatch(term, year, series)), nil
 	default:
 		return nil, fmt.Errorf("unsupported instance type: %s", c.instanceType)
 	}

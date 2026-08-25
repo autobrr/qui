@@ -39,7 +39,10 @@ function render(overrides: Partial<UseTorrentSelectionDerivationsParams> = {}) {
     contextTorrents: [],
     ...overrides,
   }
-  return renderHook((p: UseTorrentSelectionDerivationsParams) => useTorrentSelectionDerivations(p), { initialProps: params })
+  return {
+    ...renderHook((p: UseTorrentSelectionDerivationsParams) => useTorrentSelectionDerivations(p), { initialProps: params }),
+    params,
+  }
 }
 
 describe("useTorrentSelectionDerivations — selectAllFilters (#1925 pin)", () => {
@@ -144,6 +147,22 @@ describe("useTorrentSelectionDerivations — select-all excludes", () => {
     const { result } = render({ isAllSelected: true, excludedFromSelectAll: new Set(["h1"]) })
     expect(result.current.selectAllExcludedTargets).toHaveLength(1)
     expect(result.current.selectAllExcludedTargets[0]).toMatchObject({ hash: "h1" })
+  })
+})
+
+describe("useTorrentSelectionDerivations — no-selection identity across stream ticks", () => {
+  // Each stream tick hands the hook a fresh sortedTorrents array. With nothing
+  // selected the derived collections must keep their identity, or every memo
+  // downstream (row menus, the selection context) re-runs once per tick.
+  it("returns the same empty arrays when sortedTorrents is replaced", () => {
+    const { result, rerender, params } = render({ sortedTorrents: [...TORRENTS] })
+    const first = result.current
+
+    rerender({ ...params, sortedTorrents: [...TORRENTS] })
+
+    expect(result.current.selectAllExcludedTargets).toBe(first.selectAllExcludedTargets)
+    expect(result.current.selectedHashes).toBe(first.selectedHashes)
+    expect(result.current.selectedTorrents).toBe(first.selectedTorrents)
   })
 })
 

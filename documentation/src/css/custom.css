@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/jetbrains-mono";
 
 /**
  * qui documentation theme - based on minimal.css
@@ -78,7 +79,7 @@
 
   /* Font families */
   --ifm-font-family-base: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-  --ifm-font-family-monospace: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --ifm-font-family-monospace: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
   --ifm-heading-font-family: var(--ifm-font-family-base);
 
   /* Menu and sidebar */

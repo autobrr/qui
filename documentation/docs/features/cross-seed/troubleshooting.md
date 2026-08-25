@@ -22,9 +22,25 @@ qui uses strict matching to ensure cross-seeds have identical files. Both releas
 - Language, edition, cut, and version (v2, v3)
 - Variants like IMAX, HYBRID, REPACK, PROPER
 
+Some discovery methods can use an exact reported byte count when strict release matching rejects an approved metadata difference.
+
+Interactive Torznab search, Library Scan, and completion search share this rule. RSS uses the title and byte count from the feed before its one download.
+
+The autobrr `/check` endpoint uses `.Size` without fetching the torrent file. The value can be exact, rounded, or `0`.
+
+If autobrr sends `0`, qui uses a narrow name-only preflight. The `/apply` endpoint calculates the actual size and repeats the match against live sources.
+
+An exact reported size is evidence, not byte verification. qui still checks the downloaded torrent metadata, files, layout, and piece boundaries.
+
 ### Season pack vs episodes
 
 By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
+
+### Prowlarr filters remove expected results
+
+qui searches the selected Prowlarr indexer directly. If that indexer has a search filter enabled, such as freeleech only, the filter also applies to cross-seed searches. The tracker can return no results even when matching cross-seed candidates exist.
+
+Prowlarr does not support per-search filter overrides. Add a second entry for the tracker in Prowlarr with the filter disabled, then select that second entry in qui.
 
 ## Cross-seed search run statuses
 
@@ -80,6 +96,16 @@ See [Season Packs](./season-packs.md) for the full flow, setup requirements, and
 
 ## How do I see why a release was filtered?
 
+For a manual search, open the **Search breakdown** section in the search dialog. It appears under the results when Qui searched Torznab indexers. A Gazelle-only search does not show it. It shows:
+
+- One row for each indexer with its outcome: searched, incomplete, error, or excluded
+- The count for each rejection reason
+- The first rejected candidates for each reason, with the indexer, title, and size
+
+Use **Copy report** to copy a plain-text summary for a bug report. The report contains the source torrent name and the rejected candidate titles.
+
+The sections below cover the same decisions in the logs. Use the logs for automatic runs, or when you need the fully parsed release fields.
+
 Rejection reasons are logged at `DEBUG`, which is the default level:
 
 ```toml
@@ -130,12 +156,24 @@ These fallback torrents are treated like disc-based content: they are added paus
 
 For partial-in-pack, size-based, renamed, or otherwise non-perfect matches, qui also runs piece-boundary protection before the fallback add. This check is always enforced for link-mode fallback, even when **Skip piece boundary safety check** is enabled for regular reuse mode. If the check fails, qui skips the torrent before adding it to qBittorrent.
 
+### 4. Exact-size identity fallback
+
+Sometimes two names describe the same bytes differently. One name can use a different codec, source, season, or episode number.
+
+A fansub name can also split its release-group identity across two parsed fields. Exact positive reported sizes let qui consider these approved differences.
+
+Title, season, episode, and split release-group differences require verification. qui adds these torrents paused and resumes them only after a 100% recheck.
+
+Soft differences, such as codec, source, HDR, edition, or one-sided checksum data, can keep the normal fast path after all safety checks.
+
+If **Skip recheck** is enabled, qui skips only decisions that require verification. RSS and autobrr reject these decisions before their planned download.
+
 ### Auto-resume behavior
 
 - After the recheck, qui auto-resumes only when the missing data is at or below **Max auto-start download** (default: 50 MiB)
 - When only ignorable files are missing (samples, `.nfo`, subtitles), qui auto-resumes anyway, up to 200 MiB
 - Torrents that miss more data stay paused for manual investigation
-- Filesystem fallback and disc-layout torrents require 100% completion before auto-resume
+- Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
 - Configure via **Max auto-start download** in Rules
 
 ## Hardlink mode failed
@@ -169,7 +207,7 @@ The umask only applies to directories qui creates from now on. Directories that 
 
 ## Hardlink/reflink cross-seed shows "missing files"
 
-When hardlink or reflink mode creates every file needed by the incoming torrent, qui adds it with hash checking skipped and starts it immediately. No automatic recheck is triggered because there are no missing extras for qBittorrent to discover.
+When hardlink or reflink mode creates every file needed by the incoming torrent, qui usually adds it with hash checking skipped and starts it immediately. Title rescue and exact-size season, episode, or release-group matches are exceptions. qui adds those torrents paused and requires a full recheck because their names did not prove that the releases are identical.
 
 If qBittorrent still marks the torrent as `missing files`, the new torrent file most likely does not fully match the existing source/candidate files, even though qui matched them by name and size. Review the matching torrent group on the tracker/s before resuming or rechecking the torrent, as one of the copies has corrupted hash/es.
 - **Hardlink mode**: Resuming the torrent will overwrite the bad hashes for that torrent, corrupting the existing torrent/s with the other piece hash/es.

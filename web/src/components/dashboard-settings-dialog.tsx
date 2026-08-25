@@ -32,7 +32,7 @@ const SECTION_IDS = ["server-stats", "tracker-breakdown", "global-stats", "insta
 
 const SORT_COLUMN_IDS = ["tracker", "uploaded", "downloaded", "uploadedSession", "downloadedSession", "ratio", "buffer", "count", "size", "performance"] as const
 
-export function DashboardSettingsDialog() {
+export function DashboardSettingsDialog({ iconOnly }: { iconOnly?: boolean }) {
   const { t } = useTranslation("dashboard")
   const { data: settings } = useDashboardSettings()
   const updateSettings = useUpdateDashboardSettings()
@@ -109,10 +109,16 @@ export function DashboardSettingsDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full sm:w-auto">
-          <Settings className="h-4 w-4 mr-2" />
-          {t("settingsDialog.button")}
-        </Button>
+        {iconOnly ? (
+          <Button variant="outline" size="icon" className="size-11" aria-label={t("settingsDialog.button")}>
+            <Settings className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm">
+            <Settings className="h-4 w-4 mr-2" />
+            {t("settingsDialog.button")}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

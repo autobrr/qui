@@ -19,6 +19,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 const maxConditionDepth = 20
@@ -27,8 +28,8 @@ const maxConditionDepth = 20
 // to avoid surprising matches on short names.
 const minContainsNameLength = 10
 
-// categoryEntry stores torrent info for category-based lookups.
-type categoryEntry struct {
+// CategoryEntry stores torrent info for category-based lookups.
+type CategoryEntry struct {
 	Hash           string // torrent hash for self-exclusion
 	Name           string // lowercased name (for EXISTS_IN exact match)
 	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
@@ -44,6 +45,8 @@ type FreeSpaceSourceState struct {
 	SpaceToClear int64
 	// FilesToClear tracks cross-seed keys already counted to avoid double-counting.
 	FilesToClear map[crossSeedKey]struct{}
+	// CrossSeedHashesToClear tracks verified cross-seed members already counted.
+	CrossSeedHashesToClear map[string]struct{}
 	// HardlinkSignaturesToClear tracks hardlink signatures already counted.
 	HardlinkSignaturesToClear map[string]struct{}
 }
@@ -71,6 +74,10 @@ type EvalContext struct {
 	SpaceToClear int64
 	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
 	FilesToClear map[crossSeedKey]struct{}
+	// CrossSeedFilesByHash contains cycle-local file lists used to verify cross-seed groups.
+	CrossSeedFilesByHash map[string]qbt.TorrentFiles
+	// CrossSeedHashesToClear tracks verified cross-seed members already counted (current active source).
+	CrossSeedHashesToClear map[string]struct{}
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
 	// Used for hardlink_signature grouping and grouped-condition evaluation.
 	HardlinkSignatureByHash map[string]string
@@ -91,9 +98,9 @@ type EvalContext struct {
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
 	CategoryIndex map[string]map[string]map[string]struct{}
 
-	// CategoryNames maps lowercased category → slice of categoryEntry.
+	// CategoryNames maps lowercased category → slice of CategoryEntry.
 	// Used for CONTAINS_IN iteration (stores pre-normalized names).
-	CategoryNames map[string][]categoryEntry
+	CategoryNames map[string][]CategoryEntry
 
 	// NowUnix is the current Unix timestamp, used for age field evaluation.
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
@@ -112,6 +119,9 @@ type EvalContext struct {
 	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
 	// seeding (Progress >= 1.0) on the same instance.
 	SameInstanceCrossSeedSeedingHashSet map[string]struct{}
+	// SameInstanceCrossSeedTagsByHash maps a torrent hash to the raw Tags strings of
+	// its same-instance cross-seeds (self excluded). Built when rules use CROSS_SEED_TAGS.
+	SameInstanceCrossSeedTagsByHash map[string][]string
 
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
@@ -150,9 +160,9 @@ func normalizeName(s string) string {
 
 // BuildCategoryIndex builds the category lookup structures from a list of torrents.
 // Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
-func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]categoryEntry) {
+func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
 	categoryIndex := make(map[string]map[string]map[string]struct{})
-	categoryNames := make(map[string][]categoryEntry)
+	categoryNames := make(map[string][]CategoryEntry)
 
 	for _, t := range torrents {
 		// Use lowercased + trimmed category as key (empty string is valid for uncategorized)
@@ -169,7 +179,7 @@ func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[strin
 		categoryIndex[catKey][nameLower][t.Hash] = struct{}{}
 
 		// Build CategoryNames for CONTAINS_IN iteration
-		categoryNames[catKey] = append(categoryNames[catKey], categoryEntry{
+		categoryNames[catKey] = append(categoryNames[catKey], CategoryEntry{
 			Hash:           t.Hash,
 			Name:           nameLower,
 			NormalizedName: normalizeName(t.Name),
@@ -328,6 +338,9 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 					break
 				}
 			}
+		default:
+			// A group carrying a leaf operator has no children to combine.
+			result = false
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
@@ -638,6 +651,19 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareBool(seeding, cond)
 
+	case FieldCrossSeedTags:
+		// Tags across this torrent and its same-instance cross-seeds: positive
+		// operators match when ANY copy carries a matching tag, NOT_* when none
+		// does. Without member data this degrades to the torrent's own tags.
+		parts := make([]string, 0, 2)
+		if torrent.Tags != "" {
+			parts = append(parts, torrent.Tags)
+		}
+		if ctx != nil {
+			parts = append(parts, ctx.SameInstanceCrossSeedTagsByHash[torrent.Hash]...)
+		}
+		return compareTags(strings.Join(parts, ","), cond)
+
 	default:
 		return false
 	}
@@ -783,13 +809,13 @@ func compareString(value string, cond *RuleCondition) bool {
 	case OperatorNotEqual:
 		return !strings.EqualFold(value, cond.Value)
 	case OperatorContains:
-		return strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.ContainsFold(value, cond.Value)
 	case OperatorNotContains:
-		return !strings.Contains(strings.ToLower(value), strings.ToLower(cond.Value))
+		return !stringutils.ContainsFold(value, cond.Value)
 	case OperatorStartsWith:
-		return strings.HasPrefix(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.HasPrefixFold(value, cond.Value)
 	case OperatorEndsWith:
-		return strings.HasSuffix(strings.ToLower(value), strings.ToLower(cond.Value))
+		return stringutils.HasSuffixFold(value, cond.Value)
 	default:
 		return false
 	}
@@ -971,17 +997,13 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 		})
 	}
 	if cond.Operator == OperatorNotContains {
-		condLower := strings.ToLower(cond.Value)
 		return !slices.ContainsFunc(uniq, func(c string) bool {
-			return strings.Contains(strings.ToLower(c), condLower)
+			return stringutils.ContainsFold(c, cond.Value)
 		})
 	}
 
 	return slices.ContainsFunc(uniq, func(c string) bool {
-		if compareString(c, cond) {
-			return true
-		}
-		return false
+		return compareString(c, cond)
 	})
 }
 
@@ -1061,13 +1083,13 @@ func compareTags(tagsRaw string, cond *RuleCondition) bool {
 	case OperatorNotEqual:
 		return !anyTagMatches(tags, condValue, strings.EqualFold)
 	case OperatorContains:
-		return anyTagMatches(tags, condValue, tagContains)
+		return anyTagMatches(tags, condValue, stringutils.ContainsFold)
 	case OperatorNotContains:
-		return !anyTagMatches(tags, condValue, tagContains)
+		return !anyTagMatches(tags, condValue, stringutils.ContainsFold)
 	case OperatorStartsWith:
-		return anyTagMatches(tags, condValue, tagStartsWith)
+		return anyTagMatches(tags, condValue, stringutils.HasPrefixFold)
 	case OperatorEndsWith:
-		return anyTagMatches(tags, condValue, tagEndsWith)
+		return anyTagMatches(tags, condValue, stringutils.HasSuffixFold)
 	default:
 		return false
 	}
@@ -1083,22 +1105,6 @@ func anyTagMatches(tags []string, condValue string, match func(string, string) b
 	return false
 }
 
-// tagContains checks if tag contains condValue (case-insensitive).
-func tagContains(tag, condValue string) bool {
-	return strings.Contains(strings.ToLower(tag), condValue)
-}
-
-// tagStartsWith checks if tag starts with condValue (case-insensitive).
-func tagStartsWith(tag, condValue string) bool {
-	return strings.HasPrefix(strings.ToLower(tag), condValue)
-}
-
-// tagEndsWith checks if tag ends with condValue (case-insensitive).
-func tagEndsWith(tag, condValue string) bool {
-	return strings.HasSuffix(strings.ToLower(tag), condValue)
-}
-
-// compareInt64 compares an int64 value against the condition.
 func compareInt64(value int64, cond *RuleCondition) bool {
 	// Parse the condition value as int64. Trim first so a whitespace-padded value
 	// (e.g. from an imported config) compares the same way save-time validation
@@ -1317,6 +1323,7 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 		ctx.FreeSpace = math.MaxInt64
 		ctx.SpaceToClear = 0
 		ctx.FilesToClear = nil
+		ctx.CrossSeedHashesToClear = nil
 		ctx.HardlinkSignaturesToClear = nil
 		ctx.ActiveFreeSpaceSource = ""
 		return
@@ -1325,6 +1332,7 @@ func (ctx *EvalContext) LoadFreeSpaceSourceState(sourceKey string) {
 	ctx.FreeSpace = state.FreeSpace
 	ctx.SpaceToClear = state.SpaceToClear
 	ctx.FilesToClear = state.FilesToClear
+	ctx.CrossSeedHashesToClear = state.CrossSeedHashesToClear
 	ctx.HardlinkSignaturesToClear = state.HardlinkSignaturesToClear
 	ctx.ActiveFreeSpaceSource = sourceKey
 }
@@ -1343,5 +1351,6 @@ func (ctx *EvalContext) PersistFreeSpaceSourceState() {
 
 	state.SpaceToClear = ctx.SpaceToClear
 	state.FilesToClear = ctx.FilesToClear
+	state.CrossSeedHashesToClear = ctx.CrossSeedHashesToClear
 	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }

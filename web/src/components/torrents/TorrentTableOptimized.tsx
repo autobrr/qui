@@ -32,18 +32,13 @@ import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
 import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
-import { formatBytes } from "@/lib/utils"
-import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type Row
-} from "@tanstack/react-table"
+import { formatBytes, formatBytesOrFallback } from "@/lib/utils"
+import { useTable } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
+import { torrentTableFeatures, type TorrentRow } from "./tanstackTableFeatures"
 import { type TableViewMode } from "./TorrentTableColumns"
 import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
@@ -75,7 +70,9 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { useSpreadsheetDisguise } from "@/lib/spreadsheet-disguise"
 import { resolveStreamFallbackStatus } from "@/lib/stream-status"
+import { buildTorrentFieldRequest, type TorrentFieldName, type TorrentFieldScope, type TorrentFieldSelection } from "@/lib/torrent-field-request"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -299,6 +296,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
+  // Spreadsheet theme: row numbers down the left edge, with a blank corner cell
+  // in the header. Stacked (compact) rows have no column grid to number.
+  const showRowGutter = useSpreadsheetDisguise() && desktopViewMode !== "compact"
+
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
   // These should be defined at module scope, not inside the component, to ensure stable references
@@ -438,7 +439,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isAllInstancesView = instanceId <= 0
 
   // Memoized so the `?? []` fallback cannot mint a fresh array per render:
-  // these feed fetchAllTorrentField, whose identity anchors the shared row
+  // these feed fetchTorrentField, whose identity anchors the shared row
   // menu bundle.
   const effectiveIncludedCategories = useMemo(
     () => filters?.expandedCategories ?? filters?.categories ?? [],
@@ -777,16 +778,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     sortedTorrents,
   })
 
-  const table = useReactTable({
+  const table = useTable({
+    features: torrentTableFeatures,
     data: sortedTorrents,
     columns,
-    getCoreRowModel: getCoreRowModel(),
     // For cross-seed filtering, enable client-side sorting and filtering
     // For regular filtering, backend handles sorting and column filters
     manualSorting: !isCrossSeedFiltering,
-    getSortedRowModel: isCrossSeedFiltering ? getSortedRowModel() : undefined,
     manualFiltering: !isCrossSeedFiltering,
-    getFilteredRowModel: isCrossSeedFiltering ? getFilteredRowModel() : undefined,
     // Prefer stable torrent hash for row identity while keeping duplicates unique
     getRowId: (row: Torrent, index: number) => {
       const baseIdentity = row.hash ?? row.infohash_v1 ?? row.infohash_v2
@@ -833,9 +832,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // Enable column resizing
     enableColumnResizing: true,
     columnResizeMode: "onChange" as const,
-    // Prevent automatic state resets during data updates
-    autoResetPageIndex: false,
-    autoResetExpanded: false,
   })
 
   // Keep the leaf-column accessor current for useColumnDnd (drag reads it lazily).
@@ -976,9 +972,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     filters,
   })
 
-  // Callback for context menu to fetch field for matching torrents
-  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path" | "magnet_uri"): Promise<string[]> => {
-    const response = await api.getTorrentField(instanceId, field, {
+  // Callback for context menu to fetch field values on demand: explicit
+  // selection when given, otherwise the active filter scope (select-all).
+  const fetchTorrentField = useCallback(async (
+    field: TorrentFieldName,
+    selection?: TorrentFieldSelection
+  ): Promise<string[]> => {
+    const scope: TorrentFieldScope = {
+      isCrossInstance: isCrossInstanceEndpoint ?? false,
+      instanceIds,
       sort: activeSortField,
       order: activeSortOrder,
       search: effectiveSearch,
@@ -996,9 +998,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         expr: combinedFiltersExpr || undefined,
       },
       excludeHashes: selectAllExcludeHashes,
-      excludeTargets: isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-      instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-    })
+      excludeTargets: selectAllExcludedTargets,
+    }
+    const response = await api.getTorrentField(instanceId, field, buildTorrentFieldRequest(scope, selection))
     return response.values
   }, [instanceId, filters, effectiveIncludedCategories, effectiveExcludedCategories, combinedFiltersExpr, activeSortField, activeSortOrder, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
 
@@ -1023,13 +1025,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     backendLoadMore,
   })
 
-  // Memoize minTableWidth to avoid recalculation on every row render
+  // Keyed on the state that changes widths, not on the per-render `table` object.
   const minTableWidth = useMemo(() => {
     return table.getVisibleLeafColumns().reduce((width, col) => {
       return width + col.getSize()
     }, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, columnVisibility])
+  }, [columnVisibility, columnSizing])
 
   const { clearFiltersAtomically } = useFilterLifecycle({
     virtualizer,
@@ -1167,6 +1169,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // reading current state at click time. Assigned during render, same pattern
   // as leafColumnIdsRef above.
   const rowInteraction = {
+    // v9's useTable returns a new table object every render; read it here, never from a dep array.
+    table,
     isReadOnly,
     isAllSelected,
     selectedRowIds,
@@ -1181,7 +1185,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const rowInteractionRef = useRef(rowInteraction)
   rowInteractionRef.current = rowInteraction
 
-  const handleRowClick = useCallback((e: React.MouseEvent, row: Row<Torrent>, isSelected: boolean, isRowSelected: boolean) => {
+  const handleRowClick = useCallback((e: React.MouseEvent, row: TorrentRow, isSelected: boolean, isRowSelected: boolean) => {
     const s = rowInteractionRef.current
     // Don't select when clicking checkbox or its wrapper
     const target = e.target as HTMLElement
@@ -1196,7 +1200,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const selectionIdentity = s.getSelectionIdentity(torrent)
-    const allRows = table.getRowModel().rows
+    const allRows = s.table.getRowModel().rows
     const currentIndex = allRows.findIndex(r => r.id === row.id)
 
     // Handle shift-click for range selection - EXACTLY like checkbox
@@ -1261,9 +1265,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       lastSelectedIndexRef.current = currentIndex
     }
     s.onTorrentSelect?.(torrent)
-  }, [table, lastSelectedIndexRef])
+  }, [lastSelectedIndexRef])
 
-  const handleRowContextMenu = useCallback((row: Row<Torrent>, isRowSelected: boolean) => {
+  const handleRowContextMenu = useCallback((row: TorrentRow, isRowSelected: boolean) => {
     const s = rowInteractionRef.current
     if (s.isReadOnly) {
       return
@@ -1310,8 +1314,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     onCrossSeedSearch,
     isCrossSeedSearching,
     onFilterChange,
-    onFetchAllField: fetchAllTorrentField,
-  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchAllTorrentField])
+    onFetchTorrentField: fetchTorrentField,
+  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
@@ -1562,6 +1566,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 setColumnFilters={setColumnFilters}
                 minTableWidth={minTableWidth}
                 viewMode={desktopViewMode}
+                showRowGutter={showRowGutter}
               />
 
               {/* Body */}
@@ -1605,6 +1610,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       isRowSelected={isRowSelected}
                       desktopViewMode={desktopViewMode as TableViewMode}
                       minTableWidth={minTableWidth}
+                      showRowGutter={showRowGutter}
                       columns={columns}
                       columnSizing={columnSizing}
                       columnVisibility={columnVisibility}
@@ -1831,7 +1837,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         <TooltipTrigger asChild>
                           <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
                             <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
-                            <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
+                            <span className="ml-auto font-medium truncate">{formatBytesOrFallback(effectiveServerState.free_space_on_disk, t("common:status.unknown"))}</span>
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>{t("statusBar.freeSpace")}</TooltipContent>

@@ -31,7 +31,7 @@ func TestDatabasePathResolution(t *testing.T) {
 			name: "default_next_to_config",
 			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
 				configPath := filepath.Join(tmpDir, "config.toml")
-				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
 				return configPath, "", filepath.Join(tmpDir, "qui.db")
 			},
 		},
@@ -42,7 +42,7 @@ func TestDatabasePathResolution(t *testing.T) {
 				dataDir := filepath.Join(tmpDir, "data")
 				require.NoError(t, os.MkdirAll(dataDir, 0o755))
 				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", dataDir)
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 				return configPath, "", filepath.Join(dataDir, "qui.db")
 			},
 		},
@@ -55,7 +55,7 @@ func TestDatabasePathResolution(t *testing.T) {
 				require.NoError(t, os.MkdirAll(configDataDir, 0o755))
 				require.NoError(t, os.MkdirAll(envDataDir, 0o755))
 				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", configDataDir)
-				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 				return configPath, envDataDir, filepath.Join(envDataDir, "qui.db")
 			},
 		},
@@ -132,6 +132,67 @@ func TestCustomThemesDirResolution(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, filepath.Clean(expected), filepath.Clean(cfg.GetCustomThemesDir()))
+		})
+	}
+}
+
+func TestBackupDirResolution(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, tmpDir string) (configPath string, env string, expected string)
+	}{
+		{
+			name: "default_backups_subdir_of_data_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				dataDir := filepath.Join(tmpDir, "data")
+				content := testConfigContent + fmt.Sprintf("dataDir = %q\n", dataDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", filepath.Join(dataDir, "backups")
+			},
+		},
+		{
+			name: "absolute_override_in_config",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				backupDir := filepath.Join(tmpDir, "backup-storage")
+				content := testConfigContent + fmt.Sprintf("backupDir = %q\n", backupDir)
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", backupDir
+			},
+		},
+		{
+			name: "relative_override_resolved_against_config_dir",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				content := testConfigContent + "backupDir = \"my-backups\"\n"
+				require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
+				return configPath, "", filepath.Join(tmpDir, "my-backups")
+			},
+		},
+		{
+			name: "env_override",
+			prepare: func(t *testing.T, tmpDir string) (string, string, string) {
+				configPath := filepath.Join(tmpDir, "config.toml")
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
+				envDir := filepath.Join(tmpDir, "env-backups")
+				return configPath, envDir, envDir
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath, env, expected := tt.prepare(t, tmpDir)
+			if env != "" {
+				t.Setenv(envPrefix+"BACKUP_DIR", env)
+			}
+
+			cfg, err := New(configPath)
+			require.NoError(t, err)
+
+			assert.Equal(t, filepath.Clean(expected), filepath.Clean(cfg.GetBackupDir()))
 		})
 	}
 }
@@ -251,7 +312,7 @@ func TestConfigDirResolution(t *testing.T) {
 					err := os.MkdirAll(inputPath, 0o755)
 					require.NoError(t, err)
 				} else {
-					err := os.WriteFile(inputPath, []byte("test"), 0o644)
+					err := os.WriteFile(inputPath, []byte("test"), 0o600)
 					require.NoError(t, err)
 				}
 			}
@@ -273,7 +334,7 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 			name: "config_file_path",
 			prepare: func(t *testing.T, tmpDir string) (string, string, int, string) {
 				configPath := filepath.Join(tmpDir, "myconfig.toml")
-				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
+				require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
 				return configPath, "localhost", 8080, filepath.Join(tmpDir, "qui.db")
 			},
 		},
@@ -283,7 +344,7 @@ func TestNewLoadsConfigFromFileOrDirectory(t *testing.T) {
 				configDir := filepath.Join(tmpDir, "configdir")
 				require.NoError(t, os.MkdirAll(configDir, 0o755))
 				content := "host = \"0.0.0.0\"\nport = 9090\nsessionSecret = \"dir-secret\"\n"
-				require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o644))
+				require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(content), 0o600))
 				return configDir, "0.0.0.0", 9090, filepath.Join(configDir, "qui.db")
 			},
 		},
@@ -308,14 +369,14 @@ func TestBindOrReadFromFile(t *testing.T) {
 	tmpKeyFile := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "key-file.txt")
 		content := "key-from-file"
-		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 		return configPath
 	}
 
 	tmpKeyFileWithNewline := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "key-file.txt")
 		content := "key-from-file\n"
-		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(content), 0o600))
 		return configPath
 	}
 
@@ -325,7 +386,7 @@ func TestBindOrReadFromFile(t *testing.T) {
 
 	genConfigFile := func(t *testing.T, tmpDir string) string {
 		configPath := filepath.Join(tmpDir, "myconfig.toml")
-		require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o644))
+		require.NoError(t, os.WriteFile(configPath, []byte(testConfigContent), 0o600))
 		return configPath
 	}
 
@@ -401,9 +462,9 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReload(t *testing.T) {
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(_ *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 	})
 
 	previousAuth := authReloadSettings{
@@ -420,7 +481,7 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReload(t *testing.T) {
 	assert.True(t, cfg.Config.IAcknowledgeThisIsABadIdea)
 	assert.Equal(t, []string{"127.0.0.1/32"}, cfg.Config.AuthDisabledAllowedCIDRs)
 	assert.False(t, cfg.Config.OIDCEnabled)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(0), listenerCalls.Load())
 	assert.Equal(t, zerolog.WarnLevel, zerolog.GlobalLevel())
 	require.NoError(t, cfg.Config.ValidateAuthDisabledConfig())
 }
@@ -442,9 +503,9 @@ func TestApplyDynamicChangesNotifiesOnValidAuthDisabledReload(t *testing.T) {
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 		assert.True(t, conf.IsAuthDisabled())
 		assert.Equal(t, []string{"10.0.0.0/8"}, conf.AuthDisabledAllowedCIDRs)
 	})
@@ -459,7 +520,7 @@ func TestApplyDynamicChangesNotifiesOnValidAuthDisabledReload(t *testing.T) {
 	cfg.applyDynamicChanges(previousAuth)
 
 	assert.Equal(t, "test", cfg.Config.Version)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(1), listenerCalls.Load())
 	assert.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
 }
 
@@ -479,9 +540,9 @@ func TestApplyDynamicChangesRejectsInvalidCORSReload(t *testing.T) {
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 		assert.Equal(t, []string{"https://good.example"}, conf.CORSAllowedOrigins)
 	})
 
@@ -493,7 +554,7 @@ func TestApplyDynamicChangesRejectsInvalidCORSReload(t *testing.T) {
 	cfg.applyDynamicChanges(previous)
 
 	assert.Equal(t, []string{"https://good.example"}, cfg.Config.CORSAllowedOrigins)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(1), listenerCalls.Load())
 }
 
 func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *testing.T) {
@@ -514,9 +575,9 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *
 		logManager: NewLogManager("test"),
 	}
 
-	var listenerCalls int32
+	var listenerCalls atomic.Int32
 	cfg.RegisterReloadListener(func(_ *domain.Config) {
-		atomic.AddInt32(&listenerCalls, 1)
+		listenerCalls.Add(1)
 	})
 
 	previous := authReloadSettings{
@@ -534,7 +595,7 @@ func TestApplyDynamicChangesRejectsInvalidAuthDisabledReloadAlsoRestoresCORS(t *
 	assert.Nil(t, cfg.Config.AuthDisabledAllowedCIDRs)
 	assert.False(t, cfg.Config.OIDCEnabled)
 	assert.Equal(t, []string{"https://good.example"}, cfg.Config.CORSAllowedOrigins)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&listenerCalls))
+	assert.Equal(t, int32(0), listenerCalls.Load())
 }
 
 func TestHydrateConfigFromViperSplitsStringSlices(t *testing.T) {

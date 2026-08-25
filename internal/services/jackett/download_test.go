@@ -109,7 +109,7 @@ func TestDownloadRateLimitError_ErrorsIs(t *testing.T) {
 	}
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
-	assert.True(t, errors.Is(wrapped, &DownloadRateLimitError{}), "errors.Is should find DownloadRateLimitError in wrapped error")
+	assert.ErrorIs(t, wrapped, &DownloadRateLimitError{}, "errors.Is should find DownloadRateLimitError in wrapped error")
 }
 
 func TestIsRetryableDownloadError(t *testing.T) {
@@ -219,7 +219,7 @@ func TestDownloadRateLimitError_ErrorsAs(t *testing.T) {
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
 	var dlErr *DownloadRateLimitError
-	require.True(t, errors.As(wrapped, &dlErr), "errors.As should extract DownloadRateLimitError from wrapped error")
+	require.ErrorAs(t, wrapped, &dlErr, "errors.As should extract DownloadRateLimitError from wrapped error")
 	assert.Equal(t, 42, dlErr.IndexerID)
 	assert.Equal(t, "TestIndexer", dlErr.IndexerName)
 }

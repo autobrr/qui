@@ -30,6 +30,10 @@ environment variable (see the [configuration reference](../configuration/referen
 Each theme is a single, self-contained `.css` file placed directly in that
 directory (subdirectories and symlinks are ignored).
 
+Ready-made themes live in
+[qui-community-themes](https://github.com/autobrr/qui-community-themes), which
+also takes submissions.
+
 ## Authoring a theme
 
 A theme file has an optional metadata comment header followed by a `:root`
@@ -65,7 +69,7 @@ The easiest way to build a complete theme is to copy one of qui's free built-in
 themes and adjust the values. Their source files are the authoritative, always
 up-to-date starting point:
 
-[github.com/autobrr/qui/tree/main/web/src/themes](https://github.com/autobrr/qui/tree/main/web/src/themes)
+[github.com/autobrr/qui/tree/main/internal/themes/assets](https://github.com/autobrr/qui/tree/main/internal/themes/assets)
 (`minimal.css` is the neutral default and a good base).
 
 Copy the `:root` and `.dark` blocks into your own file - you do **not** need the

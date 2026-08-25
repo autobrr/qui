@@ -13,8 +13,8 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// torznabCaps captures the parsed capability and category data from a Torznab caps response.
-type torznabCaps struct {
+// TorznabCaps captures the parsed capability and category data from a Torznab caps response.
+type TorznabCaps struct {
 	Capabilities []string
 	Categories   []models.TorznabIndexerCategory
 	LimitDefault int
@@ -58,13 +58,13 @@ type torznabSubcatNode struct {
 	Name string `xml:"name,attr"`
 }
 
-func parseTorznabCaps(r io.Reader) (*torznabCaps, error) {
+func parseTorznabCaps(r io.Reader) (*TorznabCaps, error) {
 	var resp torznabCapsResponse
 	if err := xml.NewDecoder(r).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("decode caps response: %w", err)
 	}
 
-	caps := &torznabCaps{
+	caps := &TorznabCaps{
 		LimitDefault: defaultTorznabLimit,
 		LimitMax:     defaultTorznabLimit,
 	}

@@ -234,7 +234,6 @@ describe("toCompatibleMatch", () => {
     const result = toCompatibleMatch(makeMatch())
     expect(result.added_on).toBe(0)
     expect(result.ratio).toBe(0)
-    expect(result.magnet_uri).toBe("")
   })
 })
 

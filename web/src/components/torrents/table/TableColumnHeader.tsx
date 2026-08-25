@@ -6,22 +6,23 @@
 import type { ColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import type { ColumnFilter } from "@/lib/column-filter-utils"
-import type { Torrent } from "@/types"
 import { closestCenter, DndContext } from "@dnd-kit/core"
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import { horizontalListSortingStrategy, SortableContext } from "@dnd-kit/sortable"
-import type { Table } from "@tanstack/react-table"
 import type { Dispatch, SetStateAction } from "react"
 import { DraggableTableHeader } from "../DraggableTableHeader"
+import type { TorrentTable } from "../tanstackTableFeatures"
 
 export interface TableColumnHeaderProps {
-  table: Table<Torrent>
+  table: TorrentTable
   sensors: ColumnDnd["sensors"]
   onDragEnd: ColumnDnd["onDragEnd"]
   columnFilters: ColumnFilter[]
   setColumnFilters: Dispatch<SetStateAction<ColumnFilter[]>>
   minTableWidth: number
   viewMode: ViewMode
+  // Spreadsheet theme only: reserve the blank corner above the row-number gutter.
+  showRowGutter?: boolean
 }
 
 /**
@@ -38,6 +39,7 @@ export function TableColumnHeader({
   setColumnFilters,
   minTableWidth,
   viewMode,
+  showRowGutter,
 }: TableColumnHeaderProps) {
   if (viewMode === "compact") {
     return null
@@ -62,6 +64,7 @@ export function TableColumnHeader({
               strategy={horizontalListSortingStrategy}
             >
               <div className="flex" style={{ minWidth: `${minTableWidth}px` }}>
+                {showRowGutter && <div className="ss-corner" aria-hidden="true" />}
                 {headers.map(header => (
                   <DraggableTableHeader
                     key={header.id}

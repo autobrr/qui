@@ -685,6 +685,8 @@
     "expires": "Vyprší {{time}}",
     "refreshFromIndexers": "Aktualizovat z indexerů",
     "partialResults": "Částečné výsledky - některé indexery neodpověděly",
+    "arrLookupFailed": "Vyhledání ID metadat selhalo - hledáno pouze podle názvu, výsledky mohou být neúplné",
+    "arrNoIds": "Pro tuto release nebyla nalezena žádná ID metadat - hledáno pouze podle názvu",
     "searchScope": "Hledat rozsah",
     "noIndexers": "Nejsou dostupné žádné Torznab indexery",
     "noIndexersHelp": "Přidejte nebo povolte Torznab indexery v Nastavení pro hledání křížových sdílení.",
@@ -717,6 +719,25 @@
     "block": "Blokovat",
     "addedToBlocklist": "Přidáno do blokovacího seznamu",
     "missingInstance": "Chybí instance pro blokovací seznam",
+    "trace": {
+      "title": "Rozpis vyhledávání",
+      "summaryBadge": "{{total}} kandidátů, {{matches}} shod",
+      "summary": "Vráceno {{total}} kandidátů. Odmítnuto: {{release}} neshoda release, {{size}} neshoda velikosti, {{late}} filtr obsahu, {{duplicates}} duplicity. Zbývá {{matches}} shod.",
+      "indexersHeading": "Indexery",
+      "status": {
+        "searched": "prohledáno",
+        "notCovered": "neúplné",
+        "error": "chyba",
+        "excluded": "vyloučeno"
+      },
+      "candidateCount": "{{count}} kandidátů",
+      "rejectionsHeading": "Odmítnutí kandidáti",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} dalších se stejným důvodem",
+      "copyReport": "Kopírovat report",
+      "copied": "Report zkopírován do schránky",
+      "copyFailed": "Report se nepodařilo zkopírovat"
+    },
     "scope": {
       "allIndexers": "Všechny indexery",
       "selectCustom": "Vybrat vlastní",

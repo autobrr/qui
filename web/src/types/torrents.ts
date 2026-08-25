@@ -109,7 +109,6 @@ export interface Torrent {
   popularity: number
   private: boolean
   last_activity: number
-  magnet_uri: string
   max_ratio: number
   max_seeding_time: number
   max_inactive_seeding_time?: number

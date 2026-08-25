@@ -135,7 +135,7 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Tracker message | Per-tracker status message; use `nil` for an empty message (requires qBittorrent 5.1+)                       |
 | Comment         | Torrent comment field                                         |
 
-Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
+Note: if you have [Tracker Customizations](./tracker-customizations.md) configured (Dashboard → **Tracker Breakdown**), the **Tracker** condition can match the display name in addition to the raw URL/domain.
 
 #### Mode Fields
 
@@ -172,6 +172,7 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Seeding on Other Instance          | Boolean - a matching torrent is actively seeding on at least one other active instance |
 | Cross-seed Exists on Same Instance | Boolean - another matching torrent exists on this instance                      |
 | Cross-seed Seeding on Same Instance | Boolean - another matching torrent is actively seeding on this instance        |
+| Cross-seed Tags                    | String - the tags of this torrent and all of its same-instance cross-seeds as one set. NOT operators match only when no copy has the tag. Same matching rules as **Tags** (see [Tag conditions](#tag-conditions)). With no cross-seeds, qui checks only the torrent's own tags |
 
 #### Filesystem Fields
 
@@ -533,6 +534,7 @@ Delete actions can specify a `groupId` to expand the deletion to all torrents in
 When a torrent matches the rule, the system finds other torrents that point to the same downloaded files (cross-seeds/duplicates) and deletes them together. This is useful when you want to fully remove content and all its cross-seeded copies at once.
 
 - **Safe expansion**: If qui can't safely confirm another torrent uses the same files, it won't be included in the deletion.
+- **File lists decide, not paths**: qui includes a candidate only when at least 90% of the smaller torrent's bytes use the same file locations. A torrent that shares only the folder, such as a pack with a top folder named `Season 2`, keeps its files and stays in the client. If overlap is above zero but below 90%, qui skips the entire deletion group.
 - **Safety-first**: If verification can't complete for any reason, the entire group is skipped rather than risking broken torrents.
 - **Preview**: The delete preview shows all torrents that would be deleted, with cross-seeds marked.
 
@@ -567,7 +569,7 @@ Options:
 
 - **Managed / Replace in Client** - `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
 - **Use Tracker as Tag** - Derive tag from tracker domain
-- **Use Display Name** - Use tracker customization display name instead of raw domain
+- **Use Display Name** - Use the [tracker customization](./tracker-customizations.md) display name instead of the raw domain
 
 Behavior reference:
 
@@ -616,7 +618,7 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 | `.Hash`                | Info hash                                                                                |
 | `.Category`            | qBittorrent category                                                                     |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
-| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
+| `.Tracker`             | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 **Template function:**
 
@@ -630,7 +632,11 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By category: `/data/{{.Category}}` → e.g. `/data/movies`
 - By name (safe for paths): `/data/{{ sanitize .Name }}`
 - By isolation folder: `/data/{{.IsolationFolderName}}`
-- By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
+- By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
+
+:::note
+For `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition, or a tag action with **Use Tracker as Tag** and **Use Display Name** enabled. Without one of those, `.Tracker` falls back to the tracker domain and your folders are named after the domain instead.
+:::
 
 ### Auto Management
 
@@ -721,7 +727,7 @@ The save path field supports Go templates, the same as the [Move action](#move-p
 | `.Hash`                | Info hash                                                                                |
 | `.Category`            | qBittorrent category (on source instance)                                                |
 | `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
-| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
+| `.Tracker`             | Tracker display name from [Tracker Customizations](./tracker-customizations.md), otherwise the tracker domain |
 
 | Function   | Description                                                                 |
 | ---------- | --------------------------------------------------------------------------- |
@@ -752,7 +758,7 @@ The `HARDLINK_SCOPE` field lets automations distinguish between torrents whose f
 
 #### How scope is determined
 
-When an automation references `HARDLINK_SCOPE`, qui builds a hardlink index by calling `Lstat()` on every file of every torrent in qBittorrent. For each file it extracts:
+When an automation references `HARDLINK_SCOPE`, qui validates and inspects every file of every torrent in qBittorrent. If a valid path has no priority-0 (`Do not download`) file, qui ignores that file. Qui scans an existing priority-0 file like any other regular file. For each regular file, it extracts:
 
 - The **inode** and **device ID** — uniquely identifying the file on disk.
 - The **nlink count** — the total number of hardlinks to that inode, as reported by the filesystem.
@@ -779,7 +785,7 @@ Combined with AND/OR groups and the "is not" operator, every combination of the 
 
 #### Unknown scope and safety behavior
 
-If qui cannot `Lstat()` **any** file in a torrent — due to wrong paths, missing permissions, or inaccessible storage — that torrent receives no scope entry. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This is a safety measure to prevent unintended deletions of torrents qui cannot fully inspect.
+If path validation or file inspection fails for **any remaining** file, the torrent receives no scope entry. Causes include invalid paths, missing permissions, and inaccessible storage. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This safety measure prevents unintended deletion of torrents that qui cannot fully inspect.
 
 To diagnose this, enable debug logging and look for the "hardlink index built" log message, which reports an `inaccessible` count.
 
@@ -1024,14 +1030,15 @@ Cross-seeds are only expanded and displayed in the preview when using `Remove wi
 | Delete Mode                            | Space Added to Projection |
 | -------------------------------------- | ------------------------- |
 | Remove with files                      | Full torrent size         |
-| Preserve cross-seeds (no cross-seeds)  | Full torrent size         |
-| Preserve cross-seeds (has cross-seeds) | 0 (files kept)            |
+| Preserve cross-seeds (no shared files) | Full torrent size         |
+| Preserve cross-seeds (shared files)    | 0 (files kept)            |
 
 **How preserve cross-seeds works:**
 
-- Cross-seed detection checks if any other torrent shares the same Content Path at evaluation time (before any removals).
-- If multiple torrents share the same files, removing them all in one rule run will still keep the files on disk. No disk space is freed from that group because each torrent sees the others as cross-seeds.
-- Only non-cross-seeded torrents contribute to the free-space projection when using preserve mode.
+- Torrents are candidates when they share the same Content Path. qui then compares their resolved file paths and sizes.
+- Torrents in the same directory that use different files are not treated as cross-seeds. Their files are removed.
+- If torrents share files, or the file comparison cannot be completed, qui keeps the files.
+- Only torrents whose files will be removed contribute to the free-space projection.
 
 **Example:** With 400GB free and a rule "Delete if Free Space < 500GB" using `Remove with files`, the system deletes oldest torrents until the cumulative freed space reaches 100GB, then stops. A 50GB torrent and its cross-seed (same files) only count as 50GB freed, not 100GB.
 

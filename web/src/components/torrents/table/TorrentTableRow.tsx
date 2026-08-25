@@ -10,15 +10,14 @@ import { cn } from "@/lib/utils"
 import type { Torrent } from "@/types"
 import {
   flexRender,
-  type ColumnDef,
   type ColumnOrderState,
   type ColumnSizingState,
-  type Row,
-  type VisibilityState
+  type ColumnVisibilityState
 } from "@tanstack/react-table"
 import { memo } from "react"
 import { TorrentContextMenu, type TorrentContextMenuProps } from "../TorrentContextMenu"
 import type { TableViewMode } from "../TorrentTableColumns"
+import type { TorrentRow, TorrentTableColumnDef } from "../tanstackTableFeatures"
 import { CompactRow } from "./CompactRow"
 
 // Everything the per-row context menu needs except the row-specific fields.
@@ -39,7 +38,7 @@ export interface CompactRowSharedProps {
 }
 
 export interface TorrentTableRowProps {
-  row: Row<Torrent>
+  row: TorrentRow
   virtualIndex: number
   virtualStart: number
   virtualSize: number
@@ -47,17 +46,19 @@ export interface TorrentTableRowProps {
   isRowSelected: boolean
   desktopViewMode: TableViewMode
   minTableWidth: number
+  // Spreadsheet theme only: render the row number in a left gutter cell.
+  showRowGutter?: boolean
   // Comparison tokens: cells read column config lazily through `row`, so these
   // exist only to invalidate the memo when table-level display state changes
   // (column set, resize, visibility, order).
-  columns: ColumnDef<Torrent>[]
+  columns: TorrentTableColumnDef[]
   columnSizing: ColumnSizingState
-  columnVisibility: VisibilityState
+  columnVisibility: ColumnVisibilityState
   columnOrder: ColumnOrderState
   menu: TorrentRowMenuProps
   compact: CompactRowSharedProps
-  onRowClick: (event: React.MouseEvent, row: Row<Torrent>, isSelected: boolean, isRowSelected: boolean) => void
-  onRowContextMenu: (row: Row<Torrent>, isRowSelected: boolean) => void
+  onRowClick: (event: React.MouseEvent, row: TorrentRow, isSelected: boolean, isRowSelected: boolean) => void
+  onRowContextMenu: (row: TorrentRow, isRowSelected: boolean) => void
 }
 
 // TanStack Table rebuilds the Row wrapper whenever the data array changes, so
@@ -96,6 +97,7 @@ export const TorrentTableRow = memo(function TorrentTableRow({
   isRowSelected,
   desktopViewMode,
   minTableWidth,
+  showRowGutter,
   menu,
   compact,
   onRowClick,
@@ -150,6 +152,9 @@ export const TorrentTableRow = memo(function TorrentTableRow({
         onClick={(e) => onRowClick(e, row, isSelected, isRowSelected)}
         onContextMenu={() => onRowContextMenu(row, isRowSelected)}
       >
+        {showRowGutter && (
+          <div className="ss-row-gutter" aria-hidden="true">{virtualIndex + 1}</div>
+        )}
         {row.getVisibleCells().map(cell => {
           // Compact columns (tracker_icon, status_icon) use px-0 to match header
           const isCompactColumn = cell.column.id === "tracker_icon" || cell.column.id === "status_icon"

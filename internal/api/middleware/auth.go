@@ -80,6 +80,13 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 				return
 			}
 
+			// The built-in theme catalog and stored selection are public so
+			// the setup and login pages paint the selected theme too.
+			if r.Method == http.MethodGet && (strings.HasSuffix(r.URL.Path, "/themes") || strings.HasSuffix(r.URL.Path, "/themes/settings")) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Check if setup is complete
 			complete, err := authService.IsSetupComplete(r.Context())
 			if err != nil {
@@ -91,7 +98,7 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 			if !complete {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusPreconditionRequired)
-				w.Write([]byte(`{"error":"Initial setup required","setup_required":true}`))
+				_, _ = w.Write([]byte(`{"error":"Initial setup required","setup_required":true}`))
 				return
 			}
 

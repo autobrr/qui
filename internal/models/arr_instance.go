@@ -207,7 +207,7 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern strings into string_pool
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &prepared.name, &prepared.baseURL, prepared.basicUsername)
@@ -630,7 +630,7 @@ func persistUpdateWithIntern(ctx context.Context, txProvider dbinterface.Querier
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern strings into string_pool
 	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &existing.Name, &existing.BaseURL, existing.BasicUsername)

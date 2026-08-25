@@ -10,12 +10,67 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 ## Matching
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
-- **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, filesystem fallback, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
-- **Rescue title mismatches** - Disabled by default. This rule can try exact-size results when only the title differs. Each source search can try at most three rescue downloads across all indexers. After download, every usable file must have one exact-size partner. qui adds a rescued torrent paused. It starts only after a full qBittorrent recheck reaches 100%. A rescue that fails still counts as a download on your tracker. **Skip recheck** turns off this rule. Manual search, Library Scan, and completion search use it. RSS, webhooks, and direct apply requests do not use it.
+- **Skip recheck** - When enabled, skips any cross-seed that would require a recheck. This includes renamed paths, extra files, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. This rule applies to regular, hardlink, and reflink modes.
+- **Rescue title mismatches** - Disabled by default. This rule can try a result when only its title differs and its positive reported size is equal. Each source search can try at most three rescue downloads across all indexers. RSS and autobrr can use this rule only when the announcement provides an exact size. qui adds a rescued torrent paused and starts it only after a full qBittorrent recheck reaches 100%. **Skip recheck** turns off this rule.
 - **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 
 :::note
-Filesystem fallback and disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
+Filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, and exact-size season, episode, or release-group matches only auto-resume after a full recheck reaches 100%.
+:::
+
+### Reported-size fallback
+
+Strict release matching runs first. An exact positive reported byte count can then relax approved name differences.
+
+Reported size does not prove that two torrents contain the same bytes. qui still checks the torrent metadata, files, paths, layout, and piece boundaries.
+
+Title, season, episode, and split release-group differences require a full piece check. qui adds these torrents paused and resumes them only at 100%.
+
+Soft descriptive differences can keep the normal fast path. These differences include codec, source, HDR, edition, and one-sided checksum data.
+
+**Skip recheck** removes only matches that need verification. RSS and autobrr reject those matches before their planned torrent download.
+
+## Search Category Rules
+
+qui reads the torrent name to find the content type. It then corrects that guess with the file extensions inside the torrent. Both signals can be wrong.
+
+A search category rule forces the content type for every torrent in a qBittorrent category. The rule wins over the name and over the file extensions.
+
+The content type decides which Torznab categories qui asks for, and which search mode it uses. It therefore decides which indexers can answer the search.
+
+### When a rule helps
+
+File extensions cannot always correct the name:
+
+- A disc image holds one `.iso` file. This extension is neither audio nor video, so the extensions give no signal and the name decides alone.
+- An ebook is one `.epub` or `.pdf` file. A name such as `Author Name - Book Title (2021)` can parse as music or as a movie.
+
+In both examples the torrent is in a category that you control. A rule on that category gives qui the correct content type.
+
+### Add a rule
+
+1. Open the **Rules** tab on the Cross-Seed page.
+2. Find **Search category rules** in the **Matching behavior** card.
+3. Select **Add rule**.
+4. Select or type one or more qBittorrent categories.
+5. Select the content type in the **search as** list.
+
+The content types are Movie, TV, Music, Audiobook, Book, Comic, Game, and App.
+
+### How rules match
+
+One rule can hold more than one category. A torrent in any of those categories gets the content type of that rule.
+
+The match is exact and case-sensitive, because qBittorrent categories are case-sensitive. A rule for `ebooks` does not match a torrent in `Ebooks`.
+
+If two rules name the same category, the first rule keeps it. When qui saves the settings, it removes that category from the later rule. If this empties the later rule, qui removes that rule.
+
+:::note
+Manual search, Library Scan, completion search, RSS matching, and autobrr matching use these rules when they inspect a local source torrent. Dir Scan uses its own detection.
+:::
+
+:::note
+Audiobook and Music ask the indexers for the same categories, and both send an artist and an album parameter. Only the text of the search query differs.
 :::
 
 ## Season Pack Threshold
@@ -25,6 +80,8 @@ The season-pack webhook uses a separate coverage threshold (default 75%) to deci
 Season-pack matching rules live in **Rules > Season packs** and affect only the season-pack webhook flow.
 
 ## Categories
+
+These modes set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
 
 Choose one of three mutually exclusive category modes:
 

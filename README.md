@@ -34,19 +34,6 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
-### macOS Container
-First, install Container from the official source: https://github.com/apple/container/releases
-Second, create the /config and /downloads folders where you would like them.
-Third, run the command below:
-
-```bash
-container run -d \
-  -p 7476:7476 \
-  -v $(pwd)/config:/config \
-  -v $(pwd)/downloads:/downloads \
-  ghcr.io/autobrr/qui:latest
-```
-
 ## Features
 
 - **Single Binary**: No dependencies, just download and run
@@ -56,7 +43,7 @@ container run -d \
 - **Automations**: Rule-based torrent management with conditions and actions
 - **Backups & Restore**: Scheduled snapshots with multiple restore modes
 - **Reverse Proxy**: Transparent qBittorrent proxy for external apps
-- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, and Simplified Chinese, with automatic browser-language detection
+- **Multi-Language**: Available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese, with automatic browser-language detection
 
 ## Community
 
@@ -75,6 +62,7 @@ qui is developed and maintained by volunteers. Your support helps us continue im
 
 Purchase premium themes directly from Settings → Themes in your qui instance. Your license key is delivered instantly after checkout.
 If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
+A license also unlocks custom themes, which you can write yourself or take from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
 
 ### Donations
 
@@ -119,6 +107,17 @@ For other currencies or donation methods, [reach out on Discord](https://discord
 Contributions are welcome.
 
 See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md) for the development and test workflow.
+
+## Alternatives
+
+If qui does not fit your setup, these projects offer different approaches:
+
+- [VueTorrent](https://github.com/VueTorrent/VueTorrent) is a modern, responsive alternative WebUI.
+- [iQbit](https://github.com/ntoporcov/iQbit) is a mobile-focused WebUI and PWA.
+- [Flood](https://github.com/jesec/flood) supports qBittorrent and other torrent clients.
+- [qBitController](https://github.com/Bartuzen/qBitController) is a native app for Android, iOS, Linux, macOS, and Windows.
+
+The qBittorrent wiki includes a longer [list of community WebUIs](https://github.com/qbittorrent/qBittorrent/wiki/List-of-known-alternate-WebUIs).
 
 ## License
 

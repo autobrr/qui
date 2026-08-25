@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -101,6 +101,7 @@ export type ConditionField =
   | "EXISTS_ON_OTHER_INSTANCE"
   | "SEEDING_ON_OTHER_INSTANCE"
   | "EXISTS_ON_SAME_INSTANCE"
+  | "CROSS_SEED_TAGS"
   | "SEEDING_ON_SAME_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"

@@ -4,7 +4,7 @@
  */
 
 import type { SelectionRow } from "@/hooks/torrent-table/useTorrentSelection"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import { buildTorrentActionTargets, type TorrentActionTarget } from "@/lib/torrent-action-targets"
 import { getTotalSize } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
 import type { Torrent, TorrentFilters } from "@/types"
@@ -16,6 +16,7 @@ import { useMemo, useRef } from "react"
 // the referential stability that row/menu memoization relies on.
 const EMPTY_HASHES: string[] = []
 const EMPTY_TORRENTS: Torrent[] = []
+const EMPTY_TARGETS: TorrentActionTarget[] = []
 
 export interface UseTorrentSelectionDerivationsParams {
   isAllSelected: boolean
@@ -198,7 +199,7 @@ export function useTorrentSelectionDerivations({
 
   const selectAllExcludedTargets = useMemo(() => {
     if (!isAllSelected || excludedFromSelectAll.size === 0) {
-      return []
+      return EMPTY_TARGETS
     }
     const excludedTorrents = sortedTorrents.filter(torrent => excludedFromSelectAll.has(getSelectionIdentity(torrent)))
     return buildTorrentActionTargets(excludedTorrents, instanceId)

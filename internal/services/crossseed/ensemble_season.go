@@ -303,7 +303,7 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 			break
 		}
 
-		match := torrentSearchResultFromJackett(res, "season pack from seeded episodes", 0, searchCandidateClassStrict, "", nil, nil)
+		match := torrentSearchResultFromJackett(res, "season pack from seeded episodes", 0, searchDecisionProvenance{Class: searchCandidateClassStrict})
 		attemptResult, attemptErr := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
 		if attemptResult != nil {
 			switch attemptResult.Status {

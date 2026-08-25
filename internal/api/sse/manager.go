@@ -206,7 +206,7 @@ type StreamManager struct {
 	// activity events (and activity heartbeats). One topic per open SSE session.
 	activityTopics map[string]struct{}
 
-	ctx    context.Context //nolint:containedctx // lifecycle root context used only for coordinated shutdown
+	ctx    context.Context // Lifecycle root context used only for coordinated shutdown
 	cancel context.CancelFunc
 }
 
@@ -234,10 +234,16 @@ type subscriptionGroup struct {
 	// processor (processGroup) and guarded by baselineMu against the unrelated init
 	// path. baselineFP maps each row key to its last-broadcast change fingerprint;
 	// baselineOrder is the last-broadcast key order. See buildUpdatePayload.
-	baselineMu     sync.Mutex
-	baselineFP     map[string]uint64
-	baselineOrder  []string
-	baselineSeeded bool
+	// baselinePrefs is the preferences blob this group last put on the wire, and
+	// baselineCounts the fingerprint of the sidebar counts it last sent, so a delta
+	// can drop either field while it is unchanged.
+	baselineMu         sync.Mutex
+	baselineFP         map[string]uint64
+	baselineOrder      []string
+	baselinePrefs      json.RawMessage
+	baselineCounts     uint64
+	baselineCountsData *qbittorrent.TorrentCounts // retained for the init backfill, see reconcileInitWithBaseline
+	baselineSeeded     bool
 }
 
 type syncLoopState struct {
@@ -610,6 +616,10 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		RID:        data.Rid,
 		FullUpdate: data.FullUpdate,
 		Timestamp:  time.Now(),
+		// Counts ride the same frame as the rows they describe. Without this the
+		// sidebar only refreshed on the 60s tracker-health tick, so a new torrent
+		// sat in the table for up to a minute before the sidebar counted it.
+		IncludeCounts: true,
 	}
 
 	go m.publishInstance(instanceID, meta)
@@ -806,13 +816,23 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	sw := newBufferedSessionWriter(w, rc, streamWriteTimeout, cancel)
 	defer sw.Close() // stop the drain goroutine on disconnect/return
 
+	// Compress the session when the client advertises gzip; the shared middleware
+	// cannot (see gzipSessionWriter).
+	sessionWriter := http.ResponseWriter(sw)
+	// Values, not Get: Accept-Encoding may arrive as several field lines.
+	if acceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Add("Vary", "Accept-Encoding")
+		sessionWriter = newGzipSessionWriter(sw)
+	}
+
 	// Expose the session writer to onSession so it can switch to buffered mode
 	// after writing the init snapshot synchronously (see enableBuffering).
 	ctx = context.WithValue(ctx, sessionWriterContextKey, sw)
 	req := r.WithContext(ctx)
 
 	// ServeHTTP blocks until the client disconnects.
-	m.server.ServeHTTP(sw, req)
+	m.server.ServeHTTP(sessionWriter, req)
 }
 
 // maxQueuedMessages bounds how many flushed SSE messages a single session may
@@ -1108,10 +1128,11 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 	}
 
 	// Seed the delta baseline from this init snapshot so the client's first frame and
-	// the server baseline match exactly; the next tick is then a clean delta. No-op if
-	// the group is already seeded (a tick or an earlier joiner got there first).
+	// the server baseline match exactly; the next tick is then a clean delta. When the
+	// group is already seeded (a tick or an earlier joiner got there first) the
+	// snapshot instead inherits the baseline's edge-triggered fields.
 	if payload.Data != nil {
-		group.seedBaselineIfEmpty(group.options, payload.Data)
+		group.reconcileInitWithBaseline(group.options, payload.Data)
 	}
 
 	return m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))

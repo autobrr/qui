@@ -20,6 +20,7 @@
     "@docusaurus/preset-classic": "3.10.2",
     "@docusaurus/theme-common": "3.10.2",
     "@easyops-cn/docusaurus-search-local": "0.55.3",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@mdx-js/react": "^3.1.1",
     "@tailwindcss/postcss": "^4.3.3",
     "clsx": "^2.1.1",

@@ -289,10 +289,17 @@
       "opsDescription": "Usata per le ricerche su orpheus.network. Incolla per sostituire; svuota per rimuovere."
     },
     "matching": {
-      "title": "Comportamento di corrispondenza",
-      "description": "Controlla come i torrent vengono messi in corrispondenza e quali differenze tra i file sono consentite.",
+      "title": "Episodi",
+      "description": "I tuoi pacchetti stagionali locali possono corrispondere ai torrent dei singoli episodi sugli indexer, permettendoti di distribuire entrambi i formati.",
       "crossSeedEpisodes": "Cross-seed degli episodi dai pacchetti",
-      "crossSeedEpisodesDescription": "I tuoi pacchetti stagionali locali possono corrispondere ai torrent dei singoli episodi sugli indexer, permettendoti di distribuire entrambi i formati."
+      "categoryMapping": {
+        "title": "Regole categoria di ricerca",
+        "description": "Forza il tipo di ricerca per i torrent in una categoria qBittorrent. Una regola prevale sul rilevamento dal nome del torrent e dai file.",
+        "whenCategory": "Quando la categoria è",
+        "searchAs": "cerca come",
+        "addRule": "Aggiungi regola",
+        "removeRule": "Rimuovi regola"
+      }
     },
     "safety": {
       "title": "Sicurezza e validazione",
@@ -300,7 +307,7 @@
       "rescueTitleMismatches": "Recupera titoli non corrispondenti",
       "rescueTitleMismatchesDescription": "Prova in totale fino a tre risultati di dimensione esatta per ogni ricerca sorgente, su tutti gli indicizzatori. qui controlla tutti i dati prima di avviare il torrent. Salta ricontrollo disattiva questa regola.",
       "skipRecheck": "Ignora le corrispondenze che richiedono la riverifica",
-      "skipRecheckDescription": "Ignora le corrispondenze che richiedono allineamento dei rinomini, file aggiuntivi o strutture di disco (BDMV/VIDEO_TS). Quando è disattivato, queste corrispondenze vengono riverificate forzatamente per impostazione predefinita.",
+      "skipRecheckDescription": "Ignora le corrispondenze che richiedono una riverifica a causa di percorsi rinominati, file aggiuntivi o mancanti, ripiego dalla modalità hardlink/reflink o strutture di disco (BDMV/VIDEO_TS). Ignora anche le corrispondenze con dimensione esatta basate su dati diversi relativi a stagione, episodio o gruppo di release. Quando questa opzione è disattivata, qui aggiunge queste corrispondenze in pausa e le riverifica.",
       "pieceBoundaryDisabled": "Verifica di sicurezza dei confini dei pezzi attualmente disabilitata",
       "pieceBoundaryEnabled": "Verifica di sicurezza dei confini dei pezzi abilitata",
       "pieceBoundaryDisabledDescription": "Consenti le corrispondenze anche se i file aggiuntivi condividono pezzi con il contenuto. Può corrompere i file esistenti in distribuzione se il contenuto differisce. Considera invece la modalità reflink.",

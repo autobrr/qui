@@ -58,6 +58,7 @@ type TorrentsHandler struct {
 	torrentAdder      torrentAdder
 	torrentDownloader torrentDownloader
 	contentResolver   torrentContentResolver
+	archiveExporter   torrentArchiveExporter
 }
 
 // truncateExpr truncates long filter expressions for cleaner logging
@@ -424,7 +425,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -459,12 +460,13 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			RespondError(w, http.StatusInternalServerError, "Failed to get torrent field")
 			return
 		}
-		if response.PartialResults && req.Field == "tags" {
-			log.Error().
-				Int("instanceID", instanceID).
+		// A truncated value list behind a 200 reads as complete, so partial aggregates fail for every field.
+		if response.PartialResults {
+			log.Warn().
 				Str("field", req.Field).
-				Msg("Cross-instance torrent field returned partial results for tag baseline")
-			RespondError(w, http.StatusServiceUnavailable, "Failed to resolve the full tag baseline")
+				Ints("instanceIDs", req.InstanceIDs).
+				Msg("Cross-instance torrent field returned partial results")
+			RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for torrent field request")
 			return
 		}
 
@@ -482,7 +484,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				continue
 			}
 
-			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
+			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.Torrent.MagnetURI)
 			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
 			}
@@ -2544,7 +2546,7 @@ func (h *TorrentsHandler) ExportTorrent(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := w.Write(data); err != nil {
+	if _, err := w.Write(data); err != nil { //nolint:gosec // G705: a .torrent body served as an attachment with nosniff, not markup
 		log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to write torrent export response")
 	}
 }
@@ -2754,13 +2756,14 @@ func (h *TorrentsHandler) DownloadTorrentCreationFile(w http.ResponseWriter, r *
 		return
 	}
 
-	filename := fmt.Sprintf("%s.torrent", taskID)
+	filename := taskID + ".torrent"
 	w.Header().Set("Content-Type", "application/x-bittorrent")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 
-	if _, err := w.Write(data); err != nil {
+	if _, err := w.Write(data); err != nil { //nolint:gosec // G705: a .torrent body served as an attachment with nosniff, not markup
 		log.Error().Err(err).Int("instanceID", instanceID).Str("taskID", taskID).Msg("Failed to write torrent file response")
 	}
 }

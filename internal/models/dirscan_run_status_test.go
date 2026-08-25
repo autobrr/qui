@@ -43,7 +43,7 @@ func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
 
 	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
 	require.NoError(t, err)
-	require.Greater(t, runID, int64(0))
+	require.Positive(t, runID)
 
 	run, err := store.GetRun(ctx, runID)
 	require.NoError(t, err)

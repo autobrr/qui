@@ -7,8 +7,8 @@ import {
   useTorrentTableArrowNavigation,
   type UseTorrentTableArrowNavigationParams
 } from "@/hooks/torrent-table/useTorrentTableArrowNavigation"
+import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import type { Torrent } from "@/types"
-import type { Row } from "@tanstack/react-table"
 import type { Virtualizer } from "@tanstack/react-virtual"
 import { act, cleanup, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -16,11 +16,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const scrollToIndex = vi.fn()
 const virtualizer = { scrollToIndex } as unknown as Virtualizer<HTMLDivElement, Element>
 
-function makeRows(n: number): Row<Torrent>[] {
+function makeRows(n: number): TorrentRow[] {
   return Array.from({ length: n }, (_, i) => ({
     id: `hash${i}`,
     original: { hash: `hash${i}`, name: `torrent ${i}` } as Torrent,
-  })) as unknown as Row<Torrent>[]
+  })) as unknown as TorrentRow[]
 }
 
 function baseProps(over: Partial<UseTorrentTableArrowNavigationParams> = {}): UseTorrentTableArrowNavigationParams {

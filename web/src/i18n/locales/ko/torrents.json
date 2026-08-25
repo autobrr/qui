@@ -637,6 +637,8 @@
     "expires": "만료 {{time}}",
     "refreshFromIndexers": "인덱서에서 새로 고침",
     "partialResults": "일부 결과만 표시 - 일부 인덱서가 응답하지 않았습니다",
+    "arrLookupFailed": "메타데이터 ID 조회 실패 - 제목으로만 검색하여 결과가 불완전할 수 있습니다",
+    "arrNoIds": "이 릴리스의 메타데이터 ID를 찾을 수 없음 - 제목으로만 검색했습니다",
     "searchScope": "검색 범위",
     "noIndexers": "사용 가능한 Torznab 인덱서 없음",
     "noIndexersHelp": "cross-seed를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
@@ -669,6 +671,25 @@
     "block": "차단",
     "addedToBlocklist": "차단 목록에 추가됨",
     "missingInstance": "차단 목록에 대한 인스턴스 누락",
+    "trace": {
+      "title": "검색 상세",
+      "summaryBadge": "후보 {{total}}개, 일치 {{matches}}개",
+      "summary": "후보 {{total}}개가 반환되었습니다. 거부됨: 릴리스 불일치 {{release}}개, 크기 불일치 {{size}}개, 콘텐츠 필터 {{late}}개, 중복 {{duplicates}}개. 일치 {{matches}}개가 남았습니다.",
+      "indexersHeading": "인덱서",
+      "status": {
+        "searched": "검색됨",
+        "notCovered": "불완전",
+        "error": "오류",
+        "excluded": "제외됨"
+      },
+      "candidateCount": "후보 {{count}}개",
+      "rejectionsHeading": "거부된 후보",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "같은 이유의 후보 {{count}}개 더 있음",
+      "copyReport": "보고서 복사",
+      "copied": "보고서가 클립보드에 복사되었습니다",
+      "copyFailed": "보고서를 복사할 수 없습니다"
+    },
     "scope": {
       "allIndexers": "모든 인덱서",
       "selectCustom": "사용자 지정 선택",

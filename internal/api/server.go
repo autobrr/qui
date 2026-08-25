@@ -79,6 +79,8 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	clientSettingsStore              *models.ClientSettingsStore
+	themeSettingsStore               *models.ThemeSettingsStore
 	filterViewStore                  *models.FilterViewStore
 	logExclusionsStore               *models.LogExclusionsStore
 	notificationTargetStore          *models.NotificationTargetStore
@@ -90,6 +92,7 @@ type Server struct {
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	activityHub                      *activity.Hub
 }
 
 type Dependencies struct {
@@ -120,6 +123,8 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	ClientSettingsStore              *models.ClientSettingsStore
+	ThemeSettingsStore               *models.ThemeSettingsStore
 	FilterViewStore                  *models.FilterViewStore
 	LogExclusionsStore               *models.LogExclusionsStore
 	NotificationTargetStore          *models.NotificationTargetStore
@@ -185,6 +190,8 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		clientSettingsStore:              deps.ClientSettingsStore,
+		themeSettingsStore:               deps.ThemeSettingsStore,
 		filterViewStore:                  deps.FilterViewStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
 		notificationTargetStore:          deps.NotificationTargetStore,
@@ -196,6 +203,7 @@ func NewServer(deps *Dependencies) *Server {
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		activityHub:                      deps.ActivityHub,
 	}
 
 	return &s
@@ -228,6 +236,7 @@ func (s *Server) open(ready chan<- struct{}) error {
 }
 
 func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error {
+	//nolint:noctx // the listener outlives every request; a ListenConfig context would only bound the bind itself
 	listener, err := net.Listen(protocol, addr)
 	if err != nil {
 		return err
@@ -298,12 +307,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		// SSE responses must never be compressed. The compressor's writer buffers
-		// until MinSize (delaying event flushes) and lacks Unwrap(), which prevents
-		// the stream handler from clearing the server WriteTimeout via
-		// http.NewResponseController. Bypass compression for event-stream requests
-		// (EventSource always sends Accept: text/event-stream), covering /stream and
-		// the RSS /events endpoint without coupling to specific paths.
+		// SSE responses must never go through this compressor. Its writer buffers
+		// until MinSize, so small events do not flush, and it lacks Unwrap(), which
+		// cuts the stream handler's http.NewResponseController off from the socket
+		// and silently disables the per-write deadline that evicts stalled clients.
+		// Bypass compression for event-stream requests (EventSource always sends
+		// Accept: text/event-stream), covering /stream and the RSS /events endpoint
+		// without coupling to specific paths. /api/stream compresses itself instead:
+		// see gzipSessionWriter in internal/api/sse.
 		r.Use(func(next http.Handler) http.Handler {
 			compressed := compressor(next)
 			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -351,7 +362,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService, s.themeSettingsStore, func(ctx context.Context) bool {
+		// Auth-disabled installs never carry a session flag; every caller is the trusted admin.
+		return s.config.Config.IsAuthDisabled() || s.sessionManager.GetBool(ctx, "authenticated")
+	}, s.activityHub)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,
@@ -368,6 +382,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
 	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
@@ -404,6 +419,12 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			}
 		})
 
+		// Built-in theme catalog and stored selection: public so the login
+		// page can paint the selected theme before auth. Premium CSS is
+		// license-gated inside; writes stay authenticated.
+		r.Get("/themes", themesHandler.ListThemes)
+		r.Get("/themes/settings", themesHandler.GetThemeSettings)
+
 		apiKeyQueryMiddleware := middleware.APIKeyFromQuery("apikey")
 		authMiddleware := middleware.IsAuthenticated(s.authService, s.sessionManager, s.config.Config)
 
@@ -431,6 +452,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Sideloaded custom themes (premium-gated inside the handler)
 			r.Get("/themes/custom", themesHandler.ListCustomThemes)
+
+			// Persisted theme selection (reads are public above)
+			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+
+			// Persisted frontend user settings (opaque key-value map)
+			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)
+			r.Put("/client-settings", clientSettingsHandler.UpdateClientSettings)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {
@@ -684,6 +712,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Global torrent operations (cross-instance)
 			r.Route("/torrents", func(r chi.Router) {
 				r.Get("/cross-instance", torrentsHandler.ListCrossInstanceTorrents)
+				r.Post("/export", torrentsHandler.ExportTorrentArchive)
 			})
 		})
 	})
@@ -735,7 +764,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if baseURL != "/" {
 		r.Get("/", func(w http.ResponseWriter, request *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
+			_, _ = w.Write([]byte("Must use baseUrl: " + s.config.Config.BaseURL + " instead of /"))
 		})
 		//	// Redirect root to base URL
 		//	r.Get("/", func(w http.ResponseWriter, r *http.Request) {

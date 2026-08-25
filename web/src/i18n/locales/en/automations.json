@@ -45,7 +45,7 @@
     "description": "Scans download directories and identifies orphan files for cleanup.",
     "noLocalAccess": "No Local Access",
     "localAccessTooltip": "qui and qBittorrent must run on the same machine. Enable \"Local Filesystem Access\" in instance settings to use orphan scanning.",
-    "autoCleanupEnabled": "Auto-cleanup enabled (\u2264{{maxFiles}} files)",
+    "autoCleanupEnabled": "Auto-cleanup enabled (≤{{maxFiles}} files)",
     "autoCleanupDisabled": "Auto-cleanup disabled",
     "pathsIgnored": "{{count}} path ignored",
     "pathsIgnored_plural": "{{count}} paths ignored",
@@ -210,6 +210,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "Seeding on Other Instance",
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed Exists on Same Instance",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed Seeding on Same Instance",
+      "CROSS_SEED_TAGS": "Cross-seed Tags",
       "HARDLINK_SCOPE": "Hardlink scope"
     },
     "fieldGroups": {

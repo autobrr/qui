@@ -685,6 +685,8 @@
     "expires": "Scade {{time}}",
     "refreshFromIndexers": "Aggiorna dagli indexer",
     "partialResults": "Risultati parziali - alcuni indexer non hanno risposto",
+    "arrLookupFailed": "Ricerca degli ID dei metadati non riuscita - ricerca solo per titolo, i risultati potrebbero essere incompleti",
+    "arrNoIds": "Nessun ID dei metadati trovato per questa release - ricerca solo per titolo",
     "searchScope": "Ambito di ricerca",
     "noIndexers": "Nessun indexer Torznab disponibile",
     "noIndexersHelp": "Aggiungi o abilita indexer Torznab in Impostazioni per cercare cross-seed.",
@@ -717,6 +719,25 @@
     "block": "Blocca",
     "addedToBlocklist": "Aggiunto alla lista di blocco",
     "missingInstance": "Istanza mancante per la lista di blocco",
+    "trace": {
+      "title": "Dettaglio della ricerca",
+      "summaryBadge": "{{total}} candidati, {{matches}} corrispondenze",
+      "summary": "{{total}} candidati restituiti. Rifiutati: {{release}} release non corrispondente, {{size}} dimensione non corrispondente, {{late}} filtro contenuti, {{duplicates}} duplicati. Restano {{matches}} corrispondenze.",
+      "indexersHeading": "Indexer",
+      "status": {
+        "searched": "cercato",
+        "notCovered": "incompleto",
+        "error": "errore",
+        "excluded": "escluso"
+      },
+      "candidateCount": "{{count}} candidati",
+      "rejectionsHeading": "Candidati rifiutati",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} altri con questo motivo",
+      "copyReport": "Copia report",
+      "copied": "Report copiato negli appunti",
+      "copyFailed": "Impossibile copiare il report"
+    },
     "scope": {
       "allIndexers": "Tutti gli indexer",
       "selectCustom": "Selezione personalizzata",

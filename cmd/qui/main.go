@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: registered on the opt-in pprof listener, which binds loopback by default
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -185,14 +185,14 @@ func readPassword(prompt string) (string, error) {
 			return "", fmt.Errorf("failed to read password: %w", err)
 		}
 		return string(password), nil
-	} else {
-		fmt.Fprint(os.Stderr, prompt)
-		var password string
-		if _, err := fmt.Scanln(&password); err != nil {
-			return "", fmt.Errorf("failed to read password from stdin: %w", err)
-		}
-		return password, nil
 	}
+
+	fmt.Fprint(os.Stderr, prompt)
+	var password string
+	if _, err := fmt.Scanln(&password); err != nil {
+		return "", fmt.Errorf("failed to read password from stdin: %w", err)
+	}
+	return password, nil
 }
 
 func RunCreateUserCommand() *cobra.Command {
@@ -246,7 +246,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if strings.TrimSpace(username) == "" {
-				return fmt.Errorf("username cannot be empty")
+				return errors.New("username cannot be empty")
 			}
 			username = strings.TrimSpace(username)
 
@@ -259,7 +259,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(password) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			user, err := authService.SetupUser(context.Background(), username, password)
@@ -327,7 +327,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to check setup status: %w", err)
 			}
 			if !exists {
-				return fmt.Errorf("no user account found. Create a user first with 'create-user' command")
+				return errors.New("no user account found. Create a user first with 'create-user' command")
 			}
 
 			if username == "" {
@@ -341,7 +341,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			userStore := models.NewUserStore(db)
 			user, err := userStore.GetByUsername(ctx, username)
 			if err != nil {
-				if err == models.ErrUserNotFound {
+				if errors.Is(err, models.ErrUserNotFound) {
 					return fmt.Errorf("username '%s' not found", username)
 				}
 				return fmt.Errorf("failed to verify username: %w", err)
@@ -356,7 +356,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(newPassword) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			hashedPassword, err := auth.HashPassword(newPassword)
@@ -452,7 +452,9 @@ func (app *Application) runServer() {
 		cfg.Config.PprofEnabled = true
 	}
 
-	cfg.ApplyLogConfig()
+	if err := cfg.ApplyLogConfig(); err != nil {
+		log.Warn().Err(err).Str("logPath", cfg.Config.LogPath).Msg("Failed to apply log configuration, continuing with the previous log settings")
+	}
 
 	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
 
@@ -523,6 +525,7 @@ func (app *Application) runServer() {
 	licenseRepo := database.NewLicenseRepo(db)
 	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
 	if err != nil {
+		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 	instanceReannounceStore := models.NewInstanceReannounceStore(db)
@@ -534,6 +537,8 @@ func (app *Application) runServer() {
 	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+	clientSettingsStore := models.NewClientSettingsStore(db)
+	themeSettingsStore := models.NewThemeSettingsStore(db)
 	filterViewStore := models.NewFilterViewStore(db)
 	logExclusionsStore := models.NewLogExclusionsStore(db)
 
@@ -665,6 +670,7 @@ func (app *Application) runServer() {
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	crossSeedService.SetActivityPublisher(activityHub)
+	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
@@ -712,7 +718,7 @@ func (app *Application) runServer() {
 	}
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()}, notificationService)
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
@@ -798,6 +804,8 @@ func (app *Application) runServer() {
 		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
+		ClientSettingsStore:              clientSettingsStore,
+		ThemeSettingsStore:               themeSettingsStore,
 		FilterViewStore:                  filterViewStore,
 		LogExclusionsStore:               logExclusionsStore,
 		NotificationTargetStore:          notificationTargetStore,
@@ -858,10 +866,14 @@ func (app *Application) runServer() {
 		if pprofAddr == "" {
 			pprofAddr = "127.0.0.1:6060"
 		}
+		pprofServer := &http.Server{
+			Addr:              pprofAddr,
+			ReadHeaderTimeout: 15 * time.Second,
+		}
 		go func() {
 			log.Info().Str("addr", pprofAddr).Msg("Starting pprof server")
 			log.Info().Msgf("Access profiling at: http://%s/debug/pprof/", pprofAddr)
-			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+			if err := pprofServer.ListenAndServe(); err != nil {
 				log.Error().Err(err).Str("addr", pprofAddr).Msg("Profiling server failed")
 			}
 		}()
@@ -883,35 +895,19 @@ func (app *Application) runServer() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		//log.Fatal().Err(err).Msg("Server forced to shutdown")
+		// log.Fatal().Err(err).Msg("Server forced to shutdown")
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
 
 		os.Exit(1)
 	}
 
-	//if err := srv.Shutdown(context.Background()); err != nil {
+	// if err := srv.Shutdown(context.Background()); err != nil {
 	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
 	//
 	//	os.Exit(1)
 	//}
 
 	os.Exit(0)
-
-	//// Wait for interrupt signal to gracefully shutdown the server
-	//quit := make(chan os.Signal, 1)
-	//signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	//<-quit
-	//log.Info().Msg("Shutting down server...")
-	//
-	//// Graceful shutdown with timeout
-	//ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	//defer cancel()
-	//
-	//if err := httpServer.Close(ctx); err != nil {
-	//	log.Fatal().Err(err).Msg("Server forced to shutdown")
-	//}
-	//
-	//log.Info().Msg("Server stopped")
 }
 
 // instanceListerAdapter implements filesmanager.InstanceLister

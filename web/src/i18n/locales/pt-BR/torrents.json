@@ -685,6 +685,8 @@
     "expires": "Expira {{time}}",
     "refreshFromIndexers": "Atualizar dos indexadores",
     "partialResults": "Resultados parciais - alguns indexadores não responderam",
+    "arrLookupFailed": "Falha na consulta de IDs de metadados - busca apenas por título, os resultados podem estar incompletos",
+    "arrNoIds": "Nenhum ID de metadados encontrado para este release - busca apenas por título",
     "searchScope": "Escopo da Pesquisa",
     "noIndexers": "Nenhum indexador Torznab disponível",
     "noIndexersHelp": "Adicione ou ative indexadores Torznab nas Configurações.",
@@ -717,6 +719,25 @@
     "block": "Bloquear",
     "addedToBlocklist": "Adicionado à lista de bloqueio",
     "missingInstance": "Faltando instância para a lista de bloqueio",
+    "trace": {
+      "title": "Detalhes da busca",
+      "summaryBadge": "{{total}} candidatos, {{matches}} correspondências",
+      "summary": "{{total}} candidatos retornados. Rejeitados: {{release}} release divergente, {{size}} tamanho divergente, {{late}} filtro de conteúdo, {{duplicates}} duplicados. Restam {{matches}} correspondências.",
+      "indexersHeading": "Indexadores",
+      "status": {
+        "searched": "pesquisado",
+        "notCovered": "incompleto",
+        "error": "erro",
+        "excluded": "excluído"
+      },
+      "candidateCount": "{{count}} candidatos",
+      "rejectionsHeading": "Candidatos rejeitados",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} outros com este motivo",
+      "copyReport": "Copiar relatório",
+      "copied": "Relatório copiado para a área de transferência",
+      "copyFailed": "Não foi possível copiar o relatório"
+    },
     "scope": {
       "allIndexers": "Todos os indexadores",
       "selectCustom": "Seleção Personalizada",

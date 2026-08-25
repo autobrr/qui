@@ -54,6 +54,12 @@ QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: nex
 `QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
 
 ```bash
+QUI__BACKUP_DIR=...      # Optional: custom backup directory (default: <dataDir>/backups)
+```
+
+`QUI__BACKUP_DIR` sets where qui writes [backup](../features/backups.md) manifests, archives, and cached `.torrent` files. Point it at separate storage, for example a redundant array or a network share. Then a failure of the data drive does not also remove your backups. If you change this on an existing install, move the contents of `<dataDir>/backups` to the new directory.
+
+```bash
 QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .css files (default: <config-dir>/themes)
 ```
 
@@ -75,6 +81,10 @@ QUI__DATABASE_MAX_OPEN_CONNS=25        # Postgres pool max open connections
 QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
 QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 ```
+
+### SQLite or Postgres
+
+Both engines run the same features. For most installs, a switch gives no performance benefit: qui runs SQLite in WAL mode with a separate read pool, so reads do not block on writes. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
 
 ## Cross-Seed
 
@@ -107,7 +117,7 @@ QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.
 QUI__METRICS_ENABLED=true      # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1    # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
-QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+QUI__METRICS_BASIC_AUTH_USERS=user:password  # Optional: basic auth for metrics (plaintext password)
 ```
 
 ## Authentication

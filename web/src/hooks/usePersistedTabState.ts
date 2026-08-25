@@ -3,35 +3,17 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useState } from "react"
+import { useClientSetting } from "@/lib/client-settings"
 
 export function usePersistedTabState<T extends string>(
   storageKey: string,
   defaultValue: T,
   isValid?: (value: string) => value is T
 ) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored !== null) {
-        if (!isValid || isValid(stored)) {
-          return stored as T
-        }
-      }
-    } catch (error) {
-      console.error(`Failed to load tab state from localStorage (${storageKey}):`, error)
-    }
+  const parse = (raw: string): T => {
+    if (!isValid || isValid(raw)) return raw as T
+    throw new Error("invalid tab value")
+  }
 
-    return defaultValue
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, value)
-    } catch (error) {
-      console.error(`Failed to save tab state to localStorage (${storageKey}):`, error)
-    }
-  }, [storageKey, value])
-
-  return [value, setValue] as const
+  return useClientSetting<T>(storageKey, { defaultValue, parse, serialize: String })
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,13 +42,14 @@ func TestCleanupUnusedStringsPostgres(t *testing.T) {
 	t.Parallel()
 
 	db, ctx := openPostgresTestDB(t)
-	conn := db.Conn()
 
+	// Through the DB wrapper, not db.Conn(): the raw handle skips the ?-to-$n
+	// rebinding, so every placeholder below would reach Postgres verbatim.
 	var referencedID, orphanID int64
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_referenced").Scan(&referencedID))
-	require.NoError(t, conn.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_orphan").Scan(&orphanID))
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_referenced").Scan(&referencedID))
+	require.NoError(t, db.QueryRowContext(ctx, "INSERT INTO string_pool (value) VALUES (?) RETURNING id", "pg_orphan").Scan(&orphanID))
 
-	_, err := conn.ExecContext(ctx, `
+	_, err := db.ExecContext(ctx, `
 		INSERT INTO instances (name_id, host_id, username_id, password_encrypted)
 		VALUES (?, ?, ?, ?)
 	`, referencedID, referencedID, referencedID, "dummy_password")
@@ -58,9 +60,9 @@ func TestCleanupUnusedStringsPostgres(t *testing.T) {
 	require.Positive(t, deleted)
 
 	var exists bool
-	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", referencedID).Scan(&exists))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", referencedID).Scan(&exists))
 	require.True(t, exists)
-	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
 	require.False(t, exists)
 
 	deletedAgain, err := db.CleanupUnusedStrings(ctx)
@@ -172,6 +174,9 @@ func openPostgresTestDB(t *testing.T) (*DB, context.Context) {
 	return db, ctx
 }
 
+// testSchemaSeq keeps parallel tests from claiming the same schema name.
+var testSchemaSeq atomic.Int64
+
 func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 	t.Helper()
 
@@ -187,7 +192,9 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 	require.NoError(t, err)
 	t.Cleanup(adminPool.Close)
 
-	schemaName := fmt.Sprintf("qui_test_%d", time.Now().UnixNano())
+	// UnixNano alone collides: the clock is coarse enough that two tests
+	// starting together get the same value, and these all run in parallel.
+	schemaName := fmt.Sprintf("qui_test_%d_%d", time.Now().UnixNano(), testSchemaSeq.Add(1))
 	_, err = adminPool.Exec(ctx, "CREATE SCHEMA "+quoteIdent(schemaName))
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -208,4 +215,52 @@ func dsnWithSearchPath(t *testing.T, dsn string, schema string) string {
 	query.Set("search_path", schema)
 	parsed.RawQuery = query.Encode()
 	return parsed.String()
+}
+
+// TestPostgresImportForeignKeysIgnoreOtherSchemas pins both catalog queries to
+// the active schema. A foreign key referencing another schema's same-named
+// table used to survive: regclass text output qualifies only what search_path
+// cannot reach, and stripping that qualifier turned the reference into a local
+// one. That invents an import dependency (here a cycle, which fails the order)
+// and hands the row filter a parent table that is not the one being referenced.
+func TestPostgresImportForeignKeysIgnoreOtherSchemas(t *testing.T) {
+	t.Parallel()
+
+	ctx, testDSN := openPostgresTestSchema(t)
+	pool, err := pgxpool.New(ctx, testDSN)
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+
+	var activeSchema string
+	require.NoError(t, pool.QueryRow(ctx, "SELECT current_schema()").Scan(&activeSchema))
+	decoySchema := activeSchema + "_decoy"
+	_, err = pool.Exec(ctx, "CREATE SCHEMA "+quoteIdent(decoySchema))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), fmt.Sprintf("DROP SCHEMA %s CASCADE", quoteIdent(decoySchema)))
+	})
+
+	// The decoy holds a table whose name collides with one in the active schema,
+	// so a stripped qualifier lands on the local table of the same name.
+	_, err = pool.Exec(ctx, fmt.Sprintf(`
+		CREATE TABLE %s.orphan_target (id integer PRIMARY KEY);
+		CREATE TABLE orphan_target (id integer PRIMARY KEY, linker_id integer);
+		CREATE TABLE linker (id integer PRIMARY KEY, decoy_id integer REFERENCES %s.orphan_target(id));
+		ALTER TABLE orphan_target ADD CONSTRAINT orphan_target_linker_fk FOREIGN KEY (linker_id) REFERENCES linker(id);
+	`, quoteIdent(decoySchema), quoteIdent(decoySchema)))
+	require.NoError(t, err)
+
+	tx, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+
+	// linker -> decoy.orphan_target is the cross-schema edge. Read as local it
+	// pairs with orphan_target -> linker into a cycle and the sort fails.
+	ordered, err := orderPostgresImportTables(ctx, tx, []string{"linker", "orphan_target"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"linker", "orphan_target"}, ordered)
+
+	fks, err := postgresForeignKeysForTable(ctx, tx, "linker")
+	require.NoError(t, err)
+	require.Empty(t, fks, "a foreign key into another schema must not filter the copy against a local table")
 }

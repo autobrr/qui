@@ -289,10 +289,17 @@
       "opsDescription": "Usado para pesquisas no orpheus.network. Cole para substituir; limpe para remover."
     },
     "matching": {
-      "title": "Comportamento de correspondência",
-      "description": "Controle como os torrents são combinados e quais diferenças de arquivo são permitidas.",
+      "title": "Episódios",
+      "description": "Seus pacotes de temporada locais podem corresponder a torrents de episódios individuais em indexadores, permitindo que você semeie ambos os formatos.",
       "crossSeedEpisodes": "Fazer cross-seed de episódios de pacotes",
-      "crossSeedEpisodesDescription": "Seus pacotes de temporada locais podem corresponder a torrents de episódios individuais em indexadores, permitindo que você semeie ambos os formatos."
+      "categoryMapping": {
+        "title": "Regras de categoria de busca",
+        "description": "Força o tipo de busca para torrents em uma categoria do qBittorrent. Uma regra tem prioridade sobre a detecção pelo nome do torrent e pelos arquivos.",
+        "whenCategory": "Quando a categoria for",
+        "searchAs": "buscar como",
+        "addRule": "Adicionar regra",
+        "removeRule": "Remover regra"
+      }
     },
     "safety": {
       "title": "Segurança e validação",
@@ -300,7 +307,7 @@
       "rescueTitleMismatches": "Recuperar títulos divergentes",
       "rescueTitleMismatchesDescription": "Tente no total até três resultados com tamanho exato por busca de origem, entre todos os indexadores. O qui verifica todos os dados antes de iniciar o torrent. Ignorar reverificação desativa esta regra.",
       "skipRecheck": "Ignorar correspondências que exigem reverificação",
-      "skipRecheckDescription": "Ignora correspondências que precisam de alinhamento de renomeação, arquivos extras ou layouts de disco (BDMV/VIDEO_TS). Quando desligado, essas correspondências são forçadas a serem reverificadas por padrão.",
+      "skipRecheckDescription": "Ignora correspondências que exigem reverificação por causa de caminhos renomeados, arquivos extras ou ausentes, fallback do modo hardlink/reflink ou layouts de disco (BDMV/VIDEO_TS). Também ignora correspondências de tamanho exato que dependem de dados diferentes de temporada, episódio ou grupo de release. Quando esta opção está desativada, o qui adiciona essas correspondências pausadas e faz a reverificação.",
       "pieceBoundaryDisabled": "Verificação de segurança de limite de peça atualmente desativada",
       "pieceBoundaryEnabled": "Verificação de segurança de limite de peça ativada",
       "pieceBoundaryDisabledDescription": "Permitir correspondências mesmo que os arquivos extras compartilhem peças com o conteúdo. Pode corromper arquivos semeados existentes se o conteúdo for diferente. Considere o modo reflink.",

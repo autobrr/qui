@@ -62,6 +62,7 @@ type automationSettingsRequest struct {
 	SeasonPackTags               []string                        `json:"seasonPackTags"`
 	SeasonPackCategory           string                          `json:"seasonPackCategory"`
 	SeasonPackCategoryRules      []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
+	CategoryMappingRules         []models.CategoryMappingRule    `json:"categoryMappingRules"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled       bool   `json:"gazelleEnabled"`
 	RedactedAPIKey       string `json:"redactedApiKey"`
@@ -123,6 +124,7 @@ type automationSettingsPatchRequest struct {
 	SeasonPackTags               *[]string                        `json:"seasonPackTags,omitempty"`
 	SeasonPackCategory           *string                          `json:"seasonPackCategory,omitempty"`
 	SeasonPackCategoryRules      *[]models.SeasonPackCategoryRule `json:"seasonPackCategoryRules,omitempty"`
+	CategoryMappingRules         *[]models.CategoryMappingRule    `json:"categoryMappingRules,omitempty"`
 	GazelleEnabled               *bool                            `json:"gazelleEnabled,omitempty"`
 	RedactedAPIKey               *string                          `json:"redactedApiKey,omitempty"`
 	OrpheusAPIKey                *string                          `json:"orpheusApiKey,omitempty"`
@@ -233,6 +235,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SeasonPackTags == nil &&
 		r.SeasonPackCategory == nil &&
 		r.SeasonPackCategoryRules == nil &&
+		r.CategoryMappingRules == nil &&
 		r.GazelleEnabled == nil &&
 		r.RedactedAPIKey == nil &&
 		r.OrpheusAPIKey == nil &&
@@ -393,6 +396,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.SeasonPackCategoryRules != nil {
 		settings.SeasonPackCategoryRules = normalizeSeasonPackCategoryRules(*patch.SeasonPackCategoryRules)
 	}
+	if patch.CategoryMappingRules != nil {
+		settings.CategoryMappingRules = normalizeCategoryMappingRules(*patch.CategoryMappingRules)
+	}
 	if patch.GazelleEnabled != nil {
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
@@ -450,6 +456,44 @@ func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []m
 			Resolution: resolution,
 			Source:     source,
 			Category:   category,
+		})
+	}
+	return normalized
+}
+
+// normalizeCategoryMappingRules cleans up incoming category mapping rules: it
+// trims fields, lowercases the content type, drops rules with no categories left
+// or an unrecognized content type, and drops a category once it has been claimed
+// by an earlier rule, so the first rule listing it wins. Category case is kept
+// because qBittorrent categories are case-sensitive.
+func normalizeCategoryMappingRules(rules []models.CategoryMappingRule) []models.CategoryMappingRule {
+	normalized := make([]models.CategoryMappingRule, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		contentType := strings.ToLower(strings.TrimSpace(rule.ContentType))
+		if _, ok := crossseed.RuleContentTypeInfo(contentType); !ok {
+			continue
+		}
+
+		categories := make([]string, 0, len(rule.Categories))
+		for _, category := range rule.Categories {
+			category = strings.TrimSpace(category)
+			if category == "" {
+				continue
+			}
+			if _, ok := seen[category]; ok {
+				continue
+			}
+			seen[category] = struct{}{}
+			categories = append(categories, category)
+		}
+		if len(categories) == 0 {
+			continue
+		}
+
+		normalized = append(normalized, models.CategoryMappingRule{
+			Categories:  categories,
+			ContentType: contentType,
 		})
 	}
 	return normalized
@@ -779,6 +823,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 
 	log.Debug().
 		Str("source", "cross-seed.webhook").
+		Str("announcedName", req.TorrentName).
 		Str("torrentName", torrentName).
 		Str("torrentHash", torrentHash).
 		Int64("size", totalSize).
@@ -1016,6 +1061,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackTags:               req.SeasonPackTags,
 		SeasonPackCategory:           strings.TrimSpace(req.SeasonPackCategory),
 		SeasonPackCategoryRules:      normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
+		CategoryMappingRules:         normalizeCategoryMappingRules(req.CategoryMappingRules),
 		GazelleEnabled:               req.GazelleEnabled,
 		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
 		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),

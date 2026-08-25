@@ -6,14 +6,13 @@
 import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 import { viewModeRowHeight } from "@/lib/torrent-table/row-height"
-import type { Torrent } from "@/types"
-import type { Row } from "@tanstack/react-table"
+import type { TorrentRow } from "@/components/torrents/tanstackTableFeatures"
 import { useVirtualizer, type VirtualItem, type Virtualizer } from "@tanstack/react-virtual"
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react"
 
 export interface UseTorrentTableVirtualizationParams {
   /** The table's current row model rows (by value — this hook runs after the table). */
-  rows: Row<Torrent>[]
+  rows: TorrentRow[]
   desktopViewMode: ViewMode
   /** Full filtered dataset length (drives overscan + the progressive target), NOT rows.length. */
   sortedTorrentsLength: number

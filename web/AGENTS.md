@@ -11,6 +11,7 @@ Frontend and i18n rules for work under `web/`.
 - File names should be descriptive, e.g. `torrent-table.tsx`.
 - Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
 - Frontend tests: Vitest + React Testing Library, colocated as `*.test.tsx` near the component.
+- Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
 - Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.
 - Keep this text inline, never in a tooltip: error and validation messages, warnings about data loss or actions the user cannot undo, and text the user must read before they choose.
 - Per-option text in a radio group or a checkbox list stays inline. The user compares the options side by side and cannot do that through hovers.
@@ -42,7 +43,7 @@ Locales live under `web/src/i18n/locales/<lang>/` with 10 namespaces:
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
-English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`.
+English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()` / `changeLanguage()` through `import.meta.glob` in `web/src/i18n/index.ts`. Supported today: `en`, `zh-CN`, `zh-TW`, `fr`, `de`, `cs`, `it`, `ko`, `uk`, `pt-BR`.
 
 ## i18n Commands
 
@@ -50,6 +51,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:hardcoded`
 - `pnpm check:i18n:raw-backend-values`
 - `pnpm check:i18n:zh-cn`
+- `pnpm check:i18n:zh-tw`
 - `pnpm check:i18n:fr`
 - `pnpm check:i18n:de`
 - `pnpm check:i18n:cs`
@@ -64,9 +66,9 @@ Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.t
 
 1. Add all 10 namespace JSON files under `web/src/i18n/locales/<lang>/`.
 2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
-3. Add/adapt a locale coverage script if the locale is not `zh-CN`.
+3. Add/adapt a locale coverage script. Both Chinese locales share `scripts/check-chinese-coverage.mjs`, which takes the locale as its argument.
 4. Run `pnpm check:i18n`.
-5. Update the supported-language list in `README.md` (Features) and `documentation/docs/intro.md` (Features + Languages section) so the promoted list stays accurate.
+5. Update the supported-language list in `README.md` (Features), `documentation/docs/intro.md` (Features + Languages section), and the i18n section above so the promoted list stays accurate.
 
 Coverage must compare against English for missing/extra keys, interpolation placeholders, HTML tag parity, plural forms, empty strings, encoding, and JSON validity.
 

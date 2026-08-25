@@ -435,8 +435,6 @@
       "lock": "Zamknout"
     },
     "toasts": {
-      "verifyFailed": "Ověření licence není dostupné",
-      "verifyFailedDescription": "Přepínání premium motivů je dočasně nedostupné.",
       "premiumRequired": "Vyžaduje se licence premium",
       "premiumRequiredDescription": "Odemkněte premium motivy přidáním platné licence premium."
     },

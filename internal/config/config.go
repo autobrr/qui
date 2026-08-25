@@ -108,7 +108,8 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
 	c.viper.SetDefault("logMaxBackups", 10)
-	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("dataDir", "")   // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("backupDir", "") // Empty means <dataDir>/backups
 	c.viper.SetDefault("databaseEngine", "sqlite")
 	c.viper.SetDefault("databaseDsn", "")
 	c.viper.SetDefault("databaseHost", "localhost")
@@ -161,8 +162,7 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 	c.viper.SetConfigFile(configPath)
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
@@ -181,8 +181,7 @@ func (c *AppConfig) loadFromStandardLocations() error {
 	c.viper.AddConfigPath(GetDefaultConfigDir())
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
@@ -214,6 +213,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("backupDir", envPrefix+"BACKUP_DIR")
 	c.viper.BindEnv("databaseEngine", envPrefix+"DATABASE_ENGINE")
 	c.bindOrReadFromFile("databaseDsn", envPrefix+"DATABASE_DSN")
 	c.viper.BindEnv("databaseHost", envPrefix+"DATABASE_HOST")
@@ -332,6 +332,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
 
 	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.BackupDir = c.viper.GetString("backupDir")
 	c.Config.DatabaseEngine = c.viper.GetString("databaseEngine")
 	c.Config.DatabaseDSN = c.viper.GetString("databaseDsn")
 	c.Config.DatabaseHost = c.viper.GetString("databaseHost")
@@ -506,6 +507,13 @@ sessionSecret = "{{ .sessionSecret }}"
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
 
+# Backup directory (default: <dataDir>/backups)
+# Backup manifests, archives and cached .torrent files are stored here.
+# A relative path is resolved against the config directory.
+# If you change this on an existing install, move the contents of
+# <dataDir>/backups into the new directory yourself.
+#backupDir = "/mnt/storage/qui-backups"
+
 # Custom themes directory (default: <config-dir>/themes, auto-created)
 # Drop sideloaded *.css theme files here. Listing requires premium access.
 # A relative path is resolved against the config directory.
@@ -553,7 +561,7 @@ sessionSecret = "{{ .sessionSecret }}"
 #logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
-# Enable Prometheus metrics on separate port (no authentication required)
+# Enable Prometheus metrics on a separate port
 # Default: false
 #metricsEnabled = false
 
@@ -567,9 +575,10 @@ sessionSecret = "{{ .sessionSecret }}"
 #metricsPort = 9074
 
 # Basic authentication for metrics endpoint (optional)
-# Format: "username:bcrypt_hash" or "user1:hash1,user2:hash2" for multiple users
-# Passwords must be bcrypt-hashed. Use tools like htpasswd or online bcrypt generators
-# Example: "prometheus:$2y$10$example_bcrypt_hash_here"
+# Format: "username:password" or "user1:password1,user2:password2" for multiple users
+# Passwords are plaintext and can contain colons. Usernames cannot contain colons.
+# Commas cannot appear in usernames or passwords. Protect this configuration file.
+# Example: "prometheus:secret"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
 
@@ -720,24 +729,24 @@ func setLogLevel(level string) {
 
 func baseLogWriter(version string) io.Writer {
 	if isDevBuild(version) {
-		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
-		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
-		writer.FormatTimestamp = func(i any) string {
-			if i == nil {
-				return ""
-			}
-			return fmt.Sprint(i)
-		}
-		writer.FormatMessage = func(i any) string {
-			if i == nil {
-				return ""
-			}
-			msg := strings.TrimSpace(fmt.Sprint(i))
-			if msg == "" {
-				return ""
-			}
-			return msg
-		}
+		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339,
+			PartsOrder: []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName},
+			FormatTimestamp: func(i any) string {
+				if i == nil {
+					return ""
+				}
+				return fmt.Sprint(i)
+			},
+			FormatMessage: func(i any) string {
+				if i == nil {
+					return ""
+				}
+				msg := strings.TrimSpace(fmt.Sprint(i))
+				if msg == "" {
+					return ""
+				}
+				return msg
+			}}
 		return writer
 	}
 	return os.Stderr
@@ -801,6 +810,20 @@ func (c *AppConfig) GetDataDir() string {
 // SetDataDir sets the data directory (used by CLI flags)
 func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
+}
+
+// GetBackupDir returns the resolved backup root directory.
+// Empty config defaults to <dataDir>/backups; a relative override is resolved
+// against the config directory, an absolute override is used verbatim.
+func (c *AppConfig) GetBackupDir() string {
+	dir := strings.TrimSpace(c.Config.BackupDir)
+	if dir == "" {
+		return filepath.Join(c.dataDir, "backups")
+	}
+	if !filepath.IsAbs(dir) {
+		return filepath.Join(c.GetConfigDir(), dir)
+	}
+	return dir
 }
 
 // GetConfigDir returns the directory containing the config file
@@ -885,7 +908,7 @@ func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 		return
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // G703: the path comes from the operator's own *_FILE environment variable
 	if err != nil {
 		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
 	}

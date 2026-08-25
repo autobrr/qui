@@ -36,7 +36,6 @@ export default tseslint.config([
         },
       ],
       '@stylistic/indent': ['error', 2, { 'SwitchCase': 1 }],
-      '@stylistic/multiline-ternary': ['warn', 'never'],
       '@stylistic/no-trailing-spaces': ['warn'],
       '@stylistic/object-curly-spacing': ['error', 'always'],
       '@typescript-eslint/no-unused-vars': ['warn'],

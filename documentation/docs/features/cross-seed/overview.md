@@ -28,10 +28,16 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** using the "1-click sync" feature to import from Prowlarr/Jackett automatically.
 
+:::note Prowlarr filters also apply here
+A Prowlarr indexer's own search filters, such as freeleech only, also apply to cross-seed searches. See [troubleshooting](./troubleshooting.md#prowlarr-filters-remove-expected-results).
+:::
+
 Optional: qui can also query OPS/RED directly via the trackers' Gazelle JSON APIs. This complements Torznab, can handle OPS/RED searches even when no Torznab backend is available, and excludes OPS/RED Torznab indexers for per-torrent searches only when **both** Gazelle keys are configured. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
 
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
 - This is especially helpful for content that is "AKA" type, and can have differing names depending on locale.
+
+Without *arr IDs, qui has a fallback. Some release groups embed IMDb/TMDb/TVDb tags in their MKV files. When a search finds no usable results, qui reads these tags from the torrent's largest `.mkv` file and retries the indexers that support ID-based search. This fallback needs [Local Filesystem Access](../instance-settings.md#local-filesystem-access) on the instance. qui caches each successful scan per torrent, so it reads the file only once. If a read fails, a later search tries again.
 
 ## Discovery Methods
 
@@ -45,7 +51,11 @@ Scheduled polling of tracker RSS feeds. Configure in the **Auto** tab on the Cro
 - **Target instances** - Which qBittorrent instances receive cross-seeds
 - **Target indexers** - Limit to specific indexers or use all enabled ones
 
-RSS automation processes the full feed from every enabled indexer on each run, matching against torrents across your target instances.
+RSS automation processes the full feed from each selected target indexer on each run. If no target indexers are selected, it uses all enabled indexers.
+
+It compares each feed title and byte count with eligible local torrents.
+
+This comparison happens before the one intended torrent-file download. RSS does not fetch extra torrent files to measure candidates.
 
 ### Library Scan
 
@@ -73,12 +83,24 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 
 If a torrent is still **checking** or **moving**, qui waits and runs the completion search afterward instead of searching immediately against an unstable path/state.
 
+Completion searches use the same Torznab result classifier as interactive and scheduled searches. An equal positive reported size can activate the same controlled fallback.
+
 ### Manual Search
 
 Right-click any torrent in the list to access cross-seed actions:
 
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+Interactive searches, scheduled or on-demand Library Scans, and completion searches use one reported-size rule. Strict release matching always runs first.
+
+An exact positive byte count can relax approved name differences. Reported size is evidence, not proof that the torrent has the same bytes.
+
+qui still checks the downloaded torrent metadata, files, layout, and piece boundaries. Title, season, episode, and split release-group fallbacks require a full recheck.
+
+RSS uses the same classifier with its feed title and byte count. The [autobrr integration](./autobrr.md) uses passive announcement data during `/check`.
+
+If autobrr has no positive size, qui uses a narrow name-only preflight. This preflight can approve one download, but it cannot approve an add.
 
 ### Season Pack Assembly
 

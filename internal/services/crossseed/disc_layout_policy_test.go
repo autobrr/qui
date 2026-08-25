@@ -197,6 +197,7 @@ func TestTitleRescueForcesPausedFullRecheck(t *testing.T) {
 	case pending := <-service.recheckResumeChan:
 		require.NotNil(t, pending.budgetBytes)
 		require.Zero(t, *pending.budgetBytes)
+		requireVerificationPendingWaitsForObservedFullCheck(t, service, pending)
 	default:
 		require.Fail(t, "expected title rescue to wait for a full recheck")
 	}

@@ -81,7 +81,7 @@ func TestManager_MetricsCanBeScraped(t *testing.T) {
 	metricCount := testutil.CollectAndCount(registry)
 	// With the new structure, we have Go and Process collectors even with nil dependencies
 	// So we should have more than 0 metrics (typically around 36 from Go runtime + process)
-	assert.Greater(t, metricCount, 0, "Should collect metrics from Go and Process collectors")
+	assert.Positive(t, metricCount, "Should collect metrics from Go and Process collectors")
 }
 
 func TestTorrentCollector_Describe(t *testing.T) {

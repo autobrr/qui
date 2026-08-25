@@ -685,6 +685,8 @@
     "expires": "Expire {{time}}",
     "refreshFromIndexers": "Rafraîchir depuis les indexeurs",
     "partialResults": "Résultats partiels - certains indexeurs n'ont pas répondu",
+    "arrLookupFailed": "Échec de la recherche d'ID de métadonnées - recherche par titre uniquement, les résultats peuvent être incomplets",
+    "arrNoIds": "Aucun ID de métadonnées trouvé pour cette release - recherche par titre uniquement",
     "searchScope": "Portée de la recherche",
     "noIndexers": "Aucun indexeur Torznab disponible",
     "noIndexersHelp": "Ajoutez ou activez des indexeurs Torznab dans les paramètres pour chercher des cross-seeds.",
@@ -717,6 +719,25 @@
     "block": "Bloquer",
     "addedToBlocklist": "Ajouté à la liste de blocage",
     "missingInstance": "Instance manquante pour la liste de blocage",
+    "trace": {
+      "title": "Détail de la recherche",
+      "summaryBadge": "{{total}} candidats, {{matches}} correspondances",
+      "summary": "{{total}} candidats renvoyés. Rejetés : {{release}} release non conforme, {{size}} taille non conforme, {{late}} filtre de contenu, {{duplicates}} doublons. {{matches}} correspondances restantes.",
+      "indexersHeading": "Indexeurs",
+      "status": {
+        "searched": "interrogé",
+        "notCovered": "incomplet",
+        "error": "erreur",
+        "excluded": "exclu"
+      },
+      "candidateCount": "{{count}} candidats",
+      "rejectionsHeading": "Candidats rejetés",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} autres pour cette raison",
+      "copyReport": "Copier le rapport",
+      "copied": "Rapport copié dans le presse-papiers",
+      "copyFailed": "Impossible de copier le rapport"
+    },
     "scope": {
       "allIndexers": "Tous les indexeurs",
       "selectCustom": "Sélection personnalisée",

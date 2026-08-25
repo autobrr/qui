@@ -214,7 +214,7 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 		existingLicense.DodoInstanceID = ""
 		existingLicense.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 		existingLicense.PolarProductID = &activateResp.LicenseKey.BenefitID
-		existingLicense.PolarActivationID = activateResp.Id
+		existingLicense.PolarActivationID = activateResp.ID
 		existingLicense.Username = username
 		existingLicense.UpdatedAt = now
 
@@ -240,7 +240,7 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 		Provider:          models.LicenseProviderPolar,
 		PolarCustomerID:   &activateResp.LicenseKey.CustomerID,
 		PolarProductID:    &activateResp.LicenseKey.BenefitID,
-		PolarActivationID: activateResp.Id,
+		PolarActivationID: activateResp.ID,
 		Username:          username,
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -411,7 +411,7 @@ func (s *Service) ensurePolarActivation(ctx context.Context, license *models.Pro
 
 	license.Provider = models.LicenseProviderPolar
 	license.DodoInstanceID = ""
-	license.PolarActivationID = activateResp.Id
+	license.PolarActivationID = activateResp.ID
 	license.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 	license.PolarProductID = &activateResp.LicenseKey.BenefitID
 	license.ActivatedAt = time.Now()
@@ -424,7 +424,7 @@ func (s *Service) ensurePolarActivation(ctx context.Context, license *models.Pro
 
 	log.Info().
 		Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-		Str("activationId", activateResp.Id).
+		Str("activationId", activateResp.ID).
 		Msg("Successfully activated license and updated activation ID")
 
 	return nil

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { writeRaw } from "@/lib/client-settings"
+import { spreadsheetPostProcessor } from "@/lib/spreadsheet-disguise"
 import i18n, { type ResourceKey, type ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
 
@@ -49,7 +51,7 @@ async function loadLanguageResources(lng: string): Promise<void> {
   loadedLanguages.add(lng)
 }
 
-export const supportedLanguages = ["en", "uk", "zh-CN", "fr", "de", "cs", "it", "ko", "pt-BR"] as const
+export const supportedLanguages = ["en", "uk", "zh-CN", "zh-TW", "fr", "de", "cs", "it", "ko", "pt-BR"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
 const LANGUAGE_STORAGE_KEY = "qui.language"
 
@@ -57,6 +59,7 @@ export const languageNames: Record<AppLanguage, string> = {
   en: "English",
   uk: "Українська",
   "zh-CN": "\u7B80\u4F53\u4E2D\u6587",
+  "zh-TW": "\u7E41\u9AD4\u4E2D\u6587",
   fr: "Français",
   de: "Deutsch",
   cs: "Čeština",
@@ -74,6 +77,9 @@ function detectBrowserLanguage(): AppLanguage | null {
   for (const lang of browserLanguages) {
     // Exact match (e.g. "fr" → "fr", "zh-CN" → "zh-CN")
     if (isAppLanguage(lang)) return lang
+    // Traditional Chinese tags ("zh-Hant", "zh-Hant-TW", "zh-HK", "zh-MO") have no
+    // exact match, and the prefix match below would hand them zh-CN.
+    if (/^zh-(hant|hk|mo)\b/i.test(lang)) return "zh-TW"
     // Prefix match (e.g. "fr-FR" → "fr", "zh-Hans" → skip if no match)
     const prefix = lang.split("-")[0]
     const match = supportedLanguages.find((s) => s === prefix || s.startsWith(`${prefix}-`))
@@ -93,11 +99,8 @@ function getStoredLanguage(): AppLanguage | null {
 }
 
 function persistLanguage(lng: AppLanguage) {
-  try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, lng)
-  } catch (error) {
-    console.error("Failed to save language preference to localStorage:", error)
-  }
+  // writeRaw caches locally and queues the server push (issue #2406).
+  writeRaw(LANGUAGE_STORAGE_KEY, lng)
 }
 
 // Monotonic token so that rapid language switches can't apply out of order: a slow
@@ -129,15 +132,22 @@ export const namespaces = [
 // Initialize synchronously with English so i18n.t works the moment this module is
 // imported (lib helpers and tests rely on this). The active language, if not English,
 // falls back to English until its chunk is loaded by initI18n().
-i18n.use(initReactI18next).init({
+i18n.use(initReactI18next).use(spreadsheetPostProcessor).init({
   resources: { en: enResources },
   lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",
   ns: [...namespaces],
+  postProcess: ["spreadsheetDisguise"],
   interpolation: {
     escapeValue: false, // React already escapes
   },
+})
+
+// The Spreadsheet theme swaps a handful of visible strings; a theme switch must
+// re-render translated components for the swap to take effect immediately.
+window.addEventListener("themechange", () => {
+  i18n.emit("languageChanged", i18n.language)
 })
 
 // Ensure the active language's resources are loaded before the app renders, so users
