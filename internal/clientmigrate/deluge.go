@@ -6,7 +6,7 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/zeebo/bencode"
