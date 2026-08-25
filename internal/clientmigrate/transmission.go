@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -24,7 +23,7 @@ func NewTransmissionImporter(opts Options) ClientMigrater {
 }
 
 func (i *TransmissionImport) Migrate() error {
-	torrentsDir := i.opts.SourceDir + "/torrents"
+	torrentsDir := filepath.Join(i.opts.SourceDir, "torrents")
 
 	sourceDirInfo, err := os.Stat(torrentsDir)
 	if err != nil {
@@ -37,6 +36,12 @@ func (i *TransmissionImport) Migrate() error {
 
 	if !sourceDirInfo.IsDir() {
 		return errors.Errorf("source is a file, not a directory: %s", torrentsDir)
+	}
+
+	if !i.opts.DryRun {
+		if err := MkDirIfNotExists(i.opts.QbitDir); err != nil {
+			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
+		}
 	}
 
 	matches, err := filepath.Glob(filepath.Join(torrentsDir, "*.torrent"))
@@ -54,6 +59,8 @@ func (i *TransmissionImport) Migrate() error {
 	log.Info().Msgf("Total torrents to process: %d", totalJobs)
 
 	positionNum := 0
+	imported := 0
+	failed := 0
 	for _, match := range matches {
 		positionNum++
 
@@ -68,18 +75,21 @@ func (i *TransmissionImport) Migrate() error {
 		}
 
 		if i.opts.DryRun {
-			log.Info().Msgf("dry-run: (%d/%d) successfully imported: %s", positionNum, totalJobs, torrentID)
+			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
+			imported++
 			continue
 		}
 		file, err := metainfo.LoadFromFile(match)
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not load torrent file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
 		metaInfo, err := file.UnmarshalInfo()
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
@@ -89,6 +99,7 @@ func (i *TransmissionImport) Migrate() error {
 		resumeFile, err := i.decodeResumeFile(resumeFilePath)
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not decode transmission resume file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
@@ -153,10 +164,12 @@ func (i *TransmissionImport) Migrate() error {
 			// legacy and should be removed sometime with 4.3.X
 			newFastResume.QbtHasRootFolder = 1
 
-			// Fix savepath for torrents with subfolder
-			// directory contains the whole torrent path, which gives error in qBit.
-			// remove file.sourceDirInfo.name from full path directory
-			newPath := strings.ReplaceAll(resumeFile.Destination, metaInfo.Name, "")
+			// Fix savepath for torrents with subfolder: qBittorrent expects the
+			// parent directory, so strip a trailing torrent-name component only.
+			newPath := filepath.Clean(resumeFile.Destination)
+			if filepath.Base(newPath) == metaInfo.Name {
+				newPath = filepath.Dir(newPath)
+			}
 
 			newFastResume.Path = newPath
 			newFastResume.SavePath = newPath
@@ -183,19 +196,23 @@ func (i *TransmissionImport) Migrate() error {
 		// copy torrent file
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s error: %q", fastResumeOutFile, err)
+			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
+			failed++
 			continue
 		}
 
 		if err = CopyFile(match, torrentOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s error %q", torrentOutFile, err)
+			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s", torrentOutFile)
+			failed++
 			continue
 		}
+
+		imported++
 
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
-	log.Info().Msgf("(%d/%d) successfully imported torrents!", positionNum, totalJobs)
+	logImportSummary(i.opts.DryRun, imported, failed, totalJobs)
 
 	return nil
 }

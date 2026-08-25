@@ -56,16 +56,13 @@ func (di *DelugeImport) Migrate() error {
 		return err
 	}
 
-	matches, err := filepath.Glob(filepath.Join(sourceDir, "*.torrent"))
-	if err != nil {
-		return errors.Wrapf(err, "glob error: %v", matches)
-	}
-
-	totalJobs := len(matches)
+	totalJobs := len(fastresumeFile)
 
 	log.Info().Msgf("Total torrents to process: %d", totalJobs)
 
 	positionNum := 0
+	imported := 0
+	failed := 0
 	for torrentID, value := range fastresumeFile {
 		torrentNamePath := filepath.Join(sourceDir, torrentID+".torrent")
 
@@ -89,30 +86,35 @@ func (di *DelugeImport) Migrate() error {
 
 		strValue, ok := value.(string)
 		if !ok {
-			log.Error().Msgf("Could not convert value %s to string", value)
+			log.Error().Msgf("Could not convert value %v to string", value)
+			failed++
 			continue
 		}
 
 		if err := bencode.NewDecoder(strings.NewReader(strValue)).Decode(&fastResume); err != nil {
 			log.Error().Err(err).Msgf("Could not decode row %s. Continue", torrentID)
+			failed++
 			continue
 		}
 
 		fastResume.TorrentFilePath = torrentNamePath
 		if _, err = os.Stat(fastResume.TorrentFilePath); os.IsNotExist(err) {
 			log.Error().Err(err).Msgf("Could not find torrent file %s for %s", fastResume.TorrentFilePath, torrentID)
+			failed++
 			continue
 		}
 
 		file, err := metainfo.LoadFromFile(torrentNamePath)
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not load torrent file %s for %s", fastResume.TorrentFilePath, torrentID)
+			failed++
 			continue
 		}
 
 		metaInfo, err := file.UnmarshalInfo()
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s for %s", fastResume.TorrentFilePath, torrentID)
+			failed++
 			continue
 		}
 
@@ -146,25 +148,30 @@ func (di *DelugeImport) Migrate() error {
 		// TODO handle replace paths
 
 		if di.opts.DryRun {
-			log.Info().Msgf("dry-run: (%d/%d) successfully imported: %s", positionNum, totalJobs, torrentID)
+			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
+			imported++
 			continue
 		}
 
 		fastResumeOutFile := filepath.Join(di.opts.QbitDir, torrentID+".fastresume")
 		if err = fastResume.Encode(fastResumeOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s error: %q", fastResumeOutFile, err)
+			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
+			failed++
 			continue
 		}
 
 		if err = CopyFile(fastResume.TorrentFilePath, torrentOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s error %q", torrentOutFile, err)
+			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s", torrentOutFile)
+			failed++
 			continue
 		}
+
+		imported++
 
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
-	log.Info().Msgf("(%d/%d) successfully imported torrents!", positionNum, totalJobs)
+	logImportSummary(di.opts.DryRun, imported, failed, totalJobs)
 
 	return nil
 }

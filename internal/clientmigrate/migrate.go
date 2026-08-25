@@ -89,9 +89,6 @@ func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, source
 	timeStamp := time.Now().Format("20060102150405")
 
 	backupDir := "qbt_backup"
-	if err := MkDirIfNotExists(backupDir); err != nil {
-		return errors.Wrap(err, "could not create backup directory")
-	}
 
 	sourceBackupArchive := filepath.Join(backupDir, source+"_backup_"+timeStamp+".tar.gz")
 	qbitBackupArchive := filepath.Join(backupDir, "qBittorrent_backup_"+timeStamp+".tar.gz")
@@ -100,16 +97,25 @@ func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, source
 		log.Info().Msgf("dry-run: creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 		log.Info().Msgf("dry-run: creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
 	} else {
+		if err := MkDirIfNotExists(backupDir); err != nil {
+			return errors.Wrap(err, "could not create backup directory")
+		}
+
 		log.Info().Msgf("creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 
 		if err := m.archiveDir(ctx, sourceDir, sourceBackupArchive); err != nil {
 			return errors.Wrapf(err, "could not create %s backup of directory: %s to %s", source, sourceDir, sourceBackupArchive)
 		}
 
-		log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
+		// a fresh qBittorrent install may not have a BT_backup dir yet
+		if _, err := os.Stat(qbitDir); os.IsNotExist(err) {
+			log.Info().Msgf("qBittorrent directory does not exist yet, skipping backup: %s", qbitDir)
+		} else {
+			log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)
 
-		if err := m.archiveDir(ctx, qbitDir, qbitBackupArchive); err != nil {
-			return errors.Wrapf(err, "could not create qBittorrent backup of directory: %s", qbitDir)
+			if err := m.archiveDir(ctx, qbitDir, qbitBackupArchive); err != nil {
+				return errors.Wrapf(err, "could not create qBittorrent backup of directory: %s", qbitDir)
+			}
 		}
 	}
 
@@ -146,6 +152,18 @@ func (m Migrater) archiveDir(ctx context.Context, dir, archiveName string) error
 	}
 
 	return nil
+}
+
+// logImportSummary logs the per-importer end result with accurate counts
+func logImportSummary(dryRun bool, imported, failed, total int) {
+	switch {
+	case dryRun:
+		log.Info().Msgf("dry-run: would import %d of %d torrents", imported, total)
+	case failed > 0:
+		log.Warn().Msgf("imported %d of %d torrents, %d failed", imported, total, failed)
+	default:
+		log.Info().Msgf("successfully imported %d torrents!", imported)
+	}
 }
 
 // MkDirIfNotExists check if export dir exists, if not then lets create it

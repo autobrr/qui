@@ -3,7 +3,6 @@ package clientmigrate
 import (
 	"bytes"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -46,6 +45,12 @@ func (i *RTorrentImport) Migrate() error {
 		return errors.Errorf("source is a file, not a directory: %s", torrentsSessionDir)
 	}
 
+	if !i.opts.DryRun {
+		if err := MkDirIfNotExists(i.opts.QbitDir); err != nil {
+			return errors.Wrapf(err, "qbit directory error: %s", i.opts.QbitDir)
+		}
+	}
+
 	matches, err := filepath.Glob(filepath.Join(torrentsSessionDir, "*.torrent"))
 	if err != nil {
 		return errors.Wrapf(err, "glob error: %s", torrentsSessionDir)
@@ -61,6 +66,8 @@ func (i *RTorrentImport) Migrate() error {
 	log.Info().Msgf("Total torrents to process: %d", totalJobs)
 
 	positionNum := 0
+	imported := 0
+	failed := 0
 	for _, match := range matches {
 		positionNum++
 
@@ -75,19 +82,22 @@ func (i *RTorrentImport) Migrate() error {
 		}
 
 		if i.opts.DryRun {
-			log.Info().Msgf("dry-run: (%d/%d) successfully imported: %s", positionNum, totalJobs, torrentID)
+			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
+			imported++
 			continue
 		}
 
 		file, err := metainfo.LoadFromFile(match)
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not load torrent file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
 		metaInfo, err := file.UnmarshalInfo()
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
@@ -95,6 +105,7 @@ func (i *RTorrentImport) Migrate() error {
 		resumeFile, err := i.decodeRTorrentLibTorrentResumeFile(match)
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not decode rtorrent libtorrent resume file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
@@ -102,6 +113,7 @@ func (i *RTorrentImport) Migrate() error {
 		rtFile, err := i.decodeRTorrentFile(match)
 		if err != nil {
 			log.Error().Err(err).Msgf("Could not decode rtorrent state file %s for %s", match, torrentID)
+			failed++
 			continue
 		}
 
@@ -166,10 +178,12 @@ func (i *RTorrentImport) Migrate() error {
 			// legacy and should be removed sometime with 4.3.X
 			newFastResume.QbtHasRootFolder = 1
 
-			// Fix savepath for torrents with subfolder
-			// directory contains the whole torrent path, which gives error in qBit.
-			// remove file.sourceDirInfo.name from full path in id.rtorrent directory
-			newPath := strings.ReplaceAll(rtFile.Directory, metaInfo.Name, "")
+			// Fix savepath for torrents with subfolder: rtorrent's directory is
+			// the full torrent path, qBittorrent expects the parent directory.
+			newPath := filepath.Clean(rtFile.Directory)
+			if filepath.Base(newPath) == metaInfo.Name {
+				newPath = filepath.Dir(newPath)
+			}
 
 			newFastResume.Path = newPath
 			newFastResume.SavePath = newPath
@@ -196,19 +210,23 @@ func (i *RTorrentImport) Migrate() error {
 		// copy torrent file
 		fastResumeOutFile := filepath.Join(i.opts.QbitDir, torrentID+".fastresume")
 		if err = newFastResume.Encode(fastResumeOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s error: %q", fastResumeOutFile, err)
+			log.Error().Err(err).Msgf("Could not create qBittorrent fastresume file %s", fastResumeOutFile)
+			failed++
 			continue
 		}
 
 		if err = CopyFile(match, torrentOutFile); err != nil {
-			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s error %q", torrentOutFile, err)
+			log.Error().Err(err).Msgf("Could not copy qBittorrent torrent file %s", torrentOutFile)
+			failed++
 			continue
 		}
+
+		imported++
 
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
-	log.Info().Msgf("(%d/%d) successfully imported torrents!", positionNum, totalJobs)
+	logImportSummary(i.opts.DryRun, imported, failed, totalJobs)
 
 	return nil
 }
@@ -243,7 +261,7 @@ func (i *RTorrentImport) convertTrackers(trackers RTorrentLibTorrentResumeFile) 
 // getTorrentFileName from file. Removes file extension
 func getTorrentFileName(file string) string {
 	_, fileName := filepath.Split(file)
-	trimmed := strings.TrimSuffix(fileName, path.Ext(fileName))
+	trimmed := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 	toLower := strings.ToLower(trimmed)
 
 	return toLower
