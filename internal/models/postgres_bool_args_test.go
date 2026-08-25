@@ -482,6 +482,7 @@ func TestAutomationReadsIntegerBooleanColumns(t *testing.T) {
 			interval_seconds INTEGER,
 			free_space_source TEXT,
 			sorting_config TEXT,
+			target_seed_size TEXT,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)

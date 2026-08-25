@@ -847,7 +847,8 @@
         "deleteActivityFailed": "刪除活動失敗",
         "hashCopied": "雜湊已複製"
       },
-      "exported": "已匯出"
+      "exported": "已匯出",
+      "targetSeedSizeBadge": "目標：{{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "正在載入預覽，這可能需要一些時間...",
@@ -881,7 +882,11 @@
       "unregistered": "未註冊",
       "andMoreTorrents": "... 還有 {{count}} 個種子",
       "loadMore": "載入更多",
-      "exportCSV": "匯出 CSV"
+      "exportCSV": "匯出 CSV",
+      "targetSeedSize": {
+        "initialPool": "初始做種池",
+        "projectedRemaining": "預計剩餘"
+      }
     },
     "orphanScanOverview": {
       "title": "孤立檔案掃描",
@@ -1621,7 +1626,16 @@
         "customGroupAdded": "已新增自訂分組"
       },
       "trackerMatchInclude": "包含",
-      "trackerMatchExclude": "排除"
+      "trackerMatchExclude": "排除",
+      "targetSeedSize": {
+        "title": "目標做種大小",
+        "description": "自動刪除符合條件的已完成種子，以達到並保持目標總做種大小。適用於透過維持特定做種體積（例如 1 TB）來啟用全站 Freeleech 等特權站點的情境。",
+        "targetSize": "目標大小",
+        "mode": "執行模式",
+        "modeHelp": "最小模式確保剩餘做種池絕不低於目標值（跳過會導致總量低於目標的候選種子）。最大模式則持續刪除候選種子直至做種池小於或等於目標值。",
+        "modeMinimal": "最小（保持至少達到目標 - 絕不低於）",
+        "modeMaximum": "最大（保持最多達到目標 - 限制上限）"
+      }
     },
     "shareLimit": {
       "global": "全域",

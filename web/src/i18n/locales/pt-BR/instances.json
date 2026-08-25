@@ -865,7 +865,8 @@
         "deleteActivityFailed": "Falha ao excluir histórico",
         "hashCopied": "Hash copiado"
       },
-      "exported": "Exportado"
+      "exported": "Exportado",
+      "targetSeedSizeBadge": "Alvo: {{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "Carregando estimativas...",
@@ -899,7 +900,11 @@
       "unregistered": "Não Registrado",
       "andMoreTorrents": "... e mais {{count}} torrents",
       "loadMore": "Carregar mais",
-      "exportCSV": "Exportar CSV"
+      "exportCSV": "Exportar CSV",
+      "targetSeedSize": {
+        "initialPool": "Pool inicial",
+        "projectedRemaining": "Restante projetado"
+      }
     },
     "orphanScanOverview": {
       "title": "Arquivos Órfãos",
@@ -1640,7 +1645,16 @@
         "customGroupAdded": "Grupo personalizado adicionado"
       },
       "trackerMatchInclude": "Vai Pegar (Incluir)",
-      "trackerMatchExclude": "Ignorará Totalmente (Excluir)"
+      "trackerMatchExclude": "Ignorará Totalmente (Excluir)",
+      "targetSeedSize": {
+        "title": "Tamanho alvo de seed",
+        "description": "Remove automaticamente torrents concluídos elegíveis para atingir e manter um tamanho total de seed alvo. Útil para rastreadores onde manter um pool de seed (ex.: 1 TB) ativa benefícios como freeleech global.",
+        "targetSize": "Tamanho alvo",
+        "mode": "Modo de aplicação",
+        "modeHelp": "O modo mínimo garante que o pool restante nunca fique abaixo do alvo (ignorando candidatos que fariam o total cair abaixo do alvo). O modo máximo remove candidatos até que o pool fique igual ou abaixo do alvo.",
+        "modeMinimal": "Mínimo (manter pelo menos o alvo - nunca ficar abaixo)",
+        "modeMaximum": "Máximo (manter no máximo o alvo - limitar o pool)"
+      }
     },
     "shareLimit": {
       "global": "Do Servidor",

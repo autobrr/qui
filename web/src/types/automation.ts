@@ -307,6 +307,14 @@ export type SortingConfig =
     scoreRules: ScoreRule[]
   }
 
+export type TargetSeedSizeMode = "minimal" | "maximum"
+
+export interface TargetSeedSizeConfig {
+  enabled: boolean
+  targetBytes: number
+  mode?: TargetSeedSizeMode
+}
+
 export interface Automation {
   id: number
   instanceId: number
@@ -315,6 +323,7 @@ export interface Automation {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  targetSeedSize?: TargetSeedSizeConfig
   sortingConfig?: SortingConfig
   enabled: boolean
   dryRun: boolean
@@ -331,6 +340,7 @@ export interface AutomationInput {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  targetSeedSize?: TargetSeedSizeConfig
   sortingConfig?: SortingConfig
   enabled?: boolean
   dryRun?: boolean
@@ -447,6 +457,8 @@ export interface AutomationPreviewTorrent {
 export interface AutomationPreviewResult {
   totalMatches: number
   crossSeedCount?: number
+  targetSeedSizeInitialPool?: number
+  targetSeedSizeRemainingPool?: number
   examples: AutomationPreviewTorrent[]
   warnings?: string[] // Warnings explaining why certain operations were skipped
 }

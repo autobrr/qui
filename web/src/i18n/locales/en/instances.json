@@ -740,6 +740,7 @@
       "xsSafe": "XS safe",
       "plusXs": "+ XS",
       "plusFiles": "+ files",
+      "targetSeedSizeBadge": "Target: {{size}}",
       "tagActions": "{{count}} tag action",
       "tagActions_plural": "{{count}} tag actions",
       "program": "Program",
@@ -899,7 +900,11 @@
       "unregistered": "Unregistered",
       "andMoreTorrents": "... and {{count}} more torrents",
       "loadMore": "Load more",
-      "exportCSV": "Export CSV"
+      "exportCSV": "Export CSV",
+      "targetSeedSize": {
+        "initialPool": "Initial pool",
+        "projectedRemaining": "Projected remaining"
+      }
     },
     "orphanScanOverview": {
       "title": "Orphan Scan",
@@ -1409,6 +1414,15 @@
         "includeHardlinkedCopies": "Include hardlinked copies",
         "includeHardlinkedCopiesDescription": "Also delete torrents that share the same underlying files via hardlinks. Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.",
         "localAccessRequired": "Requires \"Local Filesystem Access\" to be enabled in instance settings."
+      },
+      "targetSeedSize": {
+        "title": "Target seed size",
+        "description": "Automatically remove eligible completed torrents to reach and maintain a targeted total seeding size. Useful for trackers where maintaining a pool size (e.g., 1 TB) activates site perks like global freeleech.",
+        "targetSize": "Target size",
+        "mode": "Enforcement mode",
+        "modeHelp": "Minimal mode ensures the remaining pool never drops below the target (skipping candidates that would drop total below target). Maximum mode removes candidates until the pool is at or below the target.",
+        "modeMinimal": "Minimal (keep at least target - never drop below)",
+        "modeMaximum": "Maximum (keep at most target - cap pool)"
       },
       "move": {
         "newSavePath": "New save path",

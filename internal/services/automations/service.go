@@ -769,9 +769,11 @@ func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Autom
 
 // PreviewResult contains torrents that would match a rule.
 type PreviewResult struct {
-	TotalMatches   int              `json:"totalMatches"`
-	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (for category preview)
-	Examples       []PreviewTorrent `json:"examples"`
+	TotalMatches                int              `json:"totalMatches"`
+	CrossSeedCount              int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (for category preview)
+	TargetSeedSizeInitialPool   int64            `json:"targetSeedSizeInitialPool,omitempty"`
+	TargetSeedSizeRemainingPool int64            `json:"targetSeedSizeRemainingPool,omitempty"`
+	Examples                    []PreviewTorrent `json:"examples"`
 }
 
 // PreviewTorrent is a simplified torrent for preview display.
@@ -965,6 +967,50 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 	return nil
 }
 
+// setupTargetSeedSizeContext initializes TargetSeedSize context if enabled by the rule.
+func (s *Service) setupTargetSeedSizeContext(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext, sm *qbittorrent.SyncManager) {
+	if rule == nil || rule.TargetSeedSize == nil || !rule.TargetSeedSize.Enabled || evalCtx == nil {
+		return
+	}
+	if evalCtx.TargetSeedSizeStates == nil {
+		evalCtx.TargetSeedSizeStates = make(map[int]*TargetSeedSizePoolState)
+	}
+	initialPool := calculateInitialPoolSize(rule, torrents, sm)
+	evalCtx.TargetSeedSizeStates[rule.ID] = &TargetSeedSizePoolState{
+		InitialPoolBytes:   initialPool,
+		RemainingPoolBytes: initialPool,
+		TargetBytes:        rule.TargetSeedSize.TargetBytes,
+		Mode:               rule.TargetSeedSize.Mode,
+	}
+}
+
+func rulesUseTargetSeedSize(rules []*models.Automation) bool {
+	for _, r := range rules {
+		if r != nil && r.TargetSeedSize != nil && r.TargetSeedSize.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func calculateInitialPoolSize(rule *models.Automation, torrents []qbt.Torrent, sm *qbittorrent.SyncManager) int64 {
+	var total int64
+	for _, t := range torrents {
+		// Only completed torrents count towards seed size pool
+		if t.Progress < 1.0 && t.AmountLeft > 0 {
+			continue
+		}
+		if rule != nil && rule.TrackerPattern != "" && rule.TrackerPattern != "*" {
+			domains := collectTrackerDomains(t, sm)
+			if !matchesTracker(rule.TrackerPattern, domains) {
+				continue
+			}
+		}
+		total += t.Size
+	}
+	return total
+}
+
 // getTrackerForTorrent returns the first tracker domain for a torrent.
 func getTrackerForTorrent(torrent *qbt.Torrent, sm *qbittorrent.SyncManager) string {
 	if domains := collectTrackerDomains(*torrent, sm); len(domains) > 0 {
@@ -1011,6 +1057,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
+	s.setupTargetSeedSizeContext(rule, torrents, evalCtx, s.syncManager)
 
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
@@ -1253,6 +1300,11 @@ func (s *Service) previewDeleteStandard(
 			if !allGroupMembersMatchCondition(members, torrentByHash, deleteCond.Condition, evalCtx) {
 				continue
 			}
+			if !eligibleMode && rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil {
+				if !evalCtx.CheckAndApplyTargetSeedSizeDelete(rule.ID, *torrent) {
+					continue
+				}
+			}
 
 			if expandGroup {
 				directMatchSet[torrent.Hash] = struct{}{}
@@ -1283,6 +1335,13 @@ func (s *Service) previewDeleteStandard(
 			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, !isDirect, false, score))
 		}
 
+		if rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil && evalCtx.TargetSeedSizeStates != nil {
+			if state, ok := evalCtx.TargetSeedSizeStates[rule.ID]; ok && state != nil {
+				result.TargetSeedSizeInitialPool = state.InitialPoolBytes
+				result.TargetSeedSizeRemainingPool = state.RemainingPoolBytes
+			}
+		}
+
 		result.TotalMatches = matchIndex
 		return result, nil
 	}
@@ -1300,6 +1359,12 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 
+		if !eligibleMode && rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil {
+			if !evalCtx.CheckAndApplyTargetSeedSizeDelete(rule.ID, *torrent) {
+				continue
+			}
+		}
+
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		if !eligibleMode {
@@ -1313,6 +1378,13 @@ func (s *Service) previewDeleteStandard(
 		if len(result.Examples) < cfg.limit {
 			tracker := getTrackerForTorrent(torrent, s.syncManager)
 			result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, false, false, score))
+		}
+	}
+
+	if rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil && evalCtx.TargetSeedSizeStates != nil {
+		if state, ok := evalCtx.TargetSeedSizeStates[rule.ID]; ok && state != nil {
+			result.TargetSeedSizeInitialPool = state.InitialPoolBytes
+			result.TargetSeedSizeRemainingPool = state.RemainingPoolBytes
 		}
 	}
 
@@ -1348,6 +1420,7 @@ func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex
 	if hardlinkIndex == nil {
 		return
 	}
+
 	for _, hlHash := range hardlinkIndex.GetHardlinkCopies(triggerHash) {
 		if _, exists := s.expandedSet[hlHash]; !exists {
 			s.expandedSet[hlHash] = struct{}{}
@@ -1390,6 +1463,12 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 
 		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx) {
 			continue
+		}
+
+		if !eligibleMode && rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil {
+			if !evalCtx.CheckAndApplyTargetSeedSizeDelete(rule.ID, *torrent) {
+				continue
+			}
 		}
 
 		crossSeedGroup := findCrossSeedGroup(*torrent, cpIndex)
@@ -1472,6 +1551,13 @@ func (s *Service) buildCrossSeedPreviewResult(
 		result.Examples = append(result.Examples, buildPreviewTorrent(torrent, tracker, evalCtx, isCrossSeed, isHardlinkCopy, score))
 	}
 
+	if rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil && evalCtx.TargetSeedSizeStates != nil {
+		if poolState, ok := evalCtx.TargetSeedSizeStates[rule.ID]; ok && poolState != nil {
+			result.TargetSeedSizeInitialPool = poolState.InitialPoolBytes
+			result.TargetSeedSizeRemainingPool = poolState.RemainingPoolBytes
+		}
+	}
+
 	return result
 }
 
@@ -1547,6 +1633,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
+	s.setupTargetSeedSizeContext(rule, torrents, evalCtx, s.syncManager)
 
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
@@ -2135,6 +2222,22 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// Must happen BEFORE processTorrents() so SpaceToClear is correctly deduplicated.
 		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
 			evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
+		}
+	}
+
+	if rulesUseTargetSeedSize(eligibleRules) {
+		evalCtx.TargetSeedSizeStates = make(map[int]*TargetSeedSizePoolState)
+		for _, r := range eligibleRules {
+			if r.TargetSeedSize == nil || !r.TargetSeedSize.Enabled {
+				continue
+			}
+			initialPool := calculateInitialPoolSize(r, torrents, s.syncManager)
+			evalCtx.TargetSeedSizeStates[r.ID] = &TargetSeedSizePoolState{
+				InitialPoolBytes:   initialPool,
+				RemainingPoolBytes: initialPool,
+				TargetBytes:        r.TargetSeedSize.TargetBytes,
+				Mode:               r.TargetSeedSize.Mode,
+			}
 		}
 	}
 
@@ -6574,6 +6677,20 @@ func loadRuleScopedEvalContext(rule *models.Automation, torrents []qbt.Torrent, 
 	}
 	if ruleUsesCondition(rule, FieldFreeSpace) {
 		evalCtx.LoadFreeSpaceSourceState(GetFreeSpaceRuleKey(rule))
+	}
+	if rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled {
+		if evalCtx.TargetSeedSizeStates == nil {
+			evalCtx.TargetSeedSizeStates = make(map[int]*TargetSeedSizePoolState)
+		}
+		if _, ok := evalCtx.TargetSeedSizeStates[rule.ID]; !ok {
+			initialPool := calculateInitialPoolSize(rule, torrents, sm)
+			evalCtx.TargetSeedSizeStates[rule.ID] = &TargetSeedSizePoolState{
+				InitialPoolBytes:   initialPool,
+				RemainingPoolBytes: initialPool,
+				TargetBytes:        rule.TargetSeedSize.TargetBytes,
+				Mode:               rule.TargetSeedSize.Mode,
+			}
+		}
 	}
 	activateRuleGrouping(evalCtx, rule, torrents, sm)
 }

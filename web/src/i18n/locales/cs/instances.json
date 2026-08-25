@@ -740,6 +740,7 @@
       "xsSafe": "Křížové sdílení bezpečné",
       "plusXs": "+ křížové sdílení",
       "plusFiles": "+ soubory",
+      "targetSeedSizeBadge": "Cíl: {{size}}",
       "tagActions": "{{count}} tag akce",
       "tagActions_plural": "{{count}} tag akcí",
       "program": "Program",
@@ -899,7 +900,11 @@
       "unregistered": "Neregistrovaný",
       "andMoreTorrents": "... a {{count}} dalších torrentů",
       "loadMore": "Načíst více",
-      "exportCSV": "Exportovat CSV"
+      "exportCSV": "Exportovat CSV",
+      "targetSeedSize": {
+        "initialPool": "Původní fond",
+        "projectedRemaining": "Předpokládaný zbytek"
+      }
     },
     "orphanScanOverview": {
       "title": "Vyhledání nepárových souborů",
@@ -1409,6 +1414,15 @@
         "includeHardlinkedCopies": "Zahrnout hardlinkové kopie",
         "includeHardlinkedCopiesDescription": "Také smazat torrenty, které sdílí stejné podkladové soubory přes hardlinky. Zahrnuje pouze hardlinky plně uvnitř qBittorrentu; nikdy neřídí hardlinky mimo.",
         "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance."
+      },
+      "targetSeedSize": {
+        "title": "Cílová velikost seedování",
+        "description": "Automaticky odebírat způsobilé dokončené torrenty k dosažení a udržení cílové celkové velikosti seedování. Užitečné pro trackery, kde udržování velikosti fondu (např. 1 TB) aktivuje výhody jako globální freeleech.",
+        "targetSize": "Cílová velikost",
+        "mode": "Režim vynucení",
+        "modeHelp": "Minimální režim zajistí, že zbývající fond nikdy neklesne pod cíl (přeskočí kandidáty, kteří by způsobili pokles pod cíl). Maximální režim odebírá torrenty, dokud fond není na cíli nebo pod ním.",
+        "modeMinimal": "Minimální (ponechat alespoň cíl - nikdy neklesnout pod)",
+        "modeMaximum": "Maximální (ponechat nanejvýš cíl - omezit fond)"
       },
       "move": {
         "newSavePath": "Nová cesta uložení",

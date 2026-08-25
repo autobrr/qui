@@ -482,6 +482,11 @@ type FormState = {
   exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
   exprDeleteGroupId: string
   exprDeleteAtomic: "all" | ""
+  // Target seed size settings
+  targetSeedSizeEnabled: boolean
+  targetSeedSizeValue: number | undefined
+  targetSeedSizeUnit: "GB" | "TB"
+  targetSeedSizeMode: "minimal" | "maximum"
   // Free space source settings (for FREE_SPACE conditions)
   exprFreeSpaceSourceType: "qbittorrent" | "path"
   exprFreeSpaceSourcePath: string
@@ -554,6 +559,10 @@ const emptyFormState: FormState = {
   exprIncludeHardlinks: false,
   exprDeleteGroupId: "",
   exprDeleteAtomic: "",
+  targetSeedSizeEnabled: false,
+  targetSeedSizeValue: undefined,
+  targetSeedSizeUnit: "TB",
+  targetSeedSizeMode: "minimal",
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
   exprTagActions: [createDefaultTagAction()],
@@ -1055,6 +1064,31 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
         }
 
+        let targetSeedSizeEnabled = false
+        let targetSeedSizeValue: number | undefined = undefined
+        let targetSeedSizeUnit: "GB" | "TB" = "TB"
+        let targetSeedSizeMode: "minimal" | "maximum" = "minimal"
+
+        if (rule.targetSeedSize) {
+          targetSeedSizeEnabled = rule.targetSeedSize.enabled ?? false
+          if (rule.targetSeedSize.targetBytes > 0) {
+            const bytes = rule.targetSeedSize.targetBytes
+            const TB = 1024 * 1024 * 1024 * 1024
+            const GB = 1024 * 1024 * 1024
+            if (bytes >= TB && bytes % TB === 0) {
+              targetSeedSizeValue = bytes / TB
+              targetSeedSizeUnit = "TB"
+            } else if (bytes % GB === 0) {
+              targetSeedSizeValue = bytes / GB
+              targetSeedSizeUnit = "GB"
+            } else {
+              targetSeedSizeValue = Math.round((bytes / GB) * 100) / 100
+              targetSeedSizeUnit = "GB"
+            }
+          }
+          targetSeedSizeMode = rule.targetSeedSize.mode ?? "minimal"
+        }
+
         if (conditions) {
           exprGrouping = conditions.grouping
           // Get condition from any enabled action (they should all be the same)
@@ -1206,6 +1240,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprIncludeHardlinks,
           exprDeleteGroupId,
           exprDeleteAtomic,
+          targetSeedSizeEnabled,
+          targetSeedSizeValue,
+          targetSeedSizeUnit,
+          targetSeedSizeMode,
           exprFreeSpaceSourceType,
           exprFreeSpaceSourcePath,
           exprTagActions,
@@ -1595,6 +1633,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       trackerPattern = input.trackerPattern
     }
 
+    let targetSeedSize: AutomationInput["targetSeedSize"]
+    if (input.targetSeedSizeEnabled && input.targetSeedSizeValue && input.targetSeedSizeValue > 0) {
+      const multiplier = input.targetSeedSizeUnit === "TB" ? 1024 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024
+      const targetBytes = Math.round(input.targetSeedSizeValue * multiplier)
+      targetSeedSize = {
+        enabled: true,
+        targetBytes,
+        mode: input.targetSeedSizeMode || "minimal",
+      }
+    }
+
     return {
       name: input.name,
       trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
@@ -1606,6 +1655,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       intervalSeconds: input.intervalSeconds,
       conditions,
       freeSpaceSource,
+      targetSeedSize,
       sortingConfig,
     }
   }, [])
@@ -1619,8 +1669,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return conditionUsesField(formState.actionCondition, "FREE_SPACE")
   }, [formState.actionCondition])
 
-  // Check if delete rule uses FREE_SPACE field (for preview view toggle - only for delete rules)
-  const deleteUsesFreeSpace = formState.deleteEnabled && conditionUsesFreeSpace
+  // Check if delete rule uses FREE_SPACE field or target seed size (for preview view toggle - only for delete rules)
+  const deleteUsesFreeSpace = formState.deleteEnabled && (conditionUsesFreeSpace || formState.targetSeedSizeEnabled)
   const intervalOptions = useMemo(() => ([
     { value: "default", label: t("preferences.workflowDialog.interval.default") },
     { value: "60", label: t("preferences.workflowDialog.interval.oneMinute"), disabled: deleteUsesFreeSpace },
@@ -2209,7 +2259,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             <DialogTitle>{rule ? t("preferences.workflowDialog.editWorkflow") : t("preferences.workflowDialog.addWorkflow")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-            <div className="flex-1 overflow-y-auto space-y-3 sm:pr-1">
+            <div className="flex-1 overflow-y-auto space-y-3 px-0.5 pb-4 sm:pb-6 sm:pr-1">
               {/* Header row: Name + All Trackers toggle */}
               <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
                 <div className="space-y-1.5">
@@ -3776,6 +3826,84 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </TooltipProvider>
                           </div>
                         )}
+
+                        {/* Target Seed Size Configuration */}
+                        <div className="pt-2 border-t space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <Label className="text-xs font-medium cursor-pointer" htmlFor="target-seed-size-switch">
+                                {t("preferences.workflowDialog.targetSeedSize.title")}
+                              </Label>
+                              <FieldHelp>{t("preferences.workflowDialog.targetSeedSize.description")}</FieldHelp>
+                            </div>
+                            <Switch
+                              id="target-seed-size-switch"
+                              checked={formState.targetSeedSizeEnabled}
+                              onCheckedChange={(checked) => setFormState(prev => ({
+                                ...prev,
+                                targetSeedSizeEnabled: checked,
+                                targetSeedSizeValue: checked && prev.targetSeedSizeValue === undefined ? 1 : prev.targetSeedSizeValue,
+                              }))}
+                            />
+                          </div>
+
+                          {formState.targetSeedSizeEnabled && (
+                            <div className="space-y-3 pl-2 border-l-2 border-primary/30">
+                              <div className="space-y-1">
+                                <Label className="text-xs">{t("preferences.workflowDialog.targetSeedSize.targetSize")}</Label>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    min="0.01"
+                                    step="any"
+                                    value={formState.targetSeedSizeValue ?? ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value === "" ? undefined : parseFloat(e.target.value)
+                                      setFormState(prev => ({ ...prev, targetSeedSizeValue: val }))
+                                    }}
+                                    placeholder="1"
+                                    className="h-8 text-xs w-32"
+                                  />
+                                  <Select
+                                    value={formState.targetSeedSizeUnit}
+                                    onValueChange={(val: "GB" | "TB") => setFormState(prev => ({ ...prev, targetSeedSizeUnit: val }))}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs w-20">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="TB">TB</SelectItem>
+                                      <SelectItem value="GB">GB</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Label className="text-xs">{t("preferences.workflowDialog.targetSeedSize.mode")}</Label>
+                                  <FieldHelp>{t("preferences.workflowDialog.targetSeedSize.modeHelp")}</FieldHelp>
+                                </div>
+                                <Select
+                                  value={formState.targetSeedSizeMode}
+                                  onValueChange={(val: "minimal" | "maximum") => setFormState(prev => ({ ...prev, targetSeedSizeMode: val }))}
+                                >
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="minimal">
+                                      {t("preferences.workflowDialog.targetSeedSize.modeMinimal")}
+                                    </SelectItem>
+                                    <SelectItem value="maximum">
+                                      {t("preferences.workflowDialog.targetSeedSize.modeMaximum")}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 

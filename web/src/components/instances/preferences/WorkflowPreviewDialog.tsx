@@ -328,6 +328,20 @@ export function WorkflowPreviewDialog({
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               {description}
+              {preview?.targetSeedSizeInitialPool !== undefined && preview.targetSeedSizeInitialPool > 0 && (
+                <div className="flex items-center gap-4 text-xs px-3 py-2 rounded-md bg-muted/60 border">
+                  <div>
+                    <span className="text-muted-foreground">{t("preferences.workflowPreview.targetSeedSize.initialPool")}: </span>
+                    <span className="font-medium">{formatBytes(preview.targetSeedSizeInitialPool)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t("preferences.workflowPreview.targetSeedSize.projectedRemaining")}: </span>
+                    <span className="font-medium">
+                      {formatBytes(preview.targetSeedSizeRemainingPool ?? preview.targetSeedSizeInitialPool)}
+                    </span>
+                  </div>
+                </div>
+              )}
               {showPreviewViewToggle && (
                 <div className="space-y-2 pt-1">
                   <Tabs

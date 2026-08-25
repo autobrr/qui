@@ -847,7 +847,8 @@
         "deleteActivityFailed": "활동을 삭제하지 못했습니다",
         "hashCopied": "해시가 복사되었습니다"
       },
-      "exported": "내보냄"
+      "exported": "내보냄",
+      "targetSeedSizeBadge": "목표: {{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "미리 보기 불러오는 중. 시간이 걸릴 수 있습니다...",
@@ -881,7 +882,11 @@
       "unregistered": "등록되지 않음",
       "andMoreTorrents": "... 그리고 토렌트 {{count}}개 더",
       "loadMore": "더 불러오기",
-      "exportCSV": "CSV 내보내기"
+      "exportCSV": "CSV 내보내기",
+      "targetSeedSize": {
+        "initialPool": "초기 풀",
+        "projectedRemaining": "예상 잔여량"
+      }
     },
     "orphanScanOverview": {
       "title": "고아 파일 스캔",
@@ -1621,7 +1626,16 @@
         "customGroupAdded": "사용자 지정 그룹이 추가되었습니다"
       },
       "trackerMatchInclude": "포함",
-      "trackerMatchExclude": "제외"
+      "trackerMatchExclude": "제외",
+      "targetSeedSize": {
+        "title": "목표 시딩 크기",
+        "description": "목표 총 시딩 크기에 도달하고 유지하도록 적합한 완료된 토렌트를 자동으로 삭제합니다. 특정 시딩 용량(예: 1TB)을 유지하여 글로벌 프리리치 등의 혜택을 활성화하는 트래커에 유용합니다.",
+        "targetSize": "목표 크기",
+        "mode": "적용 모드",
+        "modeHelp": "최소 모드는 남은 풀이 목표치 미만으로 내려가지 않도록 보장합니다(목표치 미만으로 떨어뜨리는 대상은 건너뜀). 최대 모드는 풀이 목표치 이하가 될 때까지 토렌트를 삭제합니다.",
+        "modeMinimal": "최소 (목표치 이상 유지 - 미만으로 내려가지 않음)",
+        "modeMaximum": "최대 (목표치 이하 유지 - 풀 제한)"
+      }
     },
     "shareLimit": {
       "global": "전역",

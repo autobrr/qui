@@ -865,7 +865,8 @@
         "deleteActivityFailed": "Eliminazione dell'attività non riuscita",
         "hashCopied": "Hash copiato"
       },
-      "exported": "Esportato"
+      "exported": "Esportato",
+      "targetSeedSizeBadge": "Obiettivo: {{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "Caricamento dell'anteprima. Potrebbe richiedere del tempo...",
@@ -899,7 +900,11 @@
       "unregistered": "Non registrato",
       "andMoreTorrents": "... e altri {{count}} torrent",
       "loadMore": "Carica altri",
-      "exportCSV": "Esporta CSV"
+      "exportCSV": "Esporta CSV",
+      "targetSeedSize": {
+        "initialPool": "Pool iniziale",
+        "projectedRemaining": "Rimanente previsto"
+      }
     },
     "orphanScanOverview": {
       "title": "Scansione orfani",
@@ -1640,7 +1645,16 @@
         "customGroupAdded": "Gruppo personalizzato aggiunto"
       },
       "trackerMatchInclude": "Includi",
-      "trackerMatchExclude": "Escludi"
+      "trackerMatchExclude": "Escludi",
+      "targetSeedSize": {
+        "title": "Dimensione target di seeding",
+        "description": "Rimuove automaticamente i torrent completati idonei per raggiungere e mantenere una dimensione totale di seeding target. Utile per i tracker in cui mantenere una determinata dimensione di pool (es. 1 TB) attiva vantaggi come il freeleech globale.",
+        "targetSize": "Dimensione target",
+        "mode": "Modalità di applicazione",
+        "modeHelp": "La modalità minima garantisce che il pool rimanente non scenda mai sotto il target (saltando i candidati che farebbero scendere il totale sotto il target). La modalità massima rimuove i candidati finché il pool non è pari o inferiore al target.",
+        "modeMinimal": "Minima (mantieni almeno il target - non scendere mai sotto)",
+        "modeMaximum": "Massima (mantieni al massimo il target - limita il pool)"
+      }
     },
     "shareLimit": {
       "global": "Globale",

@@ -614,3 +614,77 @@ func TestCollectConditionRegexErrors_AutoManagement(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTargetSeedSize(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *models.TargetSeedSizeConfig
+		wantErr bool
+	}{
+		{
+			name:    "nil config is valid",
+			config:  nil,
+			wantErr: false,
+		},
+		{
+			name: "disabled with 0 bytes is valid",
+			config: &models.TargetSeedSizeConfig{
+				Enabled:     false,
+				TargetBytes: 0,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid minimal config",
+			config: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: 1099511627776,
+				Mode:        models.TargetSeedSizeModeMinimal,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid maximum config",
+			config: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: 500000000,
+				Mode:        models.TargetSeedSizeModeMaximum,
+			},
+			wantErr: false,
+		},
+		{
+			name: "enabled with 0 targetBytes errors",
+			config: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: 0,
+			},
+			wantErr: true,
+		},
+		{
+			name: "enabled with negative targetBytes errors",
+			config: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: -100,
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid mode errors",
+			config: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: 1000,
+				Mode:        "invalid_mode",
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

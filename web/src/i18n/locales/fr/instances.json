@@ -859,7 +859,8 @@
         "deleteActivityFailed": "Échec de la suppression de l'activité",
         "hashCopied": "Hash copié"
       },
-      "exported": "Exporté"
+      "exported": "Exporté",
+      "targetSeedSizeBadge": "Cible : {{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "Chargement de l'aperçu. Cela peut prendre un moment...",
@@ -893,7 +894,11 @@
       "unregistered": "Non enregistré",
       "andMoreTorrents": "... et {{count}} autres torrents",
       "loadMore": "Charger plus",
-      "exportCSV": "Exporter CSV"
+      "exportCSV": "Exporter CSV",
+      "targetSeedSize": {
+        "initialPool": "Pool initial",
+        "projectedRemaining": "Restant estimé"
+      }
     },
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",
@@ -1634,7 +1639,16 @@
         "customGroupAdded": "Groupe personnalisé ajouté"
       },
       "trackerMatchInclude": "Inclure",
-      "trackerMatchExclude": "Exclure"
+      "trackerMatchExclude": "Exclure",
+      "targetSeedSize": {
+        "title": "Taille de seed cible",
+        "description": "Supprime automatiquement les torrents terminés éligibles pour atteindre et maintenir une taille totale de seed cible. Pratique pour les trackers où maintenir un volume de seed (ex. : 1 To) débloque des avantages tels que le freeleech global.",
+        "targetSize": "Taille cible",
+        "mode": "Mode d'application",
+        "modeHelp": "Le mode minimal garantit que le pool restant ne descende jamais sous la cible (ignore les torrents qui feraient passer le total sous la cible). Le mode maximal supprime les torrents jusqu'à ce que le pool soit inférieur ou égal à la cible.",
+        "modeMinimal": "Minimal (garder au moins la cible - ne jamais descendre en dessous)",
+        "modeMaximum": "Maximal (garder au plus la cible - plafonner le pool)"
+      }
     },
     "shareLimit": {
       "global": "Global",

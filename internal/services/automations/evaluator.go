@@ -94,6 +94,9 @@ type EvalContext struct {
 	// ActiveFreeSpaceSource is the rule key currently loaded into the top-level fields.
 	ActiveFreeSpaceSource string
 
+	// TargetSeedSizeStates maps rule IDs to their target seed size pool projection state.
+	TargetSeedSizeStates map[int]*TargetSeedSizePoolState
+
 	// CategoryIndex maps lowercased category → lowercased name → set of hashes.
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
 	CategoryIndex map[string]map[string]map[string]struct{}
@@ -1353,4 +1356,45 @@ func (ctx *EvalContext) PersistFreeSpaceSourceState() {
 	state.FilesToClear = ctx.FilesToClear
 	state.CrossSeedHashesToClear = ctx.CrossSeedHashesToClear
 	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
+}
+
+// TargetSeedSizePoolState tracks the seeding pool size and projection for a rule.
+type TargetSeedSizePoolState struct {
+	InitialPoolBytes   int64
+	RemainingPoolBytes int64
+	TargetBytes        int64
+	Mode               models.TargetSeedSizeMode
+}
+
+// CheckAndApplyTargetSeedSizeDelete checks whether a torrent deletion satisfies target seed size constraints,
+// and if allowed, decrements the remaining pool bytes.
+func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qbt.Torrent) bool {
+	if ctx == nil || ctx.TargetSeedSizeStates == nil {
+		return true
+	}
+	state, ok := ctx.TargetSeedSizeStates[ruleID]
+	if !ok || state == nil {
+		return true
+	}
+
+	mode := state.Mode
+	if mode == "" {
+		mode = models.TargetSeedSizeModeMinimal
+	}
+
+	if mode == models.TargetSeedSizeModeMinimal {
+		// Minimal mode: keep at least target (never drop below target)
+		if state.RemainingPoolBytes-torrent.Size >= state.TargetBytes {
+			state.RemainingPoolBytes -= torrent.Size
+			return true
+		}
+		return false
+	}
+
+	// Maximum mode: delete until remaining pool <= target
+	if state.RemainingPoolBytes > state.TargetBytes {
+		state.RemainingPoolBytes -= torrent.Size
+		return true
+	}
+	return false
 }

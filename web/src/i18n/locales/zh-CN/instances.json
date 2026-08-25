@@ -847,7 +847,8 @@
         "deleteActivityFailed": "删除活动失败",
         "hashCopied": "哈希已复制"
       },
-      "exported": "已导出"
+      "exported": "已导出",
+      "targetSeedSizeBadge": "目标：{{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "正在加载预览，这可能需要一些时间...",
@@ -881,7 +882,11 @@
       "unregistered": "未注册",
       "andMoreTorrents": "... 还有 {{count}} 个种子",
       "loadMore": "加载更多",
-      "exportCSV": "导出 CSV"
+      "exportCSV": "导出 CSV",
+      "targetSeedSize": {
+        "initialPool": "初始做种池",
+        "projectedRemaining": "预计剩余"
+      }
     },
     "orphanScanOverview": {
       "title": "孤立文件扫描",
@@ -1621,7 +1626,16 @@
         "customGroupAdded": "已添加自定义分组"
       },
       "trackerMatchInclude": "包含",
-      "trackerMatchExclude": "排除"
+      "trackerMatchExclude": "排除",
+      "targetSeedSize": {
+        "title": "目标做种大小",
+        "description": "自动删除符合条件的已完成种子，以达到并保持目标总做种大小。适用于通过保持特定做种体积（例如 1 TB）来激活全站 Freeleech 等特权站点的场景。",
+        "targetSize": "目标大小",
+        "mode": "执行模式",
+        "modeHelp": "最小模式确保剩余做种池绝不低于目标值（跳过会导致总量低于目标的候选种子）。最大模式则持续删除候选种子直至做种池小于或等于目标值。",
+        "modeMinimal": "最小（保持至少达到目标 - 绝不低于）",
+        "modeMaximum": "最大（保持最多达到目标 - 限制上限）"
+      }
     },
     "shareLimit": {
       "global": "全局",

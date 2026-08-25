@@ -865,7 +865,8 @@
         "deleteActivityFailed": "Aktivität konnte nicht gelöscht werden",
         "hashCopied": "Hash kopiert"
       },
-      "exported": "Exportiert"
+      "exported": "Exportiert",
+      "targetSeedSizeBadge": "Ziel: {{size}}"
     },
     "workflowPreview": {
       "loadingPreview": "Vorschau wird geladen. Das kann einen Moment dauern...",
@@ -899,7 +900,11 @@
       "unregistered": "Nicht registriert",
       "andMoreTorrents": "... und {{count}} weitere Torrents",
       "loadMore": "Mehr laden",
-      "exportCSV": "CSV exportieren"
+      "exportCSV": "CSV exportieren",
+      "targetSeedSize": {
+        "initialPool": "Ursprünglicher Pool",
+        "projectedRemaining": "Voraussichtlich verbleibend"
+      }
     },
     "orphanScanOverview": {
       "title": "Orphan-Scan",
@@ -1640,7 +1645,16 @@
         "customGroupAdded": "Benutzerdefinierte Gruppe hinzugefügt"
       },
       "trackerMatchInclude": "Einschließen",
-      "trackerMatchExclude": "Ausschließen"
+      "trackerMatchExclude": "Ausschließen",
+      "targetSeedSize": {
+        "title": "Ziel-Seed-Größe",
+        "description": "Entfernt automatisch berechtigte abgeschlossene Torrents, um eine angestrebte Gesamt-Seed-Größe zu erreichen und beizubehalten. Nützlich für Tracker, bei denen ein bestimmter Pool (z. B. 1 TB) Vorteile wie globales Freeleech aktiviert.",
+        "targetSize": "Zielgröße",
+        "mode": "Durchsetzungsmodus",
+        "modeHelp": "Der Minimalmodus stellt sicher, dass der verbleibende Pool niemals unter das Ziel fällt (Kandidaten, die das Gesamtergebnis darunter senken würden, werden übersprungen). Der Maximalmodus entfernt Kandidaten, bis der Pool das Ziel erreicht oder unterschreitet.",
+        "modeMinimal": "Minimal (mindestens Ziel behalten - niemals unterschreiten)",
+        "modeMaximum": "Maximal (höchstens Ziel behalten - Pool begrenzen)"
+      }
     },
     "shareLimit": {
       "global": "Global",

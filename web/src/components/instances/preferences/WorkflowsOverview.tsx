@@ -666,10 +666,10 @@ export function WorkflowsOverview({
     }
   }
 
-  // Check if a delete rule uses FREE_SPACE field
+  // Check if a delete rule uses FREE_SPACE field or target seed size
   const ruleUsesFreeSpace = (rule: Automation): boolean => {
     if (!isDeleteRule(rule)) return false
-    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
+    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE") || (rule.targetSeedSize?.enabled === true)
   }
 
   // Handler for switching preview view - refetches with new view and resets pagination
@@ -1887,6 +1887,14 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
             {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? t("preferences.workflowsOverview.xsSafe"): rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? t("preferences.workflowsOverview.plusXs"): rule.conditions.delete.mode === "deleteWithFiles"? t("preferences.workflowsOverview.plusFiles"): ""}
+          </Badge>
+        )}
+        {rule.targetSeedSize?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-amber-600 border-amber-600/50">
+            <Scale className="h-3 w-3" />
+            {t("preferences.workflowsOverview.targetSeedSizeBadge", {
+              size: formatBytes(rule.targetSeedSize.targetBytes),
+            })}
           </Badge>
         )}
         {tagActions.some((action) => action.enabled) && (

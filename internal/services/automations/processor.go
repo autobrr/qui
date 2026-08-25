@@ -522,26 +522,35 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		} else {
 			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
 			if shouldApply {
-				if stats != nil {
-					stats.DeleteApplied++
+				allowDelete := true
+				if rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil {
+					allowDelete = evalCtx.CheckAndApplyTargetSeedSizeDelete(rule.ID, torrent)
 				}
-				state.shouldDelete = true
-				state.deleteMode = conditions.Delete.Mode
-				if state.deleteMode == "" {
-					state.deleteMode = DeleteModeKeepFiles
-				}
-				state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
-				state.deleteGroupID = strings.TrimSpace(conditions.Delete.GroupID)
-				state.deleteAtomic = strings.TrimSpace(conditions.Delete.Atomic)
-				state.deleteRuleID = rule.ID
-				state.deleteRuleName = rule.Name
-				state.deleteReason = "condition matched"
 
-				// Update the cumulative free space cleared for the "free space" condition.
-				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
-				// accidentally mutate a previously-loaded rule's projection state.
-				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, cpIndex)
+				if allowDelete {
+					if stats != nil {
+						stats.DeleteApplied++
+					}
+					state.shouldDelete = true
+					state.deleteMode = conditions.Delete.Mode
+					if state.deleteMode == "" {
+						state.deleteMode = DeleteModeKeepFiles
+					}
+					state.deleteIncludeHardlinks = conditions.Delete.IncludeHardlinks
+					state.deleteGroupID = strings.TrimSpace(conditions.Delete.GroupID)
+					state.deleteAtomic = strings.TrimSpace(conditions.Delete.Atomic)
+					state.deleteRuleID = rule.ID
+					state.deleteRuleName = rule.Name
+					state.deleteReason = "condition matched"
+
+					// Update the cumulative free space cleared for the "free space" condition.
+					// Only call this when the delete condition uses FREE_SPACE, otherwise we might
+					// accidentally mutate a previously-loaded rule's projection state.
+					if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
+						updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, cpIndex)
+					}
+				} else if stats != nil {
+					stats.DeleteConditionNotMet++
 				}
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++

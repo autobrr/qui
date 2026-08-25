@@ -42,20 +42,21 @@ func NewAutomationHandler(store *models.AutomationStore, activityStore *models.A
 }
 
 type AutomationPayload struct {
-	Name            string                   `json:"name"`
-	TrackerPattern  string                   `json:"trackerPattern"`
-	TrackerDomains  []string                 `json:"trackerDomains"`
-	Enabled         *bool                    `json:"enabled"`
-	DryRun          *bool                    `json:"dryRun"`
-	Notify          *bool                    `json:"notify"`
-	SortOrder       *int                     `json:"sortOrder"`
-	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
-	Conditions      *models.ActionConditions `json:"conditions"`
-	FreeSpaceSource *models.FreeSpaceSource  `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
-	SortingConfig   *models.SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default (oldest first)
-	PreviewLimit    *int                     `json:"previewLimit"`
-	PreviewOffset   *int                     `json:"previewOffset"`
-	PreviewView     string                   `json:"previewView,omitempty"` // "needed" (default) or "eligible"
+	Name            string                       `json:"name"`
+	TrackerPattern  string                       `json:"trackerPattern"`
+	TrackerDomains  []string                     `json:"trackerDomains"`
+	Enabled         *bool                        `json:"enabled"`
+	DryRun          *bool                        `json:"dryRun"`
+	Notify          *bool                        `json:"notify"`
+	SortOrder       *int                         `json:"sortOrder"`
+	IntervalSeconds *int                         `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
+	Conditions      *models.ActionConditions     `json:"conditions"`
+	FreeSpaceSource *models.FreeSpaceSource      `json:"freeSpaceSource,omitempty"` // nil = default qBittorrent free space
+	TargetSeedSize  *models.TargetSeedSizeConfig `json:"targetSeedSize,omitempty"`  // nil = no target seed size configured
+	SortingConfig   *models.SortingConfig        `json:"sortingConfig,omitempty"`   // nil = default (oldest first)
+	PreviewLimit    *int                         `json:"previewLimit"`
+	PreviewOffset   *int                         `json:"previewOffset"`
+	PreviewView     string                       `json:"previewView,omitempty"` // "needed" (default) or "eligible"
 }
 
 type AutomationDryRunResult struct {
@@ -82,6 +83,7 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		TrackerDomains:  normalizedDomains,
 		Conditions:      p.Conditions,
 		FreeSpaceSource: p.FreeSpaceSource,
+		TargetSeedSize:  p.TargetSeedSize,
 		SortingConfig:   p.SortingConfig,
 		Enabled:         true,
 		DryRun:          false,
@@ -469,6 +471,13 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 	// Validate FreeSpaceSource (validates type and path requirements)
 	if status, msg, err := h.validateFreeSpaceSourcePayload(ctx, instanceID, payload.FreeSpaceSource, payload.Conditions); err != nil {
 		return status, msg, err
+	}
+
+	// Validate TargetSeedSize
+	if payload.TargetSeedSize != nil {
+		if err := payload.TargetSeedSize.Validate(); err != nil {
+			return http.StatusBadRequest, fmt.Sprintf("Invalid target seed size configuration: %v", err), err
+		}
 	}
 
 	// Validate ExternalProgram action has a valid programId when enabled
