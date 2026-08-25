@@ -61,6 +61,8 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 		m := reflect.MakeMap(f.Type())
 		m.SetMapIndex(reflect.ValueOf("x"), reflect.New(f.Type().Elem()).Elem())
 		f.Set(m)
+	case reflect.Pointer:
+		f.Set(reflect.New(f.Type().Elem()))
 	default:
 		t.Fatalf("field kind %s not handled; extend setSampleValue", f.Kind())
 	}
@@ -99,6 +101,18 @@ func TestMagnetOnlyChangeDoesNotResendRow(t *testing.T) {
 	_, _, baseFP := computeRowDelta(before, singleRowKey, singleRowFingerprint, nil)
 	_, changed, _ := computeRowDelta(after, singleRowKey, singleRowFingerprint, baseFP)
 	require.Empty(t, changed, "magnet-only change must not resend the row")
+}
+
+func TestTorrentFingerprintDistinguishesHasMetadataStates(t *testing.T) {
+	metadataUnavailable := false
+	metadataAvailable := true
+
+	fingerprints := map[uint64]struct{}{
+		singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{}}):                                  {},
+		singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{HasMetadata: &metadataUnavailable}}): {},
+		singleRowFingerprint(new(fpBuf), qbittorrent.TorrentView{Torrent: &qbt.Torrent{HasMetadata: &metadataAvailable}}):   {},
+	}
+	require.Len(t, fingerprints, 3)
 }
 
 // assertEveryFieldHashed proves fp reacts to every field of T: a fingerprint

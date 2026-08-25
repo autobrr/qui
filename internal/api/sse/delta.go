@@ -245,6 +245,8 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.bit(t.FirstLastPiecePrio)
 	b.bit(t.ForceStart)
 	b.str(t.Hash)
+	b.bit(t.HasMetadata != nil)
+	b.bit(t.HasMetadata != nil && *t.HasMetadata)
 	b.str(t.InfohashV1)
 	b.str(t.InfohashV2)
 	b.bit(t.Private)
