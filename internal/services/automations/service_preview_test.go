@@ -133,9 +133,9 @@ func TestSetupTargetSeedSizeContext(t *testing.T) {
 		require.NotNil(t, evalCtx.TargetSeedSizeStates)
 		state := evalCtx.TargetSeedSizeStates[42]
 		require.NotNil(t, state)
-		assert.Equal(t, int64(1050*GB), state.InitialPoolBytes)
-		assert.Equal(t, int64(1050*GB), state.RemainingPoolBytes)
-		assert.Equal(t, int64(1000*GB), state.TargetBytes)
+		assert.Equal(t, 1050*GB, state.InitialPoolBytes)
+		assert.Equal(t, 1050*GB, state.RemainingPoolBytes)
+		assert.Equal(t, 1000*GB, state.TargetBytes)
 		assert.Equal(t, models.TargetSeedSizeModeMinimal, state.Mode)
 	})
 
@@ -158,9 +158,9 @@ func TestSetupTargetSeedSizeContext(t *testing.T) {
 		state := evalCtx.TargetSeedSizeStates[43]
 		require.NotNil(t, state)
 		// 300 + 750 + 500 = 1550 GB (t3 is incomplete so excluded)
-		assert.Equal(t, int64(1550*GB), state.InitialPoolBytes)
-		assert.Equal(t, int64(1550*GB), state.RemainingPoolBytes)
-		assert.Equal(t, int64(1500*GB), state.TargetBytes)
+		assert.Equal(t, 1550*GB, state.InitialPoolBytes)
+		assert.Equal(t, 1550*GB, state.RemainingPoolBytes)
+		assert.Equal(t, 1500*GB, state.TargetBytes)
 		assert.Equal(t, models.TargetSeedSizeModeMaximum, state.Mode)
 	})
 }
