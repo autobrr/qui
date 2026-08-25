@@ -219,9 +219,9 @@ func (b *fpBuf) bit(v bool) {
 // almost as large as a full snapshot (the root cause of the stream saturating an
 // HTTP/2 connection). The excluded fields still ride along with their current value
 // whenever a row is sent for a real change; they are just not on their own a reason
-// to resend a row. MagnetURI is also left out, for a different reason: TorrentView
-// shadows it out of the serialized payload entirely (issue #2328), so a magnet-only
-// change has nothing to update and must not resend a row.
+// to resend a row. MagnetURI and HasMetadata are also left out, for a different
+// reason: TorrentView shadows them out of the serialized payload entirely, so
+// changes to them have nothing to update and must not resend a row (issue #2328).
 // TestTorrentFingerprintCoversEveryField pins this partition, so a
 // go-qbittorrent bump that adds a field fails until the field is categorized here.
 func (b *fpBuf) torrent(t *qbt.Torrent) {
@@ -245,8 +245,6 @@ func (b *fpBuf) torrent(t *qbt.Torrent) {
 	b.bit(t.FirstLastPiecePrio)
 	b.bit(t.ForceStart)
 	b.str(t.Hash)
-	b.bit(t.HasMetadata != nil)
-	b.bit(t.HasMetadata != nil && *t.HasMetadata)
 	b.str(t.InfohashV1)
 	b.str(t.InfohashV2)
 	b.bit(t.Private)
