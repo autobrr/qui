@@ -122,6 +122,20 @@ func TestBuildFileMapFromTorrents_FailsWhenStableTorrentMissingFiles(t *testing.
 	assert.Contains(t, err.Error(), "stable torrents returned no files")
 }
 
+func TestBuildFileMapFromTorrents_SkipsTorrentWithoutMetadata(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	hasMetadata := false
+
+	result, err := buildFileMapFromTorrents([]qbt.Torrent{
+		{Hash: "metadata-less", SavePath: root, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
+	}, map[string]qbt.TorrentFiles{})
+	require.NoError(t, err)
+	assert.Empty(t, result.scanRoots)
+	assert.Equal(t, []string{filepath.Clean(root)}, result.skippedRoots)
+}
+
 func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
 	t.Parallel()
 

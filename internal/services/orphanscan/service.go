@@ -1286,7 +1286,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 		hasFiles := ok && len(files) > 0
 
 		if !hasFiles {
-			if isTransientTorrentStateForOrphanScan(torrent.State) {
+			if torrent.HasMetadata != nil && !*torrent.HasMetadata || isTransientTorrentStateForOrphanScan(torrent.State) {
 				if hasAbsSavePath {
 					skippedRoots[savePath] = struct{}{}
 				}
