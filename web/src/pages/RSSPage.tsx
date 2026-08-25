@@ -25,7 +25,7 @@ import {
   Tag,
   Trash2
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -108,6 +108,7 @@ import type {
 } from "@/types"
 import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
+import { useVirtualizer } from "@tanstack/react-virtual"
 
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 
@@ -1058,13 +1059,14 @@ interface ArticlesPanelProps {
   onDownload: (torrentURL: string) => void
 }
 
-function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanelProps) {
+export function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanelProps) {
   const { t } = useTranslation("rss")
   const { formatDate } = useDateTimeFormatters()
   const markAsRead = useMarkRSSAsRead(instanceId)
   const [search, setSearch] = useState("")
+  const articleListRef = useRef<HTMLDivElement>(null)
 
-  const articles = feed.articles ?? []
+  const articles = useMemo(() => feed.articles ?? [], [feed.articles])
 
   const sortedArticles = useMemo(() => {
     if (articles.length <= 1) return articles
@@ -1098,6 +1100,17 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
     )
   }, [sortedArticles, search])
 
+  const articleVirtualizer = useVirtualizer({
+    count: filteredArticles.length,
+    getScrollElement: () => articleListRef.current,
+    estimateSize: () => 56,
+    overscan: 10,
+    getItemKey: useCallback(
+      (index: number) => filteredArticles[index]?.id ?? index,
+      [filteredArticles]
+    ),
+  })
+
   const handleMarkAsRead = async (articleId: string) => {
     try {
       await markAsRead.mutateAsync({ itemPath: feedPath, articleId })
@@ -1127,22 +1140,44 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
           className="pl-8 h-8"
         />
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={articleListRef} className="flex-1 min-h-0 overflow-y-auto contain-paint">
         {filteredArticles.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
             <p className="text-sm">{t("feeds.noMatchingArticles")}</p>
           </div>
         ) : (
-          <div className="space-y-1 pr-1">
-            {filteredArticles.map((article) => (
-              <ArticleRow
-                key={article.id}
-                article={article}
-                formatDate={formatDate}
-                onMarkAsRead={() => handleMarkAsRead(article.id)}
-                onDownload={onDownload}
-              />
-            ))}
+          <div
+            className="relative pr-1"
+            style={{ height: `${articleVirtualizer.getTotalSize()}px` }}
+          >
+            {articleVirtualizer.getVirtualItems().map((virtualRow) => {
+              const article = filteredArticles[virtualRow.index]
+              if (!article) return null
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={articleVirtualizer.measureElement}
+                  className="pb-1"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                    contain: "layout style",
+                  }}
+                >
+                  <ArticleRow
+                    article={article}
+                    formatDate={formatDate}
+                    onMarkAsRead={() => handleMarkAsRead(article.id)}
+                    onDownload={onDownload}
+                  />
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
