@@ -2,8 +2,11 @@ package clientmigrate
 
 import (
 	"bytes"
+	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -44,10 +47,20 @@ func (di *DelugeImport) Migrate() error {
 		}
 	}
 
-	resumeFilePath := filepath.Join(sourceDir, "torrents.fastresume")
-	if _, err := os.Stat(resumeFilePath); os.IsNotExist(err) {
-		log.Error().Err(err).Msgf("Could not find deluge fastresume file: %s", resumeFilePath)
-		return err
+	// deluge itself falls back to the .bak copy and the pre-1.3 location
+	resumeFilePath := ""
+	for _, candidate := range []string{
+		filepath.Join(sourceDir, "torrents.fastresume"),
+		filepath.Join(sourceDir, "torrents.fastresume.bak"),
+		filepath.Join(sourceDir, "..", "torrents.fastresume"),
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			resumeFilePath = candidate
+			break
+		}
+	}
+	if resumeFilePath == "" {
+		return errors.Errorf("could not find deluge fastresume file in: %s", sourceDir)
 	}
 
 	fastresumeFile, err := decodeFastresumeFile(resumeFilePath)
@@ -56,6 +69,8 @@ func (di *DelugeImport) Migrate() error {
 		return err
 	}
 
+	labels := readDelugeLabels(sourceDir)
+
 	totalJobs := len(fastresumeFile)
 
 	log.Info().Msgf("Total torrents to process: %d", totalJobs)
@@ -63,7 +78,10 @@ func (di *DelugeImport) Migrate() error {
 	positionNum := 0
 	imported := 0
 	failed := 0
-	for torrentID, value := range fastresumeFile {
+	skipped := 0
+	for _, torrentID := range slices.Sorted(maps.Keys(fastresumeFile)) {
+		value := fastresumeFile[torrentID]
+
 		torrentNamePath := filepath.Join(sourceDir, torrentID+".torrent")
 
 		// If a file exist in fastresume data but no .torrent file, skip
@@ -118,31 +136,53 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
-		if metaInfo.Files != nil {
-			// valid QbtContentLayout = Original, Subfolder, NoSubfolder
-			fastResume.QbtContentLayout = "Original"
+		// v2-only torrents have no valid v1 infohash and lose their merkle
+		// trees in this format; qBittorrent would reject or mis-verify them
+		if metaInfo.MetaVersion == 2 || len(fastResume.InfoHash) != 20 {
+			log.Warn().Msgf("(%d/%d) %s is a BitTorrent v2 torrent, not supported by this importer, skipping", positionNum, totalJobs, torrentID)
+			skipped++
+			continue
+		}
+
+		numPieces := metaInfo.NumPieces()
+
+		if !delugeTorrentComplete(&fastResume, numPieces) {
+			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.BestName(), torrentID)
+			skipped++
+			continue
+		}
+
+		// valid QbtContentLayout = Original, Subfolder, NoSubfolder
+		fastResume.QbtContentLayout = "Original"
+		if metaInfo.IsDir() {
 			// legacy and should be removed sometime with 4.3.X
 			fastResume.QbtHasRootFolder = 1
 		} else {
-			fastResume.QbtContentLayout = "NoSubfolder"
 			fastResume.QbtHasRootFolder = 0
 		}
 
 		fastResume.QbtRatioLimit = -2000
 		fastResume.QbtSeedStatus = 1
 		fastResume.QbtSeedingTimeLimit = -2
-		fastResume.QbtName = ""
+		fastResume.QbtCategory = labels[torrentID]
+		// deluge stores a user-renamed display name in the resume data
+		if fastResume.Name != "" && fastResume.Name != metaInfo.BestName() {
+			fastResume.QbtName = fastResume.Name
+		}
 		fastResume.QbtSavePath = fastResume.SavePath
 		fastResume.QbtQueuePosition = positionNum
 
+		// deluge 1.3.x era resume data predates apply_ip_filter; leaving the
+		// decoded zero would explicitly disable the IP filter in qBittorrent
+		fastResume.ApplyIPFilter = 1
 		fastResume.AutoManaged = 0
 		fastResume.NumIncomplete = 0
 		fastResume.Paused = 0
 
-		fastResume.ConvertFilePriority(len(metaInfo.Files))
+		fastResume.ConvertFilePriority(len(metaInfo.UpvertedFiles()))
 
 		// fill pieces to set as completed
-		fastResume.NumPieces = int64(metaInfo.NumPieces())
+		fastResume.NumPieces = int64(numPieces)
 		fastResume.FillPieces()
 
 		// TODO handle replace paths
@@ -171,9 +211,57 @@ func (di *DelugeImport) Migrate() error {
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
-	logImportSummary(di.opts.DryRun, imported, failed, totalJobs)
+	logImportSummary(di.opts.DryRun, imported, failed, skipped, totalJobs)
 
 	return nil
+}
+
+// delugeTorrentComplete reports whether the decoded libtorrent resume data
+// describes a fully downloaded torrent: one byte per piece with bit 0 = have,
+// no unfinished piece list, and no do-not-download file priorities
+func delugeTorrentComplete(fr *qbittorrent.Fastresume, numPieces int) bool {
+	if len(fr.Pieces) < numPieces {
+		return false
+	}
+
+	for i := range numPieces {
+		if fr.Pieces[i]&1 == 0 {
+			return false
+		}
+	}
+
+	if fr.Unfinished != nil && len(*fr.Unfinished) > 0 {
+		return false
+	}
+
+	return !slices.Contains(fr.FilePriority, 0)
+}
+
+// readDelugeLabels reads the label plugin state from <config_dir>/label.conf,
+// one level above the state dir. The file is two concatenated JSON documents:
+// a version dict followed by the config data
+func readDelugeLabels(stateDir string) map[string]string {
+	f, err := os.Open(filepath.Join(stateDir, "..", "label.conf"))
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+
+	var version map[string]any
+	if err := dec.Decode(&version); err != nil {
+		return nil
+	}
+
+	var data struct {
+		TorrentLabels map[string]string `json:"torrent_labels"`
+	}
+	if err := dec.Decode(&data); err != nil {
+		return nil
+	}
+
+	return data.TorrentLabels
 }
 
 func decodeFastresumeFile(path string) (map[string]any, error) {

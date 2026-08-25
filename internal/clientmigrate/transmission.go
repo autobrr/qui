@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"time"
+	"strconv"
+	"strings"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 
@@ -61,10 +62,30 @@ func (i *TransmissionImport) Migrate() error {
 	positionNum := 0
 	imported := 0
 	failed := 0
+	skipped := 0
 	for _, match := range matches {
 		positionNum++
 
-		torrentID := getTorrentFileName(match)
+		// keep the exact source basename: resume files share it, and legacy
+		// Transmission <=2.9x names are "<Name>.<16hex>" with original casing
+		baseName := strings.TrimSuffix(filepath.Base(match), filepath.Ext(match))
+
+		file, err := metainfo.LoadFromFile(match)
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not load torrent file %s", match)
+			failed++
+			continue
+		}
+
+		metaInfo, err := file.UnmarshalInfo()
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s", match)
+			failed++
+			continue
+		}
+
+		// qBittorrent requires BT_backup files named by infohash
+		torrentID := file.HashInfoBytes().HexString()
 
 		torrentOutFile := filepath.Join(i.opts.QbitDir, torrentID+".torrent")
 
@@ -74,53 +95,56 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
+		// check for FILE.resume
+		resumeFilePath := filepath.Join(i.opts.SourceDir, "resume", baseName+".resume")
+
+		resumeFile, err := i.decodeResumeFile(resumeFilePath)
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not decode transmission resume file %s for %s", resumeFilePath, torrentID)
+			failed++
+			continue
+		}
+
+		// progress.blocks is "all" when every block is downloaded; anything
+		// else means a partial torrent we cannot safely mark as complete
+		if resumeFile.Progress.Blocks != "all" {
+			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
+			skipped++
+			continue
+		}
+
 		if i.opts.DryRun {
 			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
 			imported++
 			continue
 		}
-		file, err := metainfo.LoadFromFile(match)
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not load torrent file %s for %s", match, torrentID)
-			failed++
-			continue
-		}
 
-		metaInfo, err := file.UnmarshalInfo()
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not unmarshal torrent file %s for %s", match, torrentID)
-			failed++
-			continue
-		}
-
-		resumeFilePath := filepath.Join(i.opts.SourceDir, "resume", torrentID+".resume")
-
-		// check for FILE.resume
-		resumeFile, err := i.decodeResumeFile(resumeFilePath)
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not decode transmission resume file %s for %s", match, torrentID)
-			failed++
-			continue
+		// completed-torrent timestamps: done-date is legitimately 0 for
+		// torrents Transmission adopted from existing data, fall back to
+		// added-date like Transmission 4.x itself does
+		completedTime := resumeFile.DoneDate
+		if completedTime == 0 {
+			completedTime = resumeFile.AddedDate
 		}
 
 		newFastResume := qbittorrent.Fastresume{
-			ActiveTime:                int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Seconds()),
+			ActiveTime:                resumeFile.DownloadingTimeSeconds + resumeFile.SeedingTimeSeconds,
 			AddedTime:                 resumeFile.AddedDate,
 			Allocation:                "sparse",
 			ApplyIPFilter:             1,
 			AutoManaged:               0,
-			CompletedTime:             resumeFile.DoneDate,
+			CompletedTime:             completedTime,
 			DisableDHT:                0,
 			DisableLSD:                0,
 			DisablePEX:                0,
-			DownloadRateLimit:         -1,
+			DownloadRateLimit:         transmissionSpeedLimit(resumeFile.SpeedLimitDown),
 			FileFormat:                "libtorrent resume file",
 			FileVersion:               1,
 			FilePriority:              []int{},
-			FinishedTime:              int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Seconds()),
-			LastDownload:              0,
-			LastSeenComplete:          resumeFile.DoneDate,
-			LastUpload:                0,
+			FinishedTime:              resumeFile.SeedingTimeSeconds,
+			LastDownload:              resumeFile.ActivityDate,
+			LastSeenComplete:          completedTime,
+			LastUpload:                resumeFile.ActivityDate,
 			LibTorrentVersion:         "1.2.11.0",
 			MaxConnections:            16777215,
 			MaxUploads:                -1,
@@ -128,18 +152,18 @@ func (i *TransmissionImport) Migrate() error {
 			NumDownloaded:             16777215,
 			NumIncomplete:             0,
 			NumPieces:                 int64(metaInfo.NumPieces()),
-			Paused:                    0,
+			Paused:                    boolToInt(resumeFile.Paused),
 			Peers:                     "",
 			Peers6:                    "",
 			QbtCategory:               "",
 			QbtContentLayout:          "Original",
 			QbtFirstLastPiecePriority: 0,
 			QbtName:                   "",
-			QbtRatioLimit:             -2000,
+			QbtRatioLimit:             transmissionRatioLimit(resumeFile.RatioLimit),
 			QbtSavePath:               resumeFile.Destination,
 			QbtSeedStatus:             1,
 			QbtSeedingTimeLimit:       -2,
-			QbtTags:                   []string{"migrated"},
+			QbtTags:                   append(resumeFile.Labels, "migrated"),
 			SavePath:                  resumeFile.Destination,
 			SeedMode:                  0,
 			SeedingTime:               resumeFile.SeedingTimeSeconds,
@@ -150,42 +174,27 @@ func (i *TransmissionImport) Migrate() error {
 			TotalDownloaded:           resumeFile.Downloaded,
 			TotalUploaded:             resumeFile.Uploaded,
 			UploadMode:                0,
-			UploadRateLimit:           -1,
+			UploadRateLimit:           transmissionSpeedLimit(resumeFile.SpeedLimitUp),
 			URLList:                   file.UrlList,
 
-			//Path: resumeFile.Destination,
+			// destination is the parent directory in every Transmission
+			// version: file subpaths already start with the torrent name
+			Path: resumeFile.Destination,
 		}
 
 		if metaInfo.Files != nil {
 			newFastResume.HasFiles = true
-
-			// valid QbtContentLayout = Original, Subfolder, NoSubfolder
-			newFastResume.QbtContentLayout = "Original"
 			// legacy and should be removed sometime with 4.3.X
 			newFastResume.QbtHasRootFolder = 1
-
-			// Fix savepath for torrents with subfolder: qBittorrent expects the
-			// parent directory, so strip a trailing torrent-name component only.
-			newPath := filepath.Clean(resumeFile.Destination)
-			if filepath.Base(newPath) == metaInfo.Name {
-				newPath = filepath.Dir(newPath)
-			}
-
-			newFastResume.Path = newPath
-			newFastResume.SavePath = newPath
-			newFastResume.QbtSavePath = newPath
 		} else {
-			// if only single file then use NoSubfolder
 			newFastResume.HasFiles = false
-
-			newFastResume.QbtContentLayout = "NoSubfolder"
 			newFastResume.QbtHasRootFolder = 0
 		}
 
 		// handle trackers
 		newFastResume.Trackers = file.UpvertedAnnounceList()
 
-		newFastResume.ConvertFilePriority(len(metaInfo.Files))
+		newFastResume.ConvertFilePriority(max(len(metaInfo.Files), 1))
 
 		// fill pieces to set as completed
 		newFastResume.FillPieces()
@@ -212,9 +221,44 @@ func (i *TransmissionImport) Migrate() error {
 		log.Info().Msgf("(%d/%d) successfully imported: %s %s", positionNum, totalJobs, torrentID, metaInfo.Name)
 	}
 
-	logImportSummary(i.opts.DryRun, imported, failed, totalJobs)
+	logImportSummary(i.opts.DryRun, imported, failed, skipped, totalJobs)
 
 	return nil
+}
+
+func boolToInt(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// transmissionSpeedLimit maps a per-torrent transmission speed limit to the
+// qBittorrent rate limit field: bytes/sec when a torrent-specific limit is
+// enabled, -1 (no limit) otherwise
+func transmissionSpeedLimit(limit TransmissionResumeFileSpeedLimit) int64 {
+	if limit.UseSpeedLimit == 1 && limit.UseGlobalSpeedLimit == 0 && limit.SpeedBPS > 0 {
+		return limit.SpeedBPS
+	}
+	return -1
+}
+
+// transmissionRatioLimit maps transmission's ratio-limit dict to the
+// qBt-ratioLimit convention: -2000 = use global, -1000 = unlimited,
+// otherwise ratio * 1000
+func transmissionRatioLimit(limit TransmissionResumeFileRatioLimit) int64 {
+	switch limit.RatioMode {
+	case 1:
+		ratio, err := strconv.ParseFloat(limit.RatioLimit, 64)
+		if err != nil {
+			return -2000
+		}
+		return int64(ratio * 1000)
+	case 2:
+		return -1000
+	default:
+		return -2000
+	}
 }
 
 func (i *TransmissionImport) decodeResumeFile(path string) (*TransmissionResumeFile, error) {
@@ -245,7 +289,7 @@ type TransmissionResumeFile struct {
 	DoneDate               int64                            `bencode:"done-date"`
 	DownloadingTimeSeconds int64                            `bencode:"downloading-time-seconds"`
 	Labels                 []string                         `bencode:"labels"`
-	MaxPeers               int64                            `bencode:"maxpeers"`
+	MaxPeers               int64                            `bencode:"max-peers"`
 	Paused                 bool                             `bencode:"paused"`
 	Peers                  string                           `bencode:"peers2"`
 	ActivityDate           int64                            `bencode:"activity-date"`
@@ -267,7 +311,7 @@ type TransmissionResumeFileProgress struct {
 }
 
 type TransmissionResumeFileSpeedLimit struct {
-	SpeedBPS            int64 `bencode:"speed-limit-seconds"`
+	SpeedBPS            int64 `bencode:"speed-Bps"`
 	UseGlobalSpeedLimit int64 `bencode:"use-global-speed-limit"`
 	UseSpeedLimit       int64 `bencode:"use-speed-limit"`
 }

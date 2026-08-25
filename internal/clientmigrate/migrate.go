@@ -155,15 +155,26 @@ func (m Migrater) archiveDir(ctx context.Context, dir, archiveName string) error
 }
 
 // logImportSummary logs the per-importer end result with accurate counts
-func logImportSummary(dryRun bool, imported, failed, total int) {
+func logImportSummary(dryRun bool, imported, failed, skipped, total int) {
 	switch {
 	case dryRun:
-		log.Info().Msgf("dry-run: would import %d of %d torrents", imported, total)
-	case failed > 0:
-		log.Warn().Msgf("imported %d of %d torrents, %d failed", imported, total, failed)
+		log.Info().Msgf("dry-run: would import %d of %d torrents, %d skipped", imported, total, skipped)
+	case failed > 0 || skipped > 0:
+		log.Warn().Msgf("imported %d of %d torrents, %d failed, %d skipped", imported, total, failed, skipped)
 	default:
 		log.Info().Msgf("successfully imported %d torrents!", imported)
 	}
+}
+
+// firstNonZero returns the first non-zero value
+func firstNonZero(values ...int64) int64 {
+	for _, v := range values {
+		if v != 0 {
+			return v
+		}
+	}
+
+	return 0
 }
 
 // MkDirIfNotExists check if export dir exists, if not then lets create it

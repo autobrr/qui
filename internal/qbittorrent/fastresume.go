@@ -30,7 +30,7 @@ type Fastresume struct {
 	FilePriority              []int      `bencode:"file_priority"`
 	FileSizes                 [][]int64  `bencode:"file sizes,omitempty"`
 	FinishedTime              int64      `bencode:"finished_time"`
-	HTTPSeeds                 []string   `bencode:"httpseeds"`
+	HTTPSeeds                 []string   `bencode:"httpseeds,omitempty"`
 	InfoHash                  []byte     `bencode:"info-hash"`
 	LastDownload              int64      `bencode:"last_download"`
 	LastSeenComplete          int64      `bencode:"last_seen_complete"`
@@ -38,6 +38,7 @@ type Fastresume struct {
 	LibTorrentVersion         string     `bencode:"libtorrent-version"`
 	MaxConnections            int64      `bencode:"max_connections"`
 	MaxUploads                int64      `bencode:"max_uploads"`
+	Name                      string     `bencode:"name,omitempty"`
 	NumComplete               int64      `bencode:"num_complete"`
 	NumDownloaded             int64      `bencode:"num_downloaded"`
 	NumIncomplete             int64      `bencode:"num_incomplete"`
@@ -67,7 +68,7 @@ type Fastresume struct {
 	SuperSeeding              int64      `bencode:"super_seeding"`
 	TotalDownloaded           int64      `bencode:"total_downloaded"`
 	TotalUploaded             int64      `bencode:"total_uploaded"`
-	Trackers                  [][]string `bencode:"trackers"`
+	Trackers                  [][]string `bencode:"trackers,omitempty"`
 	UploadMode                int64      `bencode:"upload_mode"`
 	UploadRateLimit           int64      `bencode:"upload_rate_limit"`
 	URLList                   []string   `bencode:"url-list"`
@@ -118,7 +119,7 @@ func (fr *Fastresume) ConvertFilePriority(numFiles int) {
 		File priority:
 		0 Do not download
 		1 Normal
-		2 High
+		6 High
 	*/
 	for range numFiles {
 		newPrioList = append(newPrioList, 1)
