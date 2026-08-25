@@ -688,3 +688,104 @@ func TestValidateTargetSeedSize(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePayload_TargetSeedSizeRequiresDelete(t *testing.T) {
+	h := &AutomationHandler{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		payload    *AutomationPayload
+		wantStatus int
+		wantErr    bool
+	}{
+		{
+			name: "enabled target seed size with delete action is valid",
+			payload: &AutomationPayload{
+				Name:           "Delete to 1TB",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled:   true,
+						Mode:      models.DeleteModeKeepFiles,
+						Condition: &models.RuleCondition{Field: models.FieldProgress, Operator: models.OperatorEqual, Value: "100"},
+					},
+				},
+				TargetSeedSize: &models.TargetSeedSizeConfig{
+					Enabled:     true,
+					TargetBytes: 1000 * 1024 * 1024 * 1024,
+					Mode:        models.TargetSeedSizeModeMinimal,
+				},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "enabled target seed size without delete action returns 400",
+			payload: &AutomationPayload{
+				Name:           "Pause with target seed size",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Pause: &models.PauseAction{
+						Enabled:   true,
+						Condition: &models.RuleCondition{Field: models.FieldProgress, Operator: models.OperatorEqual, Value: "100"},
+					},
+				},
+				TargetSeedSize: &models.TargetSeedSizeConfig{
+					Enabled:     true,
+					TargetBytes: 1000 * 1024 * 1024 * 1024,
+					Mode:        models.TargetSeedSizeModeMinimal,
+				},
+			},
+			wantStatus: http.StatusBadRequest,
+			wantErr:    true,
+		},
+		{
+			name: "disabled target seed size without delete action is valid",
+			payload: &AutomationPayload{
+				Name:           "Pause with disabled target seed size",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Pause: &models.PauseAction{
+						Enabled:   true,
+						Condition: &models.RuleCondition{Field: models.FieldProgress, Operator: models.OperatorEqual, Value: "100"},
+					},
+				},
+				TargetSeedSize: &models.TargetSeedSizeConfig{
+					Enabled:     false,
+					TargetBytes: 0,
+				},
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+		{
+			name: "nil target seed size without delete action is valid",
+			payload: &AutomationPayload{
+				Name:           "Pause without target seed size",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Pause: &models.PauseAction{
+						Enabled:   true,
+						Condition: &models.RuleCondition{Field: models.FieldProgress, Operator: models.OperatorEqual, Value: "100"},
+					},
+				},
+				TargetSeedSize: nil,
+			},
+			wantStatus: 0,
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, _, err := h.validatePayload(ctx, 1, tt.payload)
+			if status != tt.wantStatus {
+				t.Errorf("validatePayload() status = %v, wantStatus %v", status, tt.wantStatus)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePayload() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

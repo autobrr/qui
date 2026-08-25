@@ -478,6 +478,9 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if err := payload.TargetSeedSize.Validate(); err != nil {
 			return http.StatusBadRequest, fmt.Sprintf("Invalid target seed size configuration: %v", err), err
 		}
+		if payload.TargetSeedSize.Enabled && !hasDelete {
+			return http.StatusBadRequest, "Target seed size requires a delete action", errors.New("target seed size requires delete action")
+		}
 	}
 
 	// Validate ExternalProgram action has a valid programId when enabled
