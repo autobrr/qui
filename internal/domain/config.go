@@ -41,6 +41,7 @@ type Config struct {
 	DatabaseMaxOpenConns     int    `toml:"databaseMaxOpenConns" mapstructure:"databaseMaxOpenConns"`
 	DatabaseMaxIdleConns     int    `toml:"databaseMaxIdleConns" mapstructure:"databaseMaxIdleConns"`
 	DatabaseConnMaxLifetime  int    `toml:"databaseConnMaxLifetime" mapstructure:"databaseConnMaxLifetime"`
+	QbittorrentTimeout       int    `toml:"qbittorrentTimeout" mapstructure:"qbittorrentTimeout"`
 	CheckForUpdates          bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled             bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
 	PprofAddr                string `toml:"pprofAddr" mapstructure:"pprofAddr"`

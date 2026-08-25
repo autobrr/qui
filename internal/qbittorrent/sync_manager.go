@@ -193,12 +193,12 @@ const (
 // Uses pointer embedding to avoid unnecessary copies of the large qbt.Torrent struct.
 type TorrentView struct {
 	*qbt.Torrent
-	// MagnetURI shadows the promoted qbt.Torrent field so magnet_uri never
-	// reaches list/SSE JSON (issue #2328: 13% of the list payload, only the
-	// copy-magnet action reads it, and that fetches on demand). *struct{}
-	// instead of string so any promoted read fails to compile instead of
-	// silently returning ""; readers must go through .Torrent.MagnetURI.
+	// These fields shadow backend-only qbt.Torrent fields so they never reach
+	// list/SSE JSON. MagnetURI is fetched on demand (issue #2328), while
+	// HasMetadata is used only by orphan scans. *struct{} makes accidental
+	// promoted reads fail to compile; readers must go through .Torrent.
 	MagnetURI     *struct{}     `json:"magnet_uri,omitempty"`
+	HasMetadata   *struct{}     `json:"has_metadata,omitempty"`
 	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
 }
 

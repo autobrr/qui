@@ -573,7 +573,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
-	allIgnorePaths := append(append([]string(nil), settings.IgnorePaths...), result.skippedRoots...)
+	allIgnorePaths := scanIgnorePaths(settings.IgnorePaths, scanRoots, result)
 
 	// Normalize ignore paths
 	ignorePaths, err := NormalizeIgnorePaths(allIgnorePaths)
@@ -864,13 +864,15 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	if err != nil {
 		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for deletion")
 	}
-	var ignorePaths []string
+	var configuredIgnorePaths []string
 	if settings != nil {
-		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
-		if err != nil {
-			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
-			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
-		}
+		configuredIgnorePaths = settings.IgnorePaths
+	}
+	rawIgnorePaths := scanIgnorePaths(configuredIgnorePaths, run.ScanPaths, fileMapResult)
+	ignorePaths, err := NormalizeIgnorePaths(rawIgnorePaths)
+	if err != nil {
+		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
+		ignorePaths = rawIgnorePaths // Fall back to unnormalized to preserve protection
 	}
 
 	// Get files for deletion
@@ -1190,6 +1192,47 @@ func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []st
 	return filtered
 }
 
+func isSameRoot(first, second string) bool {
+	first = filepath.Clean(first)
+	second = filepath.Clean(second)
+	if first == second {
+		return true
+	}
+	if normalizePath(first) != normalizePath(second) {
+		return false
+	}
+	firstInfo, firstErr := os.Lstat(first)
+	secondInfo, secondErr := os.Lstat(second)
+	return firstErr == nil && secondErr == nil && os.SameFile(firstInfo, secondInfo)
+}
+
+func metadataIgnoreRoots(scanRoots, metadataRoots []string) []string {
+	ignored := make([]string, 0, len(metadataRoots))
+	for _, metadataRoot := range metadataRoots {
+		normalizedMetadataRoot := normalizePath(metadataRoot)
+		nested := false
+		for _, scanRoot := range scanRoots {
+			normalizedScanRoot := normalizePath(scanRoot)
+			if isSameRoot(metadataRoot, scanRoot) {
+				nested = false
+				break
+			}
+			if isPathUnderNormalized(normalizedMetadataRoot, normalizedScanRoot) {
+				nested = true
+			}
+		}
+		if nested {
+			ignored = append(ignored, filepath.Clean(metadataRoot))
+		}
+	}
+	return ignored
+}
+
+func scanIgnorePaths(configured, scanRoots []string, result *buildFileMapResult) []string {
+	ignored := append(append([]string(nil), configured...), result.skippedRoots...)
+	return append(ignored, metadataIgnoreRoots(scanRoots, result.metadataRoots)...)
+}
+
 // dedupeCaseVariantRoots drops a scan root when an earlier root differs from it
 // only by case AND both name the same directory on disk, which is what a
 // case-insensitive filesystem gives us when qBittorrent reports two spellings of
@@ -1296,16 +1339,18 @@ func actualSavePathFromContentPath(savePath, contentPath string, files qbt.Torre
 
 // buildFileMapResult contains the file map plus metadata for storage
 type buildFileMapResult struct {
-	fileMap      *TorrentFileMap
-	scanRoots    []string
-	skippedRoots []string
-	torrentCount int
+	fileMap       *TorrentFileMap
+	scanRoots     []string
+	skippedRoots  []string
+	metadataRoots []string
+	torrentCount  int
 }
 
 func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap()
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
+	metadataRoots := make(map[string]struct{})
 	stableMissingFiles := 0
 
 	for i := range torrents {
@@ -1316,6 +1361,13 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 		hasFiles := ok && len(files) > 0
 
 		if !hasFiles {
+			if torrent.HasMetadata != nil && !*torrent.HasMetadata {
+				if hasAbsSavePath {
+					metadataRoots[savePath] = struct{}{}
+				}
+				continue
+			}
+
 			if isTransientTorrentStateForOrphanScan(torrent.State) {
 				if hasAbsSavePath {
 					skippedRoots[savePath] = struct{}{}
@@ -1355,10 +1407,11 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	scanRootList := dedupeCaseVariantRoots(filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList))
 
 	return &buildFileMapResult{
-		fileMap:      tfm,
-		scanRoots:    scanRootList,
-		skippedRoots: skippedRootList,
-		torrentCount: len(torrents),
+		fileMap:       tfm,
+		scanRoots:     scanRootList,
+		skippedRoots:  skippedRootList,
+		metadataRoots: sortedRoots(metadataRoots),
+		torrentCount:  len(torrents),
 	}, nil
 }
 
@@ -1485,6 +1538,7 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileM
 
 		added := result.fileMap.MergeFrom(otherResult.fileMap)
 		result.skippedRoots = mergeRootLists(result.skippedRoots, otherResult.skippedRoots)
+		result.metadataRoots = mergeRootLists(result.metadataRoots, otherResult.metadataRoots)
 		result.scanRoots = filterScanRootsCoveredBySkippedRoots(result.scanRoots, result.skippedRoots)
 		log.Debug().
 			Int("instance", inst.ID).

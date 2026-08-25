@@ -50,6 +50,8 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	metadataRoot := filepath.Join(root, "incoming")
+	hasMetadata := false
 
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
@@ -75,7 +77,10 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{
+				{Hash: "B", SavePath: root, State: qbt.TorrentStatePausedUp},
+				{Hash: "C", SavePath: metadataRoot, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
+			}, nil
 		default:
 			return nil, nil
 		}
@@ -113,6 +118,9 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	wantRoots := []string{filepath.Clean(root)}
 	if !slices.Equal(gotRoots, wantRoots) {
 		t.Fatalf("scanRoots mismatch: got=%v want=%v", gotRoots, wantRoots)
+	}
+	if got := metadataIgnoreRoots(result.scanRoots, result.metadataRoots); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
+		t.Fatalf("metadataIgnoreRoots mismatch: got=%v want=%v", got, []string{filepath.Clean(metadataRoot)})
 	}
 }
 

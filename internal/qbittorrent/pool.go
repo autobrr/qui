@@ -149,11 +149,14 @@ type ClientPool struct {
 	syncEventSinkSeq  uint64
 	completionHandler TorrentCompletionHandler
 	addedHandler      TorrentAddedHandler
-	syncManager       *SyncManager // Reference for starting background tasks
+	syncManager       *SyncManager  // Reference for starting background tasks
+	clientTimeout     time.Duration // HTTP transport timeout for every pooled client
 }
 
-// NewClientPool creates a new client pool
-func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.InstanceErrorStore) (*ClientPool, error) {
+// NewClientPool creates a new client pool. clientTimeout is the HTTP transport
+// timeout applied to every client it creates, independent of any caller's
+// creation budget.
+func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.InstanceErrorStore, clientTimeout time.Duration) (*ClientPool, error) {
 	// Create cache with 30 second TTL since torrent data changes frequently
 	cache := ttlcache.New(ttlcache.Options[string, *TorrentResponse]{}.
 		SetDefaultTTL(30 * time.Second))
@@ -163,6 +166,7 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 		instanceStore:     instanceStore,
 		errorStore:        errorStore,
 		cache:             cache,
+		clientTimeout:     clientTimeout,
 		creationLocks:     make(map[int]*sync.Mutex),
 		healthTicker:      time.NewTicker(healthCheckInterval),
 		stopHealth:        make(chan struct{}),
@@ -336,11 +340,12 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 
 		if err := client.HealthCheck(ctx); err != nil {
 			// A caller-cancelled probe (client disconnect / shutdown) is not
-			// evidence the instance is down, so don't record a failure or back it
-			// off. A deadline (unreachable / too slow) is a real failure and still
-			// tracks. isContextStopped matches even after go-qbt's retry wrapper
-			// flattens the cancellation sentinel into a string.
-			if !isContextStopped(err) {
+			// evidence the instance is down, and a deadline is treated as slow
+			// by design (ambiguous, see isDeadlineExpired). Only hard failures
+			// (refused, DNS, EOF, auth) record a failure and advance backoff.
+			// Both helpers match even after go-qbt's retry wrapper flattens the
+			// sentinel into a string.
+			if !isContextStopped(err) && !isDeadlineExpired(err) {
 				cp.trackFailure(instanceID, err)
 			}
 			return nil, errors.Wrap(err, "client healthcheck failed")
@@ -424,8 +429,9 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		basicPassword = &decryptedBasicPassword
 	}
 
-	// Create new client with custom timeout
-	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, apiKey, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
+	// The caller's timeout bounds only login/creation; the transport timeout is
+	// pool-wide so a short creation budget never sticks to the client.
+	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, apiKey, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout, cp.clientTimeout)
 	if err != nil {
 		cp.trackFailure(instanceID, err)
 		return nil, fmt.Errorf("failed to create client: %w", err)
@@ -560,6 +566,13 @@ func (cp *ClientPool) performHealthChecks() {
 			defer cancel()
 
 			if err := client.HealthCheck(ctx); err != nil {
+				if isDeadlineExpired(err) {
+					// Slow, not down: no backoff, and debug level to keep a
+					// saturated instance from producing a warn every cycle.
+					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Health check timed out against slow instance")
+					return
+				}
+
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Health check failed")
 
 				// Track failure and apply backoff
@@ -577,6 +590,11 @@ func (cp *ClientPool) performHealthChecks() {
 // GetCache returns the cache instance for external use
 func (cp *ClientPool) GetCache() *ttlcache.Cache[string, *TorrentResponse] {
 	return cp.cache
+}
+
+// ClientTimeout returns the HTTP transport timeout applied to pooled clients.
+func (cp *ClientPool) ClientTimeout() time.Duration {
+	return cp.clientTimeout
 }
 
 // GetErrorStore returns the error store instance for external use

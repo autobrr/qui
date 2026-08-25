@@ -65,6 +65,7 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `databaseMaxOpenConns` | `QUI__DATABASE_MAX_OPEN_CONNS` | int | `25` | Postgres pool max open connections. |
 | `databaseMaxIdleConns` | `QUI__DATABASE_MAX_IDLE_CONNS` | int | `5` | Postgres pool max idle connections. |
 | `databaseConnMaxLifetime` | `QUI__DATABASE_CONN_MAX_LIFETIME` | int | `300` | Postgres connection max lifetime in seconds. |
+| `qbittorrentTimeout` | `QUI__QBITTORRENT_TIMEOUT` | int | `60` | HTTP timeout in seconds for requests qui makes to qBittorrent instances (sync, health checks). Raise it for very large or slow instances. Restart required. |
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart recommended. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable to prevent remote tracker favicon fetches. Applied immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | When enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. Can add 25+ minutes per torrent. Restart recommended. |
