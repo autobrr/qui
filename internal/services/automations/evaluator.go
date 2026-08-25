@@ -1371,10 +1371,10 @@ type TargetSeedSizePoolState struct {
 	Mode               models.TargetSeedSizeMode
 }
 
-// CheckAndApplyTargetSeedSizeDelete checks whether a torrent deletion satisfies target seed size constraints,
-// and if allowed, decrements the remaining pool bytes.
-// If the torrent is incomplete (not part of the completed seeding pool), it does not affect the target seed size accounting and is allowed.
-func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qbt.Torrent) bool {
+// CheckAndApplyTargetSeedSizeDeleteTorrents checks whether deleting a batch of torrents satisfies target seed size constraints,
+// and if allowed, decrements the remaining pool bytes by the total size of completed torrents in the batch.
+// If all torrents in the batch are incomplete (not part of the completed seeding pool), it does not affect target accounting and is allowed.
+func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDeleteTorrents(ruleID int, torrents []qbt.Torrent) bool {
 	if ctx == nil || ctx.TargetSeedSizeStates == nil {
 		return true
 	}
@@ -1383,9 +1383,13 @@ func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qb
 		return true
 	}
 
-	// Incomplete torrents were not counted in the initial seeding pool,
-	// so deleting them does not reduce the seeding pool and does not affect target accounting.
-	if !isCompletedTorrent(torrent) {
+	var completedBytes int64
+	for _, t := range torrents {
+		if isCompletedTorrent(t) {
+			completedBytes += t.Size
+		}
+	}
+	if completedBytes == 0 {
 		return true
 	}
 
@@ -1396,8 +1400,8 @@ func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qb
 
 	if mode == models.TargetSeedSizeModeMinimal {
 		// Minimal mode: keep at least target (never drop below target)
-		if state.RemainingPoolBytes-torrent.Size >= state.TargetBytes {
-			state.RemainingPoolBytes -= torrent.Size
+		if state.RemainingPoolBytes-completedBytes >= state.TargetBytes {
+			state.RemainingPoolBytes -= completedBytes
 			return true
 		}
 		return false
@@ -1405,8 +1409,14 @@ func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qb
 
 	// Maximum mode: delete until remaining pool <= target
 	if state.RemainingPoolBytes > state.TargetBytes {
-		state.RemainingPoolBytes -= torrent.Size
+		state.RemainingPoolBytes -= completedBytes
 		return true
 	}
 	return false
+}
+
+// CheckAndApplyTargetSeedSizeDelete checks whether a torrent deletion satisfies target seed size constraints,
+// and if allowed, decrements the remaining pool bytes.
+func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qbt.Torrent) bool {
+	return ctx.CheckAndApplyTargetSeedSizeDeleteTorrents(ruleID, []qbt.Torrent{torrent})
 }

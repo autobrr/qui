@@ -1301,7 +1301,17 @@ func (s *Service) previewDeleteStandard(
 				continue
 			}
 			if !eligibleMode && rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil {
-				if !evalCtx.CheckAndApplyTargetSeedSizeDelete(rule.ID, *torrent) {
+				candidates := make([]qbt.Torrent, 0, len(members))
+				if expandGroup {
+					for _, mh := range members {
+						if memTorrent, ok := torrentByHash[mh]; ok {
+							candidates = append(candidates, memTorrent)
+						}
+					}
+				} else {
+					candidates = append(candidates, *torrent)
+				}
+				if !evalCtx.CheckAndApplyTargetSeedSizeDeleteTorrents(rule.ID, candidates) {
 					continue
 				}
 			}
@@ -1453,6 +1463,11 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	deleteCond := rule.Conditions.Delete
 	includeHardlinks := deleteCond.IncludeHardlinks
 
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for i := range torrents {
+		torrentByHash[torrents[i].Hash] = torrents[i]
+	}
+
 	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
 
 	for i := range torrents {
@@ -1465,16 +1480,43 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
+		crossSeedGroup := findCrossSeedGroup(*torrent, cpIndex)
+		verifiedHashes, ok := crossSeedGroupMembers(*torrent, crossSeedGroup, state.expandedSet, fetchFiles)
+		if !ok {
+			continue
+		}
+
+		newlyExpandedHashes := make([]string, 0, len(verifiedHashes))
+		for _, h := range verifiedHashes {
+			if !state.isAlreadyExpanded(h) {
+				newlyExpandedHashes = append(newlyExpandedHashes, h)
+			}
+		}
+		if includeHardlinks && hardlinkIndex != nil {
+			for _, h := range hardlinkIndex.GetHardlinkCopies(torrent.Hash) {
+				if !state.isAlreadyExpanded(h) {
+					newlyExpandedHashes = append(newlyExpandedHashes, h)
+				}
+			}
+		}
+
 		if !eligibleMode && rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled && evalCtx != nil {
-			if !evalCtx.CheckAndApplyTargetSeedSizeDelete(rule.ID, *torrent) {
+			candidates := make([]qbt.Torrent, 0, len(newlyExpandedHashes))
+			for _, h := range newlyExpandedHashes {
+				if t, exists := torrentByHash[h]; exists {
+					candidates = append(candidates, t)
+				}
+			}
+			if !evalCtx.CheckAndApplyTargetSeedSizeDeleteTorrents(rule.ID, candidates) {
 				continue
 			}
 		}
 
-		crossSeedGroup := findCrossSeedGroup(*torrent, cpIndex)
-
-		if !expandGroupForPreview(torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet, fetchFiles) {
-			continue
+		for _, h := range verifiedHashes {
+			state.expandedSet[h] = struct{}{}
+			if h != torrent.Hash {
+				state.crossSeedSet[h] = struct{}{}
+			}
 		}
 
 		if includeHardlinks {
@@ -2558,6 +2600,24 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				actualMode = deleteMode
 				logMsg = logMsgRemoveTorrentWithFiles
 				keepingFiles = false
+			}
+
+			// If target seed size is configured for this rule, evaluate all unqueued candidates in this deletion batch.
+			if state.deleteRuleID > 0 && evalCtx != nil {
+				rule := ruleByID[state.deleteRuleID]
+				if rule != nil && rule.TargetSeedSize != nil && rule.TargetSeedSize.Enabled {
+					var candidates []qbt.Torrent
+					for _, h := range hashesToDelete {
+						if _, alreadyQueued := pendingByHash[h]; !alreadyQueued {
+							if t, exists := torrentByHash[h]; exists {
+								candidates = append(candidates, t)
+							}
+						}
+					}
+					if len(candidates) > 0 && !evalCtx.CheckAndApplyTargetSeedSizeDeleteTorrents(rule.ID, candidates) {
+						continue
+					}
+				}
 			}
 
 			// Add all hashes to delete batch (with deduplication)
