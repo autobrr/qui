@@ -149,8 +149,8 @@ function scheduleFlush(): void {
 }
 
 let flushInFlight = false
-// A timer or tab-hide flush that fired while a PUT was in flight; replayed
-// once the PUT settles so the write it carried is not stalled.
+// A flush needed after the current PUT, either requested while in flight or
+// after another tab replaces a batch value.
 let flushRequestedInFlight = false
 
 async function flushPending(): Promise<void> {
@@ -174,10 +174,14 @@ async function flushPending(): Promise<void> {
       keepalive: true,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    // Drop what this PUT delivered. Entries replaced mid-flight stay queued;
-    // their own scheduleFlush timer (or the replay below) picks them up.
+    // Drop what this PUT delivered. Entries replaced in this tab stay queued;
+    // a newer value from another tab is copied from the shared localStorage.
     for (const [key, raw] of Object.entries(batch)) {
-      if (pending.get(key) === raw) pending.delete(key)
+      const latest = readRaw(key)
+      if (latest !== null && latest !== raw) {
+        pending.set(key, latest)
+        flushRequestedInFlight = true
+      } else if (pending.get(key) === raw) pending.delete(key)
     }
     persistPending()
   } catch (error) {
