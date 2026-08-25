@@ -1642,7 +1642,8 @@
         "groupIdInvalid": "Die Gruppen-ID darf nur alphanumerische Zeichen und Unterstriche enthalten",
         "selectGroupKey": "Wähle mindestens einen Schlüssel",
         "groupExists": "Eine Gruppe mit dieser ID existiert bereits",
-        "customGroupAdded": "Benutzerdefinierte Gruppe hinzugefügt"
+        "customGroupAdded": "Benutzerdefinierte Gruppe hinzugefügt",
+        "targetSeedSizeInvalid": "Ziel-Seed-Größe muss größer als 0 sein"
       },
       "trackerMatchInclude": "Einschließen",
       "trackerMatchExclude": "Ausschließen",

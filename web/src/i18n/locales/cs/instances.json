@@ -1651,7 +1651,8 @@
         "groupIdInvalid": "ID skupiny musí obsahovat pouze alfanumerické znaky a podtržítka",
         "selectGroupKey": "Vyberte alespoň jeden klíč",
         "groupExists": "Skupina s tímto ID již existuje",
-        "customGroupAdded": "Vlastní skupina přidána"
+        "customGroupAdded": "Vlastní skupina přidána",
+        "targetSeedSizeInvalid": "Cílová velikost seedování musí být větší než 0"
       },
       "trackerMatchInclude": "Zahrnout",
       "trackerMatchExclude": "Vyloučit"

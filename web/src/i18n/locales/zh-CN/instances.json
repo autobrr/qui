@@ -1623,7 +1623,8 @@
         "groupIdInvalid": "分组 ID 只能包含字母、数字和下划线",
         "selectGroupKey": "请至少选择一个键",
         "groupExists": "已存在具有此 ID 的分组",
-        "customGroupAdded": "已添加自定义分组"
+        "customGroupAdded": "已添加自定义分组",
+        "targetSeedSizeInvalid": "目标做种大小必须大于 0"
       },
       "trackerMatchInclude": "包含",
       "trackerMatchExclude": "排除",

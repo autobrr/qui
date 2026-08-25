@@ -1680,7 +1680,8 @@
         "groupIdInvalid": "Група ID має містити лише буквено-цифрові символи та підкреслення",
         "selectGroupKey": "Виберіть принаймні один ключ",
         "groupExists": "Група з цим ID вже існує",
-        "customGroupAdded": "Спеціальна група додана"
+        "customGroupAdded": "Спеціальна група додана",
+        "targetSeedSizeInvalid": "Цільовий розмір роздачі має бути більшим за 0"
       },
       "trackerMatchInclude": "Включати",
       "trackerMatchExclude": "Виключити",

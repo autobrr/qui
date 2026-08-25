@@ -1634,7 +1634,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     let targetSeedSize: AutomationInput["targetSeedSize"]
-    if (input.targetSeedSizeEnabled && input.targetSeedSizeValue && input.targetSeedSizeValue > 0) {
+    if (input.deleteEnabled && input.targetSeedSizeEnabled && input.targetSeedSizeValue && input.targetSeedSizeValue > 0) {
       const multiplier = input.targetSeedSizeUnit === "TB" ? 1024 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024
       const targetBytes = Math.round(input.targetSeedSizeValue * multiplier)
       targetSeedSize = {
@@ -1900,9 +1900,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error(t("preferences.workflowDialog.toast.enableAction"))
       return
     }
-    if (dryRunInput.deleteEnabled && !dryRunInput.actionCondition) {
-      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
-      return
+    if (dryRunInput.deleteEnabled) {
+      if (!dryRunInput.actionCondition) {
+        toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
+        return
+      }
+      if (dryRunInput.targetSeedSizeEnabled && (!dryRunInput.targetSeedSizeValue || isNaN(dryRunInput.targetSeedSizeValue) || dryRunInput.targetSeedSizeValue <= 0)) {
+        toast.error(t("preferences.workflowDialog.toast.targetSeedSizeInvalid"))
+        return
+      }
     }
     if (dryRunInput.moveEnabled && !dryRunInput.exprMovePath.trim()) {
       toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
@@ -1947,9 +1953,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [nonSelfInstances, t])
 
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
-    if (checked && isDeleteRule && !formState.actionCondition) {
-      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
-      return
+    if (checked && isDeleteRule) {
+      if (!formState.actionCondition) {
+        toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
+        return
+      }
+      if (formState.targetSeedSizeEnabled && (!formState.targetSeedSizeValue || isNaN(formState.targetSeedSizeValue) || formState.targetSeedSizeValue <= 0)) {
+        toast.error(t("preferences.workflowDialog.toast.targetSeedSizeInvalid"))
+        return
+      }
     }
     if (checked && !validateExportTarget(formState)) {
       return
@@ -2194,9 +2206,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!validateExportTarget(submitState)) {
       return
     }
-    if (submitState.deleteEnabled && !submitState.actionCondition) {
-      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
-      return
+    if (submitState.deleteEnabled) {
+      if (!submitState.actionCondition) {
+        toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
+        return
+      }
+      if (submitState.targetSeedSizeEnabled && (!submitState.targetSeedSizeValue || isNaN(submitState.targetSeedSizeValue) || submitState.targetSeedSizeValue <= 0)) {
+        toast.error(t("preferences.workflowDialog.toast.targetSeedSizeInvalid"))
+        return
+      }
     }
     const trimmedSubmitMovePath = submitState.exprMovePath?.trim()
     if (submitState.moveEnabled && !trimmedSubmitMovePath) {
@@ -2242,6 +2260,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
     if (!validateExportTarget(formState)) {
+      return
+    }
+    if (formState.deleteEnabled && formState.targetSeedSizeEnabled && (!formState.targetSeedSizeValue || isNaN(formState.targetSeedSizeValue) || formState.targetSeedSizeValue <= 0)) {
+      toast.error(t("preferences.workflowDialog.toast.targetSeedSizeInvalid"))
       return
     }
     createOrUpdate.mutate(formState)

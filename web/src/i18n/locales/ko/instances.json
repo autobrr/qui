@@ -1623,7 +1623,8 @@
         "groupIdInvalid": "그룹 ID는 영숫자와 밑줄만 포함해야 합니다",
         "selectGroupKey": "키를 하나 이상 선택하세요",
         "groupExists": "이 ID를 가진 그룹이 이미 존재합니다",
-        "customGroupAdded": "사용자 지정 그룹이 추가되었습니다"
+        "customGroupAdded": "사용자 지정 그룹이 추가되었습니다",
+        "targetSeedSizeInvalid": "목표 시딩 크기는 0보다 커야 합니다"
       },
       "trackerMatchInclude": "포함",
       "trackerMatchExclude": "제외",

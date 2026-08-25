@@ -1651,7 +1651,8 @@
         "groupIdInvalid": "Group ID must contain only alphanumeric characters and underscores",
         "selectGroupKey": "Select at least one key",
         "groupExists": "A group with this ID already exists",
-        "customGroupAdded": "Custom group added"
+        "customGroupAdded": "Custom group added",
+        "targetSeedSizeInvalid": "Target seed size must be greater than 0"
       },
       "trackerMatchInclude": "Include",
       "trackerMatchExclude": "Exclude"

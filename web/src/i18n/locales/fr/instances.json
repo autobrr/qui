@@ -1636,7 +1636,8 @@
         "groupIdInvalid": "L'ID de groupe doit contenir uniquement des caractères alphanumériques et des tirets bas",
         "selectGroupKey": "Sélectionnez au moins une clé",
         "groupExists": "Un groupe avec cet ID existe déjà",
-        "customGroupAdded": "Groupe personnalisé ajouté"
+        "customGroupAdded": "Groupe personnalisé ajouté",
+        "targetSeedSizeInvalid": "La taille cible de seed doit être supérieure à 0"
       },
       "trackerMatchInclude": "Inclure",
       "trackerMatchExclude": "Exclure",

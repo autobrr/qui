@@ -1642,7 +1642,8 @@
         "groupIdInvalid": "L'ID del gruppo può contenere solo caratteri alfanumerici e trattini bassi",
         "selectGroupKey": "Seleziona almeno una chiave",
         "groupExists": "Esiste già un gruppo con questo ID",
-        "customGroupAdded": "Gruppo personalizzato aggiunto"
+        "customGroupAdded": "Gruppo personalizzato aggiunto",
+        "targetSeedSizeInvalid": "La dimensione di seeding target deve essere maggiore di 0"
       },
       "trackerMatchInclude": "Includi",
       "trackerMatchExclude": "Escludi",
