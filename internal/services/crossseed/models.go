@@ -306,6 +306,10 @@ type TorrentSearchResponse struct {
 	// stamp per-indexer search history; an indexer missing here was rate
 	// limited or failed a pass and stays eligible for the next run.
 	CoveredIndexerIDs []int `json:"-"`
+	// DecisionTrace explains why the Torznab passes accepted or rejected
+	// candidates. Ephemeral diagnostics for the manual search dialog; unset
+	// when no Torznab search ran (Gazelle-only or failed searches).
+	DecisionTrace *SearchDecisionTrace `json:"decisionTrace,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.
@@ -377,6 +381,12 @@ type AsyncIndexerFilteringState struct {
 	ContentMatches        []string       `json:"content_matches,omitempty"`
 	Error                 string         `json:"error,omitempty"`
 
+	// contentType records which content type this filtering run was computed
+	// for; category mapping rules can change a torrent's type at runtime, so
+	// readers must not reuse a run computed for a different type (#2313).
+	// Unexported to stay out of the /async-status API payload.
+	contentType string
+
 	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent
 }
 
@@ -389,6 +399,7 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 		CapabilitiesCompleted: s.CapabilitiesCompleted,
 		ContentCompleted:      s.ContentCompleted,
 		Error:                 s.Error,
+		contentType:           s.contentType,
 	}
 	if len(s.CapabilityIndexers) > 0 {
 		clone.CapabilityIndexers = append([]int(nil), s.CapabilityIndexers...)

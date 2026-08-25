@@ -82,6 +82,10 @@ QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
 QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 ```
 
+### SQLite or Postgres
+
+Both engines run the same features. For most installs, a switch gives no performance benefit: qui runs SQLite in WAL mode with a separate read pool, so reads do not block on writes. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
+
 ## qBittorrent Connection
 
 ```bash
@@ -119,7 +123,7 @@ QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.
 QUI__METRICS_ENABLED=true      # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1    # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
-QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+QUI__METRICS_BASIC_AUTH_USERS=user:password  # Optional: basic auth for metrics (plaintext password)
 ```
 
 ## Authentication

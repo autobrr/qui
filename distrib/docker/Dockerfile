@@ -1,5 +1,5 @@
 # Build stage
-FROM node:22.18-alpine AS frontend-builder
+FROM node:24.15-alpine AS frontend-builder
 
 # Install git for cloning
 RUN apk add --no-cache git
@@ -10,7 +10,7 @@ RUN npm install -g corepack@latest && \
 
 WORKDIR /app/web
 
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web ./
@@ -78,15 +78,17 @@ ENV HOME="/config" \
 # curl and bash stay for the External Programs feature and existing container workflows.
 # ca-certificates: TLS connections to qBittorrent, trackers, update checks
 # tzdata: timezone display in logs and UI
-RUN apk --no-cache add ca-certificates curl tzdata bash
+# su-exec: privilege drop in the entrypoint when PUID/PGID are set
+RUN apk --no-cache add ca-certificates curl tzdata bash su-exec
 
 WORKDIR /config
 
 # Declare volume for persistent data
 VOLUME /config
 
-# Copy binary
+# Copy binary and entrypoint
 COPY --from=go-builder /app/qui /usr/local/bin/
+COPY distrib/docker/entrypoint.sh /entrypoint.sh
 
 EXPOSE 7476
 
@@ -94,5 +96,5 @@ EXPOSE 7476
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7476/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/qui"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]

@@ -36,6 +36,12 @@ An exact reported size is evidence, not byte verification. qui still checks the 
 
 By default, season packs only match other season packs. Enable **Find individual episodes** in settings to allow season packs to match individual episode releases.
 
+### Prowlarr filters remove expected results
+
+qui searches the selected Prowlarr indexer directly. If that indexer has a search filter enabled, such as freeleech only, the filter also applies to cross-seed searches. The tracker can return no results even when matching cross-seed candidates exist.
+
+Prowlarr does not support per-search filter overrides. Add a second entry for the tracker in Prowlarr with the filter disabled, then select that second entry in qui.
+
 ## Cross-seed search run statuses
 
 Library scan and completion search rows use **added**, **skipped**, or **failed** as the top-level outcome. Open the row details to see the per-attempt status and message.
@@ -89,6 +95,16 @@ Open **Cross-Seed > Rules > Season packs** for recent season-pack activity. It s
 See [Season Packs](./season-packs.md) for the full flow, setup requirements, and season-pack-specific debugging steps.
 
 ## How do I see why a release was filtered?
+
+For a manual search, open the **Search breakdown** section in the search dialog. It appears under the results when Qui searched Torznab indexers. A Gazelle-only search does not show it. It shows:
+
+- One row for each indexer with its outcome: searched, incomplete, error, or excluded
+- The count for each rejection reason
+- The first rejected candidates for each reason, with the indexer, title, and size
+
+Use **Copy report** to copy a plain-text summary for a bug report. The report contains the source torrent name and the rejected candidate titles.
+
+The sections below cover the same decisions in the logs. Use the logs for automatic runs, or when you need the fully parsed release fields.
 
 Rejection reasons are logged at `DEBUG`, which is the default level:
 

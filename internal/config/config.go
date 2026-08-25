@@ -573,7 +573,7 @@ sessionSecret = "{{ .sessionSecret }}"
 #logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
-# Enable Prometheus metrics on separate port (no authentication required)
+# Enable Prometheus metrics on a separate port
 # Default: false
 #metricsEnabled = false
 
@@ -587,9 +587,10 @@ sessionSecret = "{{ .sessionSecret }}"
 #metricsPort = 9074
 
 # Basic authentication for metrics endpoint (optional)
-# Format: "username:bcrypt_hash" or "user1:hash1,user2:hash2" for multiple users
-# Passwords must be bcrypt-hashed. Use tools like htpasswd or online bcrypt generators
-# Example: "prometheus:$2y$10$example_bcrypt_hash_here"
+# Format: "username:password" or "user1:password1,user2:password2" for multiple users
+# Passwords are plaintext and can contain colons. Usernames cannot contain colons.
+# Commas cannot appear in usernames or passwords. Protect this configuration file.
+# Example: "prometheus:secret"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
 

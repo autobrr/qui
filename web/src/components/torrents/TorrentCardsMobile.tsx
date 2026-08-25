@@ -43,10 +43,12 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
+import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { useClientSetting } from "@/lib/client-settings"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
@@ -63,6 +65,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Download,
   Eye,
   EyeOff,
   FastForward,
@@ -565,6 +568,14 @@ function isValidSortField(value: unknown): value is TorrentSortOptionValue {
   return TORRENT_SORT_OPTIONS.some(option => option.value === value)
 }
 
+function parseMobileSortState(raw: string): MobileSortState {
+  const parsed = JSON.parse(raw) as Partial<MobileSortState>
+  const field = isValidSortField(parsed?.field) ? parsed.field : DEFAULT_MOBILE_SORT_STATE.field
+  const defaultOrder = getDefaultSortOrder(field)
+  const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
+  return { field, order }
+}
+
 const trackerIconSizeClasses = {
   xs: "h-3 w-3 text-[8px]",
   sm: "h-[14px] w-[14px] text-[9px]",
@@ -1062,26 +1073,10 @@ export function TorrentCardsMobile({
   const { t } = useTranslation("torrents")
   const isAllInstancesView = isAllInstancesScope(instanceId)
   // State
-  const [sortState, setSortState] = useState<MobileSortState>(() => {
-    if (typeof window === "undefined") {
-      return DEFAULT_MOBILE_SORT_STATE
-    }
-
-    try {
-      const stored = window.localStorage.getItem(`${MOBILE_SORT_STORAGE_KEY}:${instanceId}`)
-      if (stored) {
-        const parsed = JSON.parse(stored) as Partial<MobileSortState>
-        const field = isValidSortField(parsed?.field) ? parsed?.field : DEFAULT_MOBILE_SORT_STATE.field
-        const defaultOrder = getDefaultSortOrder(field)
-        const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
-        return { field, order }
-      }
-    } catch {
-      // Ignore malformed localStorage entries
-    }
-
-    return DEFAULT_MOBILE_SORT_STATE
-  })
+  const [sortState, setSortState] = useClientSetting<MobileSortState>(
+    `${MOBILE_SORT_STORAGE_KEY}:${instanceId}`,
+    { defaultValue: DEFAULT_MOBILE_SORT_STATE, parse: parseMobileSortState }
+  )
   const [globalFilter, setGlobalFilter] = useState("")
   const [immediateSearch] = useState("")
   // Selection identity: hash for single-instance, `${instanceId}:${hash}` for unified scope.
@@ -1119,14 +1114,14 @@ export function TorrentCardsMobile({
         order: getDefaultSortOrder(value),
       }
     })
-  }, [])
+  }, [setSortState])
 
   const toggleSortOrder = useCallback(() => {
     setSortState(prev => ({
       field: prev.field,
       order: prev.order === "desc" ? "asc" : "desc",
     }))
-  }, [])
+  }, [setSortState])
 
   // Custom "select all" state for handling large datasets
   const [isAllSelected, setIsAllSelected] = useState(false)
@@ -1334,51 +1329,6 @@ export function TorrentCardsMobile({
   })
   const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      setSortState(DEFAULT_MOBILE_SORT_STATE)
-      return
-    }
-
-    const storageKey = `${MOBILE_SORT_STORAGE_KEY}:${instanceId}`
-    setSortState(prev => {
-      try {
-        const stored = window.localStorage.getItem(storageKey)
-        if (!stored) {
-          return DEFAULT_MOBILE_SORT_STATE
-        }
-
-        const parsed = JSON.parse(stored) as Partial<MobileSortState>
-        const field = isValidSortField(parsed?.field) ? parsed?.field : DEFAULT_MOBILE_SORT_STATE.field
-        const defaultOrder = getDefaultSortOrder(field)
-        const order = parsed?.order === "asc" || parsed?.order === "desc" ? parsed.order : defaultOrder
-
-        if (prev.field === field && prev.order === order) {
-          return prev
-        }
-
-        return { field, order }
-      } catch {
-        return DEFAULT_MOBILE_SORT_STATE
-      }
-    })
-  }, [instanceId])
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return
-    }
-
-    try {
-      window.localStorage.setItem(
-        `${MOBILE_SORT_STORAGE_KEY}:${instanceId}`,
-        JSON.stringify(sortState)
-      )
-    } catch {
-      // Ignore storage quota errors
-    }
-  }, [sortState, instanceId])
-
   // Columns controls removed on mobile
 
   useEffect(() => {
@@ -1440,6 +1390,7 @@ export function TorrentCardsMobile({
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
+  const { exportTorrents, isExporting } = useTorrentExporter({ instanceId, incognitoMode })
   const supportsTrackerHealth = resolveTrackerHealthSupport({
     isUnifiedView: isAllInstancesView,
     capabilitySupport: capabilities?.supportsTrackerHealth,
@@ -2053,6 +2004,23 @@ export function TorrentCardsMobile({
     }
   }, [torrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity, selectedTorrentsForRequest])
 
+  const handleExport = () => {
+    exportTorrents({
+      hashes: isAllSelected ? [] : selectedRequestHashes,
+      torrents: getSelectedTorrents,
+      isAllSelected,
+      totalSelected: effectiveSelectionCount,
+      filters,
+      search: effectiveSearch,
+      excludeHashes: excludeHashesForRequest,
+      excludeTargets: isAllSelected && isAllInstancesView ? buildTorrentActionTargets(excludedTorrents, instanceId) : undefined,
+      instanceIds: isAllInstancesView ? instanceIds : undefined,
+      sortField: backendSortField,
+      sortOrder,
+    })
+    setShowActionsSheet(false)
+  }
+
   const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
     instanceId,
     onFilterChange,
@@ -2595,6 +2563,17 @@ export function TorrentCardsMobile({
               <FolderOpen className="mr-2 h-4 w-4" />
               {t("managementBar.setLocation")}
             </Button>
+            {(capabilities?.supportsTorrentExport ?? true) && (
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="justify-start"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {effectiveSelectionCount > 1 ? t("contextMenu.exportTorrents", { count: effectiveSelectionCount }) : t("contextMenu.exportTorrent")}
+              </Button>
+            )}
             <Button
               variant="destructive"
               onClick={() => {

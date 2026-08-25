@@ -5,7 +5,7 @@
 
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
 import { ALL_INSTANCES_ID } from "@/lib/instances"
-import { Torrents } from "@/pages/Torrents"
+import { Torrents, type TorrentsSearch } from "@/pages/Torrents"
 import { createFileRoute } from "@tanstack/react-router"
 import { useLayoutEffect } from "react"
 import { useTranslation } from "react-i18next"
@@ -15,6 +15,7 @@ const unifiedSearchSchema = z.object({
   modal: z.enum(["add-torrent", "create-torrent", "tasks"]).optional(),
   torrent: z.string().optional(),
   tab: z.string().optional(),
+  instance: z.coerce.number().optional(),
 })
 
 export const Route = createFileRoute("/_authenticated/instances/")({
@@ -43,11 +44,7 @@ function UnifiedInstanceTorrents() {
     }
   }, [resetLayoutRouteState, setLayoutRouteState])
 
-  const handleSearchChange = (newSearch: {
-    modal?: "add-torrent" | "create-torrent" | "tasks" | undefined
-    torrent?: string
-    tab?: string
-  }) => {
+  const handleSearchChange = (newSearch: TorrentsSearch) => {
     navigate({
       search: newSearch,
       replace: true,
