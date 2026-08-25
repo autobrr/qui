@@ -92,6 +92,7 @@ func (i *TransmissionImport) Migrate() error {
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
 			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
+			skipped++
 			continue
 		}
 
@@ -105,9 +106,10 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
-		// progress.blocks is "all" when every block is downloaded; anything
-		// else means a partial torrent we cannot safely mark as complete
-		if resumeFile.Progress.Blocks != "all" {
+		// complete means every block of every wanted (non-dnd) file is
+		// downloaded; deselected files may legitimately be missing
+		pieces, complete := transmissionPieces(resumeFile, &metaInfo)
+		if !complete {
 			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
 			skipped++
 			continue
@@ -127,12 +129,17 @@ func (i *TransmissionImport) Migrate() error {
 			completedTime = resumeFile.AddedDate
 		}
 
+		// auto-managed keeps qBittorrent's queueing and share limits in
+		// charge; a paused torrent must stay out of auto-management or
+		// qBittorrent would resume it
+		paused := boolToInt(resumeFile.Paused)
+
 		newFastResume := qbittorrent.Fastresume{
 			ActiveTime:                resumeFile.DownloadingTimeSeconds + resumeFile.SeedingTimeSeconds,
 			AddedTime:                 resumeFile.AddedDate,
 			Allocation:                "sparse",
 			ApplyIPFilter:             1,
-			AutoManaged:               0,
+			AutoManaged:               1 - paused,
 			CompletedTime:             completedTime,
 			DisableDHT:                0,
 			DisableLSD:                0,
@@ -152,7 +159,7 @@ func (i *TransmissionImport) Migrate() error {
 			NumDownloaded:             16777215,
 			NumIncomplete:             0,
 			NumPieces:                 int64(metaInfo.NumPieces()),
-			Paused:                    boolToInt(resumeFile.Paused),
+			Paused:                    paused,
 			Peers:                     "",
 			Peers6:                    "",
 			QbtCategory:               "",
@@ -194,10 +201,10 @@ func (i *TransmissionImport) Migrate() error {
 		// handle trackers
 		newFastResume.Trackers = file.UpvertedAnnounceList()
 
-		newFastResume.ConvertFilePriority(max(len(metaInfo.Files), 1))
+		newFastResume.FilePriority = transmissionFilePriorities(resumeFile, len(metaInfo.UpvertedFiles()))
 
-		// fill pieces to set as completed
-		newFastResume.FillPieces()
+		// pieces overlapping only deselected files stay unset
+		newFastResume.Pieces = pieces
 
 		// Set 20 byte SHA1 hash
 		newFastResume.InfoHash = file.HashInfoBytes().Bytes()
@@ -224,6 +231,109 @@ func (i *TransmissionImport) Migrate() error {
 	logImportSummary(i.opts.DryRun, imported, failed, skipped, totalJobs)
 
 	return nil
+}
+
+// transmissionPieces expands the resume file's block bitfield into a qBittorrent
+// piece bitfield (one byte per piece) and reports whether every block of every
+// wanted (non-dnd) file is present. Blocks are 16 KiB (or the piece length when
+// smaller), MSB-first in the raw bitfield; "all"/"none" are literal strings
+func transmissionPieces(resume *TransmissionResumeFile, info *metainfo.Info) (string, bool) {
+	numPieces := info.NumPieces()
+	if numPieces == 0 || info.PieceLength <= 0 {
+		return "", false
+	}
+
+	files := info.UpvertedFiles()
+
+	blockSize := min(info.PieceLength, 16384)
+	blocksPerPiece := int((info.PieceLength + blockSize - 1) / blockSize)
+	numBlocks := int((info.TotalLength() + blockSize - 1) / blockSize)
+
+	haveBlock := func(int) bool { return true }
+	switch resume.Progress.Blocks {
+	case "all":
+	case "none", "":
+		haveBlock = func(int) bool { return false }
+	default:
+		raw := resume.Progress.Blocks
+		if len(raw) < (numBlocks+7)/8 {
+			return "", false
+		}
+		haveBlock = func(b int) bool { return raw[b/8]>>(7-b%8)&1 == 1 }
+	}
+
+	wantedFiles := make([]bool, len(files))
+	for i := range wantedFiles {
+		wantedFiles[i] = true
+	}
+	if len(resume.Dnd) == len(files) {
+		for i, dnd := range resume.Dnd {
+			wantedFiles[i] = dnd == 0
+		}
+	}
+
+	wantedBlock := make([]bool, numBlocks)
+	var offset int64
+	for i, f := range files {
+		if wantedFiles[i] && f.Length > 0 {
+			start := int(offset / blockSize)
+			end := int((offset + f.Length - 1) / blockSize)
+			for b := start; b <= end && b < numBlocks; b++ {
+				wantedBlock[b] = true
+			}
+		}
+		offset += f.Length
+	}
+
+	complete := true
+	for b := range numBlocks {
+		if wantedBlock[b] && !haveBlock(b) {
+			complete = false
+			break
+		}
+	}
+
+	pieces := make([]byte, numPieces)
+	for p := range numPieces {
+		start := p * blocksPerPiece
+		end := min(start+blocksPerPiece, numBlocks)
+		pieces[p] = 1
+		for b := start; b < end; b++ {
+			if !haveBlock(b) {
+				pieces[p] = 0
+				break
+			}
+		}
+	}
+
+	return string(pieces), complete
+}
+
+// transmissionFilePriorities maps transmission per-file state to qBittorrent
+// priorities: dnd files become 0 (skip), high priority becomes 6
+func transmissionFilePriorities(resume *TransmissionResumeFile, fileCount int) []int {
+	prios := make([]int, fileCount)
+	for i := range prios {
+		prios[i] = 1
+	}
+
+	if len(resume.Priority) == fileCount {
+		for i, p := range resume.Priority {
+			if p == 1 {
+				prios[i] = 6
+			}
+		}
+	}
+
+	if len(resume.Dnd) == fileCount {
+		for i, dnd := range resume.Dnd {
+			if dnd == 1 {
+				prios[i] = 0
+			}
+		}
+	}
+
+	return prios
 }
 
 func boolToInt(b bool) int64 {

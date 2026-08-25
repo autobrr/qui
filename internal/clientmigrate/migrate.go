@@ -166,6 +166,26 @@ func logImportSummary(dryRun bool, imported, failed, skipped, total int) {
 	}
 }
 
+// wantedPieces reports, for each piece, whether any wanted file overlaps it,
+// given the file lengths in torrent order and per-file wanted flags
+func wantedPieces(fileLengths []int64, wanted []bool, pieceLen int64, numPieces int) []bool {
+	wp := make([]bool, numPieces)
+
+	var offset int64
+	for i, length := range fileLengths {
+		if wanted[i] && length > 0 {
+			start := int(offset / pieceLen)
+			end := int((offset + length - 1) / pieceLen)
+			for p := start; p <= end && p < numPieces; p++ {
+				wp[p] = true
+			}
+		}
+		offset += length
+	}
+
+	return wp
+}
+
 // firstNonZero returns the first non-zero value
 func firstNonZero(values ...int64) int64 {
 	for _, v := range values {

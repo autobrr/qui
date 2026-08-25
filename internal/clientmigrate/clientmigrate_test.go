@@ -11,84 +11,201 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDelugeTorrentComplete(t *testing.T) {
+// testInfo is a 3-piece multi-file torrent: file a spans pieces 0-1, file b
+// spans pieces 1-2 (piece length 16384, total 42000 bytes)
+func testInfo() metainfo.Info {
+	return metainfo.Info{
+		Name:        "Test.Torrent.2024.1080p.WEB-TEST",
+		PieceLength: 16384,
+		Pieces:      make([]byte, 3*20),
+		Files: []metainfo.FileInfo{
+			{Length: 30000, Path: []string{"a.mkv"}},
+			{Length: 12000, Path: []string{"b.mkv"}},
+		},
+	}
+}
+
+func TestWantedPieces(t *testing.T) {
 	t.Parallel()
 
-	unfinished := []any{map[string]any{"piece": int64(3), "bitmask": "\x0f"}}
+	lengths := []int64{30000, 12000}
+
+	assert.Equal(t, []bool{true, true, true}, wantedPieces(lengths, []bool{true, true}, 16384, 3))
+	assert.Equal(t, []bool{true, true, false}, wantedPieces(lengths, []bool{true, false}, 16384, 3))
+	assert.Equal(t, []bool{false, true, true}, wantedPieces(lengths, []bool{false, true}, 16384, 3))
+	assert.Equal(t, []bool{false, false, false}, wantedPieces(lengths, []bool{false, false}, 16384, 3))
+}
+
+func TestDelugePieces(t *testing.T) {
+	t.Parallel()
+
+	info := testInfo()
 
 	tests := []struct {
-		name      string
-		fr        qbittorrent.Fastresume
-		numPieces int
-		want      bool
+		name         string
+		fr           qbittorrent.Fastresume
+		wantPieces   string
+		wantComplete bool
 	}{
 		{
-			name:      "complete",
-			fr:        qbittorrent.Fastresume{Pieces: "\x01\x01\x01", FilePriority: []int{1, 1}},
-			numPieces: 3,
-			want:      true,
+			name:         "complete",
+			fr:           qbittorrent.Fastresume{Pieces: "\x01\x01\x01", FilePriority: []int{1, 1}},
+			wantPieces:   "\x01\x01\x01",
+			wantComplete: true,
 		},
 		{
-			name:      "missing piece",
-			fr:        qbittorrent.Fastresume{Pieces: "\x01\x00\x01", FilePriority: []int{1, 1}},
-			numPieces: 3,
-			want:      false,
+			name:         "missing wanted piece",
+			fr:           qbittorrent.Fastresume{Pieces: "\x01\x00\x01", FilePriority: []int{1, 1}},
+			wantPieces:   "\x01\x00\x01",
+			wantComplete: false,
 		},
 		{
-			name:      "never checked, short pieces",
-			fr:        qbittorrent.Fastresume{Pieces: "", FilePriority: []int{1}},
-			numPieces: 3,
-			want:      false,
+			name:         "never checked, short pieces",
+			fr:           qbittorrent.Fastresume{Pieces: "", FilePriority: []int{1, 1}},
+			wantComplete: false,
 		},
 		{
-			name:      "unfinished pieces present",
-			fr:        qbittorrent.Fastresume{Pieces: "\x01\x01\x01", Unfinished: &unfinished},
-			numPieces: 3,
-			want:      false,
+			name:         "deselected file, wanted pieces present",
+			fr:           qbittorrent.Fastresume{Pieces: "\x01\x01\x00", FilePriority: []int{1, 0}},
+			wantPieces:   "\x01\x01\x00",
+			wantComplete: true,
 		},
 		{
-			name:      "do-not-download file",
-			fr:        qbittorrent.Fastresume{Pieces: "\x01\x01\x01", FilePriority: []int{1, 0}},
-			numPieces: 3,
-			want:      false,
-		},
-		{
-			name:      "verified seed-mode bit set",
-			fr:        qbittorrent.Fastresume{Pieces: "\x03\x03\x03", FilePriority: []int{1}},
-			numPieces: 3,
-			want:      true,
+			name:         "verified seed-mode bit set",
+			fr:           qbittorrent.Fastresume{Pieces: "\x03\x03\x03", FilePriority: []int{1, 1}},
+			wantPieces:   "\x01\x01\x01",
+			wantComplete: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.want, delugeTorrentComplete(&tt.fr, tt.numPieces))
+			pieces, complete := delugePieces(&tt.fr, &info)
+			assert.Equal(t, tt.wantComplete, complete)
+			if tt.wantComplete {
+				assert.Equal(t, tt.wantPieces, pieces)
+			}
 		})
 	}
 }
 
-func TestRTorrentTorrentComplete(t *testing.T) {
+func TestRTorrentPieces(t *testing.T) {
 	t.Parallel()
 
+	info := testInfo()
+
 	tests := []struct {
-		name     string
-		bitfield any
-		want     bool
+		name         string
+		resume       RTorrentLibTorrentResumeFile
+		wantPieces   string
+		wantComplete bool
 	}{
-		{name: "complete", bitfield: int64(10), want: true},
-		{name: "empty", bitfield: int64(0), want: false},
-		{name: "partial raw bitfield", bitfield: "\xff\xc0", want: false},
-		{name: "absent", bitfield: nil, want: false},
+		{
+			name:         "complete integer bitfield",
+			resume:       RTorrentLibTorrentResumeFile{Bitfield: int64(3)},
+			wantPieces:   "\x01\x01\x01",
+			wantComplete: true,
+		},
+		{
+			name:         "empty integer bitfield",
+			resume:       RTorrentLibTorrentResumeFile{Bitfield: int64(0)},
+			wantComplete: false,
+		},
+		{
+			name:         "partial raw bitfield, all files wanted",
+			resume:       RTorrentLibTorrentResumeFile{Bitfield: "\xc0"},
+			wantComplete: false,
+		},
+		{
+			name: "partial raw bitfield, missing pieces only in off file",
+			resume: RTorrentLibTorrentResumeFile{
+				Bitfield: "\xc0",
+				Files:    []RTorrentResumeFileEntry{{Priority: 1}, {Priority: 0}},
+			},
+			wantPieces:   "\x01\x01\x00",
+			wantComplete: true,
+		},
+		{
+			name:         "absent bitfield",
+			resume:       RTorrentLibTorrentResumeFile{},
+			wantComplete: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			resume := &RTorrentLibTorrentResumeFile{Bitfield: tt.bitfield}
-			assert.Equal(t, tt.want, rtorrentTorrentComplete(resume, 10))
+			pieces, complete := rtorrentPieces(&tt.resume, &info)
+			assert.Equal(t, tt.wantComplete, complete)
+			if tt.wantComplete {
+				assert.Equal(t, tt.wantPieces, pieces)
+			}
 		})
 	}
+}
+
+func TestTransmissionPieces(t *testing.T) {
+	t.Parallel()
+
+	info := testInfo()
+
+	tests := []struct {
+		name         string
+		resume       TransmissionResumeFile
+		wantPieces   string
+		wantComplete bool
+	}{
+		{
+			name:         "all blocks",
+			resume:       TransmissionResumeFile{Progress: TransmissionResumeFileProgress{Blocks: "all"}},
+			wantPieces:   "\x01\x01\x01",
+			wantComplete: true,
+		},
+		{
+			name:         "no blocks",
+			resume:       TransmissionResumeFile{Progress: TransmissionResumeFileProgress{Blocks: "none"}},
+			wantComplete: false,
+		},
+		{
+			name:         "partial bitfield, all files wanted",
+			resume:       TransmissionResumeFile{Progress: TransmissionResumeFileProgress{Blocks: "\xc0"}},
+			wantComplete: false,
+		},
+		{
+			name: "partial bitfield, missing blocks only in dnd file",
+			resume: TransmissionResumeFile{
+				Progress: TransmissionResumeFileProgress{Blocks: "\xc0"},
+				Dnd:      []int{0, 1},
+			},
+			wantPieces:   "\x01\x01\x00",
+			wantComplete: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			pieces, complete := transmissionPieces(&tt.resume, &info)
+			assert.Equal(t, tt.wantComplete, complete)
+			if tt.wantComplete {
+				assert.Equal(t, tt.wantPieces, pieces)
+			}
+		})
+	}
+}
+
+func TestTransmissionFilePriorities(t *testing.T) {
+	t.Parallel()
+
+	resume := TransmissionResumeFile{
+		Priority: []int{0, 1},
+		Dnd:      []int{1, 0},
+	}
+
+	assert.Equal(t, []int{0, 6}, transmissionFilePriorities(&resume, 2))
+	// mismatched lengths fall back to all-normal
+	assert.Equal(t, []int{1, 1, 1}, transmissionFilePriorities(&resume, 3))
 }
 
 func TestRTorrentFilePriorities(t *testing.T) {

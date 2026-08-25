@@ -87,6 +87,7 @@ func (di *DelugeImport) Migrate() error {
 		// If a file exist in fastresume data but no .torrent file, skip
 		if _, err = os.Stat(torrentNamePath); os.IsNotExist(err) {
 			log.Error().Err(err).Msgf("%s: skipping because %s not found in source directory", torrentID, torrentNamePath)
+			failed++
 			continue
 		}
 
@@ -97,6 +98,7 @@ func (di *DelugeImport) Migrate() error {
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
 			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentID)
+			skipped++
 			continue
 		}
 
@@ -146,7 +148,10 @@ func (di *DelugeImport) Migrate() error {
 
 		numPieces := metaInfo.NumPieces()
 
-		if !delugeTorrentComplete(&fastResume, numPieces) {
+		// complete means every piece of every wanted file has its have-bit
+		// set; files with priority 0 may legitimately be missing
+		pieces, complete := delugePieces(&fastResume, &metaInfo)
+		if !complete {
 			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.BestName(), torrentID)
 			skipped++
 			continue
@@ -165,9 +170,19 @@ func (di *DelugeImport) Migrate() error {
 		fastResume.QbtSeedStatus = 1
 		fastResume.QbtSeedingTimeLimit = -2
 		fastResume.QbtCategory = labels[torrentID]
-		// deluge stores a user-renamed display name in the resume data
-		if fastResume.Name != "" && fastResume.Name != metaInfo.BestName() {
-			fastResume.QbtName = fastResume.Name
+		fastResume.QbtTags = []string{"migrated"}
+		// deluge stores renames in mapped_files and leaves name at the
+		// metainfo value; derive the display name from the first mapped path
+		if len(fastResume.MappedFiles) > 0 {
+			renamed := fastResume.MappedFiles[0]
+			if metaInfo.IsDir() {
+				if i := strings.IndexByte(renamed, '/'); i > 0 {
+					renamed = renamed[:i]
+				}
+			}
+			if renamed != "" && renamed != metaInfo.BestName() {
+				fastResume.QbtName = renamed
+			}
 		}
 		fastResume.QbtSavePath = fastResume.SavePath
 		fastResume.QbtQueuePosition = positionNum
@@ -175,15 +190,37 @@ func (di *DelugeImport) Migrate() error {
 		// deluge 1.3.x era resume data predates apply_ip_filter; leaving the
 		// decoded zero would explicitly disable the IP filter in qBittorrent
 		fastResume.ApplyIPFilter = 1
-		fastResume.AutoManaged = 0
 		fastResume.NumIncomplete = 0
-		fastResume.Paused = 0
 
-		fastResume.ConvertFilePriority(len(metaInfo.UpvertedFiles()))
+		// libtorrent 1.0-era resume data (deluge 1.3.x) folds the session-wide
+		// shutdown pause into every torrent's paused flag, so it reads 1 for
+		// the whole library and the real state only exists in the
+		// torrents.state pickle; resume everything for those sources. Newer
+		// libtorrent records accurate per-torrent flags, keep them.
+		if strings.HasPrefix(fastResume.LibTorrentVersion, "0.") || strings.HasPrefix(fastResume.LibTorrentVersion, "1.0") {
+			fastResume.Paused = 0
+			fastResume.AutoManaged = 1
+		}
 
-		// fill pieces to set as completed
+		// libtorrent writes 4 for default-priority files; qBittorrent's enum
+		// is 0 skip, 1 normal, 6 high, 7 maximum
+		for idx, p := range fastResume.FilePriority {
+			if p != 0 && p != 6 && p != 7 {
+				fastResume.FilePriority[idx] = 1
+			}
+		}
+
+		// keep the decoded libtorrent file priorities when the resume data has
+		// them, they carry the user's deselected files
+		if len(fastResume.FilePriority) != len(metaInfo.UpvertedFiles()) {
+			fastResume.ConvertFilePriority(len(metaInfo.UpvertedFiles()))
+		}
+
+		// pieces overlapping only deselected files stay unset; drop the
+		// source's partial-piece list so it cannot contradict the bitfield
 		fastResume.NumPieces = int64(numPieces)
-		fastResume.FillPieces()
+		fastResume.Pieces = pieces
+		fastResume.Unfinished = nil
 
 		// TODO handle replace paths
 
@@ -216,25 +253,48 @@ func (di *DelugeImport) Migrate() error {
 	return nil
 }
 
-// delugeTorrentComplete reports whether the decoded libtorrent resume data
-// describes a fully downloaded torrent: one byte per piece with bit 0 = have,
-// no unfinished piece list, and no do-not-download file priorities
-func delugeTorrentComplete(fr *qbittorrent.Fastresume, numPieces int) bool {
-	if len(fr.Pieces) < numPieces {
-		return false
+// delugePieces converts the decoded libtorrent resume pieces (one byte per
+// piece, bit 0 = have) into a qBittorrent piece bitfield and reports whether
+// every piece of every wanted (non-zero priority) file is present
+func delugePieces(fr *qbittorrent.Fastresume, info *metainfo.Info) (string, bool) {
+	numPieces := info.NumPieces()
+	if numPieces == 0 || info.PieceLength <= 0 {
+		return "", false
 	}
 
-	for i := range numPieces {
-		if fr.Pieces[i]&1 == 0 {
-			return false
+	// a torrent that never finished its initial check has short or no pieces
+	if len(fr.Pieces) < numPieces {
+		return "", false
+	}
+
+	files := info.UpvertedFiles()
+	wanted := make([]bool, len(files))
+	for i := range wanted {
+		wanted[i] = true
+	}
+	if len(fr.FilePriority) == len(files) {
+		for i, p := range fr.FilePriority {
+			wanted[i] = p != 0
 		}
 	}
 
-	if fr.Unfinished != nil && len(*fr.Unfinished) > 0 {
-		return false
+	fileLengths := make([]int64, len(files))
+	for i, f := range files {
+		fileLengths[i] = f.Length
+	}
+	wp := wantedPieces(fileLengths, wanted, info.PieceLength, numPieces)
+
+	pieces := make([]byte, numPieces)
+	complete := true
+	for p := range numPieces {
+		if fr.Pieces[p]&1 == 1 {
+			pieces[p] = 1
+		} else if wp[p] {
+			complete = false
+		}
 	}
 
-	return !slices.Contains(fr.FilePriority, 0)
+	return string(pieces), complete
 }
 
 // readDelugeLabels reads the label plugin state from <config_dir>/label.conf,

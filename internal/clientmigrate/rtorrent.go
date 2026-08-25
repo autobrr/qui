@@ -103,6 +103,7 @@ func (i *RTorrentImport) Migrate() error {
 		// If file already exists, skip
 		if _, err = os.Stat(torrentOutFile); err == nil {
 			log.Info().Msgf("(%d/%d) %s Torrent already exists, skipping", positionNum, totalJobs, torrentOutFile)
+			skipped++
 			continue
 		}
 
@@ -124,9 +125,10 @@ func (i *RTorrentImport) Migrate() error {
 
 		numPieces := metaInfo.NumPieces()
 
-		// the resume bitfield is the piece count when complete, 0 when empty,
-		// and a raw bitfield string when partial
-		if !rtorrentTorrentComplete(resumeFile, numPieces) {
+		// complete means every piece of every wanted (non-off) file is
+		// present; files with priority 0 may legitimately be missing
+		pieces, complete := rtorrentPieces(resumeFile, &metaInfo)
+		if !complete {
 			log.Warn().Msgf("(%d/%d) %s is not fully downloaded, skipping: %s", positionNum, totalJobs, metaInfo.Name, match)
 			skipped++
 			continue
@@ -166,18 +168,32 @@ func (i *RTorrentImport) Migrate() error {
 		// hash-check; the torrent is complete here, so fall back to added time
 		finishedTime := firstNonZero(rtFile.TimestampFinished, addedTime)
 
+		// derive every seeding duration from one epoch so qBittorrent's Time
+		// Active and Seeding Time columns agree: ruTorrent's custom.seedingtime
+		// (start of seeding) when present, else the finished timestamp
+		seedingSince := firstNonZero(strToIntClean(rtFile.Custom.SeedingTime), finishedTime)
+		seedingDuration := max(time.Now().Unix()-seedingSince, 0)
+
 		// 0.9.6 predates the total_downloaded key
 		totalDownloaded := rtFile.TotalDownloaded
 		if totalDownloaded == 0 {
 			totalDownloaded = metaInfo.TotalLength()
 		}
 
+		// auto-managed keeps qBittorrent's queueing and share limits in
+		// charge; a stopped torrent must stay out of auto-management or
+		// qBittorrent would resume it
+		paused := int64(1)
+		if rtFile.State == 1 {
+			paused = 0
+		}
+
 		newFastResume := qbittorrent.Fastresume{
-			ActiveTime:                getActiveTime(rtFile.Custom.SeedingTime),
+			ActiveTime:                seedingDuration,
 			AddedTime:                 addedTime,
 			Allocation:                "sparse",
 			ApplyIPFilter:             1,
-			AutoManaged:               0,
+			AutoManaged:               1 - paused,
 			CompletedTime:             finishedTime,
 			DisableDHT:                0,
 			DisableLSD:                0,
@@ -186,7 +202,7 @@ func (i *RTorrentImport) Migrate() error {
 			FileFormat:                "libtorrent resume file",
 			FileVersion:               1,
 			FilePriority:              rtorrentFilePriorities(resumeFile.Files, len(metaInfo.UpvertedFiles())),
-			FinishedTime:              time.Now().Unix() - finishedTime,
+			FinishedTime:              seedingDuration,
 			LastDownload:              0,
 			LastSeenComplete:          finishedTime,
 			LastUpload:                0,
@@ -197,7 +213,7 @@ func (i *RTorrentImport) Migrate() error {
 			NumDownloaded:             16777215,
 			NumIncomplete:             0,
 			NumPieces:                 int64(numPieces),
-			Paused:                    1 - rtFile.State,
+			Paused:                    paused,
 			Peers:                     "",
 			Peers6:                    "",
 			QbtCategory:               rtorrentLabel(rtFile.Custom1),
@@ -211,7 +227,7 @@ func (i *RTorrentImport) Migrate() error {
 			QbtTags:                   []string{"migrated"},
 			SavePath:                  dir,
 			SeedMode:                  0,
-			SeedingTime:               getActiveTime(rtFile.Custom.SeedingTime),
+			SeedingTime:               seedingDuration,
 			SequentialDownload:        0,
 			ShareMode:                 0,
 			StopWhenReady:             0,
@@ -251,8 +267,8 @@ func (i *RTorrentImport) Migrate() error {
 		// handle trackers
 		newFastResume.Trackers = rtorrentTrackers(file, resumeFile)
 
-		// fill pieces to set as completed
-		newFastResume.FillPieces()
+		// pieces overlapping only priority-off files stay unset
+		newFastResume.Pieces = pieces
 
 		// Set 20 byte SHA1 hash
 		newFastResume.InfoHash = file.HashInfoBytes().Bytes()
@@ -281,22 +297,64 @@ func (i *RTorrentImport) Migrate() error {
 	return nil
 }
 
-// Takes rtorrent custom.seedingtime (UNIX timestamp of seeding start) and converts to elapsed seconds
-func getActiveTime(t string) int64 {
-	startTime := strToIntClean(t)
-	if startTime == 0 {
-		return 0
+// rtorrentPieces expands the libtorrent_resume bitfield into a qBittorrent
+// piece bitfield and reports whether every piece of every wanted file is
+// present. The bitfield is the piece count when complete, 0 when empty, and a
+// raw MSB-first bitfield string when partial
+func rtorrentPieces(resume *RTorrentLibTorrentResumeFile, info *metainfo.Info) (string, bool) {
+	numPieces := info.NumPieces()
+	if numPieces == 0 || info.PieceLength <= 0 {
+		return "", false
 	}
-	return time.Now().Unix() - startTime
-}
 
-// rtorrentTorrentComplete reports whether the libtorrent_resume bitfield says
-// every piece is present: an integer equal to the piece count. A partial
-// torrent stores the bitfield as a raw string instead
-func rtorrentTorrentComplete(resume *RTorrentLibTorrentResumeFile, numPieces int) bool {
-	n, ok := resume.Bitfield.(int64)
+	havePiece := make([]bool, numPieces)
+	switch v := resume.Bitfield.(type) {
+	case int64:
+		if v != int64(numPieces) {
+			return "", false
+		}
+		for i := range havePiece {
+			havePiece[i] = true
+		}
+	case string:
+		if len(v) < (numPieces+7)/8 {
+			return "", false
+		}
+		for i := range numPieces {
+			havePiece[i] = v[i/8]>>(7-i%8)&1 == 1
+		}
+	default:
+		return "", false
+	}
 
-	return ok && n == int64(numPieces)
+	files := info.UpvertedFiles()
+	wanted := make([]bool, len(files))
+	for i := range wanted {
+		wanted[i] = true
+	}
+	if len(resume.Files) == len(files) {
+		for i, f := range resume.Files {
+			wanted[i] = f.Priority != 0
+		}
+	}
+
+	fileLengths := make([]int64, len(files))
+	for i, f := range files {
+		fileLengths[i] = f.Length
+	}
+	wp := wantedPieces(fileLengths, wanted, info.PieceLength, numPieces)
+
+	pieces := make([]byte, numPieces)
+	complete := true
+	for p := range numPieces {
+		if havePiece[p] {
+			pieces[p] = 1
+		} else if wp[p] {
+			complete = false
+		}
+	}
+
+	return string(pieces), complete
 }
 
 // rtorrentFilePriorities maps rtorrent per-file priorities (0 off, 1 normal,
