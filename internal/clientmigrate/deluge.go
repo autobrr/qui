@@ -119,11 +119,6 @@ func (di *DelugeImport) Migrate() error {
 		}
 
 		fastResume.TorrentFilePath = torrentNamePath
-		if _, err = os.Stat(fastResume.TorrentFilePath); os.IsNotExist(err) {
-			log.Error().Err(err).Msgf("Could not find torrent file %s for %s", fastResume.TorrentFilePath, torrentID)
-			failed++
-			continue
-		}
 
 		file, err := metainfo.LoadFromFile(torrentNamePath)
 		if err != nil {
@@ -139,10 +134,17 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
-		// v2-only torrents have no valid v1 infohash and lose their merkle
-		// trees in this format; qBittorrent would reject or mis-verify them
-		if metaInfo.MetaVersion == 2 || len(fastResume.InfoHash) != 20 {
+		// v2-only torrents lose their merkle trees in this format;
+		// qBittorrent would reject or mis-verify them
+		if metaInfo.MetaVersion == 2 {
 			log.Warn().Msgf("(%d/%d) %s is a BitTorrent v2 torrent, not supported by this importer, skipping", positionNum, totalJobs, torrentID)
+			skipped++
+			continue
+		}
+
+		// qBittorrent rejects resume data without an exact 20-byte v1 infohash
+		if len(fastResume.InfoHash) != 20 {
+			log.Warn().Msgf("(%d/%d) %s resume data has no valid v1 infohash, skipping", positionNum, totalJobs, torrentID)
 			skipped++
 			continue
 		}

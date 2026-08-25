@@ -22,7 +22,7 @@ Run with `--dry-run` first to see what would be imported without writing anythin
 2. **Stop qBittorrent.** The importer writes directly into qBittorrent's `BT_backup` directory, which qBittorrent only reads at startup.
 3. Start qBittorrent after the migration finishes. The imported torrents appear immediately with their history intact.
 
-Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in the current working directory before anything is written. Re-running a migration is safe: torrents that already exist in the target are skipped.
+Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in the current working directory before anything is written — the qBittorrent directory only when it already exists, so a fresh destination produces just the source archive. Re-running a migration is safe: torrents that already exist in the target are skipped.
 
 The `--qbit-dir` is qBittorrent's session directory, commonly `~/.local/share/qBittorrent/BT_backup` on Linux, `%LOCALAPPDATA%\qBittorrent\BT_backup` on Windows, or `/config/qBittorrent/BT_backup` in Docker images.
 

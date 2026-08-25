@@ -384,9 +384,9 @@ func rtorrentFilePriorities(entries []RTorrentResumeFileEntry, fileCount int) []
 }
 
 // rtorrentLabel decodes a ruTorrent label from custom1, which ruTorrent
-// stores rawurlencoded
+// stores rawurlencoded; PathUnescape keeps a literal + a plus
 func rtorrentLabel(custom1 string) string {
-	label, err := url.QueryUnescape(custom1)
+	label, err := url.PathUnescape(custom1)
 	if err != nil {
 		return custom1
 	}

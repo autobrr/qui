@@ -1,11 +1,13 @@
 package clientmigrate
 
 import (
+	"archive/tar"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/autobrr/go-torrent/metainfo"
+	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -363,6 +365,48 @@ func TestReadDelugeLabels(t *testing.T) {
 
 	// absent file means no labels
 	assert.Nil(t, readDelugeLabels(t.TempDir()))
+}
+
+func TestArchiveDirExcludesOwnArchive(t *testing.T) {
+	t.Parallel()
+
+	// --source-dir . puts qbt_backup inside the walked tree; the archive must
+	// not be written into itself
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "torrents.fastresume"), []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "qbt_backup"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	archiveName := filepath.Join(dir, "qbt_backup", "backup.tar.gz")
+	if err := archiveDir(dir, archiveName); err != nil {
+		t.Fatal(err)
+	}
+
+	f, err := os.Open(archiveName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var entries []string
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			break
+		}
+		entries = append(entries, hdr.Name)
+	}
+
+	assert.Equal(t, []string{"torrents.fastresume"}, entries)
 }
 
 func TestFirstNonZero(t *testing.T) {

@@ -122,6 +122,14 @@ func (i *TransmissionImport) Migrate() error {
 			continue
 		}
 
+		// a corrupt entry with an unusable download dir would import a torrent
+		// qBittorrent resolves against its own default download dir
+		if !filepath.IsAbs(filepath.Clean(resumeFile.Destination)) {
+			log.Warn().Msgf("(%d/%d) %s has an unusable download dir %q, skipping", positionNum, totalJobs, metaInfo.Name, resumeFile.Destination)
+			skipped++
+			continue
+		}
+
 		if i.opts.DryRun {
 			log.Info().Msgf("dry-run: (%d/%d) would import: %s", positionNum, totalJobs, torrentID)
 			imported++

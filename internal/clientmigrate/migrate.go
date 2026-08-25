@@ -139,6 +139,13 @@ func archiveDir(dir, archiveName string) error {
 	}
 	defer root.Close()
 
+	// with --source-dir . the archive lands inside the walked tree; it must
+	// not be written into itself
+	archiveAbs, err := filepath.Abs(archiveName)
+	if err != nil {
+		return err
+	}
+
 	out, err := os.Create(archiveName)
 	if err != nil {
 		return err
@@ -152,6 +159,10 @@ func archiveDir(dir, archiveName string) error {
 			return err
 		}
 		if d.IsDir() {
+			return nil
+		}
+
+		if abs, err := filepath.Abs(filepath.Join(dir, filepath.FromSlash(path))); err == nil && abs == archiveAbs {
 			return nil
 		}
 
