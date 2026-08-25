@@ -7,12 +7,104 @@ import (
 	"context"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
 )
+
+func TestValidateRlsYearConditions(t *testing.T) {
+	yearConditions := func(op models.ConditionOperator, value string, minVal, maxVal *float64) *models.ActionConditions {
+		return &models.ActionConditions{
+			Pause: &models.PauseAction{
+				Enabled: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRlsYear,
+					Operator: op,
+					Value:    value,
+					MinValue: minVal,
+					MaxValue: maxVal,
+				},
+			},
+		}
+	}
+
+	maxYear := time.Now().Year() + 1
+
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantErr    bool
+	}{
+		{name: "valid year", conditions: yearConditions(models.OperatorEqual, "2021", nil, nil), wantErr: false},
+		{name: "year too low", conditions: yearConditions(models.OperatorEqual, "1800", nil, nil), wantErr: true},
+		{name: "year far in future", conditions: yearConditions(models.OperatorEqual, "3000", nil, nil), wantErr: true},
+		{name: "zero rejected", conditions: yearConditions(models.OperatorEqual, "0", nil, nil), wantErr: true},
+		{name: "non-numeric rejected", conditions: yearConditions(models.OperatorEqual, "abc", nil, nil), wantErr: true},
+		{name: "exact min year accepted", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(minRlsYear), nil, nil), wantErr: false},
+		{name: "below min rejected", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(minRlsYear-1), nil, nil), wantErr: true},
+		{name: "exact max year accepted", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(maxYear), nil, nil), wantErr: false},
+		{name: "above max rejected", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(maxYear+1), nil, nil), wantErr: true},
+		{name: "less-than out-of-range bound rejected", conditions: yearConditions(models.OperatorLessThan, strconv.Itoa(minRlsYear-1), nil, nil), wantErr: true},
+		{name: "whitespace padded value accepted", conditions: yearConditions(models.OperatorEqual, " 2021 ", nil, nil), wantErr: false},
+		{name: "valid between", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), new(float64(2020))), wantErr: false},
+		{name: "between fractional bound rejected", conditions: yearConditions(models.OperatorBetween, "", new(2000.5), new(float64(2020))), wantErr: true},
+		{name: "between missing max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), nil), wantErr: true},
+		{name: "between min greater than max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2020)), new(float64(2000))), wantErr: true},
+		{name: "between out of range", conditions: yearConditions(models.OperatorBetween, "", new(float64(1800)), new(float64(2020))), wantErr: true},
+		{name: "nil conditions", conditions: nil, wantErr: false},
+		{
+			name: "non-year field ignored",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled:   true,
+					Condition: &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorEqual, Value: "anything"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "nested year condition validated",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled: true,
+					Condition: &models.RuleCondition{
+						Operator: models.OperatorAnd,
+						Conditions: []*models.RuleCondition{
+							{Field: models.FieldRlsYear, Operator: models.OperatorEqual, Value: "1700"},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disabled action not validated",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled:   false,
+					Condition: &models.RuleCondition{Field: models.FieldRlsYear, Operator: models.OperatorEqual, Value: "1700"},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg, err := validateRlsYearConditions(tt.conditions)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateRlsYearConditions() err = %v, wantErr %v (msg=%q)", err, tt.wantErr, msg)
+			}
+			if tt.wantErr && msg == "" {
+				t.Error("expected a non-empty user-facing message on error")
+			}
+		})
+	}
+}
 
 func TestValidateFreeSpaceSource(t *testing.T) {
 	tests := []struct {
@@ -370,6 +462,42 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "autoManagement enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "autoManagement disabled with FREE_SPACE returns true (presence semantics)",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: false,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "autoManagement enabled without FREE_SPACE returns false",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldSize,
+					},
+				},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -377,6 +505,111 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			got := conditionsUseFreeSpace(tt.conditions)
 			if got != tt.want {
 				t.Errorf("conditionsUseFreeSpace() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConditionTreesForValidation_AutoManagement(t *testing.T) {
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantCount  int
+	}{
+		{
+			name: "autoManagement enabled is included",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled:   true,
+					Condition: &automations.RuleCondition{Field: automations.FieldSize},
+				},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "autoManagement disabled is included (presence semantics)",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled:   false,
+					Condition: &automations.RuleCondition{Field: automations.FieldSize},
+				},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "autoManagement nil is excluded",
+			conditions: &models.ActionConditions{
+				AutoManagement: nil,
+			},
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			trees := conditionTreesForValidation(tt.conditions)
+			if len(trees) != tt.wantCount {
+				t.Errorf("conditionTreesForValidation() returned %d trees, want %d", len(trees), tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestCollectConditionRegexErrors_AutoManagement(t *testing.T) {
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantErrs   int
+	}{
+		{
+			name: "autoManagement with invalid regex returns error",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field:    automations.FieldTracker,
+						Operator: models.OperatorMatches,
+						Value:    "[invalid",
+					},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "autoManagement disabled with invalid regex still returns error",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: false,
+					Condition: &automations.RuleCondition{
+						Field:    automations.FieldTracker,
+						Operator: models.OperatorMatches,
+						Value:    "[invalid",
+					},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "autoManagement with valid regex returns no errors",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field:    automations.FieldTracker,
+						Operator: models.OperatorMatches,
+						Value:    "^tracker\\.example\\.com$",
+					},
+				},
+			},
+			wantErrs: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := collectConditionRegexErrors(tt.conditions)
+			if len(errs) != tt.wantErrs {
+				t.Errorf("collectConditionRegexErrors() returned %d errors, want %d", len(errs), tt.wantErrs)
 			}
 		})
 	}

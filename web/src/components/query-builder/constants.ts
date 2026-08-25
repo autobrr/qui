@@ -3,42 +3,91 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { TFunction } from "i18next";
+
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {
   // String fields
   NAME: { label: "Name", type: "string" as const, description: "Torrent name" },
   HASH: { label: "Hash", type: "string" as const, description: "Torrent info hash" },
+  INFOHASH_V1: { label: "Infohash v1", type: "string" as const, description: "BitTorrent v1 info hash" },
+  INFOHASH_V2: { label: "Infohash v2", type: "string" as const, description: "BitTorrent v2 info hash" },
+  MAGNET_URI: { label: "Magnet URI", type: "string" as const, description: "Magnet link for the torrent" },
   CATEGORY: { label: "Category", type: "string" as const, description: "Torrent category" },
   TAGS: { label: "Tags", type: "string" as const, description: "Comma-separated tags" },
   SAVE_PATH: { label: "Save Path", type: "string" as const, description: "Download location" },
   CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
+  DOWNLOAD_PATH: { label: "Download Path", type: "string" as const, description: "Session download path from qBittorrent" },
+  CREATED_BY: { label: "Created By", type: "string" as const, description: "Torrent creator metadata" },
+  TRACKERS: { label: "Trackers (All)", type: "string" as const, description: "All tracker URLs/domains/display names for this torrent" },
+  CONTENT_TYPE: { label: "Content Type", type: "string" as const, description: "Detected content type (movie, tv, music, etc) from release parsing" },
+  EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const, description: "Parsed item key (title/year or SxxEyy) for grouping across trackers" },
+  RLS_SOURCE: { label: "Source (RLS)", type: "string" as const, description: "Parsed source (normalized: WEBDL, WEBRIP, BLURAY, etc)" },
+  RLS_RESOLUTION: { label: "Resolution (RLS)", type: "string" as const, description: "Parsed resolution (e.g. 1080P, 2160P)" },
+  RLS_CODEC: { label: "Codec (RLS)", type: "string" as const, description: "Parsed video codec (normalized: AVC, HEVC, etc)" },
+  RLS_HDR: { label: "HDR (RLS)", type: "string" as const, description: "Parsed HDR tags (e.g. DV, HDR10, HDR)" },
+  RLS_AUDIO: { label: "Audio (RLS)", type: "string" as const, description: "Parsed audio tags (e.g. DTS, TRUEHD, AAC)" },
+  RLS_CHANNELS: { label: "Channels (RLS)", type: "string" as const, description: "Parsed audio channels (e.g. 5.1, 7.1)" },
+  RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
+  RLS_YEAR: { label: "Year (RLS)", type: "integer" as const, description: "Year parsed from the torrent name (e.g. 2021). Best for movies and dated releases; most TV episodes (e.g. S14E05) have no year and never match any comparison operator (the NOT toggle inverts that, so it matches yearless releases)." },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
   TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
+  TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
+  TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
   // Size fields (bytes)
   SIZE: { label: "Size", type: "bytes" as const, description: "Selected file size" },
   TOTAL_SIZE: { label: "Total Size", type: "bytes" as const, description: "Total torrent size" },
+  COMPLETED: { label: "Completed", type: "bytes" as const, description: "Completed bytes" },
   DOWNLOADED: { label: "Downloaded", type: "bytes" as const, description: "Total downloaded" },
+  DOWNLOADED_SESSION: { label: "Downloaded (Session)", type: "bytes" as const, description: "Downloaded in current session" },
   UPLOADED: { label: "Uploaded", type: "bytes" as const, description: "Total uploaded" },
+  UPLOADED_SESSION: { label: "Uploaded (Session)", type: "bytes" as const, description: "Uploaded in current session" },
   AMOUNT_LEFT: { label: "Amount Left", type: "bytes" as const, description: "Remaining to download" },
   FREE_SPACE: { label: "Free Space", type: "bytes" as const, description: "Free space on the instance's filesystem" },
 
+  // Timestamp-backed fields represented as ages (seconds since event)
+  ADDED_ON: { label: "Added Age", type: "duration" as const, description: "Time since torrent was added" },
+  COMPLETION_ON: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
+  LAST_ACTIVITY: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
+  SEEN_COMPLETE: { label: "Seen Complete Age", type: "duration" as const, description: "Time since torrent was last seen complete" },
+
   // Duration fields (seconds)
+  ETA: { label: "ETA", type: "duration" as const, description: "Estimated seconds to completion" },
+  REANNOUNCE: { label: "Reannounce In", type: "duration" as const, description: "Seconds until next reannounce" },
   SEEDING_TIME: { label: "Seeding Time", type: "duration" as const, description: "Time spent seeding" },
   TIME_ACTIVE: { label: "Time Active", type: "duration" as const, description: "Total active time" },
-  ADDED_ON_AGE: { label: "Added Age", type: "duration" as const, description: "Time since torrent was added" },
-  COMPLETION_ON_AGE: { label: "Completed Age", type: "duration" as const, description: "Time since download completed" },
-  LAST_ACTIVITY_AGE: { label: "Inactive Time", type: "duration" as const, description: "Time since last activity" },
+  MAX_SEEDING_TIME: { label: "Max Seeding Time", type: "duration" as const, description: "Configured max seeding time" },
+  MAX_INACTIVE_SEEDING_TIME: { label: "Max Inactive Seeding Time", type: "duration" as const, description: "Configured max inactive seeding time" },
+  SEEDING_TIME_LIMIT: { label: "Seeding Time Limit", type: "duration" as const, description: "Torrent seeding time limit" },
+  INACTIVE_SEEDING_TIME_LIMIT: { label: "Inactive Seeding Time Limit", type: "duration" as const, description: "Torrent inactive seeding time limit" },
+  ADDED_ON_AGE: { label: "Added Age (legacy)", type: "duration" as const, description: "Legacy alias for Added Age" },
+  COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const, description: "Legacy alias for Completed Age" },
+  LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const, description: "Legacy alias for Inactive Time" },
+
+  // System Time fields
+  SYSTEM_HOUR: { label: "System Hour", type: "integer" as const, description: "Current system hour (0-23)" },
+  SYSTEM_MINUTE: { label: "System Minute", type: "integer" as const, description: "Current system minute (0-59)" },
+  SYSTEM_DAY_OF_WEEK: { label: "System Day of Week", type: "integer" as const, description: "Current system day of week (0=Sun to 6=Sat)" },
+  SYSTEM_DAY: { label: "System Day", type: "integer" as const, description: "Current system day of month (1-31)" },
+  SYSTEM_MONTH: { label: "System Month", type: "integer" as const, description: "Current system month (1-12)" },
+  SYSTEM_YEAR: { label: "System Year", type: "integer" as const, description: "Current system year" },
 
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
+  RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
+  MAX_RATIO: { label: "Max Ratio", type: "float" as const, description: "Maximum ratio value from qBittorrent" },
+  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const, description: "Uploaded / total torrent size. Cross-seed-safe alternative to RATIO." },
   PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
   AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
+  POPULARITY: { label: "Popularity", type: "float" as const, description: "Swarm popularity metric" },
 
   // Speed fields (bytes/s)
   DL_SPEED: { label: "Download Speed", type: "speed" as const, description: "Current download speed" },
   UP_SPEED: { label: "Upload Speed", type: "speed" as const, description: "Current upload speed" },
+  DL_LIMIT: { label: "Download Limit", type: "speed" as const, description: "Configured download speed limit" },
+  UP_LIMIT: { label: "Upload Limit", type: "speed" as const, description: "Configured upload speed limit" },
 
   // Count fields
   NUM_SEEDS: { label: "Active Seeders", type: "integer" as const, description: "Seeders currently connected to" },
@@ -46,17 +95,31 @@ export const CONDITION_FIELDS = {
   NUM_COMPLETE: { label: "Total Seeders", type: "integer" as const, description: "Total seeders in swarm (tracker-reported)" },
   NUM_INCOMPLETE: { label: "Total Leechers", type: "integer" as const, description: "Total leechers in swarm (tracker-reported)" },
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
+  PRIORITY: { label: "Queue Priority", type: "integer" as const, description: "Torrent queue priority value" },
+  GROUP_SIZE: { label: "Group Size", type: "integer" as const, description: "Number of torrents in the selected group for this condition" },
 
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
+  AUTO_MANAGED: { label: "Auto-managed", type: "boolean" as const, description: "Managed by automatic torrent management" },
+  FIRST_LAST_PIECE_PRIO: { label: "First/Last Piece Priority", type: "boolean" as const, description: "First and last pieces are prioritized" },
+  FORCE_START: { label: "Force Start", type: "boolean" as const, description: "Ignores queue limits and starts immediately" },
+  SEQUENTIAL_DOWNLOAD: { label: "Sequential Download", type: "boolean" as const, description: "Downloads pieces sequentially" },
+  SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const, description: "Super-seeding mode enabled" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
+  IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
+  EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
+  SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
+  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed(s) Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
+  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed(s) Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is actively seeding on this instance" },
+  CROSS_SEED_TAGS: { label: "Cross-seed Tags", type: "string" as const, description: "Tags across this torrent and its same-instance cross-seeds" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
+  HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -70,6 +133,10 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "MATCHES", label: "matches regex" },
   ],
   state: [
+    { value: "EQUAL", label: "is" },
+    { value: "NOT_EQUAL", label: "is not" },
+  ],
+  trackerStatus: [
     { value: "EQUAL", label: "is" },
     { value: "NOT_EQUAL", label: "is not" },
   ],
@@ -141,6 +208,7 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
 export const HARDLINK_SCOPE_VALUES = [
   { value: "none", label: "None" },
   { value: "torrents_only", label: "Only other torrents" },
+  { value: "inside_qbittorrent", label: "Inside qBittorrent (even if also linked outside)" },
   { value: "outside_qbittorrent", label: "Outside qBittorrent (library/import)" },
 ];
 
@@ -159,7 +227,9 @@ export const TORRENT_STATES = [
   { value: "stalled_downloading", label: "Stalled Down" },
   { value: "errored", label: "Error" },
   { value: "tracker_down", label: "Tracker Down" },
+  { value: "tracker_error", label: "Tracker Error" },
   { value: "checking", label: "Checking" },
+  { value: "checkingResumeData", label: "Checking Resume Data" },
   { value: "moving", label: "Moving" },
 
   // Specific qBittorrent state (kept for targeting missing-file issues)
@@ -178,39 +248,59 @@ export const DELETE_MODES = [
 export const FIELD_GROUPS = [
   {
     label: "Identity",
-    fields: ["NAME", "HASH", "CATEGORY", "TAGS", "STATE"],
+    fields: ["NAME", "HASH", "INFOHASH_V1", "INFOHASH_V2", "MAGNET_URI", "CATEGORY", "TAGS", "STATE", "CREATED_BY"],
+  },
+  {
+    label: "Release",
+    fields: ["CONTENT_TYPE", "EFFECTIVE_NAME", "RLS_SOURCE", "RLS_RESOLUTION", "RLS_CODEC", "RLS_HDR", "RLS_AUDIO", "RLS_CHANNELS", "RLS_GROUP", "RLS_YEAR"],
+  },
+  {
+    label: "Grouping",
+    fields: ["GROUP_SIZE", "IS_GROUPED"],
   },
   {
     label: "Paths",
-    fields: ["SAVE_PATH", "CONTENT_PATH"],
+    fields: ["SAVE_PATH", "CONTENT_PATH", "DOWNLOAD_PATH"],
   },
   {
     label: "Size",
-    fields: ["SIZE", "TOTAL_SIZE", "DOWNLOADED", "UPLOADED", "AMOUNT_LEFT", "FREE_SPACE"],
+    fields: ["SIZE", "TOTAL_SIZE", "COMPLETED", "DOWNLOADED", "DOWNLOADED_SESSION", "UPLOADED", "UPLOADED_SESSION", "AMOUNT_LEFT", "FREE_SPACE"],
   },
   {
     label: "Time",
-    fields: ["SEEDING_TIME", "TIME_ACTIVE", "ADDED_ON_AGE", "COMPLETION_ON_AGE", "LAST_ACTIVITY_AGE"],
+    fields: ["ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEN_COMPLETE", "ETA", "REANNOUNCE", "SEEDING_TIME", "TIME_ACTIVE", "MAX_SEEDING_TIME", "MAX_INACTIVE_SEEDING_TIME", "SEEDING_TIME_LIMIT", "INACTIVE_SEEDING_TIME_LIMIT"],
+  },
+  {
+    label: "System Time",
+    fields: ["SYSTEM_HOUR", "SYSTEM_MINUTE", "SYSTEM_DAY_OF_WEEK", "SYSTEM_DAY", "SYSTEM_MONTH", "SYSTEM_YEAR"],
   },
   {
     label: "Progress",
-    fields: ["RATIO", "PROGRESS", "AVAILABILITY"],
+    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "UPLOADED_OVER_SIZE", "PROGRESS", "AVAILABILITY", "POPULARITY"],
   },
   {
     label: "Speed",
-    fields: ["DL_SPEED", "UP_SPEED"],
+    fields: ["DL_SPEED", "UP_SPEED", "DL_LIMIT", "UP_LIMIT"],
   },
   {
     label: "Peers",
-    fields: ["NUM_SEEDS", "NUM_LEECHS", "NUM_COMPLETE", "NUM_INCOMPLETE"],
+    fields: ["NUM_SEEDS", "NUM_LEECHS", "NUM_COMPLETE", "NUM_INCOMPLETE", "PRIORITY"],
   },
   {
     label: "Tracker",
-    fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
+  },
+  {
+    label: "Cross-Seed",
+    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE", "EXISTS_ON_SAME_INSTANCE", "SEEDING_ON_SAME_INSTANCE", "CROSS_SEED_TAGS"],
+  },
+  {
+    label: "Mode",
+    fields: ["AUTO_MANAGED", "FIRST_LAST_PIECE_PRIO", "FORCE_START", "SEQUENTIAL_DOWNLOAD", "SUPER_SEEDING"],
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HAS_MISSING_FILES"],
+    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
   },
 ];
 
@@ -282,15 +372,109 @@ export const CAPABILITY_REASONS = {
   localFilesystemAccess: "Requires Local Filesystem Access",
 } as const;
 
+// "disabled" (status 0) is intentionally omitted: it only ever applies to qBittorrent's
+// DHT/PeX/LSD pseudo-trackers, which the evaluator skips, so it could never match a real tracker.
+export const TRACKER_STATUS_VALUES = [
+  { value: "not_contacted", label: "Not contacted" },
+  { value: "working", label: "Working" },
+  { value: "updating", label: "Updating" },
+  { value: "error", label: "Error" },
+  { value: "tracker_error", label: "Tracker error" },
+  { value: "unreachable", label: "Unreachable" },
+] as const;
+
 export const FIELD_REQUIREMENTS = {
   IS_UNREGISTERED: "trackerHealth",
+  TRACKER_STATUS: "trackerHealth",
+  TRACKER_MESSAGE: "trackerHealth",
   HAS_MISSING_FILES: "localFilesystemAccess",
   HARDLINK_SCOPE: "localFilesystemAccess",
+  HARDLINK_SCOPE_CROSS: "localFilesystemAccess",
 } as const;
 
 export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
+  tracker_error: "trackerHealth",
 } as const;
 
 // Uncategorized sentinel (Radix Select requires non-empty values)
 export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
+
+// --- i18n helper functions ---
+
+/** Get translated label for a condition field */
+export function getFieldLabel(field: string, t: TFunction): string {
+  return t(`queryBuilder.fields.${field}`, { defaultValue: CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS]?.label ?? field });
+}
+
+/** Get translated label for a field group */
+export function getFieldGroupLabel(label: string, t: TFunction): string {
+  return t(`queryBuilder.fieldGroups.${label}`, { defaultValue: label });
+}
+
+/** Operator label lookup keyed by the operator value string */
+const OPERATOR_LABEL_KEYS: Record<string, string> = {
+  EQUAL: "equals",
+  NOT_EQUAL: "notEquals",
+  CONTAINS: "contains",
+  NOT_CONTAINS: "notContains",
+  STARTS_WITH: "startsWith",
+  ENDS_WITH: "endsWith",
+  MATCHES: "matchesRegex",
+  GREATER_THAN: ">",
+  GREATER_THAN_OR_EQUAL: ">=",
+  LESS_THAN: "<",
+  LESS_THAN_OR_EQUAL: "<=",
+  BETWEEN: "between",
+  EXISTS_IN: "existsIn",
+  CONTAINS_IN: "similarExistsIn",
+};
+
+/** Get translated operators for a field, preserving the original structure */
+export function getTranslatedOperatorsForField(field: string, t: TFunction): { value: string; label: string }[] {
+  const ops = getOperatorsForField(field);
+  return ops.map((op) => {
+    // Symbolic operators (=, !=, >, >=, <, <=) stay as-is
+    if (/^[^a-zA-Z]/.test(op.label)) return op;
+    const key = OPERATOR_LABEL_KEYS[op.value];
+    if (!key) return op;
+    // "is" / "is not" share keys with equals/notEquals for state/boolean types but have different labels
+    const type = getFieldType(field);
+    if ((type === "state" || type === "trackerStatus" || type === "boolean" || type === "hardlinkScope") && (op.value === "EQUAL" || op.value === "NOT_EQUAL")) {
+      return { value: op.value, label: t(`queryBuilder.operators.${op.value === "EQUAL" ? "is" : "isNot"}`, { defaultValue: op.label }) };
+    }
+    return { value: op.value, label: t(`queryBuilder.operators.${key}`, { defaultValue: op.label }) };
+  });
+}
+
+/** Get translated torrent states */
+export function getTranslatedTorrentStates(t: TFunction): { value: string; label: string }[] {
+  return TORRENT_STATES.map((state) => ({
+    value: state.value,
+    label: t(`queryBuilder.torrentStates.${state.value}`, { defaultValue: state.label }),
+  }));
+}
+
+/** Get translated tracker status values */
+export function getTranslatedTrackerStatuses(t: TFunction): { value: string; label: string }[] {
+  return TRACKER_STATUS_VALUES.map((status) => ({
+    value: status.value,
+    label: t(`queryBuilder.trackerStatuses.${status.value}`, { defaultValue: status.label }),
+  }));
+}
+
+/** Get translated hardlink scope values */
+export function getTranslatedHardlinkScopes(t: TFunction): { value: string; label: string }[] {
+  return HARDLINK_SCOPE_VALUES.map((scope) => ({
+    value: scope.value,
+    label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
+  }));
+}
+
+/** Get translated delete modes */
+export function getTranslatedDeleteModes(t: TFunction): { value: string; label: string }[] {
+  return DELETE_MODES.map((mode) => ({
+    value: mode.value,
+    label: t(`queryBuilder.deleteModes.${mode.value}`, { defaultValue: mode.label }),
+  }));
+}

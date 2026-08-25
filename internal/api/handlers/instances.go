@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
@@ -61,7 +62,7 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 				return
 			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
-			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
+			RespondError(w, http.StatusServiceUnavailable, instanceCapabilitiesClientErrorMessage(err))
 			return
 		}
 	}
@@ -77,6 +78,13 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 
 	capabilities := NewInstanceCapabilitiesResponse(client)
 	RespondJSON(w, http.StatusOK, capabilities)
+}
+
+func instanceCapabilitiesClientErrorMessage(err error) string {
+	if message, ok := internalqbittorrent.InstanceHealthBlockerMessage(err); ok {
+		return message
+	}
+	return "Failed to load instance capabilities"
 }
 
 // GetReannounceActivity returns recent reannounce events for an instance.
@@ -140,6 +148,33 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
+// transferInfoResponse adds qBittorrent's all-time totals, which only
+// /sync/maindata carries, to the /transfer/info statistics. The totals are
+// pointers so the fallback path omits them instead of reporting zero.
+type transferInfoResponse struct {
+	qbt.TransferInfo
+	AlltimeDl *int64 `json:"alltime_dl,omitempty"`
+	AlltimeUl *int64 `json:"alltime_ul,omitempty"`
+}
+
+// newTransferInfoResponse exposes only the transfer fields and the totals: the
+// rest of the server state belongs to the dashboard payload, not to a stats
+// endpoint clients poll every few seconds.
+func newTransferInfoResponse(state *qbt.ServerState) transferInfoResponse {
+	return transferInfoResponse{
+		ConnectionStatus: qbt.ConnectionStatus(state.ConnectionStatus),
+		DHTNodes:         state.DhtNodes,
+		DlInfoData:       state.DlInfoData,
+		DlInfoSpeed:      state.DlInfoSpeed,
+		DlRateLimit:      state.DlRateLimit,
+		UpInfoData:       state.UpInfoData,
+		UpInfoSpeed:      state.UpInfoSpeed,
+		UpRateLimit:      state.UpRateLimit,
+		AlltimeDl:        &state.AlltimeDl,
+		AlltimeUl:        &state.AlltimeUl,
+	}
+}
+
 // GetTransferInfo returns lightweight transfer stats for an instance.
 func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Request) {
 	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
@@ -161,6 +196,24 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Prefer the synced server state: one maindata sync answers this endpoint and
+	// the all-time totals, sparing clients a full torrent-list request for the
+	// totals alone. The cache only advances on a completed sync, so instances
+	// nobody is streaming need this explicit one to report live speeds. Sync with
+	// the request context rather than the library's checked accessor, which syncs
+	// on context.Background() and would outlive this handler's deadline against a
+	// saturated WebUI. A failed sync still leaves the last good state to serve.
+	if syncManager := client.GetSyncManager(); syncManager != nil {
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to sync before reading server state; serving cached state")
+		}
+
+		if state := client.GetCachedServerState(); state != nil {
+			RespondJSON(w, http.StatusOK, newTransferInfoResponse(state))
+			return
+		}
+	}
+
 	info, err := client.GetTransferInfoCtx(ctx)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get transfer info")
@@ -168,7 +221,7 @@ func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	RespondJSON(w, http.StatusOK, info)
+	RespondJSON(w, http.StatusOK, transferInfoResponse{TransferInfo: *info})
 }
 
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
@@ -201,6 +254,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				Name:                     instances[i].Name,
 				Host:                     instances[i].Host,
 				Username:                 instances[i].Username,
+				HasAPIKey:                instances[i].APIKeyEncrypted != "",
 				BasicUsername:            instances[i].BasicUsername,
 				TLSSkipVerify:            instances[i].TLSSkipVerify,
 				HasLocalFilesystemAccess: instances[i].HasLocalFilesystemAccess,
@@ -235,9 +289,9 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	var connectionStatus string
 	if !instance.IsActive {
 		connectionStatus = "disabled"
-	} else if client != nil {
-		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
-			connectionStatus = strings.ToLower(status)
+	} else if client != nil && h.syncManager != nil {
+		if status := internalqbittorrent.NormalizeConnectionStatus(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
+			connectionStatus = status
 		}
 	}
 
@@ -249,6 +303,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Name:                     instance.Name,
 		Host:                     instance.Host,
 		Username:                 instance.Username,
+		HasAPIKey:                instance.APIKeyEncrypted != "",
 		BasicUsername:            instance.BasicUsername,
 		TLSSkipVerify:            instance.TLSSkipVerify,
 		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
@@ -262,9 +317,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		ConnectionStatus:         connectionStatus,
 		SortOrder:                instance.SortOrder,
 		IsActive:                 instance.IsActive,
-	}
 
-	response.ReannounceSettings = h.getReannounceSettingsPayload(ctx, instance.ID)
+		ReannounceSettings: h.getReannounceSettingsPayload(ctx, instance.ID)}
 
 	// Fetch recent errors for disconnected instances
 	if instance.IsActive && !healthy {
@@ -291,6 +345,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Name:                     instance.Name,
 		Host:                     instance.Host,
 		Username:                 instance.Username,
+		HasAPIKey:                instance.APIKeyEncrypted != "",
 		BasicUsername:            instance.BasicUsername,
 		TLSSkipVerify:            instance.TLSSkipVerify,
 		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
@@ -374,6 +429,7 @@ type CreateInstanceRequest struct {
 	Host                     string                             `json:"host"`
 	Username                 string                             `json:"username"`
 	Password                 string                             `json:"password"`
+	APIKey                   string                             `json:"apiKey,omitempty"`
 	BasicUsername            *string                            `json:"basicUsername,omitempty"`
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            bool                               `json:"tlsSkipVerify,omitempty"`
@@ -387,6 +443,7 @@ type UpdateInstanceRequest struct {
 	Host                     string                             `json:"host"`
 	Username                 string                             `json:"username"`
 	Password                 string                             `json:"password,omitempty"` // Optional for updates
+	APIKey                   *string                            `json:"apiKey,omitempty"`
 	BasicUsername            *string                            `json:"basicUsername,omitempty"`
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            *bool                              `json:"tlsSkipVerify,omitempty"`
@@ -409,6 +466,7 @@ type InstanceResponse struct {
 	Name                     string                            `json:"name"`
 	Host                     string                            `json:"host"`
 	Username                 string                            `json:"username"`
+	HasAPIKey                bool                              `json:"hasApiKey"`
 	BasicUsername            *string                           `json:"basicUsername,omitempty"`
 	TLSSkipVerify            bool                              `json:"tlsSkipVerify"`
 	HasLocalFilesystemAccess bool                              `json:"hasLocalFilesystemAccess"`
@@ -597,7 +655,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess, req.APIKey)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -615,7 +673,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID)
+	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusCreated, response)
 }
@@ -661,6 +719,11 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Handle redacted basic password - if redacted, use existing basic password
 	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
+	}
+
+	// Handle redacted API key - if redacted, preserve the existing API key
+	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
+		req.APIKey = nil
 	}
 
 	// Validate hardlink/reflink settings
@@ -719,7 +782,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		UseReflinks:              req.UseReflinks,
 		FallbackToRegularMode:    req.FallbackToRegularMode,
 	}
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams, req.APIKey)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
@@ -750,7 +813,7 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	response.ReannounceSettings = payloadFromModel(settings)
 
 	// Test connection asynchronously
-	go h.testConnectionAsync(instance.ID)
+	go h.testConnectionAsync(instance.ID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -814,7 +877,7 @@ func (h *InstancesHandler) UpdateInstanceStatus(w http.ResponseWriter, r *http.R
 	} else {
 		// Clear backoff state and errors when re-enabling instance
 		h.clientPool.ResetFailureTracking(instanceID)
-		go h.testConnectionAsync(instanceID)
+		go h.testConnectionAsync(instanceID) //nolint:gosec // G118: connectivity test must outlive the request that triggered it
 	}
 
 	response := h.buildQuickInstanceResponse(instance)

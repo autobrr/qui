@@ -15,6 +15,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 // RSSHandler handles RSS API endpoints
@@ -233,7 +234,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 			if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
 				return
 			}
-			log.Error().Err(err).Int("instanceID", instanceID).Str("url", req.URL).Msg("failed to add RSS feed")
+			log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(req.URL)).Msg("failed to add RSS feed")
 			RespondError(w, http.StatusInternalServerError, "Failed to add RSS feed")
 			return
 		}
@@ -289,7 +290,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		case len(candidates) > 1:
 			log.Warn().
 				Int("instanceID", instanceID).
-				Str("url", req.URL).
+				Str("url", redact.URLString(req.URL)).
 				Strs("candidates", candidates).
 				Msg("multiple RSS feeds matched URL; cannot safely move")
 		}
@@ -312,7 +313,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			// Couldn't find the newly added feed to move it
-			log.Warn().Int("instanceID", instanceID).Str("url", req.URL).Msg("could not identify RSS feed to move to folder")
+			log.Warn().Int("instanceID", instanceID).Str("url", redact.URLString(req.URL)).Msg("could not identify RSS feed to move to folder")
 			RespondJSON(w, http.StatusCreated, WarningResponse{
 				Warning: "Feed added to root - could not identify feed to move",
 			})
@@ -328,7 +329,7 @@ func (h *RSSHandler) AddFeed(w http.ResponseWriter, r *http.Request) {
 		if respondIfInstanceDisabled(w, err, instanceID, "AddRSSFeed") {
 			return
 		}
-		log.Error().Err(err).Int("instanceID", instanceID).Str("url", req.URL).Msg("failed to add RSS feed")
+		log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(req.URL)).Msg("failed to add RSS feed")
 		RespondError(w, http.StatusInternalServerError, "Failed to add RSS feed")
 		return
 	}

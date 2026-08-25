@@ -35,7 +35,7 @@ Override with `--config-dir`:
 
 ## Notes On Reloading
 
-qui watches `config.toml` for changes. Some settings are applied immediately (for example logging and tracker icon fetching). For anything else, restart qui after changes to be safe.
+qui watches `config.toml` for changes. Some settings are applied immediately (for example logging, tracker icon fetching, and auth-disabled settings). For anything else, restart qui after changes to be safe.
 
 ## Settings
 
@@ -43,28 +43,103 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 |---|---|---:|---|---|
 | `host` | `QUI__HOST` | string | `localhost` (or `0.0.0.0` in containers) | Bind address for the main HTTP server. |
 | `port` | `QUI__PORT` | int | `7476` | Port for the main HTTP server. |
-| `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). |
+| `baseUrl` | `QUI__BASE_URL` | string | `/` | Serve qui from a subdirectory (example: `/qui/`). Normalized at startup: leading and trailing slashes are added when missing. |
+| `corsAllowedOrigins` | `QUI__CORS_ALLOWED_ORIGINS` | string[] | empty list | Explicit CORS allowlist. Empty disables CORS. Origins must be `http(s)://host[:port]`; wildcards are rejected; default ports are normalized. Restart required. |
 | `sessionSecret` | `QUI__SESSION_SECRET` / `QUI__SESSION_SECRET_FILE` | string | auto-generated | WARNING: changing breaks decryption of stored instance passwords; you must re-enter them in the UI. |
-| `logLevel` | `QUI__LOG_LEVEL` | string | `INFO` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. |
+| `logLevel` | `QUI__LOG_LEVEL` | string | `DEBUG` | `ERROR`, `DEBUG`, `INFO`, `WARN`, `TRACE`. Applied immediately. `DEBUG` records sufficient detail to diagnose most reports. `TRACE` adds per-request and per-sync-tick detail and makes the file grow quickly. |
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty: logs to stdout. Relative paths resolve relative to the config directory. Applied immediately. |
-| `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | MiB threshold before rotation. Applied immediately. |
-| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `3` | Rotated files retained. `0` keeps all. Applied immediately. |
-| `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Database `qui.db` lives here. Restart recommended. |
+| `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | Size in MB that starts a rotation. Applied immediately. |
+| `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `10` | Number of rotated files that qui keeps. `0` keeps all. Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file compresses to 2 to 3 MB. Applied immediately. |
+| `dataDir` | `QUI__DATA_DIR` | string | empty | If empty: uses the directory containing `config.toml`. Always used for non-database assets (logs, tracker icon cache, etc.). When `databaseEngine=sqlite`, `qui.db` also lives here. Restart recommended. |
+| `backupDir` | `QUI__BACKUP_DIR` | string | empty | If empty: `<dataDir>/backups`. Directory for [backup](../features/backups.md) manifests, archives, and cached `.torrent` files. Relative paths resolve against the config directory. If you change this on an existing install, move the contents of `<dataDir>/backups` to the new directory. Restart required. |
+| `customThemesDir` | `QUI__CUSTOM_THEMES_DIR` | string | empty | Directory for sideloaded [custom theme](../features/custom-themes.md) `.css` files. If empty: `<config-dir>/themes` (auto-created). Relative paths resolve against the config directory. Listing requires premium access. Config changes applied on next request. |
+| `databaseEngine` | `QUI__DATABASE_ENGINE` | string | `sqlite` | `sqlite` or `postgres`. Existing installs should keep `sqlite` unless you migrate. Restart required. |
+| `databaseDsn` | `QUI__DATABASE_DSN` / `QUI__DATABASE_DSN_FILE` | string | empty | Full Postgres DSN. Preferred when `databaseEngine=postgres`. |
+| `databaseHost` | `QUI__DATABASE_HOST` | string | `localhost` | Postgres host when not using `databaseDsn`. |
+| `databasePort` | `QUI__DATABASE_PORT` | int | `5432` | Postgres port when not using `databaseDsn`. |
+| `databaseUser` | `QUI__DATABASE_USER` | string | empty | Postgres user when not using `databaseDsn`. |
+| `databasePassword` | `QUI__DATABASE_PASSWORD` / `QUI__DATABASE_PASSWORD_FILE` | string | empty | Postgres password when not using `databaseDsn`. |
+| `databaseName` | `QUI__DATABASE_NAME` | string | `qui` | Postgres database name when not using `databaseDsn`. |
+| `databaseSSLMode` | `QUI__DATABASE_SSL_MODE` | string | `disable` | Common values: `disable`, `require`, `verify-ca`, `verify-full`. |
+| `databaseConnectTimeout` | `QUI__DATABASE_CONNECT_TIMEOUT` | int | `10` | Postgres connect timeout in seconds. |
+| `databaseMaxOpenConns` | `QUI__DATABASE_MAX_OPEN_CONNS` | int | `25` | Postgres pool max open connections. |
+| `databaseMaxIdleConns` | `QUI__DATABASE_MAX_IDLE_CONNS` | int | `5` | Postgres pool max idle connections. |
+| `databaseConnMaxLifetime` | `QUI__DATABASE_CONN_MAX_LIFETIME` | int | `300` | Postgres connection max lifetime in seconds. |
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart recommended. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable to prevent remote tracker favicon fetches. Applied immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | When enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. Can add 25+ minutes per torrent. Restart recommended. |
-| `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables pprof server on `:6060` (`/debug/pprof/`). Restart required. |
+| `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables pprof server (`/debug/pprof/`). Restart required. |
+| `pprofAddr` | `QUI__PPROF_ADDR` | string | `127.0.0.1:6060` | pprof server bind address. Loopback by default to avoid colliding with another listener in a shared network namespace (e.g. a Tailscale sidecar). Restart required. |
 | `metricsEnabled` | `QUI__METRICS_ENABLED` | bool | `false` | Enables a Prometheus metrics server (separate port). Restart required. |
 | `metricsHost` | `QUI__METRICS_HOST` | string | `127.0.0.1` | Metrics server bind address. Restart required. |
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |
-| `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:bcrypt_hash` or `user1:hash1,user2:hash2`. Restart required. |
+| `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:password` or `user1:password1,user2:password2`. Passwords are plaintext and can contain colons. Usernames cannot contain colons. Commas cannot appear in credentials. Restart required. |
 | `externalProgramAllowList` | (none) | string[] | empty list | Restricts which executables can be launched from the UI. Only configurable via `config.toml` (no env override). |
+| `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disable all built-in authentication. **Both** this and `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` must be `true` for auth to be disabled. See [Authentication](#authentication) below. Applied on config reload. |
+| `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers. Applied on config reload. |
+| `authDisabledAllowedCIDRs` | `QUI__AUTH_DISABLED_ALLOWED_CIDRS` | string[] | empty list | Required when auth is disabled. Restricts access to specific client IPs/CIDRs. Entries may be canonical CIDRs or single IPs. Applied on config reload. |
 | `oidcEnabled` | `QUI__OIDC_ENABLED` | bool | `false` | Enable OpenID Connect authentication. Restart required. |
 | `oidcIssuer` | `QUI__OIDC_ISSUER` | string | empty | OIDC issuer URL. Restart required. |
 | `oidcClientId` | `QUI__OIDC_CLIENT_ID` | string | empty | OIDC client ID. Restart required. |
 | `oidcClientSecret` | `QUI__OIDC_CLIENT_SECRET` / `QUI__OIDC_CLIENT_SECRET_FILE` | string | empty | OIDC client secret. Restart required. |
 | `oidcRedirectUrl` | `QUI__OIDC_REDIRECT_URL` | string | empty | Must match the provider redirect URI (include `baseUrl` when reverse proxying). Restart required. |
 | `oidcDisableBuiltInLogin` | `QUI__OIDC_DISABLE_BUILT_IN_LOGIN` | bool | `false` | Hide local username/password form when OIDC is enabled. Restart required. |
+
+## Authentication
+
+To disable qui's built-in authentication, all of the following are required:
+
+```bash
+QUI__AUTH_DISABLED=true
+QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true
+QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24
+```
+
+The second variable exists as an explicit acknowledgement of the risks.
+
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` is mandatory and acts as a hard IP allowlist. If auth is disabled and the value is missing/invalid, qui will refuse to start and reject invalid live reloads.
+
+Entries can be:
+
+- Canonical CIDR ranges (`192.168.1.0/24`)
+- Single IPs (`10.0.0.5`), automatically treated as `/32` (IPv4) or `/128` (IPv6)
+
+Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
+
+`oidcEnabled` and auth-disabled mode cannot be enabled at the same time.
+
+When authentication is disabled:
+
+- Requests are allowed only if the direct client IP matches `authDisabledAllowedCIDRs`.
+- Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) still allow loopback probes so the official Docker image healthcheck works without adding `127.0.0.1/32` or `::1/128` to your reverse proxy allowlist.
+- `/api/auth/me` returns a synthetic `admin` user so the frontend works without login.
+- `/api/auth/validate` returns a synthetic `admin` user so callback/session checks work without login.
+- The setup screen is skipped entirely.
+
+**Only use this if qui is behind a reverse proxy that already handles authentication** (e.g., Authelia, Authentik, Caddy with forward_auth).
+
+:::danger Private tracker risks
+If you use private trackers, running qui without authentication is especially dangerous. Anyone with network access can control your torrent clients — adding, removing, or modifying torrents. Actions performed by unauthorized users (hit-and-runs, ratio manipulation, uploading unwanted content) can get your accounts permanently banned from private trackers, with no way to recover.
+:::
+
+If `QUI__AUTH_DISABLED` is set without `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA`, qui will log a warning and keep authentication enabled.
+
+## CORS
+
+By default, qui does not send CORS allow headers. To allow browser requests from another trusted origin, set `corsAllowedOrigins` (or `QUI__CORS_ALLOWED_ORIGINS`) to an explicit allowlist:
+
+```bash
+QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com
+```
+
+Rules:
+
+- only explicit origins are allowed (`http://` or `https://` + host + optional non-default port)
+- wildcards are rejected (`*`, `https://*.example.com`, etc.)
+- path/query/fragment/userinfo are rejected
+- invalid values refuse startup; invalid live reloads are rejected and keep the last valid allowlist
+
+For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors.md).
 
 ## Example `config.toml`
 
@@ -73,10 +148,10 @@ host = "0.0.0.0"
 port = 7476
 baseUrl = "/qui/"
 
-logLevel = "INFO"
+logLevel = "DEBUG"
 logPath = "log/qui.log"
 logMaxSize = 50
-logMaxBackups = 3
+logMaxBackups = 10
 
 trackerIconsFetchEnabled = false
 

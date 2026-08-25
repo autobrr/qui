@@ -23,6 +23,29 @@ var (
 	emptyParens       = regexp.MustCompile(`\(\s*\)`)
 )
 
+// BuildTorznabQuery derives the free-text q parameter for a Torznab search.
+// Cross-seed and dir scan both call it so the two paths cannot drift apart.
+//
+// The year is deliberately absent from q: it travels as the separate year
+// parameter instead. Trackers that search a movie database rather than release
+// names (PassThePopcorn, for example) match q against the movie title alone, so
+// a trailing year returns nothing.
+func BuildTorznabQuery(name string, release *rls.Release, isMusic bool) SearchQuery {
+	baseQuery := release.Title
+	if isMusic && baseQuery != "" && release.Artist != "" {
+		baseQuery = release.Artist + " " + baseQuery
+	}
+	query := buildSafeSearchQuery(name, release, baseQuery)
+	if isMusic {
+		// Torznab audio searches carry no season or episode. A numeric album title
+		// parses as an episode number ("9" reads as episode 9), which would send
+		// ep=9 to the indexer and drop every result.
+		query.Season = nil
+		query.Episode = nil
+	}
+	return query
+}
+
 // buildSafeSearchQuery constructs a conservative Torznab query for TV/anime when parsing is weak.
 // It tries to preserve parsed season/episode from rls, but when parsing fails (common for anime
 // absolute numbering), it cleans the torrent name and extracts an absolute episode number to
@@ -31,17 +54,17 @@ func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) S
 	// If rls already gave us structured series/episode info, keep it.
 	var seasonPtr, episodePtr *int
 	if release.Series > 0 {
-		season := int(release.Series)
+		season := release.Series
 		seasonPtr = &season
 	}
 	if release.Episode > 0 {
-		ep := int(release.Episode)
+		ep := release.Episode
 		episodePtr = &ep
 	}
 
 	if strings.TrimSpace(baseQuery) != "" {
 		return SearchQuery{
-			Query:   baseQuery,
+			Query:   strings.TrimSpace(baseQuery),
 			Season:  seasonPtr,
 			Episode: episodePtr,
 		}
@@ -65,7 +88,12 @@ func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) S
 	}
 
 	if cleanedTitle == "" {
-		cleanedTitle = baseQuery
+		// baseQuery is empty on this path (the non-empty case returns early above),
+		// so fall back to the original name to avoid emitting an empty query.
+		cleanedTitle = strings.TrimSpace(baseQuery)
+		if cleanedTitle == "" {
+			cleanedTitle = strings.TrimSpace(name)
+		}
 	}
 
 	return SearchQuery{

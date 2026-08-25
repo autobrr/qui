@@ -221,28 +221,3 @@ func (m *SearcheeMetadata) SetExternalIDs(imdbID string, tmdbID, tvdbID int) {
 		m.TRaSH.TVDbID = tvdbID
 	}
 }
-
-// seasonFolderPattern matches season folder names like "Season 01", "Season 1", "Specials".
-var seasonFolderPattern = regexp.MustCompile(`(?i)^(?:season\s*(\d+)|specials?)$`)
-
-// ParseSeasonFolder attempts to parse a folder name as a season folder.
-// Returns the season number (0 for Specials) and true if it matches, or 0 and false if not.
-func ParseSeasonFolder(name string) (season int, ok bool) {
-	matches := seasonFolderPattern.FindStringSubmatch(name)
-	if len(matches) == 0 {
-		return 0, false
-	}
-
-	// "Specials" case - no capture group
-	if matches[1] == "" {
-		return 0, true
-	}
-
-	// Season number case
-	season, err := strconv.Atoi(matches[1])
-	if err != nil {
-		return 0, false
-	}
-
-	return season, true
-}

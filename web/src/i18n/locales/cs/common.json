@@ -1,0 +1,203 @@
+{
+  "nav": {
+    "dashboard": "Domů",
+    "search": "Hledat",
+    "crossSeed": "Křížové sdílení",
+    "automations": "Automatizace",
+    "backups": "Zálohy",
+    "rss": "RSS",
+    "settings": "Nastavení",
+    "logs": "Logy",
+    "instances": "Instance",
+    "generalSettings": "Obecná nastavení",
+    "manageInstances": "Spravovat instance",
+    "appearance": "Vzhled",
+    "instanceBackups": "Zálohy instance"
+  },
+  "sidebar": {
+    "instances": "Instance",
+    "allInstancesDisabled": "Všechny instance jsou zakázány",
+    "noInstancesConfigured": "Žádné instance nejsou nakonfigurovány",
+    "logout": "Odhlásit se",
+    "version": "Verze {{version}}",
+    "language": "Jazyk",
+    "viewOnGitHub": "Zobrazit na GitHubu",
+    "rssRunning": "RSS běží",
+    "rssEnabled": "RSS je zapnuto",
+    "scanRunning": "Scan běží",
+    "showSidebar": "Zobrazit postranní panel",
+    "hideSidebar": "Skrýt postranní panel"
+  },
+  "header": {
+    "currentInstance": "Aktuální instance: {{name}}. Klikněte pro přepnutí instance.",
+    "connected": "Připojeno",
+    "disconnected": "Odpojeno",
+    "noActiveInstances": "Žádné aktivní instance",
+    "showFilters": "Zobrazit filtry",
+    "hideFilters": "Skrýt filtry",
+    "addTorrent": "Přidat torrent",
+    "createTorrent": "Vytvořit torrent",
+    "torrentCreationTasks": "Úlohy vytváření torrentů",
+    "instanceSettings": "Nastavení instance",
+    "addToInstance": "Přidat do instance",
+    "createForInstance": "Vytvořit pro instanci",
+    "tasksForInstance": "Úlohy pro instanci",
+    "settingsForInstance": "Nastavení pro instanci",
+    "clearSearch": "Vymazat hledání",
+    "searchTorrents": "Hledat torrenty... ({{shortcutKey}})",
+    "globPattern": "Vzorové hledání...",
+    "smartSearchTitle": "Inteligentní hledání:",
+    "smartSearchGlob": "Vzorové hledání:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "Hrubé hledání:",
+    "smartSearchFuzzyExample": "\"breaking bad\" najde \"Breaking.Bad\"",
+    "smartSearchDots": "Zpracovává tečky, podtržítka a závorky",
+    "smartSearchFields": "Hledá název, kategorii a tagy",
+    "smartSearchEnter": "Stiskněte Enter pro okamžité hledání",
+    "smartSearchAuto": "Automaticky hledá po 500ms pauze",
+    "torrentCreationTasksTitle": "Úlohy vytváření torrentů",
+    "updateAvailable": "Aktualizace dostupná",
+    "updateVersion": "Verze {{version}}",
+    "rssRunning": "RSS běží",
+    "rssEnabled": "RSS je zapnuto",
+    "scanRunning": "Scan běží",
+    "allScope": "VŠE",
+    "unified": "Unifikované"
+  },
+  "unifiedScope": {
+    "unified": "Unifikované",
+    "collapseScope": "Sbalit unifikovaný rozsah",
+    "expandScope": "Rozbalit unifikovaný rozsah",
+    "allActive": "Všechny aktivní ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "Domů",
+    "clients": "Klienti",
+    "settings": "Nastavení",
+    "qbittorrentClients": "qBittorrent klienti",
+    "instances": "Instance",
+    "noActiveInstances": "Žádné aktivní instance",
+    "loading": "Načítání...",
+    "noActiveClients": "Žádní aktivní klienti",
+    "updateAvailable": "Aktualizace dostupná",
+    "updateVersion": "Verze {{version}}",
+    "rssRunning": "RSS běží",
+    "rssEnabled": "RSS je zapnuto",
+    "scanRunning": "Scan běží",
+    "logout": "Odhlásit se",
+    "version": "Verze {{version}}",
+    "viewOnGitHub": "Zobrazit na GitHubu"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Zrušit",
+    "close": "Zavřít",
+    "create": "Vytvořit",
+    "copyPath": "Kopírovat cestu",
+    "scrollToTop": "Posunout na začátek",
+    "search": "Hledat",
+    "select": "Vybrat",
+    "toggle": "Přepnout"
+  },
+  "placeholders": {
+    "search": "Hledat...",
+    "selectItems": "Vybrat položky..."
+  },
+  "feedback": {
+    "noResultsFound": "Žádné výsledky."
+  },
+  "status": {
+    "disabled": "Vypnuto",
+    "notContacted": "Nekontaktováno",
+    "working": "Pracuje",
+    "updating": "Aktualizace",
+    "error": "Chyba",
+    "unknown": "Neznámé",
+    "trackerError": "Chyba trackeru",
+    "unreachable": "Nedostupné"
+  },
+  "themeToggle": {
+    "changeTheme": "Změnit vzhled",
+    "appearance": "Vzhled",
+    "mode": "Režim",
+    "light": "Světlý",
+    "dark": "Tmavý",
+    "system": "Systém",
+    "theme": "Vzhled",
+    "premium": "Premiové",
+    "switchedToMode": "Přepnuto na {{mode}} režim",
+    "switchedToTheme": "Přepnuto na {{theme}} vzhled",
+    "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
+    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence.",
+    "custom": "Vlastní"
+  },
+  "updateBanner": {
+    "updateAvailable": "Aktualizace dostupná",
+    "versionAvailable": "Verze {{version}} je nyní dostupná",
+    "viewRelease": "Zobrazit vydání",
+    "dismiss": "Zavřít"
+  },
+  "notFound": {
+    "title": "Ajeje! Ztratil jsi se?",
+    "subtitle": "Zdá se, že jsi se ztratil.",
+    "bugReport": "Pokud si myslíš, že se jedná o chybu,",
+    "reportTo": "nahlaš nám to na naší",
+    "githubRepository": "GitHub stránce",
+    "getBackOnTrack": "Pokud si myslíš, že se jedná o chybu, nahlaš nám to.",
+    "returnToDashboard": "Vrátit se na domovskou stránku"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Zaregistruj qui jako váš program na otevíraní magnet linků",
+    "register": "Zaregistrovat",
+    "dismiss": "Zavřít",
+    "registrationRequested": "Zaregistrován program na otevíraní magnet linků",
+    "registrationFailed": "Nepodařilo se zaregistrovat program na otevíraní magnet linků",
+    "guidance": {
+      "standalone": "Otevřete qui v běžném prohlížeči pro registraci (výzva může být zobrazena v adresním řádku, který PWAs nezobrazují).",
+      "chromium": "Chrome to často zobrazuje jako malou ikonu v adresním řádku prohlížeče; pokud se nic nezobrazí, povolte manipulaci protokolů v chrome://settings/handlers.",
+      "default": "Pokud váš prohlížeč požádá o registraci, prosím, přijměte ji."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Více informací"
+  },
+  "numberInput": {
+    "unlimited": "Neomezené",
+    "useUnlimited": " (použij -1 pro neomezené)"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "Právě teď",
+    "today": "Dnes",
+    "yesterday": "Včera",
+    "past": "{{value}} před",
+    "future": "{{value}} po",
+    "units": {
+      "second_one": "{{count}} sekunda",
+      "second_other": "{{count}} sekund",
+      "minute_one": "{{count}} minuta",
+      "minute_other": "{{count}} minut",
+      "hour_one": "{{count}} hodina",
+      "hour_other": "{{count}} hodin",
+      "day_one": "{{count}} den",
+      "day_other": "{{count}} dní",
+      "week_one": "{{count}} týden",
+      "week_other": "{{count}} týdnů",
+      "month_one": "{{count}} měsíc",
+      "month_other": "{{count}} měsíců",
+      "year_one": "{{count}} rok",
+      "year_other": "{{count}} let"
+    }
+  },
+  "support": {
+    "title": "Podpořit qui",
+    "description": "Už máte motivy a chcete pomoci ještě víc? Vše v qui už je vaše. Předplatné neodemyká funkce, financuje čas věnovaný jejich vývoji.",
+    "perkPrefix": "Podporovatelé získají roli",
+    "perkSuffix": "na Discordu a naši věčnou vděčnost.",
+    "yearly": "{{price}} / rok",
+    "monthly": "{{price}} / měsíc",
+    "notLicense": "Prémiové motivy jsou samostatný jednorázový nákup."
+  }
+}

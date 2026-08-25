@@ -17,29 +17,35 @@ import (
 )
 
 // IsAuthenticated middleware checks if the user is authenticated
-func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager) func(http.Handler) http.Handler {
+func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManager, cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// When authentication is disabled, set a synthetic user and pass through
+			if cfg != nil && cfg.IsAuthDisabled() {
+				ctx := context.WithValue(r.Context(), ctxkeys.Username, "admin")
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
 			// Check for API key first
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey != "" {
 				// Validate API key
-				apiKeyModel, err := authService.ValidateAPIKey(r.Context(), apiKey)
-				if err != nil {
+				if _, err := authService.ValidateAPIKey(r.Context(), apiKey); err != nil {
 					log.Warn().Err(err).Msg("Invalid API key")
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
 
-				// Set API key info in context (optional, for logging)
-				log.Debug().Int("apiKeyID", apiKeyModel.ID).Str("name", apiKeyModel.Name).Msg("API key authenticated")
 				next.ServeHTTP(w, r)
 				return
 			}
 
 			// Check session using SCS
 			if !sessionManager.GetBool(r.Context(), "authenticated") {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				// Use 403 to avoid Chromium resetting upstream Basic Auth creds when
+				// qui is behind a reverse proxy (e.g. Swizzin nginx auth_basic).
+				http.Error(w, "Unauthorized", http.StatusForbidden)
 				return
 			}
 
@@ -56,9 +62,13 @@ func IsAuthenticated(authService *auth.Service, sessionManager *scs.SessionManag
 func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// When OIDC is enabled we don't require a local user to exist, so skip the
-			// setup precondition entirely. Authentication is still enforced by the
-			// downstream middleware.
+			// When authentication is disabled or OIDC is enabled we don't require
+			// a local user to exist, so skip the setup precondition entirely.
+			if cfg != nil && cfg.IsAuthDisabled() {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			if cfg != nil && cfg.OIDCEnabled {
 				next.ServeHTTP(w, r)
 				return
@@ -66,6 +76,13 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 
 			// Allow setup-related endpoints
 			if strings.HasSuffix(r.URL.Path, "/auth/setup") || strings.HasSuffix(r.URL.Path, "/auth/check-setup") {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// The built-in theme catalog and stored selection are public so
+			// the setup and login pages paint the selected theme too.
+			if r.Method == http.MethodGet && (strings.HasSuffix(r.URL.Path, "/themes") || strings.HasSuffix(r.URL.Path, "/themes/settings")) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -81,7 +98,7 @@ func RequireSetup(authService *auth.Service, cfg *domain.Config) func(http.Handl
 			if !complete {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusPreconditionRequired)
-				w.Write([]byte(`{"error":"Initial setup required","setup_required":true}`))
+				_, _ = w.Write([]byte(`{"error":"Initial setup required","setup_required":true}`))
 				return
 			}
 

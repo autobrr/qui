@@ -1,5 +1,5 @@
 # Build stage
-FROM node:22.18-alpine AS frontend-builder
+FROM node:24.15-alpine AS frontend-builder
 
 # Install git for cloning
 RUN apk add --no-cache git
@@ -10,7 +10,7 @@ RUN npm install -g corepack@latest && \
 
 WORKDIR /app/web
 
-COPY web/package.json web/pnpm-lock.yaml ./
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY web ./
@@ -18,7 +18,7 @@ RUN pnpm run build
 
 # Go build stage
 # Use BUILDPLATFORM to build on native architecture (fast)
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine3.22 AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.23 AS go-builder
 
 # Install build dependencies
 RUN apk add --no-cache git
@@ -40,6 +40,8 @@ COPY --from=frontend-builder /app/web/dist ./web/dist
 
 # Build arguments
 ARG VERSION=dev
+ARG GIT_COMMIT=""
+ARG BUILD_DATE=""
 ARG POLAR_ORG_ID=""
 
 # Set cross-compilation environment variables
@@ -58,11 +60,11 @@ RUN case "${TARGETARCH}" in \
 
 # Build the application
 RUN CGO_ENABLED=0 go build \
-    -ldflags "-s -w -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} -X main.PolarOrgID=${POLAR_ORG_ID}" \
+    -ldflags "-s -w -X github.com/autobrr/qui/internal/buildinfo.Version=${VERSION} -X github.com/autobrr/qui/internal/buildinfo.Commit=${GIT_COMMIT} -X github.com/autobrr/qui/internal/buildinfo.Date=${BUILD_DATE} -X main.PolarOrgID=${POLAR_ORG_ID}" \
     -o qui ./cmd/qui
 
 # Final stage
-FROM alpine:3.22
+FROM alpine:3.23
 
 LABEL org.opencontainers.image.source="https://github.com/autobrr/qui"
 
@@ -71,16 +73,22 @@ ENV HOME="/config" \
     XDG_CONFIG_HOME="/config" \
     XDG_DATA_HOME="/config"
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates curl tzdata bash
+# Install only what the binary and supported container workflows need at runtime.
+# The Go binary is statically linked (CGO_ENABLED=0) so no libc/openssl needed.
+# curl and bash stay for the External Programs feature and existing container workflows.
+# ca-certificates: TLS connections to qBittorrent, trackers, update checks
+# tzdata: timezone display in logs and UI
+# su-exec: privilege drop in the entrypoint when PUID/PGID are set
+RUN apk --no-cache add ca-certificates curl tzdata bash su-exec
 
 WORKDIR /config
 
 # Declare volume for persistent data
 VOLUME /config
 
-# Copy binary
+# Copy binary and entrypoint
 COPY --from=go-builder /app/qui /usr/local/bin/
+COPY distrib/docker/entrypoint.sh /entrypoint.sh
 
 EXPOSE 7476
 
@@ -88,5 +96,5 @@ EXPOSE 7476
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7476/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/qui"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["serve"]

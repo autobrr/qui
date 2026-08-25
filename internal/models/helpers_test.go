@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBoolToSQLite(t *testing.T) {
@@ -31,6 +32,37 @@ func TestBoolToSQLite(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := BoolToSQLite(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestSQLiteIntToBool(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    int
+		expected bool
+	}{
+		{
+			name:     "zero returns false",
+			input:    0,
+			expected: false,
+		},
+		{
+			name:     "one returns true",
+			input:    1,
+			expected: true,
+		},
+		{
+			name:     "negative non-zero returns true",
+			input:    -1,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SQLiteIntToBool(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -169,7 +201,7 @@ func TestEncodeStringSliceJSON(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -231,7 +263,7 @@ func TestDecodeStringSliceJSON(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

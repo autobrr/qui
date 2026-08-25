@@ -84,17 +84,18 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 
 	var settings OrphanScanSettings
 	var ignorePathsJSON sql.NullString
+	var enabled, autoCleanupEnabled int
 
 	err := row.Scan(
 		&settings.ID,
 		&settings.InstanceID,
-		&settings.Enabled,
+		&enabled,
 		&settings.GracePeriodMinutes,
 		&ignorePathsJSON,
 		&settings.ScanIntervalHours,
 		&settings.PreviewSort,
 		&settings.MaxFilesPerRun,
-		&settings.AutoCleanupEnabled,
+		&autoCleanupEnabled,
 		&settings.AutoCleanupMaxFiles,
 		&settings.CreatedAt,
 		&settings.UpdatedAt,
@@ -114,6 +115,8 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	if settings.IgnorePaths == nil {
 		settings.IgnorePaths = []string{}
 	}
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.AutoCleanupEnabled = SQLiteIntToBool(autoCleanupEnabled)
 
 	return &settings, nil
 }
@@ -153,29 +156,14 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 	return s.GetSettings(ctx, settings.InstanceID)
 }
 
-// CreateRun creates a new orphan scan run.
-func (s *OrphanScanStore) CreateRun(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by)
-		VALUES (?, 'pending', ?)
-	`, instanceID, triggeredBy)
-	if err != nil {
-		return 0, fmt.Errorf("insert orphan scan run: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
-	}
-	return id, nil
-}
-
 // ErrRunAlreadyActive is returned when attempting to create a run while one is already active.
 var ErrRunAlreadyActive = errors.New("an active run already exists for this instance")
 
 // CreateRunIfNoActive atomically checks for active runs and creates a new one if none exist.
 // This prevents race conditions between HasActiveRun and CreateRun.
 func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID int, triggeredBy string) (int64, error) {
-	res, err := s.db.ExecContext(ctx, `
+	var id int64
+	err := s.db.QueryRowContext(ctx, `
 		INSERT INTO orphan_scan_runs (instance_id, status, triggered_by)
 		SELECT ?, 'pending', ?
 		WHERE NOT EXISTS (
@@ -184,22 +172,13 @@ func (s *OrphanScanStore) CreateRunIfNoActive(ctx context.Context, instanceID in
 			  AND (status IN ('pending', 'scanning', 'deleting')
 			       OR (status = 'preview_ready' AND files_found > 0))
 		)
-	`, instanceID, triggeredBy, instanceID)
+		RETURNING id
+	`, instanceID, triggeredBy, instanceID).Scan(&id)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrRunAlreadyActive
+		}
 		return 0, fmt.Errorf("insert orphan scan run: %w", err)
-	}
-
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("get rows affected: %w", err)
-	}
-	if rows == 0 {
-		return 0, ErrRunAlreadyActive
-	}
-
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get last insert id: %w", err)
 	}
 	return id, nil
 }
@@ -235,6 +214,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	var scanPathsJSON sql.NullString
 	var errorMessage sql.NullString
 	var completedAt sql.NullTime
+	var truncated int
 
 	err := row.Scan(
 		&run.ID,
@@ -246,7 +226,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 		&run.FilesDeleted,
 		&run.FoldersDeleted,
 		&run.BytesReclaimed,
-		&run.Truncated,
+		&truncated,
 		&errorMessage,
 		&run.StartedAt,
 		&completedAt,
@@ -257,6 +237,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 	if err != nil {
 		return nil, err
 	}
+	run.Truncated = SQLiteIntToBool(truncated)
 	if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
 		return nil, err
 	}
@@ -289,6 +270,7 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 		var scanPathsJSON sql.NullString
 		var errorMessage sql.NullString
 		var completedAt sql.NullTime
+		var truncated int
 
 		if err := rows.Scan(
 			&run.ID,
@@ -300,13 +282,14 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 			&run.FilesDeleted,
 			&run.FoldersDeleted,
 			&run.BytesReclaimed,
-			&run.Truncated,
+			&truncated,
 			&errorMessage,
 			&run.StartedAt,
 			&completedAt,
 		); err != nil {
 			return nil, err
 		}
+		run.Truncated = SQLiteIntToBool(truncated)
 
 		if err := finalizeRun(&run, scanPathsJSON, errorMessage, completedAt); err != nil {
 			return nil, err
@@ -441,24 +424,6 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 	return s.scanRun(row)
 }
 
-// HasActiveRun checks if there's an active run for an instance.
-// Note: preview_ready with files_found=0 is excluded (legacy "clean" scans that should have been marked completed).
-func (s *OrphanScanStore) HasActiveRun(ctx context.Context, instanceID int) (bool, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM orphan_scan_runs
-		WHERE instance_id = ?
-		  AND (status IN ('pending', 'scanning', 'deleting')
-		       OR (status = 'preview_ready' AND files_found > 0))
-	`, instanceID)
-
-	var count int
-	if err := row.Scan(&count); err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
 // GetMostRecentActiveRun returns the most recent active run for an instance.
 // "Active" matches the same definition used by CreateRunIfNoActive.
 func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID int) (*OrphanScanRun, error) {
@@ -494,14 +459,6 @@ func (s *OrphanScanStore) UpdateRunScanPaths(ctx context.Context, runID int64, s
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs SET scan_paths = ? WHERE id = ?
 	`, string(pathsJSON), runID)
-	return err
-}
-
-// UpdateRunFilesFound updates the files found count and truncated flag.
-func (s *OrphanScanStore) UpdateRunFilesFound(ctx context.Context, runID int64, filesFound int, truncated bool) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE orphan_scan_runs SET files_found = ?, truncated = ? WHERE id = ?
-	`, filesFound, boolToInt(truncated), runID)
 	return err
 }
 
@@ -565,28 +522,22 @@ func (s *OrphanScanStore) MarkStuckRunsFailed(ctx context.Context, threshold tim
 	cutoff := time.Now().Add(-threshold).UTC().Format(time.DateTime)
 
 	// Build placeholders for status list
-	placeholders := ""
-	args := make([]interface{}, 0, len(statuses)+1)
+	var placeholders strings.Builder
+	args := make([]any, 0, len(statuses)+1)
 	args = append(args, cutoff)
 	for i, status := range statuses {
 		if i > 0 {
-			placeholders += ", "
+			placeholders.WriteString(", ")
 		}
-		placeholders += "?"
+		placeholders.WriteString("?")
 		args = append(args, status)
 	}
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
 		SET status = 'failed', error_message = 'Marked failed after restart', completed_at = CURRENT_TIMESTAMP
-		WHERE started_at < ? AND status IN (`+placeholders+`)
+		WHERE started_at < ? AND status IN (`+placeholders.String()+`)
 	`, args...)
-	return err
-}
-
-// DeleteRun deletes a run and its files (cascade).
-func (s *OrphanScanStore) DeleteRun(ctx context.Context, runID int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM orphan_scan_runs WHERE id = ?`, runID)
 	return err
 }
 
@@ -599,27 +550,25 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 	// Insert in batches of 100
 	const batchSize = 100
 	for i := 0; i < len(files); i += batchSize {
-		end := i + batchSize
-		if end > len(files) {
-			end = len(files)
-		}
+		end := min(i+batchSize, len(files))
 		batch := files[i:end]
 
-		query := `INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status) VALUES `
-		args := make([]interface{}, 0, len(batch)*5)
+		var query strings.Builder
+		query.WriteString(`INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status) VALUES `)
+		args := make([]any, 0, len(batch)*5)
 		for j, f := range batch {
 			if j > 0 {
-				query += ", "
+				query.WriteString(", ")
 			}
-			query += "(?, ?, ?, ?, ?)"
-			var modifiedAt interface{}
+			query.WriteString("(?, ?, ?, ?, ?)")
+			var modifiedAt any
 			if f.ModifiedAt != nil {
 				modifiedAt = *f.ModifiedAt
 			}
 			args = append(args, runID, f.FilePath, f.FileSize, modifiedAt, f.Status)
 		}
 
-		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+		if _, err := s.db.ExecContext(ctx, query.String(), args...); err != nil {
 			return err
 		}
 	}
@@ -784,7 +733,7 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 
 // UpdateFileStatus updates the status of a single file.
 func (s *OrphanScanStore) UpdateFileStatus(ctx context.Context, fileID int64, status string, errorMessage string) error {
-	var errMsg interface{}
+	var errMsg any
 	if errorMessage != "" {
 		errMsg = errorMessage
 	}
@@ -792,14 +741,4 @@ func (s *OrphanScanStore) UpdateFileStatus(ctx context.Context, fileID int64, st
 		UPDATE orphan_scan_files SET status = ?, error_message = ? WHERE id = ?
 	`, status, errMsg, fileID)
 	return err
-}
-
-// CountFiles returns the total number of files for a run.
-func (s *OrphanScanStore) CountFiles(ctx context.Context, runID int64) (int, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM orphan_scan_files WHERE run_id = ?`, runID)
-	var count int
-	if err := row.Scan(&count); err != nil {
-		return 0, err
-	}
-	return count, nil
 }

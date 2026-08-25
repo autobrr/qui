@@ -21,34 +21,10 @@ import (
 )
 
 // mockProgramStore implements a minimal mock for testing
-type mockProgramStore struct {
-	programs map[int]*models.ExternalProgram
-	err      error
-}
-
-func (m *mockProgramStore) GetByID(_ context.Context, id int) (*models.ExternalProgram, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	if program, ok := m.programs[id]; ok {
-		return program, nil
-	}
-	return nil, models.ErrExternalProgramNotFound
-}
+type mockProgramStore struct{}
 
 // mockActivityStore implements a minimal mock for testing
-type mockActivityStore struct {
-	activities []*models.AutomationActivity
-	err        error
-}
-
-func (m *mockActivityStore) Create(_ context.Context, activity *models.AutomationActivity) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.activities = append(m.activities, activity)
-	return nil
-}
+type mockActivityStore struct{}
 
 func TestNewService(t *testing.T) {
 	t.Run("creates service with all dependencies", func(t *testing.T) {
@@ -524,7 +500,7 @@ func TestExecuteRequest_Validate(t *testing.T) {
 				ProgramID:  1,
 				Torrent:    torrent,
 				InstanceID: 1,
-				RuleID:     intPtr(42),
+				RuleID:     new(42),
 				RuleName:   "Test Rule",
 			},
 			wantErr: false,
@@ -559,21 +535,10 @@ func TestExecuteResult_Constructors(t *testing.T) {
 		assert.Equal(t, err, result.Error)
 		assert.Empty(t, result.Message)
 	})
-
-	t.Run("FailureResultWithMessage", func(t *testing.T) {
-		err := errors.New("execution failed")
-		result := FailureResultWithMessage(err, "additional context")
-		assert.False(t, result.Success)
-		assert.Equal(t, err, result.Error)
-		assert.Equal(t, "additional context", result.Message)
-	})
 }
 
 // Helper function
-func intPtr(i int) *int {
-	return &i
-}
-
+//
 // =============================================================================
 // Terminal Detection Function Tests
 // =============================================================================
@@ -1381,6 +1346,10 @@ func TestBuildCommand_Windows(t *testing.T) {
 
 	service := &Service{}
 	ctx := context.Background()
+	assertWindowsCmdPath := func(t *testing.T, path string) {
+		t.Helper()
+		assert.Equal(t, "cmd.exe", strings.ToLower(filepath.Base(path)))
+	}
 
 	t.Run("terminal mode uses cmd.exe with start cmd /k", func(t *testing.T) {
 		program := &models.ExternalProgram{
@@ -1389,7 +1358,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
@@ -1405,7 +1374,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"arg1"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
@@ -1433,7 +1402,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, nil)
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
 		assert.Contains(t, cmd.Args, "cmd")
@@ -1448,7 +1417,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, nil)
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
 		assert.Contains(t, cmd.Args, "/b")
@@ -1462,7 +1431,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
 	})
 
@@ -1473,7 +1442,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
 	})
 

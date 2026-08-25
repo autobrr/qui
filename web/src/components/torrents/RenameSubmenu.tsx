@@ -18,6 +18,7 @@ import {
 import type { InstanceCapabilities } from "@/types"
 import { FilePen, FolderPen, Pencil } from "lucide-react"
 import { memo } from "react"
+import { useTranslation } from "react-i18next"
 
 type MenuKind = "context" | "dropdown"
 
@@ -40,6 +41,7 @@ export const RenameSubmenu = memo(function RenameSubmenu({
   isPending = false,
   capabilities,
 }: RenameSubmenuProps) {
+  const { t } = useTranslation("torrents")
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
   const SubContent = type === "context" ? ContextMenuSubContent : DropdownMenuSubContent
@@ -60,25 +62,25 @@ export const RenameSubmenu = memo(function RenameSubmenu({
     <Sub>
       <SubTrigger disabled={disableRename}>
         <Pencil className="mr-4 h-4 w-4" />
-        Rename
+        {t("renameSubmenu.rename")}
       </SubTrigger>
       <SubContent>
         {supportsRenameTorrent && (
           <MenuItem onClick={onRenameTorrent} disabled={disableRename}>
             <Pencil className="mr-2 h-4 w-4" />
-            Rename Torrent
+            {t("renameSubmenu.renameTorrent")}
           </MenuItem>
         )}
         {supportsRenameFile && (
           <MenuItem onClick={onRenameFile} disabled={disableRename}>
             <FilePen className="mr-2 h-4 w-4" />
-            Rename File
+            {t("renameSubmenu.renameFile")}
           </MenuItem>
         )}
         {supportsRenameFolder && (
           <MenuItem onClick={onRenameFolder} disabled={disableRename}>
             <FolderPen className="mr-2 h-4 w-4" />
-            Rename Folder
+            {t("renameSubmenu.renameFolder")}
           </MenuItem>
         )}
       </SubContent>

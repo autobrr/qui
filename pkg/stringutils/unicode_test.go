@@ -9,6 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSanitizeUTF8(t *testing.T) {
+	require.Equal(t, "Movie.\uFFFD.2024", SanitizeUTF8("Movie.\xe1.2024"))
+	require.Equal(t, "Amélie.2001", SanitizeUTF8("Amélie.2001"), "valid input is untouched")
+
+	// U+FFFD (not dropping) keeps sanitized strings equal to the forms produced by the
+	// other lossy decoders in the pipeline: encoding/json (qBittorrent API data) and the
+	// NFKD normalizer both coerce invalid bytes to U+FFFD.
+	require.Equal(t,
+		NormalizeForMatching("Movie.\xe1.2024"),
+		NormalizeForMatching(SanitizeUTF8("Movie.\xe1.2024")))
+}
+
 func TestNormalizeUnicode(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -83,17 +95,26 @@ func TestNormalizeForMatching(t *testing.T) {
 
 		// Apostrophe handling
 		{"straight apostrophe", "Bob's Burgers", "bobs burgers"},
-		{"curly apostrophe right", "Don't Stop", "dont stop"},
-		{"curly apostrophe left", "It's Fine", "its fine"},
+		{"curly apostrophe right", "Don\u2019t Stop", "dont stop"},
+		{"curly apostrophe left", "\u2018Tis Fine", "tis fine"},
+		{"modifier letter apostrophe", "Haibara\u02bcs Teenage New Game", "haibaras teenage new game"},
 		{"backtick", "Rock`n Roll", "rockn roll"},
 
 		// Colon handling
 		{"colon", "CSI: Miami", "csi miami"},
 		{"colon with space", "City: Downtown", "city downtown"},
+		{"comma", "Signal, Bloom", "signal bloom"},
+		{"comma without space", "Signal,Bloom", "signal bloom"},
 
 		// Hyphen handling
 		{"hyphen", "Spider-Man", "spider man"},
 		{"multiple hyphens", "X-Men: Days of Future Past", "x men days of future past"},
+
+		// Decorative anime title symbols
+		{"star separator", "Classic★Stars", "classic stars"},
+		{"hollow star separator", "Idol☆Time", "idol time"},
+		{"middle dot separator", "Kaguya・Sama", "kaguya sama"},
+		{"music note separator", "Love♪Live", "love live"},
 
 		// Ampersand handling
 		{"ampersand", "His & Hers", "his and hers"},
@@ -147,6 +168,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"Bobs Burgers S01",
 		},
 		{
+			"curly vs straight apostrophe",
+			"Haibara's Teenage New Game+",
+			"Haibara\u2019s Teenage New Game+",
+		},
+		{
 			"pokemon accent",
 			"Pokémon Journeys",
 			"Pokemon Journeys",
@@ -160,6 +186,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"csi colon",
 			"CSI: Miami S01",
 			"CSI Miami S01",
+		},
+		{
+			"comma title separator",
+			"Signal, Bloom S01",
+			"Signal Bloom S01",
 		},
 		{
 			"leon accent and colon",
@@ -215,6 +246,36 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"ampersand law and order",
 			"Law & Order SVU",
 			"Law and Order SVU",
+		},
+		{
+			"anime star separator",
+			"Classic★Stars",
+			"Classic Stars",
+		},
+		{
+			"anime hollow star separator",
+			"Idol☆Time",
+			"Idol Time",
+		},
+		{
+			"anime middle dot separator",
+			"Kaguya・Sama",
+			"Kaguya Sama",
+		},
+		{
+			"anime music note separator",
+			"Love♪Live",
+			"Love Live",
+		},
+		{
+			"trailing exclamation dropped by scene naming",
+			"Overtake! S01 1080p",
+			"Overtake S01 1080p",
+		},
+		{
+			"question mark dropped by scene naming",
+			"Is the Order a Rabbit? S01",
+			"Is the Order a Rabbit S01",
 		},
 	}
 

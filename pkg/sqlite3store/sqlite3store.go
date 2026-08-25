@@ -15,17 +15,8 @@ import (
 
 type OptFunc func(*SQLite3Store)
 
-// WithCleanupInterval sets a custom cleanup interval. The cleanupInterval
-// parameter controls how frequently expired session data is removed by the
-// background cleanup goroutine. Setting it to 0 prevents the cleanup goroutine
-// from running (i.e. expired sessions will not be removed).
-func WithCleanupInterval(interval time.Duration) OptFunc {
-	return func(s *SQLite3Store) {
-		s.cleanupInterval = interval
-	}
-}
-
 // SQLite3Store represents the session store.
+// Despite the package name, queries are portable across SQLite and Postgres.
 type SQLite3Store struct {
 	db              dbinterface.Querier
 	stopCleanup     chan bool
@@ -67,9 +58,9 @@ func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, exi
 	if err != nil {
 		return nil, false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	row := tx.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = $1 AND julianday('now') < expiry", token)
+	row := tx.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = ? AND expiry > ?", token, nowJulianDay())
 	err = row.Scan(&b)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -102,8 +93,13 @@ func (p *SQLite3Store) CommitCtx(ctx context.Context, token string, b []byte, ex
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(ctx, "REPLACE INTO sessions (token, data, expiry) VALUES (?, ?, julianday(?))",
-		token, b, expiry.UTC().Format("2006-01-02T15:04:05.999"))
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO sessions (token, data, expiry)
+		VALUES (?, ?, ?)
+		ON CONFLICT(token) DO UPDATE SET
+			data = excluded.data,
+			expiry = excluded.expiry
+	`, token, b, toJulianDay(expiry.UTC()))
 	if err != nil {
 		return err
 	}
@@ -155,9 +151,9 @@ func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	rows, err := tx.QueryContext(ctx, "SELECT token, data FROM sessions WHERE julianday('now') < expiry")
+	rows, err := tx.QueryContext(ctx, "SELECT token, data FROM sessions WHERE expiry > ?", nowJulianDay())
 	if err != nil {
 		return nil, err
 	}
@@ -228,9 +224,9 @@ func (p *SQLite3Store) deleteExpired(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE expiry < julianday('now')")
+	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE expiry < ?", nowJulianDay())
 	if err != nil {
 		return err
 	}
@@ -240,4 +236,12 @@ func (p *SQLite3Store) deleteExpired(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func nowJulianDay() float64 {
+	return toJulianDay(time.Now().UTC())
+}
+
+func toJulianDay(t time.Time) float64 {
+	return float64(t.UnixNano())/86400e9 + 2440587.5
 }

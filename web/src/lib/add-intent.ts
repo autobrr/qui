@@ -22,7 +22,7 @@ export function storeAddIntent(intent: AddIntent): void {
 }
 
 export function getAndClearAddIntent(): AddIntent | null {
-  let stored: string | null = null
+  let stored: string | null
   try {
     stored = sessionStorage.getItem(ADD_INTENT_KEY)
     if (!stored) return null

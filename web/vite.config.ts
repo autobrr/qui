@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+/// <reference lib="WebWorker" />
+
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
@@ -43,12 +45,17 @@ export default defineConfig(() => ({
         // Use development mode on Node 24+ to keep builds working without changing runtime behavior elsewhere.
         mode: workboxMode,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
+        // ~140 flag SVGs plus a 420 kB flag stylesheet, for a tab most users never
+        // open; content-hashed, so the HTTP cache still covers repeat views.
+        globIgnores: ["assets/*.svg", "assets/flag-icons-*.css"],
         disableDevLogs: true,
         // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-        sourcemap: true,
-        // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
-        navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/],
+        sourcemap: false,
+        // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
+        // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its
+        // auth callback (/cdn-cgi/access/authorized); intercepting it breaks the SSO flow.
+        navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/, /\/cdn-cgi(?:\/|$)/, /\/\.well-known(?:\/|$)/],
         // Some deployments sit behind Basic Auth; skip assets that tend to 401 (e.g. manifest, source maps)
         manifestTransforms: [
           async (entries) => {
@@ -117,6 +124,14 @@ export default defineConfig(() => ({
       },
     }),
   ],
+  experimental: {
+    // The Go handler rewrites the absolute /assets/ paths in index.html for
+    // base-URL deployments, but never rewrites JS/CSS content. Emit asset
+    // urls relative to the requesting file so dynamic imports and CSS url()
+    // resolve correctly for any base. HTML keeps the absolute paths the
+    // handler rewrite depends on.
+    renderBuiltUrl: (_filename, { hostType }) => hostType === "html" ? undefined : { relative: true },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -131,16 +146,30 @@ export default defineConfig(() => ({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-hook-form"],
-          "tanstack": ["@tanstack/react-router", "@tanstack/react-query", "@tanstack/react-table", "@tanstack/react-virtual"],
-          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "lucide-react"],
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](react|react-dom)([\\/]|$)/,
+              priority: 30,
+            },
+            {
+              name: "tanstack",
+              test: /node_modules[\\/]@tanstack[\\/]/,
+              priority: 20,
+            },
+            {
+              name: "ui-vendor",
+              test: /node_modules[\\/](@radix-ui|lucide-react)([\\/]|$)/,
+              priority: 10,
+            },
+          ],
         },
       },
     },
     chunkSizeWarningLimit: 750,
-    sourcemap: true,
+    sourcemap: false,
   },
 }));

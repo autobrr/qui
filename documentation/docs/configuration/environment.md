@@ -7,7 +7,7 @@ title: Environment Variables
 
 Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
 
-For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference).
+For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference.md).
 
 ## Server
 
@@ -16,6 +16,14 @@ QUI__HOST=0.0.0.0        # Listen address
 QUI__PORT=7476           # Port number
 QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 ```
+
+## CORS
+
+```bash
+QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com  # Optional: explicit CORS allowlist (empty disables CORS)
+```
+
+`QUI__CORS_ALLOWED_ORIGINS` accepts comma/space-separated origins. Entries must be explicit `http(s)://host[:port]` values, without wildcards, paths, query strings, fragments, or userinfo.
 
 ## Security
 
@@ -27,19 +35,56 @@ QUI__SESSION_SECRET=...       # Auto-generated if not set
 ## Logging
 
 ```bash
-QUI__LOG_LEVEL=INFO      # Options: ERROR, DEBUG, INFO, WARN, TRACE
+QUI__LOG_LEVEL=DEBUG     # Options: ERROR, DEBUG, INFO, WARN, TRACE (default: DEBUG)
 QUI__LOG_PATH=...        # Optional: log file path
-QUI__LOG_MAX_SIZE=50     # Optional: rotate when log file exceeds N megabytes (default: 50)
-QUI__LOG_MAX_BACKUPS=3   # Optional: retain N rotated files (default: 3, 0 keeps all)
+QUI__LOG_MAX_SIZE=50     # Optional: rotate when the log file is larger than N MB (default: 50)
+QUI__LOG_MAX_BACKUPS=10  # Optional: retain N rotated files (default: 10, 0 keeps all)
 ```
 
-When `logPath` is set the server writes to disk using size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml` or the corresponding environment variables to control the rotation thresholds and retention.
+When `logPath` is set, the server writes to disk with size-based rotation. Adjust `logMaxSize` and `logMaxBackups` in `config.toml`, or set the equivalent environment variables. Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file compresses to 2 to 3 MB, thus ten backups use about 25 MB. The ratio depends on the content of your log.
+
+Rotation and retention apply only when `logPath` is set. If you run qui in Docker, it writes the logs to stdout by default. Rotation does not apply to these logs. To limit the size of the container log, set `QUI__LOG_PATH`. As an alternative, set the `max-size` option on the container log driver.
 
 ## Storage
 
 ```bash
-QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: next to config)
 ```
+
+`QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
+
+```bash
+QUI__BACKUP_DIR=...      # Optional: custom backup directory (default: <dataDir>/backups)
+```
+
+`QUI__BACKUP_DIR` sets where qui writes [backup](../features/backups.md) manifests, archives, and cached `.torrent` files. Point it at separate storage, for example a redundant array or a network share. Then a failure of the data drive does not also remove your backups. If you change this on an existing install, move the contents of `<dataDir>/backups` to the new directory.
+
+```bash
+QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .css files (default: <config-dir>/themes)
+```
+
+`QUI__CUSTOM_THEMES_DIR` sets where [custom themes](../features/custom-themes.md) are read from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker) and is created automatically. Loading custom themes requires premium access.
+
+## Database
+
+```bash
+QUI__DATABASE_ENGINE=sqlite            # sqlite or postgres (default: sqlite)
+QUI__DATABASE_DSN=...                  # Full Postgres DSN (preferred for Postgres)
+QUI__DATABASE_HOST=localhost           # Postgres host when not using DATABASE_DSN
+QUI__DATABASE_PORT=5432                # Postgres port when not using DATABASE_DSN
+QUI__DATABASE_USER=...                 # Postgres user when not using DATABASE_DSN
+QUI__DATABASE_PASSWORD=...             # Postgres password when not using DATABASE_DSN
+QUI__DATABASE_NAME=qui                 # Postgres database name when not using DATABASE_DSN
+QUI__DATABASE_SSL_MODE=disable         # disable, require, verify-ca, verify-full
+QUI__DATABASE_CONNECT_TIMEOUT=10       # Connect timeout in seconds
+QUI__DATABASE_MAX_OPEN_CONNS=25        # Postgres pool max open connections
+QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
+QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
+```
+
+### SQLite or Postgres
+
+Both engines run the same features. For most installs, a switch gives no performance benefit: qui runs SQLite in WAL mode with a separate read pool, so reads do not block on writes. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
 
 ## Cross-Seed
 
@@ -62,7 +107,8 @@ QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicator
 ## Profiling (pprof)
 
 ```bash
-QUI__PPROF_ENABLED=true  # Optional: enable pprof server on :6060 (default: false)
+QUI__PPROF_ENABLED=true        # Optional: enable pprof server (default: false)
+QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.1:6060)
 ```
 
 ## Metrics
@@ -71,8 +117,34 @@ QUI__PPROF_ENABLED=true  # Optional: enable pprof server on :6060 (default: fals
 QUI__METRICS_ENABLED=true      # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1    # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
-QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+QUI__METRICS_BASIC_AUTH_USERS=user:password  # Optional: basic auth for metrics (plaintext password)
 ```
+
+## Authentication
+
+```bash
+QUI__AUTH_DISABLED=true                 # Optional: disable built-in auth (default: false)
+QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true  # Required confirmation to actually disable auth
+QUI__AUTH_DISABLED_ALLOWED_CIDRS=127.0.0.1/32,192.168.1.0/24  # Required when auth is disabled (IPs or CIDRs)
+```
+
+Built-in authentication is disabled only when:
+
+- `QUI__AUTH_DISABLED=true`
+- `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA=true`
+- `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is set to one or more allowed IPs/CIDR ranges
+
+If auth is disabled and `QUI__AUTH_DISABLED_ALLOWED_CIDRS` is missing or invalid, qui refuses to start and rejects invalid live reloads.
+
+`QUI__AUTH_DISABLED_ALLOWED_CIDRS` accepts comma-separated entries. Each entry may be a canonical CIDR (`192.168.1.0/24`) or a single IP (`10.0.0.5`, treated as `/32` or `/128`).
+
+Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
+
+`QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
+
+Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference.md#authentication) for a full explanation of the risks.
+
+Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) always allow loopback probes, so the official Docker image healthcheck continues to work even if your allowlist only includes the reverse proxy subnet(s).
 
 ## External Programs
 

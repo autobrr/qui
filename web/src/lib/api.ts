@@ -7,12 +7,14 @@ import type {
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
+  ApplicationInfo,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
   Automation,
   AutomationActivity,
   AutomationActivityRun,
+  AutomationDryRunResult,
   AutomationInput,
   AutomationPreviewInput,
   AutomationPreviewResult,
@@ -21,18 +23,20 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
-  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
+  CrossSeedQueryDegradedReason,
+  CrossSeedSearchDecisionTrace,
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
   CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
+  SeasonPackRun,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
@@ -40,8 +44,10 @@ import type {
   DashboardSettingsInput,
   DirScanDirectory,
   DirScanDirectoryCreate,
+  DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
+  DirScanRequeueResponse,
   DirScanRun,
   DirScanRunInjection,
   DirScanSettings,
@@ -53,6 +59,8 @@ import type {
   ExternalProgramExecute,
   ExternalProgramExecuteResponse,
   ExternalProgramUpdate,
+  FilterView,
+  FilterViewInput,
   IndexerActivityStatus,
   IndexerResponse,
   InstanceCapabilities,
@@ -64,6 +72,7 @@ import type {
   LocalCrossSeedMatch,
   LogExclusions,
   LogExclusionsInput,
+  LogFile,
   LogSettings,
   LogSettingsUpdate,
   MarkRSSAsReadRequest,
@@ -72,6 +81,10 @@ import type {
   OrphanScanRunWithFiles,
   OrphanScanSettings,
   OrphanScanSettingsUpdate,
+  NotificationEventDefinition,
+  NotificationTarget,
+  NotificationTargetRequest,
+  NotificationTestRequest,
   QBittorrentAppInfo,
   RefreshRSSItemRequest,
   RegexValidationResult,
@@ -91,6 +104,7 @@ import type {
   TorrentCreationTask,
   TorrentCreationTaskResponse,
   TorrentFile,
+  TorrentFileMediaInfoResponse,
   TorrentFilters,
   TorrentProperties,
   TorrentResponse,
@@ -109,6 +123,8 @@ import type {
   TrackerCustomization,
   TrackerCustomizationInput,
   TransferInfo,
+  BuiltinTheme,
+  ThemeSettings,
   User,
   WarningResponse,
   WebSeed
@@ -123,6 +139,7 @@ import type {
   ArrTestResponse
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
+import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
 
 const API_BASE = getApiBaseUrl()
 
@@ -148,26 +165,60 @@ const normalizeExcludedIndexerMap = (excluded?: Record<string, string>): Record<
   return Object.fromEntries(normalizedEntries) as Record<number, string>
 }
 
-// Session storage key used to guard against reload loops when backend is truly down.
-const SSO_RELOAD_GUARD_KEY = "qui_sso_reload_attempted"
+// Session storage keys for SSO recovery loop prevention.
+const SSO_RECOVERY_GUARD_KEY = "qui_sso_recovery_attempted"
+const SSO_RECOVERY_TS_KEY = "qui_sso_recovery_ts"
+const SSO_RECOVERY_COOLDOWN_MS = 10_000 // 10 seconds between recovery attempts
+
+// On module init, clear the guard if enough time has passed since the last
+// recovery attempt. This lets a fresh page load (after SSO re-authentication)
+// try recovery again, while preventing rapid navigation loops.
+if (typeof sessionStorage !== "undefined") {
+  const lastAttempt = parseInt(sessionStorage.getItem(SSO_RECOVERY_TS_KEY) || "0", 10)
+  if (Date.now() - lastAttempt > SSO_RECOVERY_COOLDOWN_MS) {
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
+  }
+}
 
 /**
  * Detect network errors that indicate an SSO redirect was blocked by CORS.
  * When an upstream SSO proxy session expires, it often returns a cross-origin
- * redirect that fetch() cannot follow, resulting in a TypeError.
+ * redirect that fetch() cannot follow, resulting in a TypeError or DOMException.
  *
  * This check is intentionally broad because browsers hide redirect details for
  * security reasons - we can't distinguish "CORS-blocked SSO redirect" from other
- * network failures at this level. The sessionStorage reload guard in
- * attemptSSORecoveryReload() prevents infinite loops if this misclassifies a
+ * network failures at this level. The sessionStorage recovery guard in
+ * attemptSSORecoveryNavigation() prevents infinite loops if this misclassifies a
  * genuine network outage.
  */
 function isSSOBlockedNetworkError(error: unknown): boolean {
-  if (!(error instanceof TypeError)) {
+  if (typeof DOMException !== "undefined" && error instanceof DOMException) {
+    if (error.name === "NetworkError") {
+      return true
+    }
+  }
+
+  const maybeName = typeof error === "object" && error !== null && "name" in error? String((error as { name?: unknown }).name): ""
+  if (maybeName === "NetworkError") {
+    return true
+  }
+
+  const msg = error instanceof Error? error.message: typeof error === "string"? error: ""
+
+  if (!msg) {
     return false
   }
-  const msg = error.message.toLowerCase()
-  return msg.includes("networkerror") || msg.includes("failed to fetch")
+
+  const normalized = msg.toLowerCase()
+  return normalized.includes("networkerror") ||
+    normalized.includes("network error") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("cors request did not succeed") ||
+    normalized.includes("cors") ||
+    normalized.includes("load failed") ||
+    normalized.includes("network request failed") ||
+    normalized.includes("request failed")
 }
 
 /**
@@ -190,43 +241,153 @@ function isSSOHTMLResponse(response: Response): boolean {
   return status < 500
 }
 
-/**
- * Attempt a single hard page reload to let the browser follow the SSO redirect
- * at the top level. Uses sessionStorage to prevent infinite reload loops.
- * Skips reload when offline or in background tabs to avoid pointless refreshes.
- */
-function attemptSSORecoveryReload(): void {
-  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
-    return
+async function isLikelySSOHTMLResponse(response: Response): Promise<boolean> {
+  if (isSSOHTMLResponse(response)) {
+    return true
   }
-  // Don't reload if we're offline - it's not an SSO issue
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return
+
+  if (response.status >= 500) {
+    return false
   }
-  // Don't reload from background tabs - wait for user to return
-  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-    return
+
+  const contentType = response.headers.get("content-type") || ""
+  if (contentType && !contentType.includes("text/html")) {
+    return false
   }
-  if (sessionStorage.getItem(SSO_RELOAD_GUARD_KEY)) {
-    // Already tried once this session; don't loop.
-    return
+
+  if (response.headers.get("content-disposition")) {
+    return false
   }
-  sessionStorage.setItem(SSO_RELOAD_GUARD_KEY, "1")
-  window.location.reload()
+
+  const contentLength = Number(response.headers.get("content-length") || "0")
+  if (contentLength > 1_000_000) {
+    return false
+  }
+
+  try {
+    const body = response.clone().body
+    if (!body) {
+      return false
+    }
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    const maxBytes = 1024
+    let totalBytes = 0
+    let snippet = ""
+    try {
+      while (totalBytes < maxBytes) {
+        const { value, done } = await reader.read()
+        if (done) {
+          break
+        }
+        if (value) {
+          const remaining = maxBytes - totalBytes
+          const chunk = value.length > remaining? value.subarray(0, remaining): value
+          totalBytes += chunk.length
+          snippet += decoder.decode(chunk, { stream: true })
+          if (snippet.length >= maxBytes) {
+            break
+          }
+        }
+      }
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {
+        // ignore cancel errors
+      }
+      reader.releaseLock()
+    }
+    snippet += decoder.decode()
+    const trimmed = snippet.trimStart().toLowerCase()
+    return trimmed.startsWith("<!doctype html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<head") ||
+      trimmed.startsWith("<body")
+  } catch {
+    return false
+  }
 }
 
-/** Clear the SSO reload guard after a successful request. */
-function clearSSOReloadGuard(): void {
+/**
+ * Attempt a single hard navigation to let the browser follow the SSO redirect
+ * at the top level. Uses sessionStorage to prevent infinite navigation loops.
+ * Skips navigation when offline or in background tabs to avoid pointless refreshes.
+ * Returns true if navigation was triggered, false if blocked.
+ */
+async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; target?: string }): Promise<boolean> {
+  if (typeof window === "undefined" || typeof sessionStorage === "undefined") {
+    return false
+  }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return false
+  }
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return false
+  }
+  if (!options?.bypassGuard && sessionStorage.getItem(SSO_RECOVERY_GUARD_KEY)) {
+    return false
+  }
+  sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
+  sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
+
+  // Scope cleanup to qui's own service worker and caches to avoid disrupting
+  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
+  const quiScope = new URL(withBasePath("/"), window.location.origin).href
+
+  // Unregister qui's service worker so its NavigationRoute cannot intercept the
+  // recovery navigation. Without this, Workbox's createHandlerBoundToURL tries
+  // to fetch index.html from the network on cache miss, which Badger/Pangolin
+  // redirect cross-origin — the SW can't handle that response for a navigation
+  // request, and some mobile browsers don't fall back to the network properly.
+  // The SW re-registers automatically on the next page load via pwa.ts.
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(
+        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+      )
+    } catch {
+      // ignore unregister errors
+    }
+  }
+
+  // Clear qui's caches so the next navigation goes straight to the network,
+  // letting the SSO proxy intercept. Workbox names its precache after the SW
+  // scope, so filtering by quiScope avoids touching other apps' caches.
+  if ("caches" in window) {
+    try {
+      const names = await caches.keys()
+      await Promise.all(
+        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+      )
+    } catch {
+      // ignore cache clear errors
+    }
+  }
+
+  sessionStorage.setItem("qui_sso_recovered", "1")
+
+  const target = options?.target ?? withBasePath("/")
+  window.location.assign(new URL(target, window.location.origin).href)
+  return true
+}
+
+/** Clear the SSO recovery guard after a successful request. */
+function clearSSORecoveryGuard(): void {
   if (typeof sessionStorage !== "undefined") {
-    sessionStorage.removeItem(SSO_RELOAD_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_GUARD_KEY)
+    sessionStorage.removeItem(SSO_RECOVERY_TS_KEY)
   }
 }
 
 /**
  * SSO-safe fetch wrapper. Handles network errors and HTML responses that indicate
- * an expired SSO session by triggering a page reload.
+ * an expired SSO session by triggering a top-level navigation.
  */
 async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response> {
+  const isLoginRequest = url.includes("/api/auth/login")
+
   let response: Response
   try {
     response = await fetch(url, {
@@ -240,30 +401,36 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
   } catch (error) {
     // Only attempt SSO recovery for API endpoints (not other fetches)
     if (isSSOBlockedNetworkError(error) && url.includes("/api/")) {
-      attemptSSORecoveryReload()
+      if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+        return new Promise<Response>(() => {})
+      }
     }
     throw error
   }
 
   // If we got an HTML response on an API endpoint, it's likely an SSO login page.
   // Only trigger for 2xx/4xx - 5xx HTML is likely a reverse proxy error, not SSO.
-  if (isSSOHTMLResponse(response)) {
-    attemptSSORecoveryReload()
-    throw new Error("Received HTML instead of JSON - SSO session may have expired")
+  if (await isLikelySSOHTMLResponse(response)) {
+    if (await attemptSSORecoveryNavigation({ bypassGuard: isLoginRequest })) {
+      return new Promise<Response>(() => {})
+    }
+    throw new Error(
+      "Received an HTML response instead of JSON from the API. " +
+      "If you are behind an SSO proxy (Cloudflare Access, Pangolin, etc.), " +
+      "try refreshing the page or re-opening the URL in a new tab."
+    )
   }
 
-  clearSSOReloadGuard()
+  clearSSORecoveryGuard()
   return response
 }
 
 // Custom error class for API errors with status and additional data
 export class APIError extends Error {
   status: number
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any
+  data?: unknown
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(message: string, status: number, data?: any) {
+  constructor(message: string, status: number, data?: unknown) {
     super(message)
     this.name = "APIError"
     this.status = status
@@ -298,8 +465,7 @@ class ApiClient {
     return response.json()
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async extractErrorData(response: Response): Promise<{ message: string; data?: any }> {
+  private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
     const fallbackMessage = `HTTP error! status: ${response.status}`
 
     try {
@@ -312,8 +478,7 @@ class ApiClient {
 
       // Try to parse as JSON first
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: any }
+        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
         const parsedMessage = errorData?.error ?? errorData?.message
         if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
           // Return both the message and the full data (for 409 conflicts with automations, etc.)
@@ -427,7 +592,6 @@ class ApiClient {
   async getOIDCConfig(): Promise<{
     enabled: boolean
     authorizationUrl: string
-    state: string
     disableBuiltInLogin: boolean
     issuerUrl: string
   }> {
@@ -438,7 +602,6 @@ class ApiClient {
       return {
         enabled: false,
         authorizationUrl: "",
-        state: "",
         disableBuiltInLogin: false,
         issuerUrl: "",
       }
@@ -530,6 +693,7 @@ class ApiClient {
     keepMonthly: number
     includeCategories: boolean
     includeTags: boolean
+    includeSavePaths: boolean
   }): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
       method: "PUT",
@@ -630,6 +794,24 @@ class ApiClient {
     return withBasePath(`/api/instances/${instanceId}/backups/runs/${runId}/items/${encodedHash}/download`)
   }
 
+  downloadContentFile(instanceId: number, hash: string, fileIndex: number): void {
+    const url = new URL(
+      withBasePath(`/api/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/download`),
+      window.location.origin
+    )
+    const a = document.createElement("a")
+    a.href = url.toString()
+    a.download = ""
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  async getTorrentFileMediaInfo(instanceId: number, hash: string, fileIndex: number): Promise<TorrentFileMediaInfoResponse> {
+    return this.request<TorrentFileMediaInfoResponse>(
+      `/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/mediainfo`
+    )
+  }
 
   // Torrent endpoints
   async getTorrents(
@@ -641,7 +823,9 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
-    }
+      preferCached?: boolean
+    },
+    signal?: AbortSignal
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set("page", params.page.toString())
@@ -650,9 +834,89 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
-      `/instances/${instanceId}/torrents?${searchParams}`
+      `/instances/${instanceId}/torrents?${searchParams}`,
+      { signal }
+    )
+  }
+
+  getTorrentsStreamBatchUrl(
+    streams: Array<{
+      key: string
+      instanceId: number
+      instanceIds?: number[] | null
+      page: number
+      limit: number
+      sort: string
+      order: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters | null
+    }>,
+    options: { activity?: boolean } = {}
+  ): string {
+    const params = new URLSearchParams()
+
+    if (streams.length > 0) {
+      const normalized = streams.map(stream => ({
+        key: stream.key,
+        instanceId: stream.instanceId,
+        instanceIds: stream.instanceIds ?? null,
+        page: stream.page,
+        limit: stream.limit,
+        sort: stream.sort,
+        order: stream.order,
+        search: stream.search ?? "",
+        filters: stream.filters ?? null,
+      }))
+      params.set("streams", JSON.stringify(normalized))
+    }
+
+    // Activity events (qui-owned server signals) ride the same multiplexed
+    // EventSource; the flag lets a connection with no torrent streams stay open
+    // purely to receive them.
+    if (options.activity) {
+      params.set("activity", "1")
+    }
+
+    return withBasePath(`/api/stream?${params.toString()}`)
+  }
+
+  async getTorrentField(
+    instanceId: number,
+    field: "name" | "hash" | "full_path" | "tags" | "magnet_uri",
+    params: {
+      sort?: string
+      order?: "asc" | "desc"
+      hashes?: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
+      selectAll?: boolean
+      search?: string
+      filters?: TorrentFilters
+      excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
+    }
+  ): Promise<{ values: string[]; total: number }> {
+    return this.request(
+      `/instances/${instanceId}/torrents/field`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          field,
+          sort: params.sort,
+          order: params.order,
+          hashes: params.hashes,
+          targets: params.targets,
+          selectAll: params.selectAll,
+          search: params.search,
+          filters: params.filters,
+          excludeHashes: params.excludeHashes,
+          excludeTargets: params.excludeTargets,
+          instanceIds: params.instanceIds,
+        }),
+      }
     )
   }
 
@@ -664,7 +928,9 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
-    }
+      instanceIds?: number[]
+    },
+    signal?: AbortSignal
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set("page", params.page.toString())
@@ -673,57 +939,13 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
-
-    type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
-      instanceId?: number
-      instanceName?: string
-      instance_id?: number
-      instance_name?: string
-    }
-
-    const normalizeCrossInstanceTorrents = (
-      torrents?: RawCrossInstanceTorrent[] | null
-    ): CrossInstanceTorrent[] | undefined => {
-      if (!torrents) {
-        return undefined
-      }
-
-      let needsNormalization = false
-
-      for (const torrent of torrents) {
-        if (torrent.instanceId === undefined || torrent.instanceName === undefined) {
-          needsNormalization = true
-          break
-        }
-      }
-
-      if (!needsNormalization) {
-        return torrents as CrossInstanceTorrent[]
-      }
-
-      const normalizedTorrents: CrossInstanceTorrent[] = []
-
-      torrents.forEach(torrent => {
-        const instanceId = torrent.instanceId ?? torrent.instance_id
-        const instanceName = torrent.instanceName ?? torrent.instance_name
-
-        if (instanceId === undefined || instanceName === undefined) {
-          console.error("Missing instance fields in cross-instance torrent:", torrent)
-          return
-        }
-
-        normalizedTorrents.push({
-          ...torrent,
-          instanceId,
-          instanceName,
-        })
-      })
-
-      return normalizedTorrents
+    if (params.instanceIds && params.instanceIds.length > 0) {
+      searchParams.set("instanceIds", params.instanceIds.join(","))
     }
 
     const response = await this.request<TorrentResponse>(
-      `/torrents/cross-instance?${searchParams}`
+      `/torrents/cross-instance?${searchParams}`,
+      { signal }
     )
 
     const normalizedCrossInstanceTorrents = normalizeCrossInstanceTorrents(
@@ -823,18 +1045,24 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
+      targets?: Array<{ instanceId: number; hash: string }>
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
+      comment?: string  // For setComment action
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
       filters?: TorrentFilters
       search?: string  // Search query when selectAll is true
       excludeHashes?: string[]  // Hashes to exclude when selectAll is true
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      shareLimitAction?: string  // setShareLimit: Qt enum Stop, Remove, etc.; omit for default
+      shareLimitsMode?: string  // setShareLimit: Qt enum MatchAny, MatchAll; omit for default
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
       location?: string  // For setLocation action
@@ -1058,6 +1286,8 @@ class ApiClient {
       download_volume_factor: number
       upload_volume_factor: number
       guid: string
+      infohash_v1?: string
+      infohash_v2?: string
       imdb_id?: string
       tvdb_id?: string
       match_reason?: string
@@ -1068,6 +1298,10 @@ class ApiClient {
       source_torrent: RawTorrentInfo
       results?: RawSearchResult[]
       cache?: TorznabSearchCacheMetadata
+      partial?: boolean
+      query_degraded?: CrossSeedQueryDegradedReason
+      // Already camelCase over the wire, like cache.
+      decisionTrace?: CrossSeedSearchDecisionTrace
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -1115,12 +1349,17 @@ class ApiClient {
         downloadVolumeFactor: result.download_volume_factor,
         uploadVolumeFactor: result.upload_volume_factor,
         guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
         imdbId: result.imdb_id ?? undefined,
         tvdbId: result.tvdb_id ?? undefined,
         matchReason: result.match_reason ?? undefined,
         matchScore: result.match_score ?? 0,
       })),
       cache: response.cache,
+      partial: response.partial ?? undefined,
+      queryDegraded: response.query_degraded ?? undefined,
+      decisionTrace: response.decisionTrace,
     }
   }
 
@@ -1310,6 +1549,8 @@ class ApiClient {
     indexerIds: number[]
     disableTorznab?: boolean
     cooldownMinutes: number
+    skipIndividualEpisodes?: boolean
+    maxAddedAgeDays?: number
   }): Promise<CrossSeedSearchRun> {
     return this.request<CrossSeedSearchRun>("/cross-seed/search/run", {
       method: "POST",
@@ -1330,6 +1571,14 @@ class ApiClient {
     if (params?.limit !== undefined) search.set("limit", params.limit.toString())
     if (params?.offset !== undefined) search.set("offset", params.offset.toString())
     return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
+  }
+
+  async listSeasonPackRuns(params?: { limit?: number }): Promise<SeasonPackRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<SeasonPackRun[]>(`/cross-seed/season-pack/runs${suffix}`)
   }
 
   async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {
@@ -1419,6 +1668,31 @@ class ApiClient {
     const filename = parseContentDispositionFilename(disposition)
 
     return { blob, filename }
+  }
+
+  async exportTorrentsArchive(targets: Array<{
+    instanceId: number
+    instanceName: string
+    hash: string
+    category: string
+    filename?: string
+  }>): Promise<{ blob: Blob; filename: string | null }> {
+    const response = await ssoSafeFetch(`${API_BASE}/torrents/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets }),
+    })
+
+    if (!response.ok) {
+      const { message } = await this.extractErrorData(response)
+      this.handleAuthError(response.status, "/torrents/export", message)
+      throw new Error(message)
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(response.headers.get("content-disposition")),
+    }
   }
 
   async getTorrentPeers(instanceId: number, hash: string): Promise<SortedPeersResponse> {
@@ -1600,6 +1874,13 @@ class ApiClient {
     })
   }
 
+  async dryRunAutomation(instanceId: number, payload: AutomationInput): Promise<AutomationDryRunResult> {
+    return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/dry-run`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  }
+
   async getAutomationActivity(instanceId: number, limit?: number): Promise<AutomationActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<AutomationActivity[]>(`/instances/${instanceId}/automations/activity${query}`)
@@ -1763,6 +2044,37 @@ class ApiClient {
     return this.request("/license/refresh", { method: "POST" })
   }
 
+  // Built-in themes (public; premium CSS license-gated server-side)
+  async getBuiltinThemes(signal?: AbortSignal): Promise<{ themes: BuiltinTheme[] }> {
+    return this.request("/themes", { signal })
+  }
+
+  // Custom themes (sideloaded CSS files; premium-gated server-side)
+  async getCustomThemes(): Promise<{
+    directory: string
+    themes: Array<{ id: string; filename: string; css: string }>
+  }> {
+    return this.request("/themes/custom")
+  }
+
+  // Theme settings (theme selection stored in the database; writes premium-gated server-side)
+  async getThemeSettings(): Promise<ThemeSettings | null> {
+    return this.request<ThemeSettings | null>("/themes/settings")
+  }
+
+  async updateThemeSettings(data: ThemeSettings): Promise<ThemeSettings> {
+    return this.request<ThemeSettings>("/themes/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  // Client settings (frontend user settings stored in the database as opaque key-value pairs;
+  // writes go through the debounced push queue in lib/client-settings.ts, not this client)
+  async getClientSettings(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/client-settings")
+  }
+
   // Preferences endpoints
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)
@@ -1790,6 +2102,10 @@ class ApiClient {
 
   async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
     return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
+  }
+
+  async getApplicationInfo(): Promise<ApplicationInfo> {
+    return this.request<ApplicationInfo>("/application/info")
   }
 
   async getLatestVersion(): Promise<{
@@ -1851,6 +2167,42 @@ class ApiClient {
     })
   }
 
+  // Notifications endpoints
+  async listNotificationEvents(): Promise<NotificationEventDefinition[]> {
+    return this.request<NotificationEventDefinition[]>("/notifications/events")
+  }
+
+  async listNotificationTargets(): Promise<NotificationTarget[]> {
+    return this.request<NotificationTarget[]>("/notifications/targets")
+  }
+
+  async createNotificationTarget(data: NotificationTargetRequest): Promise<NotificationTarget> {
+    return this.request<NotificationTarget>("/notifications/targets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateNotificationTarget(id: number, data: NotificationTargetRequest): Promise<NotificationTarget> {
+    return this.request<NotificationTarget>(`/notifications/targets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteNotificationTarget(id: number): Promise<void> {
+    return this.request(`/notifications/targets/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  async testNotificationTarget(id: number, data?: NotificationTestRequest): Promise<{ status: string }> {
+    return this.request<{ status: string }>(`/notifications/targets/${id}/test`, {
+      method: "POST",
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
   // Tracker Customization endpoints
   async listTrackerCustomizations(): Promise<TrackerCustomization[]> {
     return this.request<TrackerCustomization[]>("/tracker-customizations")
@@ -1872,6 +2224,31 @@ class ApiClient {
 
   async deleteTrackerCustomization(id: number): Promise<void> {
     return this.request(`/tracker-customizations/${id}`, {
+      method: "DELETE",
+    })
+  }
+
+  // Filter Views endpoints
+  async listFilterViews(): Promise<FilterView[]> {
+    return this.request<FilterView[]>("/filter-views")
+  }
+
+  async createFilterView(data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>("/filter-views", {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateFilterView(id: number, data: FilterViewInput): Promise<FilterView> {
+    return this.request<FilterView>(`/filter-views/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteFilterView(id: number): Promise<void> {
+    return this.request(`/filter-views/${id}`, {
       method: "DELETE",
     })
   }
@@ -1903,6 +2280,12 @@ class ApiClient {
   // Torznab Indexer endpoints
   async listTorznabIndexers(): Promise<TorznabIndexer[]> {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
+  }
+
+  // Returns tracker domains derived from enabled indexers whose domain can be
+  // resolved reliably (native + Prowlarr backends; Jackett is omitted server-side).
+  async getIndexerTrackerDomains(): Promise<string[]> {
+    return this.request<string[]>("/torznab/indexers/tracker-domains")
   }
 
   async getTorznabIndexer(id: number): Promise<TorznabIndexer> {
@@ -1950,12 +2333,15 @@ class ApiClient {
     return this.request<SearchHistoryResponse>(`/torznab/search/history${params}`)
   }
 
-  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string): Promise<DiscoverJackettResponse> {
+  async discoverJackettIndexers(baseUrl: string, apiKey: string, basicUsername?: string, basicPassword?: string, sourceIndexerId?: number): Promise<DiscoverJackettResponse> {
     const user = basicUsername?.trim() ?? ""
     const payload: Record<string, unknown> = { base_url: baseUrl, api_key: apiKey }
     if (user) {
       payload.basic_username = user
       payload.basic_password = basicPassword ?? ""
+    }
+    if (sourceIndexerId !== undefined) {
+      payload.source_indexer_id = sourceIndexerId
     }
     return this.request<DiscoverJackettResponse>("/torznab/indexers/discover", {
       method: "POST",
@@ -2192,6 +2578,28 @@ class ApiClient {
     return `${API_BASE}/logs/stream?limit=${limit}`
   }
 
+  async getLogFiles(): Promise<LogFile[]> {
+    return this.request<LogFile[]>("/logs/files")
+  }
+
+  async downloadLogFile(filename: string): Promise<void> {
+    const response = await ssoSafeFetch(`${API_BASE}/logs/files/${encodeURIComponent(filename)}`, { method: "GET" })
+
+    if (!response.ok) {
+      throw new Error(`Failed to download log file: ${response.statusText}`)
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
   // Directory Scanner endpoints
   async getDirScanSettings(): Promise<DirScanSettings> {
     return this.request<DirScanSettings>("/dir-scan/settings")
@@ -2237,8 +2645,14 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
   }
 
-  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
-    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
+  async requeueDirScanNoMatch(directoryId: number): Promise<DirScanRequeueResponse> {
+    return this.request<DirScanRequeueResponse>(`/dir-scan/directories/${directoryId}/requeue-no-match`, {
+      method: "POST",
+    })
+  }
+
+  async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {
+    return this.request<DirScanTriggerResponse>(`/dir-scan/directories/${directoryId}/scan`, {
       method: "POST",
     })
   }

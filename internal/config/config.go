@@ -17,6 +17,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -24,6 +25,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
 var envPrefix = "QUI__"
@@ -100,21 +102,42 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("host", host)
 	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "/")
+	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
-	c.viper.SetDefault("logLevel", "INFO")
+	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
-	c.viper.SetDefault("logMaxBackups", 3)
-	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("logMaxBackups", 10)
+	c.viper.SetDefault("dataDir", "")   // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("backupDir", "") // Empty means <dataDir>/backups
+	c.viper.SetDefault("databaseEngine", "sqlite")
+	c.viper.SetDefault("databaseDsn", "")
+	c.viper.SetDefault("databaseHost", "localhost")
+	c.viper.SetDefault("databasePort", 5432)
+	c.viper.SetDefault("databaseUser", "")
+	c.viper.SetDefault("databasePassword", "")
+	c.viper.SetDefault("databaseName", "qui")
+	c.viper.SetDefault("databaseSSLMode", "disable")
+	c.viper.SetDefault("databaseConnectTimeout", 10)
+	c.viper.SetDefault("databaseMaxOpenConns", 25)
+	c.viper.SetDefault("databaseMaxIdleConns", 5)
+	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
+	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
+	c.viper.SetDefault("pprofAddr", "127.0.0.1:6060")
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
+
+	// Auth disabled
+	c.viper.SetDefault("authDisabled", false)
+	c.viper.SetDefault("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", false)
+	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
 
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
@@ -139,8 +162,7 @@ func (c *AppConfig) loadFromPath(configDirOrPath string) error {
 	c.viper.SetConfigFile(configPath)
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		if writeErr := c.writeDefaultConfig(configPath); writeErr != nil {
@@ -159,8 +181,7 @@ func (c *AppConfig) loadFromStandardLocations() error {
 	c.viper.AddConfigPath(GetDefaultConfigDir())
 
 	if err := c.viper.ReadInConfig(); err != nil {
-		var notFound viper.ConfigFileNotFoundError
-		if !errors.As(err, &notFound) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); !ok {
 			return fmt.Errorf("failed to read config: %w", err)
 		}
 		defaultConfigPath := filepath.Join(GetDefaultConfigDir(), "config.toml")
@@ -185,20 +206,40 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
+	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("backupDir", envPrefix+"BACKUP_DIR")
+	c.viper.BindEnv("databaseEngine", envPrefix+"DATABASE_ENGINE")
+	c.bindOrReadFromFile("databaseDsn", envPrefix+"DATABASE_DSN")
+	c.viper.BindEnv("databaseHost", envPrefix+"DATABASE_HOST")
+	c.viper.BindEnv("databasePort", envPrefix+"DATABASE_PORT")
+	c.viper.BindEnv("databaseUser", envPrefix+"DATABASE_USER")
+	c.bindOrReadFromFile("databasePassword", envPrefix+"DATABASE_PASSWORD")
+	c.viper.BindEnv("databaseName", envPrefix+"DATABASE_NAME")
+	c.viper.BindEnv("databaseSSLMode", envPrefix+"DATABASE_SSL_MODE")
+	c.viper.BindEnv("databaseConnectTimeout", envPrefix+"DATABASE_CONNECT_TIMEOUT")
+	c.viper.BindEnv("databaseMaxOpenConns", envPrefix+"DATABASE_MAX_OPEN_CONNS")
+	c.viper.BindEnv("databaseMaxIdleConns", envPrefix+"DATABASE_MAX_IDLE_CONNS")
+	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
+	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
+	c.viper.BindEnv("pprofAddr", envPrefix+"PPROF_ADDR")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
+
+	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
+	c.viper.BindEnv("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", envPrefix+"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
 
 	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
@@ -217,6 +258,14 @@ func (c *AppConfig) watchConfig() {
 		c.configMu.Lock()
 		defer c.configMu.Unlock()
 
+		previousAuthSettings := authReloadSettings{
+			authDisabled:               c.Config.AuthDisabled,
+			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+			oidcEnabled:                c.Config.OIDCEnabled,
+			corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
+		}
+
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
 			log.Error().Err(err).Msg("Failed to reload configuration")
@@ -225,14 +274,45 @@ func (c *AppConfig) watchConfig() {
 		c.hydrateConfigFromViper()
 
 		// Apply dynamic changes
-		c.applyDynamicChanges()
+		c.applyDynamicChanges(previousAuthSettings)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
+type authReloadSettings struct {
+	authDisabled               bool
+	iAcknowledgeThisIsABadIdea bool
+	authDisabledAllowedCIDRs   []string
+	oidcEnabled                bool
+	corsAllowedOrigins         []string
+}
+
+func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings) {
 	c.Config.Version = c.version
 	if err := c.ApplyLogConfig(); err != nil {
 		log.Error().Err(err).Msg("Failed to apply log configuration")
+	}
+
+	if err := c.Config.ValidateAuthDisabledConfig(); err != nil {
+		log.Error().Err(err).Msg("auth-disabled config is invalid after reload; keeping previous valid auth-disabled settings")
+		c.Config.AuthDisabled = previousAuthSettings.authDisabled
+		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
+		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
+		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
+
+		return
+	}
+
+	if err := c.Config.NormalizeCORSAllowedOrigins(); err != nil {
+		log.Error().Err(err).Msg("CORS config is invalid after reload; keeping previous valid corsAllowedOrigins")
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
+	}
+
+	switch {
+	case c.Config.IsAuthDisabled():
+		log.Warn().Strs("authDisabledAllowedCIDRs", c.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
+	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
 	c.notifyListeners()
@@ -241,7 +321,9 @@ func (c *AppConfig) applyDynamicChanges() {
 func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
-	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	// Canonical "/prefix/" form; the index.html redirect breaks on a slashless base.
+	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
+	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
@@ -250,17 +332,36 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
 
 	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.BackupDir = c.viper.GetString("backupDir")
+	c.Config.DatabaseEngine = c.viper.GetString("databaseEngine")
+	c.Config.DatabaseDSN = c.viper.GetString("databaseDsn")
+	c.Config.DatabaseHost = c.viper.GetString("databaseHost")
+	c.Config.DatabasePort = c.viper.GetInt("databasePort")
+	c.Config.DatabaseUser = c.viper.GetString("databaseUser")
+	c.Config.DatabasePassword = c.viper.GetString("databasePassword")
+	c.Config.DatabaseName = c.viper.GetString("databaseName")
+	c.Config.DatabaseSSLMode = c.viper.GetString("databaseSSLMode")
+	c.Config.DatabaseConnectTimeout = c.viper.GetInt("databaseConnectTimeout")
+	c.Config.DatabaseMaxOpenConns = c.viper.GetInt("databaseMaxOpenConns")
+	c.Config.DatabaseMaxIdleConns = c.viper.GetInt("databaseMaxIdleConns")
+	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
 	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
+	c.Config.PprofAddr = c.viper.GetString("pprofAddr")
 
 	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
 	c.Config.MetricsHost = c.viper.GetString("metricsHost")
 	c.Config.MetricsPort = c.viper.GetInt("metricsPort")
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
-	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+
+	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
+	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.Config.AuthDisabledAllowedCIDRs = c.getNormalizedStringSlice("authDisabledAllowedCIDRs")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
 	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")
@@ -268,6 +369,55 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) getNormalizedStringSlice(key string) []string {
+	switch value := c.viper.Get(key).(type) {
+	case []string:
+		return normalizeStringSlice(value)
+	case []any:
+		normalized := make([]string, 0, len(value))
+		for _, item := range value {
+			entry, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(entry)
+			if trimmed != "" {
+				normalized = append(normalized, trimmed)
+			}
+		}
+		return normalized
+	case string:
+		return splitStringSliceValue(value)
+	default:
+		return normalizeStringSlice(c.viper.GetStringSlice(key))
+	}
+}
+
+func normalizeStringSlice(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			normalized = append(normalized, trimmed)
+		}
+	}
+
+	return normalized
+}
+
+func splitStringSliceValue(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+
+	return normalizeStringSlice(parts)
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
@@ -324,6 +474,13 @@ port = {{ .port }}
 # Optional
 #baseUrl = "/qui/"
 
+# CORS allowlist
+# Empty (default) disables CORS.
+# Entries must be explicit origins (scheme + host + optional non-default port).
+# Wildcards are not allowed.
+# Example:
+#corsAllowedOrigins = ["https://sso.example.com", "https://panel.example.com"]
+
 # Session secret
 # Auto-generated if not provided
 # WARNING: Changing this value will break decryption of existing instance passwords!
@@ -336,17 +493,49 @@ sessionSecret = "{{ .sessionSecret }}"
 #logPath = "log/qui.log"
 
 # Log rotation
-# Maximum log file size in megabytes before rotation
+# Size in MB that starts a rotation
 # Default: {{ .logMaxSize }}
 #logMaxSize = {{ .logMaxSize }}
 
-# Number of rotated log files to retain (0 keeps all)
+# Number of rotated log files that qui keeps (0 keeps all)
+# Rotated files are gzip-compressed. Measured on the logs of qui, a 50 MB file
+# compresses to 2 to 3 MB.
 # Default: {{ .logMaxBackups }}
 #logMaxBackups = {{ .logMaxBackups }}
 
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Backup directory (default: <dataDir>/backups)
+# Backup manifests, archives and cached .torrent files are stored here.
+# A relative path is resolved against the config directory.
+# If you change this on an existing install, move the contents of
+# <dataDir>/backups into the new directory yourself.
+#backupDir = "/mnt/storage/qui-backups"
+
+# Custom themes directory (default: <config-dir>/themes, auto-created)
+# Drop sideloaded *.css theme files here. Listing requires premium access.
+# A relative path is resolved against the config directory.
+#customThemesDir = "/config/themes"
+
+# Database engine
+# Options: "sqlite" (default), "postgres"
+#databaseEngine = "sqlite"
+
+# Postgres connection settings (used when databaseEngine = "postgres")
+# Preferred: provide a DSN and ignore host/user/password fields.
+#databaseDsn = "postgres://user:password@localhost:5432/qui?sslmode=disable"
+#databaseHost = "localhost"
+#databasePort = 5432
+#databaseUser = ""
+#databasePassword = ""
+#databaseName = "qui"
+#databaseSSLMode = "disable"
+#databaseConnectTimeout = 10
+#databaseMaxOpenConns = 25
+#databaseMaxIdleConns = 5
+#databaseConnMaxLifetime = 300
 
 # Check for new releases via api.autobrr.com
 # Default: true
@@ -365,12 +554,14 @@ sessionSecret = "{{ .sessionSecret }}"
 #crossSeedRecoverErroredTorrents = false
 
 # Log level
-# Default: "INFO"
+# Default: "DEBUG"
 # Options: "ERROR", "DEBUG", "INFO", "WARN", "TRACE"
-logLevel = "{{ .logLevel }}"
+# DEBUG records sufficient detail to diagnose most reports.
+# TRACE adds per-request and per-sync-tick detail and makes the file grow quickly.
+#logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
-# Enable Prometheus metrics on separate port (no authentication required)
+# Enable Prometheus metrics on a separate port
 # Default: false
 #metricsEnabled = false
 
@@ -384,9 +575,10 @@ logLevel = "{{ .logLevel }}"
 #metricsPort = 9074
 
 # Basic authentication for metrics endpoint (optional)
-# Format: "username:bcrypt_hash" or "user1:hash1,user2:hash2" for multiple users
-# Passwords must be bcrypt-hashed. Use tools like htpasswd or online bcrypt generators
-# Example: "prometheus:$2y$10$example_bcrypt_hash_here"
+# Format: "username:password" or "user1:password1,user2:password2" for multiple users
+# Passwords are plaintext and can contain colons. Usernames cannot contain colons.
+# Commas cannot appear in usernames or passwords. Protect this configuration file.
+# Example: "prometheus:secret"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
 
@@ -434,8 +626,10 @@ logLevel = "{{ .logLevel }}"
 		return fmt.Errorf("failed to parse config template: %w", err)
 	}
 
-	// Create config file
-	f, err := os.Create(path)
+	// Create config file with owner-only permissions. It holds the session
+	// secret, so it must never be group/world readable or writable, regardless
+	// of the process umask (e.g. when UMASK is set for content sharing).
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -535,24 +729,24 @@ func setLogLevel(level string) {
 
 func baseLogWriter(version string) io.Writer {
 	if isDevBuild(version) {
-		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
-		writer.PartsOrder = []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName}
-		writer.FormatTimestamp = func(i any) string {
-			if i == nil {
-				return ""
-			}
-			return fmt.Sprint(i)
-		}
-		writer.FormatMessage = func(i any) string {
-			if i == nil {
-				return ""
-			}
-			msg := strings.TrimSpace(fmt.Sprint(i))
-			if msg == "" {
-				return ""
-			}
-			return msg
-		}
+		writer := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339,
+			PartsOrder: []string{zerolog.TimestampFieldName, zerolog.LevelFieldName, zerolog.MessageFieldName},
+			FormatTimestamp: func(i any) string {
+				if i == nil {
+					return ""
+				}
+				return fmt.Sprint(i)
+			},
+			FormatMessage: func(i any) string {
+				if i == nil {
+					return ""
+				}
+				msg := strings.TrimSpace(fmt.Sprint(i))
+				if msg == "" {
+					return ""
+				}
+				return msg
+			}}
 		return writer
 	}
 	return os.Stderr
@@ -618,6 +812,20 @@ func (c *AppConfig) SetDataDir(dir string) {
 	c.dataDir = dir
 }
 
+// GetBackupDir returns the resolved backup root directory.
+// Empty config defaults to <dataDir>/backups; a relative override is resolved
+// against the config directory, an absolute override is used verbatim.
+func (c *AppConfig) GetBackupDir() string {
+	dir := strings.TrimSpace(c.Config.BackupDir)
+	if dir == "" {
+		return filepath.Join(c.dataDir, "backups")
+	}
+	if !filepath.IsAbs(dir) {
+		return filepath.Join(c.GetConfigDir(), dir)
+	}
+	return dir
+}
+
 // GetConfigDir returns the directory containing the config file
 func (c *AppConfig) GetConfigDir() string {
 	if c.viper.ConfigFileUsed() != "" {
@@ -625,6 +833,30 @@ func (c *AppConfig) GetConfigDir() string {
 	}
 	// Fallback to default config directory when no config file is explicitly used
 	return GetDefaultConfigDir()
+}
+
+// GetCustomThemesDir returns the resolved custom themes directory.
+// Empty config defaults to <config-dir>/themes; a relative override is resolved
+// against the config directory, an absolute override is used verbatim.
+func (c *AppConfig) GetCustomThemesDir() string {
+	dir := strings.TrimSpace(c.Config.CustomThemesDir)
+	if dir == "" {
+		return filepath.Join(c.GetConfigDir(), "themes")
+	}
+	if !filepath.IsAbs(dir) {
+		return filepath.Join(c.GetConfigDir(), dir)
+	}
+	return dir
+}
+
+// EnsureCustomThemesDir resolves the custom themes directory and creates it if missing.
+// The resolved path is returned even when creation fails so callers can report it.
+func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
+	dir := c.GetCustomThemesDir()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return dir, fmt.Errorf("failed to create custom themes directory %s: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.
@@ -676,7 +908,7 @@ func (c *AppConfig) bindOrReadFromFile(viperVar, envVar string) {
 		return
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) //nolint:gosec // G703: the path comes from the operator's own *_FILE environment variable
 	if err != nil {
 		log.Fatal().Err(err).Str("path", filePath).Msg("Could not read " + envVarFile)
 	}

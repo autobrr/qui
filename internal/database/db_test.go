@@ -40,6 +40,27 @@ func TestMigrationNumbering(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationNumbering(t *testing.T) {
+	files := listPostgresMigrationFiles(t)
+
+	seen := make(map[string]struct{})
+	prev := -1
+
+	for _, name := range files {
+		parts := strings.SplitN(name, "_", 2)
+		require.Lenf(t, parts, 2, "migration file %s must follow <number>_<description>.sql", name)
+
+		number := parts[0]
+		require.NotContainsf(t, seen, number, "Duplicate postgres migration number found: %s", number)
+		seen[number] = struct{}{}
+
+		n, err := strconv.Atoi(number)
+		require.NoErrorf(t, err, "migration prefix %s must be numeric", number)
+		require.Greaterf(t, n, prev, "postgres migration numbers must be strictly increasing (saw %d then %d)", prev, n)
+		prev = n
+	}
+}
+
 func TestMigrationIdempotency(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
@@ -62,7 +83,7 @@ func TestMigrationIdempotency(t *testing.T) {
 	var count2 int
 	require.NoError(t, db2.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count2))
 	require.Equal(t, count1, count2, "Migration count should be the same after re-initialization")
-	require.Greater(t, count2, 0, "Should have at least one migration applied")
+	require.Positive(t, count2, "Should have at least one migration applied")
 
 	files := listMigrationFiles(t)
 	require.Equal(t, len(files), count2, "Applied migration count should match number of migration files")
@@ -84,19 +105,19 @@ func TestMigrationsApplyFullSchema(t *testing.T) {
 	require.Equal(t, len(files), applied, "All migrations should be recorded as applied")
 
 	t.Run("pragma settings", func(t *testing.T) {
-		verifyPragmas(t, t.Context(), conn)
+		verifyPragmas(t.Context(), t, conn)
 	})
 
 	t.Run("schema", func(t *testing.T) {
-		verifySchema(t, t.Context(), conn)
+		verifySchema(t.Context(), t, conn)
 	})
 
 	t.Run("indexes", func(t *testing.T) {
-		verifyIndexes(t, t.Context(), conn)
+		verifyIndexes(t.Context(), t, conn)
 	})
 
 	t.Run("triggers", func(t *testing.T) {
-		verifyTriggers(t, t.Context(), conn)
+		verifyTriggers(t.Context(), t, conn)
 	})
 }
 
@@ -122,8 +143,8 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 		require.NoError(t, conn2.Close())
 	})
 
-	verifyPragmas(t, ctx, conn1)
-	verifyPragmas(t, ctx, conn2)
+	verifyPragmas(ctx, t, conn1)
+	verifyPragmas(ctx, t, conn2)
 }
 
 func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
@@ -176,6 +197,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "host_id", Type: "INTEGER"},
 		{Name: "username_id", Type: "INTEGER"},
 		{Name: "password_encrypted", Type: "TEXT"},
+		{Name: "api_key_encrypted", Type: "TEXT"},
 		{Name: "basic_username_id", Type: "INTEGER"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
@@ -260,6 +282,8 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "free_space_source", Type: "TEXT"},
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
+		{Name: "sorting_config", Type: "TEXT"},
+		{Name: "notify", Type: "INTEGER"},
 	},
 	"automation_activity": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -311,6 +335,22 @@ func listMigrationFiles(t *testing.T) []string {
 	return files
 }
 
+func listPostgresMigrationFiles(t *testing.T) []string {
+	entries, err := postgresMigrationsFS.ReadDir("postgres_migrations")
+	require.NoError(t, err, "Failed to read postgres migrations directory")
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		files = append(files, entry.Name())
+	}
+
+	sort.Strings(files)
+	return files
+}
+
 func openTestDatabase(t *testing.T) *DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -327,7 +367,7 @@ type pragmaQuerier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
+func verifyPragmas(ctx context.Context, t *testing.T, q pragmaQuerier) {
 	t.Helper()
 
 	var journalMode string
@@ -355,7 +395,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	require.Equal(t, "ok", strings.ToLower(integrity))
 }
 
-func verifySchema(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifySchema(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	actualTables := make(map[string]struct{})
@@ -413,7 +453,7 @@ func verifySchema(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 }
 
-func verifyIndexes(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifyIndexes(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	for table, indexes := range expectedIndexes {
@@ -426,7 +466,7 @@ func verifyIndexes(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 }
 
-func verifyTriggers(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifyTriggers(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	for _, trigger := range expectedTriggers {
@@ -465,7 +505,7 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	// Run cleanup
 	deleted, err := db.CleanupUnusedStrings(ctx)
 	require.NoError(t, err)
-	require.Greater(t, deleted, int64(0)) // Should delete some orphaned strings
+	require.Positive(t, deleted) // Should delete some orphaned strings
 
 	// Verify our referenced string still exists
 	var exists bool
@@ -526,6 +566,146 @@ func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
 	require.True(t, exists, "torznab basic username string must remain referenced")
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
 	require.False(t, exists, "orphan string should be cleaned up")
+}
+
+// TestStringPoolFKColumnsAreIndexed guards the string_pool GC stall fixed in migration 078
+// (discussion #2048). Every column that references string_pool via ON DELETE RESTRICT must:
+//  1. have a leading index, or FK enforcement full-scans it once per deleted string during
+//     CleanupUnusedStrings and eventually exceeds its deadline; and
+//  2. be collected by referencedStringsInsertQuery, or the GC would try to delete strings the
+//     column still references and fail the RESTRICT check.
+//
+// The check is schema-driven (PRAGMA foreign_key_list), so any future table that adds a
+// string_pool FK is covered automatically without touching this test.
+func TestStringPoolFKColumnsAreIndexed(t *testing.T) {
+	log.Logger = log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+	conn := db.Conn()
+
+	var tables []string
+	rows, err := conn.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+	require.NoError(t, err)
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	type fkCol struct{ table, column string }
+	var fkCols []fkCol
+	for _, table := range tables {
+		// Table names come from sqlite_master (trusted schema), so interpolation is safe;
+		// PRAGMA foreign_key_list does not accept bound parameters.
+		fkRows, err := conn.QueryContext(ctx, fmt.Sprintf("PRAGMA foreign_key_list(%q)", table))
+		require.NoError(t, err)
+		for fkRows.Next() {
+			var (
+				id, seq                   int
+				refTable, from, to        sql.NullString
+				onUpdate, onDelete, match sql.NullString
+			)
+			require.NoError(t, fkRows.Scan(&id, &seq, &refTable, &from, &to, &onUpdate, &onDelete, &match))
+			if refTable.String == "string_pool" {
+				fkCols = append(fkCols, fkCol{table: table, column: from.String})
+			}
+		}
+		require.NoError(t, fkRows.Err())
+		require.NoError(t, fkRows.Close())
+	}
+
+	require.NotEmpty(t, fkCols, "expected to discover string_pool foreign-key columns")
+
+	for _, fc := range fkCols {
+		// (1) FK enforcement during DELETE probes `WHERE col = ?`; this must resolve via an
+		// index (SEARCH), not a full table scan (SCAN). Verified against the freshly migrated
+		// (empty) schema: the planner picks SEARCH purely on index availability here.
+		planRows, err := conn.QueryContext(ctx, fmt.Sprintf("EXPLAIN QUERY PLAN SELECT 1 FROM %q WHERE %q = 1", fc.table, fc.column))
+		require.NoError(t, err)
+		var plan strings.Builder
+		for planRows.Next() {
+			var id, parent, notused int
+			var detail string
+			require.NoError(t, planRows.Scan(&id, &parent, &notused, &detail))
+			plan.WriteString(detail)
+			plan.WriteByte('\n')
+		}
+		require.NoError(t, planRows.Err())
+		require.NoError(t, planRows.Close())
+
+		require.NotContainsf(t, plan.String(), "SCAN",
+			"%s.%s references string_pool but lacks a leading index; FK enforcement will "+
+				"full-scan it during string_pool GC. Add an index (see migration 078). Plan:\n%s",
+			fc.table, fc.column, plan.String())
+
+		// (2) The GC must actually collect this reference, or it will try to delete strings the
+		// column still points at and fail the RESTRICT check.
+		require.Containsf(t, referencedStringsInsertQuery,
+			fmt.Sprintf("SELECT %s AS string_id FROM %s", fc.column, fc.table),
+			"%s.%s references string_pool but is not collected by referencedStringsInsertQuery; "+
+				"the string_pool GC would fail trying to delete strings it still references.",
+			fc.table, fc.column)
+	}
+}
+
+func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
+	t.Parallel()
+
+	tx := &Tx{}
+	const (
+		createTemp = "CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)"
+		insertTemp = "INSERT INTO current_hashes (hash) VALUES (?)"
+		deleteTemp = `
+			DELETE FROM torrent_files_cache
+			WHERE torrent_hash_id NOT IN (
+				SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
+			)
+		`
+		dropTemp   = "DROP TABLE current_hashes"
+		normalStmt = "INSERT INTO string_pool (value) VALUES (?)"
+	)
+
+	require.True(t, tx.shouldBypassStatementCache(createTemp))
+	require.Empty(t, tx.tempTables)
+
+	tx.markQueryForCaching(createTemp)
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(insertTemp)
+	tx.markQueryForCaching(deleteTemp)
+	require.Empty(t, tx.txStmts)
+
+	tx.markQueryForCaching(normalStmt)
+	require.Contains(t, tx.txStmts, normalStmt)
+
+	require.True(t, tx.shouldBypassStatementCache(dropTemp))
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(dropTemp)
+	require.NotContains(t, tx.txStmts, dropTemp)
+	require.NotContains(t, tx.tempTables, "current_hashes")
+}
+
+func TestTempTableNameParsingUsesFinalIdentifierSegment(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE "pg_temp"."current_hashes" (hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+
+	dropName, ok := tableNameFromDrop("DROP TABLE IF EXISTS [pg_temp].[current_hashes];")
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", dropName)
+}
+
+func TestTempTableNameParsingWithoutSpaceBeforeColumns(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE current_hashes(hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
 }
 
 // TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released
@@ -655,7 +835,7 @@ func TestTransactionSerialization(t *testing.T) {
 			t.Errorf("Failed to begin first transaction: %v", err)
 			return
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Signal that we started
 		started <- true

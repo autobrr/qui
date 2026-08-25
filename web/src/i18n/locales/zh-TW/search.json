@@ -1,0 +1,194 @@
+{
+  "pageTitle": "搜尋索引器",
+  "pageDescription": "搜尋所有已啟用的索引器。選擇查詢類型，或保持自動以自動檢測分類。",
+  "indexerSummary": {
+    "label": "索引器",
+    "noEnabled": "無已啟用的索引器",
+    "allEnabled": "全部啟用（{{count}}）",
+    "selected": "已選 {{selected}}/{{total}}"
+  },
+  "indexerSheet": {
+    "title": "索引器選擇",
+    "description": "選擇要包含在搜尋中的索引器。",
+    "selectAll": "全選",
+    "clearSelection": "清除選擇",
+    "noCategories": "無分類",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "原生",
+      "jackett": "Jackett"
+    },
+    "footer": "已選 {{selected}}/{{total}} 個已啟用索引器",
+    "done": "完成"
+  },
+  "instanceSelector": {
+    "chooseTarget": "選擇目標實例",
+    "noInstances": "無實例",
+    "offline": "離線",
+    "targetNamed": "目標：{{name}}",
+    "targetNamedOffline": "目標：{{name}}（離線）",
+    "clearSelection": "清除選擇",
+    "noInstancesConfigured": "尚未配置實例",
+    "addInstanceNote": "在設定 > 實例中新增下載實例。"
+  },
+  "searchForm": {
+    "advanced": "進階",
+    "active": "活躍",
+    "clear": "清除",
+    "searching": "搜尋中……",
+    "search": "搜尋",
+    "advancedNote": "可選（但推薦）的 Torznab 參數。",
+    "searchType": "搜尋類型",
+    "searchQuery": "搜尋內容",
+    "noIndexers": "沒有可用的已啟用索引器。請在以下頁面新增並啟用索引器：",
+    "indexersPage": "索引器頁面"
+  },
+  "searchTypes": {
+    "auto": {
+      "label": "自動檢測",
+      "description": "自動推斷正確的分類",
+      "placeholder": "試試：\"Sample Movie 2024\"、\"tt1234567\"、\"tvdb 123456\" 或 \"Example Artist – Example Album\""
+    },
+    "movies": {
+      "label": "電影",
+      "placeholder": "例如 \"Sample Movie 2024\"、\"Another Film 1999\"、\"tt1234567\""
+    },
+    "tv": {
+      "label": "劇集",
+      "placeholder": "例如 \"Sample Show S01E01\"、\"tvdb 123456\"、\"Fictional Series S02\""
+    },
+    "music": {
+      "label": "音樂",
+      "placeholder": "例如 \"Example Artist – Example Album\"、\"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "圖書與漫畫",
+      "placeholder": "例如 \"Example Book Title\"、\"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "應用程式與遊戲",
+      "placeholder": "例如 \"Sample OS ISO\"、\"Example App 2025\""
+    },
+    "xxx": {
+      "label": "成人",
+      "placeholder": "輸入具體的成人資源名稱"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "年份",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "季",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "集",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "藝術家",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "專輯",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "限制",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "偏移量",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "顯示 {{filtered}}/{{total}} 條結果",
+    "filterPlaceholder": "篩選結果……",
+    "clearSearch": "清除搜尋",
+    "clearAllFilters": "清除所有列篩選",
+    "pickInstance": "選擇實例",
+    "download": "下載",
+    "viewDetails": "檢視詳情",
+    "clearSelectionButton": "清除選擇",
+    "actions": "操作",
+    "quickAddTo": "快速新增到……",
+    "cachedSummary": "已快取 {{cached}} · {{expires}} 過期",
+    "cacheSource": "來源：{{source}} · 範圍：{{scope}}",
+    "refreshReadyIn": "{{seconds}} 秒後可重新整理",
+    "refreshFromIndexers": "從索引器重新整理",
+    "noValue": "-",
+    "categoryFallback": "分類 {{id}}",
+    "noResultsFor": "未找到「{{query}}」的結果",
+    "enterQuery": "輸入搜尋內容以開始",
+    "free": "免費",
+    "freeNeutral": "中性",
+    "noInfoUrlAvailable": "無可用的詳情連結"
+  },
+  "historyMeta": "{{type}} · {{count}} 條結果 · {{timestamp}}",
+  "table": {
+    "title": "標題",
+    "indexer": "索引器",
+    "size": "大小",
+    "seeders": "做種者",
+    "category": "分類",
+    "source": "來源",
+    "collection": "合集",
+    "group": "分組",
+    "freeleech": "Freeleech",
+    "published": "釋出時間",
+    "actions": "操作",
+    "downloadTorrent": "下載 .torrent",
+    "viewDetails": "檢視詳情",
+    "noInfoUrl": "無資訊連結"
+  },
+  "refreshDialog": {
+    "title": "跳過快取？",
+    "description": "這將直接向每個選取的索引器傳送請求。請謹慎使用以避免觸發速率限制。短暫冷卻後可再次重新整理。",
+    "cancel": "取消",
+    "refreshNow": "立即重新整理"
+  },
+  "cache": {
+    "cacheAndLive": "快取 + 即時",
+    "cacheHit": "快取命中",
+    "liveFetch": "即時獲取"
+  },
+  "card": {
+    "actions": "操作",
+    "addToInstance": "新增到實例",
+    "addToNamed": "新增到 {{name}}",
+    "addToNamedOffline": "新增到 {{name}}（離線）",
+    "quickAddTo": "快速新增到……",
+    "download": "下載",
+    "viewDetails": "檢視詳情",
+    "clearSelection": "清除選擇",
+    "seeders": "{{count}} 個做種者",
+    "published": "釋出於 {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "請輸入搜尋內容或填寫進階參數",
+    "selectIndexer": "請至少選擇一個索引器",
+    "noEnabledIndexers": "沒有可用的已啟用索引器。請先新增並啟用索引器。",
+    "noResults": "未找到結果",
+    "foundResults": "找到 {{total}} 條結果{{suffix}}",
+    "cached": "（快取）",
+    "searchFailed": "搜尋失敗：{{error}}",
+    "failedToLoadIndexers": "載入索引器失敗",
+    "addInstanceFirst": "請在設定 > 實例中新增下載實例",
+    "chooseInstance": "選擇一個實例以新增種子",
+    "noDownloadUrl": "此結果沒有可用的下載連結",
+    "noInfoUrl": "此結果沒有額外的詳情資訊",
+    "invalidProtocol": "URL 協議無效",
+    "invalidUrl": "URL 格式無效"
+  }
+}

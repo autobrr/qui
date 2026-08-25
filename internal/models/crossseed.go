@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,6 +27,24 @@ const (
 	CategoryAffixModePrefix = "prefix"
 	CategoryAffixModeSuffix = "suffix"
 )
+
+// SeasonPackCategoryRule routes a season pack add to a category based on its
+// release quality. The first matching rule wins; otherwise the add falls back
+// to CrossSeedAutomationSettings.SeasonPackCategory ("Anything else").
+type SeasonPackCategoryRule struct {
+	Resolution string `json:"resolution"` // Canonical lowercase rls value, e.g. "1080p", "2160p"
+	Source     string `json:"source"`     // "" = any; else canonical uppercase: WEB, BLURAY, REMUX, HDTV
+	Category   string `json:"category"`   // qBittorrent category to file the add under
+}
+
+// CategoryMappingRule forces the cross-seed search category for torrents in any
+// of a set of qBittorrent categories (discussion #1734). A category must match
+// exactly; a matching rule wins over both the name parse and the file-extension
+// signal.
+type CategoryMappingRule struct {
+	Categories  []string `json:"categories"`  // qBittorrent category names, exact match
+	ContentType string   `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app
+}
 
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
 // Contains both RSS Automation-specific settings and global cross-seed settings.
@@ -54,10 +73,14 @@ type CrossSeedAutomationSettings struct {
 	WebhookSourceExcludeTags       []string `json:"webhookSourceExcludeTags"`       // Skip torrents with these tags
 
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
-	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`       // Match season packs with individual episodes
-	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"` // Size tolerance for matching (default: 5%)
-	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`       // Use indexer name as category for cross-seeds
-	RunExternalProgramID         *int    `json:"runExternalProgramId"`         // Optional external program to run after successful cross-seed injection
+	FindIndividualEpisodes  bool `json:"findIndividualEpisodes"`  // Match season packs with individual episodes
+	AutoResumeMaxDownloadMB int  `json:"autoResumeMaxDownloadMb"` // Max missing data (MiB) to still auto-resume a new cross-seed; 0 = only complete torrents (default: 50)
+	UseCategoryFromIndexer  bool `json:"useCategoryFromIndexer"`  // Use indexer name as category for cross-seeds
+	RunExternalProgramID    *int `json:"runExternalProgramId"`    // Optional external program to run after successful cross-seed injection
+
+	// Category mapping rules force the search category for torrents in a
+	// qBittorrent category; a matching rule wins over content type detection.
+	CategoryMappingRules []CategoryMappingRule `json:"categoryMappingRules"`
 
 	// Source-specific tagging: tags applied based on how the cross-seed was discovered.
 	// Each defaults to ["cross-seed"]. Users can add source-specific tags like "rss", "seeded-search", etc.
@@ -82,7 +105,22 @@ type CrossSeedAutomationSettings struct {
 	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`     // Skip auto-resume for completion-triggered search results
 	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
 	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
+	RescueTitleMismatches        bool `json:"rescueTitleMismatches"`        // This setting tries exact-size results when only the title differs.
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
+
+	// Season pack settings
+	SeasonPackSkipRepackCompare  bool                     `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare bool                     `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare bool                     `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare    bool                     `json:"seasonPackSkipYearCompare"`
+	SeasonPackEnabled            bool                     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
+	SeasonPackAutomationEnabled  bool                     `json:"seasonPackAutomationEnabled"` // Allow qui to assemble season packs on its own initiative (RSS/automation)
+	SeasonPackCoverageThreshold  float64                  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
+	SeasonPackTags               []string                 `json:"seasonPackTags"`              // Tags for season pack results
+	SeasonPackCategory           string                   `json:"seasonPackCategory"`          // Fallback category for season pack adds ("Anything else")
+	SeasonPackCategoryRules      []SeasonPackCategoryRule `json:"seasonPackCategoryRules"`     // Per-quality routing rules; first match wins, else SeasonPackCategory
+	SeasonPackTVDBAPIKey         string                   `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN            string                   `json:"seasonPackTvdbPin,omitempty"`
 
 	// Gazelle (OPS/RED) cross-seed settings.
 	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
@@ -103,6 +141,10 @@ type CompletionFilterProvider interface {
 	GetExcludeCategories() []string
 	GetExcludeTags() []string
 }
+
+// DefaultAutoResumeMaxDownloadMB is the default auto-resume budget for new
+// cross-seed additions: resume only when missing data is 50 MiB or less.
+const DefaultAutoResumeMaxDownloadMB = 50
 
 // DefaultCrossSeedAutomationSettings returns sensible defaults for RSS automation.
 // RSS automation is disabled by default with a 2-hour interval.
@@ -126,9 +168,10 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		WebhookSourceExcludeCategories: []string{},
 		WebhookSourceExcludeTags:       []string{},
 		FindIndividualEpisodes:         false, // Default to false - only find season packs when searching with season packs
-		SizeMismatchTolerancePercent:   5.0,   // Allow 5% size difference by default
+		AutoResumeMaxDownloadMB:        DefaultAutoResumeMaxDownloadMB,
 		UseCategoryFromIndexer:         false, // Default to false - don't override categories by default
 		RunExternalProgramID:           nil,   // No external program by default
+		CategoryMappingRules:           []CategoryMappingRule{},
 		// Source-specific tagging defaults - all sources default to ["cross-seed"]
 		RSSAutomationTags:    []string{"cross-seed"},
 		SeededSearchTags:     []string{"cross-seed"},
@@ -148,7 +191,19 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeCompletion:     false,
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
+		RescueTitleMismatches:        false,
 		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
+		// Season pack defaults
+		SeasonPackSkipRepackCompare:  true,
+		SeasonPackSimplifyHDRCompare: false,
+		SeasonPackSimplifyWEBCompare: false,
+		SeasonPackSkipYearCompare:    false,
+		SeasonPackEnabled:            false,
+		SeasonPackAutomationEnabled:  false,
+		SeasonPackCoverageThreshold:  0.75,
+		SeasonPackTags:               []string{"cross-seed"},
+		SeasonPackCategory:           "",
+		SeasonPackCategoryRules:      []SeasonPackCategoryRule{},
 		GazelleEnabled:               false,
 		RedactedAPIKey:               "",
 		OrpheusAPIKey:                "",
@@ -250,15 +305,27 @@ type CrossSeedSearchFilters struct {
 	Tags       []string `json:"tags"`
 }
 
+// CrossSeedSearchResultStatus records the add outcome for one searched torrent.
+type CrossSeedSearchResultStatus string
+
+const (
+	// CrossSeedSearchResultStatusAdded means the match was added to qBittorrent.
+	CrossSeedSearchResultStatusAdded CrossSeedSearchResultStatus = "added"
+	// CrossSeedSearchResultStatusSkipped means the match did not require or permit an add.
+	CrossSeedSearchResultStatusSkipped CrossSeedSearchResultStatus = "skipped"
+	// CrossSeedSearchResultStatusFailed means the match hit an add or preparation error.
+	CrossSeedSearchResultStatusFailed CrossSeedSearchResultStatus = "failed"
+)
+
 // CrossSeedSearchResult records the outcome of processing a single torrent during a search run.
 type CrossSeedSearchResult struct {
-	TorrentHash  string    `json:"torrentHash"`
-	TorrentName  string    `json:"torrentName"`
-	IndexerName  string    `json:"indexerName"`
-	ReleaseTitle string    `json:"releaseTitle"`
-	Added        bool      `json:"added"`
-	Message      string    `json:"message,omitempty"`
-	ProcessedAt  time.Time `json:"processedAt"`
+	TorrentHash  string                      `json:"torrentHash"`
+	TorrentName  string                      `json:"torrentName"`
+	IndexerName  string                      `json:"indexerName"`
+	ReleaseTitle string                      `json:"releaseTitle"`
+	Status       CrossSeedSearchResultStatus `json:"status"`
+	Message      string                      `json:"message,omitempty"`
+	ProcessedAt  time.Time                   `json:"processedAt"`
 }
 
 // CrossSeedSearchRun stores metadata for library search automation runs.
@@ -378,15 +445,22 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       rss_source_exclude_categories, rss_source_exclude_tags,
 		       webhook_source_categories, webhook_source_tags,
 		       webhook_source_exclude_categories, webhook_source_exclude_tags,
-		       find_individual_episodes, size_mismatch_tolerance_percent,
+		       find_individual_episodes,
+		       auto_resume_max_download_mb,
 		       use_category_from_indexer, run_external_program_id,
+		       category_mapping_rules,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
 		       webhook_tags, inherit_source_tags,
 		       use_cross_category_affix, category_affix_mode, category_affix,
 		       use_custom_category, custom_category,
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
-		       skip_recheck, skip_piece_boundary_safety_check,
+		       skip_recheck, rescue_title_mismatches, skip_piece_boundary_safety_check,
+		       season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
+		       season_pack_simplify_web_compare, season_pack_skip_year_compare,
+		       season_pack_enabled, season_pack_automation_enabled, season_pack_coverage_threshold, season_pack_tags, season_pack_category,
+		       season_pack_category_rules,
+		       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 		       gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted,
 		       created_at, updated_at
 		FROM cross_seed_settings
@@ -402,14 +476,26 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var webhookSourceCategories, webhookSourceTags, webhookSourceExcludeCategories, webhookSourceExcludeTags sql.NullString
 	var rssAutomationTags, seededSearchTags, completionSearchTags, webhookTags sql.NullString
 	var runExternalProgramID sql.NullInt64
-	var gazelleEnabled bool
+	var enabled, startPaused int
+	var findIndividualEpisodes, useCategoryFromIndexer int
+	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
+	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
+	var skipRecheck, rescueTitleMismatches, skipPieceBoundarySafetyCheck int
+	var seasonPackSkipRepackCompare, seasonPackSimplifyHDRCompare, seasonPackSimplifyWEBCompare, seasonPackSkipYearCompare int
+	var seasonPackEnabled int
+	var seasonPackAutomationEnabled int
+	var seasonPackTags, seasonPackCategory sql.NullString
+	var seasonPackCategoryRules sql.NullString
+	var categoryMappingRules sql.NullString
+	var seasonPackTVDBAPIKeyEncrypted, seasonPackTVDBPINEncrypted sql.NullString
+	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
 	var createdAt, updatedAt sql.NullTime
 
 	err := row.Scan(
-		&settings.Enabled,
+		&enabled,
 		&settings.RunIntervalMinutes,
-		&settings.StartPaused,
+		&startPaused,
 		&category,
 		&instancesJSON,
 		&indexersJSON,
@@ -422,26 +508,40 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&webhookSourceTags,
 		&webhookSourceExcludeCategories,
 		&webhookSourceExcludeTags,
-		&settings.FindIndividualEpisodes,
-		&settings.SizeMismatchTolerancePercent,
-		&settings.UseCategoryFromIndexer,
+		&findIndividualEpisodes,
+		&settings.AutoResumeMaxDownloadMB,
+		&useCategoryFromIndexer,
 		&runExternalProgramID,
+		&categoryMappingRules,
 		&rssAutomationTags,
 		&seededSearchTags,
 		&completionSearchTags,
 		&webhookTags,
-		&settings.InheritSourceTags,
-		&settings.UseCrossCategoryAffix,
+		&inheritSourceTags,
+		&useCrossCategoryAffix,
 		&settings.CategoryAffixMode,
 		&settings.CategoryAffix,
-		&settings.UseCustomCategory,
+		&useCustomCategory,
 		&settings.CustomCategory,
-		&settings.SkipAutoResumeRSS,
-		&settings.SkipAutoResumeSeededSearch,
-		&settings.SkipAutoResumeCompletion,
-		&settings.SkipAutoResumeWebhook,
-		&settings.SkipRecheck,
-		&settings.SkipPieceBoundarySafetyCheck,
+		&skipAutoResumeRSS,
+		&skipAutoResumeSeededSearch,
+		&skipAutoResumeCompletion,
+		&skipAutoResumeWebhook,
+		&skipRecheck,
+		&rescueTitleMismatches,
+		&skipPieceBoundarySafetyCheck,
+		&seasonPackSkipRepackCompare,
+		&seasonPackSimplifyHDRCompare,
+		&seasonPackSimplifyWEBCompare,
+		&seasonPackSkipYearCompare,
+		&seasonPackEnabled,
+		&seasonPackAutomationEnabled,
+		&settings.SeasonPackCoverageThreshold,
+		&seasonPackTags,
+		&seasonPackCategory,
+		&seasonPackCategoryRules,
+		&seasonPackTVDBAPIKeyEncrypted,
+		&seasonPackTVDBPINEncrypted,
 		&gazelleEnabled,
 		&redactedAPIKeyEncrypted,
 		&orpheusAPIKeyEncrypted,
@@ -513,6 +613,24 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if err := decodeStringSliceWithDefault(webhookTags, &settings.WebhookTags, defaults.WebhookTags); err != nil {
 		return nil, fmt.Errorf("decode webhook tags: %w", err)
 	}
+	if err := decodeStringSliceWithDefault(seasonPackTags, &settings.SeasonPackTags, defaults.SeasonPackTags); err != nil {
+		return nil, fmt.Errorf("decode season pack tags: %w", err)
+	}
+	if seasonPackCategory.Valid {
+		settings.SeasonPackCategory = seasonPackCategory.String
+	}
+	if err := decodeJSONSlice(seasonPackCategoryRules, &settings.SeasonPackCategoryRules); err != nil {
+		return nil, fmt.Errorf("decode season pack category rules: %w", err)
+	}
+	if err := decodeJSONSlice(categoryMappingRules, &settings.CategoryMappingRules); err != nil {
+		return nil, fmt.Errorf("decode category mapping rules: %w", err)
+	}
+	// A rule written before a rule could carry several categories decodes with
+	// none. It can never match, and its nil list would reach the API as a null
+	// where the schema promises an array, so drop it on read.
+	settings.CategoryMappingRules = slices.DeleteFunc(settings.CategoryMappingRules, func(rule CategoryMappingRule) bool {
+		return len(rule.Categories) == 0
+	})
 
 	if createdAt.Valid {
 		settings.CreatedAt = createdAt.Time
@@ -521,12 +639,38 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		settings.UpdatedAt = updatedAt.Time
 	}
 
-	settings.GazelleEnabled = gazelleEnabled
+	settings.Enabled = SQLiteIntToBool(enabled)
+	settings.StartPaused = SQLiteIntToBool(startPaused)
+	settings.FindIndividualEpisodes = SQLiteIntToBool(findIndividualEpisodes)
+	settings.UseCategoryFromIndexer = SQLiteIntToBool(useCategoryFromIndexer)
+	settings.InheritSourceTags = SQLiteIntToBool(inheritSourceTags)
+	settings.UseCrossCategoryAffix = SQLiteIntToBool(useCrossCategoryAffix)
+	settings.UseCustomCategory = SQLiteIntToBool(useCustomCategory)
+	settings.SkipAutoResumeRSS = SQLiteIntToBool(skipAutoResumeRSS)
+	settings.SkipAutoResumeSeededSearch = SQLiteIntToBool(skipAutoResumeSeededSearch)
+	settings.SkipAutoResumeCompletion = SQLiteIntToBool(skipAutoResumeCompletion)
+	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
+	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
+	settings.RescueTitleMismatches = SQLiteIntToBool(rescueTitleMismatches)
+	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.SeasonPackSkipRepackCompare = SQLiteIntToBool(seasonPackSkipRepackCompare)
+	settings.SeasonPackSimplifyHDRCompare = SQLiteIntToBool(seasonPackSimplifyHDRCompare)
+	settings.SeasonPackSimplifyWEBCompare = SQLiteIntToBool(seasonPackSimplifyWEBCompare)
+	settings.SeasonPackSkipYearCompare = SQLiteIntToBool(seasonPackSkipYearCompare)
+	settings.SeasonPackEnabled = SQLiteIntToBool(seasonPackEnabled)
+	settings.SeasonPackAutomationEnabled = SQLiteIntToBool(seasonPackAutomationEnabled)
+	settings.GazelleEnabled = SQLiteIntToBool(gazelleEnabled)
 	if redactedAPIKeyEncrypted.Valid {
 		settings.RedactedAPIKey = s.apiKeyRedacted(redactedAPIKeyEncrypted.String)
 	}
 	if orpheusAPIKeyEncrypted.Valid {
 		settings.OrpheusAPIKey = s.apiKeyRedacted(orpheusAPIKeyEncrypted.String)
+	}
+	if seasonPackTVDBAPIKeyEncrypted.Valid {
+		settings.SeasonPackTVDBAPIKey = s.apiKeyRedacted(seasonPackTVDBAPIKeyEncrypted.String)
+	}
+	if seasonPackTVDBPINEncrypted.Valid {
+		settings.SeasonPackTVDBPIN = s.apiKeyRedacted(seasonPackTVDBPINEncrypted.String)
 	}
 
 	return &settings, nil
@@ -550,7 +694,7 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host str
 		return "", false, nil
 	}
 
-	var enabled bool
+	var enabled int
 	var encrypted sql.NullString
 	q := fmt.Sprintf(`SELECT gazelle_enabled, %s FROM cross_seed_settings WHERE id = 1`, col)
 	if err := s.db.QueryRowContext(ctx, q).Scan(&enabled, &encrypted); err != nil {
@@ -559,7 +703,7 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host str
 		}
 		return "", false, err
 	}
-	if !enabled || !encrypted.Valid || strings.TrimSpace(encrypted.String) == "" {
+	if !SQLiteIntToBool(enabled) || !encrypted.Valid || strings.TrimSpace(encrypted.String) == "" {
 		return "", false, nil
 	}
 	plain, err := s.decrypt(encrypted.String)
@@ -567,6 +711,53 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host str
 		return "", false, err
 	}
 	return plain, true, nil
+}
+
+// GetDecryptedSeasonPackTVDBCredentials returns the decrypted TVDB API key and PIN
+// for season pack metadata resolution.
+func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Context) (apiKey, pin string, err error) {
+	var keyEnc, pinEnc sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+		SELECT season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
+		FROM cross_seed_settings WHERE id = 1
+	`).Scan(&keyEnc, &pinEnc)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	if keyEnc.Valid && strings.TrimSpace(keyEnc.String) != "" {
+		apiKey, err = s.decrypt(keyEnc.String)
+		if err != nil {
+			return "", "", fmt.Errorf("decrypt tvdb api key: %w", err)
+		}
+	}
+	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {
+		pin, err = s.decrypt(pinEnc.String)
+		if err != nil {
+			return "", "", fmt.Errorf("decrypt tvdb pin: %w", err)
+		}
+	}
+	return apiKey, pin, nil
+}
+
+// GetSeasonPackTVDBCredentialsUpdatedAt returns the row revision used to avoid
+// decrypting unchanged TVDB credentials on every metadata lookup.
+func (s *CrossSeedStore) GetSeasonPackTVDBCredentialsUpdatedAt(ctx context.Context) (time.Time, error) {
+	var updatedAt time.Time
+	err := s.db.QueryRowContext(ctx, `
+		SELECT updated_at
+		FROM cross_seed_settings WHERE id = 1
+	`).Scan(&updatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+
+	return updatedAt, nil
 }
 
 // UpsertSettings saves automation settings and returns the updated value.
@@ -637,21 +828,37 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode webhook tags: %w", err)
 	}
+	seasonPackTags, err := encodeStringSlice(settings.SeasonPackTags)
+	if err != nil {
+		return nil, fmt.Errorf("encode season pack tags: %w", err)
+	}
+	seasonPackCategoryRules, err := encodeJSONSlice(settings.SeasonPackCategoryRules)
+	if err != nil {
+		return nil, fmt.Errorf("encode season pack category rules: %w", err)
+	}
+	categoryMappingRules, err := encodeJSONSlice(settings.CategoryMappingRules)
+	if err != nil {
+		return nil, fmt.Errorf("encode category mapping rules: %w", err)
+	}
 
 	var existingRedactedEncrypted string
 	var existingOrpheusEncrypted string
+	var existingTVDBAPIKeyEncrypted string
+	var existingTVDBPINEncrypted string
 	{
-		var red, ops sql.NullString
+		var red, ops, tvdbKey, tvdbPin sql.NullString
 		queryErr := s.db.QueryRowContext(ctx, `
-				SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted
+				SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted,
+				       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
 				FROM cross_seed_settings
 				WHERE id = 1
-			`).Scan(&red, &ops)
+			`).Scan(&red, &ops, &tvdbKey, &tvdbPin)
 		// Only required when the caller is explicitly requesting "preserve" behavior.
 		// If we can't read the existing encrypted values, fail the update rather than silently clearing secrets.
 		if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
-			if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr {
-				return nil, fmt.Errorf("load existing gazelle api keys: %w", queryErr)
+			if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr ||
+				strings.TrimSpace(settings.SeasonPackTVDBAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.SeasonPackTVDBPIN) == domain.RedactedStr {
+				return nil, fmt.Errorf("load existing encrypted keys: %w", queryErr)
 			}
 		}
 		if red.Valid {
@@ -659,6 +866,12 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		}
 		if ops.Valid {
 			existingOrpheusEncrypted = ops.String
+		}
+		if tvdbKey.Valid {
+			existingTVDBAPIKeyEncrypted = tvdbKey.String
+		}
+		if tvdbPin.Valid {
+			existingTVDBPINEncrypted = tvdbPin.String
 		}
 	}
 
@@ -694,6 +907,38 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		orpheusAPIKeyEncrypted = enc
 	}
 
+	seasonPackTVDBAPIKeyEncrypted := ""
+	v = strings.TrimSpace(settings.SeasonPackTVDBAPIKey)
+	switch v {
+	case "":
+		// Clear
+	case domain.RedactedStr:
+		// Preserve existing value
+		seasonPackTVDBAPIKeyEncrypted = existingTVDBAPIKeyEncrypted
+	default:
+		enc, encErr := s.encrypt(v)
+		if encErr != nil {
+			return nil, fmt.Errorf("encrypt tvdb api key: %w", encErr)
+		}
+		seasonPackTVDBAPIKeyEncrypted = enc
+	}
+
+	seasonPackTVDBPINEncrypted := ""
+	v = strings.TrimSpace(settings.SeasonPackTVDBPIN)
+	switch v {
+	case "":
+		// Clear
+	case domain.RedactedStr:
+		// Preserve existing value
+		seasonPackTVDBPINEncrypted = existingTVDBPINEncrypted
+	default:
+		enc, encErr := s.encrypt(v)
+		if encErr != nil {
+			return nil, fmt.Errorf("encrypt tvdb pin: %w", encErr)
+		}
+		seasonPackTVDBPINEncrypted = enc
+	}
+
 	query := `
 		INSERT INTO cross_seed_settings (
 			id, enabled, run_interval_minutes, start_paused, category,
@@ -703,18 +948,25 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			rss_source_exclude_categories, rss_source_exclude_tags,
 			webhook_source_categories, webhook_source_tags,
 			webhook_source_exclude_categories, webhook_source_exclude_tags,
-			find_individual_episodes, size_mismatch_tolerance_percent,
+			find_individual_episodes,
+			auto_resume_max_download_mb,
 			use_category_from_indexer, run_external_program_id,
+			category_mapping_rules,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
 			webhook_tags, inherit_source_tags,
 			use_cross_category_affix, category_affix_mode, category_affix,
 			use_custom_category, custom_category,
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
-			skip_recheck, skip_piece_boundary_safety_check,
+			skip_recheck, rescue_title_mismatches, skip_piece_boundary_safety_check,
+			season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
+			season_pack_simplify_web_compare, season_pack_skip_year_compare,
+			season_pack_enabled, season_pack_automation_enabled, season_pack_coverage_threshold, season_pack_tags, season_pack_category,
+			season_pack_category_rules,
+			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -733,9 +985,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_source_exclude_categories = excluded.webhook_source_exclude_categories,
 			webhook_source_exclude_tags = excluded.webhook_source_exclude_tags,
 			find_individual_episodes = excluded.find_individual_episodes,
-			size_mismatch_tolerance_percent = excluded.size_mismatch_tolerance_percent,
+			auto_resume_max_download_mb = excluded.auto_resume_max_download_mb,
 			use_category_from_indexer = excluded.use_category_from_indexer,
 			run_external_program_id = excluded.run_external_program_id,
+			category_mapping_rules = excluded.category_mapping_rules,
 			rss_automation_tags = excluded.rss_automation_tags,
 			seeded_search_tags = excluded.seeded_search_tags,
 			completion_search_tags = excluded.completion_search_tags,
@@ -751,7 +1004,20 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_completion = excluded.skip_auto_resume_completion,
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
+			rescue_title_mismatches = excluded.rescue_title_mismatches,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			season_pack_skip_repack_compare = excluded.season_pack_skip_repack_compare,
+			season_pack_simplify_hdr_compare = excluded.season_pack_simplify_hdr_compare,
+			season_pack_simplify_web_compare = excluded.season_pack_simplify_web_compare,
+			season_pack_skip_year_compare = excluded.season_pack_skip_year_compare,
+			season_pack_enabled = excluded.season_pack_enabled,
+			season_pack_automation_enabled = excluded.season_pack_automation_enabled,
+			season_pack_coverage_threshold = excluded.season_pack_coverage_threshold,
+			season_pack_tags = excluded.season_pack_tags,
+			season_pack_category = excluded.season_pack_category,
+			season_pack_category_rules = excluded.season_pack_category_rules,
+			season_pack_tvdb_api_key_encrypted = excluded.season_pack_tvdb_api_key_encrypted,
+			season_pack_tvdb_pin_encrypted = excluded.season_pack_tvdb_pin_encrypted,
 			gazelle_enabled = excluded.gazelle_enabled,
 			redacted_api_key_encrypted = excluded.redacted_api_key_encrypted,
 			orpheus_api_key_encrypted = excluded.orpheus_api_key_encrypted
@@ -770,9 +1036,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 
 	_, err = s.db.ExecContext(ctx, query,
 		1,
-		settings.Enabled,
+		BoolToSQLite(settings.Enabled),
 		settings.RunIntervalMinutes,
-		settings.StartPaused,
+		BoolToSQLite(settings.StartPaused),
 		category,
 		instanceJSON,
 		indexerJSON,
@@ -785,27 +1051,41 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		webhookSourceTagsJSON,
 		webhookSourceExcludeCategoriesJSON,
 		webhookSourceExcludeTagsJSON,
-		settings.FindIndividualEpisodes,
-		settings.SizeMismatchTolerancePercent,
-		settings.UseCategoryFromIndexer,
+		BoolToSQLite(settings.FindIndividualEpisodes),
+		settings.AutoResumeMaxDownloadMB,
+		BoolToSQLite(settings.UseCategoryFromIndexer),
 		runExternalProgramID,
+		categoryMappingRules,
 		rssAutomationTags,
 		seededSearchTags,
 		completionSearchTags,
 		webhookTags,
-		settings.InheritSourceTags,
-		settings.UseCrossCategoryAffix,
+		BoolToSQLite(settings.InheritSourceTags),
+		BoolToSQLite(settings.UseCrossCategoryAffix),
 		settings.CategoryAffixMode,
 		settings.CategoryAffix,
-		settings.UseCustomCategory,
+		BoolToSQLite(settings.UseCustomCategory),
 		settings.CustomCategory,
-		settings.SkipAutoResumeRSS,
-		settings.SkipAutoResumeSeededSearch,
-		settings.SkipAutoResumeCompletion,
-		settings.SkipAutoResumeWebhook,
-		settings.SkipRecheck,
-		settings.SkipPieceBoundarySafetyCheck,
-		settings.GazelleEnabled,
+		BoolToSQLite(settings.SkipAutoResumeRSS),
+		BoolToSQLite(settings.SkipAutoResumeSeededSearch),
+		BoolToSQLite(settings.SkipAutoResumeCompletion),
+		BoolToSQLite(settings.SkipAutoResumeWebhook),
+		BoolToSQLite(settings.SkipRecheck),
+		BoolToSQLite(settings.RescueTitleMismatches),
+		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
+		BoolToSQLite(settings.SeasonPackSkipRepackCompare),
+		BoolToSQLite(settings.SeasonPackSimplifyHDRCompare),
+		BoolToSQLite(settings.SeasonPackSimplifyWEBCompare),
+		BoolToSQLite(settings.SeasonPackSkipYearCompare),
+		BoolToSQLite(settings.SeasonPackEnabled),
+		BoolToSQLite(settings.SeasonPackAutomationEnabled),
+		settings.SeasonPackCoverageThreshold,
+		seasonPackTags,
+		settings.SeasonPackCategory,
+		seasonPackCategoryRules,
+		seasonPackTVDBAPIKeyEncrypted,
+		seasonPackTVDBPINEncrypted,
+		BoolToSQLite(settings.GazelleEnabled),
 		redactedAPIKeyEncrypted,
 		orpheusAPIKeyEncrypted,
 	)
@@ -893,7 +1173,7 @@ func (s *CrossSeedStore) UpsertSearchSettings(ctx context.Context, settings *Cro
 		return nil, fmt.Errorf("encode search indexers: %w", err)
 	}
 
-	var instanceID interface{}
+	var instanceID any
 	if settings.InstanceID != nil {
 		instanceID = *settings.InstanceID
 	}
@@ -950,9 +1230,11 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 			torrents_failed, torrents_skipped, message,
 			error_message, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := s.db.ExecContext(ctx, query,
+	var runID int64
+	err = s.db.QueryRowContext(ctx, query,
 		run.TriggeredBy,
 		run.Mode,
 		run.Status,
@@ -965,14 +1247,9 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		run.Message,
 		run.ErrorMessage,
 		resultsJSON,
-	)
+	).Scan(&runID)
 	if err != nil {
 		return nil, fmt.Errorf("insert run: %w", err)
-	}
-
-	runID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get inserted run id: %w", err)
 	}
 
 	// Prune old runs, keeping only the 10 most recent
@@ -1144,9 +1421,11 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 			error_message, filters_json, indexer_ids_json, interval_seconds,
 			cooldown_minutes, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := s.db.ExecContext(ctx, query,
+	var insertedID int64
+	err = s.db.QueryRowContext(ctx, query,
 		run.InstanceID,
 		run.Status,
 		run.StartedAt,
@@ -1162,14 +1441,9 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 		run.IntervalSeconds,
 		run.CooldownMinutes,
 		resultsJSON,
-	)
+	).Scan(&insertedID)
 	if err != nil {
 		return nil, fmt.Errorf("insert search run: %w", err)
-	}
-
-	insertedID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get inserted search run id: %w", err)
 	}
 
 	// Prune old runs for this instance, keeping only the 10 most recent
@@ -1321,7 +1595,7 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 // UpsertSearchHistory updates the last searched timestamp for a torrent on an instance.
 func (s *CrossSeedStore) UpsertSearchHistory(ctx context.Context, instanceID int, torrentHash string, searchedAt time.Time) error {
 	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
-		return fmt.Errorf("invalid search history parameters")
+		return errors.New("invalid search history parameters")
 	}
 
 	const query = `
@@ -1355,6 +1629,95 @@ func (s *CrossSeedStore) GetSearchHistory(ctx context.Context, instanceID int, t
 	}
 
 	return last, true, nil
+}
+
+// GetLatestSearchHistory returns the most recent search timestamp for a key
+// across all instances. Used for pseudo-keys whose verdict is global, like
+// season-pack diversion failures.
+func (s *CrossSeedStore) GetLatestSearchHistory(ctx context.Context, torrentHash string) (time.Time, bool, error) {
+	const query = `
+		SELECT last_searched_at
+		FROM cross_seed_search_history
+		WHERE torrent_hash = ?
+		ORDER BY last_searched_at DESC
+		LIMIT 1
+	`
+
+	var last time.Time
+	err := s.db.QueryRowContext(ctx, query, torrentHash).Scan(&last)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, fmt.Errorf("get latest search history: %w", err)
+	}
+
+	return last, true, nil
+}
+
+// UpsertIndexerSearchHistory stamps a search on each covered indexer for a torrent.
+func (s *CrossSeedStore) UpsertIndexerSearchHistory(ctx context.Context, instanceID int, torrentHash string, indexerIDs []int, searchedAt time.Time) error {
+	if instanceID <= 0 || strings.TrimSpace(torrentHash) == "" {
+		return errors.New("invalid search history parameters")
+	}
+	if len(indexerIDs) == 0 {
+		return nil
+	}
+	// Postgres rejects a multi-row ON CONFLICT DO UPDATE that hits the same
+	// conflict target twice ("cannot affect row a second time").
+	indexerIDs = slices.Compact(slices.Sorted(slices.Values(indexerIDs)))
+
+	var query strings.Builder
+	query.WriteString(`
+		INSERT INTO cross_seed_search_history_indexers (instance_id, torrent_hash, indexer_id, last_searched_at)
+		VALUES `)
+	args := make([]any, 0, len(indexerIDs)*4)
+	for i, indexerID := range indexerIDs {
+		if i > 0 {
+			query.WriteString(", ")
+		}
+		query.WriteString("(?, ?, ?, ?)")
+		args = append(args, instanceID, torrentHash, indexerID, searchedAt)
+	}
+	query.WriteString(`
+		ON CONFLICT(instance_id, torrent_hash, indexer_id) DO UPDATE SET
+			last_searched_at = excluded.last_searched_at
+	`)
+
+	if _, err := s.db.ExecContext(ctx, query.String(), args...); err != nil {
+		return fmt.Errorf("upsert indexer search history: %w", err)
+	}
+	return nil
+}
+
+// GetIndexerSearchHistory returns the last search time per indexer for a torrent.
+// Indexers with no row have never searched this torrent.
+func (s *CrossSeedStore) GetIndexerSearchHistory(ctx context.Context, instanceID int, torrentHash string) (map[int]time.Time, error) {
+	const query = `
+		SELECT indexer_id, last_searched_at
+		FROM cross_seed_search_history_indexers
+		WHERE instance_id = ? AND torrent_hash = ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, instanceID, torrentHash)
+	if err != nil {
+		return nil, fmt.Errorf("get indexer search history: %w", err)
+	}
+	defer rows.Close()
+
+	history := make(map[int]time.Time)
+	for rows.Next() {
+		var indexerID int
+		var last time.Time
+		if err := rows.Scan(&indexerID, &last); err != nil {
+			return nil, fmt.Errorf("scan indexer search history: %w", err)
+		}
+		history[indexerID] = last
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate indexer search history: %w", err)
+	}
+	return history, nil
 }
 
 // HasProcessedFeedItem reports whether a GUID/indexer pair has been handled.
@@ -1627,6 +1990,30 @@ func decodeStringSliceWithDefault(src sql.NullString, dest *[]string, defaultVal
 	return nil
 }
 
+func encodeJSONSlice[T any](items []T) (string, error) {
+	if items == nil {
+		items = []T{}
+	}
+	data, err := json.Marshal(items)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeJSONSlice[T any](src sql.NullString, dest *[]T) error {
+	if !src.Valid || src.String == "" {
+		*dest = []T{}
+		return nil
+	}
+	var tmp []T
+	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
+		return err
+	}
+	*dest = tmp
+	return nil
+}
+
 func decodeIntSlice(src sql.NullString, dest *[]int) error {
 	if !src.Valid || src.String == "" {
 		*dest = []int{}
@@ -1638,29 +2025,6 @@ func decodeIntSlice(src sql.NullString, dest *[]int) error {
 	}
 	*dest = tmp
 	return nil
-}
-
-func normalizeStringSlice(values []string) []string {
-	if len(values) == 0 {
-		return []string{}
-	}
-
-	seen := make(map[string]struct{}, len(values))
-	normalized := make([]string, 0, len(values))
-
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		normalized = append(normalized, trimmed)
-	}
-
-	return normalized
 }
 
 func encodeRunResults(results []CrossSeedRunResult) (string, error) {
@@ -1697,7 +2061,7 @@ func encodeSearchFilters(filters CrossSeedSearchFilters) (string, error) {
 
 func decodeSearchFilters(src sql.NullString, dest *CrossSeedSearchFilters) error {
 	if dest == nil {
-		return fmt.Errorf("destination cannot be nil")
+		return errors.New("destination cannot be nil")
 	}
 	if !src.Valid || src.String == "" {
 		*dest = CrossSeedSearchFilters{}
@@ -1722,18 +2086,75 @@ func encodeSearchResults(results []CrossSeedSearchResult) (string, error) {
 	return string(data), nil
 }
 
+type crossSeedSearchResultPayload struct {
+	TorrentHash  string                      `json:"torrentHash"`
+	TorrentName  string                      `json:"torrentName"`
+	IndexerName  string                      `json:"indexerName"`
+	ReleaseTitle string                      `json:"releaseTitle"`
+	Added        *bool                       `json:"added,omitempty"`
+	Status       CrossSeedSearchResultStatus `json:"status,omitempty"`
+	Message      string                      `json:"message,omitempty"`
+	ProcessedAt  time.Time                   `json:"processedAt"`
+}
+
 func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) error {
 	if dest == nil {
-		return fmt.Errorf("destination cannot be nil")
+		return errors.New("destination cannot be nil")
 	}
 	if !src.Valid || src.String == "" {
 		*dest = []CrossSeedSearchResult{}
 		return nil
 	}
-	var tmp []CrossSeedSearchResult
-	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
+	var payloads []crossSeedSearchResultPayload
+	if err := json.Unmarshal([]byte(src.String), &payloads); err != nil {
 		return err
 	}
-	*dest = tmp
+	results := make([]CrossSeedSearchResult, 0, len(payloads))
+	for _, payload := range payloads {
+		status := payload.Status
+		if status == "" {
+			status = legacyCrossSeedSearchResultStatus(payload.Added, payload.Message)
+		}
+		results = append(results, CrossSeedSearchResult{
+			TorrentHash:  payload.TorrentHash,
+			TorrentName:  payload.TorrentName,
+			IndexerName:  payload.IndexerName,
+			ReleaseTitle: payload.ReleaseTitle,
+			Status:       status,
+			Message:      payload.Message,
+			ProcessedAt:  payload.ProcessedAt,
+		})
+	}
+	*dest = results
 	return nil
+}
+
+func legacyCrossSeedSearchResultStatus(added *bool, message string) CrossSeedSearchResultStatus {
+	if added == nil {
+		return ""
+	}
+	if *added {
+		return CrossSeedSearchResultStatusAdded
+	}
+	if isLegacyCrossSeedSearchFailure(message) {
+		return CrossSeedSearchResultStatusFailed
+	}
+	return CrossSeedSearchResultStatusSkipped
+}
+
+func isLegacyCrossSeedSearchFailure(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	failurePrefixes := []string{
+		"resolve indexers:",
+		"analyze torrent:",
+		"search failed:",
+		"download failed:",
+		"cross-seed failed:",
+	}
+	for _, prefix := range failurePrefixes {
+		if strings.HasPrefix(normalized, prefix) {
+			return true
+		}
+	}
+	return false
 }

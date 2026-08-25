@@ -4,10 +4,10 @@
 package metrics
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -24,17 +24,18 @@ type Server struct {
 }
 
 func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthUsersConfig string) *Server {
+	authConfigured := basicAuthUsersConfig != ""
 	s := &Server{
 		basicAuthUsers: make(map[string]string),
 		manager:        manager,
 	}
 
 	// Parse basic auth users
-	if basicAuthUsersConfig != "" {
+	if authConfigured {
 		for cred := range strings.SplitSeq(basicAuthUsersConfig, ",") {
-			parts := strings.Split(strings.TrimSpace(cred), ":")
-			if len(parts) == 2 {
-				s.basicAuthUsers[parts[0]] = parts[1]
+			username, password, ok := strings.Cut(strings.TrimSpace(cred), ":")
+			if ok {
+				s.basicAuthUsers[username] = password
 			} else {
 				log.Warn().Msgf("Invalid metrics basic auth credentials: %s", redact.BasicAuthUser(cred))
 			}
@@ -45,11 +46,11 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 
 	// Add standard middleware
 	router.Use(middleware.RequestID)
-	router.Use(middleware.RealIP)
+	router.Use(middleware.RealIP) //nolint:staticcheck // SA1019: the metrics listener uses RemoteAddr for logging only
 	router.Use(middleware.Recoverer)
 
 	// Add basic auth if configured
-	if len(s.basicAuthUsers) > 0 {
+	if authConfigured {
 		router.Use(BasicAuth("metrics", s.basicAuthUsers))
 	}
 
@@ -70,6 +71,10 @@ func NewMetricsServer(manager *MetricsManager, host string, port int, basicAuthU
 	s.server = &http.Server{
 		Addr:    addr,
 		Handler: router,
+		// Same header timeout the API server uses: a metrics scraper that
+		// opens a connection and never finishes its request should not hold
+		// one open indefinitely.
+		ReadHeaderTimeout: 15 * time.Second,
 	}
 
 	return s
@@ -81,14 +86,6 @@ func (s *Server) ListenAndServe() error {
 		Msg("Starting Prometheus metrics server")
 
 	return s.server.ListenAndServe()
-}
-
-func (s *Server) Stop() error {
-	return s.server.Close()
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
 }
 
 // BasicAuth middleware for metrics endpoint (matches autobrr implementation)

@@ -214,7 +214,7 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 		existingLicense.DodoInstanceID = ""
 		existingLicense.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 		existingLicense.PolarProductID = &activateResp.LicenseKey.BenefitID
-		existingLicense.PolarActivationID = activateResp.Id
+		existingLicense.PolarActivationID = activateResp.ID
 		existingLicense.Username = username
 		existingLicense.UpdatedAt = now
 
@@ -240,7 +240,7 @@ func (s *Service) activateWithPolar(ctx context.Context, licenseKey, username, f
 		Provider:          models.LicenseProviderPolar,
 		PolarCustomerID:   &activateResp.LicenseKey.CustomerID,
 		PolarProductID:    &activateResp.LicenseKey.BenefitID,
-		PolarActivationID: activateResp.Id,
+		PolarActivationID: activateResp.ID,
 		Username:          username,
 		CreatedAt:         now,
 		UpdatedAt:         now,
@@ -411,7 +411,7 @@ func (s *Service) ensurePolarActivation(ctx context.Context, license *models.Pro
 
 	license.Provider = models.LicenseProviderPolar
 	license.DodoInstanceID = ""
-	license.PolarActivationID = activateResp.Id
+	license.PolarActivationID = activateResp.ID
 	license.PolarCustomerID = &activateResp.LicenseKey.CustomerID
 	license.PolarProductID = &activateResp.LicenseKey.BenefitID
 	license.ActivatedAt = time.Now()
@@ -424,7 +424,7 @@ func (s *Service) ensurePolarActivation(ctx context.Context, license *models.Pro
 
 	log.Info().
 		Str("licenseKey", maskLicenseKey(license.LicenseKey)).
-		Str("activationId", activateResp.Id).
+		Str("activationId", activateResp.ID).
 		Msg("Successfully activated license and updated activation ID")
 
 	return nil
@@ -897,10 +897,11 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 				LicenseKeyInstanceID: license.DodoInstanceID,
 				InstanceID:           license.DodoInstanceID,
 			})
-			if err != nil {
-				if !errors.Is(err, dodo.ErrInstanceNotFound) && !errors.Is(err, dodo.ErrLicenseNotFound) {
-					return fmt.Errorf("failed to deactivate license: %w", err)
-				}
+			if err != nil && !errors.Is(err, dodo.ErrInstanceNotFound) && !errors.Is(err, dodo.ErrLicenseNotFound) {
+				log.Warn().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Failed to deactivate Dodo license remotely, deleting local license anyway")
 			}
 		}
 	case models.LicenseProviderPolar:
@@ -910,12 +911,18 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 				ActivationID: license.PolarActivationID,
 			})
 			if err != nil && !errors.Is(err, polar.ErrLicenseNotActivated) && !errors.Is(err, polar.ErrInvalidLicenseKey) {
-				return fmt.Errorf("failed to deactivate license: %w", err)
+				log.Warn().
+					Err(err).
+					Str("licenseKey", maskLicenseKey(license.LicenseKey)).
+					Msg("Failed to deactivate Polar license remotely, deleting local license anyway")
 			}
 		}
 	}
 
-	return s.licenseRepo.DeleteLicense(ctx, licenseKey)
+	deleteCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	return s.licenseRepo.DeleteLicense(deleteCtx, licenseKey)
 }
 
 // Helper function to mask license keys in logs

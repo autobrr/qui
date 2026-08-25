@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: registered on the opt-in pprof listener, which binds loopback by default
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/alexedwards/scs/v2"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -34,6 +35,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -42,6 +44,7 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
 	"github.com/autobrr/qui/internal/services/trackericons"
@@ -57,6 +60,11 @@ var (
 func main() {
 	config.InitDefaultLogger(buildinfo.Version)
 
+	// Honor the UMASK env var before any command creates files/dirs, so the
+	// process umask controls the final permissions of content directories
+	// (see discussion #1704). No-op when UMASK is unset or on Windows.
+	applyUmask()
+
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",
@@ -69,6 +77,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunServeCommand())
 	rootCmd.AddCommand(RunVersionCommand(buildinfo.Version))
 	rootCmd.AddCommand(RunGenerateConfigCommand())
+	rootCmd.AddCommand(RunDBCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
 	rootCmd.AddCommand(RunUpdateCommand())
@@ -96,7 +105,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
 	command.Flags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
 	command.Flags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
-	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
+	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
 		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
@@ -178,14 +187,14 @@ func readPassword(prompt string) (string, error) {
 			return "", fmt.Errorf("failed to read password: %w", err)
 		}
 		return string(password), nil
-	} else {
-		fmt.Fprint(os.Stderr, prompt)
-		var password string
-		if _, err := fmt.Scanln(&password); err != nil {
-			return "", fmt.Errorf("failed to read password from stdin: %w", err)
-		}
-		return password, nil
 	}
+
+	fmt.Fprint(os.Stderr, prompt)
+	var password string
+	if _, err := fmt.Scanln(&password); err != nil {
+		return "", fmt.Errorf("failed to read password from stdin: %w", err)
+	}
+	return password, nil
 }
 
 func RunCreateUserCommand() *cobra.Command {
@@ -214,7 +223,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				cfg.SetDataDir(dataDir)
 			}
 
-			db, err := database.New(cfg.GetDatabasePath())
+			db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
@@ -239,7 +248,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if strings.TrimSpace(username) == "" {
-				return fmt.Errorf("username cannot be empty")
+				return errors.New("username cannot be empty")
 			}
 			username = strings.TrimSpace(username)
 
@@ -252,7 +261,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(password) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			user, err := authService.SetupUser(context.Background(), username, password)
@@ -301,11 +310,13 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			dbPath := cfg.GetDatabasePath()
-			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-				return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+			if strings.EqualFold(strings.TrimSpace(cfg.Config.DatabaseEngine), "sqlite") {
+				if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+					return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+				}
 			}
 
-			db, err := database.New(dbPath)
+			db, err := database.OpenFromConfig(cfg.Config, dbPath)
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
@@ -318,7 +329,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				return fmt.Errorf("failed to check setup status: %w", err)
 			}
 			if !exists {
-				return fmt.Errorf("no user account found. Create a user first with 'create-user' command")
+				return errors.New("no user account found. Create a user first with 'create-user' command")
 			}
 
 			if username == "" {
@@ -332,7 +343,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			userStore := models.NewUserStore(db)
 			user, err := userStore.GetByUsername(ctx, username)
 			if err != nil {
-				if err == models.ErrUserNotFound {
+				if errors.Is(err, models.ErrUserNotFound) {
 					return fmt.Errorf("username '%s' not found", username)
 				}
 				return fmt.Errorf("failed to verify username: %w", err)
@@ -347,7 +358,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			if len(newPassword) < 8 {
-				return fmt.Errorf("password must be at least 8 characters long")
+				return errors.New("password must be at least 8 characters long")
 			}
 
 			hashedPassword, err := auth.HashPassword(newPassword)
@@ -499,9 +510,25 @@ func (app *Application) runServer() {
 		cfg.Config.PprofEnabled = true
 	}
 
-	cfg.ApplyLogConfig()
+	if err := cfg.ApplyLogConfig(); err != nil {
+		log.Warn().Err(err).Str("logPath", cfg.Config.LogPath).Msg("Failed to apply log configuration, continuing with the previous log settings")
+	}
 
 	log.Info().Str("version", buildinfo.Version).Msg("Starting qui")
+
+	switch {
+	case cfg.Config.IsAuthDisabled():
+		if err := cfg.Config.ValidateAuthDisabledConfig(); err != nil {
+			log.Fatal().Err(err).Msg("Authentication is disabled but authDisabledAllowedCIDRs is invalid or empty")
+		}
+		log.Warn().Strs("authDisabledAllowedCIDRs", cfg.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
+	case cfg.Config.AuthDisabled != cfg.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
+	}
+
+	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
+	}
 
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
@@ -513,6 +540,12 @@ func (app *Application) runServer() {
 	}
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
+
+	// Ensure the custom themes directory exists so users have a place to drop
+	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
+	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
+		log.Warn().Err(err).Str("dir", themesDir).Msg("Failed to create custom themes directory")
+	}
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")
@@ -540,7 +573,7 @@ func (app *Application) runServer() {
 		Msg("Initialized Dodo Payments client")
 
 	// Initialize database
-	db, err := database.New(cfg.GetDatabasePath())
+	db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}
@@ -550,6 +583,7 @@ func (app *Application) runServer() {
 	licenseRepo := database.NewLicenseRepo(db)
 	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
 	if err != nil {
+		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
 	}
 	instanceReannounceStore := models.NewInstanceReannounceStore(db)
@@ -561,6 +595,9 @@ func (app *Application) runServer() {
 	automationStore := models.NewAutomationStore(db)
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	dashboardSettingsStore := models.NewDashboardSettingsStore(db)
+	clientSettingsStore := models.NewClientSettingsStore(db)
+	themeSettingsStore := models.NewThemeSettingsStore(db)
+	filterViewStore := models.NewFilterViewStore(db)
 	logExclusionsStore := models.NewLogExclusionsStore(db)
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
@@ -616,10 +653,7 @@ func (app *Application) runServer() {
 	if cacheSettings, err := torznabSearchCache.GetSettings(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("Using default torznab search cache TTL (failed to load settings)")
 	} else if cacheSettings != nil && cacheSettings.TTLMinutes > 0 {
-		cacheTTL = time.Duration(cacheSettings.TTLMinutes) * time.Minute
-		if cacheTTL < jackett.MinSearchCacheTTL {
-			cacheTTL = jackett.MinSearchCacheTTL
-		}
+		cacheTTL = max(time.Duration(cacheSettings.TTLMinutes)*time.Minute, jackett.MinSearchCacheTTL)
 
 		if rebased, err := torznabSearchCache.RebaseTTL(context.Background(), int(cacheTTL/time.Minute)); err != nil {
 			log.Warn().Err(err).Msg("Failed to rebase torznab search cache TTL to persisted settings")
@@ -648,6 +682,24 @@ func (app *Application) runServer() {
 	// Initialize automation activity store and external programs service
 	automationActivityStore := models.NewAutomationActivityStore(db)
 	externalProgramService := externalprograms.NewService(externalProgramStore, automationActivityStore, cfg.Config)
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, instanceStore, log.Logger.With().Str("module", "notifications").Logger())
+	notificationCtx, notificationCancel := context.WithCancel(context.Background())
+	defer notificationCancel()
+	if notificationService != nil {
+		notificationService.Start(notificationCtx)
+	}
+
+	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
+	// backups, automations, indexer activity, etc.) onto the SSE stream so the
+	// frontend can stop polling those endpoints. Background services publish to it;
+	// the StreamManager (wired via api.Dependencies) forwards events to clients.
+	activityHub := activity.NewHub()
+	defer activityHub.Close()
+
+	// Wire services constructed earlier (before the hub) as activity publishers.
+	trackerIconService.SetActivityPublisher(activityHub)
+	jackettService.SetActivityPublisher(activityHub)
 
 	// Initialize cross-seed automation store and service
 	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
@@ -656,17 +708,48 @@ func (app *Application) runServer() {
 	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
-	crossSeedService := crossseed.NewService(instanceStore, syncManager, filesManagerService, crossSeedStore, crossSeedBlocklistStore, jackettService, arrService, externalProgramStore, externalProgramService, instanceCrossSeedCompletionStore, trackerCustomizationStore, cfg.Config.CrossSeedRecoverErroredTorrents)
+	seasonPackRunStore := models.NewSeasonPackRunStore(db)
+	crossSeedService := crossseed.NewService(
+		instanceStore,
+		syncManager,
+		filesManagerService,
+		crossSeedStore,
+		crossSeedBlocklistStore,
+		jackettService,
+		arrService,
+		externalProgramStore,
+		externalProgramService,
+		instanceCrossSeedCompletionStore,
+		trackerCustomizationStore,
+		notificationService,
+		cfg.Config.CrossSeedRecoverErroredTorrents,
+		seasonPackRunStore,
+		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
+		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
+	)
+	crossSeedService.SetActivityPublisher(activityHub)
+	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, externalProgramService)
+	reannounceService.SetActivityPublisher(activityHub)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
+	automationService.SetActivityPublisher(activityHub)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
-	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
+	orphanScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
+	dirScanService.SetActivityPublisher(activityHub)
 
-	syncManager.SetTorrentCompletionHandler(crossSeedService.HandleTorrentCompletion)
+	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
+		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
+		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
+	})
+
+	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
+		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
+	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
 	defer func() {
@@ -693,7 +776,8 @@ func (app *Application) runServer() {
 	}
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()})
+	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
+	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -733,11 +817,8 @@ func (app *Application) runServer() {
 
 				// Trigger connection by trying to get client
 				// This will populate the pool for GetClientOffline calls
-				_, err := clientPool.GetClient(connCtx, instanceID)
-				if err != nil {
+				if _, err := clientPool.GetClient(connCtx, instanceID); err != nil {
 					log.Debug().Err(err).Int("instanceID", instanceID).Msg("Failed to connect to instance on startup")
-				} else {
-					log.Debug().Int("instanceID", instanceID).Msg("Successfully connected to instance on startup")
 				}
 			}(instance.ID)
 		}
@@ -781,13 +862,20 @@ func (app *Application) runServer() {
 		AutomationService:                automationService,
 		TrackerCustomizationStore:        trackerCustomizationStore,
 		DashboardSettingsStore:           dashboardSettingsStore,
+		ClientSettingsStore:              clientSettingsStore,
+		ThemeSettingsStore:               themeSettingsStore,
+		FilterViewStore:                  filterViewStore,
 		LogExclusionsStore:               logExclusionsStore,
+		NotificationTargetStore:          notificationTargetStore,
+		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
+		SeasonPackRunStore:               seasonPackRunStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		ActivityHub:                      activityHub,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.
@@ -829,11 +917,22 @@ func (app *Application) runServer() {
 
 	// Start profiling server if enabled
 	if cfg.Config.PprofEnabled {
+		// Bind to loopback by default so pprof never collides with another listener
+		// sharing the network namespace (e.g. a Tailscale sidecar already serving
+		// :6060) and is not exposed on a wildcard address. Override with QUI__PPROF_ADDR.
+		pprofAddr := cfg.Config.PprofAddr
+		if pprofAddr == "" {
+			pprofAddr = "127.0.0.1:6060"
+		}
+		pprofServer := &http.Server{
+			Addr:              pprofAddr,
+			ReadHeaderTimeout: 15 * time.Second,
+		}
 		go func() {
-			log.Info().Msg("Starting pprof server on :6060")
-			log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
-			if err := http.ListenAndServe(":6060", nil); err != nil {
-				log.Error().Err(err).Msg("Profiling server failed")
+			log.Info().Str("addr", pprofAddr).Msg("Starting pprof server")
+			log.Info().Msgf("Access profiling at: http://%s/debug/pprof/", pprofAddr)
+			if err := pprofServer.ListenAndServe(); err != nil {
+				log.Error().Err(err).Str("addr", pprofAddr).Msg("Profiling server failed")
 			}
 		}()
 	}
@@ -854,35 +953,19 @@ func (app *Application) runServer() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		//log.Fatal().Err(err).Msg("Server forced to shutdown")
+		// log.Fatal().Err(err).Msg("Server forced to shutdown")
 		log.Error().Err(err).Msg("got error during graceful http shutdown")
 
 		os.Exit(1)
 	}
 
-	//if err := srv.Shutdown(context.Background()); err != nil {
+	// if err := srv.Shutdown(context.Background()); err != nil {
 	//	log.Error().Err(err).Msg("got error during graceful http shutdown")
 	//
 	//	os.Exit(1)
 	//}
 
 	os.Exit(0)
-
-	//// Wait for interrupt signal to gracefully shutdown the server
-	//quit := make(chan os.Signal, 1)
-	//signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	//<-quit
-	//log.Info().Msg("Shutting down server...")
-	//
-	//// Graceful shutdown with timeout
-	//ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	//defer cancel()
-	//
-	//if err := httpServer.Close(ctx); err != nil {
-	//	log.Fatal().Err(err).Msg("Server forced to shutdown")
-	//}
-	//
-	//log.Info().Msg("Server stopped")
 }
 
 // instanceListerAdapter implements filesmanager.InstanceLister

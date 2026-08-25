@@ -53,8 +53,7 @@ func TestMakeReleaseKey(t *testing.T) {
 			name:  "multi-episode",
 			input: "Show.S01E05E06.mkv",
 			expected: releaseKey{
-				series:  1,
-				episode: 5, // rls parses first episode
+				series: 1, // A range reads as a pack, so it carries no episode
 			},
 		},
 		{

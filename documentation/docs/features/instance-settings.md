@@ -44,6 +44,7 @@ HTTP Basic Auth is separate from qBittorrent's built-in auth. Enable it when you
 
 When enabled, qui can access the same filesystem as qBittorrent. This unlocks several features:
 
+- **Content File Download** - Download individual files from a torrent's content directly through the browser (right-click a file in the Content tab).
 - **Hardlink Detection** - Automations can detect whether torrent files have hardlinks to your media library.
 - **Orphan Scan** - Find files on disk that aren't tracked by any torrent.
 - **Free Space (Path)** - Automation rules can check free space on specific mount points instead of relying on qBittorrent's reported value.
@@ -52,7 +53,7 @@ When enabled, qui can access the same filesystem as qBittorrent. This unlocks se
 Only enable this if qui runs on the same machine (or has the same mounts) as qBittorrent. If paths don't match, features will fail silently or produce incorrect results.
 :::
 
-For Docker deployments, ensure the container has the necessary volume mounts. See [Docker configuration](/docs/getting-started/docker) for details.
+For Docker deployments, ensure the container has the necessary volume mounts. See [Docker configuration](../getting-started/docker.md) for details.
 
 ## Instance Actions
 

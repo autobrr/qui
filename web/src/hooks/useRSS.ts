@@ -17,7 +17,7 @@ import type {
   MarkRSSAsReadRequest,
   SetRSSRuleRequest,
   RenameRSSRuleRequest,
-  SetRSSFeedURLRequest,
+  SetRSSFeedURLRequest
 } from "@/types"
 
 // Query keys
@@ -47,9 +47,7 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
   const handleFeedsUpdate = useCallback(
     (data: FeedsUpdatePayload) => {
       if (data.instanceId === instanceId) {
-        // Set the data and invalidate to ensure re-render
         queryClient.setQueryData(rssKeys.feeds(instanceId), data.items)
-        queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId), refetchType: "none" })
       }
     },
     [instanceId, queryClient]

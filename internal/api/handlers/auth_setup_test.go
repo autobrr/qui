@@ -4,9 +4,9 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -15,19 +15,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/auth"
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestSetupForbiddenWhenOIDCEnabled(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "auth-setup")
 
 	authService := auth.NewService(db)
 	sessionManager := scs.New()
@@ -65,4 +60,26 @@ func TestNewAuthHandlerFailsWhenOIDCInitFails(t *testing.T) {
 	_, err := NewAuthHandler(authService, sessionManager, config, nil, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "OIDC issuer is required")
+}
+
+func TestValidateReturnsSyntheticUserWhenAuthDisabled(t *testing.T) {
+	handler := &AuthHandler{
+		sessionManager: scs.New(),
+		config: &domain.Config{
+			AuthDisabled:               true,
+			IAcknowledgeThisIsABadIdea: true,
+		},
+	}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/validate", nil)
+	resp := httptest.NewRecorder()
+
+	handler.Validate(resp, req)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+	assert.Equal(t, "admin", body["username"])
+	assert.Equal(t, "none", body["auth_method"])
 }

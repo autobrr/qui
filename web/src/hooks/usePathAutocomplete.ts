@@ -66,11 +66,14 @@ export function usePathAutocomplete(
     setHighlightedIndex(suggestions.length > 0 ? 0 : -1);
   }, [suggestions, dismissed]);
 
+  /** Selects a directory entry, appends a trailing slash, and keeps the dropdown open for subdirectory navigation. */
   const selectSuggestion = useCallback(
     (entry: string) => {
-      setInputValue(entry);
-      onSuggestionSelect(entry);
-      setDismissed(true);
+      const separator = entry.includes("\\") || /^[a-zA-Z]:/.test(entry) ? "\\" : "/";
+      const pathWithSeparator = (entry.endsWith("/") || entry.endsWith("\\")) ? entry : entry + separator;
+      setInputValue(pathWithSeparator);
+      onSuggestionSelect(pathWithSeparator);
+      setDismissed(false);
       setHighlightedIndex(-1);
       inputRef.current?.focus();
     },
@@ -145,6 +148,12 @@ export function usePathAutocomplete(
     [selectSuggestion]
   );
 
+  /** Dismisses the suggestion dropdown when the input loses focus. */
+  const handleBlur = useCallback(() => {
+    setDismissed(true);
+    setHighlightedIndex(-1);
+  }, []);
+
   // Don't show suggestions if:
   // 1. No suggestions available
   // 2. Input ends with "/" and is an exact match to a suggestion (folder fully selected)
@@ -161,6 +170,7 @@ export function usePathAutocomplete(
     handleInputChange,
     handleSelect,
     handleKeyDown,
+    handleBlur,
     highlightedIndex,
     showSuggestions,
     inputRef,

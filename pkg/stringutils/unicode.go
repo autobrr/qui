@@ -12,15 +12,61 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// NormalizeUnicode removes diacritics and decomposes ligatures.
-// Examples:
-//   - "Shōgun" → "Shogun"
-//   - "Amélie" → "Amelie"
-//   - "naïve" → "naive"
-//   - "Björk" → "Bjork"
-//   - "æ" → "ae"
-//   - "ﬁ" → "fi"
-func NormalizeUnicode(s string) string {
+var (
+	// unicodeNormalizer caches expensive NormalizeUnicode results to avoid repeated NFKD transformations.
+	// This cuts CPU usage significantly in hot paths like crossseed alignment.
+	unicodeNormalizer = NewNormalizer(defaultNormalizerTTL, normalizeUnicodeInner)
+
+	// matchingNormalizer caches expensive NormalizeForMatching results to avoid repeated unicode transformations.
+	// This cuts CPU usage significantly in hot paths like crossseed matching.
+	matchingNormalizer = NewNormalizer(defaultNormalizerTTL, normalized)
+
+	animeTitleSymbolReplacer = strings.NewReplacer(
+		"★", " ",
+		"☆", " ",
+		"✩", " ",
+		"✭", " ",
+		"✯", " ",
+		"✰", " ",
+		"✦", " ",
+		"✧", " ",
+		"◆", " ",
+		"◇", " ",
+		"■", " ",
+		"□", " ",
+		"●", " ",
+		"○", " ",
+		"◎", " ",
+		"♪", " ",
+		"♫", " ",
+		"♬", " ",
+		"♩", " ",
+		"♡", " ",
+		"♥", " ",
+		"・", " ",
+		"･", " ",
+		"·", " ",
+		"•", " ",
+	)
+)
+
+// SanitizeUTF8 replaces invalid UTF-8 byte sequences in s with U+FFFD, returning valid UTF-8.
+//
+// The BitTorrent spec requires all string fields in a torrent file (torrent name,
+// file paths, comment, etc.) to be UTF-8, but torrents with raw legacy-encoded bytes
+// (e.g. "á" as Latin-1 0xe1) exist in the wild and break code that assumes valid UTF-8,
+// for example regexp.Compile rejects invalid-UTF-8 patterns and panics via MustCompile.
+// Invalid bytes are replaced with U+FFFD rather than dropped because the other lossy
+// decoders in the pipeline (encoding/json, which delivers all qBittorrent API strings,
+// and the NFKD transform in NormalizeForMatching) coerce invalid bytes to U+FFFD too,
+// so sanitized strings still compare equal to those forms. This is a no-op on
+// well-formed input, so legitimate values are unaffected.
+func SanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
+// normalizeUnicodeInner is the inner transformation function used by unicodeNormalizer.
+func normalizeUnicodeInner(s string) string {
 	// Handle special characters that NFKD doesn't decompose to ASCII equivalents
 	// (these are distinct letters in Nordic/Germanic languages, not composed characters)
 	s = strings.ReplaceAll(s, "æ", "ae")
@@ -35,57 +81,91 @@ func NormalizeUnicode(s string) string {
 	s = strings.ReplaceAll(s, "þ", "th")
 	s = strings.ReplaceAll(s, "Þ", "TH")
 
-	// Apply NFKD normalization to decompose diacritics and compatibility ligatures (ﬁ, ﬂ, etc.)
-	// Create transformer per-call since transform.Chain is not safe for concurrent use
+	// Create transformer fresh per-call (transform.Chain is not thread-safe for concurrent use).
+	// Caching via unicodeNormalizer prevents repeated transformations for identical inputs.
 	t := transform.Chain(norm.NFKD, runes.Remove(runes.In(unicode.Mn)))
 	result, _, err := transform.String(t, s)
 	if err != nil {
-		// Errors are extremely rare (OOM or library bugs); return original for graceful degradation
 		return s
 	}
 	return result
 }
 
-// NormalizeForMatching applies full normalization for cross-seed matching:
-//   - Unicode normalization (removes diacritics, decomposes ligatures)
-//   - Lowercase
-//   - Strip apostrophes (including Unicode variants)
-//   - Strip colons
-//   - Convert ampersand to "and"
-//   - Convert hyphens to spaces
-//   - Collapse multiple spaces to single space
-//
-// Examples:
-//   - "Shōgun S01" → "shogun s01"
-//   - "Bob's Burgers" → "bobs burgers"
-//   - "CSI: Miami" → "csi miami"
-//   - "Spider-Man" → "spider man"
-//   - "His & Hers" → "his and hers"
-func NormalizeForMatching(s string) string {
-	// First apply unicode normalization
-	s = NormalizeUnicode(s)
+// normalized is the inner transformation function used by matchingNormalizer.
+func normalized(s string) string {
+	// Start with cached unicode normalization
+	s = unicodeNormalizer.Normalize(s)
 
 	// Lowercase and trim
 	s = strings.ToLower(strings.TrimSpace(s))
 
 	// Remove apostrophes - "Bob's" → "Bobs"
 	s = strings.ReplaceAll(s, "'", "")
-	s = strings.ReplaceAll(s, "'", "") // Unicode right single quote U+2019
-	s = strings.ReplaceAll(s, "'", "") // Unicode left single quote U+2018
-	s = strings.ReplaceAll(s, "`", "") // Backtick
+	s = strings.ReplaceAll(s, "\u2019", "") // Unicode right single quote
+	s = strings.ReplaceAll(s, "\u2018", "") // Unicode left single quote
+	s = strings.ReplaceAll(s, "\u02bc", "") // Modifier letter apostrophe
+	s = strings.ReplaceAll(s, "`", "")      // Backtick
 
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")
 
+	// Remove exclamation and question marks - scene naming drops them,
+	// so "Overtake!" announces as "Overtake.S01..."
+	s = strings.ReplaceAll(s, "!", "")
+	s = strings.ReplaceAll(s, "?", "")
+
+	// Normalize commas to spaces - "show,title" → "show title"
+	s = strings.ReplaceAll(s, ",", " ")
+
 	// Normalize ampersand to "and" - "His & Hers" → "His and Hers"
-	// Some trackers use & while others use "and" in release names
 	s = strings.ReplaceAll(s, "&", " and ")
 
 	// Normalize hyphens to spaces - "Spider-Man" → "spider man"
 	s = strings.ReplaceAll(s, "-", " ")
 
+	// Normalize decorative anime title separators - "Classic★Stars" → "classic stars"
+	s = animeTitleSymbolReplacer.Replace(s)
+
 	// Collapse multiple spaces to single space
 	s = strings.Join(strings.Fields(s), " ")
 
 	return s
+}
+
+// NormalizeUnicode removes diacritics and decomposes ligatures with caching.
+// Results are cached per input string (5 minute TTL) to avoid repeated expensive transformations.
+// For the full normalization with additional punctuation handling, use NormalizeForMatching instead.
+// Examples:
+//   - "Shōgun" → "Shogun"
+//   - "Amélie" → "Amelie"
+//   - "naïve" → "naive"
+//   - "Björk" → "Bjork"
+//   - "æ" → "ae"
+//   - "ﬁ" → "fi"
+func NormalizeUnicode(s string) string {
+	return unicodeNormalizer.Normalize(s)
+}
+
+// NormalizeForMatching applies cached full normalization for cross-seed matching:
+//   - Unicode normalization (removes diacritics, decomposes ligatures)
+//   - Lowercase
+//   - Strip apostrophes (including Unicode variants)
+//   - Strip colons, exclamation and question marks
+//   - Convert commas to spaces
+//   - Convert ampersand to "and"
+//   - Convert hyphens to spaces
+//   - Replace decorative anime title symbols via animeTitleSymbolReplacer, e.g. "Classic★Stars" to "classic stars"
+//   - Collapse multiple spaces to single space
+//
+// Results are cached per input string (5 minute TTL) to avoid repeated expensive transformations.
+//
+// Examples:
+//   - "Shōgun S01" → "shogun s01"
+//   - "Bob's Burgers" → "bobs burgers"
+//   - "CSI: Miami" → "csi miami"
+//   - "Title, With Comma" → "title with comma"
+//   - "Spider-Man" → "spider man"
+//   - "His & Hers" → "his and hers"
+func NormalizeForMatching(s string) string {
+	return matchingNormalizer.Normalize(s)
 }

@@ -13,12 +13,15 @@ import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
+import { useTranslation } from "react-i18next"
+import { MobileScrollProvider, useMobileScroll } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
-import { ThemeValidator } from "@/components/themes/ThemeValidator"
+import { useCustomThemes } from "@/hooks/useCustomThemes"
 
 function AppLayoutContent() {
+  const { t } = useTranslation("common")
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedSidebarState(false) // Desktop: persisted state
+  const { isFooterVisible } = useMobileScroll()
 
   return (
     <div className="flex h-[100dvh] bg-background">
@@ -52,13 +55,14 @@ function AppLayoutContent() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
+              {sidebarCollapsed ? t("sidebar.showSidebar") : t("sidebar.hideSidebar")}
             </TooltipContent>
           </Tooltip>
         </Header>
         <main className={cn(
-          "flex-1 overflow-y-auto",
-          "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0"
+          "flex-1 overflow-y-auto transition-[padding] duration-300",
+          isFooterVisible ? "pb-[calc(4rem+env(safe-area-inset-bottom))]" : "pb-0",
+          "lg:pb-0"
         )}>
           <Outlet />
         </main>
@@ -71,9 +75,10 @@ function AppLayoutContent() {
 }
 
 export function AppLayout() {
+  // Registers and applies stored custom themes for authenticated users.
+  useCustomThemes()
   return (
     <LayoutRouteProvider>
-      <ThemeValidator />
       <TorrentSelectionProvider>
         <MobileScrollProvider>
           <AppLayoutContent />

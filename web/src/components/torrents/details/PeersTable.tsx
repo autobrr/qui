@@ -14,16 +14,15 @@ import type { SortedPeer, TorrentPeer } from "@/types"
 import {
   createColumnHelper,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  type SortingFn,
+  type SortFn,
   type SortingState,
-  useReactTable,
+  useTable
 } from "@tanstack/react-table"
+import { sortableDetailsTableFeatures } from "../tanstackTableFeatures"
 import { SortIcon } from "@/components/ui/sort-icon"
-import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface PeersTableProps {
@@ -35,10 +34,10 @@ interface PeersTableProps {
   onBanPeer?: (peer: TorrentPeer) => void
 }
 
-const columnHelper = createColumnHelper<SortedPeer>()
+const columnHelper = createColumnHelper<typeof sortableDetailsTableFeatures, SortedPeer>()
 
 // Sorting function that pushes 0/null/undefined values to the bottom
-const zeroLastSortingFn: SortingFn<SortedPeer> = (rowA, rowB, columnId) => {
+const zeroLastSortingFn: SortFn<typeof sortableDetailsTableFeatures, SortedPeer> = (rowA, rowB, columnId) => {
   const a = (rowA.getValue(columnId) as number | undefined | null) ?? 0
   const b = (rowB.getValue(columnId) as number | undefined | null) ?? 0
   if (a === 0 && b !== 0) return 1
@@ -54,9 +53,10 @@ export const PeersTable = memo(function PeersTable({
   incognitoMode,
   onBanPeer,
 }: PeersTableProps) {
+  const { t } = useTranslation("torrents")
   const [sorting, setSorting] = useState<SortingState>([{ id: "progress", desc: true }])
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => columnHelper.columns([
     columnHelper.accessor("country_code", {
       header: "",
       cell: (info) => {
@@ -78,7 +78,7 @@ export const PeersTable = memo(function PeersTable({
     }),
     columnHelper.accessor((row) => `${row.ip}:${row.port}`, {
       id: "address",
-      header: "IP:Port",
+      header: t("peersTable.address"),
       cell: (info) => {
         const displayIp = incognitoMode ? "192.168.x.x" : ( info.row.original.ip.match(/:/) ? `[${info.row.original.ip}]` : info.row.original.ip )
         const displayPort = incognitoMode ? "xxxxx" : info.row.original.port
@@ -91,7 +91,7 @@ export const PeersTable = memo(function PeersTable({
       size: 150,
     }),
     columnHelper.accessor("client", {
-      header: "Client",
+      header: t("peersTable.client"),
       cell: (info) => (
         <span className="truncate block max-w-[120px]" title={info.getValue()}>
           {info.getValue() || "-"}
@@ -100,7 +100,7 @@ export const PeersTable = memo(function PeersTable({
       size: 120,
     }),
     columnHelper.accessor("progress", {
-      header: "Progress",
+      header: t("peersTable.progress"),
       cell: (info) => {
         const progress = info.getValue() * 100
         return (
@@ -115,7 +115,7 @@ export const PeersTable = memo(function PeersTable({
       size: 110,
     }),
     columnHelper.accessor("dl_speed", {
-      header: "DL Speed",
+      header: t("peersTable.downSpeed"),
       cell: (info) => (
         <span className="tabular-nums text-green-500">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
@@ -123,10 +123,10 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("up_speed", {
-      header: "UL Speed",
+      header: t("peersTable.upSpeed"),
       cell: (info) => (
         <span className="tabular-nums text-blue-500">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
@@ -134,10 +134,10 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("downloaded", {
-      header: "Downloaded",
+      header: t("peersTable.downloaded"),
       cell: (info) => (
         <span className="tabular-nums">
           {formatBytes(info.getValue() || 0)}
@@ -145,10 +145,10 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("uploaded", {
-      header: "Uploaded",
+      header: t("peersTable.uploaded"),
       cell: (info) => (
         <span className="tabular-nums">
           {formatBytes(info.getValue() || 0)}
@@ -156,11 +156,11 @@ export const PeersTable = memo(function PeersTable({
       ),
       size: 90,
       sortUndefined: "last",
-      sortingFn: zeroLastSortingFn,
+      sortFn: zeroLastSortingFn,
     }),
     ...(showFlags ? [
       columnHelper.accessor("flags", {
-        header: "Flags",
+        header: t("peersTable.flags"),
         cell: (info) => {
           const flags = info.getValue()
           if (!flags) return <span className="text-muted-foreground">-</span>
@@ -187,23 +187,22 @@ export const PeersTable = memo(function PeersTable({
         size: 60,
       }),
     ] : []),
-  ], [speedUnit, showFlags, incognitoMode])
+  ]), [speedUnit, showFlags, incognitoMode, t])
 
   const data = useMemo(() => peers || [], [peers])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: sortableDetailsTableFeatures,
     data,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   })
 
   const handleCopyIp = (peer: SortedPeer) => {
     if (incognitoMode) return
     copyTextToClipboard(`${peer.ip}`)
-    toast.success("IP address copied to clipboard")
+    toast.success(t("peersTable.toast.ipCopied"))
   }
 
   if (loading && !peers) {
@@ -217,7 +216,7 @@ export const PeersTable = memo(function PeersTable({
   if (!peers || peers.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No peers connected
+        {t("peersTable.noPeersConnected")}
       </div>
     )
   }
@@ -255,7 +254,7 @@ export const PeersTable = memo(function PeersTable({
               <ContextMenu key={row.id}>
                 <ContextMenuTrigger asChild>
                   <tr className="border-b border-border/50 hover:bg-muted/30 cursor-default">
-                    {row.getVisibleCells().map((cell) => (
+                    {row.getAllCells().map((cell) => (
                       <td
                         key={cell.id}
                         className="px-2 py-1.5"
@@ -272,7 +271,7 @@ export const PeersTable = memo(function PeersTable({
                     disabled={incognitoMode}
                   >
                     <Copy className="h-3.5 w-3.5 mr-2" />
-                    Copy IP Address
+                    {t("peersTable.copyIpAddress")}
                   </ContextMenuItem>
                   {onBanPeer && (
                     <>
@@ -282,7 +281,7 @@ export const PeersTable = memo(function PeersTable({
                         className="text-destructive focus:text-destructive"
                       >
                         <Ban className="h-3.5 w-3.5 mr-2" />
-                        Ban Peer
+                        {t("peersTable.banPeer")}
                       </ContextMenuItem>
                     </>
                   )}

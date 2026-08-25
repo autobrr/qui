@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/anacrolix/torrent/metainfo"
+	"github.com/autobrr/go-torrent/metainfo"
+
+	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -66,21 +68,16 @@ type TorrentFile struct {
 
 // Matcher handles matching searchees against torrent file lists.
 type Matcher struct {
-	mode             MatchMode
-	sizeTolerancePct float64
+	mode MatchMode
 }
 
 // NewMatcher creates a new matcher.
-func NewMatcher(mode MatchMode, sizeTolerancePct float64) *Matcher {
+func NewMatcher(mode MatchMode, _ float64) *Matcher {
 	if mode == "" {
 		mode = MatchModeStrict
 	}
-	if sizeTolerancePct <= 0 {
-		sizeTolerancePct = 0 // Exact size match
-	}
 	return &Matcher{
-		mode:             mode,
-		sizeTolerancePct: sizeTolerancePct,
+		mode: mode,
 	}
 }
 
@@ -167,8 +164,9 @@ func (m *Matcher) matchStrict(searchee *Searchee, torrentFiles []TorrentFile, re
 				continue
 			}
 
-			// Check size match
-			if m.sizesMatch(sf.Size, tf.Size) {
+			// File-level matching requires exact sizes. Tolerance only applies when
+			// prefiltering candidate torrents by total size before matching starts.
+			if sizesMatchExactly(sf.Size, tf.Size) {
 				result.MatchedFiles = append(result.MatchedFiles, MatchedFilePair{
 					SearcheeFile: sf,
 					TorrentFile:  tf,
@@ -254,7 +252,7 @@ func (m *Matcher) findSizeCandidates(
 ) []TorrentFile {
 	var candidates []TorrentFile
 	for size, files := range torrentBySize {
-		if !m.sizesMatch(sf.Size, size) {
+		if !sizesMatchExactly(sf.Size, size) {
 			continue
 		}
 		for _, tf := range files {
@@ -294,22 +292,8 @@ func collectUnmatchedTorrentFiles(torrentFiles []TorrentFile, matched map[int]bo
 	}
 }
 
-// sizesMatch checks if two sizes match within the configured tolerance.
-func (m *Matcher) sizesMatch(size1, size2 int64) bool {
-	if m.sizeTolerancePct <= 0 {
-		return size1 == size2
-	}
-
-	// Calculate tolerance based on the larger size
-	larger := max(size1, size2)
-
-	tolerance := float64(larger) * (m.sizeTolerancePct / 100.0)
-	diff := size1 - size2
-	if diff < 0 {
-		diff = -diff
-	}
-
-	return float64(diff) <= tolerance
+func sizesMatchExactly(size1, size2 int64) bool {
+	return size1 == size2
 }
 
 // normalizeFileName normalizes a file path for comparison.
@@ -387,8 +371,10 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
+	name := stringutils.SanitizeUTF8(info.BestName())
+
 	parsed := &ParsedTorrent{
-		Name:        info.BestName(),
+		Name:        name,
 		InfoHash:    mi.HashInfoBytes().HexString(),
 		PieceLength: info.PieceLength,
 		PieceCount:  info.NumPieces(),
@@ -399,7 +385,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	if len(info.Files) == 0 {
 		// Single-file torrent
 		parsed.Files = []TorrentFile{{
-			Path:   info.BestName(),
+			Path:   name,
 			Size:   info.Length,
 			Offset: 0,
 		}}
@@ -407,17 +393,29 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
-		root := info.BestName()
+		root := name
 		for i := range info.Files {
 			f := &info.Files[i]
-			pathParts := f.BestPath()
+			rawPathParts := f.BestPath()
+			// Sanitize the parts before the root-dedup comparison below; root is already
+			// sanitized, so comparing it against a raw part would double-prefix.
+			pathParts := make([]string, 0, len(rawPathParts))
+			for _, part := range rawPathParts {
+				pathParts = append(pathParts, stringutils.SanitizeUTF8(part))
+			}
 			// For multi-file torrents, qBittorrent's "Original" layout places files under the
 			// top-level folder named by the torrent's info.name.
 			//
 			// The torrent file list itself typically does NOT include that folder in each file path,
 			// so we include it here to reflect the on-disk paths qBittorrent will expect.
-			if root != "" && (len(pathParts) == 0 || pathParts[0] != root) {
+			//
+			// The comparison runs before the empty-component mapping below, or a torrent named
+			// "_" whose paths start with an empty component would lose one level.
+			if root == "" || len(pathParts) == 0 || pathParts[0] != root {
 				pathParts = append([]string{root}, pathParts...)
+			}
+			for j, part := range pathParts {
+				pathParts[j] = pathutil.TorrentPathComponent(part)
 			}
 			tf := TorrentFile{
 				Path:   path.Join(pathParts...),

@@ -110,6 +110,14 @@ For each configured scan directory, qui:
 6. Downloads torrent files and matches their file lists against what's on disk.
 7. If a match is found, adds the torrent to the target qBittorrent instance.
 
+:::note Categories + AutoTMM
+Dir Scan adds torrents using an explicit `savepath` to point qBittorrent at the existing files on disk. That forces **AutoTMM off** for Dir Scan injections.
+
+Dir Scan categories come only from **Dir Scan → Default Category** and per-directory **Category override**. Cross-Seed → Rules category modes (affix / indexer / custom) do not apply to Dir Scan.
+
+If you later enable AutoTMM on an injected torrent, qBittorrent may relocate files based on its default save path + category rules.
+:::
+
 :::info
 Torznab searches run through the shared scheduler at background priority, so they queue behind interactive, RSS, and completion cross-seed work.
 
@@ -124,6 +132,8 @@ Dir Scan maintains a FileID index (inode + device on Unix) to track files alread
 - Torrents whose infohash already exists in qBittorrent
 
 This avoids redundant searches and duplicate additions.
+
+If a torrent is removed from qBittorrent (for example, by an automation rule that removes torrents with missing files), its files are no longer tracked in the index. The next scan of whichever directory contains those files will treat them as new searchees and search indexers for them again.
 
 ### Recheck Behavior
 
@@ -159,14 +169,23 @@ Open **Dir Scan > Settings**:
 
 | Setting | Description |
 |---------|-------------|
-| Match Mode | `Strict` matches by filename + size. `Flexible` matches by size only. |
-| Size Tolerance (%) | Allows small size differences when matching. |
+| Match Mode | `Strict` matches by filename + exact file size. `Flexible` ignores filenames for primary matching, but matched files must still have the same exact file size. |
+| Size Tolerance (%) | Allows small differences in total torrent size when filtering candidates before file matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
+| Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
+| Download missing files | Downloads files not found on disk for partial matches. Required for season packs and partial releases in hardlink/reflink mode. Enabled by default. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
+
+In practice:
+
+- **Strict** is best when filenames on disk are still close to the release layout.
+- **Flexible** is best for renamed libraries, but it still requires exact file-size matches for the files it pairs.
+- **Size Tolerance** only affects which search results are considered based on **total torrent size**. It does **not** allow per-file size mismatches.
+- Flexible single-file matches may still be rejected when the candidate lacks corroborating title or external ID evidence. This prevents false positives when an indexer falls back from ID-based search to plain title search.
 
 ### "Max searchees per run" explained
 
@@ -175,9 +194,27 @@ This setting limits how many **top-level folders/files** Dir Scan will process i
 - If your directory is a TV root like `/mnt/storage/media/tv`, then each **show folder** is one searchee (for example `Show.Name/`, `Another.Show/`).
 - If your directory is a movies root like `/mnt/storage/media/movies`, then each **movie folder** is one searchee (for example `Movie.Title (2024)/`, `Another.Movie (2023)/`).
 
-So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run (so already-final files won't be reprocessed). See [Incremental progress and resets](#incremental-progress-and-resets).
+So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run. The next run rechecks the directory, skips already-final files, and retries unfinished work. See [Incremental progress and resets](#incremental-progress-and-resets).
 
 This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
+
+### "Only process items changed within the last (days)" explained
+
+This setting reduces tracker/API load by excluding stale content before search begins.
+
+- Movies/music are included only when the item's newest video/audio file is within the cutoff.
+- TV is evaluated at the season/episode work-item level so one fresh episode does not pull an entire older show back in.
+- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only. With [Skip individual episodes](#skip-individual-episodes) on, there is no episode-level fallback, so the season pack stays in scope as long as its newest episode is within the cutoff.
+- Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
+- The timestamp used is filesystem **modified time (mtime)** from video/audio files only, not subtitles, extras, release date, or qBittorrent add time.
+- Webhook-triggered scans ignore the cutoff entirely and trust the webhook path as the freshness signal.
+- `0` disables age filtering.
+
+Example with `7` days:
+
+- `Movie.2024/` has only an `.srt` updated yesterday while the `.mkv` is old -> skipped.
+- `Show.Name/Season 01/` has one fresh episode and nine old ones -> only the fresh episode stays in scope.
+- `Old.Show.S01/` has all episode files older than 7 days -> skipped.
 
 ## Directories
 
@@ -191,7 +228,16 @@ Each scan directory has its own configuration:
 | Category override | Overrides the global Default Category for this directory. |
 | Additional tags | Added on top of the global Dir Scan tags. |
 | Scan Interval (minutes) | How often to rescan (minimum 60 minutes, default 1440 = 24 hours). |
+| Skip individual episodes | The scan does not search single TV episodes. See [Skip individual episodes](#skip-individual-episodes). |
 | Enabled | Enable/disable without deleting the configuration. |
+
+### Skip individual episodes
+
+Off by default. When it is on, the scan does not search single TV episodes. It searches the season pack that the episodes make together instead. Movies, music, and other content are not affected.
+
+A season pack search needs two or more episodes of the same show and season. The scan groups these episodes across the whole searchee, not per subfolder. If a folder holds episodes from more than one season, the scan makes no pack for those seasons. The scan does not search an episode that cannot make a season pack.
+
+This option does not affect specials (season 0) or absolute episode numbers.
 
 ## Operational Behavior
 
@@ -201,9 +247,32 @@ Only one scan runs per directory at a time. If a scheduled scan triggers while a
 
 ### Incremental progress and resets
 
-Dir Scan persists per-file progress and skips unchanged searchees whose files are already in a final state (matched/no match/already seeding/in qBittorrent). This makes scans resumable across restarts.
+Dir Scan persists per-file progress and skips unchanged searchees whose files are already in a final state (matched/no match/already seeding/in qBittorrent).
 
-If you want to force a directory to be re-processed from scratch, use **Reset Scan Progress** for that directory in the UI. This clears the tracked file state for that directory.
+This is **not** an exact checkpoint resume. When you start a new run after canceling or restarting qui, Dir Scan:
+
+- rechecks the directory from the top
+- keeps finished files skipped if they are unchanged
+- retries unfinished or errored files
+
+From a user perspective, this behaves like **restart with preserved progress**, not “continue from the exact file where it stopped.”
+
+### New indexers reopen "no match" files
+
+Each "no match" file records which indexers were enabled when the search ran. When you enable an indexer that is not in that record, the next scan searches the file again. You do not need to reset anything. An indexer that was already in the record does not trigger a retry, because the file was searched against it before.
+
+A search only marks a file as "no match" when every indexer it asked answered. If some indexers were down or rate-limited, the file stays pending and the next scan retries it.
+
+Files marked "no match" on older qui versions have no recorded indexer set. They stay skipped until you requeue them (see below).
+
+### Retry Unmatched vs Reset Scan Progress
+
+Both buttons sit on the directory details card, next to the run history.
+
+- **Retry Unmatched** resets only "no match" files to pending. Matched and already-seeding files keep their state. Use this after you add an indexer and want old "no match" files searched again.
+- **Reset Scan Progress** deletes all tracked file state for the directory. The next scan re-processes everything, including files that already matched. Use this only when you want a full redo.
+
+Neither button starts a scan. Trigger a scan with **Scan Now**, or wait for the next scheduled run.
 
 ### Scheduled vs manual scans
 
@@ -211,6 +280,81 @@ If you want to force a directory to be re-processed from scratch, use **Reset Sc
 - **Manual scans** can be triggered from the UI at any time via the "Scan Now" button.
 
 Both types can be canceled from the UI while running.
+
+The UI keeps the **last 10 run entries** per directory. Older run rows are pruned automatically.
+
+### Webhook trigger
+
+You can trigger a scan automatically when Sonarr, Radarr, Lidarr, or Readarr imports content. The webhook endpoint natively understands *arr webhook payloads — no custom scripts needed.
+
+```http
+POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
+```
+
+qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against the Dir Scan **Directory Path** values configured in qui, and uses the provided path itself as the scan root. It does not use qBittorrent path prefixes for this lookup. On success, the response includes `runId`, `directoryId`, `directoryPath`, and `scanRoot`.
+
+Each Dir Scan directory can also define **Allowed Download Clients**. When set, native *arr webhook scans only run if the webhook `downloadClient` matches one of those names. Leave the list empty to accept all clients. Matching is case-insensitive and trims surrounding whitespace. Direct simple-mode `{"path": ...}` callers are not filtered by download client.
+
+#### Setting up in Sonarr / Radarr
+
+1. Go to **Settings → Connect → Add → Webhook**.
+2. Set **Name** to something like `qui Dir Scan`.
+3. Under **Notification Triggers**, enable **On File Import**. Optionally enable **On File Upgrade** if you also want scans after upgrades. In Sonarr, **On Import Complete** also works.
+4. Set **Webhook URL** to:
+   ```text
+   http://your-qui-host:7476/api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
+   ```
+5. Set **Method** to `POST`.
+6. Leave **Username** and **Password** empty (auth is handled by the API key in the URL).
+7. Click **Test** or **Save**. The built-in **Test** action is accepted as a no-op health check and does not start a scan.
+
+The same steps apply to Lidarr and Readarr.
+
+:::tip
+The webhook uses query-param API key authentication (`?apikey=...`), the same pattern as the cross-seed webhook. You can also use the `X-API-Key` header instead.
+:::
+
+#### How path matching works
+
+qui uses longest-prefix matching against the configured Dir Scan **Directory Path** values to choose which directory settings apply. The actual scan root is the path from the webhook payload. For example, if you have directories configured for `/data/media/movies` and `/data/media/tv`, and Sonarr sends `series.path: "/data/media/tv/Show Name"`, qui matches `/data/media/tv` and scans `/data/media/tv/Show Name`.
+
+In split-mount setups, the *arr app must send the same library path that qui sees on disk. If Sonarr/Radarr uses a different mount path than qui, the webhook will not find a matching directory.
+
+#### Response codes
+
+| Status Code | Meaning |
+|-------------|---------|
+| `200` | Webhook accepted but skipped by directory filters. Example: `{"skipped": true, "reason": "download client not allowed"}` |
+| `202` | Scan accepted. If the directory is idle, qui starts the run immediately. If a webhook scan is already running for that directory, qui keeps one follow-up queued run and merges later webhook paths into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
+| `204` | Test webhook accepted. No scan started |
+| `400` | Invalid JSON payload, or no supported path field was found in the request body |
+| `404` | No enabled directory matches the path in the payload |
+| `409` | Request conflicts with directory state, such as multiple matching directories |
+| `500` | Internal server error — scan could not be started due to an internal failure |
+
+If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request or require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
+
+Webhook-triggered scans also ignore the global age cutoff. This avoids false skips when Sonarr/Radarr imports files that preserve old filesystem mtimes.
+
+#### Allowed download clients
+
+Use **Allowed Download Clients** on a Dir Scan directory when only specific Sonarr/Radarr clients should trigger scans for that path.
+
+- Leave it empty to allow all webhook clients.
+- Add exact client names as shown in Sonarr or Radarr, such as `SABnzbd`, `NZBGet`, or `qBittorrent`.
+- Matching is case-insensitive and ignores leading/trailing whitespace.
+- If the webhook is otherwise valid but the client is missing or not allowed, qui returns `200` and skips starting a scan.
+- Direct simple-mode callers using `{"path": ...}` bypass this filter because they do not provide *arr download client metadata.
+
+#### Simple mode
+
+You can also call the webhook directly with a plain path (useful for scripts or other tools):
+
+```bash
+curl -X POST "http://localhost:7476/api/dir-scan/webhook/scan?apikey=YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/data/media/movies/Movie Name (2024)"}'
+```
 
 ### Scan phases
 
@@ -230,13 +374,21 @@ If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Sca
 - Builds a link tree matching the incoming torrent's layout.
 - Adds the torrent pointing at that tree (`contentLayout=Original`). Full matches use `skip_checking=true`; partial matches allow qBittorrent to verify existing data and download missing files safely into the link tree.
 
+:::note
+Partial matches in link tree mode (hardlink or reflink) require **Download missing files** to be enabled in Dir Scan settings. Without it, partial link tree injections are rejected.
+:::
+
 See:
-- [Hardlink Mode](hardlink-mode)
-- [Link Directories](link-directories)
+- [Hardlink Mode](./hardlink-mode.md)
+- [Link Directories](./link-directories.md)
 
 ### Fallback to regular mode
 
 When link-tree creation fails (hardlinking across filesystems, permission issues), Dir Scan falls back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate fails.
+
+Filesystem fallback adds the torrent against the matched source files instead of the link-tree directory, so qui requires a full 100% recheck before auto-resume. If **Skip recheck** is enabled, the fallback candidate is skipped.
+
+For partial or otherwise non-perfect fallback matches, qui runs piece-boundary protection before adding the torrent. This fallback check is always enforced, even when **Skip piece boundary safety check** is enabled for regular reuse mode.
 
 ## Scanning Your *arr Library
 
@@ -284,4 +436,4 @@ Click a run to see details including failure reasons for individual items.
 - Indexers may throttle requests. Check **Scheduler Activity** on the Indexers page.
 - Consider reducing scan frequency or limiting to fewer indexers.
 
-For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](troubleshooting).
+For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](./troubleshooting.md).

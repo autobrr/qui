@@ -8,26 +8,29 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/dirscan"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
 	"github.com/autobrr/qui/internal/web/swagger"
@@ -40,6 +43,7 @@ type routeKey struct {
 
 var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                            {},
+	{Method: http.MethodGet, Path: "/api/stream"}:                                                   {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                      {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                      {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                   {},
@@ -50,6 +54,7 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/automations"}:                       {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations"}:                      {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/apply"}:                {},
+	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/dry-run"}:              {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/preview"}:              {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/automations/validate-regex"}:       {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/order"}:                 {},
@@ -58,12 +63,28 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/activity"}:           {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:           {},
 	{Method: http.MethodPut, Path: "/api/instances/{instanceId}/automations/{ruleID}"}:              {},
+	{Method: http.MethodGet, Path: "/api/application/info"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/tracker-customizations"}:                                   {},
 	{Method: http.MethodPost, Path: "/api/tracker-customizations"}:                                  {},
 	{Method: http.MethodPut, Path: "/api/tracker-customizations/{id}"}:                              {},
 	{Method: http.MethodDelete, Path: "/api/tracker-customizations/{id}"}:                           {},
 	{Method: http.MethodGet, Path: "/api/dashboard-settings"}:                                       {},
 	{Method: http.MethodPut, Path: "/api/dashboard-settings"}:                                       {},
+}
+
+func TestNewServerRegistersStreamManagerAsSyncSink(t *testing.T) {
+	clientPool := &qbittorrent.ClientPool{}
+
+	server := NewServer(&Dependencies{
+		Config:     &config.AppConfig{Config: &domain.Config{BaseURL: "/"}},
+		ClientPool: clientPool,
+	})
+
+	require.NotNil(t, server.streamManager, "expected stream manager to be initialized")
+
+	sink := getClientPoolSyncEventSink(t, clientPool)
+	require.NotNil(t, sink, "expected client pool to have a sync sink registered")
+	require.Same(t, server.streamManager, sink, "stream manager should be registered as sync sink")
 }
 
 func TestAllEndpointsDocumented(t *testing.T) {
@@ -93,15 +114,10 @@ func newTestDependencies(t *testing.T) *Dependencies {
 
 	sessionManager := scs.New()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "api-server")
 
 	authService := auth.NewService(db)
-	_, err = authService.SetupUser(context.Background(), "test-user", "password123")
+	_, err := authService.SetupUser(context.Background(), "test-user", "password123")
 	if err != nil && !errors.Is(err, models.ErrUserAlreadyExists) {
 		require.NoError(t, err)
 	}
@@ -110,6 +126,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	require.NoError(t, err)
 
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
+	notificationTargetStore := models.NewNotificationTargetStore(db)
+	notificationService := notifications.NewService(notificationTargetStore, &models.InstanceStore{}, log.Logger)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
@@ -119,6 +137,7 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		nil,
 		nil,
 		trackerCustomizationStore,
+		nil,
 	)
 
 	return &Dependencies{
@@ -142,6 +161,9 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		AutomationStore:           models.NewAutomationStore(db),
 		TrackerCustomizationStore: trackerCustomizationStore,
 		DashboardSettingsStore:    models.NewDashboardSettingsStore(db),
+		FilterViewStore:           models.NewFilterViewStore(db),
+		NotificationTargetStore:   notificationTargetStore,
+		NotificationService:       notificationService,
 		DirScanService:            dirScanService,
 	}
 }
@@ -236,7 +258,6 @@ func normalizeRoutePath(path string) (string, bool) {
 
 	path = strings.ReplaceAll(path, "{instanceID}", "{instanceId}")
 	path = strings.ReplaceAll(path, "{runID}", "{runId}")
-	path = strings.ReplaceAll(path, "{licenseKey}", "{licenseKey}")
 
 	return path, true
 }
@@ -274,4 +295,22 @@ func formatRoutes(routes []routeKey) string {
 		lines[i] = fmt.Sprintf("%s %s", route.Method, route.Path)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func getClientPoolSyncEventSink(t *testing.T, pool *qbittorrent.ClientPool) qbittorrent.SyncEventSink {
+	t.Helper()
+
+	value := reflect.ValueOf(pool).Elem().FieldByName("syncEventSink")
+	if !value.IsValid() {
+		t.Fatalf("client pool does not expose syncEventSink field")
+	}
+
+	exposed := reflect.NewAt(value.Type(), unsafe.Pointer(value.UnsafeAddr())).Elem()
+	if exposed.IsNil() {
+		return nil
+	}
+
+	sink, ok := exposed.Interface().(qbittorrent.SyncEventSink)
+	require.True(t, ok, "unexpected sink type stored on client pool")
+	return sink
 }

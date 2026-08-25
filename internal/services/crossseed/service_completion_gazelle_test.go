@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,10 +12,10 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	_ "modernc.org/sqlite"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // testQuerier wraps sql.DB to implement dbinterface.Querier for store tests.
@@ -77,6 +76,7 @@ func (s *staticInstanceStore) List(_ context.Context) ([]*models.Instance, error
 type completionGazelleSyncMock struct {
 	torrent         qbt.Torrent
 	getTorrentsHits int
+	exportHits      int
 }
 
 func (m *completionGazelleSyncMock) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -101,6 +101,7 @@ func (m *completionGazelleSyncMock) GetTorrentFilesBatch(_ context.Context, _ in
 }
 
 func (m *completionGazelleSyncMock) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	m.exportHits++
 	return nil, "", "", nil
 }
 
@@ -116,8 +117,8 @@ func (m *completionGazelleSyncMock) GetAppPreferences(context.Context, int) (qbt
 	return qbt.AppPreferences{}, nil
 }
 
-func (m *completionGazelleSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (m *completionGazelleSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *completionGazelleSyncMock) BulkAction(context.Context, int, []string, string) error {
@@ -172,7 +173,8 @@ func (m *completionGazelleSyncMock) CreateCategory(context.Context, int, string,
 }
 
 func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the test stubs the package-level findGazelleMatch.
+	stubGazelleMatchLookup(t)
 
 	db, err := sql.Open("sqlite", "file:completion_gazelle_guard?mode=memory&cache=shared")
 	if err != nil {
@@ -191,6 +193,8 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 			exclude_categories_json TEXT NOT NULL,
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
+			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
+			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL
 		);
 	`)
@@ -201,8 +205,8 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	_, err = q.ExecContext(context.Background(), `
 		INSERT INTO instance_crossseed_completion_settings (
 			instance_id, enabled, categories_json, tags_json,
-			exclude_categories_json, exclude_tags_json, indexer_ids_json, updated_at
-		) VALUES (1, 1, '[]', '[]', '[]', '[]', '[]', ?);
+			exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, updated_at
+		) VALUES (1, 1, '[]', '[]', '[]', '[]', '[]', 0, ?);
 	`, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("insert completion settings: %v", err)
@@ -211,10 +215,11 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 	completionStore := models.NewInstanceCrossSeedCompletionStore(q)
 
 	src := qbt.Torrent{
-		Hash:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		Name:     "test (2026) [FLAC]",
-		Tracker:  "https://flacsfor.me/announce",
-		Progress: 1.0,
+		Hash:         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Name:         "test (2026) [FLAC]",
+		Tracker:      "https://flacsfor.me/announce",
+		Progress:     1.0,
+		CompletionOn: 123,
 	}
 
 	syncMock := &completionGazelleSyncMock{torrent: src}
@@ -242,14 +247,10 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 }
 
 func TestExecuteCompletionSearch_GazelleSourceSkipsTorznab(t *testing.T) {
-	t.Parallel()
+	// Not parallel: the test stubs the package-level findGazelleMatch.
+	stubGazelleMatchLookup(t)
 
-	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-search.db")
-	db, err := database.New(dbPath)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := testdb.NewMigratedSQLite(t, "completion-gazelle-search")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -336,12 +337,7 @@ func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUnd
 	t.Parallel()
 
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "completion-gazelle-undecryptable.db")
-	db, err := database.New(dbPath)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	db := testdb.NewMigratedSQLite(t, "completion-gazelle-undecryptable")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -399,5 +395,45 @@ func TestExecuteCompletionSearch_GazelleSourceFallsBackToTorznabWhenTargetKeyUnd
 	}
 	if !strings.Contains(err.Error(), fallbackErrMsg) {
 		t.Fatalf("expected torznab fallback error %q, got: %v", fallbackErrMsg, err)
+	}
+}
+
+func TestExecuteCompletionSearch_NonGazelleSourceSkipsGazellePresearch(t *testing.T) {
+	t.Parallel()
+
+	src := qbt.Torrent{
+		Hash:     "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+		Name:     "Velocity.Circuit.Chronicles.S03.1080p.WEB-DL.DDP5.1.H.264-TESTGRP",
+		Tracker:  "https://tracker.example/announce",
+		Progress: 1.0,
+	}
+	syncMock := &completionGazelleSyncMock{torrent: src}
+	const expectedTorznabErr = "expected torznab non-gazelle path"
+
+	svc := &Service{
+		instanceStore:  &staticInstanceStore{inst: &models.Instance{ID: 1, Name: "main"}},
+		syncManager:    syncMock,
+		jackettService: newFailingJackettService(errors.New(expectedTorznabErr)),
+		releaseCache:   NewReleaseCache(),
+	}
+
+	err := svc.executeCompletionSearch(context.Background(), 1, &src, &models.CrossSeedAutomationSettings{
+		GazelleEnabled:         true,
+		OrpheusAPIKey:          "ops-key",
+		FindIndividualEpisodes: true,
+	}, &models.InstanceCrossSeedCompletionSettings{
+		InstanceID: 1,
+		Enabled:    true,
+		IndexerIDs: []int{999},
+	})
+	if err == nil {
+		t.Fatalf("expected torznab failure to verify non-gazelle completion path execution")
+	}
+	if !strings.Contains(err.Error(), expectedTorznabErr) {
+		t.Fatalf("expected torznab error %q, got: %v", expectedTorznabErr, err)
+	}
+
+	if syncMock.exportHits != 0 {
+		t.Fatalf("expected non-gazelle completion path to skip gazelle pre-search, got %d export attempts", syncMock.exportHits)
 	}
 }

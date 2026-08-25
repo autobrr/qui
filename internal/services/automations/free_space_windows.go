@@ -90,4 +90,3 @@ func GetFreeSpaceBytesForSource(
 		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)
 	}
 }
-

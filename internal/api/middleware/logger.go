@@ -14,6 +14,8 @@ import (
 	"github.com/autobrr/qui/pkg/redact"
 )
 
+var slowRequestThreshold = time.Second
+
 // Logger logs HTTP requests using a local zerolog logger
 func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -30,29 +32,35 @@ func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 				if rec := recover(); rec != nil {
 					l.Error().
 						Str("type", "error").
-						Timestamp().
 						Interface("recover_info", rec).
 						Bytes("debug_stack", debug.Stack()).
 						Msg("log system error")
 					http.Error(ww, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 
-				// log end request
-				l.Trace().
-					Str("type", "access").
-					Timestamp().
-					Fields(map[string]any{
-						"remote_ip":  r.RemoteAddr,
-						"url":        redact.ProxyPath(r.URL.Path),
-						"proto":      r.Proto,
-						"method":     r.Method,
-						"user_agent": r.Header.Get("User-Agent"),
-						"status":     ww.Status(),
-						"latency_ms": float64(t2.Sub(t1).Nanoseconds()) / 1000000.0,
-						"bytes_in":   r.Header.Get("Content-Length"),
-						"bytes_out":  ww.BytesWritten(),
-					}).
-					Msg("incoming_request")
+				// Server errors and slow requests carry the evidence a report
+				// needs, so they surface at the default level. Healthy traffic
+				// stays at TRACE.
+				latency := t2.Sub(t1)
+				level := zerolog.TraceLevel
+				if ww.Status() >= http.StatusInternalServerError || latency > slowRequestThreshold {
+					level = zerolog.DebugLevel
+				}
+
+				// Guarded so the redaction and header lookups are skipped when off.
+				if e := l.WithLevel(level); e.Enabled() {
+					e.Str("type", "access").
+						Str("remote_ip", r.RemoteAddr).
+						Str("url", redact.ProxyPath(r.URL.EscapedPath())).
+						Str("proto", r.Proto).
+						Str("method", r.Method).
+						Str("user_agent", r.Header.Get("User-Agent")).
+						Int("status", ww.Status()).
+						Float64("latency_ms", float64(latency.Nanoseconds())/1000000.0).
+						Str("bytes_in", r.Header.Get("Content-Length")).
+						Int("bytes_out", ww.BytesWritten()).
+						Msg("incoming_request")
+				}
 			}()
 
 			next.ServeHTTP(ww, r)

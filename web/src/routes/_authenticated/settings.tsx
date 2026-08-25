@@ -9,6 +9,7 @@ import { z } from "zod"
 
 const settingsSearchSchema = z.object({
   tab: z.enum([
+    "application",
     "instances",
     "indexers",
     "search-cache",
@@ -16,6 +17,7 @@ const settingsSearchSchema = z.object({
     "client-api",
     "api",
     "external-programs",
+    "notifications",
     "datetime",
     "themes",
     "security",

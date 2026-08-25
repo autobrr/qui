@@ -23,6 +23,7 @@ import type { Category } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { Folder, Search, X } from "lucide-react"
 import { memo, useDeferredValue, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
 
 interface CategorySubmenuProps {
@@ -48,6 +49,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
   currentCategory,
   useSubcategories = false,
 }: CategorySubmenuProps) {
+  const { t } = useTranslation("torrents")
   // Store callback in ref so it doesn't trigger re-renders
   const onSetCategoryRef = useRef(onSetCategory)
   onSetCategoryRef.current = onSetCategory
@@ -169,7 +171,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
     <Sub>
       <SubTrigger disabled={isPending}>
         <Folder className="mr-4 h-4 w-4" />
-        Set Category
+        {t("categorySubmenu.setCategory")}
       </SubTrigger>
       <SubContent className="p-0 min-w-[240px]">
         {/* Remove Category option */}
@@ -179,7 +181,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         >
           <X className="mr-2 h-4 w-4" />
           <span className="text-muted-foreground italic">
-            (No category) {hashCount > 1 ? `(${hashCount})` : ""}
+            {hashCount > 1 ? t("categorySubmenu.noCategoryBatch", { count: hashCount }) : t("categorySubmenu.noCategory")}
           </span>
         </MenuItem>
 
@@ -194,7 +196,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
                   <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search categories..."
+                      placeholder={t("categorySubmenu.searchCategories")}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={(e) => e.stopPropagation()}
@@ -253,7 +255,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
               )
             ) : (
               <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                No categories found
+                {t("categorySubmenu.noCategoriesFound")}
               </div>
             )}
           </div>

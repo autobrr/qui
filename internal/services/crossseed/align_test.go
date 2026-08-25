@@ -13,6 +13,62 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
+func TestExactUsableFilePairing(t *testing.T) {
+	normalizer := stringutils.NewDefaultNormalizer()
+	t.Run("renamed unique sizes", func(t *testing.T) {
+		require.True(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/audio.flac", Size: 100}},
+			qbt.TorrentFiles{{Name: "old/one.bin", Size: 200}, {Name: "old/two.bin", Size: 100}},
+			normalizer,
+		))
+	})
+
+	t.Run("ambiguous duplicate sizes", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/one.mkv", Size: 200}, {Name: "new/two.mkv", Size: 200}},
+			qbt.TorrentFiles{{Name: "old/a.bin", Size: 200}, {Name: "old/b.bin", Size: 200}},
+			normalizer,
+		))
+	})
+
+	t.Run("duplicate sizes with exact paths", func(t *testing.T) {
+		files := qbt.TorrentFiles{{Name: "one.mkv", Size: 200}, {Name: "two.mkv", Size: 200}}
+		require.True(t, exactUsableFilePairing(files, files, normalizer))
+	})
+
+	t.Run("ignored sidecars do not need partners", func(t *testing.T) {
+		require.True(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/info.nfo", Size: 10}},
+			qbt.TorrentFiles{{Name: "old/video.bin", Size: 200}},
+			normalizer,
+		))
+	})
+
+	t.Run("requires usable files", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "info.nfo", Size: 10}},
+			qbt.TorrentFiles{{Name: "other.nfo", Size: 10}},
+			normalizer,
+		))
+	})
+
+	t.Run("rejects a size mismatch", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}},
+			qbt.TorrentFiles{{Name: "old/video.mkv", Size: 201}},
+			normalizer,
+		))
+	})
+
+	t.Run("rejects an extra usable file", func(t *testing.T) {
+		require.False(t, exactUsableFilePairing(
+			qbt.TorrentFiles{{Name: "new/video.mkv", Size: 200}, {Name: "new/extra.mkv", Size: 100}},
+			qbt.TorrentFiles{{Name: "old/video.mkv", Size: 200}},
+			normalizer,
+		))
+	})
+}
+
 func TestBuildFileRenamePlan_MovieRelease(t *testing.T) {
 	t.Parallel()
 
@@ -137,7 +193,7 @@ func TestBuildFileRenamePlan_AmbiguousSizes(t *testing.T) {
 
 	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 
-	require.Len(t, plan, 0, "ambiguous entries should not be renamed automatically")
+	require.Empty(t, plan, "ambiguous entries should not be renamed automatically")
 	require.ElementsMatch(t, []string{"Disc/Track01.flac", "Disc/Track02.flac"}, unmatched)
 }
 
@@ -154,12 +210,12 @@ func TestDetectCommonRoot(t *testing.T) {
 		{Name: "NoRootA.mkv"},
 		{Name: "Root/B.mkv"},
 	}
-	require.Equal(t, "", detectCommonRoot(files))
+	require.Empty(t, detectCommonRoot(files))
 
 	files = qbt.TorrentFiles{
 		{Name: "SingleFile.mkv"},
 	}
-	require.Equal(t, "", detectCommonRoot(files))
+	require.Empty(t, detectCommonRoot(files))
 }
 
 func TestAdjustPathForRootRename(t *testing.T) {
@@ -487,9 +543,10 @@ func TestHasExtraSourceFiles(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			// Files with different normalized keys are extras even if sizes match.
-			// a.mkv and x.mkv have different normalized keys, so they don't match.
-			name: "different normalized keys same size - has extras",
+			// Renamed content matches when each file is the sole candidate of its
+			// size: same policy as the rename plan and link modes (#2272). Ambiguous
+			// same-size buckets and ignored sidecars still count as extras (below).
+			name: "different normalized keys same size - sole candidate matches",
 			sourceFiles: qbt.TorrentFiles{
 				{Name: "Movie/a.mkv", Size: 1000},
 				{Name: "Movie/b.mkv", Size: 2000},
@@ -498,7 +555,7 @@ func TestHasExtraSourceFiles(t *testing.T) {
 				{Name: "Movie/x.mkv", Size: 1000},
 				{Name: "Movie/y.mkv", Size: 2000},
 			},
-			expectedResult: true, // a.mkv ≠ x.mkv, b.mkv ≠ y.mkv by normalized key
+			expectedResult: false, // each pairs by unique size via the size-only fallback
 		},
 		{
 			name: "candidate has more files than source - no extras",
@@ -667,6 +724,7 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 		candidateFiles   qbt.TorrentFiles
 		expectedMismatch bool
 		expectedFiles    []string
+		expectedDetails  []contentFileSizeMismatch
 	}{
 		{
 			name: "identical single files - no mismatch",
@@ -689,6 +747,14 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			},
 			expectedMismatch: true,
 			expectedFiles:    []string{"movie.mkv"},
+			expectedDetails: []contentFileSizeMismatch{
+				{
+					SourceFile:    "movie.mkv",
+					SourceSize:    1000000000,
+					CandidateFile: "movie.mkv",
+					CandidateSize: 1000000001,
+				},
+			},
 		},
 		{
 			name: "same scene release different naming - no mismatch",
@@ -754,6 +820,14 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			},
 			expectedMismatch: true,
 			expectedFiles:    []string{"Show.S01E02.mkv"},
+			expectedDetails: []contentFileSizeMismatch{
+				{
+					SourceFile:    "Show.S01E02.mkv",
+					SourceSize:    600000001,
+					CandidateFile: "Show S01E02.mkv",
+					CandidateSize: 600000000,
+				},
+			},
 		},
 		{
 			name:             "empty source files - no mismatch",
@@ -951,6 +1025,14 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			},
 			expectedMismatch: true, // Fallback: largest files have different sizes
 			expectedFiles:    []string{"TrackerA.Release.Name.mkv"},
+			expectedDetails: []contentFileSizeMismatch{
+				{
+					SourceFile:    "TrackerA.Release.Name.mkv",
+					SourceSize:    5000000000,
+					CandidateFile: "Completely.Different.Name.mkv",
+					CandidateSize: 5000000001,
+				},
+			},
 		},
 		{
 			name: "source has extra video file - no mismatch (extras allowed)",
@@ -1025,12 +1107,16 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, normalizer)
+			hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, normalizer)
 			require.Equal(t, tt.expectedMismatch, hasMismatch)
+			mismatchedFiles := contentFileSizeMismatchSourceFiles(fileSizeMismatches)
 			if tt.expectedFiles != nil {
 				require.ElementsMatch(t, tt.expectedFiles, mismatchedFiles)
 			} else {
 				require.Empty(t, mismatchedFiles)
+			}
+			if tt.expectedDetails != nil {
+				require.ElementsMatch(t, tt.expectedDetails, fileSizeMismatches)
 			}
 		})
 	}

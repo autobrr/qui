@@ -10,9 +10,10 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *testing.T) {
@@ -27,8 +28,8 @@ func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *te
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Name:        "WWE.NXT.2025.12.02.1080p.WEB.h264-KYR",
 				SavePath:    "/downloads",
 				ContentPath: "/downloads",
@@ -46,7 +47,57 @@ func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *te
 		nil,
 	)
 
-	require.Equal(t, "", matchType)
+	require.Empty(t, matchType)
+}
+
+// A title-rescued cross-seed keeps the retitled name and lands in its own
+// hardlink directory, so content path, name, and strict release matching all
+// miss it. Field case: "Filter Cross-Seeds" and the details panel Cross-Seed
+// tab showed nothing for a byte-identical pair.
+func TestDetermineLocalMatchType_RetitledExactSizeMatchesOnRelease(t *testing.T) {
+	svc := newTestService()
+
+	const size = int64(5_313_384_582)
+	source := &qbt.Torrent{
+		Name:        "Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-CONDITION",
+		SavePath:    "/downloads",
+		ContentPath: "/downloads/Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-CONDITION",
+		TotalSize:   size,
+	}
+	newCandidate := func(name string, totalSize int64) *qbittorrent.CrossInstanceTorrentView {
+		return &qbittorrent.CrossInstanceTorrentView{
+			TorrentView: &qbittorrent.TorrentView{
+				Torrent: &qbt.Torrent{
+					Name:        name,
+					SavePath:    "/downloads/cross-seeds/aither",
+					ContentPath: "/downloads/cross-seeds/aither/" + name,
+					TotalSize:   totalSize,
+				},
+			},
+		}
+	}
+	matchType := func(candidate *qbittorrent.CrossInstanceTorrentView) string {
+		return svc.determineLocalMatchType(
+			source,
+			svc.releaseCache.Parse(source.Name),
+			candidate,
+			strings.ToLower(normalizePath(source.ContentPath)),
+			nil,
+		)
+	}
+
+	rescued := newCandidate("cdn-spermageddon.2024.norwegian.1080p.bluray.x264.mkv", size)
+	require.Equal(t, matchTypeRelease, matchType(rescued))
+
+	// Same title difference without byte-identical size stays unmatched.
+	require.Empty(t, matchType(newCandidate("cdn-spermageddon.2024.norwegian.1080p.bluray.x264.mkv", size-1)))
+
+	// Retitled AND differently encoded reaches the new strategy and must still
+	// be rejected there. The two cases below never reach it: they fail the
+	// strict matcher on group and resolution rather than on the title.
+	require.Empty(t, matchType(newCandidate("cdn-spermageddon.2024.norwegian.720p.bluray.x264.mkv", size)))
+	require.Empty(t, matchType(newCandidate("Spermageddon.2024.NORWEGIAN.1080p.BluRay.x264-OTHERGRP", size)))
+	require.Empty(t, matchType(newCandidate("Spermageddon.2024.NORWEGIAN.720p.BluRay.x264-CONDITION", size)))
 }
 
 func TestDetermineLocalMatchType_ContentPathMatchWhenSpecific(t *testing.T) {
@@ -61,8 +112,8 @@ func TestDetermineLocalMatchType_ContentPathMatchWhenSpecific(t *testing.T) {
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Name:        "Different.Name.Same.Data.1080p.WEB.h264-OTHER",
 				SavePath:    "/downloads",
 				ContentPath: "/downloads/Some.Source.Release.1080p.WEB.h264-GROUP.mkv",
@@ -125,8 +176,8 @@ func (m *localMatchSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt
 	return qbt.AppPreferences{}, nil
 }
 
-func (m *localMatchSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
-	return nil
+func (m *localMatchSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *localMatchSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
@@ -199,8 +250,8 @@ func TestDetermineLocalMatchType_AmbiguousDir_DifferentFiles_NoMatch(t *testing.
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Movie.B.2024.720p.WEB-OTHER",
 				SavePath:    "/downloads",
@@ -226,7 +277,7 @@ func TestDetermineLocalMatchType_AmbiguousDir_DifferentFiles_NoMatch(t *testing.
 		matchCtx,
 	)
 
-	require.Equal(t, "", matchType, "Different file lists should not match as content_path")
+	require.Empty(t, matchType, "Different file lists should not match as content_path")
 }
 
 func TestDetermineLocalMatchType_AmbiguousDir_OverlappingFiles_Match(t *testing.T) {
@@ -261,8 +312,8 @@ func TestDetermineLocalMatchType_AmbiguousDir_OverlappingFiles_Match(t *testing.
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "TV.Show.S01.1080p.WEB-OTHER",
 				SavePath:    "/downloads",
@@ -322,8 +373,8 @@ func TestDetermineLocalMatchType_AmbiguousDir_PartialOverlap_BelowThreshold(t *t
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Other.Release.2023-OTHER",
 				SavePath:    "/downloads",
@@ -350,7 +401,7 @@ func TestDetermineLocalMatchType_AmbiguousDir_PartialOverlap_BelowThreshold(t *t
 	)
 
 	// 10% overlap is below 90% threshold
-	require.Equal(t, "", matchType, "10% file overlap should not match as content_path")
+	require.Empty(t, matchType, "10% file overlap should not match as content_path")
 }
 
 func TestCandidateSharesSourceFiles_ExactMatch(t *testing.T) {
@@ -490,8 +541,8 @@ func TestDetermineLocalMatchType_EmptyCandidateFiles_StoresError(t *testing.T) {
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Movie.2023.1080p.WEB-OTHER",
 				SavePath:    "/downloads",
@@ -553,8 +604,8 @@ func TestDetermineLocalMatchType_CandidateFetchError_StoresError(t *testing.T) {
 	}
 
 	candidate := &qbittorrent.CrossInstanceTorrentView{
-		TorrentView: qbittorrent.TorrentView{
-			Torrent: qbt.Torrent{
+		TorrentView: &qbittorrent.TorrentView{
+			Torrent: &qbt.Torrent{
 				Hash:        candidateHash,
 				Name:        "Movie.2023.1080p.WEB-OTHER",
 				SavePath:    "/downloads",
