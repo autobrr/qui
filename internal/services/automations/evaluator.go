@@ -1358,6 +1358,11 @@ func (ctx *EvalContext) PersistFreeSpaceSourceState() {
 	state.HardlinkSignaturesToClear = ctx.HardlinkSignaturesToClear
 }
 
+// isCompletedTorrent returns true if a torrent counts as completed towards the seeding pool.
+func isCompletedTorrent(t qbt.Torrent) bool {
+	return !(t.Progress < 1.0 && t.AmountLeft > 0)
+}
+
 // TargetSeedSizePoolState tracks the seeding pool size and projection for a rule.
 type TargetSeedSizePoolState struct {
 	InitialPoolBytes   int64
@@ -1368,12 +1373,19 @@ type TargetSeedSizePoolState struct {
 
 // CheckAndApplyTargetSeedSizeDelete checks whether a torrent deletion satisfies target seed size constraints,
 // and if allowed, decrements the remaining pool bytes.
+// If the torrent is incomplete (not part of the completed seeding pool), it does not affect the target seed size accounting and is allowed.
 func (ctx *EvalContext) CheckAndApplyTargetSeedSizeDelete(ruleID int, torrent qbt.Torrent) bool {
 	if ctx == nil || ctx.TargetSeedSizeStates == nil {
 		return true
 	}
 	state, ok := ctx.TargetSeedSizeStates[ruleID]
 	if !ok || state == nil {
+		return true
+	}
+
+	// Incomplete torrents were not counted in the initial seeding pool,
+	// so deleting them does not reduce the seeding pool and does not affect target accounting.
+	if !isCompletedTorrent(torrent) {
 		return true
 	}
 

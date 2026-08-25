@@ -2686,3 +2686,112 @@ func TestProcessTorrents_TargetSeedSize_WithConditionFilters(t *testing.T) {
 	require.Contains(t, states, "t3")
 	require.NotContains(t, states, "t1")
 }
+
+func TestProcessTorrents_TargetSeedSize_IncompleteTorrentsDoNotAffectPool(t *testing.T) {
+	const GB = int64(1024 * 1024 * 1024)
+
+	t.Run("minimal mode deletes incomplete torrent without reducing completed pool", func(t *testing.T) {
+		// Completed pool = 1020 GB, Target = 1000 GB (Minimal mode).
+		// - t_inc: 100 GB incomplete. If counted as completed, 1020 - 100 = 920 < 1000 would be rejected.
+		//          Since it's incomplete, it is deleted and pool remains 1020 GB.
+		// - t_comp: 15 GB completed. 1020 - 15 = 1005 >= 1000 -> deleted, remaining pool becomes 1005 GB.
+		torrents := []qbt.Torrent{
+			{Hash: "t_inc", Name: "Incomplete", Size: 100 * GB, AddedOn: 100, Progress: 0.5, AmountLeft: 50 * GB, Tracker: "https://tracker.example.com/announce"},
+			{Hash: "t_comp", Name: "Complete", Size: 15 * GB, AddedOn: 200, Progress: 1.0, AmountLeft: 0, Tracker: "https://tracker.example.com/announce"},
+		}
+
+		rule := &models.Automation{
+			ID:             1,
+			Name:           "Minimal Target Seed Size",
+			Enabled:        true,
+			TrackerPattern: "tracker.example.com",
+			TargetSeedSize: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: 1000 * GB,
+				Mode:        models.TargetSeedSizeModeMinimal,
+			},
+			Conditions: &models.ActionConditions{
+				Delete: &models.DeleteAction{
+					Enabled: true,
+					Mode:    models.DeleteModeKeepFiles,
+					Condition: &models.RuleCondition{
+						Field:    models.FieldAddedOn,
+						Operator: models.OperatorGreaterThan,
+						Value:    "0",
+					},
+				},
+			},
+		}
+
+		sm := qbittorrent.NewSyncManager(nil, nil)
+		evalCtx := &EvalContext{
+			TargetSeedSizeStates: map[int]*TargetSeedSizePoolState{
+				1: {
+					InitialPoolBytes:   1020 * GB,
+					RemainingPoolBytes: 1020 * GB,
+					TargetBytes:        1000 * GB,
+					Mode:               models.TargetSeedSizeModeMinimal,
+				},
+			},
+		}
+
+		states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+
+		require.Len(t, states, 2, "expected both incomplete and completed torrents marked for deletion")
+		require.Contains(t, states, "t_inc")
+		require.Contains(t, states, "t_comp")
+		require.Equal(t, 1005*GB, evalCtx.TargetSeedSizeStates[1].RemainingPoolBytes)
+	})
+
+	t.Run("maximum mode does not stop prematurely due to incomplete torrents", func(t *testing.T) {
+		// Completed pool = 1050 GB, Target = 1000 GB (Maximum mode).
+		// - t_inc: 100 GB incomplete. Deleted, but does not decrement 1050 GB completed pool.
+		// - t_comp: 60 GB completed. 1050 > 1000 -> deleted, remaining pool becomes 990 GB <= 1000.
+		torrents := []qbt.Torrent{
+			{Hash: "t_inc", Name: "Incomplete", Size: 100 * GB, AddedOn: 100, Progress: 0.3, AmountLeft: 70 * GB, Tracker: "https://tracker.example.com/announce"},
+			{Hash: "t_comp", Name: "Complete", Size: 60 * GB, AddedOn: 200, Progress: 1.0, AmountLeft: 0, Tracker: "https://tracker.example.com/announce"},
+		}
+
+		rule := &models.Automation{
+			ID:             1,
+			Name:           "Maximum Target Seed Size",
+			Enabled:        true,
+			TrackerPattern: "tracker.example.com",
+			TargetSeedSize: &models.TargetSeedSizeConfig{
+				Enabled:     true,
+				TargetBytes: 1000 * GB,
+				Mode:        models.TargetSeedSizeModeMaximum,
+			},
+			Conditions: &models.ActionConditions{
+				Delete: &models.DeleteAction{
+					Enabled: true,
+					Mode:    models.DeleteModeKeepFiles,
+					Condition: &models.RuleCondition{
+						Field:    models.FieldAddedOn,
+						Operator: models.OperatorGreaterThan,
+						Value:    "0",
+					},
+				},
+			},
+		}
+
+		sm := qbittorrent.NewSyncManager(nil, nil)
+		evalCtx := &EvalContext{
+			TargetSeedSizeStates: map[int]*TargetSeedSizePoolState{
+				1: {
+					InitialPoolBytes:   1050 * GB,
+					RemainingPoolBytes: 1050 * GB,
+					TargetBytes:        1000 * GB,
+					Mode:               models.TargetSeedSizeModeMaximum,
+				},
+			},
+		}
+
+		states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+
+		require.Len(t, states, 2, "expected both incomplete and completed torrents marked for deletion")
+		require.Contains(t, states, "t_inc")
+		require.Contains(t, states, "t_comp")
+		require.Equal(t, 990*GB, evalCtx.TargetSeedSizeStates[1].RemainingPoolBytes)
+	})
+}

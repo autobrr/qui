@@ -997,7 +997,7 @@ func calculateInitialPoolSize(rule *models.Automation, torrents []qbt.Torrent, s
 	var total int64
 	for _, t := range torrents {
 		// Only completed torrents count towards seed size pool
-		if t.Progress < 1.0 && t.AmountLeft > 0 {
+		if !isCompletedTorrent(t) {
 			continue
 		}
 		if rule != nil && rule.TrackerPattern != "" && rule.TrackerPattern != "*" {
