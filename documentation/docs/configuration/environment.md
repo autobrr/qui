@@ -65,6 +65,12 @@ QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .c
 
 `QUI__CUSTOM_THEMES_DIR` sets where [custom themes](../features/custom-themes.md) are read from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker) and is created automatically. Loading custom themes requires premium access.
 
+### UI preferences
+
+qui stores UI preferences, such as table columns, column sizes, density, filters, and theme, in the database. The browser maintains a local copy to apply these preferences before loading the database values.
+
+If these preferences reset after a restart, ensure that qui uses a persistent database. For SQLite, keep `qui.db` in persistent storage. In Docker, persist `/config` or the directory set by `QUI__DATA_DIR`.
+
 ## Database
 
 ```bash
