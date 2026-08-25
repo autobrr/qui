@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/avast/retry-go"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -320,19 +322,29 @@ func isContextStopped(err error) bool {
 	return strings.Contains(msg, "context canceled")
 }
 
-// isDeadlineExpired recognizes request timeouts even after retry wrappers flatten the sentinel.
+// isDeadlineExpired recognizes request timeouts even after wrappers flatten the sentinel.
 // A deadline is ambiguous: usually a saturated instance working through its
 // queue, but it can also be a dial that never completed (a blackholed host).
-// The two are indistinguishable here: go-qbt's retry wrapper drops the error
-// chain, and a caller deadline firing before the 30s dial timeout yields the
-// same "context deadline exceeded" text either way. We deliberately classify
-// both as slow: stale data with a staleness badge beats backoff and 502s.
+// A caller deadline firing before the 30s dial timeout yields the same
+// "context deadline exceeded" text either way. We deliberately classify both
+// as slow: stale data with a staleness badge beats backoff and 502s.
 // Hard failures (refused, DNS, EOF, a bare "dial tcp: i/o timeout") are
 // unambiguous evidence of a dead instance and stay unmatched here.
 func isDeadlineExpired(err error) bool {
 	if err == nil {
 		return false
 	}
+
+	var retryErr retry.Error
+	if errors.As(err, &retryErr) {
+		for _, r := range slices.Backward(retryErr) {
+			if r != nil {
+				err = r
+				break
+			}
+		}
+	}
+
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}

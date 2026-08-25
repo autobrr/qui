@@ -15,6 +15,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/avast/retry-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -602,6 +603,8 @@ func TestIsDeadlineExpired(t *testing.T) {
 		{name: "nil", err: nil, want: false},
 		{name: "deadline sentinel", err: fmt.Errorf("could not get main data: %w", context.DeadlineExceeded), want: true},
 		{name: "flattened retry text", err: errors.New("All attempts fail: #1: Get \"http://gluetun:8080/api/v2/app/webapiVersion\": context deadline exceeded"), want: true},
+		{name: "mixed retry ending in hard failure", err: retry.Error{context.DeadlineExceeded, errors.New("connection refused")}, want: false},
+		{name: "mixed retry ending in deadline", err: retry.Error{errors.New("connection refused"), context.DeadlineExceeded}, want: true},
 		{name: "net/http client timeout", err: errors.New("Get \"http://x\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"), want: true},
 		{name: "cancellation", err: context.Canceled, want: false},
 		{name: "connection refused", err: errors.New("dial tcp 127.0.0.1:1: connect: connection refused"), want: false},
