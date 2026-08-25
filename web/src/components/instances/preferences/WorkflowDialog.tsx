@@ -3892,8 +3892,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     step="any"
                                     value={formState.targetSeedSizeValue ?? ""}
                                     onChange={(e) => {
-                                      const val = e.target.value === "" ? undefined : parseFloat(e.target.value)
-                                      setFormState(prev => ({ ...prev, targetSeedSizeValue: val }))
+                                      const val = e.target.value
+                                      const parsed = parseFloat(val)
+                                      setFormState(prev => ({
+                                        ...prev,
+                                        targetSeedSizeValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.targetSeedSizeValue),
+                                      }))
                                     }}
                                     placeholder="1"
                                     className="h-8 text-xs w-32"
