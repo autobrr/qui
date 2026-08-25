@@ -255,9 +255,18 @@ func (i *RTorrentImport) Migrate() error {
 				newFastResume.QbtHasRootFolder = 1
 			} else {
 				// d.directory_base.set layout: files live directly in the
-				// directory without the torrent-name folder
+				// directory without the torrent-name folder. qBt-contentLayout
+				// only applies to newly added torrents, so a restored torrent
+				// needs mapped_files to strip the name folder from each path
 				newFastResume.QbtContentLayout = "NoSubfolder"
 				newFastResume.QbtHasRootFolder = 0
+
+				files := metaInfo.UpvertedFiles()
+				mapped := make([]string, 0, len(files))
+				for _, f := range files {
+					mapped = append(mapped, strings.Join(f.BestPath(), "/"))
+				}
+				newFastResume.MappedFiles = mapped
 			}
 		} else {
 			newFastResume.HasFiles = false
