@@ -1653,7 +1653,7 @@
       "trackerMatchExclude": "Ausschließen",
       "targetSeedSize": {
         "title": "Ziel-Seed-Größe",
-        "description": "Entfernt automatisch berechtigte abgeschlossene Torrents, um eine angestrebte Gesamt-Seed-Größe zu erreichen und beizubehalten. Nützlich für Tracker, bei denen ein bestimmter Pool (z. B. 1 TB) Vorteile wie globales Freeleech aktiviert.",
+        "description": "Entfernt automatisch berechtigte abgeschlossene Torrents, um eine angestrebte Gesamt-Seed-Größe zu erreichen und beizubehalten. Nützlich für Tracker, bei denen ein bestimmter Pool (z. B. 1 TiB) Vorteile wie globales Freeleech aktiviert.",
         "targetSize": "Zielgröße",
         "mode": "Durchsetzungsmodus",
         "modeHelp": "Der Minimalmodus stellt sicher, dass der verbleibende Pool niemals unter das Ziel fällt (Kandidaten, die das Gesamtergebnis darunter senken würden, werden übersprungen). Der Maximalmodus entfernt Kandidaten, bis der Pool das Ziel erreicht oder unterschreitet.",

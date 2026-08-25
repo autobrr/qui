@@ -1421,7 +1421,7 @@
       },
       "targetSeedSize": {
         "title": "Cílová velikost seedování",
-        "description": "Automaticky odebírat způsobilé dokončené torrenty k dosažení a udržení cílové celkové velikosti seedování. Užitečné pro trackery, kde udržování velikosti fondu (např. 1 TB) aktivuje výhody jako globální freeleech.",
+        "description": "Automaticky odebírat způsobilé dokončené torrenty k dosažení a udržení cílové celkové velikosti seedování. Užitečné pro trackery, kde udržování velikosti fondu (např. 1 TiB) aktivuje výhody jako globální freeleech.",
         "targetSize": "Cílová velikost",
         "mode": "Režim vynucení",
         "modeHelp": "Minimální režim zajistí, že zbývající fond nikdy neklesne pod cíl (přeskočí kandidáty, kteří by způsobili pokles pod cíl). Maximální režim odebírá torrenty, dokud fond není na cíli nebo pod ním.",

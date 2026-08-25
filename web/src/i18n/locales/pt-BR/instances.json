@@ -1653,7 +1653,7 @@
       "trackerMatchExclude": "Ignorará Totalmente (Excluir)",
       "targetSeedSize": {
         "title": "Tamanho alvo de seed",
-        "description": "Remove automaticamente torrents concluídos elegíveis para atingir e manter um tamanho total de seed alvo. Útil para rastreadores onde manter um pool de seed (ex.: 1 TB) ativa benefícios como freeleech global.",
+        "description": "Remove automaticamente torrents concluídos elegíveis para atingir e manter um tamanho total de seed alvo. Útil para rastreadores onde manter um pool de seed (ex.: 1 TiB) ativa benefícios como freeleech global.",
         "targetSize": "Tamanho alvo",
         "mode": "Modo de aplicação",
         "modeHelp": "O modo mínimo garante que o pool restante nunca fique abaixo do alvo (ignorando candidatos que fariam o total cair abaixo do alvo). O modo máximo remove candidatos até que o pool fique igual ou abaixo do alvo.",

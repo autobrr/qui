@@ -1421,7 +1421,7 @@
       },
       "targetSeedSize": {
         "title": "Target seed size",
-        "description": "Automatically remove eligible completed torrents to reach and maintain a targeted total seeding size. Useful for trackers where maintaining a pool size (e.g., 1 TB) activates site perks like global freeleech.",
+        "description": "Automatically remove eligible completed torrents to reach and maintain a targeted total seeding size. Useful for trackers where maintaining a pool size (e.g., 1 TiB) activates site perks like global freeleech.",
         "targetSize": "Target size",
         "mode": "Enforcement mode",
         "modeHelp": "Minimal mode ensures the remaining pool never drops below the target (skipping candidates that would drop total below target). Maximum mode removes candidates until the pool is at or below the target.",

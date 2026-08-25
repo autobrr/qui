@@ -485,7 +485,7 @@ type FormState = {
   // Target seed size settings
   targetSeedSizeEnabled: boolean
   targetSeedSizeValue: number | undefined
-  targetSeedSizeUnit: "GB" | "TB"
+  targetSeedSizeUnit: "GiB" | "TiB"
   targetSeedSizeMode: "minimal" | "maximum"
   // Free space source settings (for FREE_SPACE conditions)
   exprFreeSpaceSourceType: "qbittorrent" | "path"
@@ -561,7 +561,7 @@ const emptyFormState: FormState = {
   exprDeleteAtomic: "",
   targetSeedSizeEnabled: false,
   targetSeedSizeValue: undefined,
-  targetSeedSizeUnit: "TB",
+  targetSeedSizeUnit: "TiB",
   targetSeedSizeMode: "minimal",
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
@@ -1066,24 +1066,24 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         let targetSeedSizeEnabled = false
         let targetSeedSizeValue: number | undefined = undefined
-        let targetSeedSizeUnit: "GB" | "TB" = "TB"
+        let targetSeedSizeUnit: "GiB" | "TiB" = "TiB"
         let targetSeedSizeMode: "minimal" | "maximum" = "minimal"
 
         if (rule.targetSeedSize) {
           targetSeedSizeEnabled = rule.targetSeedSize.enabled ?? false
           if (rule.targetSeedSize.targetBytes > 0) {
             const bytes = rule.targetSeedSize.targetBytes
-            const TB = 1024 * 1024 * 1024 * 1024
-            const GB = 1024 * 1024 * 1024
-            if (bytes >= TB && bytes % TB === 0) {
-              targetSeedSizeValue = bytes / TB
-              targetSeedSizeUnit = "TB"
-            } else if (bytes % GB === 0) {
-              targetSeedSizeValue = bytes / GB
-              targetSeedSizeUnit = "GB"
+            const TiB = 1024 * 1024 * 1024 * 1024
+            const GiB = 1024 * 1024 * 1024
+            if (bytes >= TiB && bytes % TiB === 0) {
+              targetSeedSizeValue = bytes / TiB
+              targetSeedSizeUnit = "TiB"
+            } else if (bytes % GiB === 0) {
+              targetSeedSizeValue = bytes / GiB
+              targetSeedSizeUnit = "GiB"
             } else {
-              targetSeedSizeValue = Math.round((bytes / GB) * 100) / 100
-              targetSeedSizeUnit = "GB"
+              targetSeedSizeValue = Math.round((bytes / GiB) * 100) / 100
+              targetSeedSizeUnit = "GiB"
             }
           }
           targetSeedSizeMode = rule.targetSeedSize.mode ?? "minimal"
@@ -1635,7 +1635,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     let targetSeedSize: AutomationInput["targetSeedSize"]
     if (input.deleteEnabled && input.targetSeedSizeEnabled && input.targetSeedSizeValue && input.targetSeedSizeValue > 0) {
-      const multiplier = input.targetSeedSizeUnit === "TB" ? 1024 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024
+      const multiplier = input.targetSeedSizeUnit === "TiB" ? 1024 * 1024 * 1024 * 1024 : 1024 * 1024 * 1024
       const targetBytes = Math.round(input.targetSeedSizeValue * multiplier)
       targetSeedSize = {
         enabled: true,
@@ -3904,14 +3904,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   />
                                   <Select
                                     value={formState.targetSeedSizeUnit}
-                                    onValueChange={(val: "GB" | "TB") => setFormState(prev => ({ ...prev, targetSeedSizeUnit: val }))}
+                                    onValueChange={(val: "GiB" | "TiB") => setFormState(prev => ({ ...prev, targetSeedSizeUnit: val }))}
                                   >
                                     <SelectTrigger className="h-8 text-xs w-20">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="TB">TB</SelectItem>
-                                      <SelectItem value="GB">GB</SelectItem>
+                                      <SelectItem value="TiB">TiB</SelectItem>
+                                      <SelectItem value="GiB">GiB</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>

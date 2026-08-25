@@ -1653,7 +1653,7 @@
       "trackerMatchExclude": "Escludi",
       "targetSeedSize": {
         "title": "Dimensione target di seeding",
-        "description": "Rimuove automaticamente i torrent completati idonei per raggiungere e mantenere una dimensione totale di seeding target. Utile per i tracker in cui mantenere una determinata dimensione di pool (es. 1 TB) attiva vantaggi come il freeleech globale.",
+        "description": "Rimuove automaticamente i torrent completati idonei per raggiungere e mantenere una dimensione totale di seeding target. Utile per i tracker in cui mantenere una determinata dimensione di pool (es. 1 TiB) attiva vantaggi come il freeleech globale.",
         "targetSize": "Dimensione target",
         "mode": "Modalità di applicazione",
         "modeHelp": "La modalità minima garantisce che il pool rimanente non scenda mai sotto il target (saltando i candidati che farebbero scendere il totale sotto il target). La modalità massima rimuove i candidati finché il pool non è pari o inferiore al target.",
