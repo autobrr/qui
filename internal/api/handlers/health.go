@@ -19,17 +19,8 @@ func NewHealthHandler() *HealthHandler {
 func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Perform actual health checks
-	//health := h.checkOverallHealth()
-
-	//if health.Status == "ok" {
-	//	w.WriteHeader(http.StatusOK)
-	//} else {
-	//	w.WriteHeader(http.StatusServiceUnavailable)
-	//}
-
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (h *HealthHandler) HandleReady(w http.ResponseWriter, r *http.Request) {
@@ -38,10 +29,10 @@ func (h *HealthHandler) HandleReady(w http.ResponseWriter, r *http.Request) {
 	// Check if service is ready to serve traffic
 	if h.isReady() {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ready"})
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "not ready"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "not ready"})
 	}
 }
 
@@ -51,15 +42,15 @@ func (h *HealthHandler) HandleLiveness(w http.ResponseWriter, r *http.Request) {
 	// Check if service is alive (should restart if this fails)
 	if h.isAlive() {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "alive"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "alive"})
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"status": "dead"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "dead"})
 	}
 }
 
 // Helper methods for actual health checking
-//func (h *HealthHandler) checkOverallHealth() HealthResponse {
+// func (h *HealthHandler) checkOverallHealth() HealthResponse {
 //	checks := make(map[string]CheckResult)
 //	overallStatus := "ok"
 //
@@ -92,7 +83,7 @@ func (h *HealthHandler) HandleLiveness(w http.ResponseWriter, r *http.Request) {
 
 func (h *HealthHandler) isReady() bool {
 	// Check if all dependencies are available and service can handle requests
-	//if h.db != nil && h.db.Ping() != nil {
+	// if h.db != nil && h.db.Ping() != nil {
 	//	return false
 	//}
 	// Add other readiness checks

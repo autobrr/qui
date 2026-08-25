@@ -11,7 +11,7 @@ import (
 // TorznabItem represents a single RSS item with helper methods for accessing torznab attributes
 type TorznabItem struct {
 	Title           string
-	Guid            string
+	GUID            string
 	Link            string
 	Comments        string
 	PubDate         string
@@ -259,7 +259,7 @@ func (r *Rss) ToTorznabItems() []TorznabItem {
 	for _, item := range r.Channel.Item {
 		ti := TorznabItem{
 			Title:           item.Title,
-			Guid:            item.Guid,
+			GUID:            item.GUID,
 			Link:            item.Link,
 			Comments:        item.Comments,
 			PubDate:         item.PubDate,

@@ -548,7 +548,7 @@ func TestRecoverIncompleteRuns(t *testing.T) {
 	// Verify no incomplete runs remain
 	remainingIncomplete, err := store.FindIncompleteRuns(ctx)
 	require.NoError(t, err)
-	require.Len(t, remainingIncomplete, 0, "should have no incomplete runs after recovery")
+	require.Empty(t, remainingIncomplete, "should have no incomplete runs after recovery")
 }
 
 func TestCheckMissedBackups(t *testing.T) {

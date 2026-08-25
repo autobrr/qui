@@ -628,7 +628,7 @@ func TestSplitHostUserinfo(t *testing.T) {
 			wantHost: "http://qbit.example.com:8080",
 		},
 		{
-			// #nosec G101 -- fake credentials exercising userinfo stripping.
+			// Fake credentials exercising userinfo stripping.
 			name:     "userinfo stripped and returned",
 			host:     "https://proxyuser:proxypass@qbit.example.com",
 			wantHost: "https://qbit.example.com",

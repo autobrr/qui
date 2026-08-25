@@ -5,6 +5,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -118,7 +119,7 @@ func ClientAPIKeyMiddleware(store *models.ClientAPIKeyStore) func(http.Handler) 
 			ctx := r.Context()
 			clientAPIKey, err := store.ValidateKey(ctx, apiKey)
 			if err != nil {
-				if err == models.ErrClientAPIKeyNotFound {
+				if errors.Is(err, models.ErrClientAPIKeyNotFound) {
 					log.Warn().
 						Str("user_agent", userAgentOrUnknown(r)).
 						Msg("Invalid client API key")

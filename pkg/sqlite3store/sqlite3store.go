@@ -58,7 +58,7 @@ func (p *SQLite3Store) FindCtx(ctx context.Context, token string) (b []byte, exi
 	if err != nil {
 		return nil, false, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, "SELECT data FROM sessions WHERE token = ? AND expiry > ?", token, nowJulianDay())
 	err = row.Scan(&b)
@@ -151,7 +151,7 @@ func (p *SQLite3Store) AllCtx(ctx context.Context) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rows, err := tx.QueryContext(ctx, "SELECT token, data FROM sessions WHERE expiry > ?", nowJulianDay())
 	if err != nil {
@@ -224,7 +224,7 @@ func (p *SQLite3Store) deleteExpired(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE expiry < ?", nowJulianDay())
 	if err != nil {

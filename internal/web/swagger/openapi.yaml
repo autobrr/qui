@@ -3187,6 +3187,50 @@ paths:
         '500':
           description: Failed to save theme settings
 
+  /api/client-settings:
+    get:
+      tags:
+        - Client Settings
+      summary: Get stored client settings
+      description: Get every stored frontend user setting as a key-value map of raw strings. The backend does not parse values.
+      responses:
+        '200':
+          description: All stored client settings
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '500':
+          description: Failed to load client settings
+    put:
+      tags:
+        - Client Settings
+      summary: Store client settings
+      description: Upsert the submitted settings. The payload is a partial key-value map; keys not present stay untouched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Settings stored; echoes the submitted map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Invalid payload, empty map, empty key, or body over 1 MiB
+        '500':
+          description: Failed to save client settings
+
   /api/torrents/export:
     post:
       tags:
@@ -7796,6 +7840,76 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        decisionTrace:
+          $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
+
+    CrossSeedSearchDecisionTrace:
+      type: object
+      description: Explains why the Torznab passes accepted or rejected candidates. Absent when no Torznab search ran.
+      properties:
+        sourceSize:
+          type: integer
+          format: int64
+        tolerancePercent:
+          type: number
+        totalResults:
+          type: integer
+        sizeFiltered:
+          type: integer
+        releaseFiltered:
+          type: integer
+        lateContentFiltered:
+          type: integer
+        duplicateFiltered:
+          type: integer
+        finalMatches:
+          type: integer
+        rejectionCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        rejectedCandidates:
+          type: array
+          description: Capped at 5 candidates per rejection reason; rejectionCounts holds the full totals.
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchRejectedCandidate'
+        indexers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchIndexerOutcome'
+
+    CrossSeedSearchRejectedCandidate:
+      type: object
+      properties:
+        indexer:
+          type: string
+        indexerId:
+          type: integer
+        title:
+          type: string
+        size:
+          type: integer
+          format: int64
+        reason:
+          type: string
+
+    CrossSeedSearchIndexerOutcome:
+      type: object
+      properties:
+        indexerId:
+          type: integer
+        status:
+          type: string
+          enum:
+            - searched
+            - not_covered
+            - error
+            - excluded
+        detail:
+          type: string
+        candidates:
+          type: integer
+          description: Raw results this indexer contributed before filtering.
 
     CrossSeedApplySelection:
       type: object

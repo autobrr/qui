@@ -88,7 +88,7 @@ func (c *Client) Ping(ctx context.Context) error {
 
 	// Validate we got a valid response with app name
 	if status.AppName == "" {
-		return fmt.Errorf("invalid response: missing appName")
+		return errors.New("invalid response: missing appName")
 	}
 
 	return nil

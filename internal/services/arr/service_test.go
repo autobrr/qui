@@ -615,10 +615,10 @@ func TestDebugInstanceResult_WithError(t *testing.T) {
 
 func TestContentType_Constants(t *testing.T) {
 	// Verify content type constant values
-	assert.Equal(t, ContentType("movie"), ContentTypeMovie)
-	assert.Equal(t, ContentType("tv"), ContentTypeTV)
-	assert.Equal(t, ContentType("anime"), ContentTypeAnime)
-	assert.Equal(t, ContentType("unknown"), ContentTypeUnknown)
+	assert.Equal(t, ContentTypeMovie, ContentType("movie"))
+	assert.Equal(t, ContentTypeTV, ContentType("tv"))
+	assert.Equal(t, ContentTypeAnime, ContentType("anime"))
+	assert.Equal(t, ContentTypeUnknown, ContentType("unknown"))
 }
 
 func TestDefaultTTL_Values(t *testing.T) {

@@ -741,7 +741,7 @@ func (s *searchScheduler) dispatchTasks() {
 		// Only do this once (check ctxCancel == nil to avoid creating multiple contexts).
 		if item.task.ctx.Err() == context.DeadlineExceeded && item.task.ctxCancel == nil {
 			timeout := s.getExecutionTimeout(item)
-			item.task.ctx, item.task.ctxCancel = context.WithTimeout(context.Background(), timeout)
+			item.task.ctx, item.task.ctxCancel = context.WithTimeout(context.Background(), timeout) //nolint:fatcontext // each queued task gets its own fresh context once, guarded by the ctxCancel == nil check, so nothing nests
 		}
 
 		// If we already gave this task a fresh context and it expired too, fail it.

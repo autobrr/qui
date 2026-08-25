@@ -671,6 +671,25 @@
     "block": "封鎖",
     "addedToBlocklist": "已新增到封鎖清單",
     "missingInstance": "封鎖清單缺少實例",
+    "trace": {
+      "title": "搜尋明細",
+      "summaryBadge": "{{total}} 個候選，{{matches}} 個匹配項",
+      "summary": "共傳回 {{total}} 個候選。被拒絕：發布資訊不符 {{release}} 個，大小不符 {{size}} 個，內容過濾 {{late}} 個，重複 {{duplicates}} 個。剩餘 {{matches}} 個匹配項。",
+      "indexersHeading": "索引器",
+      "status": {
+        "searched": "已搜尋",
+        "notCovered": "未完成",
+        "error": "錯誤",
+        "excluded": "已排除"
+      },
+      "candidateCount": "{{count}} 個候選",
+      "rejectionsHeading": "被拒絕的候選",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "還有 {{count}} 個相同原因的候選",
+      "copyReport": "複製報告",
+      "copied": "報告已複製到剪貼簿",
+      "copyFailed": "無法複製報告"
+    },
     "scope": {
       "allIndexers": "所有索引器",
       "selectCustom": "自訂選擇",

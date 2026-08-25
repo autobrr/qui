@@ -1358,7 +1358,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches))
+			assert.Len(t, resp.Matches, tt.wantMatchCount)
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation)
 
 			if tt.wantMatchType != "" && tt.wantMatchCount > 0 {
@@ -1675,7 +1675,7 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches))
+			assert.Len(t, resp.Matches, tt.wantMatchCount)
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation)
 
 			if tt.wantMatchCount > 0 && len(tt.wantInstanceIDs) > 0 {
@@ -1884,7 +1884,7 @@ func (f *fakeSyncManager) GetTorrents(_ context.Context, instanceID int, filter 
 
 func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	if len(f.files) == 0 {
-		return nil, fmt.Errorf("files not configured")
+		return nil, errors.New("files not configured")
 	}
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
@@ -1932,7 +1932,7 @@ func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int,
 }
 
 func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
-	return nil, fmt.Errorf("GetTorrentProperties not implemented in fakeSyncManager")
+	return nil, errors.New("GetTorrentProperties not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
@@ -1944,19 +1944,19 @@ func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[s
 }
 
 func (f *fakeSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
-	return fmt.Errorf("BulkAction not implemented in fakeSyncManager")
+	return errors.New("BulkAction not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) RenameTorrent(_ context.Context, _ int, _, _ string) error {
-	return fmt.Errorf("RenameTorrent not implemented in fakeSyncManager")
+	return errors.New("RenameTorrent not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
-	return fmt.Errorf("RenameTorrentFile not implemented in fakeSyncManager")
+	return errors.New("RenameTorrentFile not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ string) error {
-	return fmt.Errorf("RenameTorrentFolder not implemented in fakeSyncManager")
+	return errors.New("RenameTorrentFolder not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) SetTags(_ context.Context, _ int, _ []string, _ string) error {
@@ -1975,7 +1975,7 @@ func (f *fakeSyncManager) ExtractDomainFromURL(string) string {
 }
 
 func (f *fakeSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
-	return nil, fmt.Errorf("GetQBittorrentSyncManager not implemented in fakeSyncManager")
+	return nil, errors.New("GetQBittorrentSyncManager not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -2153,21 +2153,22 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 		return errors.New("bulk action failed")
 	}
 
-	if action == "pause" {
+	switch action {
+	case "pause":
 		// Pause torrents
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				torrent.State = qbt.TorrentStatePausedDl
 			}
 		}
-	} else if action == "resume" {
+	case "resume":
 		// Resume torrents
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				torrent.State = qbt.TorrentStateDownloading
 			}
 		}
-	} else if action == "recheck" {
+	case "recheck":
 		m.hasRechecked = true
 		m.recheckCount++
 		for _, hash := range hashes {
@@ -2202,11 +2203,11 @@ func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []st
 }
 
 func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
-	return nil, false, fmt.Errorf("not implemented")
+	return nil, false, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
@@ -2220,15 +2221,15 @@ func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[st
 }
 
 func (m *mockRecoverSyncManager) RenameTorrent(context.Context, int, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) SetTags(context.Context, int, []string, string) error {
@@ -2236,7 +2237,7 @@ func (m *mockRecoverSyncManager) SetTags(context.Context, int, []string, string)
 }
 
 func (m *mockRecoverSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
@@ -2244,7 +2245,7 @@ func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
 }
 
 func (m *mockRecoverSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -3113,7 +3114,7 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 
 	// Context cancellation should propagate as an error, not trigger fallback
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
 	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context cancellation")
@@ -3190,7 +3191,7 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 
 	// Context deadline exceeded should propagate as an error, not trigger fallback
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
 	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context deadline exceeded")
@@ -3398,7 +3399,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed, "CanCrossSeed mismatch")
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches), "Match count mismatch")
+			assert.Len(t, resp.Matches, tt.wantMatchCount, "Match count mismatch")
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation, "Recommendation mismatch")
 		})
 	}

@@ -3,80 +3,58 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useMemo, useRef, type SetStateAction } from "react"
 import type { TorrentFilters } from "@/types"
 
-// Safe localStorage wrapper that returns fallback on error
-function safeGetItem(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch (error) {
-    console.error(`Failed to read from localStorage key "${key}":`, error)
-    return null
-  }
+import { useClientSetting } from "@/lib/client-settings"
+
+type GlobalFilters = Pick<TorrentFilters, "status" | "excludeStatus">
+type InstanceFilters = Omit<TorrentFilters, "status" | "excludeStatus">
+
+const DEFAULT_GLOBAL: GlobalFilters = { status: [], excludeStatus: [] }
+const DEFAULT_INSTANCE: InstanceFilters = {
+  categories: [],
+  excludeCategories: [],
+  tags: [],
+  excludeTags: [],
+  trackers: [],
+  excludeTrackers: [],
+  expr: "",
 }
 
-function safeSetItem(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch (error) {
-    console.error(`Failed to write to localStorage key "${key}":`, error)
-  }
-}
+const parseGlobalFilters = (raw: string): GlobalFilters => ({ ...DEFAULT_GLOBAL, ...JSON.parse(raw) })
+
+const parseInstanceFilters = (raw: string): InstanceFilters => ({ ...DEFAULT_INSTANCE, ...JSON.parse(raw) })
 
 export function usePersistedFilters(instanceId: number) {
-  // Initialize state with persisted values immediately
-  const [filters, setFilters] = useState<TorrentFilters>(() => {
-    const global = JSON.parse(safeGetItem("qui-filters-global") || "{}")
-    const instance = JSON.parse(safeGetItem(`qui-filters-${instanceId}`) || "{}")
-
-    return {
-      status: global.status || [],
-      excludeStatus: global.excludeStatus || [],
-      categories: instance.categories || [],
-      excludeCategories: instance.excludeCategories || [],
-      tags: instance.tags || [],
-      excludeTags: instance.excludeTags || [],
-      trackers: instance.trackers || [],
-      excludeTrackers: instance.excludeTrackers || [],
-      expr: instance.expr || "",
-    }
+  const [globalFilters, setGlobalFilters] = useClientSetting<GlobalFilters>("qui-filters-global", {
+    defaultValue: DEFAULT_GLOBAL,
+    parse: parseGlobalFilters,
+  })
+  const [instanceFilters, setInstanceFilters] = useClientSetting<InstanceFilters>(`qui-filters-${instanceId}`, {
+    defaultValue: DEFAULT_INSTANCE,
+    parse: parseInstanceFilters,
   })
 
-  // Load filters when instanceId changes
-  useEffect(() => {
-    const global = JSON.parse(safeGetItem("qui-filters-global") || "{}")
-    const instance = JSON.parse(safeGetItem(`qui-filters-${instanceId}`) || "{}")
+  const filters = useMemo<TorrentFilters>(
+    () => ({ ...globalFilters, ...instanceFilters }),
+    [globalFilters, instanceFilters]
+  )
 
-    setFilters({
-      status: global.status || [],
-      excludeStatus: global.excludeStatus || [],
-      categories: instance.categories || [],
-      excludeCategories: instance.excludeCategories || [],
-      tags: instance.tags || [],
-      excludeTags: instance.excludeTags || [],
-      trackers: instance.trackers || [],
-      excludeTrackers: instance.excludeTrackers || [],
-      expr: instance.expr || "",
-    })
-  }, [instanceId])
+  const filtersRef = useRef(filters)
+  filtersRef.current = filters
 
-  // Save filters when they change
-  useEffect(() => {
-    safeSetItem("qui-filters-global", JSON.stringify({
-      status: filters.status,
-      excludeStatus: filters.excludeStatus,
-    }))
-    safeSetItem(`qui-filters-${instanceId}`, JSON.stringify({
-      categories: filters.categories,
-      excludeCategories: filters.excludeCategories,
-      tags: filters.tags,
-      excludeTags: filters.excludeTags,
-      trackers: filters.trackers,
-      excludeTrackers: filters.excludeTrackers,
-      expr: filters.expr,
-    }))
-  }, [filters, instanceId])
+  const setFilters = useCallback(
+    (next: SetStateAction<TorrentFilters>) => {
+      const resolved = typeof next === "function" ? next(filtersRef.current) : next
+      // Keep every instance-scoped field, including the derived
+      // expandedCategories the sidebar computes for subcategory requests.
+      const { status, excludeStatus, ...instance } = resolved
+      setGlobalFilters({ status, excludeStatus })
+      setInstanceFilters(instance)
+    },
+    [setGlobalFilters, setInstanceFilters]
+  )
 
   return [filters, setFilters] as const
 }

@@ -32,7 +32,7 @@ Before changing cross-module data flow, service boundaries, API routing, or long
 - Full Go suite: `make test` (`go test -race -count=1 -v ./...`)
 - OpenAPI changes under `internal/web/swagger`: run `make test-openapi`
 
-For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first. Skip local full `make test` by default; CI covers it unless requested.
+CI runs `make test` on every push. Run the full suite locally only when asked, or when one change crosses many packages.
 
 ## Lint / Format
 
@@ -91,7 +91,8 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 
 - Keep Superpowers workflow files local and untracked; never add or commit `docs/superpowers/`.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- Keep commits focused; split backend/frontend when practical.
+- Keep commits focused; split backend/frontend when practical. If a feature spans schema, backend service, and web UI, stack PRs: schema + models, then service logic, then UI.
+- Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
 - Fill `.github/pull_request_template.md` into the PR body; `gh pr create --body` does not auto-fill it.

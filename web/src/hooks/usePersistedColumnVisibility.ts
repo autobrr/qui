@@ -4,59 +4,30 @@
  */
 
 import type { ColumnVisibilityState } from "@tanstack/react-table"
-import { useEffect, useState } from "react"
+import { useCallback, useMemo } from "react"
+
+import { useClientSetting, useDropLegacyKey } from "@/lib/client-settings"
+
+const BASE_STORAGE_KEY = "qui-column-visibility"
 
 export function usePersistedColumnVisibility(
   defaultVisibility: ColumnVisibilityState = {},
   instanceKey?: string | number
 ) {
-  const baseStorageKey = "qui-column-visibility"
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
-  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
+  const storageKey = hasInstanceKey ? `${BASE_STORAGE_KEY}:${instanceKey}` : BASE_STORAGE_KEY
 
-  const loadVisibility = (): ColumnVisibilityState => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return parsed as ColumnVisibilityState
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load column visibility from localStorage:", error)
+  useDropLegacyKey(BASE_STORAGE_KEY, hasInstanceKey)
+
+  const defaultsJson = JSON.stringify(defaultVisibility)
+  const defaultValue = useMemo<ColumnVisibilityState>(() => JSON.parse(defaultsJson), [defaultsJson])
+  const parse = useCallback((raw: string): ColumnVisibilityState => {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as ColumnVisibilityState
     }
+    throw new Error("invalid column visibility state")
+  }, [])
 
-    return { ...defaultVisibility }
-  }
-
-  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>(() => loadVisibility())
-
-  useEffect(() => {
-    if (!hasInstanceKey) {
-      return
-    }
-
-    try {
-      localStorage.removeItem(baseStorageKey)
-    } catch (error) {
-      console.error("Failed to clear legacy column visibility state:", error)
-    }
-  }, [hasInstanceKey, baseStorageKey])
-
-  useEffect(() => {
-    setColumnVisibility(loadVisibility())
-    // We only want to reload when the storage key changes (instance switch)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(columnVisibility))
-    } catch (error) {
-      console.error("Failed to save column visibility to localStorage:", error)
-    }
-  }, [columnVisibility, storageKey])
-
-  return [columnVisibility, setColumnVisibility] as const
+  return useClientSetting<ColumnVisibilityState>(storageKey, { defaultValue, parse })
 }

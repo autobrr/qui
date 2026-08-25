@@ -259,7 +259,6 @@ func normalizeRoutePath(path string) (string, bool) {
 
 	path = strings.ReplaceAll(path, "{instanceID}", "{instanceId}")
 	path = strings.ReplaceAll(path, "{runID}", "{runId}")
-	path = strings.ReplaceAll(path, "{licenseKey}", "{licenseKey}")
 
 	return path, true
 }

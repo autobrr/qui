@@ -30,6 +30,7 @@ import type {
   CrossSeedBlocklistEntry,
   CrossSeedInstanceResult,
   CrossSeedQueryDegradedReason,
+  CrossSeedSearchDecisionTrace,
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
@@ -1299,6 +1300,8 @@ class ApiClient {
       cache?: TorznabSearchCacheMetadata
       partial?: boolean
       query_degraded?: CrossSeedQueryDegradedReason
+      // Already camelCase over the wire, like cache.
+      decisionTrace?: CrossSeedSearchDecisionTrace
     }
 
     const response = await this.request<RawSearchResponse>(`/cross-seed/torrents/${instanceId}/${hash}/search`, {
@@ -1356,6 +1359,7 @@ class ApiClient {
       cache: response.cache,
       partial: response.partial ?? undefined,
       queryDegraded: response.query_degraded ?? undefined,
+      decisionTrace: response.decisionTrace,
     }
   }
 
@@ -2063,6 +2067,12 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     })
+  }
+
+  // Client settings (frontend user settings stored in the database as opaque key-value pairs;
+  // writes go through the debounced push queue in lib/client-settings.ts, not this client)
+  async getClientSettings(): Promise<Record<string, string>> {
+    return this.request<Record<string, string>>("/client-settings")
   }
 
   // Preferences endpoints

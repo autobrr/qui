@@ -319,6 +319,12 @@
       "maxActiveTorrentsDescription": "Celkový maximální počet aktivních torrentů",
       "maxCheckingTorrents": "Maximální počet kontrolovaných torrentů",
       "maxCheckingTorrentsDescription": "Maximální počet kontrolovaných aktivních torrentů",
+      "dontCountSlowTorrents": "Nepočítat pomalé torrenty",
+      "dontCountSlowTorrentsDescription": "Pomalé torrenty se nezapočítávají do výše uvedených limitů aktivních torrentů",
+      "slowTorrentDlRateThreshold": "Práh rychlosti stahování (KiB/s)",
+      "slowTorrentUlRateThreshold": "Práh rychlosti odesílání (KiB/s)",
+      "slowTorrentInactiveTimer": "Časovač nečinnosti torrentu (sekundy)",
+      "slowTorrentInactiveTimerDescription": "Jak dlouho musí obě rychlosti zůstat pod prahy, než se torrent považuje za pomalý",
       "validation": {
         "maxActiveDownloads": "Maximální počet aktivních stahování musí být větší než -1",
         "maxActiveUploads": "Maximální počet aktivních odesílání musí být větší než -1",

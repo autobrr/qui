@@ -6,6 +6,7 @@ package filesmanager
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -87,7 +88,7 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 	}
 
 	syncInfoMap, err := s.repo.GetSyncInfoBatch(ctx, instanceID, unique)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, fmt.Errorf("failed to get sync info batch: %w", err)
 	}
 
@@ -205,16 +206,16 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 
 		now := time.Now()
 		cacheKey := newCacheKey(instanceID, hash)
-		//shouldLog := false
+		// shouldLog := false
 
 		s.mu.Lock()
 		if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
 			s.lastCacheLog[cacheKey] = now
-			//shouldLog = true
+			// shouldLog = true
 		}
 		s.mu.Unlock()
 
-		//if shouldLog {
+		// if shouldLog {
 		//	log.Trace().
 		//		Int("instanceID", instanceID).
 		//		Str("hash", hash).
@@ -334,11 +335,7 @@ func cacheIsFresh(info *SyncInfo) bool {
 	// Use a fixed cache duration for simplicity
 	cacheFreshDuration := 5 * time.Minute
 
-	if time.Since(info.LastSyncedAt) > cacheFreshDuration {
-		return false
-	}
-
-	return true
+	return time.Since(info.LastSyncedAt) <= cacheFreshDuration
 }
 
 func convertCachedFiles(cached []CachedFile) qbt.TorrentFiles {

@@ -282,7 +282,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Warm the session by prefetching data in the background
 	// Use a detached context since this should continue even after the HTTP request completes
-	go h.warmSession(context.Background())
+	go h.warmSession(context.Background()) //nolint:gosec // G118: session warm-up must outlive the login request
 
 	RespondJSON(w, http.StatusOK, map[string]any{
 		"message": "Login successful",

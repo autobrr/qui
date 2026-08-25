@@ -61,6 +61,10 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
       max_active_uploads: 0,
       max_active_torrents: 0,
       max_active_checking_torrents: 0,
+      dont_count_slow_torrents: false,
+      slow_torrent_dl_rate_threshold: 2,
+      slow_torrent_ul_rate_threshold: 2,
+      slow_torrent_inactive_timer: 60,
     },
     onSubmit: async ({ value }) => {
       try {
@@ -81,6 +85,10 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
       form.setFieldValue("max_active_uploads", preferences.max_active_uploads)
       form.setFieldValue("max_active_torrents", preferences.max_active_torrents)
       form.setFieldValue("max_active_checking_torrents", preferences.max_active_checking_torrents)
+      form.setFieldValue("dont_count_slow_torrents", preferences.dont_count_slow_torrents)
+      form.setFieldValue("slow_torrent_dl_rate_threshold", preferences.slow_torrent_dl_rate_threshold)
+      form.setFieldValue("slow_torrent_ul_rate_threshold", preferences.slow_torrent_ul_rate_threshold)
+      form.setFieldValue("slow_torrent_inactive_timer", preferences.slow_torrent_inactive_timer)
     }
   }, [preferences, form])
 
@@ -233,6 +241,60 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               )}
             </form.Field>
           </div>
+
+          <form.Field name="dont_count_slow_torrents">
+            {(field) => (
+              <SwitchSetting
+                label={t("preferences.queueManagement.dontCountSlowTorrents")}
+                checked={(field.state.value as boolean) ?? false}
+                onCheckedChange={field.handleChange}
+                description={t("preferences.queueManagement.dontCountSlowTorrentsDescription")}
+              />
+            )}
+          </form.Field>
+
+          <form.Subscribe selector={(state) => state.values.dont_count_slow_torrents}>
+            {(dontCountSlowTorrents) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <form.Field name="slow_torrent_dl_rate_threshold">
+                  {(field) => (
+                    <NumberInputWithUnlimited
+                      label={t("preferences.queueManagement.slowTorrentDlRateThreshold")}
+                      value={(field.state.value as number) ?? 2}
+                      onChange={field.handleChange}
+                      max={2000000}
+                      disabled={!dontCountSlowTorrents}
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="slow_torrent_ul_rate_threshold">
+                  {(field) => (
+                    <NumberInputWithUnlimited
+                      label={t("preferences.queueManagement.slowTorrentUlRateThreshold")}
+                      value={(field.state.value as number) ?? 2}
+                      onChange={field.handleChange}
+                      max={2000000}
+                      disabled={!dontCountSlowTorrents}
+                    />
+                  )}
+                </form.Field>
+
+                <form.Field name="slow_torrent_inactive_timer">
+                  {(field) => (
+                    <NumberInputWithUnlimited
+                      label={t("preferences.queueManagement.slowTorrentInactiveTimer")}
+                      value={(field.state.value as number) ?? 60}
+                      onChange={field.handleChange}
+                      min={1}
+                      description={t("preferences.queueManagement.slowTorrentInactiveTimerDescription")}
+                      disabled={!dontCountSlowTorrents}
+                    />
+                  )}
+                </form.Field>
+              </div>
+            )}
+          </form.Subscribe>
         </div>
       </div>
     </PreferencesFormShell>

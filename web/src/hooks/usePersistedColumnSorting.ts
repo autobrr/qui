@@ -4,58 +4,30 @@
  */
 
 import type { SortingState } from "@tanstack/react-table"
-import { useEffect, useState } from "react"
+import { useCallback, useMemo } from "react"
+
+import { useClientSetting, useDropLegacyKey } from "@/lib/client-settings"
+
+const BASE_STORAGE_KEY = "qui-column-sorting"
 
 export function usePersistedColumnSorting(
   defaultSorting: SortingState = [],
   instanceKey?: string | number
 ) {
-  const baseStorageKey = "qui-column-sorting"
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
-  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
+  const storageKey = hasInstanceKey ? `${BASE_STORAGE_KEY}:${instanceKey}` : BASE_STORAGE_KEY
 
-  const loadSorting = (): SortingState => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed)) {
-          return parsed as SortingState
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load column sorting from localStorage:", error)
+  useDropLegacyKey(BASE_STORAGE_KEY, hasInstanceKey)
+
+  const defaultsJson = JSON.stringify(defaultSorting)
+  const defaultValue = useMemo<SortingState>(() => JSON.parse(defaultsJson), [defaultsJson])
+  const parse = useCallback((raw: string): SortingState => {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed as SortingState
     }
+    throw new Error("invalid column sorting state")
+  }, [])
 
-    return [...defaultSorting]
-  }
-
-  const [sorting, setSorting] = useState<SortingState>(() => loadSorting())
-
-  useEffect(() => {
-    if (!hasInstanceKey) {
-      return
-    }
-
-    try {
-      localStorage.removeItem(baseStorageKey)
-    } catch (error) {
-      console.error("Failed to clear legacy column sorting state:", error)
-    }
-  }, [hasInstanceKey, baseStorageKey])
-
-  useEffect(() => {
-    setSorting(loadSorting())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(sorting))
-    } catch (error) {
-      console.error("Failed to save column sorting to localStorage:", error)
-    }
-  }, [sorting, storageKey])
-
-  return [sorting, setSorting] as const
+  return useClientSetting<SortingState>(storageKey, { defaultValue, parse })
 }

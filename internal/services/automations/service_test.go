@@ -1502,7 +1502,7 @@ func TestFindCrossSeedGroup(t *testing.T) {
 			if tc.wantHashes == nil {
 				assert.Nil(t, got)
 			} else {
-				assert.Equal(t, tc.wantCount, len(got))
+				assert.Len(t, got, tc.wantCount)
 				gotHashes := make([]string, len(got))
 				for i, torrent := range got {
 					gotHashes[i] = torrent.Hash
