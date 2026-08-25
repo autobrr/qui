@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -392,7 +393,7 @@ func TestDeletionIgnorePathsProtectFreshUnavailableRoots(t *testing.T) {
 	}
 
 	for _, target := range []string{metadataFile, skippedFile} {
-		disp, err := safeDeleteTarget(root, target, NewTorrentFileMap(), ignorePaths)
+		disp, err := safeDeleteTarget(context.Background(), root, target, NewTorrentFileMap(), ignorePaths, local.NewBackend())
 		if err != nil {
 			t.Fatalf("safeDeleteTarget(%q): %v", target, err)
 		}
@@ -433,6 +434,61 @@ func TestSafeDeleteTarget_AllowsDeleteWhenNoIgnorePaths(t *testing.T) {
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("expected directory removed, stat err=%v", err)
 	}
+}
+
+func TestSafeDeleteTarget_FailsClosedWhenChildStatFails(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-based stat failure is not reproducible via chmod on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "to-delete")
+	locked := filepath.Join(dir, "locked")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	ownedFile := filepath.Join(locked, "owned.bin")
+	if err := os.WriteFile(ownedFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	// Readable but not searchable: the walk enumerates the child's name, but
+	// its metadata lookup fails.
+	if err := os.Chmod(locked, 0o600); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	t.Run("torrent-owned child is treated as in use", func(t *testing.T) {
+		tfm := NewTorrentFileMap()
+		tfm.Add(normalizePath(ownedFile))
+
+		disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, nil, local.NewBackend())
+		if err != nil {
+			t.Fatalf("safeDeleteTarget error: %v", err)
+		}
+		if disp != deleteDispositionSkippedInUse {
+			t.Fatalf("expected skipped-in-use disposition, got %v", disp)
+		}
+		if _, err := os.Stat(dir); err != nil {
+			t.Fatalf("expected directory to remain, stat err=%v", err)
+		}
+	})
+
+	t.Run("unverifiable child aborts the deletion", func(t *testing.T) {
+		_, err := safeDeleteTarget(context.Background(), root, dir, NewTorrentFileMap(), nil, local.NewBackend())
+		if err == nil {
+			t.Fatal("expected error when child metadata cannot be read")
+		}
+		if _, statErr := os.Stat(dir); statErr != nil {
+			t.Fatalf("expected directory to remain, stat err=%v", statErr)
+		}
+	})
 }
 
 // ---- Restart-safety tests (kept in this file per project convention) ----

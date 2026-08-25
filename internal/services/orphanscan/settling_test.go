@@ -14,6 +14,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops/local"
 )
 
 type mockHealthChecker struct {
@@ -242,7 +244,7 @@ func TestMetadataIgnoreRoots(t *testing.T) {
 	writeOldFile(t, stagedFile)
 	writeOldFile(t, orphanFile)
 
-	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100, local.NewBackend())
 	require.NoError(t, err)
 	assert.False(t, truncated)
 	assert.Equal(t, []string{normalizePath(orphanFile)}, orphanPaths(orphans))

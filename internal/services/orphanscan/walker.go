@@ -609,20 +609,6 @@ func isUnderIgnoredPrefixDir(path, root string) bool {
 	return false
 }
 
-func isIgnoredOrphanDirName(name string) bool {
-	for _, exact := range ignoredOrphanDirNames {
-		if strings.EqualFold(name, exact) {
-			return true
-		}
-	}
-	for _, prefix := range ignoredOrphanDirNamePrefixes {
-		if hasPrefixFold(name, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 func hasPrefixFold(s, prefix string) bool {
 	if len(s) < len(prefix) {
 		return false

@@ -78,6 +78,45 @@ func TestCleanupManagedDeleteTargets_RemovesEmptyParentsUntilBase(t *testing.T) 
 	require.True(t, info.IsDir())
 }
 
+func TestCleanupManagedDeleteTargets_RunsAfterRequestCancellation(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	trackerDir := filepath.Join(baseDir, "tracker-a")
+	leafDir := filepath.Join(trackerDir, "MovieA")
+	filePath := filepath.Join(leafDir, "MovieA.mkv")
+
+	require.NoError(t, os.MkdirAll(leafDir, 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
+
+	targets := buildManagedDeleteCleanupTargets(context.Background(), baseDir, []qbt.Torrent{
+		{
+			Hash:        "abc123",
+			SavePath:    leafDir,
+			ContentPath: filePath,
+		},
+	}, testBackend)
+	require.Len(t, targets, 1)
+
+	// Simulate the client disconnecting after qBittorrent accepted the delete:
+	// the request context is already cancelled when pruning starts.
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.NoError(t, os.Remove(filePath))
+	cleanupManagedDeleteTargets(requestCtx, targets, testBackend)
+
+	_, err := os.Stat(leafDir)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	_, err = os.Stat(trackerDir)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	info, err := os.Stat(baseDir)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
 func TestCleanupManagedDeleteTargets_StopsAtNonEmptyParent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

@@ -134,16 +134,19 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 
 			if walkErr != nil {
 				entry.Err = walkErr
-			} else {
-				fi, err := d.Info()
-				if err != nil {
-					// An entry that vanished or can't be stat'd is skipped, not
-					// surfaced: consumers (orphanscan, dirscan) skipped such
-					// files pre-migration, and emitting it as Err would read as
-					// a walk failure and abort whole scans. Err stays reserved
-					// for enumeration-level failures.
+			} else if fi, err := d.Info(); err != nil {
+				// An entry that vanished or can't be stat'd is skipped by
+				// default, not surfaced: consumers (orphanscan, dirscan)
+				// skipped such files pre-migration, and emitting it as Err
+				// would read as a walk failure and abort whole scans. Err
+				// stays reserved for enumeration-level failures. Delete
+				// preflights opt in via EmitStatErrors so they can fail
+				// closed instead.
+				if !opts.EmitStatErrors {
 					return nil
 				}
+				entry.StatErr = err
+			} else {
 				entry.Size = fi.Size()
 				entry.ModTime = fi.ModTime()
 				entry.Mode = fi.Mode()
