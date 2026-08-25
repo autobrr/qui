@@ -92,6 +92,12 @@ QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 
 Both engines run the same features. For most installs, a switch gives no performance benefit: qui runs SQLite in WAL mode with a separate read pool, so reads do not block on writes. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
 
+## qBittorrent Connection
+
+```bash
+QUI__QBITTORRENT_TIMEOUT=60  # Optional: HTTP timeout in seconds for requests qui makes to qBittorrent instances (default: 60). Raise it for very large or slow instances.
+```
+
 ## Cross-Seed
 
 ```bash
