@@ -90,7 +90,7 @@ import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
-import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+import { WorkflowPreviewDialog, type PreviewToggleReason } from "./WorkflowPreviewDialog"
 
 let ruleIdCounter = 0
 
@@ -1669,8 +1669,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return conditionUsesField(formState.actionCondition, "FREE_SPACE")
   }, [formState.actionCondition])
 
-  // Check if delete rule uses FREE_SPACE field or target seed size (for preview view toggle - only for delete rules)
-  const deleteUsesFreeSpace = formState.deleteEnabled && (conditionUsesFreeSpace || formState.targetSeedSizeEnabled)
+  // Cooldown and 1-minute interval restriction only apply to FREE_SPACE deletes
+  const deleteUsesFreeSpace = formState.deleteEnabled && conditionUsesFreeSpace
+
+  // Determine preview view toggle reason: "free_space", "target_seed_size", "both", or null
+  const previewToggleReason: PreviewToggleReason = useMemo(() => {
+    if (!formState.deleteEnabled) return null
+    const hasFreeSpace = conditionUsesFreeSpace
+    const hasTargetSeedSize = formState.targetSeedSizeEnabled === true
+    if (hasFreeSpace && hasTargetSeedSize) return "both"
+    if (hasFreeSpace) return "free_space"
+    if (hasTargetSeedSize) return "target_seed_size"
+    return null
+  }, [conditionUsesFreeSpace, formState.deleteEnabled, formState.targetSeedSizeEnabled])
+
   const intervalOptions = useMemo(() => ([
     { value: "default", label: t("preferences.workflowDialog.interval.default") },
     { value: "60", label: t("preferences.workflowDialog.interval.oneMinute"), disabled: deleteUsesFreeSpace },
@@ -4383,7 +4395,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         warning={isCategoryRule}
         previewView={previewView}
         onPreviewViewChange={handlePreviewViewChange}
-        showPreviewViewToggle={isDeleteRule && deleteUsesFreeSpace}
+        showPreviewViewToggle={isDeleteRule && previewToggleReason !== null}
+        previewToggleReason={previewToggleReason}
         isLoadingPreview={isLoadingPreviewView}
         onExport={handleExport}
         isExporting={isExporting}

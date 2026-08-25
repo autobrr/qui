@@ -86,7 +86,7 @@ import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
-import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+import { WorkflowPreviewDialog, type PreviewToggleReason } from "./WorkflowPreviewDialog"
 
 /**
  * Recursively checks if a condition tree uses a specific field.
@@ -666,10 +666,15 @@ export function WorkflowsOverview({
     }
   }
 
-  // Check if a delete rule uses FREE_SPACE field or target seed size
-  const ruleUsesFreeSpace = (rule: Automation): boolean => {
-    if (!isDeleteRule(rule)) return false
-    return conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE") || (rule.targetSeedSize?.enabled === true)
+  // Check preview toggle reason for a rule: "free_space" | "target_seed_size" | "both" | null
+  const getPreviewToggleReason = (rule: Automation): PreviewToggleReason => {
+    if (!isDeleteRule(rule)) return null
+    const hasFreeSpace = conditionUsesField(rule.conditions?.delete?.condition, "FREE_SPACE")
+    const hasTargetSeedSize = rule.targetSeedSize?.enabled === true
+    if (hasFreeSpace && hasTargetSeedSize) return "both"
+    if (hasFreeSpace) return "free_space"
+    if (hasTargetSeedSize) return "target_seed_size"
+    return null
   }
 
   // Handler for switching preview view - refetches with new view and resets pagination
@@ -1620,7 +1625,8 @@ export function WorkflowsOverview({
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
         previewView={previewView}
         onPreviewViewChange={handlePreviewViewChange}
-        showPreviewViewToggle={enableConfirm ? ruleUsesFreeSpace(enableConfirm.rule) : false}
+        showPreviewViewToggle={enableConfirm ? getPreviewToggleReason(enableConfirm.rule) !== null : false}
+        previewToggleReason={enableConfirm ? getPreviewToggleReason(enableConfirm.rule) : null}
         isLoadingPreview={isLoadingPreviewView}
         onExport={handleExportPreviewCsv}
         isExporting={isExporting}

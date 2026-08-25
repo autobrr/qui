@@ -886,7 +886,11 @@
       "targetSeedSize": {
         "initialPool": "초기 풀",
         "projectedRemaining": "예상 잔여량"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "목표 시딩 크기에 도달하기 위해 지금 제거될 토렌트입니다.",
+      "eligibleDescriptionTargetSeedSize": "목표 시딩 크기를 유지하기 위해 이 규칙이 제거할 수 있는 모든 토렌트입니다.",
+      "neededDescriptionBoth": "여유 공간 및 목표 시딩 크기 조건을 충족하기 위해 지금 제거될 토렌트입니다.",
+      "eligibleDescriptionBoth": "여유 공간 또는 목표 시딩 크기 조건이 활성화되어 있을 때 이 규칙이 제거할 수 있는 모든 토렌트입니다."
     },
     "orphanScanOverview": {
       "title": "고아 파일 스캔",

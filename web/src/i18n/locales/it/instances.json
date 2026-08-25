@@ -904,7 +904,11 @@
       "targetSeedSize": {
         "initialPool": "Pool iniziale",
         "projectedRemaining": "Rimanente previsto"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "Questi sono i torrent che verrebbero rimossi ora per raggiungere la dimensione di seeding target.",
+      "eligibleDescriptionTargetSeedSize": "Questi sono tutti i torrent che questa regola potrebbe rimuovere per mantenere la dimensione di seeding target.",
+      "neededDescriptionBoth": "Questi sono i torrent che verrebbero rimossi ora per soddisfare i vincoli di spazio libero e dimensione di seeding target.",
+      "eligibleDescriptionBoth": "Questi sono tutti i torrent che questa regola potrebbe rimuovere mentre i vincoli di spazio libero o dimensione di seeding target sono attivi."
     },
     "orphanScanOverview": {
       "title": "Scansione orfani",

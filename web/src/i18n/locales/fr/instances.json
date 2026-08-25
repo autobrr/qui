@@ -898,7 +898,11 @@
       "targetSeedSize": {
         "initialPool": "Pool initial",
         "projectedRemaining": "Restant estimé"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "Ce sont les torrents qui seraient supprimés maintenant pour atteindre votre taille cible de seed.",
+      "eligibleDescriptionTargetSeedSize": "Ce sont tous les torrents que cette règle pourrait supprimer pour maintenir votre taille cible de seed.",
+      "neededDescriptionBoth": "Ce sont les torrents qui seraient supprimés maintenant pour satisfaire les contraintes d'espace libre et de taille cible de seed.",
+      "eligibleDescriptionBoth": "Ce sont tous les torrents que cette règle pourrait supprimer lorsque les contraintes d'espace libre ou de taille cible de seed sont actives."
     },
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",

@@ -886,7 +886,11 @@
       "targetSeedSize": {
         "initialPool": "初始做种池",
         "projectedRemaining": "预计剩余"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "这些是现在需要删除以达到目标做种大小的种子。",
+      "eligibleDescriptionTargetSeedSize": "这些是此规则为维持目标做种大小可能删除的所有种子。",
+      "neededDescriptionBoth": "这些是现在需要删除以满足剩余空间和目标做种大小限制的种子。",
+      "eligibleDescriptionBoth": "这些是此规则在剩余空间或目标做种大小限制处于活动状态时可能删除的所有种子。"
     },
     "orphanScanOverview": {
       "title": "孤立文件扫描",

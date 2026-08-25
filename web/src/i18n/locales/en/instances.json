@@ -904,7 +904,11 @@
       "targetSeedSize": {
         "initialPool": "Initial pool",
         "projectedRemaining": "Projected remaining"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "These are the torrents that would be removed now to reach your target seed size.",
+      "eligibleDescriptionTargetSeedSize": "These are all torrents this rule could remove to maintain your target seed size.",
+      "neededDescriptionBoth": "These are the torrents that would be removed now to satisfy your free-space and target seed size constraints.",
+      "eligibleDescriptionBoth": "These are all torrents this rule could remove while free-space or target seed size constraints are active."
     },
     "orphanScanOverview": {
       "title": "Orphan Scan",

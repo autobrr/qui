@@ -38,6 +38,8 @@ function getLabelFromValues(values: Array<{ value: string; label: string }>, val
   return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ")
 }
 
+export type PreviewToggleReason = "free_space" | "target_seed_size" | "both" | null
+
 interface WorkflowPreviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -55,12 +57,14 @@ interface WorkflowPreviewDialogProps {
   destructive?: boolean
   /** Use warning styling (amber button) for category changes */
   warning?: boolean
-  /** Current preview view mode (only shown for delete rules with FREE_SPACE) */
+  /** Current preview view mode (only shown for delete rules with FREE_SPACE or target seed size) */
   previewView?: PreviewView
   /** Callback when user switches preview view */
   onPreviewViewChange?: (view: PreviewView) => void
-  /** Whether to show the preview view toggle (only for FREE_SPACE delete rules) */
+  /** Whether to show the preview view toggle (for FREE_SPACE or target seed size delete rules) */
   showPreviewViewToggle?: boolean
+  /** Reason for the preview view toggle */
+  previewToggleReason?: PreviewToggleReason
   /** Whether the preview is currently loading (e.g., when switching views) */
   isLoadingPreview?: boolean
   /** Callback to export all preview data to CSV */
@@ -269,6 +273,7 @@ export function WorkflowPreviewDialog({
   previewView = "needed",
   onPreviewViewChange,
   showPreviewViewToggle = false,
+  previewToggleReason = "free_space",
   isLoadingPreview = false,
   onExport,
   isExporting = false,
@@ -280,6 +285,25 @@ export function WorkflowPreviewDialog({
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
   const showScoreColumn = showScore && !!preview?.examples.some(t => t.score !== undefined && t.score !== null)
+
+  const toggleDescription = useMemo(() => {
+    if (previewView === "needed") {
+      if (previewToggleReason === "target_seed_size") {
+        return t("preferences.workflowPreview.neededDescriptionTargetSeedSize")
+      }
+      if (previewToggleReason === "both") {
+        return t("preferences.workflowPreview.neededDescriptionBoth")
+      }
+      return t("preferences.workflowPreview.neededDescription")
+    }
+    if (previewToggleReason === "target_seed_size") {
+      return t("preferences.workflowPreview.eligibleDescriptionTargetSeedSize")
+    }
+    if (previewToggleReason === "both") {
+      return t("preferences.workflowPreview.eligibleDescriptionBoth")
+    }
+    return t("preferences.workflowPreview.eligibleDescription")
+  }, [previewToggleReason, previewView, t])
   const dynamicColumns = useMemo(
     () => createDynamicColumns(
       t,
@@ -359,7 +383,7 @@ export function WorkflowPreviewDialog({
                     </TabsList>
                   </Tabs>
                   <p className="text-xs text-muted-foreground">
-                    {previewView === "needed"? t("preferences.workflowPreview.neededDescription"): t("preferences.workflowPreview.eligibleDescription")}
+                    {toggleDescription}
                   </p>
                 </div>
               )}

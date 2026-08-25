@@ -904,7 +904,11 @@
       "targetSeedSize": {
         "initialPool": "Ursprünglicher Pool",
         "projectedRemaining": "Voraussichtlich verbleibend"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "Dies sind die Torrents, die jetzt entfernt werden, um Ihre Ziel-Seed-Größe zu erreichen.",
+      "eligibleDescriptionTargetSeedSize": "Dies sind alle Torrents, die diese Regel entfernen könnte, um Ihre Ziel-Seed-Größe beizubehalten.",
+      "neededDescriptionBoth": "Dies sind die Torrents, die jetzt entfernt werden, um Ihre Freispeicher- und Ziel-Seed-Größenbeschränkungen zu erfüllen.",
+      "eligibleDescriptionBoth": "Dies sind alle Torrents, die diese Regel entfernen könnte, solange Freispeicher- oder Ziel-Seed-Größenbeschränkungen aktiv sind."
     },
     "orphanScanOverview": {
       "title": "Orphan-Scan",

@@ -904,7 +904,11 @@
       "targetSeedSize": {
         "initialPool": "Původní fond",
         "projectedRemaining": "Předpokládaný zbytek"
-      }
+      },
+      "neededDescriptionTargetSeedSize": "Toto jsou torrenty, které by byly nyní odstraněny pro dosažení cílové velikosti seedování.",
+      "eligibleDescriptionTargetSeedSize": "Toto jsou všechny torrenty, které toto pravidlo může odstranit pro udržení cílové velikosti seedování.",
+      "neededDescriptionBoth": "Toto jsou torrenty, které by byly nyní odstraněny pro splnění omezení volného místa a cílové velikosti seedování.",
+      "eligibleDescriptionBoth": "Toto jsou všechny torrenty, které toto pravidlo může odstranit, pokud jsou aktivní omezení volného místa nebo cílové velikosti seedování."
     },
     "orphanScanOverview": {
       "title": "Vyhledání nepárových souborů",
