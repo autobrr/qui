@@ -444,8 +444,8 @@ func RunMigrateCommand() *cobra.Command {
 	command.Flags().StringVar(&qbitDir, "qbit-dir", "", "qBittorrent BT_backup dir. Commonly ~/.local/share/qBittorrent/BT_backup (required)")
 	command.Flags().BoolVar(&skipBackup, "skip-backup", false, "Skip backup before import")
 
-	command.MarkFlagRequired("source-dir")
-	command.MarkFlagRequired("qbit-dir")
+	_ = command.MarkFlagRequired("source-dir")
+	_ = command.MarkFlagRequired("qbit-dir")
 
 	command.RunE = func(cmd *cobra.Command, args []string) error {
 		source := args[0]

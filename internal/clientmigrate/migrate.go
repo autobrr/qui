@@ -103,7 +103,7 @@ func (m Migrater) Backup(ctx context.Context, source string, dryRun bool, source
 		log.Info().Msgf("creating %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
 
 		if err := m.archiveDir(ctx, sourceDir, sourceBackupArchive); err != nil {
-			return errors.Wrapf(err, "could not create %s backup of directory: %s to %s ...", source, sourceDir, sourceBackupArchive)
+			return errors.Wrapf(err, "could not create %s backup of directory: %s to %s", source, sourceDir, sourceBackupArchive)
 		}
 
 		log.Info().Msgf("creating qBittorrent backup of directory: %s to %s ...", qbitDir, qbitBackupArchive)

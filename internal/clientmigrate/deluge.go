@@ -167,13 +167,13 @@ func (di *DelugeImport) Migrate() error {
 	return nil
 }
 
-func decodeFastresumeFile(path string) (map[string]interface{}, error) {
+func decodeFastresumeFile(path string) (map[string]any, error) {
 	dat, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var fastresumeFile map[string]interface{}
+	var fastresumeFile map[string]any
 	if err := bencode.DecodeBytes(dat, &fastresumeFile); err != nil {
 		return nil, err
 	}

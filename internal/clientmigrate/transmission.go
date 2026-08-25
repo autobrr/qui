@@ -95,7 +95,7 @@ func (i *TransmissionImport) Migrate() error {
 			ActiveTime:                int64(time.Since(time.Unix(resumeFile.DoneDate, 0)).Seconds()),
 			AddedTime:                 resumeFile.AddedDate,
 			Allocation:                "sparse",
-			ApplyIpFilter:             1,
+			ApplyIPFilter:             1,
 			AutoManaged:               0,
 			CompletedTime:             resumeFile.DoneDate,
 			DisableDHT:                0,
@@ -139,12 +139,11 @@ func (i *TransmissionImport) Migrate() error {
 			TotalUploaded:             resumeFile.Uploaded,
 			UploadMode:                0,
 			UploadRateLimit:           -1,
-			UrlList:                   file.UrlList,
+			URLList:                   file.UrlList,
 
 			//Path: resumeFile.Destination,
 		}
 
-		//if file.Info.Files != nil {
 		if metaInfo.Files != nil {
 			newFastResume.HasFiles = true
 

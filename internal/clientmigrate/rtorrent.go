@@ -108,7 +108,7 @@ func (i *RTorrentImport) Migrate() error {
 			ActiveTime:                getActiveTime(rtFile.Custom.SeedingTime),
 			AddedTime:                 strToIntClean(rtFile.Custom.AddTime),
 			Allocation:                "sparse",
-			ApplyIpFilter:             1,
+			ApplyIPFilter:             1,
 			AutoManaged:               0,
 			CompletedTime:             rtFile.TimestampFinished,
 			DisableDHT:                0,
@@ -152,12 +152,11 @@ func (i *RTorrentImport) Migrate() error {
 			TotalUploaded:             rtFile.TotalUploaded,
 			UploadMode:                0,
 			UploadRateLimit:           -1,
-			UrlList:                   file.UrlList,
+			URLList:                   file.UrlList,
 
 			Path: rtFile.Directory,
 		}
 
-		//if file.Info.Files != nil {
 		if metaInfo.Files != nil {
 			newFastResume.HasFiles = true
 
