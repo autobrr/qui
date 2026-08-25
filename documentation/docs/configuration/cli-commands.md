@@ -103,7 +103,7 @@ Keep your qui installation up-to-date:
 
 ## Migrate From Other Torrent Clients
 
-Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent's `BT_backup` directory:
+Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what gets preserved.
 
 ```bash
 # Preview what would be imported, without writing anything
