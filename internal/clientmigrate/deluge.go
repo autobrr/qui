@@ -1,15 +1,17 @@
 package clientmigrate
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 
+	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zeebo/bencode"
 )
 
 type DelugeImport struct {
@@ -91,7 +93,7 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
-		if err := bencode.DecodeString(strValue, &fastResume); err != nil {
+		if err := bencode.NewDecoder(strings.NewReader(strValue)).Decode(&fastResume); err != nil {
 			log.Error().Err(err).Msgf("Could not decode row %s. Continue", torrentID)
 			continue
 		}
@@ -174,7 +176,7 @@ func decodeFastresumeFile(path string) (map[string]any, error) {
 	}
 
 	var fastresumeFile map[string]any
-	if err := bencode.DecodeBytes(dat, &fastresumeFile); err != nil {
+	if err := bencode.NewDecoder(bytes.NewReader(dat)).Decode(&fastresumeFile); err != nil {
 		return nil, err
 	}
 

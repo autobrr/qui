@@ -1,6 +1,7 @@
 package clientmigrate
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,10 +9,10 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 
+	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zeebo/bencode"
 )
 
 type TransmissionImport struct {
@@ -206,7 +207,7 @@ func (i *TransmissionImport) decodeResumeFile(path string) (*TransmissionResumeF
 	}
 
 	var torrentResumeFile TransmissionResumeFile
-	if err := bencode.DecodeBytes(dat, &torrentResumeFile); err != nil {
+	if err := bencode.NewDecoder(bytes.NewReader(dat)).Decode(&torrentResumeFile); err != nil {
 		return nil, err
 	}
 

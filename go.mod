@@ -37,7 +37,6 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/tmaxmax/go-sse v0.11.0
 	github.com/ulikunitz/xz v0.5.16
-	github.com/zeebo/bencode v1.0.0
 	golang.org/x/crypto v0.54.0
 	golang.org/x/image v0.44.0
 	golang.org/x/net v0.57.0

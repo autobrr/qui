@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/zeebo/bencode"
+	"github.com/autobrr/go-torrent/bencode"
 )
 
 // Fastresume represents a qBittorrent fastresume file

@@ -1,6 +1,7 @@
 package clientmigrate
 
 import (
+	"bytes"
 	"os"
 	"path"
 	"path/filepath"
@@ -10,10 +11,10 @@ import (
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 
+	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"github.com/zeebo/bencode"
 )
 
 type RTorrentImport struct {
@@ -255,7 +256,7 @@ func (i *RTorrentImport) decodeRTorrentLibTorrentResumeFile(path string) (*RTorr
 	}
 
 	var torrentResumeFile RTorrentLibTorrentResumeFile
-	if err := bencode.DecodeBytes(dat, &torrentResumeFile); err != nil {
+	if err := bencode.NewDecoder(bytes.NewReader(dat)).Decode(&torrentResumeFile); err != nil {
 		return nil, err
 	}
 
@@ -269,7 +270,7 @@ func (i *RTorrentImport) decodeRTorrentFile(path string) (*RTorrentTorrentFile, 
 	}
 
 	var torrentFile RTorrentTorrentFile
-	if err := bencode.DecodeBytes(dat, &torrentFile); err != nil {
+	if err := bencode.NewDecoder(bytes.NewReader(dat)).Decode(&torrentFile); err != nil {
 		return nil, err
 	}
 
