@@ -94,11 +94,11 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	oldFileIDs := []int64{member.Files[0].ID, member.Files[1].ID}
 
 	zero := int64(0)
-	changed, err := store.TransitionPartialPoolMember(t.Context(), member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{MissingBytes: &zero})
+	changed, err := store.TransitionPartialPoolMember(t.Context(), member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{MissingBytes: &zero})
 	require.NoError(t, err)
 	require.True(t, changed)
 	now := time.Now().UTC()
-	claimed, err := store.ClaimPartialPoolDownloader(t.Context(), member.ID, 321, now, now.Add(time.Hour))
+	claimed, err := store.ClaimPartialPoolDownloader(t.Context(), member.ID, 321, member.CreatedAt, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.True(t, claimed)
 	retryAfter := now.Add(time.Hour)
@@ -106,7 +106,7 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	staleReviewPause := true
 	staleResumeAttempts := int64(2)
 	staleRecoveryAttempts := int64(1)
-	changed, err = store.TransitionPartialPoolMember(t.Context(), member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
+	changed, err = store.TransitionPartialPoolMember(t.Context(), member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
 		RetryAfter:         models.NullableTimeUpdate{Set: true, Value: &retryAfter},
 		ReviewPausePending: &staleReviewPause,
 		ResumeAttempts:     models.NullableInt64Update{Set: true, Value: &staleResumeAttempts},
@@ -119,7 +119,7 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	_, dependent, err := store.RegisterPartialPoolMember(t.Context(), dependentRegistration)
 	require.NoError(t, err)
 	require.Len(t, dependent.Files, 2)
-	changed, err = store.TransitionPartialPoolFile(t.Context(), dependent.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+	changed, err = store.TransitionPartialPoolFile(t.Context(), dependent.Files[1].ID, dependent.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &member.Files[1].ID},
 	})
 	require.NoError(t, err)
@@ -190,6 +190,49 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	require.Equal(t, "propagation source was replaced during re-admission", reloadedDependent.Files[1].LastError)
 }
 
+func TestCrossSeedPartialPoolTransitionsRejectStaleAdmission(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	registration := partialPoolRegistration(t, secondID, firstID, "member", "member", "", "source")
+	stalePool, stale, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	currentPool, current, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.Equal(t, stale.ID, current.ID)
+	require.Equal(t, stale.Files[1].ID, current.Files[1].ID)
+	require.NotEqual(t, stale.CreatedAt, current.CreatedAt)
+	require.Equal(t, current.CreatedAt, current.Files[1].CreatedAt)
+
+	changed, err := store.TransitionPartialPoolMember(t.Context(), stale.ID, stale.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	require.NoError(t, err)
+	require.False(t, changed)
+	changed, err = store.TransitionPartialPoolMember(t.Context(), current.ID, current.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	changed, err = store.TransitionPartialPoolFile(t.Context(), stale.Files[1].ID, stale.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.False(t, changed)
+	changed, err = store.TransitionPartialPoolFile(t.Context(), current.Files[1].ID, current.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	now := time.Now().UTC()
+	claimed, err := store.ClaimPartialPoolDownloader(t.Context(), stale.ID, 0, stale.CreatedAt, now, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, claimed)
+	claimed, err = store.ClaimPartialPoolDownloader(t.Context(), current.ID, 0, current.CreatedAt, now, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	statusChanged, err := store.SetPartialPoolStatusIfUnchanged(t.Context(), stalePool.ID, stalePool.UpdatedAt, models.CrossSeedPartialPoolStatusDormant)
+	require.NoError(t, err)
+	require.False(t, statusChanged)
+	statusChanged, err = store.SetPartialPoolStatusIfUnchanged(t.Context(), currentPool.ID, currentPool.UpdatedAt, models.CrossSeedPartialPoolStatusDormant)
+	require.NoError(t, err)
+	require.True(t, statusChanged)
+}
+
 func TestCrossSeedPartialPoolReAdmissionPreservesLiveFileDependencies(t *testing.T) {
 	store, _, firstID, secondID := newPartialPoolTestStore(t)
 	registration := partialPoolRegistration(t, secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE")
@@ -200,7 +243,7 @@ func TestCrossSeedPartialPoolReAdmissionPreservesLiveFileDependencies(t *testing
 	dependentRegistration := partialPoolRegistration(t, firstID, secondID, "CCCC", "CCCC", "", "BBBB")
 	_, dependent, err := store.RegisterPartialPoolMember(t.Context(), dependentRegistration)
 	require.NoError(t, err)
-	changed, err := store.TransitionPartialPoolFile(t.Context(), dependent.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+	changed, err := store.TransitionPartialPoolFile(t.Context(), dependent.Files[1].ID, dependent.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &source.Files[1].ID},
 	})
 	require.NoError(t, err)
@@ -234,7 +277,7 @@ func TestCrossSeedPartialPoolReAdmissionQuarantinesHardlinkDependencyChain(t *te
 	middleRegistration := partialPoolRegistration(t, firstID, secondID, "CCCC", "CCCC", "", "BBBB")
 	_, middle, err := store.RegisterPartialPoolMember(t.Context(), middleRegistration)
 	require.NoError(t, err)
-	changed, err := store.TransitionPartialPoolFile(t.Context(), middle.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusAvailable, models.PartialPoolFileMutation{
+	changed, err := store.TransitionPartialPoolFile(t.Context(), middle.Files[1].ID, middle.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusAvailable, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &source.Files[1].ID},
 	})
 	require.NoError(t, err)
@@ -243,15 +286,15 @@ func TestCrossSeedPartialPoolReAdmissionQuarantinesHardlinkDependencyChain(t *te
 	leafRegistration := partialPoolRegistration(t, secondID, firstID, "DDDD", "DDDD", "", "CCCC")
 	_, leaf, err := store.RegisterPartialPoolMember(t.Context(), leafRegistration)
 	require.NoError(t, err)
-	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, leaf.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &middle.Files[1].ID},
 	})
 	require.NoError(t, err)
 	require.True(t, changed)
-	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, leaf.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
-	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusVerifying}, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{})
+	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, leaf.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusVerifying}, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
 
@@ -259,7 +302,7 @@ func TestCrossSeedPartialPoolReAdmissionQuarantinesHardlinkDependencyChain(t *te
 	reflinkRegistration.Member.Mode = models.CrossSeedPartialPoolModeReflink
 	_, reflinkDependent, err := store.RegisterPartialPoolMember(t.Context(), reflinkRegistration)
 	require.NoError(t, err)
-	changed, err = store.TransitionPartialPoolFile(t.Context(), reflinkDependent.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+	changed, err = store.TransitionPartialPoolFile(t.Context(), reflinkDependent.Files[1].ID, reflinkDependent.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &middle.Files[1].ID},
 	})
 	require.NoError(t, err)
@@ -334,45 +377,45 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "member", "member-v1", "member-v2", "source"))
 	require.NoError(t, err)
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
+	claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 321, member.CreatedAt, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.False(t, claimed, "a verification-owned member blocks the pool claim")
 
 	zero := int64(0)
-	changed, err := store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{MissingBytes: &zero})
+	changed, err := store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{MissingBytes: &zero})
 	require.NoError(t, err)
 	require.True(t, changed)
-	changed, err = store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusBlocked, models.PartialPoolMemberMutation{})
+	changed, err = store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusBlocked, models.PartialPoolMemberMutation{})
 	require.NoError(t, err)
 	require.False(t, changed)
 
-	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, member.CreatedAt.Add(-time.Second))
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, member.CreatedAt, now, member.CreatedAt.Add(-time.Second))
 	require.NoError(t, err)
 	require.False(t, claimed, "a recent admission holds the whole pool")
 
 	_, peer, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, secondID, "peer", "peer", "", "member"))
 	require.NoError(t, err)
-	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, member.CreatedAt, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.False(t, claimed, "one verification-owned peer holds every downloader")
 	deferred := models.CrossSeedPartialPoolRecheckPending
-	changed, err = store.TransitionPartialPoolMember(ctx, peer.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusVerifying, models.PartialPoolMemberMutation{LastError: &deferred})
+	changed, err = store.TransitionPartialPoolMember(ctx, peer.ID, peer.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusVerifying, models.PartialPoolMemberMutation{LastError: &deferred})
 	require.NoError(t, err)
 	require.True(t, changed)
-	changed, err = store.TransitionPartialPoolFile(ctx, peer.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{})
+	changed, err = store.TransitionPartialPoolFile(ctx, peer.Files[1].ID, peer.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
-	changed, err = store.TransitionPartialPoolFile(ctx, peer.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	changed, err = store.TransitionPartialPoolFile(ctx, peer.Files[1].ID, peer.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
-	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, member.CreatedAt, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.False(t, claimed, "a deferred member with propagated files still holds the downloader")
-	changed, err = store.TransitionPartialPoolFile(ctx, peer.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusVerifying}, models.CrossSeedPartialPoolFileStatusMissing, models.PartialPoolFileMutation{})
+	changed, err = store.TransitionPartialPoolFile(ctx, peer.Files[1].ID, peer.Files[1].CreatedAt, []string{models.CrossSeedPartialPoolFileStatusVerifying}, models.CrossSeedPartialPoolFileStatusMissing, models.PartialPoolFileMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
 
-	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, now, now.Add(time.Hour))
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, member.ID, 321, member.CreatedAt, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.True(t, claimed, "an unselected initial verifier does not hold the chosen downloader")
 
@@ -393,16 +436,16 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 
 	_, other, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, firstID, secondID, "other", "other", "", "member"))
 	require.NoError(t, err)
-	changed, err = store.TransitionPartialPoolMember(ctx, other.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	changed, err = store.TransitionPartialPoolMember(ctx, other.ID, other.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
-	claimed, err = store.ClaimPartialPoolDownloader(ctx, other.ID, 0, now, now.Add(time.Hour))
+	claimed, err = store.ClaimPartialPoolDownloader(ctx, other.ID, 0, other.CreatedAt, now, now.Add(time.Hour))
 	require.NoError(t, err)
 	require.False(t, claimed, "one acquiring member excludes another claim in the same pool")
 
 	requestedTrue := true
 	reason := "manual"
-	changed, err = store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{
+	changed, err = store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{
 		StartedByPool: &requestedTrue,
 		LastError:     &reason,
 	})
@@ -420,7 +463,7 @@ func TestCrossSeedPartialPoolClaimsAndTransitionsPersist(t *testing.T) {
 	require.NotNil(t, terminalMember)
 	require.False(t, terminalMember.StartedByPool, "terminal state always clears the downloader claim")
 
-	_, err = store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusManual}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	_, err = store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusManual}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 	require.Error(t, err)
 }
 
@@ -432,16 +475,16 @@ func TestCrossSeedPartialPoolHardlinkRollbackTransitionIsAtomic(t *testing.T) {
 	file := member.Files[1]
 	sourceFileID := member.Files[0].ID
 
-	changed, err := store.TransitionPartialPoolFile(ctx, file.ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+	changed, err := store.TransitionPartialPoolFile(ctx, file.ID, file.CreatedAt, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
 		SourceFileID: models.NullableInt64Update{Set: true, Value: &sourceFileID},
 	})
 	require.NoError(t, err)
 	require.True(t, changed)
-	changed, err = store.TransitionPartialPoolFile(ctx, file.ID, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	changed, err = store.TransitionPartialPoolFile(ctx, file.ID, file.CreatedAt, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
 
-	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, file.ID, models.CrossSeedPartialPoolMemberStatusRechecking)
+	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, file.ID, member.CreatedAt, file.CreatedAt, models.CrossSeedPartialPoolMemberStatusRechecking)
 	require.NoError(t, err)
 	require.False(t, changed)
 	_, member, err = store.ResolvePartialPoolMember(ctx, secondID, "member")
@@ -451,7 +494,7 @@ func TestCrossSeedPartialPoolHardlinkRollbackTransitionIsAtomic(t *testing.T) {
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusVerifying, member.Files[1].Status, "the file update must roll back when the member CAS fails")
 	require.NotNil(t, member.Files[1].SourceFileID)
 
-	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, member.Files[1].ID, member.Status)
+	changed, err = store.TransitionPartialPoolHardlinkRollback(ctx, member.ID, member.Files[1].ID, member.CreatedAt, member.Files[1].CreatedAt, member.Status)
 	require.NoError(t, err)
 	require.True(t, changed)
 	_, member, err = store.ResolvePartialPoolMember(ctx, secondID, "member")
@@ -471,7 +514,7 @@ func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgres(t *testing.T) {
 	for i, key := range []string{"candidate-alpha", "candidate-beta", "candidate-gamma", "candidate-delta"} {
 		_, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, key, key, "", "source"))
 		require.NoError(t, err)
-		changed, err := store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+		changed, err := store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 		require.NoError(t, err)
 		require.Truef(t, changed, "transition member %d", i)
 		members = append(members, member)
@@ -487,12 +530,12 @@ func TestCrossSeedPartialPoolConcurrentClaimsChooseOnePostgres(t *testing.T) {
 	now := time.Now().UTC()
 	for _, member := range members {
 		wg.Add(1)
-		go func(memberID int64) {
+		go func(member *models.CrossSeedPartialPoolMember) {
 			defer wg.Done()
 			<-start
-			claimed, err := store.ClaimPartialPoolDownloader(ctx, memberID, 0, now, now.Add(time.Hour))
+			claimed, err := store.ClaimPartialPoolDownloader(ctx, member.ID, 0, member.CreatedAt, now, now.Add(time.Hour))
 			results <- claimResult{claimed: claimed, err: err}
-		}(member.ID)
+		}(member)
 	}
 	close(start)
 	wg.Wait()
@@ -515,7 +558,7 @@ func TestCrossSeedPartialPoolConcurrentRegistrationBlocksClaimPostgres(t *testin
 
 	pool, member, err := store.RegisterPartialPoolMember(ctx, partialPoolRegistration(t, secondID, firstID, "candidate-alpha", "candidate-alpha", "", "source"))
 	require.NoError(t, err)
-	changed, err := store.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
+	changed, err := store.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusVerifying}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{})
 	require.NoError(t, err)
 	require.True(t, changed)
 
@@ -555,7 +598,7 @@ func TestCrossSeedPartialPoolConcurrentRegistrationBlocksClaimPostgres(t *testin
 		return queryErr == nil && sleeping
 	}, 3*time.Second, 20*time.Millisecond, "registration did not reach the delayed insert")
 
-	claimed, claimErr := store.ClaimPartialPoolDownloader(ctx, member.ID, 0, time.Now().UTC(), time.Now().UTC().Add(time.Hour))
+	claimed, claimErr := store.ClaimPartialPoolDownloader(ctx, member.ID, 0, member.CreatedAt, time.Now().UTC(), time.Now().UTC().Add(time.Hour))
 	require.NoError(t, claimErr)
 	require.False(t, claimed, "a claim must re-read every member after the in-flight admission commits")
 	require.NoError(t, <-registrationDone)

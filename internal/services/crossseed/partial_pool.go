@@ -280,6 +280,8 @@ func (s *Service) registerPartialPoolAdmission(
 		}
 	}
 
+	s.partialPoolAdmissionMaterializationMu.Lock()
+	defer s.partialPoolAdmissionMaterializationMu.Unlock()
 	return s.automationStore.RegisterPartialPoolMember(ctx, models.CrossSeedPartialPoolRegistration{
 		SourceInstanceID:  sourceInstanceID,
 		SourceTorrentKey:  sourceKey,
@@ -358,11 +360,14 @@ func normalizedHashes(values ...string) []string {
 // markPartialPoolMemberManual reports whether the manual transition was
 // durably persisted and updates the in-memory member only after that success.
 func (s *Service) markPartialPoolMemberManual(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string) bool {
+	return s.markPartialPoolMemberManualWithPause(ctx, member, reason, false)
+}
+
+func (s *Service) markPartialPoolMemberManualWithPause(ctx context.Context, member *models.CrossSeedPartialPoolMember, reason string, pending bool) bool {
 	if s == nil || s.automationStore == nil || member == nil {
 		return false
 	}
 	reason = strings.TrimSpace(reason)
-	pending := false
 	return s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{
 		ReviewPausePending: &pending,
 		ResumeAttempts:     models.NullableInt64Update{Set: true},
@@ -1259,7 +1264,7 @@ func (s *Service) reconcileDisabledPartialPool(ctx context.Context, pool *models
 		}
 		if partialPoolTorrentComplete(snapshot.torrent) {
 			missing := int64(0)
-			changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusComplete, models.PartialPoolMemberMutation{MissingBytes: &missing})
+			changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusComplete, models.PartialPoolMemberMutation{MissingBytes: &missing})
 			if err != nil {
 				if firstErr == nil {
 					firstErr = fmt.Errorf("complete disabled partial pool member: %w", err)
@@ -1278,7 +1283,7 @@ func (s *Service) reconcileDisabledPartialPool(ctx context.Context, pool *models
 		}
 		if isPausedOrStopped(snapshot.torrent.State) || snapshot.torrent.State == qbt.TorrentStateError || snapshot.torrent.State == qbt.TorrentStateMissingFiles {
 			stopped := false
-			changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
+			changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{models.CrossSeedPartialPoolMemberStatusAcquiring}, models.CrossSeedPartialPoolMemberStatusWaiting, models.PartialPoolMemberMutation{
 				StartedByPool:       &stopped,
 				LastDownloadedBytes: models.NullableInt64Update{Set: true},
 				LastProgressAt:      models.NullableTimeUpdate{Set: true},
@@ -1447,14 +1452,18 @@ func (s *Service) reconcilePartialPool(
 			snapshot := snapshots[member.ID]
 			checking := snapshot != nil && partialPoolChecking(snapshot.torrent.State)
 			snapshotRetryPending := snapshot != nil && snapshot.stateRetryPending
-			if member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || partialPoolInitialVerificationDeferred(member) || partialPoolMemberHasVerificationWork(member) || cooldownPending || checking || snapshotRetryPending || member.LastError == partialPoolPropagationPause || partialPoolResumePending(member) || partialPoolRecoveryPending(member) {
+			if member.Status == models.CrossSeedPartialPoolMemberStatusAcquiring || partialPoolInitialVerificationDeferred(member) || partialPoolMemberHasVerificationWork(member) || cooldownPending || checking || snapshotRetryPending || member.ReviewPausePending || member.LastError == partialPoolPropagationPause || partialPoolResumePending(member) || partialPoolRecoveryPending(member) {
 				status = models.CrossSeedPartialPoolStatusActive
 				break
 			}
 		}
 	}
-	if err := s.automationStore.SetPartialPoolStatus(ctx, pool.ID, status); err != nil {
+	changed, err := s.automationStore.SetPartialPoolStatusIfUnchanged(ctx, pool.ID, pool.UpdatedAt, status)
+	if err != nil {
 		return fmt.Errorf("persist partial pool scheduling state: %w", err)
+	}
+	if !changed {
+		return nil
 	}
 	pool.Status = status
 	return nil
@@ -1918,6 +1927,12 @@ func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *mod
 	if ctx.Err() != nil {
 		return false, true
 	}
+	s.partialPoolAdmissionMaterializationMu.Lock()
+	defer s.partialPoolAdmissionMaterializationMu.Unlock()
+	currentPool, err := s.automationStore.GetPartialPool(ctx, pool.ID)
+	if err != nil || !partialPoolMemberFileAdmissionCurrent(currentPool, targetMember, file) {
+		return false, true
+	}
 	targetMissing := false
 	if _, err := os.Lstat(targetPath); os.IsNotExist(err) {
 		targetMissing = true
@@ -1934,6 +1949,9 @@ func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *mod
 		if sourceMember == nil || sourceFile == nil {
 			return false, false
 		}
+		if !partialPoolMemberFileAdmissionCurrent(currentPool, sourceMember, sourceFile) {
+			return false, true
+		}
 		sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
 		if err != nil || !partialPoolCreatedContains(created, targetPath) || !partialPoolSameFile(sourcePath, targetPath) {
 			return false, false
@@ -1945,7 +1963,7 @@ func (s *Service) rollbackLivePartialPoolHardlink(ctx context.Context, file *mod
 			return false, false
 		}
 	}
-	changed, err := s.automationStore.TransitionPartialPoolHardlinkRollback(ctx, targetMember.ID, file.ID, targetMember.Status)
+	changed, err := s.automationStore.TransitionPartialPoolHardlinkRollback(ctx, targetMember.ID, file.ID, targetMember.CreatedAt, file.CreatedAt, targetMember.Status)
 	if err != nil || !changed {
 		return false, true
 	}
@@ -2132,7 +2150,7 @@ func (s *Service) reconcilePartialPoolAcquiring(ctx context.Context, now time.Ti
 		return
 	}
 	if err := s.syncManager.BulkAction(ctx, member.InstanceID, partialPoolMemberHashes(member), "pause"); err != nil {
-		s.markPartialPoolMemberManual(ctx, member, "stalled downloader could not be paused: "+err.Error())
+		s.markPartialPoolMemberManualWithPause(ctx, member, "stalled downloader could not be paused: "+err.Error(), true)
 	}
 }
 
@@ -2253,7 +2271,7 @@ func (s *Service) propagatePartialPoolFiles(ctx context.Context, now time.Time, 
 			}
 			if ctx.Err() == nil {
 				if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), targetMember.InstanceID, partialPoolMemberHashes(targetMember), "pause"); err != nil {
-					s.markPartialPoolMemberManual(ctx, targetMember, "propagation target could not be paused: "+err.Error())
+					s.markPartialPoolMemberManualWithPause(ctx, targetMember, "propagation target could not be paused: "+err.Error(), true)
 				}
 			}
 			continue
@@ -2720,6 +2738,13 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 
+	s.partialPoolAdmissionMaterializationMu.Lock()
+	defer s.partialPoolAdmissionMaterializationMu.Unlock()
+	currentPool, err := s.automationStore.GetPartialPool(ctx, pool.ID)
+	if err != nil || !partialPoolPropagationAdmissionsCurrent(currentPool, sourceMember, sourceFile, targetMember, targetFile) {
+		targetSnapshot.stateRetryPending = true
+		return false
+	}
 	sourcePath, err := partialPoolLocalPath(sourceMember, sourceFile)
 	if err != nil {
 		markManual("unsafe_source_path", "unsafe source path: "+err.Error())
@@ -2756,7 +2781,10 @@ func (s *Service) finishPartialPoolPropagation(
 				markManual("target_conflict", "a different target file already exists")
 				return false
 			}
-			s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+			if !s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{}) {
+				targetSnapshot.stateRetryPending = true
+				return false
+			}
 			return true
 		}
 		if os.SameFile(sourceInfo, targetInfo) {
@@ -2844,7 +2872,19 @@ func (s *Service) finishPartialPoolPropagation(
 	if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
 		s.storePartialPoolCreated(targetFile.ID, created)
 	}
-	s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	if !s.transitionPartialPoolFile(ctx, targetFile, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{}) {
+		if targetMember.Mode == models.CrossSeedPartialPoolModeReflink {
+			if replaceReflinkTarget && created != nil {
+				created.Files = []string{targetPath}
+			}
+			if rollbackErr := s.rollbackPartialPoolPropagation(created); rollbackErr != nil {
+				markManual("materialization_rollback_failed", "reflink propagation rollback failed: "+rollbackErr.Error())
+				return false
+			}
+		}
+		targetSnapshot.stateRetryPending = true
+		return false
+	}
 	log.Debug().
 		Int64("poolID", targetMember.PoolID).
 		Int64("targetMemberID", targetMember.ID).
@@ -2854,6 +2894,38 @@ func (s *Service) finishPartialPoolPropagation(
 		Str("mode", targetMember.Mode).
 		Msg("Partial pool file propagation completed")
 	return true
+}
+
+func (s *Service) rollbackPartialPoolPropagation(created *hardlinktree.Created) error {
+	if s.partialPoolPropagationRollback != nil {
+		return s.partialPoolPropagationRollback(created)
+	}
+	return created.Rollback()
+}
+
+func partialPoolPropagationAdmissionsCurrent(
+	pool *models.CrossSeedPartialPool,
+	sourceMember *models.CrossSeedPartialPoolMember,
+	sourceFile *models.CrossSeedPartialPoolMemberFile,
+	targetMember *models.CrossSeedPartialPoolMember,
+	targetFile *models.CrossSeedPartialPoolMemberFile,
+) bool {
+	return partialPoolMemberFileAdmissionCurrent(pool, sourceMember, sourceFile) &&
+		partialPoolMemberFileAdmissionCurrent(pool, targetMember, targetFile)
+}
+
+func partialPoolMemberFileAdmissionCurrent(
+	pool *models.CrossSeedPartialPool,
+	member *models.CrossSeedPartialPoolMember,
+	file *models.CrossSeedPartialPoolMemberFile,
+) bool {
+	if member == nil || file == nil {
+		return false
+	}
+	currentMember, currentFile := partialPoolFileByID(pool, file.ID)
+	return currentMember != nil && currentFile != nil &&
+		currentMember.ID == member.ID && currentMember.CreatedAt.Equal(member.CreatedAt) &&
+		currentFile.CreatedAt.Equal(file.CreatedAt)
 }
 
 // partialPoolMemberModeEnabled returns false without an error only when loaded
@@ -3272,7 +3344,7 @@ func (s *Service) selectAndResumePartialPoolDownloader(ctx context.Context, now 
 		reason = "link mode or local filesystem access was disabled"
 		return !s.transitionPartialPoolMember(ctx, member, models.CrossSeedPartialPoolMemberStatusManual, models.PartialPoolMemberMutation{LastError: &reason})
 	}
-	claimed, err := s.automationStore.ClaimPartialPoolDownloader(ctx, member.ID, snapshot.torrent.Downloaded, now, now.Add(-partialPoolAdmissionHold))
+	claimed, err := s.automationStore.ClaimPartialPoolDownloader(ctx, member.ID, snapshot.torrent.Downloaded, member.CreatedAt, now, now.Add(-partialPoolAdmissionHold))
 	if err != nil {
 		if ctx.Err() == nil {
 			log.Warn().Err(err).Int64("poolID", pool.ID).Int64("memberID", member.ID).Msg("Failed to claim partial pool downloader")
@@ -3407,7 +3479,7 @@ func (s *Service) transitionPartialPoolMember(ctx context.Context, member *model
 	if member == nil || ctx.Err() != nil {
 		return false
 	}
-	changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, []string{member.Status}, status, mutation)
+	changed, err := s.automationStore.TransitionPartialPoolMember(ctx, member.ID, member.CreatedAt, []string{member.Status}, status, mutation)
 	if err != nil || !changed {
 		return false
 	}
@@ -3449,7 +3521,7 @@ func (s *Service) transitionPartialPoolFile(ctx context.Context, file *models.Cr
 	if file == nil || ctx.Err() != nil {
 		return false
 	}
-	changed, err := s.automationStore.TransitionPartialPoolFile(ctx, file.ID, []string{file.Status}, status, mutation)
+	changed, err := s.automationStore.TransitionPartialPoolFile(ctx, file.ID, file.CreatedAt, []string{file.Status}, status, mutation)
 	if err != nil || !changed {
 		return false
 	}

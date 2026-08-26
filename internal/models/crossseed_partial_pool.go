@@ -447,8 +447,8 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 			INSERT INTO cross_seed_partial_pool_member_files (
 				member_id, file_index, relative_path, size_bytes, pieces_root,
 				wanted_at_admission, materialized_at_add, replaceable_at_add,
-				status, source_file_id, last_error
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				status, source_file_id, last_error, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 		if reAdmission {
 			query += `
@@ -462,14 +462,15 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 					status = excluded.status,
 					source_file_id = excluded.source_file_id,
 					last_error = excluded.last_error,
-					created_at = CURRENT_TIMESTAMP,
-					updated_at = CURRENT_TIMESTAMP
+					created_at = excluded.created_at,
+					updated_at = excluded.updated_at
 			`
 		}
 		_, err = tx.ExecContext(ctx, query,
 			memberID, file.FileIndex, file.RelativePath, file.SizeBytes, piecesRoot,
 			BoolToSQLite(file.WantedAtAdmission), BoolToSQLite(file.MaterializedAtAdd),
 			BoolToSQLite(file.ReplaceableAtAdd), file.Status, file.SourceFileID, file.LastError,
+			admittedAt, admittedAt,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("insert partial pool file %d: %w", file.FileIndex, err)
@@ -871,15 +872,33 @@ func (s *CrossSeedStore) SetPartialPoolStatus(ctx context.Context, poolID int64,
 	if status != CrossSeedPartialPoolStatusActive && status != CrossSeedPartialPoolStatusDormant {
 		return fmt.Errorf("invalid partial pool status %q", status)
 	}
-	_, err := s.db.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, poolID)
+	_, err := s.db.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, status, time.Now().UTC(), poolID)
 	if err != nil {
 		return fmt.Errorf("update partial pool status: %w", err)
 	}
 	return nil
 }
 
-// TransitionPartialPoolMember applies an expected-state compare-and-set.
-func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, memberID int64, expected []string, status string, mutation PartialPoolMemberMutation) (bool, error) {
+// SetPartialPoolStatusIfUnchanged changes scheduling state only when the pool
+// has not been updated since it was loaded.
+func (s *CrossSeedStore) SetPartialPoolStatusIfUnchanged(ctx context.Context, poolID int64, updatedAt time.Time, status string) (bool, error) {
+	if status != CrossSeedPartialPoolStatusActive && status != CrossSeedPartialPoolStatusDormant {
+		return false, fmt.Errorf("invalid partial pool status %q", status)
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE cross_seed_partial_pools
+		SET status = ?, updated_at = ?
+		WHERE id = ? AND updated_at = ?
+	`, status, time.Now().UTC(), poolID, updatedAt)
+	if err != nil {
+		return false, fmt.Errorf("compare and set partial pool status: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	return changed == 1, err
+}
+
+// TransitionPartialPoolMember applies an expected-state and admission compare-and-set.
+func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, memberID int64, admittedAt time.Time, expected []string, status string, mutation PartialPoolMemberMutation) (bool, error) {
 	if len(expected) == 0 || !validPartialPoolMemberStatus(status) {
 		return false, errors.New("partial pool member transition requires valid states")
 	}
@@ -934,8 +953,8 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 	}
 	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(expected)), ",")
-	query := fmt.Sprintf(`UPDATE cross_seed_partial_pool_members SET %s WHERE id = ? AND status IN (%s)`, strings.Join(sets, ", "), placeholders)
-	args = append(args, memberID)
+	query := fmt.Sprintf(`UPDATE cross_seed_partial_pool_members SET %s WHERE id = ? AND created_at = ? AND status IN (%s)`, strings.Join(sets, ", "), placeholders)
+	args = append(args, memberID, admittedAt)
 	for _, from := range expected {
 		args = append(args, from)
 	}
@@ -948,8 +967,9 @@ func (s *CrossSeedStore) TransitionPartialPoolMember(ctx context.Context, member
 }
 
 // ClaimPartialPoolDownloader locks the pool row before inspecting current pool
-// membership, then claims at most one eligible downloader.
-func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberID, downloadedBytes int64, now, admissionCutoff time.Time) (bool, error) {
+// membership, then claims at most one eligible downloader whose admission
+// generation matches admittedAt.
+func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberID, downloadedBytes int64, admittedAt, now, admissionCutoff time.Time) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("begin partial pool downloader claim: %w", err)
@@ -986,7 +1006,7 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 		    last_progress_at = ?, retry_after = NULL, review_pause_pending = ?,
 		    resume_attempts = NULL, recovery_attempts = NULL, last_error = '',
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE selected.id = ? AND selected.status = ?
+		WHERE selected.id = ? AND selected.created_at = ? AND selected.status = ?
 		  AND (selected.retry_after IS NULL OR selected.retry_after <= ?)
 		  AND NOT EXISTS (
 			SELECT 1 FROM cross_seed_partial_pool_members other
@@ -1014,6 +1034,7 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 		now,
 		BoolToSQLite(false),
 		memberID,
+		admittedAt,
 		CrossSeedPartialPoolMemberStatusWaiting,
 		now,
 		CrossSeedPartialPoolMemberStatusAcquiring,
@@ -1041,8 +1062,8 @@ func (s *CrossSeedStore) ClaimPartialPoolDownloader(ctx context.Context, memberI
 	return true, nil
 }
 
-// TransitionPartialPoolFile applies an expected-state compare-and-set.
-func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID int64, expected []string, status string, mutation PartialPoolFileMutation) (bool, error) {
+// TransitionPartialPoolFile applies an expected-state and admission compare-and-set.
+func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID int64, admittedAt time.Time, expected []string, status string, mutation PartialPoolFileMutation) (bool, error) {
 	if len(expected) == 0 || !validPartialPoolFileStatus(status) {
 		return false, errors.New("partial pool file transition requires valid states")
 	}
@@ -1063,8 +1084,8 @@ func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID i
 	}
 	sets = append(sets, "updated_at = CURRENT_TIMESTAMP")
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(expected)), ",")
-	query := fmt.Sprintf(`UPDATE cross_seed_partial_pool_member_files SET %s WHERE id = ? AND status IN (%s)`, strings.Join(sets, ", "), placeholders)
-	args = append(args, fileID)
+	query := fmt.Sprintf(`UPDATE cross_seed_partial_pool_member_files SET %s WHERE id = ? AND created_at = ? AND status IN (%s)`, strings.Join(sets, ", "), placeholders)
+	args = append(args, fileID, admittedAt)
 	for _, from := range expected {
 		args = append(args, from)
 	}
@@ -1080,7 +1101,7 @@ func (s *CrossSeedStore) TransitionPartialPoolFile(ctx context.Context, fileID i
 // missing, clears its source, and records the member's pending follow-up check.
 // It returns false without committing when either compare-and-set no longer
 // matches, and returns an error for invalid input or database failures.
-func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Context, memberID, fileID int64, memberStatus string) (bool, error) {
+func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Context, memberID, fileID int64, memberAdmittedAt, fileAdmittedAt time.Time, memberStatus string) (bool, error) {
 	if memberID == 0 || fileID == 0 || (memberStatus != CrossSeedPartialPoolMemberStatusVerifying && memberStatus != CrossSeedPartialPoolMemberStatusRechecking) {
 		return false, errors.New("partial pool hardlink rollback requires valid member and file state")
 	}
@@ -1093,8 +1114,8 @@ func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Conte
 	fileResult, err := tx.ExecContext(ctx, `
 		UPDATE cross_seed_partial_pool_member_files
 		SET status = ?, source_file_id = NULL, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND member_id = ? AND status = ?
-	`, CrossSeedPartialPoolFileStatusMissing, fileID, memberID, CrossSeedPartialPoolFileStatusVerifying)
+		WHERE id = ? AND member_id = ? AND created_at = ? AND status = ?
+	`, CrossSeedPartialPoolFileStatusMissing, fileID, memberID, fileAdmittedAt, CrossSeedPartialPoolFileStatusVerifying)
 	if err != nil {
 		return false, fmt.Errorf("record partial pool hardlink rollback file: %w", err)
 	}
@@ -1109,8 +1130,8 @@ func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Conte
 	memberResult, err := tx.ExecContext(ctx, `
 		UPDATE cross_seed_partial_pool_members
 		SET last_error = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND status = ?
-	`, CrossSeedPartialPoolRecheckPending, memberID, memberStatus)
+		WHERE id = ? AND created_at = ? AND status = ?
+	`, CrossSeedPartialPoolRecheckPending, memberID, memberAdmittedAt, memberStatus)
 	if err != nil {
 		return false, fmt.Errorf("record partial pool hardlink rollback member: %w", err)
 	}

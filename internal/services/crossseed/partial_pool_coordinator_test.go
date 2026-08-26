@@ -301,6 +301,69 @@ func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 	require.NotNil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold)), "the latest of many admissions renews the pool-wide hold")
 }
 
+func TestPartialPoolStalledPauseFailureRetriesUntilStopped(t *testing.T) {
+	store, instances, _ := newPartialPoolCoordinatorStore(t, "stalled-pause")
+	instance := instances[0]
+	instance.UseReflinks = true
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	downloaded := int64(50)
+	lastProgressAt := now.Add(-partialPoolStallWindow)
+	registration := partialPoolFilesystemRegistration(
+		instance.ID,
+		"stalled-member",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusAcquiring,
+		models.CrossSeedPartialPoolFileStatusAcquiring,
+		nil,
+	)
+	registration.Member.MissingBytes = registration.Files[0].SizeBytes
+	registration.Member.StartedByPool = true
+	registration.Member.LastDownloadedBytes = &downloaded
+	registration.Member.LastProgressAt = &lastProgressAt
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	snapshot := partialPoolTestSnapshot(member, member.MissingBytes)
+	snapshot.torrent.Hash = member.TorrentKey
+	snapshot.torrent.State = qbt.TorrentStateDownloading
+	snapshot.torrent.Downloaded = downloaded
+	syncManager := &scopedPartialPoolSyncManager{bulkActionErr: errors.New("synthetic pause failure")}
+	service := &Service{
+		automationStore: store,
+		instanceStore:   newOrderedInstanceStore(instance),
+		syncManager:     syncManager,
+	}
+
+	now = member.CreatedAt.Add(partialPoolAdmissionHold)
+	snapshots := map[int64]*partialPoolMemberSnapshot{member.ID: snapshot}
+	require.NoError(t, service.reconcilePartialPool(t.Context(), now, pool, snapshots, 1<<20))
+	require.Equal(t, []string{"pause:" + member.TorrentKey}, syncManager.recordedActions())
+	reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, models.CrossSeedPartialPoolStatusActive, reloaded.Status)
+	member = reloaded.Members[0]
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, member.Status)
+	require.Equal(t, "stalled downloader could not be paused: synthetic pause failure", member.LastError)
+	require.True(t, member.ReviewPausePending)
+
+	syncManager.bulkActionErr = nil
+	service.reconcilePartialPoolReviewPauses(t.Context(), reloaded, snapshots)
+	require.Equal(t, []string{"pause:" + member.TorrentKey, "pause:" + member.TorrentKey}, syncManager.recordedActions())
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	member = reloaded.Members[0]
+	require.True(t, member.ReviewPausePending)
+
+	snapshot.torrent.State = qbt.TorrentStateStoppedDl
+	service.reconcilePartialPoolReviewPauses(t.Context(), reloaded, snapshots)
+	reloaded, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	member = reloaded.Members[0]
+	require.False(t, member.ReviewPausePending)
+	require.Equal(t, "stalled downloader could not be paused: synthetic pause failure", member.LastError)
+}
+
 func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
 	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, UseReflinks: true}

@@ -448,15 +448,16 @@ type Service struct {
 	backendPool atomic.Value // stores *fsops.Pool
 
 	// test hooks
-	crossSeedInvoker            func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier           func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
-	torrentDownloadFunc         func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-	completionSearchInvoker     func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator       func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	reflinkMaterializer         func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	partialPoolTorrentRefresher func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
-	postInjectionHook           func(context.Context, int, string)
-	filesShareAllocation        func(sourcePath, candidatePath string) (bool, error)
+	crossSeedInvoker               func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	seasonPackApplier              func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	torrentDownloadFunc            func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker        func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator          func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	reflinkMaterializer            func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	partialPoolPropagationRollback func(*hardlinktree.Created) error
+	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
+	postInjectionHook              func(context.Context, int, string)
+	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
@@ -464,10 +465,11 @@ type Service struct {
 	recheckResumeCancel context.CancelFunc
 
 	// Durable partial link-mode completion coordinator.
-	partialPoolWake            chan partialPoolWake
-	partialPoolFullScanPending atomic.Bool
-	partialPoolCreatedMu       sync.Mutex
-	partialPoolCreated         map[int64]*hardlinktree.Created
+	partialPoolWake                       chan partialPoolWake
+	partialPoolFullScanPending            atomic.Bool
+	partialPoolAdmissionMaterializationMu sync.Mutex
+	partialPoolCreatedMu                  sync.Mutex
+	partialPoolCreated                    map[int64]*hardlinktree.Created
 	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
 	// one source/target file pair until either root path changes or qui restarts.
 	partialPoolRejectedPairs sync.Map
