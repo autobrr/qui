@@ -45,11 +45,14 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
 
-	if instance.HasLocalFilesystemAccess {
+	mode, _ := models.HasFilesystemAccess(instance)
+	switch mode {
+	case models.FilesystemModeLocal:
 		return p.local, nil
+	case models.FilesystemModeRemote:
+		// Future: return a remote backend over the instance's pinned SSH endpoint.
+	case models.FilesystemModeNone:
 	}
-
-	// Future: return a remote backend for instances with SSH access configured.
 
 	return noopBackend{}, nil
 }

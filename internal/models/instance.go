@@ -45,6 +45,19 @@ type Instance struct {
 	UseReflinks bool `json:"useReflinks"`
 	// Fallback to regular mode when reflink/hardlink fails
 	FallbackToRegularMode bool `json:"fallbackToRegularMode"`
+
+	// SSH access for instances whose torrent data lives on another host.
+	// Not part of the JSON contract yet: the API shape lands with the
+	// ssh-test/credentials endpoints, which are also what first writes these.
+	SSHHost     string `json:"-"`
+	SSHPort     int    `json:"-"`
+	SSHUsername string `json:"-"`
+	// AES-GCM encrypted private key (AAD: instance id + field).
+	SSHKeyEncrypted string `json:"-"`
+	// Pinned host key: the marshaled public key under the same AEAD
+	// (AAD: instance id + field + host + port). Empty until the user
+	// confirms the key, and no remote operation runs before it is set.
+	SSHHostKeyEncrypted string `json:"-"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {
@@ -202,6 +215,13 @@ func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceSt
 
 // encrypt encrypts a string using AES-GCM
 func (s *InstanceStore) encrypt(plaintext string) (string, error) {
+	return s.encryptWithAAD(plaintext, nil)
+}
+
+// encryptWithAAD encrypts a string using AES-GCM, binding the ciphertext to
+// additionalData. Passing nil is the unbound form the older credential columns
+// use; see instance_ssh.go for what the SSH columns bind to and why.
+func (s *InstanceStore) encryptWithAAD(plaintext string, additionalData []byte) (string, error) {
 	block, err := aes.NewCipher(s.encryptionKey)
 	if err != nil {
 		return "", err
@@ -217,12 +237,19 @@ func (s *InstanceStore) encrypt(plaintext string) (string, error) {
 		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), additionalData)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 // decrypt decrypts a string encrypted with encrypt
 func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
+	return s.decryptWithAAD(ciphertext, nil)
+}
+
+// decryptWithAAD decrypts a string encrypted with encryptWithAAD. Mismatched
+// additionalData fails authentication, which is the point: it is how a
+// transplanted or redirected credential is caught.
+func (s *InstanceStore) decryptWithAAD(ciphertext string, additionalData []byte) (string, error) {
 	data, err := base64.StdEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", err
@@ -243,7 +270,7 @@ func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
 	}
 
 	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
+	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, additionalData)
 	if err != nil {
 		return "", err
 	}
@@ -445,48 +472,34 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	return instance, nil
 }
 
-func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
-	query := `
-		SELECT id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
-		FROM instances_view
-		WHERE id = ?
-	`
+// instanceViewColumns is the column list for instances_view queries.
+const instanceViewColumns = `id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode, ssh_host, ssh_port, ssh_username, ssh_key_encrypted, ssh_host_key_encrypted`
 
+// scanInstance scans a row from instances_view into an Instance.
+func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	var instanceID int
 	var name, host, username, passwordEncrypted, apiKeyEncrypted string
 	var basicUsername, basicPasswordEncrypted sql.NullString
-	var tlsSkipVerify int
-	var sortOrder int
-	var isActive int
-	var hasLocalFilesystemAccess int
+	var tlsSkipVerify, sortOrder, isActive, hasLocalFilesystemAccess int
 	var useHardlinks int
 	var hardlinkBaseDir, hardlinkDirPreset string
-	var useReflinks int
-	var fallbackToRegularMode int
+	var useReflinks, fallbackToRegularMode int
+	var sshHost, sshUsername string
+	var sshPort int
+	var sshKeyEncrypted, sshHostKeyEncrypted string
 
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
-		&instanceID,
-		&name,
-		&host,
-		&username,
-		&passwordEncrypted,
-		&apiKeyEncrypted,
-		&basicUsername,
-		&basicPasswordEncrypted,
-		&tlsSkipVerify,
-		&sortOrder,
-		&isActive,
+	err := scan(
+		&instanceID, &name, &host, &username,
+		&passwordEncrypted, &apiKeyEncrypted,
+		&basicUsername, &basicPasswordEncrypted,
+		&tlsSkipVerify, &sortOrder, &isActive,
 		&hasLocalFilesystemAccess,
-		&useHardlinks,
-		&hardlinkBaseDir,
-		&hardlinkDirPreset,
-		&useReflinks,
-		&fallbackToRegularMode,
+		&useHardlinks, &hardlinkBaseDir, &hardlinkDirPreset,
+		&useReflinks, &fallbackToRegularMode,
+		&sshHost, &sshPort, &sshUsername,
+		&sshKeyEncrypted, &sshHostKeyEncrypted,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrInstanceNotFound
-		}
 		return nil, err
 	}
 
@@ -506,6 +519,11 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		HardlinkDirPreset:        hardlinkDirPreset,
 		UseReflinks:              SQLiteIntToBool(useReflinks),
 		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
+		SSHHost:                  sshHost,
+		SSHPort:                  sshPort,
+		SSHUsername:              sshUsername,
+		SSHKeyEncrypted:          sshKeyEncrypted,
+		SSHHostKeyEncrypted:      sshHostKeyEncrypted,
 	}
 
 	if basicUsername.Valid {
@@ -513,6 +531,21 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	}
 	if basicPasswordEncrypted.Valid {
 		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+	return instance, nil
+}
+
+func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
+	query := `SELECT ` + instanceViewColumns + ` FROM instances_view WHERE id = ?`
+
+	instance, err := scanInstance(func(dest ...any) error {
+		return s.db.QueryRowContext(ctx, query, id).Scan(dest...)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrInstanceNotFound
+		}
+		return nil, err
 	}
 
 	return instance, nil
@@ -524,11 +557,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		orderByName = "LOWER(name)"
 	}
 
-	query := fmt.Sprintf(`
-		SELECT id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
-		FROM instances_view
-		ORDER BY sort_order ASC, %s ASC, id ASC
-	`, orderByName)
+	query := fmt.Sprintf(`SELECT %s FROM instances_view ORDER BY sort_order ASC, %s ASC, id ASC`, instanceViewColumns, orderByName)
 
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -538,66 +567,10 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 
 	var instances []*Instance
 	for rows.Next() {
-		var id int
-		var name, host, username, passwordEncrypted, apiKeyEncrypted string
-		var basicUsername, basicPasswordEncrypted sql.NullString
-		var tlsSkipVerify int
-		var sortOrder int
-		var isActive int
-		var hasLocalFilesystemAccess int
-		var useHardlinks int
-		var hardlinkBaseDir, hardlinkDirPreset string
-		var useReflinks int
-		var fallbackToRegularMode int
-
-		err := rows.Scan(
-			&id,
-			&name,
-			&host,
-			&username,
-			&passwordEncrypted,
-			&apiKeyEncrypted,
-			&basicUsername,
-			&basicPasswordEncrypted,
-			&tlsSkipVerify,
-			&sortOrder,
-			&isActive,
-			&hasLocalFilesystemAccess,
-			&useHardlinks,
-			&hardlinkBaseDir,
-			&hardlinkDirPreset,
-			&useReflinks,
-			&fallbackToRegularMode,
-		)
+		instance, err := scanInstance(rows.Scan)
 		if err != nil {
 			return nil, err
 		}
-
-		instance := &Instance{
-			ID:                       id,
-			Name:                     name,
-			Host:                     host,
-			Username:                 username,
-			PasswordEncrypted:        passwordEncrypted,
-			APIKeyEncrypted:          apiKeyEncrypted,
-			TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
-			SortOrder:                sortOrder,
-			IsActive:                 SQLiteIntToBool(isActive),
-			HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
-			UseHardlinks:             SQLiteIntToBool(useHardlinks),
-			HardlinkBaseDir:          hardlinkBaseDir,
-			HardlinkDirPreset:        hardlinkDirPreset,
-			UseReflinks:              SQLiteIntToBool(useReflinks),
-			FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
-		}
-
-		if basicUsername.Valid {
-			instance.BasicUsername = &basicUsername.String
-		}
-		if basicPasswordEncrypted.Valid {
-			instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
-		}
-
 		instances = append(instances, instance)
 	}
 

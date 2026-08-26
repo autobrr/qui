@@ -209,6 +209,11 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "hardlink_dir_preset", Type: "TEXT"},
 		{Name: "use_reflinks", Type: "BOOLEAN"},
 		{Name: "fallback_to_regular_mode", Type: "BOOLEAN"},
+		{Name: "ssh_host", Type: "TEXT"},
+		{Name: "ssh_port", Type: "INTEGER"},
+		{Name: "ssh_username", Type: "TEXT"},
+		{Name: "ssh_key_encrypted", Type: "TEXT"},
+		{Name: "ssh_host_key_encrypted", Type: "TEXT"},
 	},
 	"licenses": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
