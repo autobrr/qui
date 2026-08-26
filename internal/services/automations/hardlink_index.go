@@ -718,6 +718,9 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		}
 		torrentInfoByHash[hash] = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
 	}
+	if ctx.Err() != nil {
+		return index
+	}
 
 	// Phase 2: derive scope, signatures and groups from the scan results.
 	stats := index.applyLinkState(deriveLinkCounts(torrentInfoByHash))

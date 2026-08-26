@@ -5,10 +5,21 @@ package automations
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -677,6 +688,79 @@ func TestCrossScope_ContextCancellation(t *testing.T) {
 	if index.CrossScopeByHash == nil {
 		t.Fatal("expected CrossScopeByHash to be populated even with cancelled context")
 	}
+}
+
+type cancelAfterFirstHardlinkLstatBackend struct {
+	fsops.Backend
+	cancel context.CancelFunc
+}
+
+func (b *cancelAfterFirstHardlinkLstatBackend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
+	info, err := b.Backend.Lstat(ctx, path)
+	if err == nil {
+		b.cancel()
+	}
+	return info, err
+}
+
+func TestGetHardlinkIndex_CanceledFinalScanIsNotCached(t *testing.T) {
+	const hash = "0123456789abcdef0123456789abcdef01234567"
+
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "one.mkv"))
+	createFile(t, filepath.Join(dir, "two.mkv"))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.10.0"))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/torrents/files":
+			_, _ = w.Write([]byte(`[{"name":"one.mkv"},{"name":"two.mkv"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	db := testdb.NewMigratedSQLite(t, "hardlink-index-cancel")
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	localAccess := true
+	instance, err := instanceStore.Create(
+		t.Context(), "hardlink-index-cancel", server.URL, "", "", nil, nil, false, &localAccess,
+	)
+	require.NoError(t, err)
+
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	globalHardlinkIndexCache.mu.Lock()
+	delete(globalHardlinkIndexCache.indices, instance.ID)
+	globalHardlinkIndexCache.mu.Unlock()
+	t.Cleanup(func() {
+		globalHardlinkIndexCache.mu.Lock()
+		delete(globalHardlinkIndexCache.indices, instance.ID)
+		globalHardlinkIndexCache.mu.Unlock()
+	})
+
+	scanCtx, cancel := context.WithCancel(t.Context())
+	backend := &cancelAfterFirstHardlinkLstatBackend{
+		Backend: localbackend.NewBackend(),
+		cancel:  cancel,
+	}
+	service := &Service{
+		syncManager: qbittorrent.NewSyncManager(clientPool, nil),
+		backendPool: fsops.NewPool(instanceStore, backend),
+	}
+	torrents := []qbt.Torrent{{Hash: hash, SavePath: dir}}
+
+	service.GetHardlinkIndex(scanCtx, instance.ID, torrents)
+	require.ErrorIs(t, scanCtx.Err(), context.Canceled)
+
+	require.Equal(t, HardlinkScopeNone, service.GetHardlinkIndex(t.Context(), instance.ID, torrents).GetHardlinkScope(hash))
 }
 
 func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
