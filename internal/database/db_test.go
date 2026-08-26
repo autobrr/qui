@@ -307,8 +307,7 @@ var expectedIndexes = map[string][]string{
 	"client_api_keys":     {"idx_client_api_keys_instance_id"},
 	"instance_errors":     {"idx_instance_errors_lookup"},
 	"sessions":            {"sessions_expiry_idx"},
-	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
-	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup"},
 	"automations":         {"idx_automations_instance"},
 	"automation_activity": {"idx_automation_activity_instance_created"},
 }
