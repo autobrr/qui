@@ -167,6 +167,8 @@ func normalizedPartialPoolAliases(values ...[]string) []string {
 	return aliases
 }
 
+var errPartialPoolRegistrationChanged = errors.New("partial pool changed during registration")
+
 // RegisterPartialPoolMember atomically resolves or creates the source pool and
 // persists one member plus every file. An alias-equivalent re-admission keeps
 // the member identity but replaces its stale admission and file state.
@@ -223,7 +225,18 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 			return nil, nil, fmt.Errorf("invalid partial pool file status %q", file.Status)
 		}
 	}
+	for {
+		pool, registered, err := s.registerPartialPoolMember(ctx, registration, member, files)
+		if !errors.Is(err, errPartialPoolRegistrationChanged) {
+			return pool, registered, err
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+	}
+}
 
+func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registration CrossSeedPartialPoolRegistration, member CrossSeedPartialPoolMember, files []CrossSeedPartialPoolMemberFile) (*CrossSeedPartialPool, *CrossSeedPartialPoolMember, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin partial pool registration: %w", err)
@@ -293,8 +306,16 @@ func (s *CrossSeedStore) RegisterPartialPoolMember(ctx context.Context, registra
 	// Every admission and downloader claim takes the pool row first. Keeping
 	// that lock order prevents a claim from overlooking an uncommitted member
 	// on PostgreSQL and serializes competing claims before they inspect members.
-	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID); err != nil {
+	result, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID)
+	if err != nil {
 		return nil, nil, fmt.Errorf("lock partial pool for registration: %w", err)
+	}
+	locked, err := result.RowsAffected()
+	if err != nil {
+		return nil, nil, fmt.Errorf("inspect partial pool registration lock: %w", err)
+	}
+	if locked != 1 {
+		return nil, nil, errPartialPoolRegistrationChanged
 	}
 	admittedAt := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = ?, updated_at = ? WHERE id = ?`, CrossSeedPartialPoolStatusActive, admittedAt, poolID); err != nil {
@@ -947,26 +968,41 @@ func (s *CrossSeedStore) TransitionPartialPoolHardlinkRollback(ctx context.Conte
 	return true, nil
 }
 
-// MarkPartialPoolMemberRemoved records qBittorrent removal and deletes the pool
-// only when no member remains.
-func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, memberID int64, reason string) error {
+// MarkPartialPoolMemberRemoved records qBittorrent removal only while the
+// member's pool and admission timestamp still match, then deletes an empty pool.
+func (s *CrossSeedStore) MarkPartialPoolMemberRemoved(ctx context.Context, poolID, memberID int64, admittedAt time.Time, reason string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var poolID int64
-	if err := tx.QueryRowContext(ctx, `SELECT pool_id FROM cross_seed_partial_pool_members WHERE id = ?`, memberID).Scan(&poolID); err != nil {
+	result, err := tx.ExecContext(ctx, `UPDATE cross_seed_partial_pools SET status = status WHERE id = ?`, poolID)
+	if err != nil {
+		return fmt.Errorf("lock partial pool for removal: %w", err)
+	}
+	locked, err := result.RowsAffected()
+	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if locked != 1 {
+		return tx.Commit()
+	}
+	result, err = tx.ExecContext(ctx, `
 		UPDATE cross_seed_partial_pool_members
 		SET status = ?, started_by_pool = ?, review_pause_pending = ?,
 		    resume_attempts = NULL, recovery_attempts = NULL,
 		    last_error = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND status <> ?
-	`, CrossSeedPartialPoolMemberStatusRemoved, BoolToSQLite(false), BoolToSQLite(false), reason, memberID, CrossSeedPartialPoolMemberStatusRemoved); err != nil {
+		WHERE id = ? AND pool_id = ? AND created_at = ? AND status <> ?
+	`, CrossSeedPartialPoolMemberStatusRemoved, BoolToSQLite(false), BoolToSQLite(false), reason, memberID, poolID, admittedAt, CrossSeedPartialPoolMemberStatusRemoved)
+	if err != nil {
 		return err
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if removed != 1 {
+		return tx.Commit()
 	}
 	var remaining int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM cross_seed_partial_pool_members WHERE pool_id = ? AND status <> ?`, poolID, CrossSeedPartialPoolMemberStatusRemoved).Scan(&remaining); err != nil {

@@ -229,14 +229,14 @@ func TestSelectPartialPoolDownloaderRanking(t *testing.T) {
 		2: partialPoolTestSnapshot(pool.Members[1], 100),
 		3: partialPoolTestSnapshot(pool.Members[2], 200),
 	}
-	require.Same(t, pool.Members[0], service.selectPartialPoolDownloader(pool, snapshots, now), "greatest reusable byte total wins")
+	require.Same(t, pool.Members[0], service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "greatest reusable byte total wins")
 
 	pool.Members[0].Files = pool.Members[0].Files[:1]
 	snapshots[1] = partialPoolTestSnapshot(pool.Members[0], 100)
-	require.Same(t, pool.Members[0], service.selectPartialPoolDownloader(pool, snapshots, now), "stable member identity breaks an otherwise equal tie")
+	require.Same(t, pool.Members[0], service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "stable member identity breaks an otherwise equal tie")
 
 	snapshots[1].torrent.AmountLeft = 50
-	require.Same(t, pool.Members[0], service.selectPartialPoolDownloader(pool, snapshots, now), "smaller AmountLeft precedes stable identity")
+	require.Same(t, pool.Members[0], service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "smaller AmountLeft precedes stable identity")
 }
 
 func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
@@ -248,11 +248,11 @@ func TestSelectPartialPoolDownloaderCooldownAndSingleMember(t *testing.T) {
 	pool := &models.CrossSeedPartialPool{Members: []*models.CrossSeedPartialPoolMember{member}}
 	snapshots := map[int64]*partialPoolMemberSnapshot{1: partialPoolTestSnapshot(member, 10)}
 
-	require.Nil(t, service.selectPartialPoolDownloader(pool, snapshots, now))
-	require.Same(t, member, service.selectPartialPoolDownloader(pool, snapshots, retryAfter))
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now))
+	require.Same(t, member, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, retryAfter))
 
 	member.Status = models.CrossSeedPartialPoolMemberStatusAcquiring
-	require.Nil(t, service.selectPartialPoolDownloader(pool, snapshots, retryAfter), "an acquiring member excludes another claim")
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, retryAfter), "an acquiring member excludes another claim")
 }
 
 func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
@@ -269,21 +269,22 @@ func TestSelectPartialPoolDownloaderWaitsForEveryAdmission(t *testing.T) {
 		member.CreatedAt = now.Add(-partialPoolAdmissionHold)
 		snapshots[member.ID] = partialPoolTestSnapshot(member, 100)
 	}
-	require.NotNil(t, service.selectPartialPoolDownloader(pool, snapshots, now), "the pool may select only after every known admission settles")
+	require.NotNil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "the pool may select only after every known admission settles")
 
 	pool.Members[2].Status = models.CrossSeedPartialPoolMemberStatusVerifying
-	require.Nil(t, service.selectPartialPoolDownloader(pool, snapshots, now.Add(time.Second)), "one verification-owned member holds every downloader")
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now.Add(time.Second)), "one verification-owned member holds every downloader")
 	pool.Members[2].Status = models.CrossSeedPartialPoolMemberStatusWaiting
 
 	latestAdmission := now.Add(2 * time.Second)
 	pool.Members[3].CreatedAt = latestAdmission
-	require.Nil(t, service.selectPartialPoolDownloader(pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold-time.Nanosecond)))
-	require.NotNil(t, service.selectPartialPoolDownloader(pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold)), "the latest of many admissions renews the pool-wide hold")
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold-time.Nanosecond)))
+	require.NotNil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, latestAdmission.Add(partialPoolAdmissionHold)), "the latest of many admissions renews the pool-wide hold")
 }
 
 func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *testing.T) {
 	now := time.Date(2026, 8, 23, 12, 0, 0, 0, time.UTC)
-	service := &Service{}
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true, UseReflinks: true}
+	service := &Service{instanceStore: newOrderedInstanceStore(instance)}
 	source := partialPoolTestMember(1, 1, "source", partialPoolTestFile{"shared.mkv", 100})
 	source.Status = models.CrossSeedPartialPoolMemberStatusComplete
 	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusAvailable
@@ -304,37 +305,40 @@ func TestSelectPartialPoolDownloaderWaitsForAvailablePoolFilePropagation(t *test
 	sourceSnapshot.files[0].Progress = 0.25
 	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
 
-	require.Nil(t, service.selectPartialPoolDownloader(pool, snapshots, now), "transient checking progress must settle before propagation or lazy initial verification")
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "transient checking progress must settle before propagation or lazy initial verification")
 
 	targetSnapshot := snapshots[target.ID]
 	targetSnapshot.torrent.State = qbt.TorrentStateMissingFiles
-	require.Nil(t, service.selectPartialPoolDownloader(pool, snapshots, now), "a missingFiles reflink target must wait for available pool data before its first recheck")
+	require.Nil(t, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "a missingFiles reflink target must wait for available pool data before its first recheck")
 	targetSnapshot.torrent.State = qbt.TorrentStateStoppedDl
 
 	sourceSnapshot.torrent.State = qbt.TorrentStateStoppedDl
 	sourceSnapshot.files[0].Progress = 0
 	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
-	require.Same(t, target, service.selectPartialPoolDownloader(pool, snapshots, now), "stale durable availability must not strand the deferred member")
+	require.Same(t, target, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "stale durable availability must not strand the deferred member")
 
 	sourceSnapshot.torrent.State = qbt.TorrentStateCheckingUp
 	sourceSnapshot.files[0].Progress = 1
 	sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
 	delete(snapshots, source.ID)
-	require.Same(t, target, service.selectPartialPoolDownloader(pool, snapshots, now), "an unavailable source instance must not strand the deferred member")
+	require.Same(t, target, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "an unavailable source instance must not strand the deferred member")
 
 	snapshots[source.ID] = sourceSnapshot
 	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusMissing
-	require.Same(t, target, service.selectPartialPoolDownloader(pool, snapshots, now), "unavailable pool data must not strand the deferred member")
+	require.Same(t, target, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "unavailable pool data must not strand the deferred member")
 
 	source.Files[0].Status = models.CrossSeedPartialPoolFileStatusAvailable
+	instance.HasLocalFilesystemAccess = false
+	require.Same(t, target, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "a source without local filesystem access must not defer downloading")
+	instance.HasLocalFilesystemAccess = true
 	service.rejectPartialPoolPropagationPair(source, source.Files[0], target, target.Files[0])
-	require.Same(t, target, service.selectPartialPoolDownloader(pool, snapshots, now), "a rejected source pair must fall through to normal downloader selection")
+	require.Same(t, target, service.selectPartialPoolDownloader(t.Context(), pool, snapshots, now), "a rejected source pair must fall through to normal downloader selection")
 }
 
 func TestSelectPartialPoolSourceFileSkipsRejectedPairs(t *testing.T) {
 	firstSource := partialPoolTestMember(1, 1, "source-alpha", partialPoolTestFile{"shared.mkv", 100})
-	secondSource := partialPoolTestMember(2, 1, "source-beta", partialPoolTestFile{"shared.mkv", 100})
-	target := partialPoolTestMember(3, 1, "target", partialPoolTestFile{"shared.mkv", 100})
+	secondSource := partialPoolTestMember(2, 2, "source-beta", partialPoolTestFile{"shared.mkv", 100})
+	target := partialPoolTestMember(3, 3, "target", partialPoolTestFile{"shared.mkv", 100})
 	for _, source := range []*models.CrossSeedPartialPoolMember{firstSource, secondSource} {
 		source.Status = models.CrossSeedPartialPoolMemberStatusComplete
 		source.Files[0].Status = models.CrossSeedPartialPoolFileStatusAvailable
@@ -351,12 +355,20 @@ func TestSelectPartialPoolSourceFileSkipsRejectedPairs(t *testing.T) {
 		snapshot.fileByIndex[0] = snapshot.files[0]
 	}
 
-	service := &Service{}
-	require.Same(t, firstSource.Files[0], service.selectPartialPoolSourceFile(pool, target, target.Files[0], snapshots))
+	firstInstance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+	secondInstance := &models.Instance{ID: 2, HasLocalFilesystemAccess: true, UseReflinks: true}
+	targetInstance := &models.Instance{ID: 3, HasLocalFilesystemAccess: true, UseReflinks: true}
+	service := &Service{instanceStore: newOrderedInstanceStore(firstInstance, secondInstance, targetInstance)}
+	require.Same(t, secondSource.Files[0], service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots), "a source with disabled link mode is ineligible")
+	firstInstance.UseReflinks = true
+	require.Same(t, firstSource.Files[0], service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots))
 	service.rejectPartialPoolPropagationPair(firstSource, firstSource.Files[0], target, target.Files[0])
-	require.Same(t, secondSource.Files[0], service.selectPartialPoolSourceFile(pool, target, target.Files[0], snapshots))
+	require.Same(t, secondSource.Files[0], service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots))
+	secondInstance.HasLocalFilesystemAccess = false
+	require.Nil(t, service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots), "a source without local filesystem access is ineligible")
+	secondInstance.HasLocalFilesystemAccess = true
 	service.rejectPartialPoolPropagationPair(secondSource, secondSource.Files[0], target, target.Files[0])
-	require.Nil(t, service.selectPartialPoolSourceFile(pool, target, target.Files[0], snapshots))
+	require.Nil(t, service.selectPartialPoolSourceFile(t.Context(), pool, target, target.Files[0], snapshots))
 }
 
 func TestPartialPoolLazyInitialVerificationSelectsAndFallsBack(t *testing.T) {

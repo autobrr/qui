@@ -162,7 +162,18 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 	require.Equal(t, "Synthetic.Release/new-extra.nfo", reloaded.Files[0].RelativePath)
 	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, reloaded.Files[0].Status)
 	require.NotContains(t, oldFileIDs, reloaded.Files[0].ID)
-	require.False(t, reloaded.CreatedAt.Before(member.CreatedAt))
+	require.NotEqual(t, member.CreatedAt, reloaded.CreatedAt)
+	require.NoError(t, store.MarkPartialPoolMemberRemoved(t.Context(), member.PoolID, member.ID, member.CreatedAt, "stale removal"))
+	reloadedPool, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err)
+	for _, candidate := range reloadedPool.Members {
+		if candidate.ID == member.ID {
+			reloaded = candidate
+			break
+		}
+	}
+	require.NotNil(t, reloaded)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusVerifying, reloaded.Status)
 	var reloadedDependent *models.CrossSeedPartialPoolMember
 	for _, candidate := range reloadedPool.Members {
 		if candidate.TorrentKey == "cccc" {
@@ -449,7 +460,7 @@ func TestCrossSeedPartialPoolRemovalPreservesOtherMembers(t *testing.T) {
 	_, secondMember, err := store.RegisterPartialPoolMember(ctx, secondRegistration)
 	require.NoError(t, err)
 
-	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, firstMember.ID, "missing"))
+	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, firstMember.PoolID, firstMember.ID, firstMember.CreatedAt, "missing"))
 	reloaded, err := store.GetPartialPool(ctx, pool.ID)
 	require.NoError(t, err)
 	require.Len(t, reloaded.Members, 1)
@@ -463,8 +474,8 @@ func TestCrossSeedPartialPoolRemovalPreservesOtherMembers(t *testing.T) {
 	require.NotEqual(t, firstMember.ID, readdedMember.ID)
 	require.Len(t, readdedPool.Members, 2)
 
-	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, secondMember.ID, "missing"))
-	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, readdedMember.ID, "missing"))
+	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, secondMember.PoolID, secondMember.ID, secondMember.CreatedAt, "missing"))
+	require.NoError(t, store.MarkPartialPoolMemberRemoved(ctx, readdedMember.PoolID, readdedMember.ID, readdedMember.CreatedAt, "missing"))
 	_, err = store.GetPartialPool(ctx, pool.ID)
 	require.Error(t, err)
 }
