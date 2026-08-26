@@ -795,6 +795,8 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 	t.Parallel()
 
+	base := t.TempDir()
+
 	// buildFullPath rejects traversal and absolute names in both POSIX and Windows form.
 	for _, name := range []string{
 		"../etc/passwd",
@@ -811,11 +813,11 @@ func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 		`AC\DC - Back In Black.mkv`,
 		`dir/AC\DC.mkv`,
 	} {
-		if _, ok := buildFullPath("/data", name); ok {
+		if _, ok := buildFullPath(base, name); ok {
 			t.Errorf("expected %q to be rejected", name)
 		}
 	}
-	if _, ok := buildFullPath("/data", "Show.S01/episode.mkv"); !ok {
+	if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); !ok {
 		t.Error("expected a normal relative name to be accepted")
 	}
 
