@@ -214,15 +214,18 @@ func walkScanRootWithUnitFilter(
 ) ([]OrphanFile, bool, error) {
 	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend)
 
-	ch, err := backend.WalkDir(ctx, root, fsops.WalkOptions{
+	walkCtx, cancelWalk := context.WithCancel(ctx)
+	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
 		IgnoreDirNames: ignoredOrphanDirNames,
 		IgnorePaths:    ignorePaths,
 		WantFileID:     true,
 	})
 	if err != nil {
+		cancelWalk()
 		return nil, false, fmt.Errorf("walk %s: %w", root, err)
 	}
 	defer func() {
+		cancelWalk()
 		for range ch { //nolint:revive // drain channel to avoid leaking sender goroutine
 		}
 	}()

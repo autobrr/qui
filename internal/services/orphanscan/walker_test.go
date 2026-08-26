@@ -5,16 +5,63 @@ package orphanscan
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 )
 
 const orphanFileName = "orphan.txt"
+
+type cancelAwareWalkBackend struct {
+	fsops.Backend
+	err error
+}
+
+func (b *cancelAwareWalkBackend) WalkDir(ctx context.Context, _ string, _ fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	ch := make(chan fsops.WalkEntry, 1)
+	ch <- fsops.WalkEntry{Err: b.err}
+
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+func TestWalkScanRoot_CancelsProducerBeforeDrainingOnEntryError(t *testing.T) {
+	walkErr := errors.New("walk entry failed")
+	backend := &cancelAwareWalkBackend{
+		Backend: newTestBackend(),
+		err:     walkErr,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	root := t.TempDir()
+
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := walkScanRoot(ctx, root, NewTorrentFileMap(), nil, 0, 0, backend)
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, walkErr) {
+			t.Fatalf("walkScanRoot error = %v, want %v", err, walkErr)
+		}
+	case <-time.After(time.Second):
+		cancel()
+		err := <-result
+		t.Fatalf("walk remained blocked until the parent context was canceled: %v", err)
+	}
+}
 
 func TestWalkScanRoot_CollapsesDiscLayoutIntoSingleOrphanUnit(t *testing.T) {
 	t.Parallel()

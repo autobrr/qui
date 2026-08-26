@@ -11,6 +11,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 // detectMissingFiles checks which completed torrents have missing files on disk.
@@ -45,10 +47,25 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		return result, fmt.Errorf("failed to fetch torrent files: %w", err)
 	}
 
+	result = buildMissingFilesResult(ctx, backend, torrentByHash, filesByHash)
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("completedTorrents", len(completedHashes)).
+		Int("checked", len(result)).
+		Msg("automations: missing files detection completed")
+
+	return result, nil
+}
+
+func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrentByHash map[string]qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) map[string]bool {
+	result := make(map[string]bool)
+
 	for hash, files := range filesByHash {
 		torrent := torrentByHash[hash]
 		hasMissing := false
 		filesChecked := 0
+		allPathsValid := true
 
 		for _, f := range files {
 			if f.Name == "" {
@@ -56,6 +73,7 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 			}
 			fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
 			if !ok {
+				allPathsValid = false
 				continue
 			}
 			if _, err := backend.Stat(ctx, fullPath); err != nil {
@@ -71,17 +89,12 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 			filesChecked++
 		}
 
-		// Only set result if we checked at least one file or found missing
-		if filesChecked > 0 || hasMissing {
+		// A confirmed missing file is known even if another path was rejected.
+		// Only publish false when no path was rejected and at least one file was checked.
+		if hasMissing || (allPathsValid && filesChecked > 0) {
 			result[hash] = hasMissing
 		}
 	}
 
-	log.Debug().
-		Int("instanceID", instanceID).
-		Int("completedTorrents", len(completedHashes)).
-		Int("checked", len(result)).
-		Msg("automations: missing files detection completed")
-
-	return result, nil
+	return result
 }
