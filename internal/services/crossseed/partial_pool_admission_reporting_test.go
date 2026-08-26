@@ -20,6 +20,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -217,14 +219,16 @@ func TestLinkModePartialPoolAdmissionLeavesInitialRecheckToCoordinator(t *testin
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 			if mode == models.CrossSeedPartialPoolModeReflink {
-				service.reflinkMaterializer = func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
-					created := &hardlinktree.Created{}
+				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+					created := &fsops.TreeCreateResult{}
 					for _, file := range plan.Files {
 						require.NoError(t, os.MkdirAll(filepath.Dir(file.TargetPath), 0o755))
 						require.NoError(t, os.WriteFile(file.TargetPath, bytes.Repeat([]byte("x"), 1000), 0o600))
 						created.Files = append(created.Files, file.TargetPath)
 					}
+					created.Created = len(created.Files)
 					return created, nil
 				}
 			}
@@ -446,14 +450,16 @@ func TestLinkModesReportTerminalPartialPoolRegistrationFailure(t *testing.T) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 				},
 			}
+			service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 			if mode == models.CrossSeedPartialPoolModeReflink {
-				service.reflinkMaterializer = func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
-					created := &hardlinktree.Created{}
+				service.reflinkMaterializer = func(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+					created := &fsops.TreeCreateResult{}
 					for _, file := range plan.Files {
 						require.NoError(t, os.MkdirAll(filepath.Dir(file.TargetPath), 0o755))
 						require.NoError(t, os.WriteFile(file.TargetPath, bytes.Repeat([]byte("x"), 1000), 0o600))
 						created.Files = append(created.Files, file.TargetPath)
 					}
+					created.Created = len(created.Files)
 					return created, nil
 				}
 			}

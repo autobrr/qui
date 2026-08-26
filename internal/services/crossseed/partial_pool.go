@@ -2807,7 +2807,11 @@ func (s *Service) finishPartialPoolPropagation(
 	if targetMember.Mode == models.CrossSeedPartialPoolModeHardlink {
 		created, err = hardlinktree.Create(plan)
 	} else if s.reflinkMaterializer != nil {
-		created, err = s.reflinkMaterializer(plan.RootDir, plan)
+		materialized, materializeErr := s.reflinkMaterializer(ctx, plan.RootDir, plan)
+		if materialized != nil {
+			created = &hardlinktree.Created{Files: materialized.Files, Dirs: materialized.Dirs}
+		}
+		err = materializeErr
 	} else {
 		created, err = reflinktree.Create(plan)
 	}

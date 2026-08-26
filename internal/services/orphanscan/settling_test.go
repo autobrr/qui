@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,9 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 )
 
 type mockHealthChecker struct {
@@ -23,6 +27,23 @@ type mockHealthChecker struct {
 
 func (m *mockHealthChecker) IsHealthy() bool              { return m.healthy }
 func (m *mockHealthChecker) GetLastSyncUpdate() time.Time { return m.lastSync }
+
+type rootIdentityBackend struct {
+	fsops.Backend
+	infos map[string]*fsops.LstatInfo
+}
+
+func (b *rootIdentityBackend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	info, ok := b.infos[path]
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+	infoCopy := *info
+	return &infoCopy, nil
+}
 
 func TestReadinessChecks(t *testing.T) {
 	t.Parallel()
@@ -231,18 +252,20 @@ func TestMetadataIgnoreRoots(t *testing.T) {
 	nestedRoot := filepath.Join(scanRoot, "incoming")
 
 	got := metadataIgnoreRoots(
+		context.Background(),
 		[]string{scanRoot},
 		[]string{nestedRoot, scanRoot, base, filepath.Join(base, "elsewhere")},
+		local.NewBackend(),
 	)
 	assert.Equal(t, []string{filepath.Clean(nestedRoot)}, got)
-	assert.Empty(t, metadataIgnoreRoots([]string{scanRoot, nestedRoot}, []string{nestedRoot}))
+	assert.Empty(t, metadataIgnoreRoots(context.Background(), []string{scanRoot, nestedRoot}, []string{nestedRoot}, local.NewBackend()))
 
 	stagedFile := filepath.Join(nestedRoot, "pending.bin")
 	orphanFile := filepath.Join(scanRoot, "orphan.bin")
 	writeOldFile(t, stagedFile)
 	writeOldFile(t, orphanFile)
 
-	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100, local.NewBackend())
 	require.NoError(t, err)
 	assert.False(t, truncated)
 	assert.Equal(t, []string{normalizePath(orphanFile)}, orphanPaths(orphans))
@@ -262,9 +285,10 @@ func TestMetadataIgnoreRoots(t *testing.T) {
 			t.Skip("filesystem is case-insensitive")
 		}
 
-		assert.Equal(t, []string{filepath.Clean(upperRoot)}, metadataIgnoreRoots(
+		assert.Equal(t, []string{filepath.Clean(upperRoot)}, metadataIgnoreRoots(context.Background(),
 			[]string{caseRoot, lowerRoot},
 			[]string{upperRoot},
+			local.NewBackend(),
 		))
 	})
 }
@@ -397,7 +421,7 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 
 	if _, err := os.Lstat(lower); err == nil {
 		// Case-insensitive filesystem: one directory, two spellings, walk once.
-		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots([]string{upper, lower}))
+		assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(context.Background(), []string{upper, lower}, local.NewBackend()))
 		return
 	}
 
@@ -406,7 +430,7 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 	require.NoError(t, os.MkdirAll(lower, 0o755))
 	missing := filepath.Join(base, "Gone")
 	roots := []string{upper, lower, missing, strings.ToLower(missing)}
-	assert.Equal(t, roots, dedupeCaseVariantRoots(roots))
+	assert.Equal(t, roots, dedupeCaseVariantRoots(context.Background(), roots, local.NewBackend()))
 
 	// A symlink whose name is a case variant of its target must not evict the
 	// target: filepath.WalkDir does not follow a symlinked scan root, so the
@@ -417,5 +441,24 @@ func TestDedupeCaseVariantRoots(t *testing.T) {
 	if err := os.Symlink(linked, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	assert.Equal(t, []string{link, linked}, dedupeCaseVariantRoots([]string{link, linked}))
+	assert.Equal(t, []string{link, linked}, dedupeCaseVariantRoots(context.Background(), []string{link, linked}, local.NewBackend()))
+}
+
+func TestRootIdentityChecksUseBackend(t *testing.T) {
+	localInfo, err := local.NewBackend().Lstat(t.Context(), t.TempDir())
+	require.NoError(t, err)
+
+	base := filepath.Join(string(filepath.Separator), "remote")
+	upper := filepath.Join(base, "TrackerName")
+	lower := filepath.Join(base, "trackername")
+	backend := &rootIdentityBackend{
+		Backend: newTestBackend(),
+		infos: map[string]*fsops.LstatInfo{
+			upper: localInfo,
+			lower: localInfo,
+		},
+	}
+
+	assert.Equal(t, []string{upper}, dedupeCaseVariantRoots(t.Context(), []string{upper, lower}, backend))
+	assert.Empty(t, metadataIgnoreRoots(t.Context(), []string{base, lower}, []string{upper}, backend))
 }

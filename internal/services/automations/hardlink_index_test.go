@@ -5,10 +5,21 @@ package automations
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -679,6 +690,79 @@ func TestCrossScope_ContextCancellation(t *testing.T) {
 	}
 }
 
+type cancelAfterFirstHardlinkLstatBackend struct {
+	fsops.Backend
+	cancel context.CancelFunc
+}
+
+func (b *cancelAfterFirstHardlinkLstatBackend) Lstat(ctx context.Context, path string) (*fsops.LstatInfo, error) {
+	info, err := b.Backend.Lstat(ctx, path)
+	if err == nil {
+		b.cancel()
+	}
+	return info, err
+}
+
+func TestGetHardlinkIndex_CanceledFinalScanIsNotCached(t *testing.T) {
+	const hash = "0123456789abcdef0123456789abcdef01234567"
+
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "one.mkv"))
+	createFile(t, filepath.Join(dir, "two.mkv"))
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.10.0"))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/torrents/files":
+			_, _ = w.Write([]byte(`[{"name":"one.mkv"},{"name":"two.mkv"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	db := testdb.NewMigratedSQLite(t, "hardlink-index-cancel")
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	localAccess := true
+	instance, err := instanceStore.Create(
+		t.Context(), "hardlink-index-cancel", server.URL, "", "", nil, nil, false, &localAccess,
+	)
+	require.NoError(t, err)
+
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	globalHardlinkIndexCache.mu.Lock()
+	delete(globalHardlinkIndexCache.indices, instance.ID)
+	globalHardlinkIndexCache.mu.Unlock()
+	t.Cleanup(func() {
+		globalHardlinkIndexCache.mu.Lock()
+		delete(globalHardlinkIndexCache.indices, instance.ID)
+		globalHardlinkIndexCache.mu.Unlock()
+	})
+
+	scanCtx, cancel := context.WithCancel(t.Context())
+	backend := &cancelAfterFirstHardlinkLstatBackend{
+		Backend: localbackend.NewBackend(),
+		cancel:  cancel,
+	}
+	service := &Service{
+		syncManager: qbittorrent.NewSyncManager(clientPool, nil),
+		backendPool: fsops.NewPool(instanceStore, backend),
+	}
+	torrents := []qbt.Torrent{{Hash: hash, SavePath: dir}}
+
+	service.GetHardlinkIndex(scanCtx, instance.ID, torrents)
+	require.ErrorIs(t, scanCtx.Err(), context.Canceled)
+
+	require.Equal(t, HardlinkScopeNone, service.GetHardlinkIndex(t.Context(), instance.ID, torrents).GetHardlinkScope(hash))
+}
+
 func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 	t.Parallel()
 
@@ -711,12 +795,30 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 func TestCrossScope_RejectsEmptyAndRelativeSavePaths(t *testing.T) {
 	t.Parallel()
 
-	// Verify that buildFullPath + isPathInsideBase correctly handle dangerous save paths.
-	// Empty save path: buildFullPath("", "../etc/passwd") should not pass isPathInsideBase.
-	emptyBase := ""
-	traversal := buildFullPath(emptyBase, "../etc/passwd")
-	if isPathInsideBase(emptyBase, traversal) {
-		t.Error("expected empty base path to reject traversal")
+	base := t.TempDir()
+
+	// buildFullPath rejects traversal and absolute names in both POSIX and Windows form.
+	for _, name := range []string{
+		"../etc/passwd",
+		"..\\etc\\passwd",
+		"a/../../etc/passwd",
+		"/etc/passwd",
+		"\\evil\\path",
+		"\\\\server\\share\\file",
+		"C:/evil.mkv",
+		"c:\\evil.mkv",
+		// Backslash is a legal filename byte on Linux; rewriting it into a
+		// separator invents a path and yields false missing-files verdicts,
+		// so such names are rejected outright (skipped, never "missing").
+		`AC\DC - Back In Black.mkv`,
+		`dir/AC\DC.mkv`,
+	} {
+		if _, ok := buildFullPath(base, name); ok {
+			t.Errorf("expected %q to be rejected", name)
+		}
+	}
+	if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); !ok {
+		t.Error("expected a normal relative name to be accepted")
 	}
 
 	// Relative save path: should be rejected by the filepath.IsAbs check in Phase 2.
@@ -744,5 +846,13 @@ func TestConditionsRequireLocalAccess_HardlinkScopeCross(t *testing.T) {
 	}
 	if ConditionUsesField(cond, FieldHardlinkScope) {
 		t.Error("expected ConditionUsesField to NOT detect HARDLINK_SCOPE for HARDLINK_SCOPE_CROSS condition")
+	}
+}
+
+func TestBuildFullPathRejectsNonAbsoluteBase(t *testing.T) {
+	for _, base := range []string{"", ".", "relative/dir"} {
+		if _, ok := buildFullPath(base, "Show.S01/episode.mkv"); ok {
+			t.Errorf("buildFullPath(%q, ...) = ok, want rejected: a relative join resolves against the working directory", base)
+		}
 	}
 }

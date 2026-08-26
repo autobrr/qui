@@ -101,6 +101,40 @@ Keep your qui installation up-to-date:
 ./qui serve --data-dir /path/to/data/
 ```
 
+## Migrate From Other Torrent Clients
+
+Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what gets preserved.
+
+```bash
+# Preview what would be imported, without writing anything
+./qui migrate transmission \
+  --source-dir ~/.config/transmission-daemon \
+  --qbit-dir ~/.local/share/qBittorrent/BT_backup \
+  --dry-run
+
+# Deluge: point at the state dir inside the Deluge config dir
+./qui migrate deluge \
+  --source-dir ~/.config/deluge/state \
+  --qbit-dir ~/.local/share/qBittorrent/BT_backup
+
+# rTorrent: point at the session dir from your .rtorrent.rc
+./qui migrate rtorrent \
+  --source-dir ~/.sessions \
+  --qbit-dir ~/.local/share/qBittorrent/BT_backup
+
+# Skip the automatic tar.gz backup of both directories
+./qui migrate transmission --source-dir ... --qbit-dir ... --skip-backup
+```
+
+Notes:
+
+- Stop the source client and qBittorrent before migrating; start qBittorrent afterwards and it will pick up the imported torrents.
+- Only fully downloaded torrents are imported. Partial torrents are skipped with a warning so no incorrect piece state ever reaches qBittorrent.
+- Preserved per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state, Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
+- Supported source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x and newer.
+- Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in the current working directory first. The qBittorrent directory is archived only when it already exists; a fresh destination produces only the source archive.
+- Torrents already present in the target `BT_backup` are skipped, so re-running is safe.
+
 ## Database Migration
 
 Offline SQLite to Postgres migration:

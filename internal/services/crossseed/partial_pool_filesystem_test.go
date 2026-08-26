@@ -20,10 +20,24 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
+
+func partialPoolTestMaterializeTree(_ context.Context, _ string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
+	created, err := hardlinktree.Create(plan)
+	if err != nil {
+		return nil, err
+	}
+	return &fsops.TreeCreateResult{
+		Created:       len(created.Files),
+		SkippedExists: len(plan.Files) - len(created.Files),
+		Files:         created.Files,
+		Dirs:          created.Dirs,
+	}, nil
+}
 
 func TestPartialPoolHardlinkRollbackRequiresLiveCreatedHandle(t *testing.T) {
 	ctx := context.Background()
@@ -380,9 +394,7 @@ func TestPartialPoolPersistedPropagationRetriesInstanceLookupFailure(t *testing.
 		instanceStore:               &flakyPartialPoolInstanceStore{instance: instance, failuresRemaining: 1},
 		syncManager:                 syncManager,
 		partialPoolTorrentRefresher: partialPoolTestRefreshTorrentStates,
-		reflinkMaterializer: func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
-			return hardlinktree.Create(plan)
-		},
+		reflinkMaterializer:         partialPoolTestMaterializeTree,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
@@ -474,7 +486,7 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 			materializerCalled := false
 			service := &Service{
 				automationStore: store,
-				reflinkMaterializer: func(string, *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+				reflinkMaterializer: func(context.Context, string, *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					materializerCalled = true
 					return nil, errors.New("unexpected materializer call")
 				},
@@ -680,13 +692,13 @@ func TestPartialPoolReflinkPropagationHandlesIncompletePlaceholderBeforeRecheck(
 					UseReflinks:              true,
 				}),
 				syncManager: sync,
-				reflinkMaterializer: func(root string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+				reflinkMaterializer: func(ctx context.Context, root string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 					materializeCalls++
 					materializerRoot = root
 					if testCase.materializeErr != nil {
 						return nil, testCase.materializeErr
 					}
-					return hardlinktree.Create(plan)
+					return partialPoolTestMaterializeTree(ctx, root, plan)
 				},
 				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
@@ -945,10 +957,8 @@ func TestPartialPoolMixedPersistedPropagationWaitsBeforeRecheck(t *testing.T) {
 			HasLocalFilesystemAccess: true,
 			UseReflinks:              true,
 		}),
-		syncManager: sync,
-		reflinkMaterializer: func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
-			return hardlinktree.Create(plan)
-		},
+		syncManager:         sync,
+		reflinkMaterializer: partialPoolTestMaterializeTree,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},
@@ -1105,10 +1115,8 @@ func TestPartialPoolInitialPropagationWaitsForEveryCheckingSourceBeforeRecheck(t
 			HasLocalFilesystemAccess: true,
 			UseReflinks:              true,
 		}),
-		syncManager: sync,
-		reflinkMaterializer: func(_ string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
-			return hardlinktree.Create(plan)
-		},
+		syncManager:         sync,
+		reflinkMaterializer: partialPoolTestMaterializeTree,
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
 		},

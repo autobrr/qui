@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path"
 	"path/filepath"
 	"sort"
@@ -21,12 +21,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
-	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -81,8 +81,9 @@ type seasonPackLocalFile struct {
 
 type seasonPackPlanBuild struct {
 	plan              *hardlinktree.TreePlan
-	created           *hardlinktree.Created // what the link creator actually made; rollback removes only this
-	packDir           string                // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
+	created           *fsops.TreeCreateResult // what the link creator actually made; rollback removes only this
+	backend           fsops.Backend           // the backend that created the tree; rollback must not re-resolve on a possibly-cancelled ctx
+	packDir           string                  // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
 	linkedBytes       int64
 	totalBytes        int64
@@ -425,8 +426,20 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		opts["tags"] = strings.Join(tags, ",")
 	}
 	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, torrentBytes, opts); err != nil {
-		if rollbackErr := rollbackSeasonPackTree(planBuild.created, planBuild.packDir); rollbackErr != nil {
-			log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
+		// Roll back with the backend that created the tree: a fresh resolve on
+		// the live ctx fails when the run was cancelled, silently skipping
+		// rollback (same shape as dirscan's linkBackend threading).
+		backend := planBuild.backend
+		if backend == nil {
+			var backendErr error
+			if backend, backendErr = s.getBackendForInstance(context.WithoutCancel(ctx), inst.ID); backendErr != nil {
+				log.Warn().Err(backendErr).Str("torrentName", req.TorrentName).Msg("season pack: no backend to rollback after add failure")
+			}
+		}
+		if backend != nil {
+			if rollbackErr := rollbackSeasonPackTree(ctx, backend, planBuild.created, planBuild.packDir); rollbackErr != nil {
+				log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
+			}
 		}
 		s.recordApplyRun(ctx, req.TorrentName, "add_failed", err.Error(), winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, linkMode)
 		return &SeasonPackApplyResponse{Reason: "add_failed", Message: "failed to add torrent to qbittorrent"}, nil
@@ -514,7 +527,12 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, nil, fmt.Errorf("%w: local files cover %d/%d episodes, below coverage threshold", errCoverageDrifted, len(episodes), prep.totalEpisodes)
 	}
 
-	selectedBaseDir, err := selectSeasonPackBaseDir(inst.HardlinkBaseDir, localFiles)
+	backend, err := s.getBackendForInstance(ctx, inst.ID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("no filesystem backend: %w", err)
+	}
+
+	selectedBaseDir, err := selectSeasonPackBaseDir(ctx, backend, inst.HardlinkBaseDir, localFiles)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -540,16 +558,20 @@ func (s *Service) assembleSeasonPack(
 
 	createFn := s.seasonPackLinkCreator
 	if createFn == nil {
-		createFn = linkCreatorForMode(linkMode)
+		createFn = backend.HardlinkTree
+		if linkMode == "reflink" {
+			createFn = backend.ReflinkTree
+		}
 	}
-	created, err := createFn(planBuild.plan)
+	created, err := createFn(ctx, planBuild.plan)
 	if err != nil {
-		if rollbackErr := rollbackSeasonPackTree(created, planBuild.packDir); rollbackErr != nil {
+		if rollbackErr := rollbackSeasonPackTree(ctx, backend, created, planBuild.packDir); rollbackErr != nil {
 			return nil, nil, nil, fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
 		}
 		return nil, nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 	planBuild.created = created
+	planBuild.backend = backend
 
 	return planBuild, prep.torrentBytes, episodes, nil
 }
@@ -571,7 +593,7 @@ func (s *Service) seasonPackDestDir(ctx context.Context, inst *models.Instance, 
 	}
 }
 
-func selectSeasonPackBaseDir(configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, error) {
+func selectSeasonPackBaseDir(ctx context.Context, backend fsops.Backend, configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, error) {
 	dirs := parseSeasonPackBaseDirs(configuredDirs)
 	if len(dirs) == 0 {
 		return "", fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
@@ -582,7 +604,7 @@ func selectSeasonPackBaseDir(configuredDirs string, localFiles map[episodeIdenti
 		return "", fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
 	}
 	if len(dirs) == 1 {
-		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(dirs[0], sourcePaths)
+		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dirs[0], sourcePaths)
 		if err != nil {
 			return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, err)
 		}
@@ -594,7 +616,7 @@ func selectSeasonPackBaseDir(configuredDirs string, localFiles map[episodeIdenti
 
 	var lastErr error
 	for _, dir := range dirs {
-		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(dir, sourcePaths)
+		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(ctx, backend, dir, sourcePaths)
 		if err != nil {
 			lastErr = err
 			continue
@@ -621,17 +643,17 @@ func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) [
 	return sourcePaths
 }
 
-func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool, error) {
-	if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
+func seasonPackBaseDirMatchesAllSources(ctx context.Context, backend fsops.Backend, dir string, sourcePaths []string) (bool, error) {
+	if err := backend.MkdirAll(ctx, dir, fsutil.ContentDirMode); err != nil {
 		return false, fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
 	for _, sourcePath := range sourcePaths {
-		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
-		if err != nil && errors.Is(err, os.ErrNotExist) {
-			existingParent := nearestExistingParent(sourcePath)
+		sameFS, err := backend.SameFilesystem(ctx, sourcePath, dir)
+		if err != nil && errors.Is(err, fs.ErrNotExist) {
+			existingParent := nearestExistingParent(ctx, backend, sourcePath)
 			if existingParent != "" {
-				sameFS, err = fsutil.SameFilesystem(existingParent, dir)
+				sameFS, err = backend.SameFilesystem(ctx, existingParent, dir)
 			}
 		}
 		if err != nil {
@@ -644,9 +666,9 @@ func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool,
 	return true, nil
 }
 
-func nearestExistingParent(path string) string {
+func nearestExistingParent(ctx context.Context, backend fsops.Backend, path string) string {
 	for dir := filepath.Dir(path); dir != "." && dir != ""; dir = filepath.Dir(dir) {
-		if _, err := os.Stat(dir); err == nil {
+		if _, err := backend.Stat(ctx, dir); err == nil {
 			return dir
 		}
 		next := filepath.Dir(dir)
@@ -708,14 +730,6 @@ func seasonPackAddOptions(plan *hardlinktree.TreePlan, category string, paused b
 		options["category"] = category
 	}
 	return options
-}
-
-// linkCreatorForMode returns the appropriate link-tree creator function.
-func linkCreatorForMode(mode string) func(*hardlinktree.TreePlan) (*hardlinktree.Created, error) {
-	if mode == "reflink" {
-		return reflinktree.Create
-	}
-	return hardlinktree.Create
 }
 
 // findInstance returns the instance with the given ID, or nil.
@@ -1542,15 +1556,18 @@ func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
 // what the creator recorded in the handle, never the whole plan (discussion #2282).
 // packDir is the on-disk pack root folder (<RootDir>/<packName>); it is removed only
 // when empty so the parent RootDir (a shared base/tracker/instance dir) is never touched.
-func rollbackSeasonPackTree(created *hardlinktree.Created, packDir string) error {
+func rollbackSeasonPackTree(ctx context.Context, backend fsops.Backend, created *fsops.TreeCreateResult, packDir string) error {
+	// Rollback must run even when the add failed because the run was
+	// cancelled — otherwise the partial link tree survives on disk.
+	ctx = context.WithoutCancel(ctx)
 	var errs []error
-	if err := created.Rollback(); err != nil {
+	if err := backend.RemoveTree(ctx, created); err != nil {
 		errs = append(errs, err)
 	}
 
 	if packDir != "" {
-		if err := os.Remove(packDir); err != nil &&
-			!errors.Is(err, os.ErrNotExist) &&
+		if err := backend.Remove(ctx, packDir, fsops.RemoveOptions{}); err != nil &&
+			!errors.Is(err, fs.ErrNotExist) &&
 			!seasonPackDirNotEmpty(err) {
 			errs = append(errs, err)
 		}

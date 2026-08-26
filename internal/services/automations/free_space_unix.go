@@ -1,7 +1,7 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-//go:build windows
+//go:build !windows
 
 package automations
 
@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
@@ -16,15 +18,13 @@ import (
 )
 
 // GetFreeSpaceBytesForSource returns the free space in bytes for the given source.
-// On Windows, only the qBittorrent source is supported — matching pre-fsops
-// behavior. The backend can serve path-based free space here too; enabling it
-// is a deliberate follow-up, not a refactor side effect.
+// This is the preferred function as it doesn't require a full rule.
 func GetFreeSpaceBytesForSource(
 	ctx context.Context,
 	syncManager *qbittorrent.SyncManager,
 	instance *models.Instance,
 	src *models.FreeSpaceSource,
-	_ fsops.Backend,
+	backend fsops.Backend,
 ) (int64, error) {
 	resolved := resolveFreeSpaceSource(src)
 
@@ -33,8 +33,19 @@ func GetFreeSpaceBytesForSource(
 		return qbtFreeSpace(ctx, syncManager, instance)
 
 	case models.FreeSpaceSourcePath:
-		// Path-based free space is not supported on Windows
-		return 0, errors.New("path-based free space source is not supported on Windows")
+		// Read free space via the backend (local or remote)
+		if backend == nil {
+			return 0, errors.New("backend is required for path-based free space source")
+		}
+		p := filepath.Clean(strings.TrimSpace(resolved.Path))
+		if p == "" || p == "." {
+			return 0, errors.New("free space source path is empty")
+		}
+		result, err := backend.Statfs(ctx, p)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", p, err)
+		}
+		return result.BytesAvailable, nil
 
 	default:
 		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)
