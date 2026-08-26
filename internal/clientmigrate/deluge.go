@@ -11,6 +11,7 @@ import (
 
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -19,7 +20,7 @@ type DelugeImport struct {
 	opts Options
 }
 
-func NewDelugeImporter(opts Options) ClientMigrater {
+func NewDelugeImporter(opts Options) *DelugeImport {
 	return &DelugeImport{opts: opts}
 }
 

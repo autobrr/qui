@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/autobrr/go-torrent/bencode"
+
 	"github.com/pkg/errors"
 )
 

@@ -14,8 +14,16 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type ClientType string
+
+var (
+	ClientTypeDeluge       ClientType = "deluge"
+	ClientTypeRTorrent     ClientType = "rtorrent"
+	ClientTypeTransmission ClientType = "transmission"
+)
+
 type Options struct {
-	Source     string
+	Source     ClientType
 	SourceDir  string
 	QbitDir    string
 	DryRun     bool
@@ -35,14 +43,14 @@ func New(opts Options) Migrater {
 	m := Migrater{opts: opts}
 
 	switch m.opts.Source {
-	case "deluge":
+	case ClientTypeDeluge:
 		m.imp = NewDelugeImporter(m.opts)
-	case "rtorrent":
+	case ClientTypeRTorrent:
 		m.imp = NewRTorrentImporter(m.opts)
-	case "transmission":
+	case ClientTypeTransmission:
 		m.imp = NewTransmissionImporter(m.opts)
 	default:
-		log.Fatal().Str("source", m.opts.Source).Msg("unsupported source client")
+		log.Fatal().Str("source", string(m.opts.Source)).Msg("unsupported source client")
 	}
 
 	return m
@@ -96,7 +104,7 @@ func (m Migrater) Backup() error {
 
 	backupDir := "qbt_backup"
 
-	sourceBackupArchive := filepath.Join(backupDir, source+"_backup_"+timeStamp+".tar.gz")
+	sourceBackupArchive := filepath.Join(backupDir, string(source)+"_backup_"+timeStamp+".tar.gz")
 	qbitBackupArchive := filepath.Join(backupDir, "qBittorrent_backup_"+timeStamp+".tar.gz")
 
 	if m.opts.DryRun {

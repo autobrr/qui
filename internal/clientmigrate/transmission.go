@@ -9,6 +9,7 @@ import (
 
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -17,7 +18,7 @@ type TransmissionImport struct {
 	opts Options
 }
 
-func NewTransmissionImporter(opts Options) ClientMigrater {
+func NewTransmissionImporter(opts Options) *TransmissionImport {
 	return &TransmissionImport{opts: opts}
 }
 

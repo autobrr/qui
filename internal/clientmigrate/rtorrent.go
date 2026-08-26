@@ -12,6 +12,7 @@ import (
 
 	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 )
@@ -20,7 +21,7 @@ type RTorrentImport struct {
 	opts Options
 }
 
-func NewRTorrentImporter(opts Options) ClientMigrater {
+func NewRTorrentImporter(opts Options) *RTorrentImport {
 	return &RTorrentImport{opts: opts}
 }
 

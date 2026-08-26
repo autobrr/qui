@@ -423,7 +423,7 @@ func RunMigrateCommand() *cobra.Command {
   qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
 `,
 		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		ValidArgs: []string{"deluge", "rtorrent", "transmission"},
+		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeRTorrent)},
 	}
 
 	var (
@@ -444,7 +444,7 @@ func RunMigrateCommand() *cobra.Command {
 	command.RunE = func(cmd *cobra.Command, args []string) error {
 		source := args[0]
 		opts := clientmigrate.Options{
-			Source:     source,
+			Source:     clientmigrate.ClientType(source),
 			SourceDir:  sourceDir,
 			QbitDir:    qbitDir,
 			DryRun:     dryRun,
