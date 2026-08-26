@@ -14951,6 +14951,7 @@ func (s *Service) processHardlinkMode(
 				models.CrossSeedPartialPoolModeHardlink,
 				plan.RootDir,
 				candidateTorrentFilesToLink,
+				nil,
 				poolDescriptors,
 			)
 		}
@@ -15574,6 +15575,7 @@ func (s *Service) processReflinkMode(
 	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
 	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, recheckPolicy.requireComplete)
 	var poolDescriptors []partialPoolFileDescriptor
+	var poolReplaceablePaths map[string]struct{}
 	var poolDescriptorErr error
 	if pooledCompletion {
 		_, _, _, poolDescriptors, poolDescriptorErr = partialPoolParsedIdentity(torrentBytes)
@@ -15609,6 +15611,9 @@ func (s *Service) processReflinkMode(
 		Str("destDir", destDir).
 		Int("fileCount", len(plan.Files)).
 		Msg("[CROSSSEED] Reflink mode: created reflink tree")
+	if pooledCompletion && poolDescriptorErr == nil {
+		poolReplaceablePaths = partialPoolReplaceableTargets(plan.RootDir, poolDescriptors)
+	}
 
 	// Build options for adding torrent
 	options := make(map[string]string)
@@ -15731,6 +15736,7 @@ func (s *Service) processReflinkMode(
 				models.CrossSeedPartialPoolModeReflink,
 				plan.RootDir,
 				candidateTorrentFilesToClone,
+				poolReplaceablePaths,
 				poolDescriptors,
 			)
 		}

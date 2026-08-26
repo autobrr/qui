@@ -183,6 +183,24 @@ func buildPartialPoolAdmissionFiles(descriptors []partialPoolFileDescriptor, fil
 	return rows, missingBytes, nil
 }
 
+// partialPoolReplaceableTargets records missing paths immediately before the
+// qBittorrent add so only placeholders created after that point may be replaced.
+func partialPoolReplaceableTargets(rootPath string, descriptors []partialPoolFileDescriptor) map[string]struct{} {
+	replaceable := make(map[string]struct{})
+	member := &models.CrossSeedPartialPoolMember{RootPath: rootPath}
+	for _, descriptor := range descriptors {
+		file := &models.CrossSeedPartialPoolMemberFile{RelativePath: descriptor.RelativePath}
+		targetPath, err := partialPoolLocalPath(member, file)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Lstat(targetPath); os.IsNotExist(err) {
+			replaceable[descriptor.RelativePath] = struct{}{}
+		}
+	}
+	return replaceable
+}
+
 func partialPoolCommonRoot(files []*models.CrossSeedPartialPoolMemberFile) string {
 	var root string
 	for _, file := range files {

@@ -107,6 +107,24 @@ func TestBuildPartialPoolAdmissionFilesRequiresExactPostAddJoin(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestPartialPoolReplaceableTargetsTracksOnlyMissingPaths(t *testing.T) {
+	rootPath := t.TempDir()
+	existingPath := "Synthetic.Release/existing.mkv"
+	existingLocalPath := filepath.Join(rootPath, filepath.FromSlash(existingPath))
+	require.NoError(t, os.MkdirAll(filepath.Dir(existingLocalPath), 0o755))
+	require.NoError(t, os.WriteFile(existingLocalPath, []byte("existing"), 0o600))
+	descriptors := []partialPoolFileDescriptor{
+		{RelativePath: existingPath},
+		{RelativePath: "Synthetic.Release/missing.mkv"},
+		{RelativePath: "../escape.mkv"},
+	}
+
+	replaceable := partialPoolReplaceableTargets(rootPath, descriptors)
+	require.NotContains(t, replaceable, existingPath)
+	require.Contains(t, replaceable, "Synthetic.Release/missing.mkv")
+	require.NotContains(t, replaceable, "../escape.mkv")
+}
+
 func TestPartialPoolFilesPairPolicy(t *testing.T) {
 	t.Parallel()
 

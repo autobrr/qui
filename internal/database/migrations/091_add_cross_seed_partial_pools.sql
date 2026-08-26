@@ -52,6 +52,7 @@ CREATE TABLE cross_seed_partial_pool_member_files (
     pieces_root TEXT,
     wanted_at_admission INTEGER NOT NULL,
     materialized_at_add INTEGER NOT NULL,
+    replaceable_at_add INTEGER NOT NULL,
     status TEXT NOT NULL CHECK (status IN (
         'present', 'missing', 'acquiring', 'available', 'propagating',
         'verifying', 'verified', 'manual'

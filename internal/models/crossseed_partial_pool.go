@@ -91,11 +91,13 @@ type CrossSeedPartialPoolMemberFile struct {
 	PiecesRoot        string
 	WantedAtAdmission bool
 	MaterializedAtAdd bool
-	Status            string
-	SourceFileID      *int64
-	LastError         string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// ReplaceableAtAdd records that no target path existed immediately before the qBittorrent add.
+	ReplaceableAtAdd bool
+	Status           string
+	SourceFileID     *int64
+	LastError        string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // CrossSeedPartialPoolRegistration contains the source-resolution evidence and
@@ -323,6 +325,48 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 	}
 
 	member.PoolID = poolID
+	type existingFileState struct {
+		id           int64
+		relativePath string
+		sizeBytes    int64
+		piecesRoot   string
+		sourceFileID *int64
+	}
+	existingFiles := make(map[int]existingFileState)
+	if reAdmission {
+		rows, loadErr := tx.QueryContext(ctx, `
+			SELECT id, file_index, relative_path, size_bytes, pieces_root, source_file_id
+			FROM cross_seed_partial_pool_member_files
+			WHERE member_id = ?
+		`, memberID)
+		if loadErr != nil {
+			return nil, nil, fmt.Errorf("load existing partial pool files: %w", loadErr)
+		}
+		for rows.Next() {
+			var state existingFileState
+			var fileIndex int
+			var piecesRoot sql.NullString
+			var sourceFileID sql.NullInt64
+			if scanErr := rows.Scan(&state.id, &fileIndex, &state.relativePath, &state.sizeBytes, &piecesRoot, &sourceFileID); scanErr != nil {
+				rows.Close()
+				return nil, nil, fmt.Errorf("scan existing partial pool file: %w", scanErr)
+			}
+			if piecesRoot.Valid {
+				state.piecesRoot = piecesRoot.String
+			}
+			if sourceFileID.Valid {
+				value := sourceFileID.Int64
+				state.sourceFileID = &value
+			}
+			existingFiles[fileIndex] = state
+		}
+		if closeErr := rows.Close(); closeErr != nil {
+			return nil, nil, closeErr
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
+			return nil, nil, rowsErr
+		}
+	}
 	if reAdmission {
 		result, updateErr := tx.ExecContext(ctx, `
 			UPDATE cross_seed_partial_pool_members
@@ -349,24 +393,6 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 		}
 		if updated != 1 {
 			return nil, nil, errors.New("partial pool member disappeared during re-admission")
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE cross_seed_partial_pool_member_files
-			SET status = ?, source_file_id = NULL, last_error = '', updated_at = CURRENT_TIMESTAMP
-			WHERE status IN (?, ?)
-			  AND source_file_id IN (
-				SELECT id FROM cross_seed_partial_pool_member_files WHERE member_id = ?
-			  )
-		`,
-			CrossSeedPartialPoolFileStatusMissing,
-			CrossSeedPartialPoolFileStatusPropagating,
-			CrossSeedPartialPoolFileStatusVerifying,
-			memberID,
-		); err != nil {
-			return nil, nil, fmt.Errorf("release partial pool file dependencies: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM cross_seed_partial_pool_member_files WHERE member_id = ?`, memberID); err != nil {
-			return nil, nil, fmt.Errorf("replace partial pool member files: %w", err)
 		}
 	} else {
 		err = tx.QueryRowContext(ctx, `
@@ -397,23 +423,155 @@ func (s *CrossSeedStore) registerPartialPoolMember(ctx context.Context, registra
 		}
 	}
 
-	for _, file := range files {
+	incomingIndexes := make(map[int]struct{}, len(files))
+	var replacedSourceIDs []int64
+	for i := range files {
+		file := &files[i]
+		incomingIndexes[file.FileIndex] = struct{}{}
+		if existing, ok := existingFiles[file.FileIndex]; ok {
+			sameFile := existing.relativePath == file.RelativePath &&
+				existing.sizeBytes == file.SizeBytes &&
+				strings.EqualFold(existing.piecesRoot, file.PiecesRoot)
+			if !sameFile {
+				replacedSourceIDs = append(replacedSourceIDs, existing.id)
+			} else if member.Mode == CrossSeedPartialPoolModeHardlink && existing.sourceFileID != nil {
+				value := *existing.sourceFileID
+				file.SourceFileID = &value
+			}
+		}
 		var piecesRoot any
 		if file.PiecesRoot != "" {
 			piecesRoot = strings.ToLower(file.PiecesRoot)
 		}
-		_, err = tx.ExecContext(ctx, `
+		query := `
 			INSERT INTO cross_seed_partial_pool_member_files (
 				member_id, file_index, relative_path, size_bytes, pieces_root,
-				wanted_at_admission, materialized_at_add, status, source_file_id, last_error
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`,
+				wanted_at_admission, materialized_at_add, replaceable_at_add,
+				status, source_file_id, last_error
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		if reAdmission {
+			query += `
+				ON CONFLICT(member_id, file_index) DO UPDATE SET
+					relative_path = excluded.relative_path,
+					size_bytes = excluded.size_bytes,
+					pieces_root = excluded.pieces_root,
+					wanted_at_admission = excluded.wanted_at_admission,
+					materialized_at_add = excluded.materialized_at_add,
+					replaceable_at_add = excluded.replaceable_at_add,
+					status = excluded.status,
+					source_file_id = excluded.source_file_id,
+					last_error = excluded.last_error,
+					created_at = CURRENT_TIMESTAMP,
+					updated_at = CURRENT_TIMESTAMP
+			`
+		}
+		_, err = tx.ExecContext(ctx, query,
 			memberID, file.FileIndex, file.RelativePath, file.SizeBytes, piecesRoot,
 			BoolToSQLite(file.WantedAtAdmission), BoolToSQLite(file.MaterializedAtAdd),
-			file.Status, file.SourceFileID, file.LastError,
+			BoolToSQLite(file.ReplaceableAtAdd), file.Status, file.SourceFileID, file.LastError,
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("insert partial pool file %d: %w", file.FileIndex, err)
+		}
+	}
+	if reAdmission {
+		for fileIndex, existing := range existingFiles {
+			if _, retained := incomingIndexes[fileIndex]; !retained {
+				replacedSourceIDs = append(replacedSourceIDs, existing.id)
+			}
+		}
+		if len(replacedSourceIDs) > 0 {
+			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(replacedSourceIDs)), ",")
+			reason := "propagation source was replaced during re-admission"
+			hardlinkDependencies := fmt.Sprintf(`
+				WITH RECURSIVE hardlink_dependencies(id, member_id) AS (
+					SELECT child.id, child.member_id
+					FROM cross_seed_partial_pool_member_files child
+					JOIN cross_seed_partial_pool_members member ON member.id = child.member_id
+					WHERE member.mode = ? AND child.source_file_id IN (%s)
+					UNION
+					SELECT child.id, child.member_id
+					FROM cross_seed_partial_pool_member_files child
+					JOIN cross_seed_partial_pool_members member ON member.id = child.member_id
+					JOIN hardlink_dependencies parent ON child.source_file_id = parent.id
+					WHERE member.mode = ?
+				)
+			`, placeholders)
+			dependencyArgs := []any{CrossSeedPartialPoolModeHardlink}
+			for _, id := range replacedSourceIDs {
+				dependencyArgs = append(dependencyArgs, id)
+			}
+			dependencyArgs = append(dependencyArgs, CrossSeedPartialPoolModeHardlink)
+
+			memberArgs := append([]any{}, dependencyArgs...)
+			memberArgs = append(memberArgs,
+				CrossSeedPartialPoolMemberStatusManual,
+				BoolToSQLite(true),
+				reason,
+				CrossSeedPartialPoolMemberStatusRemoved,
+			)
+			if _, err := tx.ExecContext(ctx, hardlinkDependencies+`
+				UPDATE cross_seed_partial_pool_members
+				SET status = ?, review_pause_pending = ?, resume_attempts = NULL,
+				    recovery_attempts = NULL, last_error = ?, updated_at = CURRENT_TIMESTAMP
+				WHERE status <> ? AND id IN (
+					SELECT member_id FROM hardlink_dependencies
+				)
+			`, memberArgs...); err != nil {
+				return nil, nil, fmt.Errorf("quarantine replaced hardlink members: %w", err)
+			}
+
+			reflinkArgs := append([]any{}, dependencyArgs...)
+			reflinkArgs = append(reflinkArgs,
+				CrossSeedPartialPoolFileStatusMissing,
+				CrossSeedPartialPoolFileStatusPropagating,
+				CrossSeedPartialPoolFileStatusVerifying,
+				CrossSeedPartialPoolModeReflink,
+			)
+			for _, id := range replacedSourceIDs {
+				reflinkArgs = append(reflinkArgs, id)
+			}
+			releaseReflinkDependencies := fmt.Sprintf(`
+				UPDATE cross_seed_partial_pool_member_files
+				SET status = ?, source_file_id = NULL, last_error = '', updated_at = CURRENT_TIMESTAMP
+				WHERE status IN (?, ?)
+				  AND member_id IN (
+					SELECT id FROM cross_seed_partial_pool_members WHERE mode = ?
+				  )
+				  AND (
+					source_file_id IN (%s)
+					OR source_file_id IN (SELECT id FROM hardlink_dependencies)
+				  )
+			`, placeholders)
+			if _, err := tx.ExecContext(ctx, hardlinkDependencies+releaseReflinkDependencies, reflinkArgs...); err != nil {
+				return nil, nil, fmt.Errorf("release replaced reflink dependencies: %w", err)
+			}
+
+			fileArgs := append([]any{}, dependencyArgs...)
+			fileArgs = append(fileArgs,
+				CrossSeedPartialPoolFileStatusManual,
+				reason,
+			)
+			if _, err := tx.ExecContext(ctx, hardlinkDependencies+`
+				UPDATE cross_seed_partial_pool_member_files
+				SET status = ?, source_file_id = NULL, last_error = ?, updated_at = CURRENT_TIMESTAMP
+				WHERE id IN (SELECT id FROM hardlink_dependencies)
+			`, fileArgs...); err != nil {
+				return nil, nil, fmt.Errorf("quarantine replaced hardlink dependencies: %w", err)
+			}
+		}
+
+		indexPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(files)), ",")
+		args := []any{memberID}
+		for _, file := range files {
+			args = append(args, file.FileIndex)
+		}
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
+			DELETE FROM cross_seed_partial_pool_member_files
+			WHERE member_id = ? AND file_index NOT IN (%s)
+		`, indexPlaceholders), args...); err != nil {
+			return nil, nil, fmt.Errorf("remove stale partial pool member files: %w", err)
 		}
 	}
 
@@ -534,7 +692,7 @@ func (s *CrossSeedStore) GetPartialPool(ctx context.Context, poolID int64) (*Cro
 
 	fileRows, err := s.db.QueryContext(ctx, `
 		SELECT id, member_id, file_index, relative_path, size_bytes, pieces_root,
-		       wanted_at_admission, materialized_at_add, status, source_file_id,
+		       wanted_at_admission, materialized_at_add, replaceable_at_add, status, source_file_id,
 		       last_error, created_at, updated_at
 		FROM cross_seed_partial_pool_member_files
 		WHERE member_id IN (
@@ -610,11 +768,11 @@ func scanPartialPoolMember(scanner rowScanner) (*CrossSeedPartialPoolMember, err
 func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, error) {
 	file := &CrossSeedPartialPoolMemberFile{}
 	var piecesRoot sql.NullString
-	var wanted, materialized int
+	var wanted, materialized, replaceable int
 	var sourceFileID sql.NullInt64
 	err := scanner.Scan(
 		&file.ID, &file.MemberID, &file.FileIndex, &file.RelativePath,
-		&file.SizeBytes, &piecesRoot, &wanted, &materialized, &file.Status,
+		&file.SizeBytes, &piecesRoot, &wanted, &materialized, &replaceable, &file.Status,
 		&sourceFileID, &file.LastError, &file.CreatedAt, &file.UpdatedAt,
 	)
 	if err != nil {
@@ -625,6 +783,7 @@ func scanPartialPoolFile(scanner rowScanner) (*CrossSeedPartialPoolMemberFile, e
 	}
 	file.WantedAtAdmission = SQLiteIntToBool(wanted)
 	file.MaterializedAtAdd = SQLiteIntToBool(materialized)
+	file.ReplaceableAtAdd = SQLiteIntToBool(replaceable)
 	if sourceFileID.Valid {
 		value := sourceFileID.Int64
 		file.SourceFileID = &value

@@ -182,9 +182,127 @@ func TestCrossSeedPartialPoolReAdmissionReplacesStaleState(t *testing.T) {
 		}
 	}
 	require.NotNil(t, reloadedDependent)
-	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, reloadedDependent.Files[1].Status)
+	require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloadedDependent.Status)
+	require.True(t, reloadedDependent.ReviewPausePending)
+	require.Equal(t, "propagation source was replaced during re-admission", reloadedDependent.LastError)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, reloadedDependent.Files[1].Status)
 	require.Nil(t, reloadedDependent.Files[1].SourceFileID)
-	require.Empty(t, reloadedDependent.Files[1].LastError)
+	require.Equal(t, "propagation source was replaced during re-admission", reloadedDependent.Files[1].LastError)
+}
+
+func TestCrossSeedPartialPoolReAdmissionPreservesLiveFileDependencies(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	registration := partialPoolRegistration(t, secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE")
+	registration.Files[1].ReplaceableAtAdd = true
+	pool, source, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	dependentRegistration := partialPoolRegistration(t, firstID, secondID, "CCCC", "CCCC", "", "BBBB")
+	_, dependent, err := store.RegisterPartialPoolMember(t.Context(), dependentRegistration)
+	require.NoError(t, err)
+	changed, err := store.TransitionPartialPoolFile(t.Context(), dependent.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &source.Files[1].ID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	reloadedPool, reloadedSource, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+	require.Equal(t, pool.ID, reloadedPool.ID)
+	require.Equal(t, source.Files[1].ID, reloadedSource.Files[1].ID)
+	require.True(t, reloadedSource.Files[1].ReplaceableAtAdd)
+
+	var reloadedDependent *models.CrossSeedPartialPoolMember
+	for _, member := range reloadedPool.Members {
+		if member.ID == dependent.ID {
+			reloadedDependent = member
+			break
+		}
+	}
+	require.NotNil(t, reloadedDependent)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusPropagating, reloadedDependent.Files[1].Status)
+	require.NotNil(t, reloadedDependent.Files[1].SourceFileID)
+	require.Equal(t, source.Files[1].ID, *reloadedDependent.Files[1].SourceFileID)
+}
+
+func TestCrossSeedPartialPoolReAdmissionQuarantinesHardlinkDependencyChain(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	sourceRegistration := partialPoolRegistration(t, secondID, firstID, "BBBB", "AAAA", "BBBB", "SOURCE")
+	pool, source, err := store.RegisterPartialPoolMember(t.Context(), sourceRegistration)
+	require.NoError(t, err)
+
+	middleRegistration := partialPoolRegistration(t, firstID, secondID, "CCCC", "CCCC", "", "BBBB")
+	_, middle, err := store.RegisterPartialPoolMember(t.Context(), middleRegistration)
+	require.NoError(t, err)
+	changed, err := store.TransitionPartialPoolFile(t.Context(), middle.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusAvailable, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &source.Files[1].ID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	leafRegistration := partialPoolRegistration(t, secondID, firstID, "DDDD", "DDDD", "", "CCCC")
+	_, leaf, err := store.RegisterPartialPoolMember(t.Context(), leafRegistration)
+	require.NoError(t, err)
+	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &middle.Files[1].ID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusPropagating}, models.CrossSeedPartialPoolFileStatusVerifying, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+	changed, err = store.TransitionPartialPoolFile(t.Context(), leaf.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusVerifying}, models.CrossSeedPartialPoolFileStatusVerified, models.PartialPoolFileMutation{})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	reflinkRegistration := partialPoolRegistration(t, secondID, firstID, "EEEE", "EEEE", "", "CCCC")
+	reflinkRegistration.Member.Mode = models.CrossSeedPartialPoolModeReflink
+	_, reflinkDependent, err := store.RegisterPartialPoolMember(t.Context(), reflinkRegistration)
+	require.NoError(t, err)
+	changed, err = store.TransitionPartialPoolFile(t.Context(), reflinkDependent.Files[1].ID, []string{models.CrossSeedPartialPoolFileStatusMissing}, models.CrossSeedPartialPoolFileStatusPropagating, models.PartialPoolFileMutation{
+		SourceFileID: models.NullableInt64Update{Set: true, Value: &middle.Files[1].ID},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	reAdmission := sourceRegistration
+	reAdmission.Files = append([]models.CrossSeedPartialPoolMemberFile(nil), sourceRegistration.Files...)
+	reAdmission.Files[1].RelativePath = "Synthetic.Release/replaced-extra.nfo"
+	reloadedPool, _, err := store.RegisterPartialPoolMember(t.Context(), reAdmission)
+	require.NoError(t, err)
+	require.Equal(t, pool.ID, reloadedPool.ID)
+
+	const reason = "propagation source was replaced during re-admission"
+	for _, torrentKey := range []string{"cccc", "dddd"} {
+		var dependent *models.CrossSeedPartialPoolMember
+		for _, member := range reloadedPool.Members {
+			if member.TorrentKey == torrentKey {
+				dependent = member
+				break
+			}
+		}
+		require.NotNil(t, dependent)
+		require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, dependent.Status)
+		require.True(t, dependent.ReviewPausePending)
+		require.Equal(t, reason, dependent.LastError)
+		require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, dependent.Files[1].Status)
+		require.Nil(t, dependent.Files[1].SourceFileID)
+		require.Equal(t, reason, dependent.Files[1].LastError)
+	}
+
+	reloadedReflink := func() *models.CrossSeedPartialPoolMember {
+		for _, member := range reloadedPool.Members {
+			if member.TorrentKey == "eeee" {
+				return member
+			}
+		}
+		return nil
+	}()
+	require.NotNil(t, reloadedReflink)
+	require.NotEqual(t, models.CrossSeedPartialPoolMemberStatusManual, reloadedReflink.Status)
+	require.Equal(t, models.CrossSeedPartialPoolFileStatusMissing, reloadedReflink.Files[1].Status)
+	require.Nil(t, reloadedReflink.Files[1].SourceFileID)
+	require.Empty(t, reloadedReflink.Files[1].LastError)
 }
 
 func TestCrossSeedPartialPoolInheritsOriginalSource(t *testing.T) {

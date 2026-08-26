@@ -167,6 +167,7 @@ func TestRegisterPartialPoolAdmissionFetchHashPrecedence(t *testing.T) {
 				models.CrossSeedPartialPoolModeHardlink,
 				t.TempDir(),
 				[]hardlinktree.TorrentFile{{Path: descriptors[0].RelativePath, Size: descriptors[0].SizeBytes}},
+				nil,
 				descriptors,
 			)
 
