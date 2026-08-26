@@ -64,6 +64,10 @@ func (s *failingDirScanIndexerStore) RecordLatency(context.Context, int, string,
 	return nil
 }
 
+func (s *failingDirScanIndexerStore) CleanupOldLatency(context.Context, time.Duration) (int64, error) {
+	return 0, nil
+}
+
 func (s *failingDirScanIndexerStore) RecordError(context.Context, int, string, string) error {
 	return nil
 }

@@ -1955,17 +1955,18 @@ func TestGetConfiguredTrackerDomains_ProwlarrResolvesRealDomain(t *testing.T) {
 //
 // Mock store for testing
 type mockTorznabIndexerStore struct {
-	mu                 sync.Mutex
-	indexers           []*models.TorznabIndexer
-	capabilities       map[int][]string // indexerID -> capabilities
-	cooldowns          map[int]models.TorznabIndexerCooldown
-	upsertCooldowns    []int
-	deleteCooldowns    []int
-	panicOnListEnabled bool
-	listEnabledCalls   int
-	getCalls           []int
-	apiKeyErrors       map[int]error
-	apiKeyCalls        []int
+	mu                  sync.Mutex
+	indexers            []*models.TorznabIndexer
+	capabilities        map[int][]string // indexerID -> capabilities
+	cooldowns           map[int]models.TorznabIndexerCooldown
+	upsertCooldowns     []int
+	deleteCooldowns     []int
+	panicOnListEnabled  bool
+	listEnabledCalls    int
+	getCalls            []int
+	apiKeyErrors        map[int]error
+	apiKeyCalls         []int
+	latencyCleanupCalls int
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
@@ -2051,6 +2052,14 @@ func (m *mockTorznabIndexerStore) SetLimits(ctx context.Context, indexerID, limi
 
 func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error {
 	return nil
+}
+
+func (m *mockTorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.latencyCleanupCalls++
+	return 0, nil
 }
 
 func (m *mockTorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
@@ -3636,5 +3645,41 @@ func TestApplyIndexerRestrictionsKeepsContentTypeRouting(t *testing.T) {
 				t.Fatalf("rateLimited = true, want false")
 			}
 		})
+	}
+}
+
+// Regression test for discussion #2376: CleanupOldLatency existed but nothing
+// ever called it, so torznab_indexer_latency grew without bound. This checks
+// that a search's latency record now opportunistically triggers cleanup, and
+// that the interval gate prevents it from running on every single search.
+func TestMaybeScheduleLatencyCleanupTriggersAndDebounces(t *testing.T) {
+	store := &mockTorznabIndexerStore{}
+	service := NewService(store)
+
+	service.maybeScheduleLatencyCleanup()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		store.mu.Lock()
+		calls := store.latencyCleanupCalls
+		store.mu.Unlock()
+		if calls == 1 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("expected CleanupOldLatency to be called once, got %d", calls)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	// A second call within latencyCleanupInterval should be debounced.
+	service.maybeScheduleLatencyCleanup()
+	time.Sleep(50 * time.Millisecond)
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.latencyCleanupCalls != 1 {
+		t.Fatalf("expected CleanupOldLatency to still be called once (debounced), got %d", store.latencyCleanupCalls)
 	}
 }
