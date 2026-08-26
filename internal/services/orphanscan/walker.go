@@ -220,6 +220,7 @@ func walkScanRootWithUnitFilter(
 		IgnoreDirNamePrefixes: ignoredOrphanDirNamePrefixes,
 		IgnorePaths:           ignorePaths,
 		WantFileID:            true,
+		EmitStatErrors:        true,
 	})
 	if err != nil {
 		cancelWalk()
@@ -267,6 +268,9 @@ func walkScanRootWithUnitFilter(
 		if w.tfm.Has(normPath) {
 			w.markInUse(unitPath, isDiscUnit)
 			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
+			continue
+		}
+		if entry.StatErr != nil {
 			continue
 		}
 
