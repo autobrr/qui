@@ -117,12 +117,20 @@ func TestPartialPoolReplaceableTargetsTracksOnlyMissingPaths(t *testing.T) {
 		{RelativePath: existingPath},
 		{RelativePath: "Synthetic.Release/missing.mkv"},
 		{RelativePath: "../escape.mkv"},
+		{RelativePath: "/escape.mkv"},
+		{RelativePath: `\escape.mkv`},
+		{RelativePath: `C:\escape.mkv`},
+		{RelativePath: `\\host\share\escape.mkv`},
 	}
 
 	replaceable := partialPoolReplaceableTargets(rootPath, descriptors)
 	require.NotContains(t, replaceable, existingPath)
 	require.Contains(t, replaceable, "Synthetic.Release/missing.mkv")
 	require.NotContains(t, replaceable, "../escape.mkv")
+	require.NotContains(t, replaceable, "/escape.mkv")
+	require.NotContains(t, replaceable, `\escape.mkv`)
+	require.NotContains(t, replaceable, `C:\escape.mkv`)
+	require.NotContains(t, replaceable, `\\host\share\escape.mkv`)
 }
 
 func TestPartialPoolFilesPairPolicy(t *testing.T) {
