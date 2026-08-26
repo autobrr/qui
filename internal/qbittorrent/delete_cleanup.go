@@ -4,8 +4,9 @@
 package qbittorrent
 
 import (
+	"context"
 	"errors"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -13,6 +14,8 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
 
 type managedDeleteCleanupTarget struct {
@@ -23,9 +26,10 @@ type managedDeleteCleanupTarget struct {
 const (
 	managedDeleteCleanupRetryInterval = 50 * time.Millisecond
 	managedDeleteCleanupRetryAttempts = 20
+	managedDeleteCleanupTimeout       = 30 * time.Second
 )
 
-func buildManagedDeleteCleanupTargets(configuredBaseDirs string, torrents []qbt.Torrent) []managedDeleteCleanupTarget {
+func buildManagedDeleteCleanupTargets(ctx context.Context, configuredBaseDirs string, torrents []qbt.Torrent, backend fsops.Backend) []managedDeleteCleanupTarget {
 	baseDirs := parseManagedDeleteBaseDirs(configuredBaseDirs)
 	if len(baseDirs) == 0 || len(torrents) == 0 {
 		return nil
@@ -35,7 +39,7 @@ func buildManagedDeleteCleanupTargets(configuredBaseDirs string, torrents []qbt.
 	seen := make(map[string]struct{}, len(torrents))
 
 	for _, torrent := range torrents {
-		dir, baseDir, ok := managedDeleteCleanupDir(baseDirs, torrent)
+		dir, baseDir, ok := managedDeleteCleanupDir(ctx, baseDirs, torrent, backend)
 		if !ok {
 			continue
 		}
@@ -54,20 +58,26 @@ func buildManagedDeleteCleanupTargets(configuredBaseDirs string, torrents []qbt.
 	return targets
 }
 
-func cleanupManagedDeleteTargets(targets []managedDeleteCleanupTarget) {
+func cleanupManagedDeleteTargets(ctx context.Context, targets []managedDeleteCleanupTarget, backend fsops.Backend) {
+	// qBittorrent has already accepted the delete by the time this runs, so a
+	// client that disconnects mid-request must not abort the pruning and leave
+	// empty managed directories behind. Detach from request cancellation,
+	// bounded by a fixed timeout.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), managedDeleteCleanupTimeout)
+	defer cancel()
 	for _, target := range targets {
-		pruneEmptyManagedDeleteDir(target)
+		pruneEmptyManagedDeleteDir(ctx, target, backend)
 	}
 }
 
-func managedDeleteCleanupDir(baseDirs []string, torrent qbt.Torrent) (string, string, bool) {
+func managedDeleteCleanupDir(ctx context.Context, baseDirs []string, torrent qbt.Torrent, backend fsops.Backend) (string, string, bool) {
 	contentPath := filepath.Clean(torrent.ContentPath)
 	savePath := filepath.Clean(torrent.SavePath)
 
-	if info, err := os.Stat(contentPath); err == nil {
+	if info, err := backend.Stat(ctx, contentPath); err == nil {
 		baseDir, ok := matchManagedDeleteBaseDir(baseDirs, contentPath)
 		if ok {
-			if info.IsDir() {
+			if info.IsDir {
 				return contentPath, baseDir, true
 			}
 			return filepath.Dir(contentPath), baseDir, true
@@ -129,9 +139,9 @@ func isManagedDeletePathInsideBase(path, baseDir string) bool {
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
 
-func pruneEmptyManagedDeleteDir(target managedDeleteCleanupTarget) {
+func pruneEmptyManagedDeleteDir(ctx context.Context, target managedDeleteCleanupTarget, backend fsops.Backend) {
 	for attempt := range managedDeleteCleanupRetryAttempts {
-		retry := pruneEmptyManagedDeleteDirOnce(target)
+		retry := pruneEmptyManagedDeleteDirOnce(ctx, target, backend)
 		if !retry {
 			return
 		}
@@ -142,15 +152,15 @@ func pruneEmptyManagedDeleteDir(target managedDeleteCleanupTarget) {
 	}
 }
 
-func pruneEmptyManagedDeleteDirOnce(target managedDeleteCleanupTarget) bool {
+func pruneEmptyManagedDeleteDirOnce(ctx context.Context, target managedDeleteCleanupTarget, backend fsops.Backend) bool {
 	dir := filepath.Clean(target.dir)
 	baseDir := filepath.Clean(target.baseDir)
 	leafDir := dir
 
 	for isManagedDeletePathInsideBase(dir, baseDir) && dir != baseDir {
-		err := os.Remove(dir)
+		err := backend.Remove(ctx, dir, fsops.RemoveOptions{})
 		switch {
-		case err == nil, os.IsNotExist(err):
+		case err == nil, errors.Is(err, fs.ErrNotExist):
 		case isDirNotEmpty(err):
 			return dir == leafDir
 		default:

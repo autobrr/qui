@@ -23,7 +23,6 @@ import (
 	"maps"
 	"math"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -49,6 +48,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -443,13 +443,16 @@ type Service struct {
 	// Season-pack webhook support
 	seasonPackRunStore seasonPackRunCreator
 
+	// Backend pool for filesystem operations (set via SetBackendPool).
+	backendPool atomic.Value // stores *fsops.Pool
+
 	// test hooks
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
-	reflinkMaterializer     func(baseDir string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error)
+	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	reflinkMaterializer     func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
 	postInjectionHook       func(context.Context, int, string)
 	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
 
@@ -760,6 +763,27 @@ func (s *Service) getCompletionMaxAttempts() int {
 	return maxCompletionCheckingAttempts
 }
 
+// SetBackendPool sets the filesystem backend pool for remote helper support.
+func (s *Service) SetBackendPool(pool *fsops.Pool) {
+	s.backendPool.Store(pool)
+}
+
+func (s *Service) getBackendPool() *fsops.Pool {
+	v := s.backendPool.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(*fsops.Pool)
+}
+
+func (s *Service) getBackendForInstance(ctx context.Context, instanceID int) (fsops.Backend, error) {
+	pool := s.getBackendPool()
+	if pool == nil {
+		return nil, errors.New("backend pool not configured")
+	}
+	return pool.GetBackend(ctx, instanceID)
+}
+
 // HealthCheck performs comprehensive health checks on the cross-seed service
 func (s *Service) HealthCheck(ctx context.Context) error {
 	// Check if we can list instances
@@ -1039,8 +1063,19 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 		return nil
 	}
 
+	backend, err := m.svc.getBackendForInstance(m.ctx, m.sourceInstanceID)
+	if err != nil {
+		// Unlike a per-file stat failure, a backend outage discards ALL
+		// hardlink evidence for the instance — record it so strict mode
+		// (delete dialogs) fails the check instead of reading "no cross-seeds".
+		if m.verificationErr == nil {
+			m.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", m.sourceInstanceID, err)
+		}
+		return nil
+	}
+
 	ids := make(map[hardlink.FileID]struct{})
-	forEachLocalFileID(m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
+	forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
 		if nlink > 1 {
 			ids[id] = struct{}{}
 		}
@@ -1051,12 +1086,14 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 }
 
 func candidateSharesSourceFileID(
+	ctx context.Context,
+	backend fsops.Backend,
 	sourceIDs map[hardlink.FileID]struct{},
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
 ) bool {
 	shared := false
-	forEachLocalFileID(candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
 		if _, ok := sourceIDs[id]; ok {
 			shared = true
 			return false
@@ -1094,14 +1131,34 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	if candidateSharesSourceFileID(sourceIDs, candidate.SavePath, candidateFiles) {
+	candidateBackend, err := s.getBackendForInstance(matchCtx.ctx, candidateInstance.ID)
+	if err != nil {
+		// A backend outage discards all evidence for the candidate — record it
+		// so strict mode fails the check instead of reading "no cross-seeds".
+		if matchCtx.verificationErr == nil {
+			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", candidateInstance.ID, err)
+		}
+		return ""
+	}
+
+	if candidateSharesSourceFileID(matchCtx.ctx, candidateBackend, sourceIDs, candidate.SavePath, candidateFiles) {
 		return matchTypeHardlink
 	}
 
 	if filesShareAllocation == nil {
 		return ""
 	}
+	sourceBackend, err := s.getBackendForInstance(matchCtx.ctx, matchCtx.sourceInstanceID)
+	if err != nil {
+		if matchCtx.verificationErr == nil {
+			matchCtx.verificationErr = fmt.Errorf("resolve filesystem backend for instance %d: %w", matchCtx.sourceInstanceID, err)
+		}
+		return ""
+	}
 	pairs := pairLocalTorrentFiles(
+		matchCtx.ctx,
+		sourceBackend,
+		candidateBackend,
 		matchCtx.sourceSavePath,
 		matchCtx.sourceFiles,
 		candidate.SavePath,
@@ -1144,17 +1201,17 @@ func (s *Service) getLocalMatchCandidateFiles(
 	return candidateFiles, true
 }
 
-// forEachLocalFileID stats each torrent file under savePath on the local filesystem
-// and invokes fn with its FileID and link count until fn returns false. The save path
-// must be absolute; file names that escape it and files that cannot be statted are
-// skipped so malicious torrent metadata cannot probe arbitrary filesystem locations.
-func forEachLocalFileID(savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
-	forEachLocalTorrentFile(savePath, files, func(_ qbt.TorrentFile, fullPath string, fi os.FileInfo) bool {
-		id, nlink, err := hardlink.GetFileID(fi, fullPath)
-		if err != nil {
+// forEachLocalFileID stats each torrent file under savePath through the instance's
+// filesystem backend and invokes fn with its FileID and link count until fn returns
+// false. The save path must be absolute; file names that escape it and files that
+// cannot be statted are skipped so malicious torrent metadata cannot probe arbitrary
+// filesystem locations.
+func forEachLocalFileID(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
+	forEachLocalTorrentFile(ctx, backend, savePath, files, func(_ qbt.TorrentFile, _ string, info *fsops.LstatInfo) bool {
+		if info.FileID.IsZero() {
 			return true
 		}
-		return fn(id, nlink)
+		return fn(info.FileID, info.Nlinks)
 	})
 }
 
@@ -1173,13 +1230,16 @@ type localTorrentFile struct {
 }
 
 func pairLocalTorrentFiles(
+	ctx context.Context,
+	sourceBackend fsops.Backend,
+	candidateBackend fsops.Backend,
 	sourceSavePath string,
 	sourceFiles qbt.TorrentFiles,
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
 ) []localFilePair {
-	source := collectLocalTorrentFiles(sourceSavePath, sourceFiles)
-	candidate := collectLocalTorrentFiles(candidateSavePath, candidateFiles)
+	source := collectLocalTorrentFiles(ctx, sourceBackend, sourceSavePath, sourceFiles)
+	candidate := collectLocalTorrentFiles(ctx, candidateBackend, candidateSavePath, candidateFiles)
 
 	sourceByPath := indexLocalFiles(source, func(file localTorrentFile) string {
 		return localFileSizeKey(file.normalizedPath, file.file.Size)
@@ -1239,19 +1299,18 @@ func pairLocalTorrentFiles(
 	return pairs
 }
 
-func collectLocalTorrentFiles(savePath string, files qbt.TorrentFiles) []localTorrentFile {
+func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) []localTorrentFile {
 	localFiles := make([]localTorrentFile, 0, len(files))
-	forEachLocalTorrentFile(savePath, files, func(file qbt.TorrentFile, fullPath string, fi os.FileInfo) bool {
+	forEachLocalTorrentFile(ctx, backend, savePath, files, func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool {
 		if file.Size == 0 {
 			return true
 		}
-		fileID, _, fileIDErr := hardlink.GetFileID(fi, fullPath)
 		normalizedPath := normalizeTorrentRelativePath(file.Name)
 		localFiles = append(localFiles, localTorrentFile{
 			file:           file,
 			fullPath:       fullPath,
-			fileID:         fileID,
-			hasFileID:      fileIDErr == nil,
+			fileID:         info.FileID,
+			hasFileID:      !info.FileID.IsZero(),
 			normalizedPath: normalizedPath,
 			basename:       path.Base(normalizedPath),
 		})
@@ -1282,9 +1341,11 @@ func normalizeTorrentRelativePath(name string) string {
 }
 
 func forEachLocalTorrentFile(
+	ctx context.Context,
+	backend fsops.Backend,
 	savePath string,
 	files qbt.TorrentFiles,
-	fn func(file qbt.TorrentFile, fullPath string, fi os.FileInfo) bool,
+	fn func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool,
 ) {
 	base := filepath.Clean(filepath.FromSlash(savePath))
 	if !filepath.IsAbs(base) {
@@ -1296,25 +1357,27 @@ func forEachLocalTorrentFile(
 		if !ok {
 			continue
 		}
-		fi, err := os.Lstat(fullPath)
-		if err != nil || !fi.Mode().IsRegular() {
+		info, err := backend.Lstat(ctx, fullPath)
+		if err != nil || !info.Mode.IsRegular() {
 			continue
 		}
-		if !fn(file, fullPath, fi) {
+		if !fn(file, fullPath, info) {
 			return
 		}
 	}
 }
 
 func resolveLocalTorrentFile(base, name string) (string, bool) {
-	slashName := strings.ReplaceAll(name, `\`, "/")
-	if slashName == "" ||
-		strings.HasPrefix(slashName, "/") ||
-		hasWindowsDrivePrefix(slashName) {
+	// Names carrying a literal backslash are rejected rather than rewritten:
+	// backslash is a legal filename byte on Linux, and inventing a nested
+	// path from it makes the file read as missing while it exists.
+	if name == "" || strings.ContainsRune(name, '\\') ||
+		strings.HasPrefix(name, "/") ||
+		hasWindowsDrivePrefix(name) {
 		return "", false
 	}
 
-	cleanName := path.Clean(slashName)
+	cleanName := path.Clean(name)
 	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") {
 		return "", false
 	}
@@ -14665,9 +14728,14 @@ func (s *Service) processHardlinkMode(
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
+	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
+	if err != nil {
+		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
+	}
+
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the hardlink base directory.
-	existingFilePath, ok := matchedFilesystemProbePath(matchedTorrent, props, candidateFiles)
+	existingFilePath, ok := matchedFilesystemProbePath(ctx, backend, matchedTorrent, props, candidateFiles)
 	if !ok {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
@@ -14676,7 +14744,7 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -14746,7 +14814,7 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Create hardlink tree on disk
-	created, err := hardlinktree.Create(plan)
+	created, err := backend.HardlinkTree(ctx, plan)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -14851,8 +14919,9 @@ func (s *Service) processHardlinkMode(
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
 		// Rollback only what this attempt created: the destination can be shared
-		// with an earlier successful add for the same release (discussion #2282)
-		if rollbackErr := created.Rollback(); rollbackErr != nil {
+		// with an earlier successful add for the same release (discussion #2282).
+		// WithoutCancel: a cancelled run must still roll back its partial tree.
+		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).
@@ -15056,12 +15125,12 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
 }
 
-// findMatchingBaseDir finds the first base directory from a comma-separated list
-// that is on the same filesystem as the source path. Returns the matching directory
-// or an error if none match.
 // FindMatchingBaseDir returns the first configured base directory on the same
 // filesystem as the source path.
-func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
+func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend) (string, error) {
+	if backend == nil {
+		return "", errors.New("filesystem backend is nil")
+	}
 	if strings.TrimSpace(configuredDirs) == "" {
 		return "", errors.New("base directory not configured")
 	}
@@ -15075,12 +15144,12 @@ func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, erro
 			continue
 		}
 
-		if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
+		if err := backend.MkdirAll(ctx, dir, fsutil.ContentDirMode); err != nil {
 			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
 			continue
 		}
 
-		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
+		sameFS, err := backend.SameFilesystem(ctx, sourcePath, dir)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
 			continue
@@ -15097,14 +15166,14 @@ func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, erro
 	return "", errors.New("no base directory on same filesystem as source")
 }
 
-func matchedFilesystemProbePath(matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
+func matchedFilesystemProbePath(ctx context.Context, backend fsops.Backend, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
 	if props != nil && props.SavePath != "" && len(candidateFiles) > 0 && candidateFiles[0].Name != "" {
 		relativePath, ok := safeTorrentRelativeFilePath(candidateFiles[0].Name)
 		if !ok {
 			return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
 		}
 		filePath := filepath.Join(props.SavePath, filepath.FromSlash(relativePath))
-		if _, err := os.Stat(filePath); err == nil {
+		if _, err := backend.Stat(ctx, filePath); err == nil {
 			return filePath, true
 		}
 	}
@@ -15198,16 +15267,19 @@ func (e *reflinkUnsupportedError) Error() string {
 
 // materializeReflink owns the filesystem-dependent support probe and clone
 // operation so link-mode policy tests can exercise the portable code around it.
-func (s *Service) materializeReflink(baseDir string, plan *hardlinktree.TreePlan) (*hardlinktree.Created, error) {
+func (s *Service) materializeReflink(ctx context.Context, backend fsops.Backend, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error) {
 	if s.reflinkMaterializer != nil {
-		return s.reflinkMaterializer(baseDir, plan)
+		return s.reflinkMaterializer(ctx, baseDir, plan)
 	}
 
-	supported, reason := reflinktree.SupportsReflink(baseDir)
+	supported, reason, err := backend.SupportsReflink(ctx, baseDir)
+	if err != nil {
+		supported, reason = false, err.Error()
+	}
 	if !supported {
 		return nil, &reflinkUnsupportedError{reason: reason}
 	}
-	return reflinktree.Create(plan)
+	return backend.ReflinkTree(ctx, plan)
 }
 
 // processReflinkMode attempts to add a cross-seed torrent using reflink (copy-on-write) mode.
@@ -15379,9 +15451,14 @@ func (s *Service) processReflinkMode(
 	}
 	resumeBudget := s.resumeBudgetBytes(ctx)
 
+	backend, err := s.getBackendForInstance(ctx, candidate.InstanceID)
+	if err != nil {
+		return handleError(fmt.Sprintf("no filesystem backend: %v", err))
+	}
+
 	// Pick an actual matched file when available so symlinked file sources are
 	// resolved before choosing the reflink base directory.
-	existingFilePath, ok := matchedFilesystemProbePath(matchedTorrent, props, candidateFiles)
+	existingFilePath, ok := matchedFilesystemProbePath(ctx, backend, matchedTorrent, props, candidateFiles)
 	if !ok {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
@@ -15390,7 +15467,7 @@ func (s *Service) processReflinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, backend)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -15457,7 +15534,7 @@ func (s *Service) processReflinkMode(
 
 	// Materialize only after the coverage and plan gates so clearly invalid
 	// partial matches are skipped before probing filesystem capabilities.
-	created, err := s.materializeReflink(selectedBaseDir, plan)
+	created, err := s.materializeReflink(ctx, backend, selectedBaseDir, plan)
 	if unsupportedErr, ok := errors.AsType[*reflinkUnsupportedError](err); ok {
 		log.Warn().
 			Str("reason", unsupportedErr.reason).
@@ -15574,8 +15651,9 @@ func (s *Service) processReflinkMode(
 
 	// Add the torrent
 	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
-		// Rollback only what this attempt created (discussion #2282)
-		if rollbackErr := created.Rollback(); rollbackErr != nil {
+		// Rollback only what this attempt created (discussion #2282).
+		// WithoutCancel: a cancelled run must still roll back its partial tree.
+		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
 			log.Warn().
 				Err(rollbackErr).
 				Str("destDir", destDir).

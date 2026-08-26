@@ -24,6 +24,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
@@ -68,6 +69,7 @@ type Service struct {
 	// Optional store for tracker display-name resolution (shared with cross-seed).
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	notifier                  notifications.Notifier
+	backendPool               *fsops.Pool
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -125,6 +127,7 @@ func NewService(
 	arrService *arr.Service, // optional, for external ID lookup
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
 	notifier notifications.Notifier,
+	backendPool *fsops.Pool,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -140,7 +143,7 @@ func NewService(
 	parser := NewParser(nil) // nil uses default normalizer
 	searcher := NewSearcher(jackettService, parser)
 	torrentChecker := &syncManagerTorrentChecker{sm: syncManager}
-	injector := NewInjector(jackettService, syncManager, torrentChecker, instanceStore, trackerCustomizationStore)
+	injector := NewInjector(jackettService, syncManager, torrentChecker, instanceStore, trackerCustomizationStore, backendPool)
 
 	return &Service{
 		cfg:                       cfg,
@@ -152,6 +155,7 @@ func NewService(
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
 		notifier:                  notifier,
+		backendPool:               backendPool,
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
@@ -844,7 +848,19 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 // runScanPhase executes the directory scanning phase.
 // Returns the raw scan result and true if successful, or nil and false on failure.
 func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
-	scanner := NewScanner()
+	if s.backendPool == nil {
+		l.Error().Msg("dirscan: backend pool not configured")
+		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+	backend, err := s.backendPool.GetBackend(ctx, dir.TargetInstanceID)
+	if err != nil {
+		l.Warn().Err(err).Msg("dirscan: no filesystem backend, failing scan")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("no filesystem backend: %v", err), dir.TargetInstanceID, l)
+		return nil, nil, false
+	}
+
+	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips.
