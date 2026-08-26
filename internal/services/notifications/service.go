@@ -143,7 +143,15 @@ func (s *Service) SendTest(ctx context.Context, target *models.NotificationTarge
 		return errors.New("notification target required")
 	}
 
-	return s.send(ctx, target, Event{}, title, message)
+	event := Event{}
+	if targetScheme(target.URL) == "notifiarrapi" {
+		if len(target.EventTypes) == 0 {
+			return errors.New("notifiarr api test requires at least one event type")
+		}
+		event.Type = EventType(target.EventTypes[0])
+	}
+
+	return s.send(ctx, target, event, title, message)
 }
 
 func (s *Service) worker(ctx context.Context) {
