@@ -67,7 +67,6 @@ const ADVANCED_PARAM_DEFAULTS: AdvancedParamsState = {
 }
 
 const SEARCH_PLACEHOLDER_KEYS: Record<SearchType, string> = {
-  auto: "searchTypes.auto.placeholder",
   movies: "searchTypes.movies.placeholder",
   tv: "searchTypes.tv.placeholder",
   music: "searchTypes.music.placeholder",
@@ -253,7 +252,7 @@ export function Search() {
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
   const [indexerSheetOpen, setIndexerSheetOpen] = useState(false)
-  const [searchType, setSearchType] = useState<SearchType>("auto")
+  const [searchType, setSearchType] = useState<SearchType>("movies")
   const [loadingIndexers, setLoadingIndexers] = useState(true)
   const { instances, isLoading: loadingInstances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
@@ -451,10 +450,7 @@ export function Search() {
           indexer_ids: Array.from(indexerIdsOverride ?? selectedIndexers),
         }
 
-        const derivedCategories = getCategoriesForSearchType(targetSearchType)
-        if (derivedCategories && derivedCategories.length > 0) {
-          payload.categories = derivedCategories
-        }
+        payload.categories = getCategoriesForSearchType(targetSearchType)
 
         const parseNumberParam = (value: string) => {
           const trimmed = value.trim()
@@ -895,7 +891,7 @@ export function Search() {
 
   const handleSuggestionClick = useCallback((search: TorznabRecentSearch) => {
     setQuery(search.query)
-    const derivedType = inferSearchTypeFromCategories(search.categories) ?? "auto"
+    const derivedType = inferSearchTypeFromCategories(search.categories) ?? "movies"
     setSearchType(derivedType)
     // setSelectedIndexers only applies on the next render, so the restored ids
     // must also flow into validation and the request directly.
@@ -1171,7 +1167,7 @@ export function Search() {
                     <Label htmlFor="search-type" className="sr-only">{t("searchForm.searchType")}</Label>
                     <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
                       <SelectTrigger id="search-type" className="w-full">
-                        <SelectValue placeholder={t("searchTypes.auto.label")} />
+                        <SelectValue placeholder={t("searchTypes.movies.label")} />
                       </SelectTrigger>
                       <SelectContent>
                         {searchTypeOptions.map((option) => (
@@ -1248,7 +1244,7 @@ export function Search() {
                       <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
                         {suggestionMatches.map((search) => {
                           const suggestionType = inferSearchTypeFromCategories(search.categories)
-                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "auto", t)
+                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "movies", t)
                           return (
                             <button
                               type="button"
