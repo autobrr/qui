@@ -1,6 +1,6 @@
 {
   "pageTitle": "Prohledat indexery",
-  "pageDescription": "Prohledejte všechny povolené indexery. Vyberte typ dotazu nebo ponechte Auto, aby byly kategorie detekovány automaticky.",
+  "pageDescription": "Prohledejte všechny povolené indexery. Vyberte typ vyhledávání.",
   "indexerSummary": {
     "label": "Indexery",
     "noEnabled": "Žádné povolené indexery",
@@ -44,11 +44,6 @@
     "indexersPage": "Indexery"
   },
   "searchTypes": {
-    "auto": {
-      "label": "Auto detekovat",
-      "description": "Automaticky detekovat správné kategorie",
-      "placeholder": "Zkuste: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", nebo \"Example Artist - Example Album\""
-    },
     "movies": {
       "label": "Filmy",
       "placeholder": "např. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
