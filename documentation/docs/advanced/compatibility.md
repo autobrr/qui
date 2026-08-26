@@ -38,6 +38,8 @@ Hybrid and v2 torrent creation requires a qBittorrent build that links against l
 
 ### API key auth with reverse-proxy Basic Auth
 
+qBittorrent added API key authentication in version 5.2.0 (Web API 2.14.1). Older instances accept only a username and a password.
+
 qBittorrent API key authentication uses the HTTP `Authorization: Bearer ...` header. Reverse-proxy Basic Auth, for example nginx `auth_basic`, also uses the `Authorization` header.
 
 A request can carry only one normal `Authorization` value. You cannot combine qBittorrent API key authentication with reverse-proxy Basic Auth in the default setup. Use qBittorrent username and password authentication with reverse-proxy Basic Auth, or bypass Basic Auth for the requests that qui sends to qBittorrent.

@@ -105,4 +105,4 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 2. Open **Settings → Premium Themes**. Your theme appears in the theme grid with a **Custom** badge. The **Custom Themes** box below the grid shows the directory path and the number of discovered themes. Click **Refresh** in that box to load new or edited files without a restart of qui.
 3. Select the theme like any other theme.
 
-If you remove a custom theme file or if your premium license lapses, qui falls back to the default theme.
+If you remove a custom theme file or your premium license lapses, qui falls back to the default theme. A built-in premium selection returns when you renew. A custom theme selection does not.

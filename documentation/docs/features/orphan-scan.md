@@ -65,7 +65,7 @@ qui scans a directory only if at least one torrent points to it. If you delete a
 ### FAQ
 
 **Do I need multiple runs to scan everything?**
-No. Each run scans all roots. If orphan candidates exceed the per-run preview cap, run multiple scans to process remaining candidates.
+No. Each run scans all roots. If orphan candidates exceed the per-run preview cap, delete the files in the current preview first. The next scan then returns the next set of candidates.
 
 ## Workflow
 

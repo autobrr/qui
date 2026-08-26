@@ -151,7 +151,7 @@ Notes:
 - Stop the source client and qBittorrent before you migrate. Start qBittorrent afterwards, and it picks up the imported torrents.
 - qui imports only fully downloaded torrents. It skips partial torrents with a warning, so no incorrect piece state reaches qBittorrent.
 - qui preserves these fields per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state, Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
-- qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x and newer.
+- qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x through 0.16.x.
 - If you do not set `--skip-backup`, qui first archives both directories to `qbt_backup/` in the current working directory. If the qBittorrent directory already exists, qui archives it. A fresh destination produces only the source archive.
 - If a torrent already exists in the target `BT_backup`, qui skips it. You can run the command again.
 

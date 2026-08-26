@@ -29,11 +29,16 @@ Download the latest release for your platform from the [releases page](https://g
 
 ## Run
 
-```bash
-# Make it executable (Linux/macOS)
-chmod +x qui
+If you extracted the archive to `/usr/local/bin`, the binary is on your PATH:
 
-# Run
+```bash
+qui serve
+```
+
+If you extracted to `~/.bin` or downloaded the archive by hand, change to that directory first:
+
+```bash
+chmod +x qui
 ./qui serve
 ```
 
@@ -44,8 +49,10 @@ The web interface is available at http://localhost:7476.
 The `qui update` command downloads and installs the latest release:
 
 ```bash
-./qui update
+qui update
 ```
+
+If the binary is not on your PATH, run `./qui update` from its directory.
 
 ## First setup
 

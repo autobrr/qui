@@ -6,7 +6,7 @@ description: Import torrents with their state from Deluge, rTorrent or Transmiss
 
 # Client migration
 
-The `qui migrate` command imports torrents from Deluge, rTorrent, or Transmission into qBittorrent. It preserves their state: save paths, trackers, transfer totals, timestamps, seeding time, labels, paused state, and per-file selection. Torrents arrive in a verified state, so qBittorrent seeds them immediately without a recheck.
+The `qui migrate` command imports torrents from Deluge, rTorrent, or Transmission into qBittorrent. It preserves their state: save paths, trackers, transfer totals, timestamps, seeding time, labels, paused state, and per-file selection. Completed torrents arrive in a verified state, so qBittorrent skips the recheck.
 
 ```bash
 qui migrate {deluge | rtorrent | transmission} \

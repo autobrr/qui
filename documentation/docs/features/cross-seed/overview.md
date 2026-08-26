@@ -26,7 +26,9 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 ## Prerequisites
 
-You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers in **Settings → Indexers** with the "1-click sync" feature. This imports them from Prowlarr or Jackett.
+Torznab indexer feeds need Prowlarr or Jackett. Add your indexers in **Settings → Indexers** with the "1-click sync" feature. This imports them from Prowlarr or Jackett.
+
+Library Scan also runs without Torznab if you configure Gazelle keys for OPS/RED. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
 
 :::note Prowlarr filters also apply here
 A Prowlarr indexer's own search filters, such as freeleech only, also apply to cross-seed searches. See [troubleshooting](./troubleshooting.md#prowlarr-filters-remove-expected-results).

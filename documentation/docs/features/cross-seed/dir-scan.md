@@ -141,7 +141,7 @@ If you remove a torrent from qBittorrent, its files leave the index. For example
 
 ### Recheck Behavior
 
-- **Full matches**: qui adds the torrent with "skip hash check" enabled. Seeding starts immediately.
+- **Full matches**: qui adds the torrent with "skip hash check" enabled. Seeding starts immediately unless **Start torrents paused** is enabled.
 - **Partial matches** (when enabled): qui adds the torrent without a skipped hash check. qBittorrent verifies existing data and downloads missing files.
 
 ## What Gets Scanned
