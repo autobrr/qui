@@ -26,6 +26,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/buildinfo"
+	"github.com/autobrr/qui/internal/clientmigrate"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dodo"
@@ -80,6 +81,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
 	rootCmd.AddCommand(RunUpdateCommand())
+	rootCmd.AddCommand(RunMigrateCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -407,6 +409,56 @@ func RunUpdateCommand() *cobra.Command {
 Flags:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
 `)
+
+	return command
+}
+
+func RunMigrateCommand() *cobra.Command {
+	var command = &cobra.Command{
+		Use:   "migrate {deluge | rtorrent | transmission} --source-dir dir --qbit-dir dir2 [--skip-backup] [--dry-run]",
+		Short: "Migrate from deluge,rtorrent or transmission to qBittorrent",
+		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission]`,
+		Example: `  qui migrate deluge --source-dir ~/.config/deluge/state/ --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate rtorrent --source-dir ~/.sessions --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+`,
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission)},
+	}
+
+	var (
+		sourceDir  string
+		qbitDir    string
+		dryRun     bool
+		skipBackup bool
+	)
+
+	command.Flags().BoolVar(&dryRun, "dry-run", false, "Run without importing anything")
+	command.Flags().StringVar(&sourceDir, "source-dir", "", "source client state dir (required)")
+	command.Flags().StringVar(&qbitDir, "qbit-dir", "", "qBittorrent BT_backup dir. Commonly ~/.local/share/qBittorrent/BT_backup (required)")
+	command.Flags().BoolVar(&skipBackup, "skip-backup", false, "Skip backup before import")
+
+	_ = command.MarkFlagRequired("source-dir")
+	_ = command.MarkFlagRequired("qbit-dir")
+
+	command.RunE = func(cmd *cobra.Command, args []string) error {
+		source := args[0]
+		opts := clientmigrate.Options{
+			Source:     clientmigrate.ClientType(source),
+			SourceDir:  sourceDir,
+			QbitDir:    qbitDir,
+			DryRun:     dryRun,
+			SkipBackup: skipBackup,
+		}
+
+		mig := clientmigrate.New(opts)
+
+		if err := mig.Migrate(cmd.Context()); err != nil {
+			return errors.Wrapf(err, "could not migrate from %s", source)
+		}
+
+		return nil
+	}
 
 	return command
 }
