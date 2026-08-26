@@ -100,3 +100,13 @@ export function getSearchTypeLabel(type: SearchType, t: TFunction): string {
   const key = SEARCH_TYPE_KEYS[type]
   return key ? t(key.label) : t("searchTypes.auto.label")
 }
+
+/**
+ * Filter a recent search's saved indexer ids down to the ones still enabled.
+ * Returns null when nothing usable remains, so callers keep their current selection.
+ */
+export function resolveSuggestionIndexerIds(savedIds: number[] | null | undefined, enabledIds: number[]): Set<number> | null {
+  const enabled = new Set(enabledIds)
+  const filtered = savedIds?.filter(id => enabled.has(id)) ?? []
+  return filtered.length ? new Set(filtered) : null
+}

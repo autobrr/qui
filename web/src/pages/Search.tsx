@@ -23,7 +23,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { ColumnFilter } from "@/lib/column-filter-utils"
 import { filterSearchResult } from "@/lib/column-filter-utils"
-import { getCategoriesForSearchType, getSearchTypeLabel, getSearchTypeOptions, inferSearchTypeFromCategories, type SearchType } from "@/lib/search-derived-params"
+import { getCategoriesForSearchType, getSearchTypeLabel, getSearchTypeOptions, inferSearchTypeFromCategories, resolveSuggestionIndexerIds, type SearchType } from "@/lib/search-derived-params"
 import { extractImdbId, extractTvdbId } from "@/lib/search-id-parsing"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from "@/types"
@@ -393,8 +393,9 @@ export function Search() {
     }
   }
 
-  const validateSearchInputs = useCallback((overrideQuery?: string) => {
+  const validateSearchInputs = useCallback((overrideQuery?: string, overrideIndexers?: Set<number> | null) => {
     const normalizedQuery = (overrideQuery ?? query).trim()
+    const activeIndexers = overrideIndexers ?? selectedIndexers
 
     // Allow search with either query or advanced parameters
     if (!normalizedQuery && !hasAdvancedParams) {
@@ -402,7 +403,7 @@ export function Search() {
       return false
     }
 
-    if (selectedIndexers.size === 0) {
+    if (activeIndexers.size === 0) {
       toast.error(t("toast.selectIndexer"))
       return false
     }
@@ -431,7 +432,8 @@ export function Search() {
       bypassCache = false,
       queryOverride,
       searchTypeOverride,
-    }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType } = {}) => {
+      indexerIdsOverride,
+    }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType; indexerIdsOverride?: Set<number> | null } = {}) => {
       const reqId = ++latestReqIdRef.current
       const searchQuery = (queryOverride ?? query).trim()
       const targetSearchType = searchTypeOverride ?? searchType
@@ -446,7 +448,7 @@ export function Search() {
       try {
         const payload: TorznabSearchRequest = {
           query: searchQuery,
-          indexer_ids: Array.from(selectedIndexers),
+          indexer_ids: Array.from(indexerIdsOverride ?? selectedIndexers),
         }
 
         const derivedCategories = getCategoriesForSearchType(targetSearchType)
@@ -673,19 +675,6 @@ export function Search() {
     setInstanceMenuOpen(false)
   }, [persistSelectedInstanceId, setInstanceMenuOpen])
 
-  const applyIndexerSelectionFromSuggestion = useCallback((indexerIds: number[]) => {
-    if (!indexerIds || indexerIds.length === 0 || indexers.length === 0) {
-      return
-    }
-
-    const enabled = new Set(indexers.map(idx => idx.id))
-    const filtered = indexerIds.filter(id => enabled.has(id))
-    if (filtered.length === 0) {
-      return
-    }
-    setSelectedIndexers(new Set(filtered))
-  }, [indexers])
-
   const toggleIndexer = (id: number) => {
     setSelectedIndexers(prev => {
       const newSelected = new Set(prev)
@@ -908,14 +897,19 @@ export function Search() {
     setQuery(search.query)
     const derivedType = inferSearchTypeFromCategories(search.categories) ?? "auto"
     setSearchType(derivedType)
-    applyIndexerSelectionFromSuggestion(search.indexerIds)
+    // setSelectedIndexers only applies on the next render, so the restored ids
+    // must also flow into validation and the request directly.
+    const restoredIndexerIds = resolveSuggestionIndexerIds(search.indexerIds, indexers.map(idx => idx.id))
+    if (restoredIndexerIds) {
+      setSelectedIndexers(restoredIndexerIds)
+    }
     const normalized = search.query.trim()
-    if (!validateSearchInputs(normalized)) {
+    if (!validateSearchInputs(normalized, restoredIndexerIds)) {
       return
     }
     closeSuggestions()
-    void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType })
-  }, [applyIndexerSelectionFromSuggestion, closeSuggestions, runSearch, validateSearchInputs])
+    void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType, indexerIdsOverride: restoredIndexerIds })
+  }, [closeSuggestions, indexers, runSearch, validateSearchInputs])
 
   const handleDownload = useCallback((result: TorznabSearchResult) => {
     window.open(result.downloadUrl, "_blank", "noopener,noreferrer")
