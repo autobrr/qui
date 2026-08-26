@@ -975,13 +975,23 @@ const (
 	previewActionNone previewActionType = iota
 	previewActionDelete
 	previewActionCategory
+	previewActionTag
 	previewActionBoth // error case
 )
 
 // detectPreviewAction determines which preview action is enabled in the payload.
+// Tag preview is detected only when neither delete nor category is enabled, so
+// combined rules keep their existing dispatch behavior.
 func detectPreviewAction(conditions *models.ActionConditions) previewActionType {
 	hasDelete := conditions != nil && conditions.Delete != nil && conditions.Delete.Enabled
 	hasCategory := conditions != nil && conditions.Category != nil && conditions.Category.Enabled
+	hasTag := false
+	for _, tagAction := range conditions.TagActions() {
+		if tagAction != nil && tagAction.Enabled {
+			hasTag = true
+			break
+		}
+	}
 
 	switch {
 	case hasDelete && hasCategory:
@@ -990,6 +1000,8 @@ func detectPreviewAction(conditions *models.ActionConditions) previewActionType 
 		return previewActionCategory
 	case hasDelete:
 		return previewActionDelete
+	case hasTag:
+		return previewActionTag
 	default:
 		return previewActionNone
 	}
@@ -1019,9 +1031,9 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 		RespondError(w, http.StatusBadRequest, "Cannot preview rule with both delete and category actions enabled")
 		return
 	case previewActionNone:
-		RespondError(w, http.StatusBadRequest, "Preview requires either delete or category action to be enabled")
+		RespondError(w, http.StatusBadRequest, "Preview requires a delete, category, or tag action to be enabled")
 		return
-	case previewActionDelete, previewActionCategory:
+	case previewActionDelete, previewActionCategory, previewActionTag:
 		// Valid actions - continue processing
 	}
 
@@ -1030,6 +1042,11 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 
 	if action == previewActionCategory {
 		h.handleCategoryPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
+		return
+	}
+
+	if action == previewActionTag {
+		h.handleTagPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
 		return
 	}
 
@@ -1051,6 +1068,16 @@ func (h *AutomationHandler) handleCategoryPreview(ctx context.Context, w http.Re
 	result, err := h.service.PreviewCategoryRule(ctx, instanceID, automation, limit, offset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
+		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
+		return
+	}
+	RespondJSON(w, http.StatusOK, result)
+}
+
+func (h *AutomationHandler) handleTagPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
+	result, err := h.service.PreviewTagRule(ctx, instanceID, automation, limit, offset)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview tag rule")
 		RespondError(w, http.StatusInternalServerError, "Failed to preview automation")
 		return
 	}

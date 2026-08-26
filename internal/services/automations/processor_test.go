@@ -2356,6 +2356,234 @@ func TestProcessTorrents_Tag_FullMode_NoOpForAlreadyMatchingTag(t *testing.T) {
 	require.False(t, ok, "expected no state changes when managed full mode tag already matches")
 }
 
+func TestProcessTorrents_Tag_IncludeCrossSeeds_RecordsExpansionIntent(t *testing.T) {
+	tests := []struct {
+		scenario    string
+		mode        string
+		torrentName string
+		torrentTags string
+		wantAction  string
+		wantIntent  bool
+	}{
+		{
+			scenario:    "add mode records intent on matching torrent",
+			mode:        models.TagModeAdd,
+			torrentName: "Matching Torrent",
+			wantAction:  "add",
+			wantIntent:  true,
+		},
+		{
+			scenario:    "remove mode records intent on matching torrent",
+			mode:        models.TagModeRemove,
+			torrentName: "Matching Torrent",
+			torrentTags: "managed",
+			wantAction:  "remove",
+			wantIntent:  true,
+		},
+		{
+			scenario:    "full mode add records intent on matching torrent",
+			mode:        models.TagModeFull,
+			torrentName: "Matching Torrent",
+			wantAction:  "add",
+			wantIntent:  true,
+		},
+		{
+			scenario:    "full mode removal on non-matching torrent stays local",
+			mode:        models.TagModeFull,
+			torrentName: "Other Torrent",
+			torrentTags: "managed",
+			wantAction:  "remove",
+			wantIntent:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.scenario, func(t *testing.T) {
+			sm := qbittorrent.NewSyncManager(nil, nil)
+
+			torrents := []qbt.Torrent{
+				{
+					Hash: "abc123",
+					Name: tc.torrentName,
+					Tags: tc.torrentTags,
+				},
+			}
+
+			rule := &models.Automation{
+				ID:             7,
+				Enabled:        true,
+				Name:           "Managed cross-seed tag",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					SchemaVersion: "1",
+					Tags: []*models.TagAction{{
+						Enabled:           true,
+						Tags:              []string{"managed"},
+						Mode:              tc.mode,
+						IncludeCrossSeeds: true,
+						Condition: &models.RuleCondition{
+							Field:    models.FieldName,
+							Operator: models.OperatorContains,
+							Value:    "Matching",
+						},
+					}},
+				},
+			}
+
+			states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+			state, ok := states["abc123"]
+			require.True(t, ok, "expected state to be recorded for torrent")
+			require.Equal(t, tc.wantAction, state.tagActions["managed"])
+			if tc.wantIntent {
+				require.Equal(t, tagExpandIntent{
+					rule:   ruleRef{id: 7, name: "Managed cross-seed tag"},
+					action: tc.wantAction,
+				}, state.tagExpandByTag["managed"])
+			} else {
+				require.NotContains(t, state.tagExpandByTag, "managed")
+			}
+		})
+	}
+}
+
+func TestProcessTorrents_Tag_FullMode_AlreadyTaggedMatchRecordsAssertIntent(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Steady state: the copy matches and already carries the tag. No local
+	// change is needed, but the expansion intent must still be recorded so
+	// full-mode removals on non-matching siblings get canceled (any-match-wins).
+	torrents := []qbt.Torrent{
+		{
+			Hash: "abc123",
+			Name: "Matching Torrent",
+			Tags: "managed",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             7,
+		Enabled:        true,
+		Name:           "Managed cross-seed tag",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled:           true,
+				Tags:              []string{"managed"},
+				Mode:              models.TagModeFull,
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldName,
+					Operator: models.OperatorContains,
+					Value:    "Matching",
+				},
+			}},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected intent-only state to be kept")
+	require.NotContains(t, state.tagActions, "managed", "no local change for an already-correct copy")
+	require.Equal(t, tagExpandIntent{
+		rule:   ruleRef{id: 7, name: "Managed cross-seed tag"},
+		action: "add",
+	}, state.tagExpandByTag["managed"])
+}
+
+func TestProcessTorrents_Tag_IncludeCrossSeeds_TrackerAsTagNeverRecordsIntent(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:    "abc123",
+			Name:    "Test Torrent",
+			Tracker: "https://tracker.example.com/announce",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Tracker tag",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled:           true,
+				Mode:              models.TagModeAdd,
+				UseTrackerAsTag:   true,
+				IncludeCrossSeeds: true,
+			}},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+	require.Len(t, state.tagActions, 1, "expected tracker-derived tag action to be recorded")
+	require.Empty(t, state.tagExpandByTag, "tracker-derived tags must never record expansion intent")
+}
+
+func TestProcessTorrents_Tag_LaterRuleWithoutExpansionClearsIntent(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash: "abc123",
+			Name: "Matching Torrent",
+		},
+	}
+
+	rule1 := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Add with expansion",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled:           true,
+				Tags:              []string{"managed"},
+				Mode:              models.TagModeAdd,
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldName,
+					Operator: models.OperatorContains,
+					Value:    "Matching",
+				},
+			}},
+		},
+	}
+
+	rule2 := &models.Automation{
+		ID:             2,
+		Enabled:        true,
+		Name:           "Remove without expansion",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Tags: []*models.TagAction{{
+				Enabled: true,
+				Tags:    []string{"managed"},
+				Mode:    models.TagModeRemove,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldName,
+					Operator: models.OperatorContains,
+					Value:    "Matching",
+				},
+			}},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule1, rule2}, nil, sm, nil, nil, nil)
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+	require.Equal(t, "remove", state.tagActions["managed"], "expected later rule's decision to win")
+	require.Equal(t, ruleRef{id: 2, name: "Remove without expansion"}, state.tagRuleByTag["managed"])
+	require.NotContains(t, state.tagExpandByTag, "managed", "later rule without expansion must clear earlier intent")
+}
+
 func TestProcessTorrents_MultiBatchMerging(t *testing.T) {
 	ratio := 2.0
 

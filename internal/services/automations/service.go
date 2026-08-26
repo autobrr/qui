@@ -1561,7 +1561,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 		s.findCategoryCrossSeeds(torrents, catAction, state)
 	}
 
-	return s.buildCategoryPreviewResult(torrents, state, evalCtx, cfg, rule, scoreByHash), nil
+	return s.buildMatchPreviewResult(torrents, state.directMatchSet, state.crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
 }
 
 // categoryActionConfig holds category action configuration.
@@ -1776,26 +1776,27 @@ func (s *Service) findCategoryGroupMembers(
 	}
 }
 
-// buildCategoryPreviewResult builds the paginated preview result for category preview.
-func (s *Service) buildCategoryPreviewResult(
+// buildMatchPreviewResult builds a paginated preview result from direct-match
+// and cross-seed hash sets (shared by the category and tag previews).
+func (s *Service) buildMatchPreviewResult(
 	torrents []qbt.Torrent,
-	state *categoryPreviewState,
+	directSet, crossSeedSet map[string]struct{},
 	evalCtx *EvalContext,
 	cfg previewConfig,
 	rule *models.Automation,
 	scoreByHash map[string]float64,
 ) *PreviewResult {
-	allMatches := make(map[string]struct{}, len(state.directMatchSet)+len(state.crossSeedSet))
-	for h := range state.directMatchSet {
+	allMatches := make(map[string]struct{}, len(directSet)+len(crossSeedSet))
+	for h := range directSet {
 		allMatches[h] = struct{}{}
 	}
-	for h := range state.crossSeedSet {
+	for h := range crossSeedSet {
 		allMatches[h] = struct{}{}
 	}
 
 	result := &PreviewResult{
 		TotalMatches:   len(allMatches),
-		CrossSeedCount: len(state.crossSeedSet),
+		CrossSeedCount: len(crossSeedSet),
 		Examples:       make([]PreviewTorrent, 0, cfg.limit),
 	}
 
@@ -1814,7 +1815,7 @@ func (s *Service) buildCategoryPreviewResult(
 			break
 		}
 
-		_, isCrossSeed := state.crossSeedSet[torrent.Hash]
+		_, isCrossSeed := crossSeedSet[torrent.Hash]
 
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
@@ -1823,6 +1824,132 @@ func (s *Service) buildCategoryPreviewResult(
 	}
 
 	return result
+}
+
+// PreviewTagRule returns torrents whose tags would change under the given
+// rule's tag actions. Actions flagged with includeCrossSeeds also pull in
+// cross-seed siblings (same content + save path group), reported via IsCrossSeed.
+func (s *Service) PreviewTagRule(ctx context.Context, instanceID int, rule *models.Automation, limit, offset int) (*PreviewResult, error) {
+	if s == nil || s.syncManager == nil {
+		return &PreviewResult{}, nil
+	}
+	rule = prepareRuleForPreview(rule, instanceID)
+	if rule == nil {
+		return &PreviewResult{}, nil
+	}
+
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+	torrents = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
+
+	cfg := previewConfig{limit: limit, offset: offset}
+	cfg.normalize()
+
+	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
+	for _, tagAction := range rule.Conditions.TagActions() {
+		if tagAction == nil {
+			continue
+		}
+		s.setupPreviewTrackerDisplayNames(ctx, instanceID, tagAction.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, tagAction.Condition, evalCtx)
+		if evalCtx.HasMissingFilesByHash == nil {
+			s.setupMissingFilesContext(ctx, instanceID, rule, tagAction.Condition, torrents, evalCtx, instance)
+		}
+	}
+	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
+
+	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
+		return nil, err
+	}
+
+	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+
+	states := s.evalTagStatesForPreview(rule, torrents, evalCtx)
+
+	directSet := make(map[string]struct{}, len(states))
+	for hash, state := range states {
+		if tagStateChangesTags(state) {
+			directSet[hash] = struct{}{}
+		}
+	}
+
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, t := range torrents {
+		torrentByHash[t.Hash] = t
+	}
+	s.expandTagStatesForCrossSeeds(ctx, instanceID, states, torrents, torrentByHash, map[int]*models.Automation{rule.ID: rule}, evalCtx)
+
+	crossSeedSet := make(map[string]struct{})
+	for hash, state := range states {
+		if _, direct := directSet[hash]; direct {
+			continue
+		}
+		if tagStateChangesTags(state) {
+			crossSeedSet[hash] = struct{}{}
+		}
+	}
+
+	return s.buildMatchPreviewResult(torrents, directSet, crossSeedSet, evalCtx, cfg, rule, scoreByHash), nil
+}
+
+// evalTagStatesForPreview runs the rule's tag actions against every
+// tracker-matching torrent, mirroring processor evaluation, and returns the
+// per-torrent desired states that recorded at least one tag decision.
+func (s *Service) evalTagStatesForPreview(rule *models.Automation, torrents []qbt.Torrent, evalCtx *EvalContext) map[string]*torrentDesiredState {
+	states := make(map[string]*torrentDesiredState)
+	tagActions := rule.Conditions.TagActions()
+	if len(tagActions) == 0 {
+		return states
+	}
+
+	for _, torrent := range torrents {
+		trackerDomains := collectTrackerDomains(torrent, s.syncManager)
+		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+			continue
+		}
+
+		state := &torrentDesiredState{
+			hash:           torrent.Hash,
+			name:           torrent.Name,
+			currentTags:    parseTorrentTags(torrent.Tags),
+			tagActions:     make(map[string]string),
+			tagRuleByTag:   make(map[string]ruleRef),
+			trackerDomains: trackerDomains,
+		}
+		for _, tagAction := range tagActions {
+			if tagAction == nil || !tagAction.Enabled || (len(tagAction.Tags) == 0 && !tagAction.UseTrackerAsTag) {
+				continue
+			}
+			// Same guard as processRuleForTorrent: IS_UNREGISTERED needs health data.
+			if ConditionUsesField(tagAction.Condition, FieldIsUnregistered) && evalCtx.UnregisteredSet == nil {
+				continue
+			}
+			processTagAction(rule, tagAction, torrent, state, evalCtx)
+		}
+		if len(state.tagActions) > 0 || len(state.tagExpandByTag) > 0 {
+			states[torrent.Hash] = state
+		}
+	}
+
+	return states
+}
+
+// tagStateChangesTags reports whether the state's pending tag actions would
+// actually change the torrent's tag list.
+func tagStateChangesTags(state *torrentDesiredState) bool {
+	if state == nil {
+		return false
+	}
+	for tag, action := range state.tagActions {
+		_, has := state.currentTags[tag]
+		if (action == "add" && !has) || (action == "remove" && has) {
+			return true
+		}
+	}
+	return false
 }
 
 // deleteHardlinkNeeds reports which hardlink data a rule's delete needs: the
@@ -2253,6 +2380,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	for _, r := range eligibleRules {
 		ruleByID[r.ID] = r
 	}
+
+	// Expand pending tag decisions onto cross-seed siblings before the diff loop
+	// below, so dry-run and live execution see identical tag changes.
+	s.expandTagStatesForCrossSeeds(ctx, instanceID, states, torrents, torrentByHash, ruleByID, evalCtx)
 
 	// Build batches from desired states
 	shareBatches := make(map[shareKey][]string)
@@ -4774,6 +4905,164 @@ func (s *Service) verifyFileOverlap(ctx context.Context, instanceID int, torrent
 		return false, errors.New("cannot compute overlap: missing or zero-size file lists")
 	}
 	return percent >= int64(minOverlapPercent), nil
+}
+
+// expandTagStatesForCrossSeeds propagates pending tag decisions flagged with
+// includeCrossSeeds onto cross-seed siblings (same content + save path group).
+// Siblings get their own state entry (seeded with their current tags) so the
+// tag diff loop computes a correct per-sibling desired set - SetTorrentTags
+// replaces a torrent's whole tag list, so deltas must never be shared.
+func (s *Service) expandTagStatesForCrossSeeds(
+	ctx context.Context,
+	instanceID int,
+	states map[string]*torrentDesiredState,
+	torrents []qbt.Torrent,
+	torrentByHash map[string]qbt.Torrent,
+	ruleByID map[int]*models.Automation,
+	evalCtx *EvalContext,
+) {
+	// Deterministic trigger order keeps sibling attribution stable when several
+	// triggers in one group expand the same tag.
+	var triggerHashes []string
+	for hash, state := range states {
+		if state != nil && len(state.tagExpandByTag) > 0 {
+			triggerHashes = append(triggerHashes, hash)
+		}
+	}
+	if len(triggerHashes) == 0 {
+		return
+	}
+	sort.Strings(triggerHashes)
+
+	// Rule evaluation order ((sort_order, id), the store's ordering) resolves
+	// conflicting expansions injected by different rules: the later rule wins,
+	// independent of trigger hash order.
+	orderedRules := make([]*models.Automation, 0, len(ruleByID))
+	for _, rule := range ruleByID {
+		orderedRules = append(orderedRules, rule)
+	}
+	sort.Slice(orderedRules, func(i, j int) bool {
+		if orderedRules[i].SortOrder != orderedRules[j].SortOrder {
+			return orderedRules[i].SortOrder < orderedRules[j].SortOrder
+		}
+		return orderedRules[i].ID < orderedRules[j].ID
+	})
+	rulePos := make(map[int]int, len(orderedRules))
+	for i, rule := range orderedRules {
+		rulePos[rule.ID] = i
+	}
+
+	// Sibling tag decisions injected (or canceled as no-ops) by expansion,
+	// recorded with the injecting rule's position. Distinguishes them from a
+	// sibling's own evaluated decisions, which a different rule's expansion
+	// never overrides.
+	type injectionKey struct {
+		hash string
+		tag  string
+	}
+	injectedPos := make(map[injectionKey]int)
+
+	type groupExpandKey struct {
+		ruleID  int
+		groupID string
+	}
+	groupIndexByKey := make(map[groupExpandKey]*groupIndex)
+	groupEligibilityByKey := make(map[groupExpandKey]map[string]bool)
+
+	for _, hash := range triggerHashes {
+		state := states[hash]
+		tags := make([]string, 0, len(state.tagExpandByTag))
+		for tag := range state.tagExpandByTag {
+			tags = append(tags, tag)
+		}
+		sort.Strings(tags)
+		for _, tag := range tags {
+			intent := state.tagExpandByTag[tag]
+			rule := ruleByID[intent.rule.id]
+			if rule == nil {
+				continue
+			}
+
+			k := groupExpandKey{ruleID: intent.rule.id, groupID: GroupCrossSeedContentSavePath}
+			idx := groupIndexByKey[k]
+			if idx == nil {
+				idx = getOrBuildGroupIndexForRule(evalCtx, rule, k.groupID, torrents, s.syncManager)
+				groupIndexByKey[k] = idx
+			}
+			if idx == nil {
+				continue
+			}
+			groupKey := idx.KeyForHash(hash)
+			if groupKey == "" {
+				continue
+			}
+			// Ambiguous ContentPath safety (ContentPath == SavePath): verify overlap or skip.
+			if groupEligibilityByKey[k] == nil {
+				groupEligibilityByKey[k] = make(map[string]bool)
+			}
+			eligible, computed := groupEligibilityByKey[k][groupKey]
+			if !computed {
+				eligible = s.shouldExpandGroupWithAmbiguityPolicy(ctx, instanceID, rule, k.groupID, idx, hash, torrentByHash)
+				groupEligibilityByKey[k][groupKey] = eligible
+			}
+			if !eligible {
+				continue
+			}
+
+			for _, sibHash := range idx.MembersForHash(hash) {
+				if sibHash == hash {
+					continue
+				}
+				sibTorrent, ok := torrentByHash[sibHash]
+				if !ok {
+					continue
+				}
+				sibState := states[sibHash]
+				if sibState == nil {
+					sibState = &torrentDesiredState{
+						hash:         sibHash,
+						name:         sibTorrent.Name,
+						currentTags:  parseTorrentTags(sibTorrent.Tags),
+						tagActions:   make(map[string]string),
+						tagRuleByTag: make(map[string]ruleRef),
+					}
+					states[sibHash] = sibState
+				}
+				key := injectionKey{hash: sibHash, tag: tag}
+				pos, wasInjected := injectedPos[key]
+				if wasInjected && rulePos[intent.rule.id] < pos {
+					continue // a later rule's expansion already decided this tag
+				}
+				if existing, hasOwn := sibState.tagActions[tag]; hasOwn && !wasInjected {
+					if sibState.tagRuleByTag[tag].id != intent.rule.id {
+						continue // sibling's own decision from another rule wins
+					}
+					if existing == intent.action || intent.action == "remove" {
+						continue // same-rule conflicts resolve add-over-remove
+					}
+				}
+				injectedPos[key] = rulePos[intent.rule.id]
+
+				// Skip changes the sibling's current tags already satisfy, so
+				// no-op siblings don't land in tagChanges and inflate activity
+				// counts. Managed reset is the exception: the tag is
+				// wholesale-deleted in the client first, so its re-adds are
+				// real changes. A canceled entry stays canceled — the winning
+				// decision is "leave as is".
+				_, sibHasTag := sibState.currentTags[tag]
+				if intent.resetFromClient {
+					sibHasTag = false
+				}
+				if (intent.action == "add") == sibHasTag {
+					delete(sibState.tagActions, tag)
+					delete(sibState.tagRuleByTag, tag)
+					continue
+				}
+				sibState.tagActions[tag] = intent.action
+				sibState.tagRuleByTag[tag] = intent.rule
+			}
+		}
+	}
 }
 
 // shouldExpandGroupWithAmbiguityPolicy returns whether a grouping expansion should be applied
