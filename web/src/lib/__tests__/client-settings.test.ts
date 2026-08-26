@@ -158,6 +158,23 @@ describe("push queue", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
   })
 
+  it("replays a newer cross-tab value after an older PUT finishes", async () => {
+    let resolvePut: (value: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
+
+    // Another tab writes the shared cache while this tab's older PUT is slow.
+    localStorage.setItem("qui-test-bool", "false")
+    resolvePut({ ok: true, status: 200 })
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
+  })
+
   // REGRESSION: a flush whose timer fired during an in-flight PUT was
   // swallowed; if that PUT then failed, the newer write stalled until the
   // next write or tab-hide.

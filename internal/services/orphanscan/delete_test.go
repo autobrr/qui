@@ -371,6 +371,39 @@ func TestSafeDeleteTarget_SkipsWhenTargetIsIgnored(t *testing.T) {
 	}
 }
 
+func TestDeletionIgnorePathsProtectFreshUnavailableRoots(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	metadataRoot := filepath.Join(root, "metadata-pending")
+	skippedRoot := filepath.Join(root, "checking")
+	metadataFile := filepath.Join(metadataRoot, "pending.bin")
+	skippedFile := filepath.Join(skippedRoot, "existing.bin")
+	writeOldFile(t, metadataFile)
+	writeOldFile(t, skippedFile)
+
+	ignorePaths, err := NormalizeIgnorePaths(scanIgnorePaths(nil, []string{root}, &buildFileMapResult{
+		metadataRoots: []string{metadataRoot},
+		skippedRoots:  []string{skippedRoot},
+	}))
+	if err != nil {
+		t.Fatalf("NormalizeIgnorePaths: %v", err)
+	}
+
+	for _, target := range []string{metadataFile, skippedFile} {
+		disp, err := safeDeleteTarget(root, target, NewTorrentFileMap(), ignorePaths)
+		if err != nil {
+			t.Fatalf("safeDeleteTarget(%q): %v", target, err)
+		}
+		if disp != deleteDispositionSkippedIgnored {
+			t.Fatalf("safeDeleteTarget(%q) disposition: got %v want %v", target, disp, deleteDispositionSkippedIgnored)
+		}
+		if _, err := os.Stat(target); err != nil {
+			t.Fatalf("stat protected target %q: %v", target, err)
+		}
+	}
+}
+
 func TestSafeDeleteTarget_AllowsDeleteWhenNoIgnorePaths(t *testing.T) {
 	t.Parallel()
 

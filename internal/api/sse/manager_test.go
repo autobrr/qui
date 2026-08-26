@@ -619,6 +619,31 @@ func TestStreamManager_syncTimeout(t *testing.T) {
 	}
 }
 
+// TestStreamManager_syncTimeout_followsClientTimeout verifies the full-sync budget
+// is raised to the pool's HTTP transport timeout when the operator configured a
+// larger one, and never lowered below syncTimeoutFull (#2037 reasoning).
+func TestStreamManager_syncTimeout_followsClientTimeout(t *testing.T) {
+	tests := []struct {
+		name          string
+		clientTimeout time.Duration
+		want          time.Duration
+	}{
+		{name: "larger_transport_raises_full_budget", clientTimeout: 180 * time.Second, want: 180 * time.Second},
+		{name: "default_transport_keeps_full_budget", clientTimeout: 60 * time.Second, want: syncTimeoutFull},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pool, err := qbittorrent.NewClientPool(nil, nil, tt.clientTimeout)
+			require.NoError(t, err)
+			defer pool.Close()
+
+			manager := NewStreamManager(pool, nil, nil)
+			require.Equal(t, tt.want, manager.syncTimeout(1), "unprimed instance should get the full budget bounded by the transport")
+		})
+	}
+}
+
 func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 	// syncTimeout reads backoffState fields that markSyncSuccess/markSyncFailure
 	// mutate under m.mu. This must stay race-free; run under `go test -race`.

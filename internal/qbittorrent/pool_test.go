@@ -31,7 +31,7 @@ func setupTestPool(t *testing.T) *ClientPool {
 	require.NoError(t, err, "Failed to create instance store")
 
 	errorStore := models.NewInstanceErrorStore(db)
-	pool, err := NewClientPool(instanceStore, errorStore)
+	pool, err := NewClientPool(instanceStore, errorStore, 60*time.Second)
 	require.NoError(t, err, "Failed to create client pool")
 	return pool
 }
@@ -216,12 +216,11 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 // TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce verifies that
 // a burst of concurrent callers against one unhealthy, not-yet-backed-off instance records
 // a single failure (advances backoff once), not once per caller (adversarial review of #2096).
+// The instance is dead (connection refused): a hard failure, so it must back off.
 func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
-	// Blocking endpoint so the probes overlap in time instead of failing instantly.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
+	// Closed listener: probes fail fast with a hard connection error.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	srv.Close()
 
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -235,7 +234,7 @@ func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t 
 	var wg sync.WaitGroup
 	for range callers {
 		wg.Go(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_, _ = pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
 		})
@@ -248,6 +247,41 @@ func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t 
 
 	require.NotNil(t, info, "one failure should have been recorded")
 	assert.Equal(t, 1, info.attempts, "concurrent probes must advance the backoff exactly once, not once per caller")
+	assert.True(t, pool.isInBackoff(instanceID), "a dead instance must go into backoff (#2096)")
+}
+
+// TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff verifies that a probe that
+// times out against a responding-but-saturated instance does NOT record a failure or back
+// the instance off: slow is not down, and backing off a working instance turns one slow
+// request into an outage for every caller.
+func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
+	// Blocking endpoint: the connection is accepted but the response never comes,
+	// so the probe fails with a deadline, the signature of a saturated instance.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	pool.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	client, err := pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
+	require.Error(t, err)
+	require.Nil(t, client)
+
+	assert.False(t, pool.isInBackoff(instanceID), "a timed-out probe must not put the instance in backoff")
+	pool.mu.RLock()
+	_, tracked := pool.failureTracker[instanceID]
+	pool.mu.RUnlock()
+	assert.False(t, tracked, "a timed-out probe must not record an instance failure")
 }
 
 // TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff verifies that a probe

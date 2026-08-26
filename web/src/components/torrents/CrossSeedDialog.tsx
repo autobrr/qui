@@ -35,10 +35,12 @@ import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { formatBytes } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
+  CrossSeedSearchDecisionTrace,
+  CrossSeedSearchRejectedCandidate,
   CrossSeedTorrentSearchResponse,
   Torrent
 } from "@/types"
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, Copy, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -91,6 +93,7 @@ export interface CrossSeedDialogProps {
   cacheMetadata?: CrossSeedTorrentSearchResponse["cache"] | null
   partial?: boolean
   queryDegraded?: string
+  decisionTrace?: CrossSeedSearchDecisionTrace
   canForceRefresh?: boolean
   refreshCooldownLabel?: string
   onForceRefresh?: () => void
@@ -140,6 +143,7 @@ const CrossSeedDialogComponent = ({
   cacheMetadata,
   partial,
   queryDegraded,
+  decisionTrace,
   canForceRefresh,
   refreshCooldownLabel,
   onForceRefresh,
@@ -177,8 +181,41 @@ const CrossSeedDialogComponent = ({
   }, [indexerNameMap, sourceTorrent?.availableIndexers])
 
   const [excludedOpen, setExcludedOpen] = useState(false)
+  const [traceOpen, setTraceOpen] = useState(false)
   const [applyResultOpen, setApplyResultOpen] = useState(true)
   const [blocklistPendingKeys, setBlocklistPendingKeys] = useState<Set<string>>(() => new Set())
+
+  const traceIndexerRows = useMemo(() => {
+    if (!decisionTrace?.indexers) {
+      return []
+    }
+    // Content-excluded indexers already have their own section above.
+    return decisionTrace.indexers
+      .filter(outcome => outcome.status !== "excluded")
+      .map(outcome => ({
+        ...outcome,
+        name: indexerNameMap[outcome.indexerId] ?? `Indexer ${outcome.indexerId}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [decisionTrace?.indexers, indexerNameMap])
+
+  const traceReasonGroups = useMemo(
+    () => (decisionTrace ? groupTraceReasons(decisionTrace) : []),
+    [decisionTrace]
+  )
+
+  const handleCopyTraceReport = useCallback(async () => {
+    if (!decisionTrace) {
+      return
+    }
+    const report = buildCrossSeedTraceReport(decisionTrace, sourceTorrent?.name ?? torrent?.name ?? "", indexerNameMap)
+    try {
+      await navigator.clipboard.writeText(report)
+      toast.success(t("crossSeedDialog.trace.copied"))
+    } catch {
+      toast.error(t("crossSeedDialog.trace.copyFailed"))
+    }
+  }, [decisionTrace, sourceTorrent?.name, torrent?.name, indexerNameMap, t])
 
   // Auto-expand results when there are failures
   const hasFailures = applyResult?.results.some(r => !r.success || r.instanceResults?.some(ir => !ir.success))
@@ -493,6 +530,87 @@ const CrossSeedDialogComponent = ({
                   </div>
                 </>
               )}
+              {decisionTrace && (
+                <Collapsible open={traceOpen} onOpenChange={setTraceOpen}>
+                  <div className="rounded-lg border bg-muted/20">
+                    <CollapsibleTrigger className="w-full p-2.5 text-left hover:bg-muted/40 transition-colors">
+                      <div className="flex items-center gap-2 text-sm">
+                        <ChevronRight className={`h-3.5 w-3.5 transition-transform ${traceOpen ? "rotate-90" : ""}`} />
+                        <span className="font-medium">{t("crossSeedDialog.trace.title")}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {t("crossSeedDialog.trace.summaryBadge", { total: decisionTrace.totalResults, matches: decisionTrace.finalMatches })}
+                        </Badge>
+                      </div>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="space-y-2.5 px-2.5 pb-2.5 text-xs">
+                        <p className="text-muted-foreground">
+                          {t("crossSeedDialog.trace.summary", {
+                            total: decisionTrace.totalResults,
+                            release: decisionTrace.releaseFiltered,
+                            size: decisionTrace.sizeFiltered,
+                            late: decisionTrace.lateContentFiltered,
+                            duplicates: decisionTrace.duplicateFiltered,
+                            matches: decisionTrace.finalMatches,
+                          })}
+                        </p>
+                        {traceIndexerRows.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="font-medium text-foreground">{t("crossSeedDialog.trace.indexersHeading")}</p>
+                            <ul className="space-y-0.5">
+                              {traceIndexerRows.map(row => (
+                                <li key={row.indexerId} className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                  <span className="min-w-0 truncate">{row.name}</span>
+                                  <Badge
+                                    variant={row.status === "error" ? "destructive" : row.status === "searched" ? "outline" : "secondary"}
+                                    className="h-4 shrink-0 px-1 text-[10px]"
+                                  >
+                                    {t(`crossSeedDialog.trace.status.${row.status === "not_covered" ? "notCovered" : row.status}`)}
+                                  </Badge>
+                                  {row.candidates > 0 && (
+                                    <span className="shrink-0 text-muted-foreground">
+                                      {t("crossSeedDialog.trace.candidateCount", { count: row.candidates })}
+                                    </span>
+                                  )}
+                                  {row.detail && <span className="min-w-0 break-words text-muted-foreground">{row.detail}</span>}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {traceReasonGroups.length > 0 && (
+                          <div className="space-y-1.5">
+                            <p className="font-medium text-foreground">{t("crossSeedDialog.trace.rejectionsHeading")}</p>
+                            {traceReasonGroups.map(group => (
+                              <div key={group.reason} className="space-y-0.5">
+                                <p className="text-muted-foreground">{t("crossSeedDialog.trace.reasonCount", { reason: group.reason, count: group.count })}</p>
+                                <ul className="ml-3 space-y-0.5">
+                                  {group.candidates.map((candidate, index) => (
+                                    <li key={`${group.reason}-${index}`} className="flex min-w-0 items-center gap-1.5">
+                                      <span className="min-w-0 truncate" title={candidate.title}>{candidate.title}</span>
+                                      <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">{candidate.indexer}</Badge>
+                                      <span className="shrink-0 text-muted-foreground">{formatBytes(candidate.size)}</span>
+                                    </li>
+                                  ))}
+                                  {group.count > group.candidates.length && (
+                                    <li className="text-muted-foreground">
+                                      {t("crossSeedDialog.trace.moreCandidates", { count: group.count - group.candidates.length })}
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <Button type="button" variant="outline" size="sm" onClick={handleCopyTraceReport} className="h-7">
+                          <Copy className="mr-1.5 h-3 w-3" />
+                          {t("crossSeedDialog.trace.copyReport")}
+                        </Button>
+                      </div>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
+              )}
               {applyResult && (
                 <Collapsible open={applyResultOpen} onOpenChange={setApplyResultOpen}>
                   <div className="min-w-0 space-y-2 rounded-md border">
@@ -601,6 +719,58 @@ const CrossSeedDialogComponent = ({
 
 export const CrossSeedDialog = memo(CrossSeedDialogComponent)
 CrossSeedDialog.displayName = "CrossSeedDialog"
+
+// Plain-text report for sharing in bug reports; deliberately not localized.
+export function buildCrossSeedTraceReport(
+  trace: CrossSeedSearchDecisionTrace,
+  sourceName: string,
+  indexerNameMap: Record<number, string>
+): string {
+  const lines: string[] = []
+  lines.push("qui cross-seed search report")
+  lines.push(`source: ${sourceName} (${formatBytes(trace.sourceSize)})`)
+  lines.push(`size tolerance: ${trace.tolerancePercent}%`)
+  lines.push(
+    `results: ${trace.totalResults} candidates, ${trace.releaseFiltered} release-filtered, ${trace.sizeFiltered} size-filtered, ${trace.lateContentFiltered} late-content-filtered, ${trace.duplicateFiltered} duplicates, ${trace.finalMatches} matches`
+  )
+  if (trace.indexers?.length) {
+    lines.push("indexers:")
+    for (const outcome of trace.indexers) {
+      const name = indexerNameMap[outcome.indexerId] ?? `indexer ${outcome.indexerId}`
+      const candidates = outcome.candidates > 0 ? `, ${outcome.candidates} candidates` : ""
+      const detail = outcome.detail ? ` - ${outcome.detail}` : ""
+      lines.push(`  ${name}: ${outcome.status}${candidates}${detail}`)
+    }
+  }
+  const groups = groupTraceReasons(trace)
+  if (groups.length > 0) {
+    lines.push("rejections:")
+    for (const group of groups) {
+      lines.push(`  ${group.reason}: ${group.count}`)
+      for (const candidate of group.candidates) {
+        lines.push(`    - ${candidate.title} [${candidate.indexer}] ${formatBytes(candidate.size)}`)
+      }
+      if (group.count > group.candidates.length) {
+        lines.push(`    (+${group.count - group.candidates.length} more)`)
+      }
+    }
+  }
+  return lines.join("\n")
+}
+
+function groupTraceReasons(trace: CrossSeedSearchDecisionTrace): Array<{
+  reason: string
+  count: number
+  candidates: CrossSeedSearchRejectedCandidate[]
+}> {
+  return Object.entries(trace.rejectionCounts ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([reason, count]) => ({
+      reason,
+      count,
+      candidates: trace.rejectedCandidates?.filter(candidate => candidate.reason === reason) ?? [],
+    }))
+}
 
 function formatCrossSeedPublishDate(value: string): string {
   const parsed = new Date(value)

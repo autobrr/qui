@@ -4,6 +4,7 @@
 package orphanscan
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,6 +123,27 @@ func TestBuildFileMapFromTorrents_FailsWhenStableTorrentMissingFiles(t *testing.
 	assert.Contains(t, err.Error(), "stable torrents returned no files")
 }
 
+func TestBuildFileMapFromTorrents_IgnoresTorrentWithoutMetadataAtSharedRoot(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	hasMetadata := false
+
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{Hash: "stable", SavePath: root, State: qbt.TorrentStatePausedUp},
+			{Hash: "metadata-less", SavePath: root, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
+		},
+		map[string]qbt.TorrentFiles{
+			"stable": {{Name: "movie.mkv", Size: 1}},
+		},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, []string{filepath.Clean(root)}, result.scanRoots)
+	assert.Empty(t, result.skippedRoots)
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(root, "movie.mkv"))))
+}
+
 func TestBuildFileMapFromTorrents_SkipsTransientMissingRoots(t *testing.T) {
 	t.Parallel()
 
@@ -199,6 +221,52 @@ func TestFilterScanRootsCoveredBySkippedRoots(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestMetadataIgnoreRoots(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	scanRoot := filepath.Join(base, "downloads")
+	nestedRoot := filepath.Join(scanRoot, "incoming")
+
+	got := metadataIgnoreRoots(
+		[]string{scanRoot},
+		[]string{nestedRoot, scanRoot, base, filepath.Join(base, "elsewhere")},
+	)
+	assert.Equal(t, []string{filepath.Clean(nestedRoot)}, got)
+	assert.Empty(t, metadataIgnoreRoots([]string{scanRoot, nestedRoot}, []string{nestedRoot}))
+
+	stagedFile := filepath.Join(nestedRoot, "pending.bin")
+	orphanFile := filepath.Join(scanRoot, "orphan.bin")
+	writeOldFile(t, stagedFile)
+	writeOldFile(t, orphanFile)
+
+	orphans, truncated, err := walkScanRoot(context.Background(), scanRoot, NewTorrentFileMap(), got, 0, 100)
+	require.NoError(t, err)
+	assert.False(t, truncated)
+	assert.Equal(t, []string{normalizePath(orphanFile)}, orphanPaths(orphans))
+
+	t.Run("distinct case variants", func(t *testing.T) {
+		caseRoot := filepath.Join(base, "case-sensitive")
+		upperRoot := filepath.Join(caseRoot, "Incoming")
+		lowerRoot := filepath.Join(caseRoot, "incoming")
+		require.NoError(t, os.MkdirAll(upperRoot, 0o755))
+		require.NoError(t, os.MkdirAll(lowerRoot, 0o755))
+
+		upperInfo, err := os.Lstat(upperRoot)
+		require.NoError(t, err)
+		lowerInfo, err := os.Lstat(lowerRoot)
+		require.NoError(t, err)
+		if os.SameFile(upperInfo, lowerInfo) {
+			t.Skip("filesystem is case-insensitive")
+		}
+
+		assert.Equal(t, []string{filepath.Clean(upperRoot)}, metadataIgnoreRoots(
+			[]string{caseRoot, lowerRoot},
+			[]string{upperRoot},
+		))
+	})
 }
 
 func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) {

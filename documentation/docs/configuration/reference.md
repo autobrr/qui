@@ -65,6 +65,7 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `databaseMaxOpenConns` | `QUI__DATABASE_MAX_OPEN_CONNS` | int | `25` | Postgres pool max open connections. |
 | `databaseMaxIdleConns` | `QUI__DATABASE_MAX_IDLE_CONNS` | int | `5` | Postgres pool max idle connections. |
 | `databaseConnMaxLifetime` | `QUI__DATABASE_CONN_MAX_LIFETIME` | int | `300` | Postgres connection max lifetime in seconds. |
+| `qbittorrentTimeout` | `QUI__QBITTORRENT_TIMEOUT` | int | `60` | HTTP timeout in seconds for requests qui makes to qBittorrent instances (sync, health checks). Raise it for very large or slow instances. Restart required. |
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart recommended. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable to prevent remote tracker favicon fetches. Applied immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | When enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. Can add 25+ minutes per torrent. Restart recommended. |
@@ -73,7 +74,7 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `metricsEnabled` | `QUI__METRICS_ENABLED` | bool | `false` | Enables a Prometheus metrics server (separate port). Restart required. |
 | `metricsHost` | `QUI__METRICS_HOST` | string | `127.0.0.1` | Metrics server bind address. Restart required. |
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |
-| `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:bcrypt_hash` or `user1:hash1,user2:hash2`. Restart required. |
+| `metricsBasicAuthUsers` | `QUI__METRICS_BASIC_AUTH_USERS` | string | empty | Optional basic auth: `user:password` or `user1:password1,user2:password2`. Passwords are plaintext and can contain colons. Usernames cannot contain colons. Commas cannot appear in credentials. Restart required. |
 | `externalProgramAllowList` | (none) | string[] | empty list | Restricts which executables can be launched from the UI. Only configurable via `config.toml` (no env override). |
 | `authDisabled` | `QUI__AUTH_DISABLED` | bool | `false` | Disable all built-in authentication. **Both** this and `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` must be `true` for auth to be disabled. See [Authentication](#authentication) below. Applied on config reload. |
 | `I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | `QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA` | bool | `false` | Required confirmation for `authDisabled`. Acknowledges that running without authentication can lead to unauthorized access to your torrent clients and potential bans from private trackers. Applied on config reload. |

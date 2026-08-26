@@ -43,6 +43,7 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions, type TorrentAction } from "@/hooks/useTorrentActions"
+import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
@@ -64,6 +65,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Download,
   Eye,
   EyeOff,
   FastForward,
@@ -1388,6 +1390,7 @@ export function TorrentCardsMobile({
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
+  const { exportTorrents, isExporting } = useTorrentExporter({ instanceId, incognitoMode })
   const supportsTrackerHealth = resolveTrackerHealthSupport({
     isUnifiedView: isAllInstancesView,
     capabilitySupport: capabilities?.supportsTrackerHealth,
@@ -2001,6 +2004,23 @@ export function TorrentCardsMobile({
     }
   }, [torrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity, selectedTorrentsForRequest])
 
+  const handleExport = () => {
+    exportTorrents({
+      hashes: isAllSelected ? [] : selectedRequestHashes,
+      torrents: getSelectedTorrents,
+      isAllSelected,
+      totalSelected: effectiveSelectionCount,
+      filters,
+      search: effectiveSearch,
+      excludeHashes: excludeHashesForRequest,
+      excludeTargets: isAllSelected && isAllInstancesView ? buildTorrentActionTargets(excludedTorrents, instanceId) : undefined,
+      instanceIds: isAllInstancesView ? instanceIds : undefined,
+      sortField: backendSortField,
+      sortOrder,
+    })
+    setShowActionsSheet(false)
+  }
+
   const { isFilteringCrossSeeds, filterCrossSeeds } = useCrossSeedFilter({
     instanceId,
     onFilterChange,
@@ -2543,6 +2563,17 @@ export function TorrentCardsMobile({
               <FolderOpen className="mr-2 h-4 w-4" />
               {t("managementBar.setLocation")}
             </Button>
+            {(capabilities?.supportsTorrentExport ?? true) && (
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="justify-start"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                {effectiveSelectionCount > 1 ? t("contextMenu.exportTorrents", { count: effectiveSelectionCount }) : t("contextMenu.exportTorrent")}
+              </Button>
+            )}
             <Button
               variant="destructive"
               onClick={() => {

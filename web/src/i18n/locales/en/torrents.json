@@ -719,6 +719,25 @@
     "block": "Block",
     "addedToBlocklist": "Added to blocklist",
     "missingInstance": "Missing instance for blocklist",
+    "trace": {
+      "title": "Search breakdown",
+      "summaryBadge": "{{total}} candidates, {{matches}} matches",
+      "summary": "{{total}} candidates returned. Rejected: {{release}} release mismatch, {{size}} size mismatch, {{late}} content filter, {{duplicates}} duplicates. {{matches}} matches remain.",
+      "indexersHeading": "Indexers",
+      "status": {
+        "searched": "searched",
+        "notCovered": "incomplete",
+        "error": "error",
+        "excluded": "excluded"
+      },
+      "candidateCount": "{{count}} candidates",
+      "rejectionsHeading": "Rejected candidates",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} more with this reason",
+      "copyReport": "Copy report",
+      "copied": "Report copied to clipboard",
+      "copyFailed": "Could not copy the report"
+    },
     "scope": {
       "allIndexers": "All indexers",
       "selectCustom": "Select Custom",

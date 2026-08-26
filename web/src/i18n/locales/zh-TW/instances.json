@@ -319,6 +319,12 @@
       "maxActiveTorrentsDescription": "活躍種子總數上限",
       "maxCheckingTorrents": "最大檢查種子數",
       "maxCheckingTorrentsDescription": "同時檢查的種子最大數量",
+      "dontCountSlowTorrents": "不計入慢速種子",
+      "dontCountSlowTorrentsDescription": "慢速種子不計入上述活躍數量限制",
+      "slowTorrentDlRateThreshold": "下載速率閾值（KiB/s）",
+      "slowTorrentUlRateThreshold": "上傳速率閾值（KiB/s）",
+      "slowTorrentInactiveTimer": "種子不活躍計時（秒）",
+      "slowTorrentInactiveTimerDescription": "兩項速率需持續低於閾值多久才將種子視為慢速",
       "validation": {
         "maxActiveDownloads": "最大活躍下載數必須大於 -1",
         "maxActiveUploads": "最大活躍上傳數必須大於 -1",

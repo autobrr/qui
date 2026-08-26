@@ -65,6 +65,12 @@ QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .c
 
 `QUI__CUSTOM_THEMES_DIR` sets where [custom themes](../features/custom-themes.md) are read from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker) and is created automatically. Loading custom themes requires premium access.
 
+### UI preferences
+
+qui stores UI preferences, such as table columns, column sizes, density, filters, and theme, in the database. The browser maintains a local copy to apply these preferences before loading the database values.
+
+If these preferences reset after a restart, ensure that qui uses a persistent database. For SQLite, keep `qui.db` in persistent storage. In Docker, persist `/config` or the directory set by `QUI__DATA_DIR`.
+
 ## Database
 
 ```bash
@@ -80,6 +86,16 @@ QUI__DATABASE_CONNECT_TIMEOUT=10       # Connect timeout in seconds
 QUI__DATABASE_MAX_OPEN_CONNS=25        # Postgres pool max open connections
 QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
 QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
+```
+
+### SQLite or Postgres
+
+Both engines run the same features. For most installs, a switch gives no performance benefit: qui runs SQLite in WAL mode with a separate read pool, so reads do not block on writes. Pick Postgres to put the database on a different host, or when SQLite's one-write-at-a-time limit shows (many instances with heavy automation or cross-seed activity). The migration runs one way, with no way back: see [`qui db migrate`](./cli-commands.md).
+
+## qBittorrent Connection
+
+```bash
+QUI__QBITTORRENT_TIMEOUT=60  # Optional: HTTP timeout in seconds for requests qui makes to qBittorrent instances (default: 60). Raise it for very large or slow instances.
 ```
 
 ## Cross-Seed
@@ -113,7 +129,7 @@ QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.
 QUI__METRICS_ENABLED=true      # Optional: enable Prometheus metrics (default: false)
 QUI__METRICS_HOST=127.0.0.1    # Optional: metrics server bind address (default: 127.0.0.1)
 QUI__METRICS_PORT=9074         # Optional: metrics server port (default: 9074)
-QUI__METRICS_BASIC_AUTH_USERS=user:hash  # Optional: basic auth for metrics (bcrypt hashed)
+QUI__METRICS_BASIC_AUTH_USERS=user:password  # Optional: basic auth for metrics (plaintext password)
 ```
 
 ## Authentication
