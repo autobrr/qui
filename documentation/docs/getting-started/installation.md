@@ -6,7 +6,7 @@ description: Install qui on Linux with a single command.
 
 # Installation
 
-## Quick Install (Linux x86_64)
+## Quick install (Linux x86_64)
 
 ```bash
 # Download and extract the latest release
@@ -15,15 +15,15 @@ wget $(curl -s https://api.github.com/repos/autobrr/qui/releases/latest | grep b
 
 ### Unpack
 
-Run with root or sudo. If you do not have root, or are on a shared system, place the binaries somewhere in your home directory like `~/.bin`.
+Extract the archive to `/usr/local/bin`:
 
 ```bash
 tar -C /usr/local/bin -xzf qui*.tar.gz
 ```
 
-This will extract qui to `/usr/local/bin`. Note: If the command fails, prefix it with `sudo` and re-run again.
+If the command fails with a permission error, run it again with `sudo`. If you do not have root, or you are on a shared system, extract qui to a directory in your home directory, for example `~/.bin`.
 
-## Manual Download
+## Manual download
 
 Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases).
 
@@ -37,19 +37,19 @@ chmod +x qui
 ./qui serve
 ```
 
-The web interface will be available at http://localhost:7476
+The web interface is available at http://localhost:7476.
 
 ## Updating
 
-qui includes a built-in update command that automatically downloads and installs the latest release:
+The `qui update` command downloads and installs the latest release:
 
 ```bash
 ./qui update
 ```
 
-## First Setup
+## First setup
 
-1. Open your browser to http://localhost:7476
+1. Open your browser at http://localhost:7476
 2. Create your account
-3. Add your qBittorrent instance(s)
-4. Start managing your torrents
+3. Add your qBittorrent instances
+4. Manage your torrents

@@ -1,7 +1,7 @@
 import Details from "@theme/Details";
 
 <Details summary="Default ignores">
-Orphan Scan skips common OS/NAS metadata, recycle bin, snapshot, and Kubernetes volume-internal entries automatically (case-insensitive).
+Orphan scan skips common OS and NAS metadata, recycle bin, snapshot, and Kubernetes volume-internal entries. Matching is case-insensitive.
 
 **Ignored files (exact names)**
 - `.DS_Store`
@@ -10,7 +10,7 @@ Orphan Scan skips common OS/NAS metadata, recycle bin, snapshot, and Kubernetes 
 - `Thumbs.db`
 
 **Ignored files (name prefixes)**
-- `.fuse*` (e.g. `.fuse_hidden*`)
+- `.fuse*` (for example `.fuse_hidden*`)
 - `.nfs*`
 - `._*`
 - `.goutputstream-*`
@@ -19,6 +19,7 @@ Orphan Scan skips common OS/NAS metadata, recycle bin, snapshot, and Kubernetes 
 
 **Ignored files (name suffixes)**
 - `*.parts` (qBittorrent partial download files)
+- `*.!qB` (qBittorrent incomplete download files)
 
 **Ignored directories (exact names)**
 - `.AppleDB`
