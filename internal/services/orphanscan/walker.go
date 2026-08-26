@@ -216,9 +216,10 @@ func walkScanRootWithUnitFilter(
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
-		IgnoreDirNames: ignoredOrphanDirNames,
-		IgnorePaths:    ignorePaths,
-		WantFileID:     true,
+		IgnoreDirNames:        ignoredOrphanDirNames,
+		IgnoreDirNamePrefixes: ignoredOrphanDirNamePrefixes,
+		IgnorePaths:           ignorePaths,
+		WantFileID:            true,
 	})
 	if err != nil {
 		cancelWalk()
@@ -252,11 +253,6 @@ func walkScanRootWithUnitFilter(
 			// Note: backend.WalkDir handles IgnorePaths/IgnoreDirNames via WalkOptions,
 			// but orphanscan has its own ignore logic that runs at the walker level.
 			// Directories are not processed as orphans, only used for disc-unit detection.
-			continue
-		}
-
-		// Skip files under directories matching ignored prefix patterns (e.g., "..data" for k8s).
-		if isUnderIgnoredPrefixDir(entry.Path, root) {
 			continue
 		}
 
@@ -584,29 +580,6 @@ func isIgnoredOrphanFileName(name string) bool {
 	for _, suffix := range ignoredOrphanFileNameSuffixes {
 		if hasSuffixFold(name, suffix) {
 			return true
-		}
-	}
-	return false
-}
-
-// isUnderIgnoredPrefixDir checks if a path has any directory component matching
-// the ignored directory name prefix patterns (e.g., ".." prefix for k8s "..data").
-func isUnderIgnoredPrefixDir(path, root string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	// Only inspect directory components — exclude the basename so file names
-	// like ".Trash-foo.mkv" don't match the prefix check.
-	dir := filepath.Dir(rel)
-	if dir == "." {
-		return false
-	}
-	for seg := range strings.SplitSeq(dir, string(filepath.Separator)) {
-		for _, prefix := range ignoredOrphanDirNamePrefixes {
-			if hasPrefixFold(seg, prefix) {
-				return true
-			}
 		}
 	}
 	return false

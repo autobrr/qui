@@ -109,6 +109,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			if d.IsDir() && path != root {
 				if slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
 					return strings.EqualFold(ignored, name)
+				}) || slices.ContainsFunc(opts.IgnoreDirNamePrefixes, func(prefix string) bool {
+					return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
 				}) {
 					return filepath.SkipDir
 				}

@@ -63,7 +63,9 @@ type WalkOptions struct {
 	// IgnoreDirNames are directory basenames to skip, matched case-insensitively
 	// (OS/NAS metadata dirs like $RECYCLE.BIN and @eaDir vary in on-disk case).
 	IgnoreDirNames []string
-	IgnorePaths    []string
+	// IgnoreDirNamePrefixes are matched case-insensitively.
+	IgnoreDirNamePrefixes []string
+	IgnorePaths           []string
 	// WantFileID populates FileID and Nlinks on regular-file entries.
 	WantFileID bool
 	// EmitStatErrors emits entries whose metadata lookup failed with StatErr
