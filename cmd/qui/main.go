@@ -423,7 +423,7 @@ func RunMigrateCommand() *cobra.Command {
   qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
 `,
 		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeRTorrent)},
+		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission)},
 	}
 
 	var (
