@@ -2,10 +2,12 @@ package clientmigrate
 
 import (
 	"archive/tar"
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/autobrr/go-torrent/bencode"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/assert"
@@ -365,6 +367,82 @@ func TestReadDelugeLabels(t *testing.T) {
 
 	// absent file means no labels
 	assert.Nil(t, readDelugeLabels(t.TempDir()))
+}
+
+func TestDelugeMigrateSkipsMismatchedInfoHash(t *testing.T) {
+	t.Parallel()
+
+	stateDir := t.TempDir()
+	qbitDir := t.TempDir()
+	saveDir := t.TempDir()
+
+	info := map[string]any{
+		"name":         "Test.Torrent.2024.1080p.WEB-TEST.mkv",
+		"piece length": int64(16384),
+		"pieces":       string(make([]byte, 20)),
+		"length":       int64(1000),
+	}
+	infoBytes, err := bencode.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mi := metainfo.MetaInfo{InfoBytes: infoBytes}
+	torrentID := mi.HashInfoBytes().HexString()
+
+	torrentFile, err := os.Create(filepath.Join(stateDir, torrentID+".torrent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mi.Write(torrentFile); err != nil {
+		t.Fatal(err)
+	}
+	torrentFile.Close()
+
+	writeResume := func(infoHash []byte) {
+		resume := Fastresume{
+			InfoHash:          infoHash,
+			Pieces:            "\x01",
+			FilePriority:      []int{1},
+			SavePath:          saveDir,
+			LibTorrentVersion: "2.0.14.0",
+		}
+		blob, err := bencode.Marshal(&resume)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outer, err := bencode.Marshal(map[string]any{torrentID: string(blob)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(stateDir, "torrents.fastresume"), outer, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	opts := Options{Source: "deluge", SourceDir: stateDir, QbitDir: qbitDir}
+
+	// valid length but belonging to different content: nothing is written
+	writeResume(bytes.Repeat([]byte{0xaa}, 20))
+	if err := NewDelugeImporter(opts).Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(qbitDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Empty(t, entries)
+
+	// control: the matching hash imports the torrent
+	writeResume(mi.HashInfoBytes().Bytes())
+	if err := NewDelugeImporter(opts).Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	entries, err = os.ReadDir(qbitDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Len(t, entries, 2)
 }
 
 func TestArchiveDirExcludesOwnArchive(t *testing.T) {

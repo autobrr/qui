@@ -150,6 +150,14 @@ func (di *DelugeImport) Migrate() error {
 			continue
 		}
 
+		// resume data that does not belong to this torrent file would import
+		// piece state for different content
+		if !bytes.Equal(fastResume.InfoHash, file.HashInfoBytes().Bytes()) {
+			log.Warn().Msgf("(%d/%d) %s resume data does not match the torrent file, skipping", positionNum, totalJobs, torrentID)
+			skipped++
+			continue
+		}
+
 		// a corrupt entry with an unusable save path would import a torrent
 		// qBittorrent resolves against its own default download dir
 		if !filepath.IsAbs(filepath.Clean(fastResume.SavePath)) {
