@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"math/rand"
 	"os"
 	"path"
@@ -527,8 +526,18 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 	}
 
+	if s.backendPool == nil {
+		s.failRun(ctx, runID, instanceID, "backend pool not configured")
+		return
+	}
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
+		return
+	}
+
 	// Build file map
-	result, err := s.buildFileMap(ctx, instanceID)
+	result, err := s.buildFileMap(ctx, instanceID, backend)
 	if err != nil {
 		// Check if this was a cancellation - preserve canceled status instead of marking failed
 		if ctx.Err() != nil {
@@ -573,7 +582,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		return
 	}
 
-	allIgnorePaths := scanIgnorePaths(settings.IgnorePaths, scanRoots, result)
+	allIgnorePaths := scanIgnorePaths(ctx, settings.IgnorePaths, scanRoots, result, backend)
 
 	// Normalize ignore paths
 	ignorePaths, err := NormalizeIgnorePaths(allIgnorePaths)
@@ -601,16 +610,6 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		if s.backendPool == nil {
-			s.failRun(ctx, runID, instanceID, "backend pool not configured")
-			return
-		}
-		backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
-		if backendErr != nil {
-			log.Error().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend")
-			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", backendErr))
-			return
-		}
 		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -850,8 +849,18 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
+	if s.backendPool == nil {
+		s.failRun(ctx, runID, instanceID, "backend pool not configured")
+		return
+	}
+	deleteBackend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", err))
+		return
+	}
+
 	// Build fresh file map for re-checking
-	fileMapResult, err := s.buildFileMap(ctx, instanceID)
+	fileMapResult, err := s.buildFileMap(ctx, instanceID, deleteBackend)
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
 		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
@@ -868,7 +877,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	if settings != nil {
 		configuredIgnorePaths = settings.IgnorePaths
 	}
-	rawIgnorePaths := scanIgnorePaths(configuredIgnorePaths, run.ScanPaths, fileMapResult)
+	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend)
 	ignorePaths, err := NormalizeIgnorePaths(rawIgnorePaths)
 	if err != nil {
 		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
@@ -891,14 +900,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var sawReadOnly bool
 	var sawPermissionDenied bool
 
-	// Resolve the backend once for the whole batch; per-file resolves would
-	// panic on a nil pool and hammer the store for no reason.
-	var deleteBackend fsops.Backend
-	backendErr := errors.New("filesystem backend pool not configured")
-	if s.backendPool != nil {
-		deleteBackend, backendErr = s.backendPool.GetBackend(ctx, instanceID)
-	}
-
 	// Delete files
 	for _, f := range files {
 		if ctx.Err() != nil {
@@ -915,11 +916,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		if backendErr != nil {
-			s.updateFileStatus(ctx, f.ID, "failed", "backend unavailable")
-			failedDeletes++
-			continue
-		}
 		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
@@ -956,23 +952,19 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// Clean up empty directories, reusing the batch's backend.
 	var foldersDeleted int
-	if backendErr != nil {
-		log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: no backend for empty-dir cleanup")
-	} else {
-		candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
-		for _, dir := range candidateDirs {
-			if ctx.Err() != nil {
-				break
-			}
+	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
+	for _, dir := range candidateDirs {
+		if ctx.Err() != nil {
+			break
+		}
 
-			scanRoot := findScanRoot(dir, run.ScanPaths)
-			if scanRoot == "" {
-				continue
-			}
+		scanRoot := findScanRoot(dir, run.ScanPaths)
+		if scanRoot == "" {
+			continue
+		}
 
-			if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
-				foldersDeleted++
-			}
+		if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
+			foldersDeleted++
 		}
 	}
 
@@ -1192,7 +1184,7 @@ func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []st
 	return filtered
 }
 
-func isSameRoot(first, second string) bool {
+func isSameRoot(ctx context.Context, first, second string, backend fsops.Backend) bool {
 	first = filepath.Clean(first)
 	second = filepath.Clean(second)
 	if first == second {
@@ -1201,19 +1193,24 @@ func isSameRoot(first, second string) bool {
 	if normalizePath(first) != normalizePath(second) {
 		return false
 	}
-	firstInfo, firstErr := os.Lstat(first)
-	secondInfo, secondErr := os.Lstat(second)
-	return firstErr == nil && secondErr == nil && os.SameFile(firstInfo, secondInfo)
+	firstInfo, firstErr := backend.Lstat(ctx, first)
+	secondInfo, secondErr := backend.Lstat(ctx, second)
+	return firstErr == nil && secondErr == nil && sameRootIdentity(firstInfo, secondInfo)
 }
 
-func metadataIgnoreRoots(scanRoots, metadataRoots []string) []string {
+func sameRootIdentity(first, second *fsops.LstatInfo) bool {
+	return first.FileIDErr == nil && second.FileIDErr == nil &&
+		!first.FileID.IsZero() && first.FileID == second.FileID
+}
+
+func metadataIgnoreRoots(ctx context.Context, scanRoots, metadataRoots []string, backend fsops.Backend) []string {
 	ignored := make([]string, 0, len(metadataRoots))
 	for _, metadataRoot := range metadataRoots {
 		normalizedMetadataRoot := normalizePath(metadataRoot)
 		nested := false
 		for _, scanRoot := range scanRoots {
 			normalizedScanRoot := normalizePath(scanRoot)
-			if isSameRoot(metadataRoot, scanRoot) {
+			if isSameRoot(ctx, metadataRoot, scanRoot, backend) {
 				nested = false
 				break
 			}
@@ -1228,35 +1225,34 @@ func metadataIgnoreRoots(scanRoots, metadataRoots []string) []string {
 	return ignored
 }
 
-func scanIgnorePaths(configured, scanRoots []string, result *buildFileMapResult) []string {
+func scanIgnorePaths(ctx context.Context, configured, scanRoots []string, result *buildFileMapResult, backend fsops.Backend) []string {
 	ignored := append(append([]string(nil), configured...), result.skippedRoots...)
-	return append(ignored, metadataIgnoreRoots(scanRoots, result.metadataRoots)...)
+	return append(ignored, metadataIgnoreRoots(ctx, scanRoots, result.metadataRoots, backend)...)
 }
 
 // dedupeCaseVariantRoots drops a scan root when an earlier root differs from it
-// only by case AND both name the same directory on disk, which is what a
+// only by case AND both name the same directory on the backend, which is what a
 // case-insensitive filesystem gives us when qBittorrent reports two spellings of
-// one save path (issue #2314). Without the os.SameFile confirmation this would
+// one save path (issue #2314). Without the identity confirmation this would
 // silently stop scanning a second, genuinely different directory on a
 // case-sensitive filesystem.
 // Roots are compared in the given order; the first spelling wins.
 //
-// os.Lstat, never os.Stat: a symlink that differs from its target only by case
-// would look like the same directory through os.Stat, and dropping the real
-// directory in favour of the symlink would scan nothing at all, because
-// filepath.WalkDir does not follow a symlinked root.
-func dedupeCaseVariantRoots(roots []string) []string {
+// Backend.Lstat, never Stat: a symlink that differs from its target only by
+// case would look like the same directory through Stat, and dropping the real
+// directory in favour of the symlink would scan nothing at all.
+func dedupeCaseVariantRoots(ctx context.Context, roots []string, backend fsops.Backend) []string {
 	if len(roots) < 2 {
 		return roots
 	}
 
 	kept := make([]string, 0, len(roots))
-	seen := make(map[string]fs.FileInfo, len(roots))
+	seen := make(map[string]*fsops.LstatInfo, len(roots))
 	for _, root := range roots {
 		norm := normalizePath(root)
-		info, _ := os.Lstat(root) // nil FileInfo on error
+		info, _ := backend.Lstat(ctx, root) // nil info on error
 
-		if prev, ok := seen[norm]; ok && prev != nil && info != nil && os.SameFile(prev, info) {
+		if prev, ok := seen[norm]; ok && prev != nil && info != nil && sameRootIdentity(prev, info) {
 			log.Debug().Str("root", root).Msg("orphanscan: dropped scan root that is the same directory as an earlier root")
 			continue
 		}
@@ -1404,7 +1400,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	}
 
 	skippedRootList := sortedRoots(skippedRoots)
-	scanRootList := dedupeCaseVariantRoots(filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList))
+	scanRootList := filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList)
 
 	return &buildFileMapResult{
 		fileMap:       tfm,
@@ -1473,7 +1469,7 @@ func (s *Service) instanceScanRootsForOverlap(ctx context.Context, instanceID in
 	return lastRun.ScanPaths, "last_completed_run", nil
 }
 
-func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, timeout time.Duration) (*buildFileMapResult, error) {
+func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, timeout time.Duration, backend fsops.Backend) (*buildFileMapResult, error) {
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -1499,11 +1495,16 @@ func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, time
 		return nil, fmt.Errorf("failed to get torrent files: %w", err)
 	}
 
-	return buildFileMapFromTorrents(torrents, filesByHash)
+	result, err := buildFileMapFromTorrents(torrents, filesByHash)
+	if err != nil {
+		return nil, err
+	}
+	result.scanRoots = dedupeCaseVariantRoots(ctx, result.scanRoots, backend)
+	return result, nil
 }
 
-func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileMapResult, error) {
-	result, err := s.buildInstanceFileMap(ctx, instanceID, 5*time.Minute)
+func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsops.Backend) (*buildFileMapResult, error) {
+	result, err := s.buildInstanceFileMap(ctx, instanceID, 5*time.Minute, backend)
 	if err != nil {
 		return nil, err
 	}
@@ -1531,7 +1532,7 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileM
 			}
 		}
 
-		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, 2*time.Minute)
+		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, 2*time.Minute, backend)
 		if err != nil {
 			return nil, fmt.Errorf("overlapping local-access instance unavailable (id=%d name=%q): %w", inst.ID, inst.Name, err)
 		}

@@ -128,6 +128,15 @@ func TestLstat_RegularFile(t *testing.T) {
 	assert.Equal(t, uint64(1), info.Nlinks)
 }
 
+func TestLstat_DirectoryHasIdentity(t *testing.T) {
+	b := newBackend()
+	dir := t.TempDir()
+
+	info, err := b.Lstat(context.Background(), dir)
+	require.NoError(t, err)
+	assert.False(t, info.FileID.IsZero())
+}
+
 func TestLstat_Symlink(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()

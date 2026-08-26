@@ -384,10 +384,10 @@ func TestDeletionIgnorePathsProtectFreshUnavailableRoots(t *testing.T) {
 	writeOldFile(t, metadataFile)
 	writeOldFile(t, skippedFile)
 
-	ignorePaths, err := NormalizeIgnorePaths(scanIgnorePaths(nil, []string{root}, &buildFileMapResult{
+	ignorePaths, err := NormalizeIgnorePaths(scanIgnorePaths(context.Background(), nil, []string{root}, &buildFileMapResult{
 		metadataRoots: []string{metadataRoot},
 		skippedRoots:  []string{skippedRoot},
-	}))
+	}, local.NewBackend()))
 	if err != nil {
 		t.Fatalf("NormalizeIgnorePaths: %v", err)
 	}

@@ -287,7 +287,7 @@ func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
 		FileInfo: *osFileInfoToFsops(fi, path),
 	}
-	if fi.Mode().IsRegular() {
+	if fi.Mode().IsRegular() || fi.IsDir() {
 		fid, nlinks, err := hardlink.GetFileID(fi, path)
 		if err != nil {
 			info.FileIDErr = err

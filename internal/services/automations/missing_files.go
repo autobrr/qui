@@ -69,6 +69,7 @@ func buildMissingFilesResult(ctx context.Context, backend fsops.Backend, torrent
 
 		for _, f := range files {
 			if f.Name == "" {
+				allPathsValid = false
 				continue
 			}
 			fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
