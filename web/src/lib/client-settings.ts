@@ -24,6 +24,19 @@ import { getApiBaseUrl } from "@/lib/base-url"
 const CHANGE_EVENT = "qui-client-setting-changed"
 const FLUSH_DELAY_MS = 800
 
+export const TORRENT_VIEW_MODE_KEYS = {
+  legacy: "qui-torrent-view-mode",
+  mobile: "qui-torrent-mobile-view-mode",
+  desktop: "qui-torrent-desktop-view-mode",
+} as const
+
+const LEGACY_TORRENT_VIEW_MODES = {
+  normal: { mobile: "normal", desktop: "normal" },
+  dense: { mobile: "compact", desktop: "dense" },
+  compact: { mobile: "compact", desktop: "dense" },
+  "ultra-compact": { mobile: "ultra-compact", desktop: "dense" },
+} as const
+
 // Keys synced to the server. Grown as hooks convert; keys not listed here
 // (theme boot caches, dismissed banners, sessionStorage) stay local-only.
 const SYNCED_KEYS = new Set<string>([
@@ -38,7 +51,9 @@ const SYNCED_KEYS = new Set<string>([
   "qui-filter-sidebar-collapsed",
   "qui-accordion",
   "qui-accordion-views-seeded",
-  "qui-torrent-view-mode",
+  TORRENT_VIEW_MODE_KEYS.legacy,
+  TORRENT_VIEW_MODE_KEYS.mobile,
+  TORRENT_VIEW_MODE_KEYS.desktop,
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
 ])
@@ -235,6 +250,19 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
  * the push gate. Idempotent: after one push the server has the key.
  */
 export function seedAndMarkReady(serverSettings: Record<string, string>): void {
+  const legacyMode = readRaw(TORRENT_VIEW_MODE_KEYS.legacy)
+  const migratedModes = legacyMode
+    ? LEGACY_TORRENT_VIEW_MODES[legacyMode as keyof typeof LEGACY_TORRENT_VIEW_MODES]
+    : undefined
+  if (migratedModes) {
+    if (readRaw(TORRENT_VIEW_MODE_KEYS.mobile) === null) {
+      writeRaw(TORRENT_VIEW_MODE_KEYS.mobile, migratedModes.mobile)
+    }
+    if (readRaw(TORRENT_VIEW_MODE_KEYS.desktop) === null) {
+      writeRaw(TORRENT_VIEW_MODE_KEYS.desktop, migratedModes.desktop)
+    }
+  }
+
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
