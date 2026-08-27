@@ -468,7 +468,7 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		} else {
 			indexer = updated
 		}
-	} else if h.service != nil {
+	} else if h.service != nil && indexer.Enabled {
 		// No capabilities/categories provided, try to fetch them from the service
 		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
 			log.Warn().
@@ -671,7 +671,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		} else {
 			indexer = updated
 		}
-	} else if h.service != nil {
+	} else if h.service != nil && indexer.Enabled {
 		// No capabilities/categories provided, try to fetch them from the service
 		if updated, err := h.service.SyncIndexerCaps(r.Context(), indexer.ID); err != nil {
 			log.Warn().
