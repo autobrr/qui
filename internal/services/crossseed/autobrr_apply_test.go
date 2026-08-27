@@ -175,6 +175,22 @@ func TestAutobrrApplyNotifiesWhenProcessingFails(t *testing.T) {
 	require.NotEmpty(t, events[0].ErrorMessage)
 }
 
+func TestAutobrrApplyNotifiesWhenTorrentDataIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Nil(t, response)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.Contains(t, events[0].ErrorMessage, "torrentData is required")
+}
+
 func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	t.Parallel()
 
