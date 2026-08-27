@@ -804,17 +804,18 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 
 	// Run a lightweight search via the service to validate connectivity. Bypass
 	// cache/history and wait for the async scheduler's real result.
-	testCtx, cancelTest := context.WithTimeout(r.Context(), indexerTestTimeout(indexer))
+	testCtx, cancelTest := context.WithTimeout(r.Context(), indexerTestRequestTimeout(indexer))
 	defer cancelTest()
 	resultCh := make(chan error, 1)
 
 	testReq := &jackett.TorznabSearchRequest{
-		Query:            "test",
-		Limit:            1,
-		IndexerIDs:       []int{id},
-		CacheMode:        jackett.CacheModeBypass,
-		SkipHistory:      true,
-		SkipCachePersist: true,
+		Query:                   "test",
+		Limit:                   1,
+		IndexerIDs:              []int{id},
+		CacheMode:               jackett.CacheModeBypass,
+		SkipHistory:             true,
+		SkipCachePersist:        true,
+		MinimumExecutionTimeout: indexerTestExecutionTimeout(indexer),
 		OnAllComplete: func(_ *jackett.SearchResponse, err error) {
 			resultCh <- err
 		},
@@ -851,13 +852,18 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func indexerTestTimeout(indexer *models.TorznabIndexer) time.Duration {
+func indexerTestRequestTimeout(indexer *models.TorznabIndexer) time.Duration {
+	timeout := indexerTestExecutionTimeout(indexer)
+	if indexer.Backend == models.TorznabBackendNative {
+		timeout += nativeIndexerPacingAllowance
+	}
+	return timeout
+}
+
+func indexerTestExecutionTimeout(indexer *models.TorznabIndexer) time.Duration {
 	timeout := defaultIndexerTestTimeout
 	if indexer.TimeoutSeconds > 0 {
 		timeout = max(timeout, time.Duration(indexer.TimeoutSeconds)*time.Second)
-	}
-	if indexer.Backend == models.TorznabBackendNative {
-		timeout += nativeIndexerPacingAllowance
 	}
 	return timeout
 }

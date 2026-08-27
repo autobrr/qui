@@ -54,15 +54,15 @@ func TestRespondRateLimitErrorRoundsMaxDurationWithoutOverflow(t *testing.T) {
 func TestIndexerTestTimeoutAllowsNativePacing(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, 90*time.Second, indexerTestTimeout(&models.TorznabIndexer{
+	assert.Equal(t, 90*time.Second, indexerTestRequestTimeout(&models.TorznabIndexer{
 		Backend:        models.TorznabBackendNative,
 		TimeoutSeconds: 30,
 	}))
-	assert.Equal(t, 3*time.Minute, indexerTestTimeout(&models.TorznabIndexer{
+	assert.Equal(t, 3*time.Minute, indexerTestRequestTimeout(&models.TorznabIndexer{
 		Backend:        models.TorznabBackendNative,
 		TimeoutSeconds: 120,
 	}))
-	assert.Equal(t, 30*time.Second, indexerTestTimeout(&models.TorznabIndexer{
+	assert.Equal(t, 30*time.Second, indexerTestRequestTimeout(&models.TorznabIndexer{
 		Backend:        models.TorznabBackendProwlarr,
 		TimeoutSeconds: 5,
 	}))
@@ -101,4 +101,43 @@ func TestTestIndexerWaitsForRateLimitedSearch(t *testing.T) {
 	stored, err := store.Get(t.Context(), indexer.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "error", stored.LastTestStatus)
+}
+
+func TestTestIndexerHonorsConfiguredExecutionTimeout(t *testing.T) {
+	responseSent := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("t") == "caps" {
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><caps><searching><search available="yes" supportedParams="q"/></searching><categories/></caps>`))
+			return
+		}
+		time.Sleep(9500 * time.Millisecond)
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`))
+		close(responseSent)
+	}))
+	t.Cleanup(server.Close)
+
+	store := newTorznabStore(t)
+	indexer, err := store.CreateWithIndexerID(t.Context(), "Slow Indexer", server.URL, "14", "key", nil, nil, true, 0, 15, "prowlarr")
+	require.NoError(t, err)
+	require.NoError(t, store.SetCapabilities(t.Context(), indexer.ID, []string{"search"}))
+	service := jackett.NewService(store)
+	handler := NewJackettHandler(service, store)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/torznab/indexers/1/test", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("indexerID", strconv.Itoa(indexer.ID))
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	recorder := httptest.NewRecorder()
+
+	handler.TestIndexer(recorder, req)
+
+	select {
+	case <-responseSent:
+	default:
+		t.Fatal("indexer test returned before the valid response completed")
+	}
+	assert.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	stored, err := store.Get(t.Context(), indexer.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", stored.LastTestStatus)
 }

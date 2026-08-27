@@ -153,13 +153,14 @@ func (p *cachedSearchPortion) metadata(source string) *SearchCacheMetadata {
 
 // searchContext carries additional metadata about the current Torznab search.
 type searchContext struct {
-	categories    []int
-	contentType   contentType
-	searchMode    string
-	rateLimit     *RateLimitOptions
-	releaseName   string // Original full release name for debugging/history
-	skipHistory   bool   // Skip recording this search in history buffer
-	originalQuery string // Original query for fallback when ID params are pruned per-indexer
+	categories              []int
+	contentType             contentType
+	searchMode              string
+	rateLimit               *RateLimitOptions
+	minimumExecutionTimeout time.Duration
+	releaseName             string // Original full release name for debugging/history
+	skipHistory             bool   // Skip recording this search in history buffer
+	originalQuery           string // Original query for fallback when ID params are pruned per-indexer
 
 	// omitCategoriesForIDs is set when buildSearchParams dropped the query for an
 	// ID-driven movie or TV search. The category filter is dropped with it, but only
@@ -331,7 +332,7 @@ func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.To
 	}
 	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
 	if s.searchExecutor != nil || s.searchScheduler == nil {
-		execCtx, cancel := context.WithTimeout(ctx, computeSearchTimeout(indexers))
+		execCtx, cancel := context.WithTimeout(ctx, searchExecutionTimeout(indexers, meta))
 		defer cancel()
 		results, coverage, err := s.executeSearch(execCtx, indexers, params, meta)
 		resultCallback(0, results, coverage, err)
@@ -379,7 +380,7 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		Indexers:         indexers,
 		Params:           params,
 		Meta:             meta,
-		ExecutionTimeout: computeSearchTimeout(indexers),
+		ExecutionTimeout: searchExecutionTimeout(indexers, meta),
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, indexer *models.TorznabIndexer, results []Result, cov []int, err error) {
 				defer completionWG.Done()
@@ -650,12 +651,13 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
 	meta := finalizeSearchContext(ctx, &searchContext{
-		categories:    append([]int(nil), req.Categories...),
-		contentType:   detectedType,
-		searchMode:    searchMode,
-		releaseName:   req.ReleaseName,
-		skipHistory:   req.SkipHistory,
-		originalQuery: req.Query,
+		categories:              append([]int(nil), req.Categories...),
+		contentType:             detectedType,
+		searchMode:              searchMode,
+		minimumExecutionTimeout: req.MinimumExecutionTimeout,
+		releaseName:             req.ReleaseName,
+		skipHistory:             req.SkipHistory,
+		originalQuery:           req.Query,
 
 		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
 	}, RateLimitPriorityInteractive)
@@ -721,7 +723,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 
 	// Search selected indexers (defaults to all enabled when none specified)
 	baseCtx := ctx
-	searchTimeout := computeSearchTimeout(indexersToSearch)
+	searchTimeout := searchExecutionTimeout(indexersToSearch, meta)
 	if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS {
 		// Keep RSS automation bounded but not tied to the HTTP request lifetime.
 		baseCtx = context.Background()
@@ -1831,6 +1833,14 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 
 func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(len(indexers))
+}
+
+func searchExecutionTimeout(indexers []*models.TorznabIndexer, meta *searchContext) time.Duration {
+	timeout := computeSearchTimeout(indexers)
+	if meta != nil && meta.minimumExecutionTimeout > timeout {
+		return meta.minimumExecutionTimeout
+	}
+	return timeout
 }
 
 func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
