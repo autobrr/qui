@@ -3888,14 +3888,14 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	return run, runErr
 }
 
-// sizeMismatchLogLevel returns warn for the first size-mismatch rejection of a
+// sizeMismatchLogLevel returns debug for the first size-mismatch rejection of a
 // (source, matched) pair and trace for repeats: RSS retries the same doomed
 // pair every run until it leaves the feed. In-memory and unbounded on purpose.
 func (s *Service) sizeMismatchLogLevel(sourceHash, matchedHash string) zerolog.Level {
 	if _, seen := s.sizeMismatchWarned.LoadOrStore(sourceHash+"|"+matchedHash, struct{}{}); seen {
 		return zerolog.TraceLevel
 	}
-	return zerolog.WarnLevel
+	return zerolog.DebugLevel
 }
 
 func isSkippedCrossSeedResultStatus(status string) bool {

@@ -947,7 +947,7 @@ func (s *Service) Recent(ctx context.Context, limit, offset int, indexerIDs []in
 			JobID:   jobID,
 		}
 		if partial {
-			log.Warn().
+			log.Debug().
 				Int("indexers_requested", len(indexersToSearch)).
 				Int("results_collected", len(searchResults)).
 				Dur("timeout", searchTimeout).
