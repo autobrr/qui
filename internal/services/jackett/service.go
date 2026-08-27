@@ -3870,6 +3870,9 @@ func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int)
 	var selected []*models.TorznabIndexer
 	for _, id := range indexerIDs {
 		indexer, err := s.indexerStore.Get(ctx, id)
+		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
+			continue
+		}
 		if err != nil {
 			log.Warn().
 				Err(err).
