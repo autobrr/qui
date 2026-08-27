@@ -226,14 +226,8 @@ const FilterSidebarComponent = ({
   const preferenceUseSubcategories = preferences?.use_subcategories
   const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false))): Boolean(useSubcategories)
 
-  // View mode syncs with the torrent list (table on desktop, cards on mobile).
-  // Desktop supports all modes including "dense" (compact table rows).
-  // Mobile excludes "dense" since TorrentCardsMobile uses card layouts, not table rows.
-  // Passing undefined for desktop allows all modes; mobile restricts to card-compatible modes.
-  const { viewMode, cycleViewMode } = usePersistedCompactViewState(
-    "compact",
-    isMobile ? ["normal", "compact", "ultra-compact"] : undefined
-  )
+  // Match the preference to the layout this sidebar controls.
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
