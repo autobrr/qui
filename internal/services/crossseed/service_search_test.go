@@ -118,6 +118,10 @@ func (s *failingEnabledIndexerStore) RecordLatency(context.Context, int, string,
 	return nil
 }
 
+func (s *failingEnabledIndexerStore) CleanupOldLatency(context.Context, time.Duration) (int64, error) {
+	return 0, nil
+}
+
 func (s *failingEnabledIndexerStore) RecordError(context.Context, int, string, string) error {
 	return nil
 }

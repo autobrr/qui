@@ -44,6 +44,7 @@ type IndexerStore interface {
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
 	SetLimits(ctx context.Context, indexerID, limitDefault, limitMax int) error
 	RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error
+	CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error)
 	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
 }
 
@@ -84,6 +85,8 @@ type Service struct {
 	nextSearchCacheCleanup  time.Time
 	torrentCacheCleanupMu   sync.Mutex
 	nextTorrentCacheCleanup time.Time
+	latencyCleanupMu        sync.Mutex
+	nextLatencyCleanup      time.Time
 
 	// searchHistory provides in-memory search history tracking
 	searchHistory *SearchHistoryBuffer
@@ -105,6 +108,8 @@ const (
 
 	searchCacheCleanupInterval  = 6 * time.Hour
 	torrentCacheCleanupInterval = 6 * time.Hour
+	latencyCleanupInterval      = 6 * time.Hour
+	latencyRetention            = 14 * 24 * time.Hour
 
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
@@ -1584,6 +1589,31 @@ func (s *Service) maybeScheduleTorrentCacheCleanup() {
 	}()
 }
 
+func (s *Service) maybeScheduleLatencyCleanup() {
+	if s == nil || s.indexerStore == nil {
+		return
+	}
+
+	s.latencyCleanupMu.Lock()
+	if time.Now().Before(s.nextLatencyCleanup) {
+		s.latencyCleanupMu.Unlock()
+		return
+	}
+	s.nextLatencyCleanup = time.Now().Add(latencyCleanupInterval)
+	s.latencyCleanupMu.Unlock()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if deleted, err := s.indexerStore.CleanupOldLatency(ctx, latencyRetention); err != nil {
+			log.Debug().Err(err).Msg("Failed to cleanup torznab indexer latency")
+		} else if deleted > 0 {
+			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab indexer latency records")
+		}
+	}()
+}
+
 // FlushSearchCache removes all cached search responses.
 func (s *Service) FlushSearchCache(ctx context.Context) (int64, error) {
 	if !s.shouldUseSearchCache() {
@@ -1991,6 +2021,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 	if recErr := s.indexerStore.RecordLatency(ctx, idx.ID, "search", latencyMs, err == nil); recErr != nil {
 		log.Debug().Err(recErr).Int("indexer_id", idx.ID).Msg("Failed to record torznab latency")
 	}
+	s.maybeScheduleLatencyCleanup()
 
 	if opts.logSearchActivity {
 		log.Debug().
@@ -3100,10 +3131,6 @@ func isTimeoutError(err error) bool {
 }
 
 func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, scope string, retryAfter time.Duration, cause error) *RateLimitError {
-	if idx == nil {
-		return nil
-	}
-
 	retryAt := time.Now().Add(retryAfter)
 	if s.rateLimiter != nil {
 		s.rateLimiter.SetCooldown(idx.ID, scope, retryAt)

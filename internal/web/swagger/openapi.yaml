@@ -5981,8 +5981,20 @@ components:
           schema:
             type: integer
             minimum: 0
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
     TorznabSearchRequest:
       type: object
       properties:

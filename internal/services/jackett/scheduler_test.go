@@ -943,7 +943,7 @@ func TestRateLimiter_NextWaitOnlyPacesNativeTorznab(t *testing.T) {
 
 func TestRateLimiter_NextWaitReturnsZeroWhenReady(t *testing.T) {
 	limiter := NewRateLimiter(5 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
 	// No prior requests - should be ready immediately
 	wait := limiter.NextWait(indexer)

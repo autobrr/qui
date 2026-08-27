@@ -1980,14 +1980,15 @@ func TestGetConfiguredTrackerDomains_ProwlarrResolvesRealDomain(t *testing.T) {
 //
 // Mock store for testing
 type mockTorznabIndexerStore struct {
-	mu                 sync.Mutex
-	indexers           []*models.TorznabIndexer
-	capabilities       map[int][]string // indexerID -> capabilities
-	panicOnListEnabled bool
-	listEnabledCalls   int
-	getCalls           []int
-	apiKeyErrors       map[int]error
-	apiKeyCalls        []int
+	mu                  sync.Mutex
+	indexers            []*models.TorznabIndexer
+	capabilities        map[int][]string // indexerID -> capabilities
+	panicOnListEnabled  bool
+	listEnabledCalls    int
+	getCalls            []int
+	apiKeyErrors        map[int]error
+	apiKeyCalls         []int
+	latencyCleanupCalls chan time.Duration
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
@@ -2073,6 +2074,13 @@ func (m *mockTorznabIndexerStore) SetLimits(ctx context.Context, indexerID, limi
 
 func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error {
 	return nil
+}
+
+func (m *mockTorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
+	if m.latencyCleanupCalls != nil {
+		m.latencyCleanupCalls <- olderThan
+	}
+	return 0, nil
 }
 
 func (m *mockTorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
@@ -3555,5 +3563,45 @@ func TestApplyIndexerRestrictionsKeepsContentTypeRouting(t *testing.T) {
 				t.Fatalf("rateLimited = true, want false")
 			}
 		})
+	}
+}
+
+func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, err := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); err != nil {
+			t.Errorf("write RSS response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	cleanupCalls := make(chan time.Duration, 1)
+	store := &mockTorznabIndexerStore{latencyCleanupCalls: cleanupCalls}
+	service := NewService(store)
+	indexer := &models.TorznabIndexer{
+		ID:      1,
+		BaseURL: server.URL,
+		Backend: models.TorznabBackendNative,
+	}
+
+	result := service.executeIndexerSearch(context.Background(), indexer, nil, nil, indexerExecOptions{})
+	if result.err != nil {
+		t.Fatalf("executeIndexerSearch() error = %v", result.err)
+	}
+
+	select {
+	case olderThan := <-cleanupCalls:
+		if olderThan != 14*24*time.Hour {
+			t.Fatalf("CleanupOldLatency() olderThan = %v, want 14 days", olderThan)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected search to schedule latency cleanup")
+	}
+
+	service.maybeScheduleLatencyCleanup()
+	select {
+	case <-cleanupCalls:
+		t.Fatal("expected latency cleanup to be interval-gated")
+	case <-time.After(50 * time.Millisecond):
 	}
 }
