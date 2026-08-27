@@ -313,7 +313,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*T
 		return nil, newHTTPResponseError("jackett caps", resp)
 	}
 
-	return parseTorznabCaps(resp.Body)
+	return parseTorznabCapsResponse(resp.Body, resp.Header.Get("Retry-After"))
 }
 
 func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*TorznabCaps, error) {
@@ -351,7 +351,7 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 		return nil, newHTTPResponseError("prowlarr caps", resp)
 	}
 
-	return parseTorznabCaps(resp.Body)
+	return parseTorznabCapsResponse(resp.Body, resp.Header.Get("Retry-After"))
 }
 
 func (c *Client) fetchCapsFromNative(ctx context.Context) (*TorznabCaps, error) {
@@ -389,7 +389,7 @@ func (c *Client) fetchCapsFromNative(ctx context.Context) (*TorznabCaps, error) 
 		return nil, newHTTPResponseError("native caps", resp)
 	}
 
-	return parseTorznabCaps(resp.Body)
+	return parseTorznabCapsResponse(resp.Body, resp.Header.Get("Retry-After"))
 }
 
 // Download retrieves the raw torrent bytes for the provided download URL.

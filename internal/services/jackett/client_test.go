@@ -164,6 +164,28 @@ func TestFetchCapsPreservesRateLimitResponse(t *testing.T) {
 	assert.Equal(t, "45", responseErr.RetryAfterHeader())
 }
 
+func TestFetchCapsPreservesBodyRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "47")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><error code="429" description="Too many requests"/>`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "native", 5)
+	_, err := client.FetchCaps(context.Background(), "")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "47", responseErr.RetryAfterHeader())
+}
+
 func TestDownloadPreservesRateLimitResponse(t *testing.T) {
 	t.Parallel()
 
