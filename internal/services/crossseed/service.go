@@ -12776,11 +12776,11 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 		failedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
 		for _, result := range resp.Results {
 			switch result.Status {
-			case "added":
+			case "added", "added_hardlink", "added_reflink":
 				if result.Success {
 					addedResults = append(addedResults, result)
 				}
-			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed":
+			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error":
 				failedResults = append(failedResults, result)
 			}
 		}
@@ -12809,13 +12809,22 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 	results := make([]InstanceCrossSeedResult, 0, len(addedResults)+len(failedResults))
 	results = append(results, addedResults...)
 	results = append(results, failedResults...)
-	samples := make([]string, 0, len(results))
+	const maxSamples = 3
+	samples := make([]string, 0, min(maxSamples, len(results)))
+	seenSamples := make(map[string]struct{}, min(maxSamples, len(results)))
 	for _, result := range results {
 		if instanceName := strings.TrimSpace(result.InstanceName); instanceName != "" {
+			if _, ok := seenSamples[instanceName]; ok {
+				continue
+			}
+			seenSamples[instanceName] = struct{}{}
 			samples = append(samples, instanceName)
+			if len(samples) == maxSamples {
+				break
+			}
 		}
 	}
-	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
+	if sampleText := formatSamplesForMessage(samples, maxSamples); sampleText != "" {
 		lines = append(lines, "Instances: "+sampleText)
 	}
 

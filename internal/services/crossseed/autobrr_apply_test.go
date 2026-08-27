@@ -191,6 +191,83 @@ func TestAutobrrApplyNotifiesWhenTorrentDataIsEmpty(t *testing.T) {
 	require.Contains(t, events[0].ErrorMessage, "torrentData is required")
 }
 
+func TestAutobrrApplyNotifiesForLinkModeResults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		status    string
+		success   bool
+		eventType notifications.EventType
+		added     int
+		failed    int
+	}{
+		{name: "hardlink added", status: "added_hardlink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
+		{name: "reflink added", status: "added_reflink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
+		{name: "hardlink failed", status: "hardlink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+		{name: "reflink failed", status: "reflink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			notifier := &recordingNotifier{}
+			service := &Service{
+				notifier: notifier,
+				crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+					return &CrossSeedResponse{
+						Success: tt.success,
+						Results: []InstanceCrossSeedResult{{
+							InstanceID: 1, InstanceName: "Primary", Success: tt.success, Status: tt.status, Message: "synthetic result",
+						}},
+					}, nil
+				},
+			}
+
+			response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+			require.NoError(t, err)
+			require.Equal(t, tt.success, response.Success)
+
+			events := notifier.Events()
+			require.Len(t, events, 1)
+			require.Equal(t, tt.eventType, events[0].Type)
+			require.NotNil(t, events[0].CrossSeed)
+			require.Equal(t, tt.added, events[0].CrossSeed.Added)
+			require.Equal(t, tt.failed, events[0].CrossSeed.Failed)
+		})
+	}
+}
+
+func TestAutobrrApplyNotificationSamplesAreUniqueAndLimited(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	names := []string{"Primary", "", "Archive", "Primary", "Backup", "Overflow"}
+	results := make([]InstanceCrossSeedResult, 0, len(names))
+	for id, name := range names {
+		results = append(results, InstanceCrossSeedResult{
+			InstanceID: id + 1, InstanceName: name, Success: true, Status: "added",
+		})
+	}
+	service := &Service{
+		notifier: notifier,
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			return &CrossSeedResponse{Success: true, Results: results}, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+	require.NoError(t, err)
+	require.True(t, response.Success)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, []string{"Primary", "Archive", "Backup"}, events[0].CrossSeed.Samples)
+	require.Contains(t, events[0].Message, "Instances: Primary; Archive; Backup")
+	require.NotContains(t, events[0].Message, "Overflow")
+}
+
 func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	t.Parallel()
 
