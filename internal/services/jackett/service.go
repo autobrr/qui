@@ -3133,7 +3133,7 @@ func isTimeoutError(err error) bool {
 func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, scope string, retryAfter time.Duration, cause error) *RateLimitError {
 	retryAt := time.Now().Add(retryAfter)
 	if s.rateLimiter != nil {
-		s.rateLimiter.SetCooldown(idx.ID, scope, retryAt)
+		retryAt = s.rateLimiter.SetCooldown(idx.ID, scope, retryAt)
 	}
 	localRetryAt := retryAt.In(time.Local)
 
@@ -3655,8 +3655,14 @@ func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int)
 		return indexers, nil
 	}
 
-	var selected []*models.TorznabIndexer
+	selected := make([]*models.TorznabIndexer, 0, len(indexerIDs))
+	seen := make(map[int]struct{}, len(indexerIDs))
 	for _, id := range indexerIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
 		indexer, err := s.indexerStore.Get(ctx, id)
 		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
 			continue

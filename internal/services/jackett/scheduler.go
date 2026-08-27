@@ -140,7 +140,7 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 	}
 }
 
-func (r *RateLimiter) SetCooldown(indexerID int, scope string, until time.Time) {
+func (r *RateLimiter) SetCooldown(indexerID int, scope string, until time.Time) time.Time {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -149,6 +149,7 @@ func (r *RateLimiter) SetCooldown(indexerID int, scope string, until time.Time) 
 	if cooldownDur > state.cooldowns[scope] {
 		state.cooldowns[scope] = cooldownDur
 	}
+	return r.startTime.Add(state.cooldowns[scope])
 }
 
 // IsInCooldown checks if an indexer is currently in cooldown without blocking

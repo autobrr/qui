@@ -434,6 +434,24 @@ func TestSyncIndexerCapsRateLimitSetsQueryCooldown(t *testing.T) {
 	assert.WithinDuration(t, rateLimitErr.RetryAt, secondRateLimitErr.RetryAt, time.Microsecond)
 }
 
+func TestHandleRateLimitReturnsEffectiveCooldown(t *testing.T) {
+	t.Parallel()
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "Rate limited", Enabled: true}
+	service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
+	t.Cleanup(service.searchScheduler.Stop)
+
+	longerRetryAt := time.Now().Add(2 * time.Minute)
+	service.rateLimiter.SetCooldown(indexer.ID, rateLimitScopeQuery, longerRetryAt)
+
+	rateLimitErr := service.handleRateLimit(t.Context(), indexer, rateLimitScopeQuery, 10*time.Second, errors.New("rate limited"))
+	inCooldown, storedRetryAt := service.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeQuery)
+
+	require.True(t, inCooldown)
+	assert.WithinDuration(t, longerRetryAt, storedRetryAt, time.Microsecond)
+	assert.WithinDuration(t, storedRetryAt, rateLimitErr.RetryAt, time.Microsecond)
+}
+
 func TestSearchMultipleIndexersReturnsEarliestCooldown(t *testing.T) {
 	t.Parallel()
 
