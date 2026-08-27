@@ -30,6 +30,9 @@ func (c *Client) GetIndexersCtx(ctx context.Context) (Indexers, error) {
 	}
 
 	defer drainAndClose(resp.Body)
+	if err := checkResponse(resp); err != nil {
+		return ind, err
+	}
 
 	err = xml.NewDecoder(resp.Body).Decode(&ind)
 	return ind, err
@@ -47,6 +50,9 @@ func (c *Client) GetTorrentsCtx(ctx context.Context, indexer string, opts map[st
 	}
 
 	defer drainAndClose(resp.Body)
+	if err := checkResponse(resp); err != nil {
+		return rss, err
+	}
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
@@ -91,6 +97,9 @@ func (c *Client) SearchDirectCtx(ctx context.Context, query string, opts map[str
 	}
 
 	defer drainAndClose(resp.Body)
+	if err := checkResponse(resp); err != nil {
+		return rss, err
+	}
 
 	err = xml.NewDecoder(resp.Body).Decode(&rss)
 	return rss, err

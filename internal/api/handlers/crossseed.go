@@ -736,6 +736,7 @@ func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Reques
 // @Param request body crossseed.TorrentSearchOptions false "Optional search configuration"
 // @Success 200 {object} crossseed.TorrentSearchResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 429 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/search [post]
@@ -770,6 +771,9 @@ func (h *CrossSeedHandler) SearchTorrentMatches(w http.ResponseWriter, r *http.R
 	opts.TitleRescueResultLimit = 3
 	response, err := h.service.SearchTorrentMatches(ctx, instanceID, hash, opts)
 	if err != nil {
+		if respondRateLimitError(w, err, err.Error()) {
+			return
+		}
 		status := mapCrossSeedErrorStatus(err)
 		log.Error().
 			Err(err).

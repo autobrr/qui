@@ -32,6 +32,7 @@ const maxTorrentDownloadBytes int64 = 16 << 20 // 16 MiB safety limit for torren
 type DownloadError struct {
 	StatusCode int
 	URL        string
+	RetryAfter string
 }
 
 func (e *DownloadError) Error() string {
@@ -41,6 +42,40 @@ func (e *DownloadError) Error() string {
 func (e *DownloadError) Is(target error) bool {
 	_, ok := target.(*DownloadError)
 	return ok
+}
+
+func (e *DownloadError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
+func (e *DownloadError) RetryAfterHeader() string {
+	return e.RetryAfter
+}
+
+type responseError struct {
+	Operation  string
+	StatusCode int
+	RetryAfter string
+}
+
+func (e *responseError) Error() string {
+	return fmt.Sprintf("%s returned status %d", e.Operation, e.StatusCode)
+}
+
+func (e *responseError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
+func (e *responseError) RetryAfterHeader() string {
+	return e.RetryAfter
+}
+
+func newHTTPResponseError(operation string, resp *http.Response) error {
+	return &responseError{
+		Operation:  operation,
+		StatusCode: resp.StatusCode,
+		RetryAfter: resp.Header.Get("Retry-After"),
+	}
 }
 
 // MagnetDownloadError indicates that the download endpoint redirected to a magnet URL.
@@ -275,7 +310,7 @@ func (c *Client) fetchCapsFromJackett(ctx context.Context, indexerID string) (*T
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("jackett caps returned status %d", resp.StatusCode)
+		return nil, newHTTPResponseError("jackett caps", resp)
 	}
 
 	return parseTorznabCaps(resp.Body)
@@ -313,7 +348,7 @@ func (c *Client) fetchCapsFromProwlarr(ctx context.Context, indexerID string) (*
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("prowlarr caps returned status %d", resp.StatusCode)
+		return nil, newHTTPResponseError("prowlarr caps", resp)
 	}
 
 	return parseTorznabCaps(resp.Body)
@@ -351,7 +386,7 @@ func (c *Client) fetchCapsFromNative(ctx context.Context) (*TorznabCaps, error) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("native caps returned status %d", resp.StatusCode)
+		return nil, newHTTPResponseError("native caps", resp)
 	}
 
 	return parseTorznabCaps(resp.Body)
@@ -412,11 +447,11 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 		if strings.HasPrefix(strings.ToLower(location), "magnet:") {
 			return nil, &MagnetDownloadError{MagnetURL: location}
 		}
-		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL)}
+		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL), RetryAfter: resp.Header.Get("Retry-After")}
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL)}
+		return nil, &DownloadError{StatusCode: resp.StatusCode, URL: redact.URLString(downloadURL), RetryAfter: resp.Header.Get("Retry-After")}
 	}
 
 	limitedReader := io.LimitReader(resp.Body, maxTorrentDownloadBytes+1)
@@ -789,6 +824,10 @@ func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, basicUserna
 			return caps, nil
 		}
 		lastErr = err
+		var responseErr interface{ HTTPStatusCode() int }
+		if errors.As(err, &responseErr) && responseErr.HTTPStatusCode() == http.StatusTooManyRequests {
+			return nil, err
+		}
 
 		// Check if parent context was cancelled
 		if ctx.Err() != nil {

@@ -27,7 +27,9 @@ const (
 	defaultRecentSearchLimit = 10
 	maxRecentSearchLimit     = 50
 
-	testStatusUpdateTimeout = 5 * time.Second
+	testStatusUpdateTimeout      = 5 * time.Second
+	defaultIndexerTestTimeout    = 30 * time.Second
+	nativeIndexerPacingAllowance = time.Minute
 )
 
 // IndexerResponse wraps an indexer with optional warnings for partial failures
@@ -99,6 +101,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 // @Param request body jackett.TorznabSearchRequest true "Cross-seed search request"
 // @Success 200 {object} jackett.SearchResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 429 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/torznab/cross-seed/search [post]
@@ -135,7 +138,9 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett for cross-seeds")
-		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		if !respondRateLimitError(w, err, "Cross-seed search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		}
 		return
 	}
 
@@ -148,7 +153,9 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett for cross-seeds")
-		RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		if !respondRateLimitError(w, err, "Cross-seed search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search for cross-seeds")
+		}
 		return
 	case <-time.After(5 * time.Minute):
 		log.Error().
@@ -161,6 +168,22 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 	RespondJSON(w, http.StatusOK, response)
 }
 
+func respondRateLimitError(w http.ResponseWriter, err error, message string) bool {
+	var rateLimitErr *jackett.RateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		return false
+	}
+
+	retryAfter := time.Until(rateLimitErr.RetryAt)
+	seconds := int64(0)
+	if retryAfter > 0 {
+		seconds = int64((retryAfter + time.Second - 1) / time.Second)
+	}
+	w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+	RespondError(w, http.StatusTooManyRequests, message)
+	return true
+}
+
 // Search godoc
 // @Summary General Torznab search
 // @Description Performs a general Torznab search across Jackett indexers. Allows specifying categories, IMDb/TVDb IDs, and other search parameters.
@@ -170,6 +193,7 @@ func (h *JackettHandler) CrossSeedSearch(w http.ResponseWriter, r *http.Request)
 // @Param request body jackett.TorznabSearchRequest true "Torznab search request"
 // @Success 200 {object} jackett.SearchResponse
 // @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 429 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/torznab/search [post]
@@ -206,7 +230,9 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett")
-		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		if !respondRateLimitError(w, err, "Search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search")
+		}
 		return
 	}
 
@@ -219,7 +245,9 @@ func (h *JackettHandler) Search(w http.ResponseWriter, r *http.Request) {
 			Err(err).
 			Str("query", req.Query).
 			Msg("Failed to search Jackett")
-		RespondError(w, http.StatusInternalServerError, "Failed to search")
+		if !respondRateLimitError(w, err, "Search rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to search")
+		}
 		return
 	case <-time.After(5 * time.Minute):
 		log.Error().
@@ -744,6 +772,7 @@ func (h *JackettHandler) DeleteIndexer(w http.ResponseWriter, r *http.Request) {
 // @Param indexerID path int true "Indexer ID"
 // @Success 200
 // @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 429 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID}/test [post]
@@ -770,14 +799,11 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Str("indexer_name", indexer.Name).
 		Msg("Testing torznab indexer connectivity")
 
-	// Run a lightweight search via the service to validate connectivity
-	// Use CacheModeBypass + SkipHistory + SkipCachePersist to keep test searches from
-	// cluttering search history or persisting a bogus "test" entry into the Torznab result cache.
-	// Detached from the request: SearchGeneric returns as soon as the task is
-	// scheduled, so the request context would cancel the search out from under
-	// itself. The timeout bounds the detached context, and the completion
-	// callback releases it as soon as the search is actually done.
-	testCtx, cancelTest := context.WithTimeout(context.Background(), 30*time.Second) //nolint:gosec // G118: deliberately outlives the request, see above
+	// Run a lightweight search via the service to validate connectivity. Bypass
+	// cache/history and wait for the async scheduler's real result.
+	testCtx, cancelTest := context.WithTimeout(r.Context(), indexerTestTimeout(indexer))
+	defer cancelTest()
+	resultCh := make(chan error, 1)
 
 	testReq := &jackett.TorznabSearchRequest{
 		Query:            "test",
@@ -786,15 +812,18 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		CacheMode:        jackett.CacheModeBypass,
 		SkipHistory:      true,
 		SkipCachePersist: true,
-		OnAllComplete: func(*jackett.SearchResponse, error) {
-			// Results are irrelevant for a connectivity test; this is only here
-			// to stop holding the detached context once the search finishes.
-			cancelTest()
+		OnAllComplete: func(_ *jackett.SearchResponse, err error) {
+			resultCh <- err
 		},
 	}
 
-	if err = h.service.SearchGeneric(testCtx, testReq); err != nil {
-		cancelTest()
+	err = h.service.SearchGeneric(testCtx, testReq)
+	if err == nil {
+		select {
+		case err = <-resultCh:
+		case <-testCtx.Done():
+			err = testCtx.Err()
+		}
 	}
 
 	// Update test status in database
@@ -805,7 +834,9 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Error().Err(err).Int("indexer_id", id).Msg("Failed to test indexer connection")
-		RespondError(w, http.StatusInternalServerError, "Failed to connect to indexer")
+		if !respondRateLimitError(w, err, "Indexer test rate limited") {
+			RespondError(w, http.StatusInternalServerError, "Failed to connect to indexer")
+		}
 		return
 	}
 
@@ -815,6 +846,17 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func indexerTestTimeout(indexer *models.TorznabIndexer) time.Duration {
+	timeout := defaultIndexerTestTimeout
+	if indexer.TimeoutSeconds > 0 {
+		timeout = max(timeout, time.Duration(indexer.TimeoutSeconds)*time.Second)
+	}
+	if indexer.Backend == models.TorznabBackendNative {
+		timeout += nativeIndexerPacingAllowance
+	}
+	return timeout
 }
 
 func (h *JackettHandler) updateTestStatusWithTimeout(id int, status string, errorMsg *string) error {
@@ -844,6 +886,7 @@ func (h *JackettHandler) logTestStatusUpdateError(err error, id int, status stri
 // @Success 200 {object} models.TorznabIndexer
 // @Failure 400 {object} httphelpers.ErrorResponse
 // @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 429 {object} httphelpers.ErrorResponse
 // @Failure 500 {object} httphelpers.ErrorResponse
 // @Security ApiKeyAuth
 // @Router /api/torznab/indexers/{indexerID}/caps/sync [post]
@@ -861,6 +904,9 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 
 	indexer, err := h.service.SyncIndexerCaps(r.Context(), id)
 	if err != nil {
+		if respondRateLimitError(w, err, "Caps sync rate limited") {
+			return
+		}
 		switch {
 		case errors.Is(err, models.ErrTorznabIndexerNotFound):
 			RespondError(w, http.StatusNotFound, "Indexer not found")

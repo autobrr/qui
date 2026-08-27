@@ -23,46 +23,9 @@ const (
 	defaultMinRequestInterval = 60 * time.Second
 )
 
-// escalationPeriods defines backoff durations for repeated rate limit failures.
-// Matches Prowlarr/Sonarr behavior: escalates with consecutive failures, resets on success.
-var escalationPeriods = []time.Duration{
-	0,               // Level 0: immediate retry
-	1 * time.Minute, // Level 1
-	5 * time.Minute, // Level 2
-	15 * time.Minute,
-	30 * time.Minute,
-	1 * time.Hour,
-	3 * time.Hour,
-	6 * time.Hour,
-	12 * time.Hour,
-	24 * time.Hour, // Level 9 (max)
-}
-
-var priorityMultipliers = map[RateLimitPriority]float64{
-	RateLimitPriorityInteractive: 0.1,
-	RateLimitPriorityRSS:         0.5,
-	RateLimitPriorityCompletion:  0.7,
-	RateLimitPriorityBackground:  1.0,
-}
-
 const (
-	// Keep RSS responsive; we'll skip indexers that need more than this wait.
-	rssMaxWait = 15 * time.Second
-	// Completion searches should not be blocked indefinitely by a single rate-limited/down indexer.
-	// Keep this modest so the overall end-to-end completion automation stays bounded even when some
-	// indexers are slow or temporarily unavailable.
-	completionMaxWait = 30 * time.Second
-	// Background jobs are least urgent; allow more wait before skipping.
-	backgroundMaxWait = 60 * time.Second
 	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
 	maxRetryTimerInterval = 15 * time.Minute
-
-	// Execution timeouts for tasks whose original context deadline expired while queued.
-	// These give the task a fresh chance to execute without being penalized for queue wait time.
-	rssExecutionTimeout        = 15 * time.Second
-	completionExecutionTimeout = 45 * time.Second
-	backgroundExecutionTimeout = 60 * time.Second
-	defaultExecutionTimeout    = 30 * time.Second
 )
 
 type RateLimitPriority string
@@ -75,30 +38,7 @@ const (
 )
 
 type RateLimitOptions struct {
-	Priority    RateLimitPriority
-	MinInterval time.Duration
-	MaxWait     time.Duration
-}
-
-type RateLimitWaitError struct {
-	IndexerID   int
-	IndexerName string
-	Wait        time.Duration
-	MaxWait     time.Duration
-	Priority    RateLimitPriority
-}
-
-func (e *RateLimitWaitError) Error() string {
-	indexer := fmt.Sprintf("indexer %d", e.IndexerID)
-	if e.IndexerName != "" {
-		indexer = fmt.Sprintf("%s (%d)", e.IndexerName, e.IndexerID)
-	}
-	return fmt.Sprintf("%s blocked by torznab rate limit: requires %s wait but maximum allowed is %s", indexer, e.Wait, e.MaxWait)
-}
-
-func (e *RateLimitWaitError) Is(target error) bool {
-	_, ok := target.(*RateLimitWaitError)
-	return ok
+	Priority RateLimitPriority
 }
 
 // errRSSDeduplicated marks an indexer skipped because an identical RSS fetch is
@@ -108,10 +48,8 @@ func (e *RateLimitWaitError) Is(target error) bool {
 var errRSSDeduplicated = errors.New("rss search deduplicated: identical fetch already pending")
 
 type indexerRateState struct {
-	lastStarted     time.Duration
-	lastCompleted   time.Duration
-	cooldownUntil   time.Duration
-	escalationLevel int
+	lastCompleted time.Duration
+	cooldowns     map[string]time.Duration
 }
 
 type taskExecResult struct {
@@ -140,20 +78,6 @@ func NewRateLimiter(minInterval time.Duration) *RateLimiter {
 	}
 }
 
-func (r *RateLimiter) RecordRequestStart(indexerID int, ts time.Time) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var dur time.Duration
-	if ts.IsZero() {
-		dur = time.Since(r.startTime)
-	} else {
-		dur = ts.Sub(r.startTime)
-	}
-	state := r.getStateLocked(indexerID)
-	state.lastStarted = dur
-}
-
 func (r *RateLimiter) RecordRequestComplete(indexerID int, ts time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -168,14 +92,13 @@ func (r *RateLimiter) RecordRequestComplete(indexerID int, ts time.Time) {
 	state.lastCompleted = dur
 }
 
-// WaitForMinInterval blocks until a new request slot is available for the given indexer according to the
-// configured min interval and priority multiplier, then reserves the slot for callers that do not report
-// request completion separately.
+// WaitForMinInterval blocks until a native Torznab request slot is available,
+// then reserves it for callers that do not report completion separately.
 //
 // Note: this intentionally does NOT wait for cooldown windows. Callers that care about cooldowns should
 // check IsInCooldown separately (downloads typically return immediately when in cooldown).
-func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.TorznabIndexer, opts *RateLimitOptions) error {
-	if r == nil || indexer == nil {
+func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.TorznabIndexer) error {
+	if r == nil || indexer == nil || indexer.Backend != models.TorznabBackendNative {
 		return nil
 	}
 
@@ -183,16 +106,14 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 		ctx = context.Background()
 	}
 
-	cfg := r.resolveOptions(opts)
-
 	for {
 		r.mu.Lock()
 		state := r.getStateLocked(indexer.ID)
 		now := time.Since(r.startTime)
 
 		wait := time.Duration(0)
-		if cfg.MinInterval > 0 && state.lastCompleted >= 0 {
-			next := state.lastCompleted + cfg.MinInterval
+		if r.minInterval > 0 && state.lastCompleted >= 0 {
+			next := state.lastCompleted + r.minInterval
 			if next > now {
 				wait = next - now
 			}
@@ -203,7 +124,6 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 				r.mu.Unlock()
 				return ctx.Err()
 			}
-			state.lastStarted = now
 			state.lastCompleted = now
 			r.mu.Unlock()
 			return nil
@@ -220,114 +140,57 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 	}
 }
 
-func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
+func (r *RateLimiter) SetCooldown(indexerID int, scope string, until time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	state := r.getStateLocked(indexerID)
 	cooldownDur := until.Sub(r.startTime)
-	if cooldownDur > state.cooldownUntil {
-		state.cooldownUntil = cooldownDur
+	if cooldownDur > state.cooldowns[scope] {
+		state.cooldowns[scope] = cooldownDur
 	}
-}
-
-// LoadCooldowns seeds the rate limiter with pre-existing cooldown windows.
-func (r *RateLimiter) LoadCooldowns(cooldowns map[int]time.Time) {
-	if len(cooldowns) == 0 {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for indexerID, until := range cooldowns {
-		if until.IsZero() {
-			continue
-		}
-		state := r.getStateLocked(indexerID)
-		cooldownDur := until.Sub(r.startTime)
-		if cooldownDur > state.cooldownUntil {
-			state.cooldownUntil = cooldownDur
-		}
-	}
-}
-
-func (r *RateLimiter) ClearCooldown(indexerID int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	state := r.getStateLocked(indexerID)
-	state.cooldownUntil = 0
-}
-
-// RecordFailure increments the escalation level and sets a cooldown based on the new level.
-// This implements Prowlarr-style escalating backoff for rate limit failures.
-func (r *RateLimiter) RecordFailure(indexerID int) time.Duration {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	state := r.getStateLocked(indexerID)
-
-	// Increment escalation level (capped at max)
-	if state.escalationLevel < len(escalationPeriods)-1 {
-		state.escalationLevel++
-	}
-
-	cooldown := escalationPeriods[state.escalationLevel]
-	if cooldown > 0 {
-		now := time.Since(r.startTime)
-		state.cooldownUntil = now + cooldown
-	}
-
-	return cooldown
-}
-
-// RecordSuccess resets the escalation level to 0 on successful request.
-func (r *RateLimiter) RecordSuccess(indexerID int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	state := r.getStateLocked(indexerID)
-	state.escalationLevel = 0
 }
 
 // IsInCooldown checks if an indexer is currently in cooldown without blocking
-func (r *RateLimiter) IsInCooldown(indexerID int) (bool, time.Time) {
+func (r *RateLimiter) IsInCooldown(indexerID int, scope string) (bool, time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	state := r.getStateLocked(indexerID)
 	now := time.Since(r.startTime)
-	if state.cooldownUntil > 0 && state.cooldownUntil > now {
-		return true, r.startTime.Add(state.cooldownUntil)
+	until := state.cooldowns[scope]
+	if until > now {
+		return true, r.startTime.Add(until)
 	}
 	return false, time.Time{}
 }
 
 // GetCooldownIndexers returns a list of indexer IDs that are currently in cooldown
-func (r *RateLimiter) GetCooldownIndexers() map[int]time.Time {
+func (r *RateLimiter) GetCooldownIndexers(scope string) map[int]time.Time {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	cooldowns := make(map[int]time.Time)
 	now := time.Since(r.startTime)
 	for indexerID, state := range r.states {
-		if state.cooldownUntil > 0 && state.cooldownUntil > now {
-			cooldowns[indexerID] = r.startTime.Add(state.cooldownUntil)
+		until := state.cooldowns[scope]
+		if until > now {
+			cooldowns[indexerID] = r.startTime.Add(until)
 		}
 	}
 	return cooldowns
 }
 
 func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time.Duration, minInterval time.Duration) time.Duration {
+	if indexer.Backend != models.TorznabBackendNative {
+		return 0
+	}
 	if minInterval <= 0 {
 		minInterval = r.minInterval
 	}
 	state := r.getStateLocked(indexer.ID)
 
 	var wait time.Duration
-
-	if state.cooldownUntil > 0 && state.cooldownUntil > now {
-		wait = state.cooldownUntil - now
-	}
 
 	if minInterval > 0 && state.lastCompleted >= 0 {
 		next := state.lastCompleted + minInterval
@@ -345,7 +208,7 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
 	state, ok := r.states[indexerID]
 	if !ok {
-		state = &indexerRateState{lastStarted: -1, lastCompleted: -1}
+		state = &indexerRateState{lastCompleted: -1, cooldowns: make(map[string]time.Duration)}
 		r.states[indexerID] = state
 	}
 	return state
@@ -354,44 +217,14 @@ func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
 // NextWait returns the amount of time the caller would need to wait before a request could be made
 // against the provided indexer using the supplied options. This is a non-blocking helper used by
 // the job scheduler to decide if a request can run immediately.
-func (r *RateLimiter) NextWait(indexer *models.TorznabIndexer, opts *RateLimitOptions) time.Duration {
+func (r *RateLimiter) NextWait(indexer *models.TorznabIndexer) time.Duration {
 	if indexer == nil {
 		return 0
 	}
-	cfg := r.resolveOptions(opts)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := time.Since(r.startTime)
-	return r.computeWaitLocked(indexer, now, cfg.MinInterval)
-}
-
-func (r *RateLimiter) resolveOptions(opts *RateLimitOptions) RateLimitOptions {
-	cfg := RateLimitOptions{
-		Priority:    RateLimitPriorityBackground,
-		MinInterval: r.minInterval,
-	}
-
-	if opts != nil {
-		if opts.Priority != "" {
-			cfg.Priority = opts.Priority
-		}
-		if opts.MinInterval > 0 {
-			cfg.MinInterval = opts.MinInterval
-		}
-		if opts.MaxWait > 0 {
-			cfg.MaxWait = opts.MaxWait
-		}
-	}
-
-	if cfg.MinInterval <= 0 {
-		cfg.MinInterval = defaultMinRequestInterval
-	}
-
-	if multiplier, ok := priorityMultipliers[cfg.Priority]; ok {
-		cfg.MinInterval = time.Duration(float64(cfg.MinInterval) * multiplier)
-	}
-
-	return cfg
+	return r.computeWaitLocked(indexer, now, r.minInterval)
 }
 
 // Scheduler constants and types
@@ -436,7 +269,6 @@ type workerTask struct {
 	meta      *searchContext
 	exec      func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 	ctx       context.Context
-	ctxCancel context.CancelFunc // Set when we create a fresh context for expired-deadline tasks
 	callbacks JobCallbacks
 	isRSS     bool
 }
@@ -724,31 +556,8 @@ func (s *searchScheduler) dispatchTasks() {
 	var historyRecorded bool
 
 	for _, item := range items {
-		// Check if context was explicitly cancelled (user/system stopped the search)
-		if item.task.ctx.Err() == context.Canceled {
+		if item.task.ctx.Err() != nil {
 			item.started = time.Now() // Mark as "started" now for skipped tasks
-			taskCompleted = true
-			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err()) || historyRecorded
-			if item.task.isRSS {
-				delete(s.pendingRSS, item.task.indexer.ID)
-			}
-			continue
-		}
-
-		// If context deadline expired while queued (not explicit cancellation),
-		// give the task a fresh context so it can still execute.
-		// This prevents tasks from failing just because they waited in queue.
-		// Only do this once (check ctxCancel == nil to avoid creating multiple contexts).
-		if item.task.ctx.Err() == context.DeadlineExceeded && item.task.ctxCancel == nil {
-			timeout := s.getExecutionTimeout(item)
-			item.task.ctx, item.task.ctxCancel = context.WithTimeout(context.Background(), timeout) //nolint:fatcontext // each queued task gets its own fresh context once, guarded by the ctxCancel == nil check, so nothing nests
-		}
-
-		// If we already gave this task a fresh context and it expired too, fail it.
-		// This prevents infinite retries for tasks that can't complete in time.
-		if item.task.ctx.Err() != nil && item.task.ctxCancel != nil {
-			item.task.ctxCancel()
-			item.started = time.Now()
 			taskCompleted = true
 			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err()) || historyRecorded
 			if item.task.isRSS {
@@ -763,35 +572,7 @@ func (s *searchScheduler) dispatchTasks() {
 			continue
 		}
 
-		var rlOpts *RateLimitOptions
-		if item.task.meta != nil {
-			rlOpts = item.task.meta.rateLimit
-		}
-
-		wait := s.rateLimiter.NextWait(item.task.indexer, rlOpts)
-		maxWait := s.getMaxWait(item)
-
-		if maxWait > 0 && wait > maxWait {
-			// Skip - exceeds budget
-			var priority RateLimitPriority
-			if rlOpts != nil {
-				priority = rlOpts.Priority
-			}
-			err := &RateLimitWaitError{
-				IndexerID:   item.task.indexer.ID,
-				IndexerName: item.task.indexer.Name,
-				Wait:        wait,
-				MaxWait:     maxWait,
-				Priority:    priority,
-			}
-			item.started = time.Now() // Mark as "started" now for skipped tasks
-			taskCompleted = true
-			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
-			if item.task.isRSS {
-				delete(s.pendingRSS, item.task.indexer.ID)
-			}
-			continue
-		}
+		wait := s.rateLimiter.NextWait(item.task.indexer)
 
 		if wait > 0 {
 			// Blocked - re-queue for later
@@ -820,7 +601,7 @@ func (s *searchScheduler) dispatchTasks() {
 
 	s.mu.Unlock()
 
-	// Tasks completed here (cancelled, deadline-exceeded, or rate-limit skipped)
+	// Tasks completed here (cancelled or deadline-exceeded)
 	// without going through executeTask, so their activity signals must be emitted
 	// from this path. Published after releasing the lock so the publisher never
 	// blocks the scheduler. Mirrors the success path in executeTask.
@@ -835,17 +616,11 @@ func (s *searchScheduler) dispatchTasks() {
 func (s *searchScheduler) executeTask(item *taskItem) {
 	task := item.task
 	var panicked bool
-	var requestStarted bool
 	var requestCompleted bool
 
 	defer func() {
-		if requestStarted && !requestCompleted {
+		if !requestCompleted {
 			s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
-		}
-
-		// Cancel fresh context if one was created for this task
-		if task.ctxCancel != nil {
-			task.ctxCancel()
 		}
 
 		if r := recover(); r != nil {
@@ -877,18 +652,10 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		}
 	}()
 
-	s.rateLimiter.RecordRequestStart(task.indexer.ID, time.Time{})
-	requestStarted = true
-
 	// Capture start time for duration tracking
 	item.started = time.Now()
 
 	execCtx := task.ctx
-	execCancel := func() {}
-	if task.ctxCancel != nil {
-		execCancel = task.ctxCancel
-	}
-	defer execCancel()
 
 	done := make(chan taskExecResult, 1)
 	go func() {
@@ -992,7 +759,7 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 
 		// Determine status
 		if err != nil {
-			if _, isRateLimit := asRateLimitWaitError(err); isRateLimit {
+			if _, ok := errors.AsType[*RateLimitError](err); ok {
 				entry.Status = "rate_limited"
 			} else {
 				entry.Status = "error"
@@ -1030,68 +797,28 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 	return historyRecorded
 }
 
-func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
-	// Explicit MaxWait takes precedence
-	if item.task.meta != nil && item.task.meta.rateLimit != nil && item.task.meta.rateLimit.MaxWait > 0 {
-		return item.task.meta.rateLimit.MaxWait
-	}
-
-	// Apply priority-based defaults
-	if item.task.meta != nil && item.task.meta.rateLimit != nil {
-		switch item.task.meta.rateLimit.Priority {
-		case RateLimitPriorityRSS:
-			return rssMaxWait
-		case RateLimitPriorityCompletion:
-			return completionMaxWait
-		case RateLimitPriorityBackground:
-			return backgroundMaxWait
-		case RateLimitPriorityInteractive:
-			return 0 // No limit - interactive waits as long as needed
-		}
-	}
-
-	return 0
-}
-
-// getExecutionTimeout returns the appropriate timeout for task execution based on priority.
-// Used when a task's original context deadline expired while queued.
-func (s *searchScheduler) getExecutionTimeout(item *taskItem) time.Duration {
-	if item.task.meta != nil && item.task.meta.rateLimit != nil {
-		switch item.task.meta.rateLimit.Priority {
-		case RateLimitPriorityRSS:
-			return rssExecutionTimeout
-		case RateLimitPriorityCompletion:
-			return completionExecutionTimeout
-		case RateLimitPriorityBackground:
-			return backgroundExecutionTimeout
-		case RateLimitPriorityInteractive:
-			// Interactive tasks shouldn't be queued, but if they are, use default
-			return defaultExecutionTimeout
-		}
-	}
-	return defaultExecutionTimeout
-}
-
 func (s *searchScheduler) scheduleRetryTimerLocked() {
 	if s.taskQueue.Len() == 0 {
 		return
 	}
 
 	// Find minimum wait among queued tasks
-	var minWait time.Duration
+	minWait := time.Duration(-1)
 	for i := 0; i < s.taskQueue.Len(); i++ {
 		item := s.taskQueue[i]
-		var rlOpts *RateLimitOptions
-		if item.task.meta != nil {
-			rlOpts = item.task.meta.rateLimit
-		}
-		wait := s.rateLimiter.NextWait(item.task.indexer, rlOpts)
-		if wait > 0 && (minWait == 0 || wait < minWait) {
+		wait := s.rateLimiter.NextWait(item.task.indexer)
+		if wait > 0 && (minWait < 0 || wait < minWait) {
 			minWait = wait
+		}
+		if deadline, ok := item.task.ctx.Deadline(); ok {
+			untilDeadline := max(time.Until(deadline), 0)
+			if minWait < 0 || untilDeadline < minWait {
+				minWait = untilDeadline
+			}
 		}
 	}
 
-	if minWait > 0 {
+	if minWait >= 0 {
 		// Clamp to maximum interval to prevent starvation when all tasks have long waits
 		if minWait > maxRetryTimerInterval {
 			minWait = maxRetryTimerInterval
