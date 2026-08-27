@@ -37,6 +37,20 @@ func TestRespondRateLimitError(t *testing.T) {
 	assert.False(t, respondRateLimitError(httptest.NewRecorder(), errors.New("offline"), "Search rate limited"))
 }
 
+func TestRespondRateLimitErrorRoundsMaxDurationWithoutOverflow(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	err := &jackett.RateLimitError{
+		IndexerID: 1,
+		Scope:     "query",
+		RetryAt:   time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
+	}
+
+	require.True(t, respondRateLimitError(recorder, err, "Search rate limited"))
+	assert.Equal(t, "9223372037", recorder.Header().Get("Retry-After"))
+}
+
 func TestIndexerTestTimeoutAllowsNativePacing(t *testing.T) {
 	t.Parallel()
 

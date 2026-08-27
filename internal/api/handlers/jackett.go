@@ -177,7 +177,10 @@ func respondRateLimitError(w http.ResponseWriter, err error, message string) boo
 	retryAfter := time.Until(rateLimitErr.RetryAt)
 	seconds := int64(0)
 	if retryAfter > 0 {
-		seconds = int64((retryAfter + time.Second - 1) / time.Second)
+		seconds = int64(retryAfter / time.Second)
+		if retryAfter%time.Second != 0 {
+			seconds++
+		}
 	}
 	w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
 	RespondError(w, http.StatusTooManyRequests, message)
