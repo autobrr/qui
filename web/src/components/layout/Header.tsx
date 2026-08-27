@@ -397,7 +397,7 @@ export function Header({
   // Assigned, not returned inline: the spreadsheet ribbon strip mounts as a
   // sibling above the header without reindenting the whole header tree.
   const headerElement = (
-    <header className={cn("sticky top-0 z-50 hidden md:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight)}>
+    <header className={cn("sticky top-0 z-50 hidden desk:flex flex-wrap lg:flex-nowrap items-start lg:items-center justify-between sm:border-b bg-background pl-2 pr-4 md:pl-4 md:pr-4 lg:pl-0 lg:static py-2 lg:py-0", headerHeight)}>
       <div className={cn("hidden md:flex items-center gap-2 mr-2 order-1 lg:order-none", innerHeight)}>
         {children}
         {instanceName && (hasMultipleActiveInstances || isAllInstancesRoute) ? (

@@ -42,7 +42,7 @@ export function SpreadsheetRibbonTabs() {
   const tabs = classic ? CLASSIC_TABS : MODERN_TABS
 
   return (
-    <nav className="ss-ribbon-tabs hidden md:flex" aria-label={RIBBON_ARIA}>
+    <nav className="ss-ribbon-tabs hidden desk:flex" aria-label={RIBBON_ARIA}>
       <Link to="/settings" className="ss-ribbon-tab ss-ribbon-tab-file">{FILE_TAB}</Link>
       {tabs.map((entry) => "instance" in entry? (
         firstActiveInstanceId !== undefined && (

@@ -45,6 +45,16 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Desktop layout boundary: at least md wide, but not a touch device in
+ * short landscape (a rotated phone). Must stay the exact complement of
+ * useIsMobile() in hooks/useMediaQuery.ts.
+ */
+@custom-variant desk (@media (min-width: 768px) and (not ((pointer: coarse) and (orientation: landscape) and (max-width: 1023px) and (max-height: 500px))));
+
+/* Touch device in short landscape. Must match useIsPhoneLandscape(). */
+@custom-variant phone-land (@media (pointer: coarse) and (orientation: landscape) and (max-width: 1023px) and (max-height: 500px));
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.1450 0 0);
@@ -234,10 +244,15 @@
     @apply bg-background text-foreground;
     letter-spacing: var(--tracking-normal);
     font-family: var(--font-sans);
-    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav) */
-    padding-top: env(safe-area-inset-top);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    /* Handle safe areas for iOS devices (except bottom - handled by MobileFooterNav).
+       !important: react-remove-scroll zeroes body padding while a Radix modal is open. */
+    padding-top: env(safe-area-inset-top) !important;
+    padding-left: env(safe-area-inset-left) !important;
+    padding-right: env(safe-area-inset-right) !important;
+    /* landscape: the user picks the camera side, don't reserve the right inset */
+    @variant phone-land {
+      padding-right: 0 !important;
+    }
   }
 
   /* Apply font families from theme */
