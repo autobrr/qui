@@ -27,6 +27,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/license"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/trackericons"
@@ -43,6 +44,22 @@ type routeKey struct {
 
 var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                            {},
+	{Method: http.MethodGet, Path: "/api/torznab/activity"}:                                         {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers"}:                                         {},
+	{Method: http.MethodPost, Path: "/api/torznab/indexers"}:                                        {},
+	{Method: http.MethodPost, Path: "/api/torznab/indexers/discover"}:                               {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers/health"}:                                  {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers/tracker-domains"}:                         {},
+	{Method: http.MethodDelete, Path: "/api/torznab/indexers/{indexerID}"}:                          {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers/{indexerID}"}:                             {},
+	{Method: http.MethodPut, Path: "/api/torznab/indexers/{indexerID}"}:                             {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers/{indexerID}/errors"}:                      {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers/{indexerID}/health"}:                      {},
+	{Method: http.MethodGet, Path: "/api/torznab/indexers/{indexerID}/stats"}:                       {},
+	{Method: http.MethodGet, Path: "/api/torznab/search/cache"}:                                     {},
+	{Method: http.MethodPut, Path: "/api/torznab/search/cache/settings"}:                            {},
+	{Method: http.MethodGet, Path: "/api/torznab/search/history"}:                                   {},
+	{Method: http.MethodGet, Path: "/api/torznab/search/recent"}:                                    {},
 	{Method: http.MethodGet, Path: "/api/stream"}:                                                   {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                      {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                      {},
@@ -128,6 +145,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 	trackerCustomizationStore := models.NewTrackerCustomizationStore(db)
 	notificationTargetStore := models.NewNotificationTargetStore(db)
 	notificationService := notifications.NewService(notificationTargetStore, &models.InstanceStore{}, log.Logger)
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
 	dirScanService := dirscan.NewService(
 		dirscan.DefaultConfig(),
 		models.NewDirScanStore(db),
@@ -166,6 +185,8 @@ func newTestDependencies(t *testing.T) *Dependencies {
 		NotificationTargetStore:   notificationTargetStore,
 		NotificationService:       notificationService,
 		DirScanService:            dirScanService,
+		JackettService:            jackett.NewService(torznabIndexerStore),
+		TorznabIndexerStore:       torznabIndexerStore,
 	}
 }
 

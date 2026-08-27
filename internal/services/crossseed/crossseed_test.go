@@ -2061,7 +2061,7 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 }
 
 func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
-	err := errors.New("torznab request rate-limited by tracker")
+	err := &jackett.RateLimitError{IndexerID: 1, IndexerName: "test", Scope: "query", RetryAt: time.Now().Add(time.Minute)}
 	wrapped := wrapCrossSeedSearchError(err)
 
 	if wrapped == nil {
@@ -2072,6 +2072,18 @@ func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
 	}
 	if !strings.Contains(wrapped.Error(), err.Error()) {
 		t.Fatalf("expected original error message to be included")
+	}
+	if _, ok := errors.AsType[*jackett.RateLimitError](wrapped); !ok {
+		t.Fatal("expected wrapped error to preserve the typed rate limit")
+	}
+}
+
+func TestWrapCrossSeedSearchErrorDoesNotClassifyText(t *testing.T) {
+	err := errors.New("backend says rate-limited")
+	wrapped := wrapCrossSeedSearchError(err)
+
+	if !strings.Contains(wrapped.Error(), "torznab search failed") {
+		t.Fatalf("expected untyped text to remain a generic failure, got %q", wrapped.Error())
 	}
 }
 

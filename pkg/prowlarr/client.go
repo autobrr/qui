@@ -38,6 +38,23 @@ type TorznabError struct {
 	Message string `xml:",chardata"`
 }
 
+type responseError struct {
+	StatusCode int
+	RetryAfter string
+}
+
+func (e *responseError) Error() string {
+	return fmt.Sprintf("prowlarr returned status %d", e.StatusCode)
+}
+
+func (e *responseError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
+func (e *responseError) RetryAfterHeader() string {
+	return e.RetryAfter
+}
+
 // Client provides a minimal Prowlarr API wrapper suitable for Torznab-style access.
 type Client struct {
 	host       string
@@ -164,7 +181,10 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return rss, fmt.Errorf("prowlarr returned status %d", resp.StatusCode)
+		return rss, &responseError{
+			StatusCode: resp.StatusCode,
+			RetryAfter: resp.Header.Get("Retry-After"),
+		}
 	}
 
 	// Read the response body
@@ -176,6 +196,9 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	// Check if the response is an error
 	bodyStr := strings.TrimSpace(string(body))
 	if strings.HasPrefix(bodyStr, "<error") {
+		// Prowlarr records upstream Torznab body errors as indexer failures, then
+		// returns the post-search failure as HTTP 429 with Retry-After:
+		// https://github.com/Prowlarr/Prowlarr/blob/50f3e7d33068e362fcd4e51f78ea6990f92623c9/src/Prowlarr.Api.V1/Indexers/NewznabController.cs#L180-L188
 		var torznabErr TorznabError
 		if err := xml.Unmarshal(body, &torznabErr); err != nil {
 			return rss, fmt.Errorf("failed to decode torznab error response: %w", err)

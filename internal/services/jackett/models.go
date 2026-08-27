@@ -57,6 +57,8 @@ type TorznabSearchRequest struct {
 	SkipCachePersist bool `json:"-"`
 	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
 	ReturnAllResults bool `json:"-"`
+	// MinimumExecutionTimeout raises the adaptive per-indexer execution budget for internal callers.
+	MinimumExecutionTimeout time.Duration `json:"-"`
 	// OnComplete is called when a search job for an indexer completes
 	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
 	// OnAllComplete is called when all search jobs complete with the final results
