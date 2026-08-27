@@ -1966,7 +1966,7 @@ type mockTorznabIndexerStore struct {
 	getCalls            []int
 	apiKeyErrors        map[int]error
 	apiKeyCalls         []int
-	latencyCleanupCalls int
+	latencyCleanupCalls chan time.Duration
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
@@ -2055,10 +2055,9 @@ func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID i
 }
 
 func (m *mockTorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.latencyCleanupCalls++
+	if m.latencyCleanupCalls != nil {
+		m.latencyCleanupCalls <- olderThan
+	}
 	return 0, nil
 }
 
@@ -3648,38 +3647,42 @@ func TestApplyIndexerRestrictionsKeepsContentTypeRouting(t *testing.T) {
 	}
 }
 
-// Regression test for discussion #2376: CleanupOldLatency existed but nothing
-// ever called it, so torznab_indexer_latency grew without bound. This checks
-// that a search's latency record now opportunistically triggers cleanup, and
-// that the interval gate prevents it from running on every single search.
-func TestMaybeScheduleLatencyCleanupTriggersAndDebounces(t *testing.T) {
-	store := &mockTorznabIndexerStore{}
+func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, err := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); err != nil {
+			t.Errorf("write RSS response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	cleanupCalls := make(chan time.Duration, 1)
+	store := &mockTorznabIndexerStore{latencyCleanupCalls: cleanupCalls}
 	service := NewService(store)
-
-	service.maybeScheduleLatencyCleanup()
-
-	deadline := time.After(2 * time.Second)
-	for {
-		store.mu.Lock()
-		calls := store.latencyCleanupCalls
-		store.mu.Unlock()
-		if calls == 1 {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatalf("expected CleanupOldLatency to be called once, got %d", calls)
-		case <-time.After(10 * time.Millisecond):
-		}
+	indexer := &models.TorznabIndexer{
+		ID:      1,
+		BaseURL: server.URL,
+		Backend: models.TorznabBackendNative,
 	}
 
-	// A second call within latencyCleanupInterval should be debounced.
-	service.maybeScheduleLatencyCleanup()
-	time.Sleep(50 * time.Millisecond)
+	result := service.executeIndexerSearch(context.Background(), indexer, nil, nil, indexerExecOptions{})
+	if result.err != nil {
+		t.Fatalf("executeIndexerSearch() error = %v", result.err)
+	}
 
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	if store.latencyCleanupCalls != 1 {
-		t.Fatalf("expected CleanupOldLatency to still be called once (debounced), got %d", store.latencyCleanupCalls)
+	select {
+	case olderThan := <-cleanupCalls:
+		if olderThan != 14*24*time.Hour {
+			t.Fatalf("CleanupOldLatency() olderThan = %v, want 14 days", olderThan)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected search to schedule latency cleanup")
+	}
+
+	service.maybeScheduleLatencyCleanup()
+	select {
+	case <-cleanupCalls:
+		t.Fatal("expected latency cleanup to be interval-gated")
+	case <-time.After(50 * time.Millisecond):
 	}
 }
