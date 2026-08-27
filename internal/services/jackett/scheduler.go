@@ -254,11 +254,12 @@ type JobCallbacks struct {
 
 // SubmitRequest contains all parameters for submitting a job to the scheduler.
 type SubmitRequest struct {
-	Indexers  []*models.TorznabIndexer
-	Params    url.Values
-	Meta      *searchContext
-	Callbacks JobCallbacks
-	ExecFn    func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
+	Indexers         []*models.TorznabIndexer
+	Params           url.Values
+	Meta             *searchContext
+	Callbacks        JobCallbacks
+	ExecutionTimeout time.Duration
+	ExecFn           func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 }
 
 type workerTask struct {
@@ -270,6 +271,7 @@ type workerTask struct {
 	exec      func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 	ctx       context.Context
 	callbacks JobCallbacks
+	timeout   time.Duration
 	isRSS     bool
 }
 
@@ -431,6 +433,7 @@ func (s *searchScheduler) Submit(ctx context.Context, req SubmitRequest) (uint64
 			exec:      req.ExecFn,
 			ctx:       ctx,
 			callbacks: req.Callbacks,
+			timeout:   req.ExecutionTimeout,
 			isRSS:     req.Meta != nil && req.Meta.rateLimit != nil && req.Meta.rateLimit.Priority == RateLimitPriorityRSS,
 		})
 	}
@@ -565,6 +568,21 @@ func (s *searchScheduler) dispatchTasks() {
 			}
 			continue
 		}
+		if inCooldown, retryAt := s.rateLimiter.IsInCooldown(item.task.indexer.ID, rateLimitScopeQuery); inCooldown {
+			item.started = time.Now()
+			taskCompleted = true
+			err := &RateLimitError{
+				IndexerID:   item.task.indexer.ID,
+				IndexerName: item.task.indexer.Name,
+				Scope:       rateLimitScopeQuery,
+				RetryAt:     retryAt,
+			}
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
+			if item.task.isRSS {
+				delete(s.pendingRSS, item.task.indexer.ID)
+			}
+			continue
+		}
 
 		// Check if indexer already has in-flight task
 		if _, inFlight := s.inFlight[item.task.indexer.ID]; inFlight {
@@ -656,6 +674,11 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 	item.started = time.Now()
 
 	execCtx := task.ctx
+	if task.timeout > 0 {
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(execCtx, task.timeout)
+		defer cancel()
+	}
 
 	done := make(chan taskExecResult, 1)
 	go func() {

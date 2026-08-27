@@ -333,7 +333,7 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 	}
 }
 
-func TestComputeSearchTimeoutIncludesNativePacing(t *testing.T) {
+func TestComputeSearchTimeoutExcludesQueueWait(t *testing.T) {
 	t.Parallel()
 
 	prowlarr := []*models.TorznabIndexer{{Backend: models.TorznabBackendProwlarr}}
@@ -346,11 +346,37 @@ func TestComputeSearchTimeoutIncludesNativePacing(t *testing.T) {
 	if got := computeSearchTimeout(prowlarr); got != timeouts.DefaultSearchTimeout {
 		t.Fatalf("Prowlarr timeout = %s, want %s", got, timeouts.DefaultSearchTimeout)
 	}
-	if got, want := computeSearchTimeout(native), timeouts.DefaultSearchTimeout+defaultMinRequestInterval; got != want {
+	if got, want := computeSearchTimeout(native), timeouts.DefaultSearchTimeout; got != want {
 		t.Fatalf("native timeout = %s, want %s", got, want)
 	}
-	if got, want := computeSearchTimeout(mixed), timeouts.DefaultSearchTimeout+timeouts.PerIndexerSearchTimeout+defaultMinRequestInterval; got != want {
+	if got, want := computeSearchTimeout(mixed), timeouts.DefaultSearchTimeout+timeouts.PerIndexerSearchTimeout; got != want {
 		t.Fatalf("mixed timeout = %s, want %s", got, want)
+	}
+}
+
+func TestGetActivityStatusMergesCooldownScopes(t *testing.T) {
+	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{{ID: 1, Name: "IndexerOne"}}}
+	service := NewService(store)
+	defer service.searchScheduler.Stop()
+
+	queryUntil := time.Now().Add(time.Minute)
+	grabUntil := queryUntil.Add(time.Minute)
+	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, queryUntil)
+	service.rateLimiter.SetCooldown(1, rateLimitScopeGrab, grabUntil)
+
+	status, err := service.GetActivityStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetActivityStatus() error = %v", err)
+	}
+	if got := len(status.CooldownIndexers); got != 1 {
+		t.Fatalf("cooldown rows = %d, want 1", got)
+	}
+	cooldown := status.CooldownIndexers[0]
+	if !cooldown.CooldownEnd.Equal(grabUntil) {
+		t.Errorf("cooldown end = %s, want %s", cooldown.CooldownEnd, grabUntil)
+	}
+	if cooldown.Reason != "query,grab" {
+		t.Errorf("reason = %q, want %q", cooldown.Reason, "query,grab")
 	}
 }
 

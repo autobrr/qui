@@ -326,15 +326,14 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 // executeQueuedSearch submits the search to the scheduler so we can skip over jobs blocked by
 // indexer cooldowns or other rate-limit constraints.
 func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func(jobID uint64, results []Result, coverage []int, err error)) error {
-	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
-	if s.searchExecutor != nil {
-		// For synchronous executor (tests), call it and callback immediately
-		results, coverage, err := s.searchExecutor(ctx, indexers, params, meta)
-		resultCallback(0, results, coverage, err)
-		return nil
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if s.searchScheduler == nil {
-		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
+	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
+	if s.searchExecutor != nil || s.searchScheduler == nil {
+		execCtx, cancel := context.WithTimeout(ctx, computeSearchTimeout(indexers))
+		defer cancel()
+		results, coverage, err := s.executeSearch(execCtx, indexers, params, meta)
 		resultCallback(0, results, coverage, err)
 		return nil
 	}
@@ -377,9 +376,10 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	completionWG.Add(len(indexers))
 
 	_, err := s.searchScheduler.Submit(ctx, SubmitRequest{
-		Indexers: indexers,
-		Params:   params,
-		Meta:     meta,
+		Indexers:         indexers,
+		Params:           params,
+		Meta:             meta,
+		ExecutionTimeout: computeSearchTimeout(indexers),
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, indexer *models.TorznabIndexer, results []Result, cov []int, err error) {
 				defer completionWG.Done()
@@ -727,9 +727,6 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		baseCtx = context.Background()
 		log.Debug().Dur("search_timeout", searchTimeout).Msg("RSS search using scheduler with dedicated timeout")
 	}
-	searchCtx, _ := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
-	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
-
 	resultCallback := func(jobID uint64, allResults []Result, networkCoverage []int, err error) {
 		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 		if deadlineErr {
@@ -827,7 +824,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		}
 	}
 
-	err = s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta, req.OnComplete, resultCallback)
+	err = s.executeQueuedSearch(baseCtx, indexersToSearch, params, meta, req.OnComplete, resultCallback)
 	if err != nil {
 		return err
 	}
@@ -888,8 +885,6 @@ func (s *Service) Recent(ctx context.Context, limit, offset int, indexerIDs []in
 	meta := finalizeSearchContext(ctx, nil, RateLimitPriorityBackground)
 
 	searchTimeout := computeSearchTimeout(indexersToSearch)
-	searchCtx, _ := timeouts.WithSearchTimeout(ctx, searchTimeout)
-	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
 
 	resultCallback := func(jobID uint64, results []Result, coverage []int, err error) {
 		if err != nil {
@@ -923,7 +918,7 @@ func (s *Service) Recent(ctx context.Context, limit, offset int, indexerIDs []in
 		callback(resp, nil)
 	}
 
-	err = s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta, nil, resultCallback)
+	err = s.executeQueuedSearch(ctx, indexersToSearch, params, meta, nil, resultCallback)
 	if err != nil {
 		return err
 	}
@@ -1835,13 +1830,7 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 }
 
 func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
-	timeout := timeouts.AdaptiveSearchTimeout(len(indexers))
-	if slices.ContainsFunc(indexers, func(indexer *models.TorznabIndexer) bool {
-		return indexer != nil && indexer.Backend == models.TorznabBackendNative
-	}) {
-		timeout += defaultMinRequestInterval
-	}
-	return timeout
+	return timeouts.AdaptiveSearchTimeout(len(indexers))
 }
 
 func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
@@ -4568,12 +4557,22 @@ func (s *Service) GetActivityStatus(ctx context.Context) (*ActivityStatus, error
 			for _, idx := range indexers {
 				nameMap[idx.ID] = idx.Name
 			}
+			positions := make(map[int]int)
 			for _, scope := range []string{rateLimitScopeQuery, rateLimitScopeGrab} {
 				for id, until := range s.rateLimiter.GetCooldownIndexers(scope) {
+					if position, exists := positions[id]; exists {
+						cooldown := &status.CooldownIndexers[position]
+						if until.After(cooldown.CooldownEnd) {
+							cooldown.CooldownEnd = until
+						}
+						cooldown.Reason += "," + scope
+						continue
+					}
 					name := nameMap[id]
 					if name == "" {
 						name = fmt.Sprintf("Indexer %d", id)
 					}
+					positions[id] = len(status.CooldownIndexers)
 					status.CooldownIndexers = append(status.CooldownIndexers, IndexerCooldownStatus{
 						IndexerID:   id,
 						IndexerName: name,

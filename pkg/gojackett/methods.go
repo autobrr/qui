@@ -6,9 +6,8 @@ package jackett
 import (
 	"context"
 	"encoding/xml"
-	"fmt"
 	"io"
-	"strings"
+	"net/http"
 
 	"github.com/pkg/errors"
 )
@@ -54,25 +53,7 @@ func (c *Client) GetTorrentsCtx(ctx context.Context, indexer string, opts map[st
 		return rss, err
 	}
 
-	// Read the response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return rss, errors.Wrap(err, "failed to read response")
-	}
-
-	// Check if the response is an error
-	bodyStr := strings.TrimSpace(string(body))
-	if strings.HasPrefix(bodyStr, "<error") {
-		var torznabErr TorznabError
-		if err := xml.Unmarshal(body, &torznabErr); err != nil {
-			return rss, errors.Wrap(err, "failed to decode torznab error response")
-		}
-		return rss, fmt.Errorf("torznab error %s: %s", torznabErr.Code, torznabErr.Message)
-	}
-
-	// Decode the RSS response
-	err = xml.Unmarshal(body, &rss)
-	return rss, err
+	return decodeRssResponse(resp)
 }
 
 // SearchDirectCtx performs a direct search against a tracker's torznab API with context.
@@ -101,6 +82,21 @@ func (c *Client) SearchDirectCtx(ctx context.Context, query string, opts map[str
 		return rss, err
 	}
 
-	err = xml.NewDecoder(resp.Body).Decode(&rss)
-	return rss, err
+	return decodeRssResponse(resp)
+}
+
+func decodeRssResponse(resp *http.Response) (Rss, error) {
+	var rss Rss
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return rss, errors.Wrap(err, "failed to read response")
+	}
+
+	var torznabErr TorznabError
+	if err := xml.Unmarshal(body, &torznabErr); err == nil {
+		torznabErr.RetryAfter = resp.Header.Get("Retry-After")
+		return rss, &torznabErr
+	}
+
+	return rss, xml.Unmarshal(body, &rss)
 }

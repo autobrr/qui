@@ -22,8 +22,41 @@ func TestGetTorrentsCtxPreservesRateLimitResponse(t *testing.T) {
 
 	client := NewClient(Config{Host: server.URL})
 	_, err := client.GetTorrentsCtx(context.Background(), "tracker", map[string]string{})
+	assertStructuredRateLimit(t, err)
+}
+
+func TestGetTorrentsCtxPreservesBodyRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "41")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><error code="429">Too many requests</error>`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{Host: server.URL})
+	_, err := client.GetTorrentsCtx(context.Background(), "tracker", map[string]string{})
+	assertStructuredRateLimit(t, err)
+}
+
+func TestSearchDirectCtxPreservesBodyRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "41")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><error code="429">Too many requests</error>`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(Config{Host: server.URL, DirectMode: true})
+	_, err := client.SearchDirectCtx(context.Background(), "query", map[string]string{})
+	assertStructuredRateLimit(t, err)
+}
+
+func assertStructuredRateLimit(t *testing.T, err error) {
+	t.Helper()
 	if err == nil {
-		t.Fatal("GetTorrentsCtx() error = nil, want rate limit error")
+		t.Fatal("error = nil, want rate limit error")
 	}
 
 	var responseErr interface {
@@ -31,7 +64,7 @@ func TestGetTorrentsCtxPreservesRateLimitResponse(t *testing.T) {
 		RetryAfterHeader() string
 	}
 	if !errors.As(err, &responseErr) {
-		t.Fatalf("GetTorrentsCtx() error = %T, want structured HTTP response error", err)
+		t.Fatalf("error = %T, want structured HTTP response error", err)
 	}
 	if got := responseErr.HTTPStatusCode(); got != http.StatusTooManyRequests {
 		t.Errorf("HTTPStatusCode() = %d, want %d", got, http.StatusTooManyRequests)

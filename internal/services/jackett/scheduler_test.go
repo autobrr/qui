@@ -368,6 +368,104 @@ func TestSearchScheduler_TaskTimeoutCompletesHungExecution(t *testing.T) {
 	require.Less(t, time.Since(start), 150*time.Millisecond)
 }
 
+func TestSearchScheduler_ExecutionTimeoutStartsAfterNativePacing(t *testing.T) {
+	limiter := NewRateLimiter(40 * time.Millisecond)
+	s := newSearchScheduler(limiter, 1)
+	defer s.Stop()
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstDone := make(chan error, 1)
+
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			close(firstStarted)
+			<-releaseFirst
+			return nil, []int{indexer.ID}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			firstDone <- err
+		}},
+	})
+	require.NoError(t, err)
+	<-firstStarted
+
+	remainingBudget := make(chan time.Duration, 1)
+	secondDone := make(chan error, 1)
+	_, err = s.Submit(context.Background(), SubmitRequest{
+		Indexers:         []*models.TorznabIndexer{indexer},
+		ExecutionTimeout: 30 * time.Millisecond,
+		ExecFn: func(ctx context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				remainingBudget <- 0
+				return nil, nil, errors.New("execution context has no deadline")
+			}
+			remainingBudget <- time.Until(deadline)
+			return nil, []int{indexer.ID}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			secondDone <- err
+		}},
+	})
+	require.NoError(t, err)
+
+	time.Sleep(15 * time.Millisecond)
+	close(releaseFirst)
+	require.NoError(t, <-firstDone)
+
+	select {
+	case remaining := <-remainingBudget:
+		require.Greater(t, remaining, 15*time.Millisecond)
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("second task did not start after native pacing")
+	}
+	require.NoError(t, <-secondDone)
+}
+
+func TestSearchScheduler_QueryCooldownSkipsBeforeNativePacing(t *testing.T) {
+	limiter := NewRateLimiter(200 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
+	limiter.RecordRequestComplete(indexer.ID, time.Now())
+	limiter.SetCooldown(indexer.ID, rateLimitScopeQuery, time.Now().Add(time.Second))
+
+	limiter.mu.Lock()
+	lastCompleted := limiter.states[indexer.ID].lastCompleted
+	limiter.mu.Unlock()
+
+	s := newSearchScheduler(limiter, 1)
+	defer s.Stop()
+
+	var executed atomic.Bool
+	complete := make(chan error, 1)
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			executed.Store(true)
+			return nil, []int{indexer.ID}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			complete <- err
+		}},
+	})
+	require.NoError(t, err)
+
+	select {
+	case err := <-complete:
+		var rateLimitErr *RateLimitError
+		require.ErrorAs(t, err, &rateLimitErr)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("known query cooldown waited for native pacing")
+	}
+	assert.False(t, executed.Load())
+
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	assert.Equal(t, lastCompleted, limiter.states[indexer.ID].lastCompleted, "local cooldown rejection must not reserve a pacing slot")
+}
+
 func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 	s := newSearchScheduler(nil, 10)
 	defer s.Stop()
