@@ -53,6 +53,7 @@ func TestDetectRateLimitUsesStructuredRetryAfter(t *testing.T) {
 		ok   bool
 	}{
 		{name: "seconds", err: &responseError{StatusCode: 429, RetryAfter: "37"}, min: 37 * time.Second, max: 37 * time.Second, ok: true},
+		{name: "oversized seconds fall back", err: &responseError{StatusCode: 429, RetryAfter: "9223372037"}, min: time.Minute, max: time.Minute, ok: true},
 		{name: "http date", err: &responseError{StatusCode: 429, RetryAfter: httpDate}, min: 88 * time.Second, max: 90 * time.Second, ok: true},
 		{name: "missing header falls back", err: &responseError{StatusCode: 429}, min: time.Minute, max: time.Minute, ok: true},
 		{name: "status in text is ignored", err: errors.New("backend returned 429 too many requests"), ok: false},

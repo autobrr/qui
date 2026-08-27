@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -3111,7 +3112,7 @@ func detectRateLimit(err error) (time.Duration, bool) {
 	}
 
 	header := strings.TrimSpace(responseErr.RetryAfterHeader())
-	if seconds, parseErr := strconv.Atoi(header); parseErr == nil && seconds >= 0 {
+	if seconds, parseErr := strconv.ParseInt(header, 10, 64); parseErr == nil && seconds >= 0 && seconds <= math.MaxInt64/int64(time.Second) {
 		return time.Duration(seconds) * time.Second, true
 	}
 	if retryAt, parseErr := http.ParseTime(header); parseErr == nil {
