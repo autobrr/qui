@@ -14,8 +14,166 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
+
+func TestAutobrrApplyNotifiesAfterAddingTorrent(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		name       = "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA"
+		sourceHash = "source-hash"
+		size       = int64(2_000_000)
+	)
+	fileName := name + ".mkv"
+	torrentData := createNamedFileTestTorrent(t, name, fileName, size)
+	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+	}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: fileName, Size: size}},
+		})},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SkipPieceBoundarySafetyCheck = true
+			return settings, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Success, "apply rejected the torrent: %+v", response.Results)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookSucceeded, events[0].Type)
+	require.NotNil(t, events[0].CrossSeed)
+	require.Equal(t, 1, events[0].CrossSeed.Added)
+}
+
+func TestAutobrrApplyDoesNotNotifyWhenTorrentExists(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		name       = "Silent.Harbor.2026.1080p.WEB-DL.H.264-LUMA"
+		size       = int64(2_000_000)
+	)
+	fileName := name + ".mkv"
+	torrentData := createNamedFileTestTorrent(t, name, fileName, size)
+	metadata, err := ParseTorrentMetadataWithInfo(torrentData)
+	require.NoError(t, err)
+	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: metadata.HashV1, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+	}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			metadata.HashV1: {{Name: fileName, Size: size}},
+		})},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.False(t, response.Success)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "exists", response.Results[0].Status)
+	require.Empty(t, notifier.Events())
+}
+
+type failingAutobrrApplySyncManager struct {
+	*applyFakeSyncManager
+}
+
+func (f *failingAutobrrApplySyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("synthetic add failure")
+}
+
+func TestAutobrrApplyNotifiesWhenAddFails(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		name       = "Broken.Harbor.2026.1080p.WEB-DL.H.264-LUMA"
+		sourceHash = "source-hash"
+		size       = int64(2_000_000)
+	)
+	fileName := name + ".mkv"
+	torrentData := createNamedFileTestTorrent(t, name, fileName, size)
+	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+	}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &failingAutobrrApplySyncManager{&applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: fileName, Size: size}},
+		})}},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SkipPieceBoundarySafetyCheck = true
+			return settings, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.False(t, response.Success)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "error", response.Results[0].Status)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.NotNil(t, events[0].CrossSeed)
+	require.Equal(t, 1, events[0].CrossSeed.Failed)
+}
+
+func TestAutobrrApplyNotifiesWhenProcessingFails(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString([]byte("not a torrent")),
+		TorrentName: "Invalid.Harbor.2026.1080p.WEB-DL.H.264-LUMA",
+	})
+	require.Error(t, err)
+	require.Nil(t, response)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.NotEmpty(t, events[0].ErrorMessage)
+}
 
 func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	t.Parallel()
