@@ -10,7 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
+	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
@@ -45,9 +47,6 @@ type IndexerStore interface {
 	RecordLatency(ctx context.Context, indexerID int, operationType string, latencyMs int, success bool) error
 	CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error)
 	RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error
-	ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error)
-	UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error
-	DeleteRateLimitCooldown(ctx context.Context, indexerID int) error
 }
 
 type searchCacheStore interface {
@@ -70,21 +69,18 @@ var trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|43
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
-	indexerStore           IndexerStore
-	releaseParser          *releases.Parser
-	rateLimiter            *RateLimiter
-	searchScheduler        *searchScheduler
-	rateLimiterRestoreOnce sync.Once
-	persistedCooldowns     map[int]time.Time
-	persistedCooldownsMu   sync.RWMutex
-	capsWarnedAt           map[int]time.Time
-	capsWarnedAtMu         sync.Mutex
-	torrentCache           *models.TorznabTorrentCacheStore
-	searchCache            searchCacheStore
-	searchCacheTTL         time.Duration
-	searchCacheEnabled     bool
-	searchCacheConfigMu    sync.RWMutex
-	searchExecutor         func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
+	indexerStore        IndexerStore
+	releaseParser       *releases.Parser
+	rateLimiter         *RateLimiter
+	searchScheduler     *searchScheduler
+	capsWarnedAt        map[int]time.Time
+	capsWarnedAtMu      sync.Mutex
+	torrentCache        *models.TorznabTorrentCacheStore
+	searchCache         searchCacheStore
+	searchCacheTTL      time.Duration
+	searchCacheEnabled  bool
+	searchCacheConfigMu sync.RWMutex
+	searchExecutor      func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error)
 
 	searchCacheCleanupMu    sync.Mutex
 	nextSearchCacheCleanup  time.Time
@@ -106,14 +102,10 @@ type Service struct {
 var ErrMissingIndexerIdentifier = errors.New("torznab indexer identifier is required for caps sync")
 
 const (
-	defaultRateLimitCooldown = 30 * time.Minute
-	defaultTorrentCacheTTL   = 24 * time.Hour
-	defaultSearchCacheTTL    = 24 * time.Hour
-	storeOperationTimeout    = 5 * time.Second
-	minSearchCacheTTL        = defaultSearchCacheTTL
-
-	interactiveSearchMinInterval = 10 * time.Second
-	interactiveSearchMaxWait     = 10 * time.Second
+	defaultRetryAfter      = time.Minute
+	defaultTorrentCacheTTL = 24 * time.Hour
+	defaultSearchCacheTTL  = 24 * time.Hour
+	minSearchCacheTTL      = defaultSearchCacheTTL
 
 	searchCacheCleanupInterval  = 6 * time.Hour
 	torrentCacheCleanupInterval = 6 * time.Hour
@@ -128,6 +120,9 @@ const (
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
 	searchCacheSourceHybrid  = "hybrid"
+
+	rateLimitScopeQuery = "query"
+	rateLimitScopeGrab  = "grab"
 )
 
 type cachedSearchPortion struct {
@@ -158,13 +153,14 @@ func (p *cachedSearchPortion) metadata(source string) *SearchCacheMetadata {
 
 // searchContext carries additional metadata about the current Torznab search.
 type searchContext struct {
-	categories    []int
-	contentType   contentType
-	searchMode    string
-	rateLimit     *RateLimitOptions
-	releaseName   string // Original full release name for debugging/history
-	skipHistory   bool   // Skip recording this search in history buffer
-	originalQuery string // Original query for fallback when ID params are pruned per-indexer
+	categories              []int
+	contentType             contentType
+	searchMode              string
+	rateLimit               *RateLimitOptions
+	minimumExecutionTimeout time.Duration
+	releaseName             string // Original full release name for debugging/history
+	skipHistory             bool   // Skip recording this search in history buffer
+	originalQuery           string // Original query for fallback when ID params are pruned per-indexer
 
 	// omitCategoriesForIDs is set when buildSearchParams dropped the query for an
 	// ID-driven movie or TV search. The category filter is dropped with it, but only
@@ -210,32 +206,10 @@ func getSearchPriorityFromContext(ctx context.Context) (RateLimitPriority, bool)
 }
 
 func rateLimitOptionsForPriority(priority RateLimitPriority) *RateLimitOptions {
-	switch priority {
-	case RateLimitPriorityInteractive:
-		return &RateLimitOptions{
-			Priority:    RateLimitPriorityInteractive,
-			MinInterval: interactiveSearchMinInterval,
-			MaxWait:     interactiveSearchMaxWait,
-		}
-	case RateLimitPriorityRSS:
-		return &RateLimitOptions{
-			Priority:    RateLimitPriorityRSS,
-			MinInterval: defaultMinRequestInterval,
-			MaxWait:     rssMaxWait,
-		}
-	case RateLimitPriorityCompletion:
-		return &RateLimitOptions{
-			Priority:    RateLimitPriorityCompletion,
-			MinInterval: defaultMinRequestInterval,
-			MaxWait:     completionMaxWait,
-		}
-	default:
-		return &RateLimitOptions{
-			Priority:    RateLimitPriorityBackground,
-			MinInterval: defaultMinRequestInterval,
-			MaxWait:     backgroundMaxWait,
-		}
+	if priority == "" {
+		priority = RateLimitPriorityBackground
 	}
+	return &RateLimitOptions{Priority: priority}
 }
 
 type searchCacheSignature struct {
@@ -271,8 +245,7 @@ type TorrentDownloadRequest struct {
 	GUID        string
 	Title       string
 	Size        int64
-	// Pace applies per-indexer min-interval pacing before contacting the backend.
-	// This is useful for background/automated workflows (e.g. dirscan) to avoid bursts of .torrent downloads.
+	// Pace applies the native Torznab min interval before downloading.
 	Pace bool
 }
 
@@ -308,7 +281,6 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		releaseParser:      releases.NewDefaultParser(),
 		rateLimiter:        rl,
 		searchScheduler:    newSearchScheduler(rl, defaultMaxWorkers),
-		persistedCooldowns: make(map[int]time.Time),
 		capsWarnedAt:       make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
@@ -355,15 +327,14 @@ func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabI
 // executeQueuedSearch submits the search to the scheduler so we can skip over jobs blocked by
 // indexer cooldowns or other rate-limit constraints.
 func (s *Service) executeQueuedSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext, onComplete func(jobID uint64, indexerID int, err error), resultCallback func(jobID uint64, results []Result, coverage []int, err error)) error {
-	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
-	if s.searchExecutor != nil {
-		// For synchronous executor (tests), call it and callback immediately
-		results, coverage, err := s.searchExecutor(ctx, indexers, params, meta)
-		resultCallback(0, results, coverage, err)
-		return nil
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if s.searchScheduler == nil {
-		results, coverage, err := s.executeSearch(ctx, indexers, params, meta)
+	meta = finalizeSearchContext(ctx, meta, RateLimitPriorityBackground)
+	if s.searchExecutor != nil || s.searchScheduler == nil {
+		execCtx, cancel := context.WithTimeout(ctx, searchExecutionTimeout(indexers, meta))
+		defer cancel()
+		results, coverage, err := s.executeSearch(execCtx, indexers, params, meta)
 		resultCallback(0, results, coverage, err)
 		return nil
 	}
@@ -375,8 +346,6 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		resultCallback(0, nil, nil, nil)
 		return nil
 	}
-
-	s.ensureRateLimiterState()
 
 	log.Debug().
 		Int("indexers", len(indexers)).
@@ -395,22 +364,23 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 
 	// Use a sync mechanism to aggregate results for the legacy callback interface
 	var (
-		mu          sync.Mutex
-		allResults  []Result
-		coverage    = make(map[int]struct{})
-		failures    int
-		lastErr     error
-		waitSkips   int
-		lastWaitErr error
-		dedupSkips  int
+		mu                sync.Mutex
+		allResults        []Result
+		coverage          = make(map[int]struct{})
+		failures          int
+		lastErr           error
+		rateLimits        int
+		earliestRateLimit *RateLimitError
+		dedupSkips        int
 	)
 	var completionWG sync.WaitGroup
 	completionWG.Add(len(indexers))
 
 	_, err := s.searchScheduler.Submit(ctx, SubmitRequest{
-		Indexers: indexers,
-		Params:   params,
-		Meta:     meta,
+		Indexers:         indexers,
+		Params:           params,
+		Meta:             meta,
+		ExecutionTimeout: searchExecutionTimeout(indexers, meta),
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, indexer *models.TorznabIndexer, results []Result, cov []int, err error) {
 				defer completionWG.Done()
@@ -434,10 +404,11 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 						dedupSkips++
 						return
 					}
-					// Rate limit wait errors are treated as skips
-					if _, isWait := asRateLimitWaitError(err); isWait {
-						waitSkips++
-						lastWaitErr = err
+					if rateLimitErr, ok := errors.AsType[*RateLimitError](err); ok {
+						rateLimits++
+						if earliestRateLimit == nil || rateLimitErr.RetryAt.Before(earliestRateLimit.RetryAt) {
+							earliestRateLimit = rateLimitErr
+						}
 						return
 					}
 					failures++
@@ -463,8 +434,8 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				finalCoverage := coverageSetToSlice(coverage)
 				finalErr := lastErr
 				totalFailures := failures
-				totalWaitSkips := waitSkips
-				finalWaitErr := lastWaitErr
+				totalRateLimits := rateLimits
+				finalRateLimitErr := earliestRateLimit
 				totalDedupSkips := dedupSkips
 				mu.Unlock()
 
@@ -474,18 +445,15 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				// empty success rather than surfacing an error.
 				effectiveIndexers := len(indexers) - totalDedupSkips
 
-				// If every effective indexer either failed or was rate-limit
-				// skipped and produced no results, surface an error rather than a
-				// silent empty success — including a mix of the two. A real failure
-				// is more actionable than a rate-limit wait, so prefer finalErr and
-				// fall back to finalWaitErr (one of them is always set here, since a
-				// nonzero failure/skip count records its error).
-				if effectiveIndexers > 0 && totalFailures+totalWaitSkips == effectiveIndexers && len(finalResults) == 0 {
-					finalErrToReturn := finalErr
-					if finalErrToReturn == nil {
-						finalErrToReturn = finalWaitErr
+				// If every effective indexer either failed or was rate-limited and
+				// produced no results, surface the earliest rate limit so callers
+				// know when the request can be retried.
+				if effectiveIndexers > 0 && totalFailures+totalRateLimits == effectiveIndexers && len(finalResults) == 0 {
+					if finalRateLimitErr != nil {
+						resultCallback(jobID, nil, finalCoverage, finalRateLimitErr)
+						return
 					}
-					resultCallback(jobID, nil, finalCoverage, finalErrToReturn)
+					resultCallback(jobID, nil, finalCoverage, finalErr)
 					return
 				}
 
@@ -683,12 +651,13 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 	searchMode := searchModeForContentType(detectedType)
 	params := s.buildSearchParams(req, searchMode)
 	meta := finalizeSearchContext(ctx, &searchContext{
-		categories:    append([]int(nil), req.Categories...),
-		contentType:   detectedType,
-		searchMode:    searchMode,
-		releaseName:   req.ReleaseName,
-		skipHistory:   req.SkipHistory,
-		originalQuery: req.Query,
+		categories:              append([]int(nil), req.Categories...),
+		contentType:             detectedType,
+		searchMode:              searchMode,
+		minimumExecutionTimeout: req.MinimumExecutionTimeout,
+		releaseName:             req.ReleaseName,
+		skipHistory:             req.SkipHistory,
+		originalQuery:           req.Query,
 
 		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
 	}, RateLimitPriorityInteractive)
@@ -754,16 +723,12 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 
 	// Search selected indexers (defaults to all enabled when none specified)
 	baseCtx := ctx
-	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
+	searchTimeout := searchExecutionTimeout(indexersToSearch, meta)
 	if meta != nil && meta.rateLimit != nil && meta.rateLimit.Priority == RateLimitPriorityRSS {
-		// Keep RSS automation bounded but not tied to the HTTP request lifetime; use adaptive timeout without extra rate-limit budget.
-		searchTimeout = timeouts.AdaptiveSearchTimeout(len(indexersToSearch))
+		// Keep RSS automation bounded but not tied to the HTTP request lifetime.
 		baseCtx = context.Background()
 		log.Debug().Dur("search_timeout", searchTimeout).Msg("RSS search using scheduler with dedicated timeout")
 	}
-	searchCtx, _ := timeouts.WithSearchTimeout(baseCtx, searchTimeout)
-	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
-
 	resultCallback := func(jobID uint64, allResults []Result, networkCoverage []int, err error) {
 		deadlineErr := err != nil && errors.Is(err, context.DeadlineExceeded)
 		if deadlineErr {
@@ -803,11 +768,8 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			}
 			return
 		}
-		partial := deadlineErr && len(allResults) > 0
-		if partial && len(networkCoverage) == len(indexersToSearch) {
-			partial = false
-		}
 		effectiveCoverage := mergeIndexerCoverage(cachedIndexerCoverage, networkCoverage)
+		partial := len(intersectIndexerIDs(effectiveCoverage, requestedIndexerIDs)) < len(requestedIndexerIDs)
 
 		networkConverted := s.convertResults(allResults)
 		combined := make([]SearchResult, 0, len(cachedResults)+len(networkConverted))
@@ -840,8 +802,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 			log.Debug().
 				Int("indexers_requested", len(indexersToSearch)).
 				Int("results_collected", len(allResults)).
-				Dur("timeout", searchTimeout).
-				Msg("Torznab search returning partial results due to deadline")
+				Msg("Torznab search returning partial results due to incomplete indexer coverage")
 		}
 
 		if cacheEnabled && cacheSig != nil && len(networkCoverage) > 0 && !req.SkipCachePersist {
@@ -865,7 +826,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		}
 	}
 
-	err = s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta, req.OnComplete, resultCallback)
+	err = s.executeQueuedSearch(baseCtx, indexersToSearch, params, meta, req.OnComplete, resultCallback)
 	if err != nil {
 		return err
 	}
@@ -925,9 +886,7 @@ func (s *Service) Recent(ctx context.Context, limit, offset int, indexerIDs []in
 
 	meta := finalizeSearchContext(ctx, nil, RateLimitPriorityBackground)
 
-	searchTimeout := computeSearchTimeout(meta, len(indexersToSearch))
-	searchCtx, _ := timeouts.WithSearchTimeout(ctx, searchTimeout)
-	// Note: do not cancel for async searches, as it would cancel immediately when the function returns
+	searchTimeout := computeSearchTimeout(indexersToSearch)
 
 	resultCallback := func(jobID uint64, results []Result, coverage []int, err error) {
 		if err != nil {
@@ -961,34 +920,23 @@ func (s *Service) Recent(ctx context.Context, limit, offset int, indexerIDs []in
 		callback(resp, nil)
 	}
 
-	err = s.executeQueuedSearch(searchCtx, indexersToSearch, params, meta, nil, resultCallback)
+	err = s.executeQueuedSearch(ctx, indexersToSearch, params, meta, nil, resultCallback)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// DownloadRateLimitError indicates that a download was blocked due to rate limiting.
-// It includes retry information to help callers decide whether to queue for later.
-type DownloadRateLimitError struct {
+// RateLimitError indicates that an upstream indexer asked qui to retry later.
+type RateLimitError struct {
 	IndexerID   int
 	IndexerName string
-	ResumeAt    time.Time
-	// Queued indicates whether the request was queued for automatic retry.
-	// TODO: Set to true when download retry queue is implemented.
-	Queued bool
+	Scope       string
+	RetryAt     time.Time
 }
 
-func (e *DownloadRateLimitError) Error() string {
-	if e.Queued {
-		return fmt.Sprintf("indexer %s rate-limited, queued for retry at %s", e.IndexerName, e.ResumeAt.Format(time.RFC3339))
-	}
-	return fmt.Sprintf("indexer %s rate-limited until %s", e.IndexerName, e.ResumeAt.Format(time.RFC3339))
-}
-
-func (e *DownloadRateLimitError) Is(target error) bool {
-	_, ok := target.(*DownloadRateLimitError)
-	return ok
+func (e *RateLimitError) Error() string {
+	return fmt.Sprintf("indexer %s %s rate-limited until %s", e.IndexerName, e.Scope, e.RetryAt.Format(time.RFC3339))
 }
 
 // Download retry configuration for transient failures.
@@ -1033,26 +981,22 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 	}
 
 	if s.rateLimiter != nil {
-		if inCooldown, resumeAt := s.rateLimiter.IsInCooldown(req.IndexerID); inCooldown {
+		if inCooldown, retryAt := s.rateLimiter.IsInCooldown(req.IndexerID, rateLimitScopeGrab); inCooldown {
 			log.Debug().
 				Int("indexerID", req.IndexerID).
 				Str("indexer", indexer.Name).
-				Time("resumeAt", resumeAt).
+				Time("retryAt", retryAt).
 				Str("title", req.Title).
 				Msg("[DOWNLOAD] Skipping download - indexer in rate limit cooldown")
-			return nil, &DownloadRateLimitError{
+			return nil, &RateLimitError{
 				IndexerID:   req.IndexerID,
 				IndexerName: indexer.Name,
-				ResumeAt:    resumeAt,
-				Queued:      false,
+				Scope:       rateLimitScopeGrab,
+				RetryAt:     retryAt,
 			}
 		}
 		if req.Pace {
-			// Even when search results are served from cache, downloading torrent payloads can still hit
-			// Prowlarr/private trackers very aggressively. Apply per-indexer pacing when explicitly enabled.
-			priority := resolveSearchPriority(ctx, nil, RateLimitPriorityBackground)
-			opts := rateLimitOptionsForPriority(priority)
-			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer, opts); waitErr != nil {
+			if waitErr := s.rateLimiter.WaitForMinInterval(ctx, indexer); waitErr != nil {
 				return nil, waitErr
 			}
 		}
@@ -1096,11 +1040,6 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 
 		data, err := client.Download(ctx, downloadURL)
 		if err == nil {
-			// Success - record in rate limiter and cache
-			if s.rateLimiter != nil {
-				s.rateLimiter.RecordSuccess(req.IndexerID)
-			}
-
 			if s.torrentCache != nil {
 				entry := &models.TorznabTorrentCacheEntry{
 					IndexerID:   req.IndexerID,
@@ -1131,38 +1070,8 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 
 		lastErr = err
 
-		// Check if this is a rate limit error (429)
-		var dlErr *DownloadError
-		if errors.As(err, &dlErr) && dlErr.IsRateLimited() {
-			// Record failure in rate limiter with escalating backoff
-			var cooldown time.Duration
-			if s.rateLimiter != nil {
-				cooldown = s.rateLimiter.RecordFailure(req.IndexerID)
-			} else {
-				cooldown = 5 * time.Minute // fallback
-			}
-			resumeAt := time.Now().Add(cooldown)
-
-			log.Warn().
-				Int("indexerID", req.IndexerID).
-				Str("indexer", indexer.Name).
-				Dur("cooldown", cooldown).
-				Time("resumeAt", resumeAt).
-				Str("title", req.Title).
-				Msg("[DOWNLOAD] Rate limited by indexer - cooldown applied")
-
-			// Persist cooldown if enabled
-			s.persistRateLimitCooldown(req.IndexerID, resumeAt, cooldown, "download_rate_limited")
-
-			// A cooldown was applied, changing the scheduler's visible activity.
-			s.emitIndexerActivity()
-
-			return nil, &DownloadRateLimitError{
-				IndexerID:   req.IndexerID,
-				IndexerName: indexer.Name,
-				ResumeAt:    resumeAt,
-				Queued:      false,
-			}
+		if retryAfter, rateLimited := detectRateLimit(err); rateLimited {
+			return nil, s.handleRateLimit(ctx, indexer, rateLimitScopeGrab, retryAfter, err)
 		}
 
 		// For other errors, check if retryable
@@ -1806,6 +1715,14 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 	if err != nil {
 		return nil, fmt.Errorf("load torznab indexer: %w", err)
 	}
+	if inCooldown, retryAt := s.rateLimiter.IsInCooldown(indexer.ID, rateLimitScopeQuery); inCooldown {
+		return nil, &RateLimitError{
+			IndexerID:   indexer.ID,
+			IndexerName: indexer.Name,
+			Scope:       rateLimitScopeQuery,
+			RetryAt:     retryAt,
+		}
+	}
 
 	apiKey, err := s.indexerStore.GetDecryptedAPIKey(indexer)
 	if err != nil {
@@ -1826,6 +1743,9 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 
 	caps, err := client.FetchCaps(ctx, identifier)
 	if err != nil {
+		if retryAfter, rateLimited := detectRateLimit(err); rateLimited {
+			return nil, s.handleRateLimit(ctx, indexer, rateLimitScopeQuery, retryAfter, err)
+		}
 		return nil, fmt.Errorf("fetch torznab caps: %w", err)
 	}
 	if caps == nil {
@@ -1911,26 +1831,14 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 	return canonicalizeIntSlice(mappedCategories)
 }
 
-func asRateLimitWaitError(err error) (*RateLimitWaitError, bool) {
-	if waitErr, ok := errors.AsType[*RateLimitWaitError](err); ok {
-		return waitErr, true
-	}
-	return nil, false
+func computeSearchTimeout(indexers []*models.TorznabIndexer) time.Duration {
+	return timeouts.AdaptiveSearchTimeout(len(indexers))
 }
 
-func computeSearchTimeout(meta *searchContext, indexerCount int) time.Duration {
-	timeout := timeouts.AdaptiveSearchTimeout(indexerCount)
-	waitBudget := defaultMinRequestInterval
-	if meta != nil && meta.rateLimit != nil {
-		waitBudget = meta.rateLimit.MinInterval
-		// When we set a MaxWait we will skip indexers that exceed it, so budget only that
-		// smaller window to avoid over-long overall timeouts.
-		if meta.rateLimit.MaxWait > 0 {
-			waitBudget = meta.rateLimit.MaxWait
-		}
-	}
-	if waitBudget > 0 {
-		timeout += waitBudget
+func searchExecutionTimeout(indexers []*models.TorznabIndexer, meta *searchContext) time.Duration {
+	timeout := computeSearchTimeout(indexers)
+	if meta != nil && meta.minimumExecutionTimeout > timeout {
+		return meta.minimumExecutionTimeout
 	}
 	return timeout
 }
@@ -1951,10 +1859,9 @@ func validateIndexerBaseURL(idx *models.TorznabIndexer) error {
 }
 
 type indexerExecResult struct {
-	results   []Result
-	id        int
-	uncovered bool
-	err       error
+	results []Result
+	id      int
+	err     error
 }
 
 type indexerExecOptions struct {
@@ -2016,8 +1923,11 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 	var searchFn func() ([]Result, error)
 	switch idx.Backend {
 	case models.TorznabBackendNative:
-		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap); skipped {
-			return indexerExecResult{id: idx.ID, uncovered: rateLimited}
+		if skipped, rateLimitErr := s.applyIndexerRestrictions(ctx, client, idx, "", meta, paramsMap); skipped {
+			if rateLimitErr != nil {
+				return indexerExecResult{id: idx.ID, err: rateLimitErr}
+			}
+			return indexerExecResult{id: idx.ID}
 		}
 
 		// Note: the prowlarr workaround only applies to the prowlarr backend.
@@ -2045,8 +1955,11 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			return indexerExecResult{id: idx.ID, err: errors.New("missing prowlarr indexer identifier")}
 		}
 
-		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
-			return indexerExecResult{id: idx.ID, uncovered: rateLimited}
+		if skipped, rateLimitErr := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
+			if rateLimitErr != nil {
+				return indexerExecResult{id: idx.ID, err: rateLimitErr}
+			}
+			return indexerExecResult{id: idx.ID}
 		}
 
 		// Apply the Prowlarr query workaround after capability processing so that
@@ -2079,8 +1992,11 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			return indexerExecResult{id: idx.ID, err: errors.New("missing indexer identifier")}
 		}
 
-		if skipped, rateLimited := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
-			return indexerExecResult{id: idx.ID, uncovered: rateLimited}
+		if skipped, rateLimitErr := s.applyIndexerRestrictions(ctx, client, idx, indexerID, meta, paramsMap); skipped {
+			if rateLimitErr != nil {
+				return indexerExecResult{id: idx.ID, err: rateLimitErr}
+			}
+			return indexerExecResult{id: idx.ID}
 		}
 
 		if opts.logSearchActivity {
@@ -2118,25 +2034,20 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 	}
 
 	if err != nil {
-		if cooldown, reason := detectRateLimit(err); reason {
-			s.handleRateLimit(ctx, idx, cooldown, err)
+		if retryAfter, rateLimited := detectRateLimit(err); rateLimited {
+			rateLimitErr := s.handleRateLimit(ctx, idx, rateLimitScopeQuery, retryAfter, err)
+			log.Warn().
+				Err(err).
+				Int("indexer_id", idx.ID).
+				Str("indexer", idx.Name).
+				Msg("Failed to search indexer")
+			return indexerExecResult{id: idx.ID, err: rateLimitErr}
 		}
 		log.Warn().
 			Err(err).
 			Int("indexer_id", idx.ID).
 			Str("indexer", idx.Name).
 			Msg("Failed to search indexer")
-
-		if strings.Contains(strings.ToLower(err.Error()), "429") ||
-			strings.Contains(strings.ToLower(err.Error()), "rate limit") ||
-			strings.Contains(strings.ToLower(err.Error()), "too many requests") {
-			backendLabel := strings.TrimSpace(string(idx.Backend))
-			if backendLabel == "" {
-				backendLabel = "indexer"
-			}
-			enhancedErr := fmt.Errorf("%s search failed: backend returned status 429 for indexer %s (ID: %d). Rate limiting is active for this indexer", backendLabel, idx.Name, idx.ID)
-			return indexerExecResult{id: idx.ID, err: enhancedErr}
-		}
 
 		return indexerExecResult{id: idx.ID, err: err}
 	}
@@ -2150,9 +2061,6 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 	annotateResultsWithSearchIDs(results, paramsMap)
-
-	// Reset escalation on successful request
-	s.rateLimiter.RecordSuccess(idx.ID)
 
 	return indexerExecResult{
 		results: results,
@@ -2204,13 +2112,22 @@ func digitsOnlyString(value string) bool {
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results.
 // The returned coverage slice contains indexer IDs that completed successfully (even if zero results).
 func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
-	s.ensureRateLimiterState()
 	// Filter out rate-limited indexers before starting the search
 	availableIndexers := make([]*models.TorznabIndexer, 0, len(indexers))
-	cooldownIndexers := s.rateLimiter.GetCooldownIndexers()
+	cooldownIndexers := s.rateLimiter.GetCooldownIndexers(rateLimitScopeQuery)
+	var earliestRateLimit *RateLimitError
 
 	for _, indexer := range indexers {
 		if resumeAt, inCooldown := cooldownIndexers[indexer.ID]; inCooldown {
+			rateLimitErr := &RateLimitError{
+				IndexerID:   indexer.ID,
+				IndexerName: indexer.Name,
+				Scope:       rateLimitScopeQuery,
+				RetryAt:     resumeAt,
+			}
+			if earliestRateLimit == nil || resumeAt.Before(earliestRateLimit.RetryAt) {
+				earliestRateLimit = rateLimitErr
+			}
 			localResumeAt := resumeAt.In(time.Local)
 			log.Warn().
 				Int("indexer_id", indexer.ID).
@@ -2233,8 +2150,8 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 
 	// If no indexers are available, return early with informative error
 	if len(availableIndexers) == 0 {
-		if len(cooldownIndexers) > 0 {
-			return nil, nil, fmt.Errorf("all indexers are currently rate-limited. %d indexer(s) in cooldown", len(cooldownIndexers))
+		if earliestRateLimit != nil {
+			return nil, nil, earliestRateLimit
 		}
 		return nil, nil, errors.New("no indexers available for search")
 	}
@@ -2242,7 +2159,6 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 	resultsChan := make(chan indexerExecResult, len(availableIndexers))
 
 	for _, indexer := range availableIndexers {
-		s.clearPersistedCooldown(indexer.ID)
 		go func(idx *models.TorznabIndexer) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -2264,12 +2180,13 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 
 	// Collect all results with timeout tracking
 	var (
-		allResults []Result
-		failures   int
-		timeouts   int
-		successes  int
-		lastErr    error
-		coverage   = make(map[int]struct{})
+		allResults           []Result
+		failures             int
+		timeouts             int
+		successes            int
+		lastErr              error
+		earliestRateLimitErr = earliestRateLimit
+		coverage             = make(map[int]struct{})
 	)
 
 	for range availableIndexers {
@@ -2282,12 +2199,18 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 					timeouts++
 				} else {
 					failures++
-					lastErr = result.err
+					if rateLimitErr, ok := errors.AsType[*RateLimitError](result.err); ok {
+						if earliestRateLimitErr == nil || rateLimitErr.RetryAt.Before(earliestRateLimitErr.RetryAt) {
+							earliestRateLimitErr = rateLimitErr
+						}
+					} else {
+						lastErr = result.err
+					}
 				}
 				continue
 			}
 			successes++
-			if result.id != 0 && !result.uncovered {
+			if result.id != 0 {
 				coverage[result.id] = struct{}{}
 			}
 			allResults = append(allResults, result.results...)
@@ -2303,6 +2226,9 @@ func (s *Service) searchMultipleIndexers(ctx context.Context, indexers []*models
 		Int("non_timeout_indexers", nonTimeoutIndexers).
 		Msg("Torznab search result counters")
 	if nonTimeoutIndexers > 0 && failures == nonTimeoutIndexers {
+		if earliestRateLimitErr != nil {
+			return nil, coverageSetToSlice(coverage), earliestRateLimitErr
+		}
 		return nil, coverageSetToSlice(coverage), fmt.Errorf("all %d indexers failed (last error: %w)", nonTimeoutIndexers, lastErr)
 	}
 
@@ -2335,15 +2261,20 @@ func (s *Service) runIndexerSearch(ctx context.Context, idx *models.TorznabIndex
 	if err := validateIndexerBaseURL(idx); err != nil {
 		return nil, nil, err
 	}
-
-	s.ensureRateLimiterState()
-	s.clearPersistedCooldown(idx.ID)
+	if inCooldown, retryAt := s.rateLimiter.IsInCooldown(idx.ID, rateLimitScopeQuery); inCooldown {
+		return nil, nil, &RateLimitError{
+			IndexerID:   idx.ID,
+			IndexerName: idx.Name,
+			Scope:       rateLimitScopeQuery,
+			RetryAt:     retryAt,
+		}
+	}
 
 	result := s.executeIndexerSearch(ctx, idx, params, meta, indexerExecOptions{})
 	if result.err != nil {
 		return nil, nil, result.err
 	}
-	if result.uncovered || result.id == 0 {
+	if result.id == 0 {
 		return result.results, nil, nil
 	}
 	return result.results, []int{result.id}, nil
@@ -2376,7 +2307,7 @@ func mergeIndexerCoverage(groups ...[]int) []int {
 	return slices.Compact(merged)
 }
 
-func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) (skip, rateLimited bool) {
+func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, meta *searchContext, params map[string]string) (skip bool, rateLimitErr *RateLimitError) {
 	requiredCaps := requiredCapabilities(meta)
 	requested := requestedCategories(meta, params)
 
@@ -2384,12 +2315,11 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	needCategories := len(requested) > 0 && len(idx.Categories) == 0
 	if needCaps || needCategories {
 		err := s.ensureIndexerMetadata(ctx, client, idx, identifier, needCaps, needCategories)
-		if cooldown, rateLimited := detectRateLimit(err); rateLimited {
+		if retryAfter, rateLimited := detectRateLimit(err); rateLimited {
 			// A rate-limited caps fetch means the search itself would 429 too;
 			// searching anyway doubles the load on an indexer already telling
 			// us to back off, and keeps the metadata from ever healing.
-			s.handleRateLimit(ctx, idx, cooldown, err)
-			return true, true
+			return true, s.handleRateLimit(ctx, idx, rateLimitScopeQuery, retryAfter, err)
 		}
 		if needCaps && len(idx.Capabilities) == 0 {
 			s.warnCapsUnavailable(idx, err)
@@ -2465,7 +2395,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 				Strs("indexer_caps", idx.Capabilities).
 				Bool("enhanced_checking", usingEnhanced).
 				Msg("Skipping torznab indexer due to missing capabilities")
-			return true, false
+			return true, nil
 		} else if usingEnhanced {
 			log.Debug().
 				Int("indexer_id", idx.ID).
@@ -2491,7 +2421,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 				Ints("requested_categories", requested).
 				Ints("mapped_categories", mappedCategories).
 				Msg("Skipping torznab indexer due to unsupported categories")
-			return true, false
+			return true, nil
 		}
 
 		// Update the params with the filtered categories
@@ -2524,7 +2454,7 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 		Interface("final_params", params).
 		Msg("Final search parameters after capability processing")
 
-	return false, false
+	return false, nil
 }
 
 // torznabIDParamDefs maps each torznab ID parameter to the capability that
@@ -3168,29 +3098,26 @@ func searchModeForContentType(ct contentType) string {
 	}
 }
 
-var retryAfterRegex = regexp.MustCompile(`retry[- ]?after[:= ]*(\d+)`)
-
-var rateLimitTokens = []string{"429", "rate limit", "too many requests"}
+type httpResponseError interface {
+	error
+	HTTPStatusCode() int
+	RetryAfterHeader() string
+}
 
 func detectRateLimit(err error) (time.Duration, bool) {
-	if err == nil {
+	var responseErr httpResponseError
+	if !errors.As(err, &responseErr) || responseErr.HTTPStatusCode() != http.StatusTooManyRequests {
 		return 0, false
 	}
-	msg := strings.ToLower(err.Error())
-	matched := false
-	for _, token := range rateLimitTokens {
-		if strings.Contains(msg, token) {
-			matched = true
-			break
-		}
+
+	header := strings.TrimSpace(responseErr.RetryAfterHeader())
+	if seconds, parseErr := strconv.ParseInt(header, 10, 64); parseErr == nil && seconds >= 0 && seconds <= math.MaxInt64/int64(time.Second) {
+		return time.Duration(seconds) * time.Second, true
 	}
-	if !matched {
-		return 0, false
+	if retryAt, parseErr := http.ParseTime(header); parseErr == nil {
+		return max(time.Until(retryAt), 0), true
 	}
-	if dur := extractRetryAfter(msg); dur > 0 {
-		return dur, true
-	}
-	return defaultRateLimitCooldown, true
+	return defaultRetryAfter, true
 }
 
 func isTimeoutError(err error) bool {
@@ -3203,28 +3130,14 @@ func isTimeoutError(err error) bool {
 		strings.Contains(msg, "deadline exceeded")
 }
 
-func extractRetryAfter(msg string) time.Duration {
-	matches := retryAfterRegex.FindStringSubmatch(msg)
-	if len(matches) == 2 {
-		if seconds, err := strconv.Atoi(matches[1]); err == nil && seconds > 0 {
-			return time.Duration(seconds) * time.Second
-		}
+func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, scope string, retryAfter time.Duration, cause error) *RateLimitError {
+	retryAt := time.Now().Add(retryAfter)
+	if s.rateLimiter != nil {
+		retryAt = s.rateLimiter.SetCooldown(idx.ID, scope, retryAt)
 	}
-	return 0
-}
+	localRetryAt := retryAt.In(time.Local)
 
-func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexer, _ time.Duration, cause error) {
-	if idx == nil {
-		return
-	}
-
-	// Use escalating backoff instead of fixed cooldown
-	cooldown := s.rateLimiter.RecordFailure(idx.ID)
-	resumeAt := time.Now().Add(cooldown)
-	localResumeAt := resumeAt.In(time.Local)
-
-	message := fmt.Sprintf("Rate limit triggered for %s, pausing until %s (cooldown: %v)",
-		idx.Name, localResumeAt.Format(time.RFC3339), cooldown)
+	message := fmt.Sprintf("Rate limit triggered for %s %s requests until %s", idx.Name, scope, localRetryAt.Format(time.RFC3339))
 	if err := s.indexerStore.RecordError(ctx, idx.ID, message, "rate_limit"); err != nil {
 		log.Debug().Err(err).Int("indexer_id", idx.ID).Msg("Failed to record rate-limit error")
 	}
@@ -3232,177 +3145,21 @@ func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexe
 	log.Warn().
 		Int("indexer_id", idx.ID).
 		Str("indexer", idx.Name).
-		Dur("cooldown", cooldown).
-		Time("resume_at", localResumeAt).
+		Str("scope", scope).
+		Dur("retry_after", retryAfter).
+		Time("retry_at", localRetryAt).
 		Err(cause).
-		Msg("Rate limit applied to indexer (escalating backoff)")
-
-	reason := message
-	if cause != nil && strings.TrimSpace(cause.Error()) != "" {
-		reason = cause.Error()
-	}
-	s.persistRateLimitCooldown(idx.ID, resumeAt, cooldown, reason)
+		Msg("Rate limit applied to indexer")
 
 	// A cooldown was applied, changing the scheduler's visible activity.
 	s.emitIndexerActivity()
-}
 
-func (s *Service) ensureRateLimiterState() {
-	if s == nil || s.rateLimiter == nil || !s.shouldPersistCooldowns() {
-		return
+	return &RateLimitError{
+		IndexerID:   idx.ID,
+		IndexerName: idx.Name,
+		Scope:       scope,
+		RetryAt:     retryAt,
 	}
-
-	s.rateLimiterRestoreOnce.Do(func() {
-		if err := s.restoreRateLimitCooldowns(); err != nil {
-			log.Warn().Err(err).Msg("Failed to restore torznab rate-limit cooldowns")
-		}
-	})
-}
-
-func (s *Service) restoreRateLimitCooldowns() error {
-	if !s.shouldPersistCooldowns() {
-		return nil
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), storeOperationTimeout)
-	defer cancel()
-
-	cooldowns, err := s.indexerStore.ListRateLimitCooldowns(ctx)
-	if err != nil {
-		return err
-	}
-	if len(cooldowns) == 0 {
-		return nil
-	}
-
-	now := time.Now()
-	active := make(map[int]time.Time)
-
-	for _, cd := range cooldowns {
-		if cd.IndexerID <= 0 || cd.ResumeAt.IsZero() {
-			continue
-		}
-
-		resumeAt := cd.ResumeAt.UTC()
-		if !resumeAt.After(now) {
-			s.deleteCooldownRecord(cd.IndexerID)
-			continue
-		}
-
-		active[cd.IndexerID] = resumeAt
-		s.markCooldownPersisted(cd.IndexerID, resumeAt)
-	}
-
-	if len(active) == 0 {
-		return nil
-	}
-
-	s.rateLimiter.LoadCooldowns(active)
-	log.Debug().
-		Int("count", len(active)).
-		Msg("Restored persisted torznab rate-limit cooldowns")
-	return nil
-}
-
-func (s *Service) persistRateLimitCooldown(indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) {
-	if !s.shouldPersistCooldowns() || indexerID <= 0 {
-		return
-	}
-
-	cleanReason := strings.TrimSpace(reason)
-	if cleanReason == "" {
-		cleanReason = "rate limit"
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), storeOperationTimeout)
-	defer cancel()
-
-	if err := s.indexerStore.UpsertRateLimitCooldown(ctx, indexerID, resumeAt.UTC(), cooldown, cleanReason); err != nil {
-		log.Debug().
-			Err(err).
-			Int("indexer_id", indexerID).
-			Msg("Failed to persist torznab cooldown state")
-		return
-	}
-
-	s.markCooldownPersisted(indexerID, resumeAt)
-}
-
-func (s *Service) clearPersistedCooldown(indexerID int) {
-	if !s.shouldPersistCooldowns() || indexerID <= 0 {
-		return
-	}
-	if !s.isCooldownPersisted(indexerID) {
-		return
-	}
-
-	s.deleteCooldownRecord(indexerID)
-
-	// A cooldown was cleared, changing the scheduler's visible activity.
-	s.emitIndexerActivity()
-}
-
-func (s *Service) deleteCooldownRecord(indexerID int) {
-	if !s.shouldPersistCooldowns() || indexerID <= 0 {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), storeOperationTimeout)
-	defer cancel()
-
-	if err := s.indexerStore.DeleteRateLimitCooldown(ctx, indexerID); err != nil {
-		log.Debug().
-			Err(err).
-			Int("indexer_id", indexerID).
-			Msg("Failed to delete torznab cooldown state")
-		return
-	}
-
-	s.unmarkCooldownPersisted(indexerID)
-}
-
-func (s *Service) shouldPersistCooldowns() bool {
-	return s != nil && s.indexerStore != nil
-}
-
-func (s *Service) markCooldownPersisted(indexerID int, resumeAt time.Time) {
-	if s == nil || indexerID <= 0 {
-		return
-	}
-
-	s.persistedCooldownsMu.Lock()
-	if s.persistedCooldowns == nil {
-		s.persistedCooldowns = make(map[int]time.Time)
-	}
-	s.persistedCooldowns[indexerID] = resumeAt
-	s.persistedCooldownsMu.Unlock()
-}
-
-func (s *Service) unmarkCooldownPersisted(indexerID int) {
-	if s == nil || indexerID <= 0 {
-		return
-	}
-
-	s.persistedCooldownsMu.Lock()
-	if s.persistedCooldowns != nil {
-		delete(s.persistedCooldowns, indexerID)
-	}
-	s.persistedCooldownsMu.Unlock()
-}
-
-func (s *Service) isCooldownPersisted(indexerID int) bool {
-	if s == nil || indexerID <= 0 {
-		return false
-	}
-
-	s.persistedCooldownsMu.RLock()
-	defer s.persistedCooldownsMu.RUnlock()
-	if s.persistedCooldowns == nil {
-		return false
-	}
-
-	_, ok := s.persistedCooldowns[indexerID]
-	return ok
 }
 
 // capsUnavailableWarnCooldown keeps one indexer that cannot serve caps from filling the log.
@@ -3898,8 +3655,14 @@ func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int)
 		return indexers, nil
 	}
 
-	var selected []*models.TorznabIndexer
+	selected := make([]*models.TorznabIndexer, 0, len(indexerIDs))
+	seen := make(map[int]struct{}, len(indexerIDs))
 	for _, id := range indexerIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+
 		indexer, err := s.indexerStore.Get(ctx, id)
 		if errors.Is(err, models.ErrTorznabIndexerNotFound) {
 			continue
@@ -4793,9 +4556,6 @@ type ActivityStatus struct {
 
 // GetActivityStatus returns the current activity status including scheduler state and cooldowns
 func (s *Service) GetActivityStatus(ctx context.Context) (*ActivityStatus, error) {
-	// Ensure persisted cooldowns are restored before checking status
-	s.ensureRateLimiterState()
-
 	status := &ActivityStatus{
 		CooldownIndexers: make([]IndexerCooldownStatus, 0),
 	}
@@ -4806,27 +4566,34 @@ func (s *Service) GetActivityStatus(ctx context.Context) (*ActivityStatus, error
 		status.Scheduler = &schedulerStatus
 	}
 
-	// Get cooldown indexers from rate limiter
 	if s.rateLimiter != nil {
-		cooldowns := s.rateLimiter.GetCooldownIndexers()
-		if len(cooldowns) > 0 {
-			// Build a map of indexer names
-			indexers, err := s.indexerStore.List(ctx)
-			if err == nil {
-				nameMap := make(map[int]string)
-				for _, idx := range indexers {
-					nameMap[idx.ID] = idx.Name
-				}
-
-				for id, until := range cooldowns {
+		indexers, err := s.indexerStore.List(ctx)
+		if err == nil {
+			nameMap := make(map[int]string, len(indexers))
+			for _, idx := range indexers {
+				nameMap[idx.ID] = idx.Name
+			}
+			positions := make(map[int]int)
+			for _, scope := range []string{rateLimitScopeQuery, rateLimitScopeGrab} {
+				for id, until := range s.rateLimiter.GetCooldownIndexers(scope) {
+					if position, exists := positions[id]; exists {
+						cooldown := &status.CooldownIndexers[position]
+						if until.After(cooldown.CooldownEnd) {
+							cooldown.CooldownEnd = until
+						}
+						cooldown.Reason += "," + scope
+						continue
+					}
 					name := nameMap[id]
 					if name == "" {
 						name = fmt.Sprintf("Indexer %d", id)
 					}
+					positions[id] = len(status.CooldownIndexers)
 					status.CooldownIndexers = append(status.CooldownIndexers, IndexerCooldownStatus{
 						IndexerID:   id,
 						IndexerName: name,
 						CooldownEnd: until,
+						Reason:      scope,
 					})
 				}
 			}

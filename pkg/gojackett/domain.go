@@ -5,12 +5,29 @@ package jackett
 
 import (
 	"encoding/xml"
+	"fmt"
+	"strconv"
 )
 
 // TorznabError represents a Torznab error response
 type TorznabError struct {
-	Code    string `xml:"code,attr"`
-	Message string `xml:",chardata"`
+	XMLName    xml.Name `xml:"error"`
+	Code       string   `xml:"code,attr"`
+	Message    string   `xml:",chardata"`
+	RetryAfter string   `xml:"-"`
+}
+
+func (e *TorznabError) Error() string {
+	return fmt.Sprintf("torznab error %s: %s", e.Code, e.Message)
+}
+
+func (e *TorznabError) HTTPStatusCode() int {
+	status, _ := strconv.Atoi(e.Code)
+	return status
+}
+
+func (e *TorznabError) RetryAfterHeader() string {
+	return e.RetryAfter
 }
 
 type Indexers struct {

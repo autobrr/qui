@@ -126,18 +126,6 @@ func (s *failingEnabledIndexerStore) RecordError(context.Context, int, string, s
 	return nil
 }
 
-func (s *failingEnabledIndexerStore) ListRateLimitCooldowns(context.Context) ([]models.TorznabIndexerCooldown, error) {
-	return []models.TorznabIndexerCooldown{}, nil
-}
-
-func (s *failingEnabledIndexerStore) UpsertRateLimitCooldown(context.Context, int, time.Time, time.Duration, string) error {
-	return nil
-}
-
-func (s *failingEnabledIndexerStore) DeleteRateLimitCooldown(context.Context, int) error {
-	return nil
-}
-
 func newFailingJackettService(err error) *jackett.Service {
 	return jackett.NewService(&failingEnabledIndexerStore{err: err})
 }

@@ -72,18 +72,6 @@ func (s *failingDirScanIndexerStore) RecordError(context.Context, int, string, s
 	return nil
 }
 
-func (s *failingDirScanIndexerStore) ListRateLimitCooldowns(context.Context) ([]models.TorznabIndexerCooldown, error) {
-	return []models.TorznabIndexerCooldown{}, nil
-}
-
-func (s *failingDirScanIndexerStore) UpsertRateLimitCooldown(context.Context, int, time.Time, time.Duration, string) error {
-	return nil
-}
-
-func (s *failingDirScanIndexerStore) DeleteRateLimitCooldown(context.Context, int) error {
-	return nil
-}
-
 func TestService_EnabledIndexerIDSet_StoreError_ReturnsNil(t *testing.T) {
 	t.Parallel()
 

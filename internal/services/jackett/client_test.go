@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -138,6 +140,88 @@ func TestDownloadError_ErrorsAs(t *testing.T) {
 	require.ErrorAs(t, wrapped, &dlErr, "errors.As should extract DownloadError from wrapped error")
 	assert.Equal(t, 429, dlErr.StatusCode)
 	assert.Equal(t, "https://example.com", dlErr.URL)
+}
+
+func TestFetchCapsPreservesRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "45")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "prowlarr", 5)
+	_, err := client.FetchCaps(context.Background(), "14")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "45", responseErr.RetryAfterHeader())
+}
+
+func TestFetchCapsPreservesBodyRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "47")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><error code="429" description="Too many requests"/>`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "native", 5)
+	_, err := client.FetchCaps(context.Background(), "")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "47", responseErr.RetryAfterHeader())
+}
+
+func TestDownloadPreservesRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "52")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "jackett", 5)
+	_, err := client.Download(context.Background(), server.URL+"/download")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "52", responseErr.RetryAfterHeader())
+}
+
+func TestFetchCapsWithRetryDoesNotRetryRateLimit(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := fetchCapsWithRetry(t.Context(), server.URL, "", nil, nil, "prowlarr", "14", 2, time.Millisecond, time.Second)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), calls.Load())
 }
 
 // TestDiscoverJackettIndexers_RedactsAPIKey is a regression test for issue #839.

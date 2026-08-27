@@ -293,10 +293,8 @@ const (
 	minSearchIntervalSecondsTorznab       = 60
 	minSearchIntervalSecondsGazelleOnly   = 5
 	minSearchCooldownMinutes              = 720
-	maxCompletionSearchAttempts           = 3
 	maxCompletionCheckingAttempts         = 3
 	torznabCrossSeedSearchLimit           = 100
-	defaultCompletionRetryDelay           = 30 * time.Second
 	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
 	defaultCompletionCheckingTimeout      = 5 * time.Minute
@@ -314,18 +312,6 @@ func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 		return torznabCrossSeedSearchLimit
 	}
 	return min(limit, torznabCrossSeedSearchLimit)
-}
-
-var completionRateLimitTokens = []string{
-	"429",
-	"rate limit",
-	"rate-limited",
-	"too many requests",
-	"cooldown",
-	"request limit reached",
-	"query limit",
-	"grab limit",
-	"disabled till",
 }
 
 func automationTorrentSearchContext(ctx context.Context, disableTorznab bool) (context.Context, context.CancelFunc, time.Duration) {
@@ -2306,7 +2292,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	err = s.executeCompletionSearchWithRetry(ctx, instanceID, readyTorrent, settings, completionSettings)
+	err = s.invokeCompletionSearch(ctx, instanceID, readyTorrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -2802,42 +2788,6 @@ func isCompletionCheckingState(state qbt.TorrentState) bool {
 		state == qbt.TorrentStateMoving
 }
 
-func (s *Service) executeCompletionSearchWithRetry(
-	ctx context.Context,
-	instanceID int,
-	torrent *qbt.Torrent,
-	settings *models.CrossSeedAutomationSettings,
-	completionSettings *models.InstanceCrossSeedCompletionSettings,
-) error {
-	var lastErr error
-	for attempt := 1; attempt <= maxCompletionSearchAttempts; attempt++ {
-		err := s.invokeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-
-		retryAfter, retry := completionRetryDelay(err)
-		if !retry || attempt == maxCompletionSearchAttempts {
-			break
-		}
-		if retryAfter <= 0 {
-			retryAfter = defaultCompletionRetryDelay
-		}
-
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Int("attempt", attempt).
-			Dur("retryAfter", retryAfter).
-			Msg("[CROSSSEED-COMPLETION] Rate-limited completion search, retrying")
-
-		time.Sleep(retryAfter)
-	}
-	return lastErr
-}
-
 func (s *Service) invokeCompletionSearch(
 	ctx context.Context,
 	instanceID int,
@@ -2849,28 +2799,6 @@ func (s *Service) invokeCompletionSearch(
 		return s.completionSearchInvoker(ctx, instanceID, torrent, settings, completionSettings)
 	}
 	return s.executeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
-}
-
-func completionRetryDelay(err error) (time.Duration, bool) {
-	if err == nil {
-		return 0, false
-	}
-
-	if waitErr, ok := errors.AsType[*jackett.RateLimitWaitError](err); ok {
-		if waitErr.Wait > 0 {
-			return waitErr.Wait, true
-		}
-		return defaultCompletionRetryDelay, true
-	}
-
-	msg := strings.ToLower(strings.TrimSpace(err.Error()))
-	for _, token := range completionRateLimitTokens {
-		if strings.Contains(msg, token) {
-			return defaultCompletionRetryDelay, true
-		}
-	}
-
-	return 0, false
 }
 
 // updateAutomationRunWithRetry attempts to update the automation run in the database with retries
@@ -14443,9 +14371,8 @@ func wrapCrossSeedSearchError(err error) error {
 		return nil
 	}
 
-	msg := normalizeLowerTrim(err.Error())
-	if strings.Contains(msg, "rate-limited") || strings.Contains(msg, "cooldown") {
-		return fmt.Errorf("cross-seed search temporarily unavailable: %w. This is normal protection against tracker bans. Try again in 30-60 minutes or use fewer indexers", err)
+	if _, ok := errors.AsType[*jackett.RateLimitError](err); ok {
+		return fmt.Errorf("cross-seed search temporarily unavailable: %w. Retry after the indexer cooldown or use fewer indexers", err)
 	}
 
 	return fmt.Errorf("torznab search failed: %w", err)
