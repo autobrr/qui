@@ -5164,7 +5164,9 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	}
 	targetInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
 	if len(req.InstanceIDs) > 0 && len(targetInstanceIDs) == 0 {
-		return nil, fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
+		err := fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 
 	settings, settingsErr := s.GetAutomationSettings(ctx)
@@ -12758,11 +12760,12 @@ func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyReque
 
 	eventType := notifications.EventCrossSeedWebhookSucceeded
 	errorMessage := ""
-	if len(addedResults) == 0 {
+	if len(failedResults) > 0 || runErr != nil {
 		eventType = notifications.EventCrossSeedWebhookFailed
 		if runErr != nil {
 			errorMessage = strings.TrimSpace(runErr.Error())
-		} else {
+		}
+		if errorMessage == "" && len(failedResults) > 0 {
 			errorMessage = strings.TrimSpace(failedResults[0].Message)
 		}
 		if errorMessage == "" {

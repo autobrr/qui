@@ -156,6 +156,35 @@ func TestAutobrrApplyNotifiesWhenAddFails(t *testing.T) {
 	require.Equal(t, 1, events[0].CrossSeed.Failed)
 }
 
+func TestAutobrrApplyNotifiesWhenApplyPartiallyFails(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{
+		notifier: notifier,
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			return &CrossSeedResponse{
+				Success: true,
+				Results: []InstanceCrossSeedResult{
+					{InstanceID: 1, InstanceName: "primary", Success: true, Status: "added"},
+					{InstanceID: 2, InstanceName: "archive", Status: "error", Message: "synthetic add failure"},
+				},
+			}, errors.New("synthetic add failure")
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+	require.NoError(t, err)
+	require.True(t, response.Success)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.Equal(t, 1, events[0].CrossSeed.Added)
+	require.Equal(t, 1, events[0].CrossSeed.Failed)
+	require.Contains(t, events[0].ErrorMessage, "synthetic add failure")
+}
+
 func TestAutobrrApplyNotifiesWhenProcessingFails(t *testing.T) {
 	t.Parallel()
 
@@ -189,6 +218,25 @@ func TestAutobrrApplyNotifiesWhenTorrentDataIsEmpty(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
 	require.Contains(t, events[0].ErrorMessage, "torrentData is required")
+}
+
+func TestAutobrrApplyNotifiesWhenInstanceIDsAreInvalid(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: "ZGF0YQ==",
+		InstanceIDs: []int{0, -1},
+	})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Nil(t, response)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.Contains(t, events[0].ErrorMessage, "instanceIds must contain at least one positive integer")
 }
 
 func TestAutobrrApplyNotifiesForLinkModeResults(t *testing.T) {
