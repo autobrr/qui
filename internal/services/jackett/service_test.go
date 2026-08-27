@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -3336,6 +3340,15 @@ func TestRecentSurfacesTotalIndexerFailure(t *testing.T) {
 // TestRecentPartialCoverageMarksPartial verifies Recent flags incomplete indexer
 // coverage as partial even when no error is returned.
 func TestRecentPartialCoverageMarksPartial(t *testing.T) {
+	originalLogger := log.Logger
+	partialLogLevel := zerolog.NoLevel
+	log.Logger = zerolog.New(io.Discard).Level(zerolog.TraceLevel).Hook(zerolog.HookFunc(func(_ *zerolog.Event, level zerolog.Level, msg string) {
+		if msg == "Recent search returning partial results" {
+			partialLogLevel = level
+		}
+	}))
+	t.Cleanup(func() { log.Logger = originalLogger })
+
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
 			{ID: 1, Name: "IndexerOne", Enabled: true},
@@ -3378,6 +3391,10 @@ func TestRecentPartialCoverageMarksPartial(t *testing.T) {
 		t.Fatalf("expected partial success, got error %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Recent never invoked its callback")
+	}
+
+	if partialLogLevel != zerolog.DebugLevel {
+		t.Fatalf("partial search log level = %s, want debug", partialLogLevel)
 	}
 }
 
