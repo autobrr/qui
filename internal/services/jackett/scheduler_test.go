@@ -1089,6 +1089,28 @@ func TestRateLimiter_IsInCooldown(t *testing.T) {
 	}
 }
 
+func TestRateLimiter_CooldownsAreScopedAndNeverShortened(t *testing.T) {
+	t.Parallel()
+
+	limiter := NewRateLimiter(time.Millisecond)
+	queryUntil := time.Now().Add(2 * time.Hour)
+	grabUntil := queryUntil.Add(time.Hour)
+
+	limiter.SetCooldown(1, rateLimitScopeQuery, queryUntil)
+	limiter.SetCooldown(1, rateLimitScopeQuery, queryUntil.Add(-time.Hour))
+	limiter.SetCooldown(1, rateLimitScopeGrab, grabUntil)
+
+	queryLimited, gotQueryUntil := limiter.IsInCooldown(1, rateLimitScopeQuery)
+	grabLimited, gotGrabUntil := limiter.IsInCooldown(1, rateLimitScopeGrab)
+	require.True(t, queryLimited)
+	require.True(t, grabLimited)
+	assert.True(t, gotQueryUntil.Equal(queryUntil), "query cooldown = %s, want %s", gotQueryUntil, queryUntil)
+	assert.True(t, gotGrabUntil.Equal(grabUntil), "grab cooldown = %s, want %s", gotGrabUntil, grabUntil)
+
+	assert.Equal(t, map[int]time.Time{1: gotQueryUntil}, limiter.GetCooldownIndexers(rateLimitScopeQuery))
+	assert.Equal(t, map[int]time.Time{1: gotGrabUntil}, limiter.GetCooldownIndexers(rateLimitScopeGrab))
+}
+
 func TestRateLimiter_RecordRequestComplete(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
 	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
@@ -1144,4 +1166,17 @@ func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
 	if time.Since(start) > 150*time.Millisecond {
 		t.Fatalf("WaitForMinInterval waited unexpectedly long (cooldown should be ignored)")
 	}
+}
+
+func TestRateLimiter_WaitForMinIntervalHonorsCancellation(t *testing.T) {
+	t.Parallel()
+
+	limiter := NewRateLimiter(time.Hour)
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
+	limiter.RecordRequestComplete(indexer.ID, time.Now())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, limiter.WaitForMinInterval(ctx, indexer), context.Canceled)
 }

@@ -4,8 +4,11 @@
 package jackett
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	gojackett "github.com/autobrr/qui/pkg/gojackett"
 )
 
 func TestParseTorznabCaps_Limits(t *testing.T) {
@@ -214,5 +217,63 @@ func TestParseTorznabCaps_FullParsing(t *testing.T) {
 	// Check categories are still parsed correctly
 	if len(caps.Categories) != 3 { // 2 parents + 1 subcat
 		t.Errorf("expected 3 categories, got %d", len(caps.Categories))
+	}
+}
+
+func TestParseTorznabCapsResponse_ReturnsStructuredTorznabError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		xml         string
+		wantMessage string
+	}{
+		{
+			name:        "description attribute",
+			xml:         `<error code="429" description="  request quota exhausted  "/>`,
+			wantMessage: "request quota exhausted",
+		},
+		{
+			name:        "character data fallback",
+			xml:         `<error code="429">  slow down  </error>`,
+			wantMessage: "slow down",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			caps, err := parseTorznabCapsResponse(strings.NewReader(tt.xml), "37")
+			if caps != nil {
+				t.Fatalf("parseTorznabCapsResponse() caps = %#v, want nil", caps)
+			}
+
+			var torznabErr *gojackett.TorznabError
+			if !errors.As(err, &torznabErr) {
+				t.Fatalf("parseTorznabCapsResponse() error = %T, want *gojackett.TorznabError", err)
+			}
+			if got := torznabErr.HTTPStatusCode(); got != 429 {
+				t.Errorf("HTTPStatusCode() = %d, want 429", got)
+			}
+			if got := torznabErr.Message; got != tt.wantMessage {
+				t.Errorf("Message = %q, want %q", got, tt.wantMessage)
+			}
+			if got := torznabErr.RetryAfterHeader(); got != "37" {
+				t.Errorf("RetryAfterHeader() = %q, want %q", got, "37")
+			}
+		})
+	}
+}
+
+func TestParseTorznabCapsResponse_RejectsUnexpectedRoot(t *testing.T) {
+	t.Parallel()
+
+	caps, err := parseTorznabCapsResponse(strings.NewReader(`<rss version="2.0"/>`), "")
+	if caps != nil {
+		t.Fatalf("parseTorznabCapsResponse() caps = %#v, want nil", caps)
+	}
+	if err == nil || !strings.Contains(err.Error(), "expected element type <caps> but have <rss>") {
+		t.Fatalf("parseTorznabCapsResponse() error = %v, want unexpected root error", err)
 	}
 }
