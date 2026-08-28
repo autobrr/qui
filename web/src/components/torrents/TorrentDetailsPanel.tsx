@@ -1403,7 +1403,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 space-y-1">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
+                                        <span className="font-mono text-sm break-all cursor-context-menu">{peer.ip}:{peer.port}</span>
                                         {peer.country_code && (
                                           <span
                                             className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
