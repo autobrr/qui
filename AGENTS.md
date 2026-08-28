@@ -90,6 +90,8 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 ## Commits / PRs
 
 - Keep Superpowers workflow files local and untracked; never add or commit `docs/superpowers/`.
+- Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
+- When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
 - Keep commits focused; split backend/frontend when practical. If a feature spans schema, backend service, and web UI, stack PRs: schema + models, then service logic, then UI.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
