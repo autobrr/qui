@@ -1252,7 +1252,7 @@
       "unknownClient": "Невідомий клієнт"
     },
     "actions": {
-      "copyIpPort": "Скопіюйте IP:порт",
+      "copyIpPort": "Копіювати адресу",
       "banPeerPermanently": "Заблокувати піра назавжди",
       "selectAll": "Усі",
       "selectNone": "Жодного"
@@ -1326,7 +1326,7 @@
     "editTrackerUrl": "Редагувати URL трекера"
   },
   "peersTable": {
-    "address": "IP:Порт",
+    "address": "IP/Адреса",
     "client": "Клієнт",
     "flags": "Прапори",
     "progress": "Прогрес",
@@ -1335,11 +1335,11 @@
     "downloaded": "Завантажено",
     "uploaded": "Вивантажено",
     "relevance": "Актуальність",
-    "copyIpAddress": "Скопіюйте адресу IP",
+    "copyIpAddress": "Копіювати адресу",
     "banPeer": "Заблокувати піра",
     "noPeersConnected": "Немає підключених пірів",
     "toast": {
-      "ipCopied": "Адресу IP скопійовано в буфер обміну"
+      "ipCopied": "Адресу скопійовано в буфер обміну"
     }
   },
   "routes": {

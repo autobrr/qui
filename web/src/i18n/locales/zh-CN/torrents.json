@@ -1075,7 +1075,7 @@
       "unknownClient": "未知客户端"
     },
     "actions": {
-      "copyIpPort": "复制 IP:端口",
+      "copyIpPort": "复制地址",
       "banPeerPermanently": "永久封禁节点",
       "selectAll": "全部",
       "selectNone": "无"
@@ -1149,7 +1149,7 @@
     "editTrackerUrl": "编辑 Tracker URL"
   },
   "peersTable": {
-    "address": "IP:端口",
+    "address": "IP/地址",
     "client": "客户端",
     "flags": "标志",
     "progress": "进度",
@@ -1158,11 +1158,11 @@
     "downloaded": "已下载",
     "uploaded": "已上传",
     "relevance": "相关性",
-    "copyIpAddress": "复制 IP 地址",
+    "copyIpAddress": "复制地址",
     "banPeer": "封禁节点",
     "noPeersConnected": "无已连接节点",
     "toast": {
-      "ipCopied": "IP 地址已复制到剪贴板"
+      "ipCopied": "地址已复制到剪贴板"
     }
   },
   "routes": {

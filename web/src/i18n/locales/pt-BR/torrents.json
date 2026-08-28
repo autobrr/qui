@@ -1134,7 +1134,7 @@
       "unknownClient": "Cliente desconhecido"
     },
     "actions": {
-      "copyIpPort": "Copiar IP:porta",
+      "copyIpPort": "Copiar endereço",
       "banPeerPermanently": "Banir peer permanentemente",
       "selectAll": "Todos",
       "selectNone": "Nenhum"
@@ -1208,7 +1208,7 @@
     "editTrackerUrl": "Editar URL do Tracker"
   },
   "peersTable": {
-    "address": "IP:Porta",
+    "address": "IP/Endereço",
     "client": "Cliente",
     "flags": "Bandeiras (Flags)",
     "progress": "Progresso",
@@ -1217,11 +1217,11 @@
     "downloaded": "Baixado",
     "uploaded": "Enviado",
     "relevance": "Relevância",
-    "copyIpAddress": "Copiar IP",
+    "copyIpAddress": "Copiar endereço",
     "banPeer": "Banir Peer",
     "noPeersConnected": "Nenhum peer conectado",
     "toast": {
-      "ipCopied": "Endereço IP copiado para a área de transferência"
+      "ipCopied": "Endereço copiado para a área de transferência"
     }
   },
   "routes": {
