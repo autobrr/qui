@@ -143,7 +143,15 @@ func (s *Service) SendTest(ctx context.Context, target *models.NotificationTarge
 		return errors.New("notification target required")
 	}
 
-	return s.send(ctx, target, Event{}, title, message)
+	event := Event{}
+	if targetScheme(target.URL) == "notifiarrapi" {
+		if len(target.EventTypes) == 0 {
+			return errors.New("notifiarr api test requires at least one event type")
+		}
+		event.Type = EventType(target.EventTypes[0])
+	}
+
+	return s.send(ctx, target, event, title, message)
 }
 
 func (s *Service) worker(ctx context.Context) {
@@ -405,10 +413,10 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		title := "Cross-seed completion search failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedWebhookSucceeded:
-		title := "Cross-seed webhook check completed"
+		title := "Cross-seed webhook torrent added"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedWebhookFailed:
-		title := "Cross-seed webhook check failed"
+		title := "Cross-seed webhook failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventAutomationsActionsApplied:
 		title := "Automations actions applied"

@@ -1,51 +1,51 @@
 ---
-sidebar_position: 8
+sidebar_position: 10
 title: Tracker Customizations
 description: Give trackers friendly display names and merge multiple announce domains into one entry.
 ---
 
-# Tracker Customizations
+# Tracker customizations
 
-qui identifies trackers by their announce domain (`tracker.example.com`). A tracker customization maps one or more domains to a friendly display name (`MyTracker`), which qui then uses in place of the raw domain.
+qui identifies trackers by their announce domain (`tracker.example.com`). A tracker customization maps one or more domains to a friendly display name (`MyTracker`). qui then shows the display name in place of the raw domain.
 
-Display names apply across all your instances — you only set them up once.
+Display names apply across all your instances. You configure them once.
 
-## Where to Find It
+## Where to find it
 
 Tracker customizations live on the **Dashboard**, in the **Tracker Breakdown** section. There is no Settings page for them.
 
-Expand **Tracker Breakdown** to see the table of trackers; the rename, merge, edit, and delete actions are the row actions in that table.
+Expand **Tracker Breakdown** to see the table of trackers. The rename, merge, edit, and delete actions are the row actions in that table.
 
-## Rename a Tracker
+## Rename a tracker
 
 1. Open the **Dashboard** and expand **Tracker Breakdown**.
-2. Hover the tracker row (on mobile, tap the row to open its drawer).
+2. Hover the tracker row. If you are on mobile, tap the row to open its drawer.
 3. Click the pencil icon (**Rename**).
 4. Enter a **Display Name** and save.
 
-## Merge Trackers
+## Merge trackers
 
-Trackers that announce on several domains can be combined into a single entry:
+If a tracker announces on several domains, you can combine the domains into a single entry:
 
-1. Tick the checkbox on each tracker row you want to combine.
-2. Click the link icon on one of the selected rows (**Merge selected trackers into this group**).
+1. Tick the checkbox on each tracker row that you want to combine.
+2. Click the link icon on one of the selected rows (**Add to merge**).
 3. Enter the **Display Name** for the merged entry and save.
 
 The merge dialog marks the first domain **Primary**. Its torrents always count toward the group's Dashboard statistics. The other domains start unticked and do not count until you tick them.
 
-That default avoids double-counting. Trackers often announce the same torrents on several domains, so counting every domain would count those torrents twice and inflate your upload and ratio figures. Tick a domain only if it holds torrents the primary one doesn't.
+That default avoids double-counting. Trackers often announce the same torrents on several domains. If every domain counts, the same torrents count twice and inflate your upload and ratio figures. If a domain holds torrents that the primary domain does not, tick that domain.
 
-To add another domain to an existing group later, select the domain and click the link icon on the group's row.
+If you want to add another domain to an existing group later, select the domain and click the link icon on the group's row.
 
-## Edit or Delete
+## Edit or delete
 
-Rows that already have a customization show a pencil (**Edit**) and a trash icon (**Delete**) on hover. Deleting a customization reverts those trackers to their raw domains.
+Rows that already have a customization show a pencil (**Edit**) and a trash icon (**Delete**) on hover. If you delete a customization, those trackers revert to their raw domains.
 
-## Import and Export
+## Import and export
 
 The **Tracker Breakdown** header has import and export buttons.
 
-**Export** copies all customizations to the clipboard as JSON. **Import** accepts the same JSON and reports new entries, conflicts, and unchanged entries before applying; for each conflict you choose **Skip** or **Overwrite**.
+**Export** copies all customizations to the clipboard as JSON. **Import** accepts the same JSON and reports new entries, conflicts, and unchanged entries before it applies them. For each conflict, you choose **Skip** or **Overwrite**.
 
 ```json
 {
@@ -60,10 +60,10 @@ The **Tracker Breakdown** header has import and export buttons.
 }
 ```
 
-The first entry in `domains` is the primary one and always counts toward Dashboard statistics. `includedInStats` is optional and lists any of the other domains you also want counted; leave it out and only the primary domain counts.
+The first entry in `domains` is the primary domain and always counts toward Dashboard statistics. `includedInStats` is optional and lists the other domains that you also want to count. If you leave it out, only the primary domain counts.
 
-## Where Display Names Are Used
+## Where display names are used
 
 - **Dashboard** statistics and tracker breakdown.
-- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and move paths can use it via `{{.Tracker}}`.
+- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and move paths can use it with `{{.Tracker}}`. See [Move](./automations.md#move) for when `{{.Tracker}}` uses the display name.
 - **[Cross-seed link directories](./cross-seed/link-directories.md)**: the `by-tracker` preset uses the display name for folder names.
