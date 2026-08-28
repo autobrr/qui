@@ -23,7 +23,7 @@ When matching paths, qui normalizes Unicode paths to canonical NFC form. If the 
 :::
 
 :::info
-If multiple **active** qBittorrent instances have `Has local filesystem access` enabled and their torrent save paths overlap, qui also protects files that torrents from those other instances reference. qui applies this protection even when it scans a single instance.
+If multiple **active** qBittorrent instances have **[Local Filesystem Access](./instance-settings.md#local-filesystem-access)** enabled and their torrent save paths overlap, qui also protects files that torrents from those other instances reference. qui applies this protection even when it scans a single instance.
 
 To protect files safely, qui must determine whether the scan roots overlap. If any other local-access instance is unreachable or not ready, the scan fails to prevent false positives.
 :::
@@ -49,7 +49,7 @@ qui scans a directory only if at least one torrent points to it. If you delete a
 | Scan interval | How often scheduled scans run | 24 hours |
 | Max files per run | Maximum orphan preview entries saved for a run (also caps what qui can delete from that run) | 1,000 |
 | Auto-cleanup | Delete orphans from scheduled scans without manual confirmation | Disabled |
-| Auto-cleanup max files | If the orphan count is at or below this threshold, auto-delete orphans | 100 |
+| Max files threshold | If the orphan count is at or below this threshold, auto-delete orphans | 100 |
 
 <OrphanScanDefaultIgnores />
 

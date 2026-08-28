@@ -67,10 +67,10 @@ qui parses arguments with shell-style quoting and replaces each placeholder with
 ```
 
 ```text
-D:\Upload Assistant\upload.py {save_path}\{name}
+"D:\Upload Assistant\upload.py" "{save_path}\{name}"
 ```
 
-qui splits the template into arguments before it runs substitutions. If the target application requires literal quotes, add them to the template. Otherwise, omit extra quotes.
+qui splits the template into arguments before it runs substitutions. Quotes keep a path with spaces as one argument. qui removes the quotes, so the program receives the value without them. If the program requires literal quotes, put a different quote type inside the outer pair, for example `'"{name}"'`.
 
 ## Path mappings
 
@@ -94,7 +94,7 @@ Programs run asynchronously. qui does not wait for processes to complete.
 
 If you enable "Launch in terminal window", qui detects and uses an available terminal emulator. Detection priority:
 
-1. **TERM_PROGRAM environment variable**: If qui runs inside a terminal, qui uses that terminal
+1. **TERM_PROGRAM environment variable**: If `TERM_PROGRAM` names one of the terminals in the next two groups and that terminal is installed, qui uses it
 2. **Cross-platform terminals** (checked on all platforms):
    - WezTerm
    - Hyper
@@ -171,7 +171,7 @@ When torrents match configured conditions, automation rules trigger external pro
 |--------|-------------|
 | **Execution** | Programs run asynchronously (fire-and-forget) and do not block automation processing |
 | **Configuration** | Automation uses the same program configuration (path, arguments, path mappings) as manual execution |
-| **Availability** | Only enabled programs appear in the automation dropdown |
+| **Availability** | The dropdown lists enabled programs. A disabled program stays in the list, marked "(disabled)", only when the rule already uses it |
 | **Combinable** | You can combine this action with other actions (speed limits, share limits, pause, tag, category) |
 
 ### Activity logging
@@ -197,12 +197,12 @@ qui logs success after the program starts, not when qui queues the task. If the 
 - Action: External Program that sends a notification via curl/webhook
 
 **Media library scans:**
-- Condition: Category changed to "movies" (use category action + external program)
-- Action: External Program that triggers Plex/Jellyfin scan
+- Condition: `Category is movies`
+- Action: External Program that triggers a Plex or Jellyfin scan
 
 ## Troubleshooting
 
 - **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
 - **Multiple torrents**: The program runs once per torrent. Make sure that your script handles concurrent executions or uses a lock.
-- **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in automation dropdowns.
+- **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in the dropdown for new rules.

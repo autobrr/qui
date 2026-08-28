@@ -8,7 +8,7 @@ description: Serve qui from a subdirectory behind a reverse proxy.
 
 If you serve qui from a subdirectory (for example `https://example.com/qui/`), configure the base URL.
 
-qui normalizes the value at startup. `/qui/`, `/qui`, and `qui` all become `/qui/`.
+qui normalizes the value at startup. `/qui/`, `/qui`, and `qui` all become `/qui/`. Restart qui after you change the base URL.
 
 ## Environment variable
 

@@ -23,6 +23,7 @@ If you enable Gazelle matching:
 - If a torrent comes from OPS or RED, qui queries **only the opposite site** (RED -> OPS, OPS -> RED).
 - If a torrent comes from another source, qui checks it against the Gazelle sites you configured.
 - Torznab can run in parallel. If you configure **both** Gazelle keys, qui excludes OPS/RED Torznab indexers from per-torrent searches (manual, completion, library scan). If you configure only one key, qui keeps Torznab as a fallback.
+- Completion searches are the exception. If a completed torrent comes from OPS or RED, qui searches only the opposite site when you configured its key. It skips Torznab for that torrent.
 - If Torznab is unavailable, qui still returns a successful empty result for a torrent that Gazelle handled. If a local prefilter proves the target tracker content is already present, qui sends no remote Gazelle request.
 
 Gazelle support gives qui music-specific handling for OPS/RED. The tracker-native APIs search by Gazelle release metadata and source-specific infohashes. Direct Gazelle API use lets Gazelle-only scans run without a Torznab backend. qui paces API requests and tracks key coverage separately from Torznab indexer rules.
@@ -90,7 +91,7 @@ Fix:
 
 - Enable Gazelle
 - Set at least one API key
-- If you changed `session_secret`, enter the keys again. qui cannot decrypt the old encrypted values.
+- If you changed `sessionSecret` (or `QUI__SESSION_SECRET`), enter the keys again. qui cannot decrypt the old encrypted values.
 - For the best OPS/RED coverage, set **both** keys
 
 ### Only one key set
@@ -110,8 +111,9 @@ Gazelle and Torznab also differ in how qui applies time-based search constraints
 
 - If you enable Torznab, Library Scan keeps the per-torrent interval floor of 60 seconds used for indexer searches.
 - If you disable Torznab and configure Gazelle, Library Scan can use a lower interval floor because requests go directly to the tracker APIs instead of through Torznab indexers.
-- qui records the search cooldown only after it attempts a remote Gazelle or Torznab request. Local preflight failures, no-backend skips, and local-prefilter skips do not mark the torrent as recently searched.
-- qui propagates duplicate-torrent cooldown history only after the representative torrent made a cooldown-worthy remote request.
+- qui stamps the Gazelle cooldown for a torrent when it sends a Gazelle lookup. It also stamps it when Gazelle was enabled for the run but had nothing to look up for that torrent. Causes: the content gate, the local prefilter, or the target hash already present. A search that fails before any lookup does not stamp it.
+- qui stamps Torznab cooldowns per indexer, and only for indexers that completed the search. An indexer that was rate limited or failed stays eligible on the next run.
+- After each search attempt, qui copies the representative torrent's Gazelle and per-indexer cooldown stamps to its duplicate torrents.
 
 ### Library Scan without Torznab
 

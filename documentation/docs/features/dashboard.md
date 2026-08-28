@@ -10,11 +10,11 @@ The Dashboard is the start page of qui. It shows statistics for every qBittorren
 
 ## Sections
 
-The Dashboard has four sections. You can hide, reorder, and collapse each one.
+The Dashboard has four sections. You can hide and reorder each one. Server Statistics and Tracker Breakdown also collapse.
 
 ### Server Statistics
 
-The section header shows the combined all-time download, upload, ratio, and peer count across all instances. Expand the section to see one row per instance:
+The section header shows the combined all-time download, upload, ratio, and peer count across all instances. Expand the section to see one row for each instance that reports all-time data:
 
 | Column | Content |
 |--------|---------|
@@ -52,12 +52,12 @@ One card per instance with:
 
 - Torrent counts: **Downloading**, **Active**, **Total**
 - Current download and upload speed, total size, and free disk space
-- qBittorrent, Web API, and libtorrent versions, and the tracker connection status
+- qBittorrent, Web API, and libtorrent versions, and the qBittorrent connection status (connectable, firewalled, or disconnected). The tooltip shows the listen port.
 - **Show more** reveals uptime, peer connections, queued I/O jobs, buffer sizes, and external IP addresses
 - A turtle or rabbit button that toggles alternative speed limits after a confirmation dialog
 - Warning rows for unregistered torrents, torrents with inactive trackers, and errors. Click a row to open the torrent list with that filter active.
 
-The eye icon turns on incognito mode. This mode blurs host names and external IP addresses.
+The eye icon next to the instance URL toggles [Incognito Mode](./incognito.md) for the whole app. On the Dashboard it blurs host names and external IP addresses and replaces tracker names with fake domains.
 
 ## Configure the layout
 
@@ -70,7 +70,7 @@ Click **Layout Settings** to open the **Dashboard Settings** dialog.
 | Direction | Sort direction for Tracker Breakdown | Descending |
 | Items Per Page | Tracker Breakdown rows per page (10, 15, 25, or 50) | 15 |
 
-qui stores these choices and the collapsed state of each section in its database. Every browser and device shows the same layout.
+qui stores these choices and the collapsed state of Server Statistics and Tracker Breakdown in its database. Every browser and device shows the same layout.
 
 ## Live updates
 

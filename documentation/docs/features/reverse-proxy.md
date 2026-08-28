@@ -101,8 +101,9 @@ qui serves these endpoints from its sync manager for faster responses:
 | `/api/v2/torrents/categories` | Category list from synchronized data |
 | `/api/v2/torrents/tags` | Tag list from synchronized data |
 | `/api/v2/torrents/properties` | Torrent properties |
-| `/api/v2/torrents/trackers` | Torrent trackers |
+| `/api/v2/torrents/trackers` | Torrent trackers, with icon discovery |
 | `/api/v2/torrents/files` | Torrent file list |
+| `/api/v2/torrents/mediainfo` | MediaInfo report for a file on disk (qui-specific, needs **Local Filesystem Access**) |
 
 These endpoints proxy to qBittorrent and update qui's local state:
 

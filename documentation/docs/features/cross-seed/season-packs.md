@@ -124,7 +124,7 @@ If automatic recheck or resume queueing cannot start, qui reports `automatic rec
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
-In hardlink mode, incomplete packs must also pass piece-boundary protection. If pending files share torrent pieces with linked episode files, qui blocks the apply unless you enable **Skip piece boundary safety check**. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
+In hardlink mode, qui can also apply piece-boundary protection to incomplete packs. If pending files share torrent pieces with linked episode files and the **Piece boundary safety check** in **Cross-Seed > Rules > Safety & validation** is enabled, qui blocks the apply. This check is off by default. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
 
 ## Prerequisites
 
@@ -269,7 +269,7 @@ The `/runs` endpoint accepts an optional `limit` query parameter (default 20, ma
 When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` that points to the linked tree
-- Applies the tags configured in **Cross-Seed > Rules > Season packs**
+- Applies the **Season pack tags** configured in **Cross-Seed > Rules > Tagging**
 - Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, the torrent remains paused for manual review.
 - Resolves the category in this order:
   - The category from the matching **Category routing** rule under **Cross-Seed > Rules > Season packs**. If multiple rules apply, the most specific rule wins (an explicit-source rule beats an Any-source rule at the same resolution). This configuration integrates with Sonarr so that the pack lands in Sonarr's download-client category and uses hardlink-aware imports.
@@ -282,7 +282,7 @@ When qui applies a season pack, it:
 If `instanceIds` is omitted or contains multiple instances:
 
 1. qui filters the list to instances with local filesystem access and hardlink or reflink mode
-2. qui applies the existing webhook source filters
+2. Inside each instance, qui counts only the episode torrents that pass the webhook source filters (categories and tags)
 3. qui selects the instance with the highest coverage
 4. qui breaks ties by highest matched episode count, then lowest instance ID
 

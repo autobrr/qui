@@ -13,7 +13,7 @@ qui sends notifications to the Notifiarr API and to Shoutrrr targets. Configure 
 1. Open **Settings → Notifications**.
 2. Add a target name and URL.
 3. Select the events to send.
-4. Save, then click **Test** to verify delivery.
+4. Save, then click the send icon (paper plane) on the target card to send a test notification.
 
 Notes:
 

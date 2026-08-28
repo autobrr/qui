@@ -12,7 +12,7 @@ Add and configure the qBittorrent instances that qui connects to. Each instance 
 
 1. Open **Settings → Instances**.
 2. Click **Add Instance**.
-3. Enter the connection details and click **Save**.
+3. Enter the connection details and click **Add Instance**.
 
 ## Edit an instance
 
@@ -27,7 +27,7 @@ Two paths open the instance settings dialog:
 |-------|-------------|
 | **Instance Name** | Display name in qui's sidebar and instance selector. |
 | **URL** | Full URL to the qBittorrent WebUI (for example, `http://localhost:8080`). |
-| **Skip TLS Certificate Verification** | Accept self-signed or otherwise untrusted certificates. |
+| **Skip TLS Verification** (**Skip TLS Certificate Verification** in the Add Instance form) | Accept self-signed or otherwise untrusted certificates. |
 | **Local Filesystem Access** | Enable for features that read files directly. See [Local Filesystem Access](#local-filesystem-access). |
 
 ### Authentication
@@ -54,6 +54,11 @@ If enabled, qui reads the same filesystem as qBittorrent. This setting turns on 
 - **Hardlink detection**: Automations detect whether torrent files have hardlinks into your media library.
 - **Orphan scan**: Find files on disk that no torrent references.
 - **Free space (path)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports.
+- **Has Missing Files condition**: Automation rules check whether a completed torrent has files missing on disk.
+- **MediaInfo**: Show MediaInfo for a file in the Content tab.
+- **Cross-seed hardlink and reflink mode**: Create links instead of a second copy.
+- **Cross-seed ID fallback**: Read IMDb, TMDb, and TVDb tags from MKV files when a search finds no results.
+- **Directory scan**: Use the instance as a directory scan target.
 
 :::warning
 Enable this setting only if qui runs on the same machine as qBittorrent or has the same mounts. If the paths differ, these features fail without an error or return wrong results.

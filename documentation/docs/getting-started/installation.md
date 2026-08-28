@@ -18,7 +18,7 @@ wget $(curl -s https://api.github.com/repos/autobrr/qui/releases/latest | grep b
 Extract the archive to `/usr/local/bin`:
 
 ```bash
-tar -C /usr/local/bin -xzf qui*.tar.gz
+tar -C /usr/local/bin -xzf qui*.tar.gz qui
 ```
 
 If the command fails with a permission error, run it again with `sudo`. If you do not have root, or you are on a shared system, extract qui to a directory in your home directory, for example `~/.bin`.
@@ -28,7 +28,7 @@ If the command fails with a permission error, run it again with `sudo`. If you d
 Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases). Then extract the archive:
 
 ```bash
-tar -xzf qui*.tar.gz
+tar -xzf qui*.tar.gz qui
 ```
 
 For Windows, see [Windows](./windows.md).
@@ -58,7 +58,7 @@ The `qui update` command downloads and installs the latest release:
 qui update
 ```
 
-If the binary is not on your PATH, run `./qui update` from its directory.
+If you installed qui to `/usr/local/bin` with `sudo`, run `sudo qui update`. If the binary is not on your PATH, run `./qui update` from its directory.
 
 ## First setup
 

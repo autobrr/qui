@@ -51,7 +51,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `logPath` | `QUI__LOG_PATH` | string | empty | If empty, qui logs to stdout. qui resolves relative paths against the config directory. qui applies changes immediately. |
 | `logMaxSize` | `QUI__LOG_MAX_SIZE` | int | `50` | Size in MB that starts log rotation. qui applies changes immediately. |
 | `logMaxBackups` | `QUI__LOG_MAX_BACKUPS` | int | `10` | Number of rotated files that qui keeps. `0` keeps all. qui compresses rotated files with gzip. A 50 MB qui log file compresses to 2 to 3 MB. qui applies changes immediately. |
-| `dataDir` | `QUI__DATA_DIR` | string | empty | If empty, qui uses the directory that contains `config.toml`. qui always stores non-database assets here (logs and the tracker icon cache). If `databaseEngine=sqlite`, `qui.db` also lives here. Restart qui after a change. |
+| `dataDir` | `QUI__DATA_DIR` | string | empty | If empty, qui uses the directory that contains `config.toml`. qui stores the tracker icon cache here, and backups by default (`<dataDir>/backups`). If `databaseEngine=sqlite`, `qui.db` also lives here. Log files follow `logPath`, which qui resolves against the config directory. Restart qui after a change. |
 | `backupDir` | `QUI__BACKUP_DIR` | string | empty | If empty, qui uses `<dataDir>/backups`. Directory for [backup](../features/backups.md) manifests, archives, and cached `.torrent` files. qui resolves relative paths against the config directory. If you change this on an existing install, move the contents of `<dataDir>/backups` to the new directory. Restart required. |
 | `customThemesDir` | `QUI__CUSTOM_THEMES_DIR` | string | empty | Directory for sideloaded [custom theme](../features/custom-themes.md) `.css` files. If empty, qui uses `<config-dir>/themes` (auto-created). qui resolves relative paths against the config directory. Listing themes requires premium access. qui applies config changes on the next request. |
 | `databaseEngine` | `QUI__DATABASE_ENGINE` | string | `sqlite` | `sqlite` or `postgres`. If you do not migrate, keep `sqlite` on an existing install. Restart required. |
@@ -67,7 +67,7 @@ qui watches `config.toml` for changes. qui applies some settings immediately, fo
 | `databaseMaxIdleConns` | `QUI__DATABASE_MAX_IDLE_CONNS` | int | `5` | Postgres pool max idle connections. |
 | `databaseConnMaxLifetime` | `QUI__DATABASE_CONN_MAX_LIFETIME` | int | `300` | Postgres connection max lifetime in seconds. |
 | `qbittorrentTimeout` | `QUI__QBITTORRENT_TIMEOUT` | int | `60` | HTTP timeout in seconds for requests qui makes to qBittorrent instances (sync, health checks). If you run large or slow instances, raise this value. Restart required. |
-| `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart qui after a change. |
+| `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. qui applies changes on config reload. If you set it with the environment variable, restart qui. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable this setting to prevent remote tracker favicon fetches. qui applies changes immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | If enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. This process can add 25+ minutes per torrent. Restart qui after a change. |
 | `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables the pprof server (`/debug/pprof/`). Restart required. |
@@ -139,7 +139,7 @@ Rules:
 - qui allows only explicit origins (`http://` or `https://` + host + optional non-default port)
 - qui rejects wildcards (`*`, `https://*.example.com`, and similar patterns)
 - qui rejects values with a path, query, fragment, or userinfo
-- If a startup value is invalid, qui stops. If a live reload value is invalid, qui keeps the last valid allowlist.
+- If a startup value is invalid, qui stops. On live reload, qui logs an invalid value and keeps the running allowlist until a restart.
 
 For SSO proxy setups, configure CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors.md).
 

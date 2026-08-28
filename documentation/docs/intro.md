@@ -38,13 +38,13 @@ Right-click a magnet or torrent link to add it to your qBittorrent instances:
 - [Chrome Extension](https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili)
 - [Firefox Add-on](https://addons.mozilla.org/en-US/firefox/addon/qui/)
 
-To register qui as your browser handler for magnet links, open **Settings → Security** and click **Register as Handler**.
+To register qui as your browser handler for magnet links, open **Settings → Security** and click **Register as Handler**. The button shows only when you open qui over HTTPS or on localhost, in a browser that supports protocol handlers.
 
 ## Languages
 
 qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese. The interface detects your browser language on first load and remembers your choice after that.
 
-To change the language, open the user menu in the top-right corner and pick a language from the globe submenu.
+To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 
 Community members contribute translations. To add or improve a language, start a [Discussion](https://github.com/autobrr/qui/discussions/new/choose) or contact the team on [Discord](https://discord.autobrr.com/qui). The file [`web/AGENTS.md`](https://github.com/autobrr/qui/blob/develop/web/AGENTS.md) documents the translation workflow.
 

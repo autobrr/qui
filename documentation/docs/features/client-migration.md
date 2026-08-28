@@ -74,7 +74,7 @@ qui migrate transmission \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 ```
 
-Supported: Transmission 2.4 through 4.x. The importer supports legacy name-based session file names from 2.x. If a resume file comes from a version older than 2.4, the importer skips it because that version uses legacy progress and limit formats.
+Supported: Transmission 2.4 through 4.x. The importer supports legacy name-based session file names from 2.x. Resume files written by versions older than 2.4 have no block progress data, so the importer skips them. The log reports these torrents as not fully downloaded.
 
 - Transmission labels become qBittorrent **tags**.
 - Paused torrents stay paused. Per-torrent ratio and speed limits carry over.
@@ -96,7 +96,7 @@ Supported: Transmission 2.4 through 4.x. The importer supports legacy name-based
 | File renames | ✓ | — | — |
 | Per-torrent ratio/speed limits | — | — | ✓ |
 
-The importer tags every imported torrent `migrated` so you can find them with one filter. The importer sets imported torrents to auto-managed, so qBittorrent applies its queueing and share limits. Torrents that you stopped stay stopped.
+The importer tags every imported torrent `migrated` so you can find them with one filter. Running torrents import as auto-managed, so qBittorrent applies its queueing and share limits. Torrents that you stopped stay stopped and stay out of auto-management.
 
 ## Partial torrents
 

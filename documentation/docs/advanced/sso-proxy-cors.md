@@ -33,11 +33,11 @@ If you still get CORS errors after you configure the proxy, capture the browser 
 
 ## Real-time updates and reverse-proxy buffering
 
-qui pushes live torrent, stats, and instance-health updates to the UI over a Server-Sent Events (SSE) stream at `GET /api/stream`. The RSS view uses a similar stream. SSE is a long-lived HTTP response that the server flushes incrementally. Most reverse proxies **buffer responses by default**. If a proxy buffers responses, the UI freezes or stays stuck on "reconnecting" until the buffer fills.
+qui pushes live torrent, stats, and instance-health updates to the UI over a Server-Sent Events (SSE) stream at `GET /api/stream`. The RSS view uses a similar stream. SSE is a long-lived HTTP response that the server flushes incrementally. Some reverse proxies, nginx included, **buffer responses by default**. If a proxy buffers responses, the UI freezes or stays stuck on "reconnecting" until the buffer fills.
 
 If the dashboard and torrent list do not update in real time behind your proxy, disable response buffering and allow long-lived connections for the stream endpoint:
 
-- **nginx**: for the qui location, or specifically `~ ^/api/stream`:
+- **nginx**: for the qui location, or specifically `~ ^/api/stream` and `~ ^/api/instances/[0-9]+/rss/events` (prefix both with your base URL if you set one):
   ```nginx
   proxy_buffering off;
   proxy_cache off;

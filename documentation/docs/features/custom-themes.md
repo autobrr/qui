@@ -16,11 +16,11 @@ If you place your `.css` files into the custom themes directory, they appear in 
 
 The theme picker is under **Settings → Premium Themes**. It shows every theme in one grid: free themes, premium themes, and your custom themes. Each card displays a badge. Click a theme card to apply it.
 
-If you do not have an active license, premium themes appear as locked cards that show only preview colors. You cannot apply a locked theme. If you click a locked theme, qui displays a message that links to the license section on the same page.
+If you do not have an active license, premium themes appear as locked cards that show only preview colors. You cannot apply a locked theme. To get a license, click **Unlock premium** in the **Custom Themes** box below the grid.
 
 ## Theme selection syncs across devices
 
-qui stores your theme selection in its database, so it [syncs across devices](./dashboard.md#interface-preferences-sync) like other interface preferences. The login page also paints your selected theme.
+qui stores your theme selection in its database, so it [syncs across devices](./dashboard.md#interface-preferences-sync) like other interface preferences. The login page also paints a selected built-in theme. A custom theme paints on the login page only in a browser that applied it before. The browser cannot load custom theme files until you log in.
 
 If your premium license lapses, qui applies the default theme instead. If you use a built-in premium theme, qui preserves your stored selection and restores the theme when you renew the license.
 
@@ -95,7 +95,7 @@ Define any of these tokens in the `:root` (light) and `.dark` blocks. If you omi
 
 - **Both blocks are required.** A file must contain a `:root` block **and** a `.dark` block, each with at least one variable, even for a `@lightOnly` theme. If qui cannot parse a file, it skips the file and lists the error in the **Custom Themes** box in the theme picker.
 - **`@name`** sets the display name. If you omit `@name`, qui defaults to "Untitled Theme". `@description` and `@lightOnly` are optional.
-- **Fonts.** If you set `--font-sans`, `--font-serif`, or `--font-mono` to a font that qui bundles, qui loads it. If you use any other font, include an `@import` or `@font-face` rule directly in your CSS.
+- **Fonts.** If you set `--font-sans`, `--font-serif`, or `--font-mono` to a font that qui knows (for example Inter, Montserrat, or JetBrains Mono), qui loads it from Google Fonts. The browser must be able to reach fonts.googleapis.com. If you use any other font, include an `@import` or `@font-face` rule directly in your CSS.
 - **Arbitrary CSS works.** qui injects the file as a stylesheet, so you can add custom selectors and rules beyond design tokens. Scope your selectors carefully because a broad selector affects the entire app. qui does not sanitize CSS. Only load theme files that you trust or wrote yourself.
 - **Variations.** qui does not support variations (the multi-swatch built-in themes) in custom themes.
 

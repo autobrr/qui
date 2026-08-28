@@ -10,7 +10,7 @@ description: Fix common cross-seed problems.
 
 ### Rate limiting (HTTP 429)
 
-Indexers limit request frequency. If you see an error such as `"indexer TorrentLeech rate-limited until..."`, qui recorded the cooldown and skips that indexer until it becomes available. The **Scheduler Activity** panel on the Indexers page shows which indexers are in cooldown and when they become ready.
+Indexers limit request frequency. If you see an error such as `indexer TorrentLeech query rate-limited until ...`, qui uses the Retry-After value from the response, or 1 minute if the indexer sends none. It skips that indexer until the cooldown ends. qui tracks search (`query`) and download (`grab`) cooldowns separately. The **Scheduler Activity** panel on the Indexers page shows which indexers are in cooldown and when they become ready.
 
 ### Release didn't match
 
@@ -66,7 +66,7 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 Failed search or completion runs can trigger notification events. See [Notifications](../notifications.md#event-types) for the event keys.
 
 :::tip
-`size_mismatch` failures come from the sizes reported inside torrent files, not from the content on disk. Compare the metadata and the file lists of both torrents before you report a bad hash copy on a tracker.
+`size_mismatch` failures come from the sizes reported inside torrent files, not from the content on disk. A `size_mismatch` means the two copies have different piece hashes. One tracker has a bad copy. Compare the metadata and the file lists of both torrents before you report a bad hash copy on a tracker.
 
 The failures reflect size mismatches against the selected source torrent for cross-seed searching (typically content in a folder). They do not report which trackers have bad hashes.
 If the source torrent contains the bad hash, the hash in the `debug` log entry `[CROSSSEED-ASYNC] Starting async torrent analysis` shows the source hash that qui used.
@@ -155,7 +155,7 @@ If the source files and the link-tree base reside on different filesystems, or i
 
 qui treats these fallback torrents like disc-based content: it adds them paused, rechecks them, and auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips them instead. If you enable **Skip recheck**, disable **Fallback to regular mode**, because all fallbacks require a recheck.
 
-If matches are partial-in-pack, size-based, renamed, or otherwise non-perfect, qui also runs piece-boundary protection before the fallback add. qui always enforces this check for link-mode fallback, even if you enable **Skip piece boundary safety check** for regular reuse mode. If the check fails, qui skips the torrent before adding it to qBittorrent.
+If matches are partial-in-pack, size-based, renamed, or otherwise non-perfect, qui also runs piece-boundary protection before the fallback add. qui always enforces this check for link-mode fallback, even if the **Piece boundary safety check** switch in Rules is off. If the check fails, qui skips the torrent before adding it to qBittorrent.
 
 ### 4. Exact-size identity fallback
 
@@ -210,7 +210,7 @@ The umask applies only to directories that qui creates moving forward. Existing 
 
 If hardlink or reflink mode creates every file that the incoming torrent needs, qui usually adds the torrent with hash checking skipped and starts it immediately. Title rescue and exact-size season, episode, or release-group matches are exceptions. qui adds those torrents paused and requires a full recheck, because their names do not prove identical releases.
 
-If qBittorrent still marks the torrent as `missing files`, the new torrent file does not fully match the existing source and candidate files, even though qui matched them by name and size. Review the matching torrent group on the trackers before you resume or recheck the torrent, because one copy has corrupted hashes.
+If qBittorrent still marks the torrent as `missing files`, the new torrent file most likely does not fully match the existing source and candidate files, even though qui matched them by name and size. Review the matching torrent group on the trackers before you resume or recheck the torrent, because one copy has corrupted hashes.
 - **Hardlink mode**: If you resume the torrent, qBittorrent overwrites the data and corrupts other torrents that share those piece hashes.
 - **Reflink mode**: If you resume the torrent, copy-on-write protects other torrents from data corruption.
 
@@ -240,13 +240,13 @@ Common causes:
 
 ## Cross-seed skipped: "extra files share pieces with content"
 
-In regular reuse mode, this occurs if you enable the piece boundary safety check (disable "Skip piece boundary safety check" in Rules). Link-mode fallback is stricter: for partial or otherwise non-perfect matches, qui always runs the check before adding the torrent to qBittorrent.
+In regular reuse mode, this occurs if the **Piece boundary safety check** switch in Cross-Seed > Rules > Safety & validation is on (it is off by default). Link-mode fallback is stricter: for partial or otherwise non-perfect matches, qui always runs the check before adding the torrent to qBittorrent.
 
 The incoming torrent contains files absent from your matched torrent, and those files share torrent pieces with your existing content. Downloading them can overwrite parts of your existing files.
 
 **Solutions:**
 - **Use reflink mode** (recommended): enable reflink mode for the instance. It clones the files, so qBittorrent modifies the clone without affecting the originals.
-- **Disable the safety check**: enable "Skip piece boundary safety check" in Rules (the default). If the content differs, the match proceeds, but it **can corrupt your existing seeded files**.
+- **Disable the safety check**: turn off the **Piece boundary safety check** switch in Cross-Seed > Rules > Safety & validation (the default). If the content differs, the match proceeds, but it **can corrupt your existing seeded files**.
 - If reflinks are unavailable and you want to avoid risk, download the torrent normally.
 
 ## Cross-seed stuck at low percentage after recheck
@@ -304,6 +304,7 @@ The `toRawJson` function (from Sprig) escapes special characters and outputs a v
 ## autoTMM unexpectedly enabled/disabled
 
 - In reuse/affix mode (regular mode), autoTMM mirrors the setting of the matched torrent. This behavior is intentional.
+- In affix mode, qui inherits autoTMM only when the cross-seed category and the matched torrent share a save path. Otherwise qui turns autoTMM off and sets an explicit `savepath`.
 - In indexer name or custom category mode, qui always disables autoTMM.
 - In hardlink/reflink mode, qui always disables autoTMM (explicit `savepath`).
 - Dir Scan injections always disable autoTMM (explicit `savepath`).

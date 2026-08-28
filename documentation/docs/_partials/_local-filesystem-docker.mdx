@@ -1,11 +1,11 @@
 :::warning[Docker: Local Filesystem Access]
-Orphan scan, hardlinks, reflinks, and automations require access to the same filesystem paths that qBittorrent uses.
+Orphan scan, hardlinks, reflinks, and path-based automation rules require access to the same filesystem paths that qBittorrent uses.
 
 Mount the same paths that qBittorrent uses. The paths must match exactly:
 
 ```yaml
 volumes:
-  - /config:/config
+  - ./qui:/config
   - /data/torrents:/data/torrents  # Must match qBittorrent's path
 ```
 

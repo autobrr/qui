@@ -10,7 +10,7 @@ qui provides tools to manage torrent lists: tags, categories, saved filter views
 
 ## Tags and categories
 
-Manage tags and categories from the **Tags** and **Categories** sections in the filter sidebar. Open the context menu on a tag or category to see its actions.
+Manage tags and categories from the **Tags** and **Categories** sections in the filter sidebar. Click **Create tag** or **Create category** at the top of a section. Open the context menu on a tag or category for the other actions.
 
 - **Create tag** adds one tag to the instance.
 - **Delete Tag** removes a tag from the instance.
@@ -23,7 +23,7 @@ Manage tags and categories from the **Tags** and **Categories** sections in the 
 
 ### Subcategories
 
-qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. When subcategories are active, qui shows the categories as a collapsible tree sorted by name. Subcategories require qBittorrent WebUI API 2.9.0 or newer. On older versions, qui shows a flat list.
+qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. qui shows the categories as a collapsible tree sorted by name when the instance supports subcategories (qBittorrent WebUI API 2.9.0 or newer). The qBittorrent preference **Enable Subcategories** (Instance Preferences > Files) must also be on. From WebUI API 2.15.0, subcategories are always on. In other cases, qui shows a flat list.
 
 ## Saved filter views
 
@@ -45,19 +45,19 @@ A view stores the sidebar filter selection only. It does not include search text
 
 | Input | Action |
 |-------|--------|
-| Click | Opens the details panel for the row |
+| Click | Selects the row and opens the details panel. Click the same row again to close the panel and clear the selection. |
 | Ctrl/Cmd + click | Toggles selection of the row |
 | Shift + click | Selects the range from the last selected row |
 | Ctrl/Cmd + A | Selects all torrents in the current view |
 | Arrow Up / Arrow Down | Moves the selection one row |
 | Enter | Opens the details panel for the focused row |
-| Escape | Closes the details panel |
+| Escape | Closes the details panel and clears the selection |
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
 
 ## Torrent creator
 
-The **Create torrent** button in the header opens the creator dialog. It creates a new `.torrent` file from a file or folder on the qBittorrent server. If the instance supports torrent creation, the button appears in the header. Torrent creation requires qBittorrent 5.0 or newer (WebUI API 2.11.2).
+The **Create torrent** button opens the creator dialog. On desktop it is in the header. On phones it is the **Create** button in the bottom bar. It creates a new `.torrent` file from a file or folder on the qBittorrent server. The button appears only when the instance supports torrent creation, which requires qBittorrent 5.0 or newer (WebUI API 2.11.2).
 
 | Field | Description | Default |
 |-------|-------------|---------|
@@ -71,6 +71,8 @@ The **Create torrent** button in the header opens the creator dialog. It creates
 | Piece Size | Piece size for the torrent | Auto |
 | Save .torrent to (optional) | Full file path on the server for the created file. A directory alone is invalid. | - |
 | Web Seeds (HTTP/HTTPS) | URLs where clients download content, one per line | - |
+
+The last four fields are under **Advanced Options**.
 
 :::note
 Hybrid and v2 formats require a qBittorrent build with libtorrent 2. On a libtorrent 1.x build, qui creates v1 torrents only.

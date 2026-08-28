@@ -119,7 +119,7 @@ Chown the directories only. Hardlinked files share their inode with the source d
 
 ### UMASK
 
-Optional. The qui binary reads `UMASK` at startup and applies it to new files and directories, such as cross-seed hardlink and reflink trees. If the value is not valid octal, qui logs a warning and keeps the inherited umask.
+Optional. The qui binary reads `UMASK` at startup and applies it to new files and directories, such as cross-seed hardlink and reflink trees. If the value is not valid octal in the range 000 to 777, qui logs a warning and keeps the inherited umask.
 
 The binary applies `UMASK`, not the entrypoint. As a result, `UMASK` works with both methods above. If you start a non-root container with `user:` or `--user`, `UMASK` also works.
 
@@ -157,7 +157,7 @@ The release workflow builds images for `linux/amd64`, `linux/arm64`, and ARM v6/
 11. (Optional) add environment variables for advanced configuration (for example `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
 12. Click **Apply** to pull the image and start the container
 
-By default, the `/config` mount stores `config.toml`, logs, the tracker icon cache, and other runtime assets. An absolute `logPath` or a custom `dataDir` sends those files elsewhere (see the [configuration reference](../configuration/reference.md)). If you use the default SQLite engine, qui stores `qui.db` there too. Point the mount at your appdata share so your configuration survives upgrades.
+By default, the `/config` mount stores `config.toml`, logs, the tracker icon cache, and other runtime assets. If you use the default SQLite engine, qui stores `qui.db` there too. An absolute `logPath` or a custom `dataDir` moves those files. `config.toml` always stays in `/config` (see the [configuration reference](../configuration/reference.md)). Point the mount at your appdata share so your configuration survives upgrades.
 
 qui logs to stdout by default. Read the logs under **Docker → qui → Logs**. If you configure a relative log file path, qui writes it under `/config`.
 

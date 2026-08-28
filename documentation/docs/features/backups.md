@@ -18,7 +18,7 @@ If you change `backupDir` on an existing install, stop qui and move the contents
 
 ## Restore modes
 
-If you enable backups for an instance, the run list shows a **Restore** action for each run. Restores support three modes:
+If you enable backups for an instance, each run in the **Backup history** list has a restore icon button (tooltip: **Restore torrents from this backup**). The header also has a **Restore from latest** button. Restores support three modes:
 
 ### Incremental
 

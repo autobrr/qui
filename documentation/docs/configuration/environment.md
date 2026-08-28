@@ -52,7 +52,7 @@ Log rotation and retention apply only when you set `logPath`. If you run qui in 
 QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: next to config)
 ```
 
-qui always uses `QUI__DATA_DIR` for runtime assets (logs and the tracker icon cache). With the default `sqlite` engine, qui also stores `qui.db` there.
+qui uses `QUI__DATA_DIR` for the tracker icon cache and, by default, for backups. With the default `sqlite` engine, qui also stores `qui.db` there. Log files follow `QUI__LOG_PATH`. qui resolves a relative log path against the config directory, not the data directory.
 
 ```bash
 QUI__BACKUP_DIR=...      # Optional: custom backup directory (default: <dataDir>/backups)

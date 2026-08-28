@@ -13,12 +13,13 @@ Because these modes set an explicit `savepath` (the link-tree root), qui always 
 This applies to:
 - Cross-seed searches (RSS, completion, manual, scan)
 - Directory scan (dirscan) injections
+- Season pack webhook injections (see [Season Packs](./season-packs.md))
 
 ## Settings
 
 Configure these options per qBittorrent instance in **Cross-Seed > Rules > Hardlink / Reflink Mode**:
 
-- **Base directories** (`HardlinkBaseDir`): root paths where qui creates link trees.
+- **Base directories** (`HardlinkBaseDir`): root paths where qui creates link trees. Separate several paths with commas. qui uses the first path that is on the same filesystem as the matched source files.
 - **Directory organization** (`HardlinkDirPreset`): controls how qui groups trees below the base directory.
 - **Fallback to regular mode on error** (`FallbackToRegularMode`): if link-tree creation fails, qui falls back to regular mode instead of failing.
 
@@ -58,6 +59,6 @@ If you enable **Fallback to regular mode** and link-tree creation fails, qui add
 
 If hardlinks fail across filesystem or device boundaries, this fallback prevents injection errors. For example, a pooled mount presents paths that look identical but resolve to different underlying devices.
 
-Because this fallback uses regular source-file paths instead of the link-tree directory, qui adds the torrent paused and rechecks it. qui auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips these fallback candidates.
+If no base directory shares a filesystem with the source files, or link creation failed, qui adds the torrent paused and rechecks it. qui auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips those candidates. Fallbacks for configuration problems (an empty base directory, or no local filesystem access) add the torrent in regular mode with the normal regular-mode rules.
 
 If you disable fallback and link-tree creation fails, qui skips or fails the candidate.

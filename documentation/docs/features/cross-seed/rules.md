@@ -13,7 +13,7 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 - **Cross-seed episodes from packs**: If enabled, season packs also match individual episodes. If disabled, season packs only match other season packs. qui adds episodes with AutoTMM disabled to prevent save path conflicts.
 - **Skip recheck**: If enabled, qui skips any cross-seed that requires a recheck. This includes renamed paths, extra files, filesystem fallback, disc layouts, title rescue, and exact-size matches with different season, episode, or release-group details. This rule applies to regular, hardlink, and reflink modes.
 - **Rescue title mismatches**: Disabled by default. If only the title differs and the positive reported size matches, this rule tests that result. Each source search tries at most three rescue downloads across all indexers. RSS and autobrr use this rule only when the announcement provides an exact size. qui adds rescued torrents in a paused state and starts them only after a full qBittorrent recheck reaches 100%. **Skip recheck** disables this rule.
-- **Skip piece boundary safety check**: Enabled by default. If enabled, qui allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** If content differs, this setting can corrupt your existing seeded data. Uncheck this to enable the safety check, or use reflink mode. Reflink mode handles these cases safely. If hardlink or reflink mode falls back to regular mode, qui always runs the piece boundary check.
+- **Piece boundary safety check**: Off by default. Turn the switch on to block cross-seeds whose extra files share torrent pieces with content files. **Warning:** If content differs, this can corrupt your existing seeded data. Reflink mode handles these cases safely. If hardlink or reflink mode falls back to regular mode, qui runs the check even when the switch is off. This fallback check covers matches that are not exact, need renames, or have extra files.
 
 :::note
 If a torrent uses filesystem fallback, disc layouts (`BDMV`/`VIDEO_TS`), title rescue, or exact-size season, episode, or release-group matches, qui auto-resumes it only after a full recheck reaches 100%.
@@ -51,7 +51,7 @@ In both examples, the torrent is in a category that you control. A rule on that 
 ### Add a rule
 
 1. Open the **Rules** tab on the Cross-Seed page.
-2. Find **Search category rules** in the **Matching behavior** card.
+2. Find **Search category rules** under the **Matching** heading.
 3. Select **Add rule**.
 4. Select or type one or more qBittorrent categories.
 5. Select the content type in the **search as** list.
@@ -76,15 +76,19 @@ Audiobook and Music request the same categories from indexers, and both send an 
 
 ## Season Pack Threshold
 
-The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. qui gets season episode totals from Sonarr first. If Sonarr cannot resolve the release, qui uses TVDB or TVMaze. If torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. qui adds incomplete packs paused and rechecks them. If qBittorrent reports progress at or above the season-pack threshold, qui resumes them automatically. Configure this in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
+The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. qui gets season episode totals from Sonarr first. If Sonarr cannot resolve the release, qui uses TVDB or TVMaze. If torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. qui adds incomplete packs paused and rechecks them. When the recheck reports progress close to the share of bytes qui linked, qui resumes the pack. If progress lands well below that share, the links failed and the pack stays paused for manual review. Configure this in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](./season-packs.md) for details.
 
-Season-pack matching rules live in **Rules > Season packs** and affect only the season-pack webhook flow.
+Season-pack matching rules live in **Rules > Season packs** and affect every season pack flow: the autobrr webhook, automatic assembly, and library search runs.
 
 ## Categories
 
 These modes set the category that qui gives to a new cross-seed. To choose the search content type from the category of the source torrent, see [Search Category Rules](#search-category-rules).
 
-Choose one of three mutually exclusive category modes:
+Choose one of four mutually exclusive category modes:
+
+### Reuse matched torrent category
+
+Keeps the category of the matched torrent unchanged. qui adds no affix.
 
 ### Category Affix (default)
 
@@ -152,11 +156,12 @@ The active category mode determines autoTMM behavior:
 
 | Category Mode | autoTMM Behavior |
 |---------------|------------------|
-| **Category Affix** | Inherited from matched torrent (regular mode only, hardlink/reflink disables autoTMM) |
+| **Reuse matched category** | Inherited from matched torrent (regular mode only, hardlink/reflink disables autoTMM) |
+| **Category Affix** | Inherited from matched torrent when the affix category has the same save path (regular mode only, hardlink/reflink disables autoTMM) |
 | **Indexer name** | Always disabled (explicit save paths) |
 | **Custom** | Always disabled (explicit save paths) |
 
-If the cross-seed inherits autoTMM in affix mode:
+If the cross-seed inherits autoTMM in reuse or affix mode:
 
 - If the matched torrent uses autoTMM, the cross-seed uses autoTMM
 - If the matched torrent has a manual path, the cross-seed uses the same manual path

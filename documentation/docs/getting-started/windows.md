@@ -15,7 +15,7 @@ This guide explains how to install qui and create a Windows scheduled task. The 
 2. Extract the archive and place `qui.exe` in a directory, for example `C:\qui`.
 
 :::tip
-Do not place qui in `C:\Program Files`. That location causes permission issues with the database and configuration files.
+Do not place qui in `C:\Program Files`. The built-in updater writes the new executable next to the old one, and that location needs administrator rights.
 :::
 
 ## Initial setup
@@ -72,7 +72,7 @@ To restart the service, click **End** and then **Run** in the right sidebar of T
 
 ## Updating
 
-qui has a built-in update command. Stop the scheduled task first. If the task still runs, Windows locks the executable and the update fails.
+qui has a built-in update command. Stop the scheduled task first. A running task keeps the old version until you restart it.
 
 1. Open **Task Scheduler**, right-click the **qui** task, and click **End**.
 2. Run the updater:

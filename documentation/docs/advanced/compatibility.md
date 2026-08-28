@@ -48,7 +48,7 @@ A request can carry only one normal `Authorization` value. You cannot combine qB
 
 ### Create Torrent button is not visible
 
-qui shows the **Create Torrent** button when the instance runs qBittorrent **5.0.0** (Web API 2.11.2) or later. The button also stays hidden when qui cannot reach the instance to detect its capabilities. Make sure that the instance is connected and meets the version requirement, then refresh the qui web UI.
+qui shows the **Create Torrent** button in the header when the instance runs qBittorrent **5.0.0** (Web API 2.11.2) or later. If the button is missing, upgrade qBittorrent and refresh the qui web UI. On the all-instances view, qui shows the button only for instances whose capabilities it has loaded.
 
 ### Hybrid and v2 torrent formats are unavailable
 

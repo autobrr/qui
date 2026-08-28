@@ -27,6 +27,7 @@ Use a plain JSON object or export a snippet as `const trackerIcons = { ... };`.
 - Keys must be the real tracker hostnames (for example, `tracker.example.org`)
 - If you include a `www.*` host and the bare hostname lacks an icon, qui mirrors the icon to the bare hostname
 - On startup, qui decodes each data URL, normalizes the image to 16×16, and writes the PNG to `<host>.png`
+- qui skips a host that already has a `<host>.png`. To make the preload write it again, delete the old file
 
 ### JSON example
 

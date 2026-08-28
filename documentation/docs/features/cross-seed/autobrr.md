@@ -85,7 +85,7 @@ To search all instances, omit `instanceIds`:
 - `torrentName` (required): The release name as announced
 - `size` (optional): The size that autobrr already knows, in bytes. A missing value or `0` means that no size is available.
 - `instanceIds` (optional): qBittorrent instance IDs to scan. Omit to search all instances.
-- `indexer` (optional): The autobrr indexer identifier (for example `hdb`). Required for qui's HDBits-specific missing-collection fallback on `/check`.
+- `indexer` (optional): The autobrr indexer identifier (for example `hdb`). On `/check`, qui only writes it to the debug log. On `/apply`, qui uses it for the **Use indexer name as category** mode.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 ### How the size check works
@@ -163,7 +163,7 @@ This flow needs no autobrr source change and no extra scrape.
 
 ### Troubleshooting: autobrr matches, but qBittorrent shows no new torrent
 
-If autobrr shows that the filter accepted the release, but qBittorrent shows no new torrent, use these steps:
+If autobrr shows that the filter accepted the release, or your autobrr notification fires, but qBittorrent shows no new torrent, use these steps:
 
 1. **Make sure that you added the `/apply` Action**
    - The External webhook (`/check`) does not add torrents.

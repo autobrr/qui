@@ -17,10 +17,10 @@ Full documentation available at **[getqui.com](https://getqui.com)**
 ```bash
 # Download and extract the latest release
 wget $(curl -s https://api.github.com/repos/autobrr/qui/releases/latest | grep browser_download_url | grep linux_x86_64 | cut -d\" -f4)
-tar -C /usr/local/bin -xzf qui*.tar.gz
+tar -C /usr/local/bin -xzf qui*.tar.gz qui
 
 # Run
-./qui serve
+qui serve
 ```
 
 The web interface will be available at http://localhost:7476

@@ -14,8 +14,8 @@ Configure it in **Cross-Seed > Dir Scan**.
 
 - Enable **Local filesystem access** in Instance Settings on at least one qBittorrent instance.
 - qui must have direct read access to files on the same host or through shared mounts with the target qBittorrent instance.
-- Configure Prowlarr or Jackett with at least one enabled indexer.
-- Optional: Configure Sonarr/Radarr in **Settings > Integrations** for external ID lookups (IMDb/TMDb/TVDb).
+- Configure at least one enabled Torznab indexer in **Settings > Indexers** (from Prowlarr, Jackett, or a native tracker endpoint).
+- Optional: Configure Sonarr/Radarr in **Settings > Integrations** for external ID lookups (IMDb, TMDb, TVDb, TVMaze).
 
 ## How to Choose Your Scan Path
 
@@ -163,7 +163,7 @@ qui treats folders that contain `BDMV/`, `VIDEO_TS/`, or `AUDIO_TS/` structures 
 ### Skipped items
 
 - **Hidden files and folders** (names starting with `.`)
-- **Symlinks** (skipped to avoid loops and permission issues)
+- **Symlinks inside a searchee folder** (skipped to avoid loops and permission issues). qui follows a symlinked media file placed directly in the scan root and scans its target. qui does not enter a symlinked folder in the scan root.
 - **Files with permission errors** (qui continues the scan and skips the file)
 - **Non-media files** outside disc layouts
 
@@ -391,9 +391,9 @@ See:
 
 If link-tree creation fails (such as across filesystems or on permission errors) and the instance enables **Fallback to regular mode**, Dir Scan falls back to regular add behavior. Otherwise, the candidate fails.
 
-Filesystem fallback adds the torrent against the matched source files instead of the link-tree directory. As a result, qui requires a full 100% recheck before auto-resume. If you enable **Skip recheck**, qui skips the fallback candidate.
+Filesystem fallback adds the torrent against the matched source files instead of the link-tree directory. If the torrent file names differ from the on-disk names, qui adds the torrent paused, renames the paths, rechecks it, and resumes it. Partial matches and disc layouts get a recheck after the add and resume when the check completes. The cross-seed **Skip recheck** rule does not apply to Dir Scan.
 
-Even if you enable **Skip piece boundary safety check** for regular reuse mode, qui always runs piece-boundary protection for partial or non-perfect fallback matches before it adds the torrent.
+Dir Scan runs the piece-boundary check once, before it adds a partial match. If you enable **Skip piece boundary safety check**, Dir Scan skips the check for link-tree adds and fallback adds alike.
 
 ## Scanning Your *arr Library
 
@@ -419,11 +419,10 @@ The safer configuration is usually:
 
 The **Recent Scan Runs** panel on the Dir Scan page shows:
 
-- Added count (successful injections)
-- Failed count (matches that qui failed to add)
-- Timestamps and duration
+- Start time, status, file count, match count, added count, and duration
+- An error icon next to the status of a failed run
 
-Click a run to see details, including failure reasons for individual items.
+Expand a run to see each added or failed torrent and its failure reason.
 
 ### Common issues
 

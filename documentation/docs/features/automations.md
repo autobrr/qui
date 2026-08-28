@@ -15,7 +15,6 @@ qui evaluates automations in **sort order**. For exclusive actions such as delet
 - **Automatic**: A background service scans torrents every 20 seconds.
 - **Per-rule intervals**: Each rule can have its own interval (minimum 60 seconds, default 15 minutes).
 - **Per-rule notifications**: If you configure notification targets, each rule can opt in or out of automation notifications.
-- **Manual**: To run a rule immediately, click "Apply Now". This action bypasses interval checks.
 - **Manual dry-run**: Run "Dry-run now" from the workflow dialog or "Run dry-run now" from the workflow menu.
 - **Debouncing**: qui does not process the same torrent again within 2 minutes.
 
@@ -66,7 +65,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Field | Description |
 | --- | --- |
 | Added Age | Time since added |
-| Completion Age | Time since completed |
+| Completed Age | Time since completed |
 | Inactive Time | Time since last activity |
 | Seen Complete Age | Time since torrent was last complete |
 | ETA | Estimated time to completion |
@@ -130,7 +129,7 @@ When qui evaluates a rule, these fields use qui's current system time. Use them 
 | Tracker | Primary tracker (URL, domain, or customization display name) |
 | Trackers (All) | All tracker URLs/domains/display names for this torrent |
 | Private | Boolean: the torrent uses a private tracker |
-| Is Unregistered | Boolean: the tracker reports unregistered |
+| Unregistered | Boolean: the tracker reports unregistered (requires qBittorrent 5.1+) |
 | Tracker status | Per-tracker announce status. See [Tracker status values](#tracker-status-values) (requires qBittorrent 5.1+). |
 | Tracker message | Per-tracker status message. Use `nil` for an empty message (requires qBittorrent 5.1+). |
 | Comment | Torrent comment field |
@@ -178,8 +177,8 @@ If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboa
 
 | Field | Description |
 | --- | --- |
-| Hardlink Scope | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access) |
-| Hardlink Scope (Cross-Instance) | `none`, `torrents_only`, or `outside_qbittorrent` across all instances (requires local filesystem access) |
+| Hardlink Scope | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` (requires local filesystem access, see [Hardlink detection](#hardlink-detection)) |
+| Hardlink Scope (Cross-Instance) | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` across all instances (requires local filesystem access) |
 | Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access) |
 
 ### State values
@@ -200,11 +199,14 @@ The State field matches these status buckets:
 | `stalled_downloading` | Stalled while downloading |
 | `errored` | Has errors |
 | `tracker_down` | Tracker unreachable |
+| `tracker_error` | A tracker returned an explicit error |
 | `checking` | File check in progress |
 | `checkingResumeData` | Checking resume data |
 | `moving` | Moving files |
 | `missingFiles` | Files not found |
 | `unregistered` | Tracker reports unregistered |
+
+`tracker_down` and `tracker_error` require qBittorrent 5.1+ (Web API 2.11.4+). On older instances, the query builder disables these values.
 
 ### Tracker status values
 
@@ -561,8 +563,8 @@ qui evaluates `mode: full` within the rule's scope for that run (enabled rule, t
 Options:
 
 - **Managed / Replace in Client**: `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies them to current matches.
-- **Use Tracker as Tag**: Derive the tag from the tracker domain.
-- **Use Display Name**: Use the [tracker customization](./tracker-customizations.md) display name instead of the raw domain.
+- **Use tracker name as tag**: Derive the tag from the tracker domain.
+- **Use display name**: Use the [tracker customization](./tracker-customizations.md) display name instead of the raw domain.
 
 Behavior reference:
 
@@ -585,10 +587,10 @@ Move torrents to a different category.
 
 Options:
 
-- **Include Cross-Seeds**: Also move cross-seeds (torrents with matching ContentPath AND SavePath).
-- **Group ID (advanced)**: Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this option takes precedence over "Include Cross-Seeds".
+- **Include affected cross-seeds**: Also move cross-seeds (torrents with matching ContentPath AND SavePath).
+- **Group ID (advanced)**: Expand category changes to all torrents in the specified group (see [Grouping](#grouping)). If set, this option takes precedence over "Include affected cross-seeds".
 - **Strict grouped matching**: If you set `groupId`, category expansion applies only when all group members satisfy the category rule checks.
-- **Block If Cross-Seed In Categories**: If another cross-seed is in a protected category, prevent the move.
+- **Skip if cross-seed exists in categories**: If another cross-seed is in a protected category, prevent the move.
 
 ### Move
 
@@ -628,7 +630,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
 
 :::note
-If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use Tracker as Tag** and **Use Display Name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
+If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
 :::
 
 ### Auto management
@@ -693,7 +695,7 @@ The action assumes the data already exists on the target (moved with rclone, Qui
 | **Tags** | Tags to apply on target instance |
 | **Skip checking** | Skip hash check on target (default: enabled) |
 | **Paused** | Add torrent paused on target |
-| **Content layout** | `Original`, `Subfolder`, or `NoSubfolder` |
+| **Content layout** | `Default` (target instance setting), `Original`, `Create subfolder`, or `Don't create subfolder` |
 | **Condition Override** | Optional condition specific to this action |
 
 **Behavior:**
@@ -742,7 +744,7 @@ Automations detect cross-seeded torrents (same content and files) and can handle
 - **Delete rules**:
   - If cross-seeds exist, use `deleteWithFilesPreserveCrossSeeds` to keep files.
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together.
-- **Category rules**: Enable "Include Cross-Seeds" to move related torrents together.
+- **Category rules**: Enable "Include affected cross-seeds" to move related torrents together.
 - **Blocking**: If cross-seeds are in protected categories, prevent category moves.
 
 ### Hardlink detection
@@ -894,6 +896,9 @@ Use this field in multi-instance setups where cross-seeds are hardlinked across 
 | `none` | No hardlinks detected. |
 | `torrents_only` | All hardlinks are accounted for across all qBittorrent instances. |
 | `outside_qbittorrent` | Hardlinks exist to files outside all qBittorrent instances. |
+| `both` | Hardlinks exist to other torrents across instances and to files outside all instances. |
+
+The condition values `inside_qbittorrent` and `outside_qbittorrent` also match `both`, as they do for `HARDLINK_SCOPE`.
 
 #### Combining with HARDLINK_SCOPE
 
@@ -1075,7 +1080,7 @@ qui logs every automation action with:
 - Outcome (success/failed) with reasons
 - Action-specific details
 
-qui keeps activity for 7 days by default. View the log in the Automations section for each instance.
+qui keeps activity for 7 days. View the log in the Automations section for each instance.
 
 ## Example rules
 
@@ -1083,7 +1088,7 @@ qui keeps activity for 7 days by default. View the log in the Automations sectio
 
 If disk space is low, remove torrents completed over 30 days ago:
 
-- Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
+- Condition: `Completed Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
 - Action: Remove with files
 
 qui deletes matching torrents in the configured priority order (for example, oldest first) and stops once the projected free space exceeds 500GB.
@@ -1101,7 +1106,7 @@ Limit upload on private trackers:
 Auto-tag torrents with no activity:
 
 - Tracker: `*`
-- Condition: `Last Activity Age > 7 days`
+- Condition: `Inactive Time > 7 days`
 - Action: Tag "stalled" (mode: add)
 
 ### Clean unregistered torrents
@@ -1109,7 +1114,7 @@ Auto-tag torrents with no activity:
 Remove torrents the tracker no longer recognizes:
 
 - Tracker: `*`
-- Condition: `Is Unregistered is true`
+- Condition: `Unregistered is true`
 - Action: Delete (keep files)
 
 ### Maintain minimum free space
@@ -1127,7 +1132,7 @@ qui removes torrents from the client in the configured priority order until the 
 Remove completed torrents and all their cross-seeded copies when they are old enough:
 
 - Tracker: `*`
-- Condition: `Completion On Age > 30 days` AND `State is completed`
+- Condition: `Completed Age > 30 days` AND `State is completed`
 - Action: Remove with files (include cross-seeds)
 
 When a torrent matches, qui also deletes every other torrent that points to the same downloaded files. Use this rule when you no longer need any copy of the content.
@@ -1137,7 +1142,7 @@ When a torrent matches, qui also deletes every other torrent that points to the 
 Move torrents to tracker-named categories:
 
 - Tracker: `tracker.example.com`
-- Action: Category "example" with "Include Cross-Seeds" enabled
+- Action: Category "example" with "Include affected cross-seeds" enabled
 
 ### Post-processing on completion
 
@@ -1152,5 +1157,5 @@ When torrents finish downloading, run a script:
 When torrents stall, alert an external monitoring system:
 
 - Tracker: `*`
-- Condition: `State is stalled` AND `Last Activity Age > 24 hours`
+- Condition: `State is stalled` AND `Inactive Time > 24 hours`
 - Action: External Program "send-alert" + Tag "stalled" (mode: add)

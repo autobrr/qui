@@ -18,7 +18,7 @@ If you disable RSS fetching or auto-downloading in qBittorrent, qui shows a warn
 
 ## Feeds
 
-The **Feeds** tab shows your feeds in a tree on the left and the articles of the selected feed on the right. Folders show their unread count. **Refresh All** triggers a refresh of every feed. While the tab is open, qui streams feed updates live and shows the connection state in a status badge.
+The **Feeds** tab shows your feeds in a tree on the left and the articles of the selected feed on the right. Folders show their unread count, or the number of feeds inside when nothing is unread. **Refresh All** triggers a refresh of every feed. While the tab is open, qui streams feed updates live and shows the connection state in a status badge.
 
 ### Add a feed
 
@@ -71,6 +71,7 @@ Click **Add Rule** to create a rule, or click the pencil icon to edit one. A rul
 
 | Field | Description |
 |-------|-------------|
+| Rule Name | Required. The name qBittorrent stores the rule under. You cannot change it after you create the rule. |
 | Must Contain | Text the article title must include, for example `keyword1\|keyword2` |
 | Must Not Contain | Text that excludes an article |
 | Episode Filter | Season and episode ranges in the format `S01-S03;E01-E10` |

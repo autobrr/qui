@@ -84,6 +84,7 @@ printf "password" | ./qui change-password --username admin
 - Passwords must be at least 8 characters long.
 - Interactive prompts mask the password.
 - Both commands accept piped input for automation and scripting.
+- A piped password must not contain spaces. For a password with spaces, use `--password` or `--new-password`, or type it at the interactive prompt.
 - If the database does not exist, `create-user` creates it. `change-password` requires an existing database.
 - The commands do not ask you to confirm the password.
 
@@ -121,6 +122,8 @@ Update qui to the latest release:
 ./qui update
 ```
 
+This command replaces the qui binary in place. For Docker, pull a new image instead (see [Docker](../getting-started/docker.md#updating)).
+
 ## Migrate From Other Torrent Clients
 
 Import torrents with their state from Deluge, rTorrent, or Transmission into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what qui preserves.
@@ -150,7 +153,7 @@ Notes:
 
 - Stop the source client and qBittorrent before you migrate. Start qBittorrent afterwards, and it picks up the imported torrents.
 - qui imports only fully downloaded torrents. It skips partial torrents with a warning, so no incorrect piece state reaches qBittorrent.
-- qui preserves these fields per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state, Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
+- qui preserves these fields per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state (Deluge 2.x only; Deluge 1.3.x imports start resumed), Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
 - qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x through 0.16.x.
 - If you do not set `--skip-backup`, qui first archives both directories to `qbt_backup/` in the current working directory. If the qBittorrent directory already exists, qui archives it. A fresh destination produces only the source archive.
 - If a torrent already exists in the target `BT_backup`, qui skips it. You can run the command again.
@@ -195,6 +198,8 @@ Notes:
 - The command copies all runtime tables except migration history.
 - The migrator creates the schema and tables inside the destination database. It does not create the database itself.
 - The output includes per-table row counts for SQLite and Postgres.
+- On a new database, the dry run lists every table under `Missing Postgres tables` with `postgres=0`. This is expected. `--apply` creates them.
+- `--apply` empties every table in the destination database before it copies rows. Point it only at a new or empty database. If qui already ran against that Postgres database, its data is lost. A non-zero `postgres=` count in the dry run output means the destination is not empty.
 
 ### FAQ
 

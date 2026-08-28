@@ -22,7 +22,7 @@ Click the gear button in the top right corner of the Logs panel to open the conf
 qui writes these values to `config.toml` and applies them immediately. The same keys are also available as `config.toml` entries and environment variables. See [Configuration Reference](./reference.md) and [Environment Variables](./environment.md) for the full tables.
 
 :::note
-If an environment variable such as `QUI__LOG_LEVEL` sets a value, the matching field shows a lock badge and you cannot change it from the UI. Change or remove the environment variable instead.
+If an environment variable such as `QUI__LOG_LEVEL` sets a value, the matching field shows a lock badge and you cannot change it from the UI. Change or remove the environment variable instead. The `--log-path` flag of `qui serve` also locks the **Log File Path** field. Remove the flag to edit the path in the UI.
 :::
 
 ### Which level to use
@@ -40,7 +40,7 @@ The toolbar gives you these controls:
 - **Clear**. Empties the current view.
 - **Auto-scroll**. Follows the newest entries. Turn it off to pause and scroll back.
 
-While auto-scroll is on, the viewer keeps 1,000 entries in memory. When auto-scroll is off, it keeps up to 10,000 entries. When the buffer is full, qui drops the oldest entries and shows a warning.
+While auto-scroll is on, the viewer keeps the newest 1,000 entries and trims older ones. When auto-scroll is off, it keeps up to 10,000 entries. When that limit is reached, qui drops the oldest entries and shows a warning.
 
 Click a structured entry to open it in a dialog with formatted JSON. **Copy Raw** copies the original log line. **Copy JSON** copies the formatted version.
 

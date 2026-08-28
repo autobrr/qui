@@ -28,7 +28,7 @@ Expand **Tracker Breakdown** to see the table of trackers. The rename, merge, ed
 If a tracker announces on several domains, you can combine the domains into a single entry:
 
 1. Tick the checkbox on each tracker row that you want to combine.
-2. Click the link icon on one of the selected rows (**Merge selected trackers into this group**).
+2. Click the link icon on one of the selected rows (**Add to merge**).
 3. Enter the **Display Name** for the merged entry and save.
 
 The merge dialog marks the first domain **Primary**. Its torrents always count toward the group's Dashboard statistics. The other domains start unticked and do not count until you tick them.
@@ -65,5 +65,5 @@ The first entry in `domains` is the primary domain and always counts toward Dash
 ## Where display names are used
 
 - **Dashboard** statistics and tracker breakdown.
-- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and move paths can use it with `{{.Tracker}}`.
+- **[Automations](./automations.md)**: the **Tracker** condition matches your display name as well as the raw URL or domain, tag actions can tag torrents with it, and move paths can use it with `{{.Tracker}}`. See [Move](./automations.md#move) for when `{{.Tracker}}` uses the display name.
 - **[Cross-seed link directories](./cross-seed/link-directories.md)**: the `by-tracker` preset uses the display name for folder names.

@@ -26,7 +26,7 @@ Disc-based media (Blu-ray/DVD) requires manual verification. See [troubleshootin
 
 ## Prerequisites
 
-Torznab indexer feeds need Prowlarr or Jackett. Add your indexers in **Settings → Indexers** with the "1-click sync" feature. This imports them from Prowlarr or Jackett.
+You need at least one enabled Torznab indexer. Add indexers in **Settings → Indexers**. Click **Discover** to import them from Prowlarr or Jackett, or **Add single** to add a native tracker endpoint by hand. See [Add indexers](../search.md#add-indexers).
 
 Library Scan also runs without Torznab if you configure Gazelle keys for OPS/RED. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
 
@@ -36,7 +36,7 @@ A Prowlarr indexer's own search filters, such as freeleech only, also apply to c
 
 Optional: qui can query OPS/RED directly through tracker Gazelle JSON APIs. This complements Torznab and handles OPS/RED searches even when no Torznab backend is available. When you configure **both** Gazelle keys, qui excludes the OPS/RED Torznab indexers from per-torrent searches. See [OPS/RED (Gazelle)](./gazelle-ops-red.md).
 
-**Optional but recommended:** Configure [Sonarr and Radarr integrations](../search.md#sonarr-and-radarr-integrations) for external ID lookups. ID-based queries return more exact matches, most of all when names differ by locale ("AKA" content).
+**Optional but recommended:** Configure [Sonarr and Radarr integrations](../search.md#sonarr-and-radarr-integrations) for external ID lookups (IMDb, TMDb, TVDb, TVMaze). ID-based queries return more exact matches, most of all when names differ by locale ("AKA" content).
 
 Without *arr IDs, qui uses a fallback. Some release groups embed IMDb/TMDb/TVDb tags in their MKV files. When a search finds no usable results, qui reads these tags from the torrent's largest `.mkv` file. It then retries indexers that support ID-based search. This fallback requires [Local Filesystem Access](../instance-settings.md#local-filesystem-access) on the instance. qui caches each successful scan per torrent, so it reads the file only once. If a read fails, a later search tries again.
 
@@ -105,7 +105,7 @@ If autobrr has no positive size, qui uses a narrow name-only preflight. This pre
 
 ### Season Pack Assembly
 
-qui can assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. It links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires local filesystem access and hardlink or reflink mode. See [Season Packs](./season-packs.md) for setup.
+qui can assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires local filesystem access and hardlink or reflink mode. See [Season Packs](./season-packs.md) for setup.
 
 ## Blocklist
 

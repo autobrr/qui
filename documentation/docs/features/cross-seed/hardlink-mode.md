@@ -35,7 +35,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 - Torrents added in hardlink or reflink mode always use an explicit `savepath` (the link-tree root), which turns **AutoTMM off**. If you enable AutoTMM after the add, qBittorrent can move files out of the link tree.
 - If qui cannot create a hardlink (due to missing local access, a filesystem mismatch, or an invalid base directory), the cross-seed **fails** by default.
 - If you want failed hardlink operations to use regular cross-seed mode instead of failing, enable **"Fallback to regular mode on error"**. Filesystem fallback uses a full recheck. See [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
-- When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. Even if you enable **Skip piece boundary safety check** for regular reuse mode, qui always enforces this fallback check.
+- When fallback handles a partial or non-perfect match, qui runs a piece-boundary safety check before it adds the torrent to qBittorrent. qui always enforces this fallback check, even when the **Piece boundary safety check** in **Cross-Seed > Rules > Safety & validation** is off (the default).
 - qui categorizes hardlinked torrents with your existing cross-seed category rules (category affix, indexer name, or custom category). The hardlink preset only affects the on-disk folder layout.
 
 ## Directory layout
@@ -84,8 +84,8 @@ If hardlink or reflink mode falls back to regular mode for a partial or non-perf
 
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not free space until you remove all remaining links.
 - Windows support: qui sanitizes folder names to remove characters that Windows forbids. The torrent file paths must remain valid for your qBittorrent setup.
-- If extra files are piece-boundary safe, hardlink mode supports them. If the incoming torrent contains extra files that the matched torrent lacks (for example `.nfo` or `.srt` sidecars), hardlink mode links the content files and triggers a recheck so qBittorrent downloads the extras. If the extras share pieces with content (unsafe), qui skips the cross-seed.
-- Partial matches (for example season packs where only some episodes exist on disk) require the **Download missing files** setting in [Dir Scan settings](./dir-scan.md#settings-global). Without it, qui rejects partial link tree injections.
+- If extra files are piece-boundary safe, hardlink mode supports them. If the incoming torrent contains extra files that the matched torrent lacks (for example `.nfo` or `.srt` sidecars), hardlink mode links the content files and triggers a recheck so qBittorrent downloads the extras. If the extras share pieces with content (unsafe) and the **Piece boundary safety check** is enabled, qui skips the cross-seed.
+- In Dir Scan, partial matches (for example season packs where only some episodes exist on disk) require the **Download missing files** setting in [Dir Scan settings](./dir-scan.md#settings-global). Without it, Dir Scan rejects partial link tree injections. Other sources add partial season packs paused and recheck them.
 
 ## Deleting Hardlinked Cross-Seeds
 
@@ -147,7 +147,7 @@ On Linux, verify the filesystem type with `df -T /path`. You want `xfs` or `btrf
 
 | Aspect | Hardlink mode | Reflink mode |
 |--------|--------------|--------------|
-| Piece-boundary check | Skips if unsafe | Never skips (clones are safe to modify) |
+| Piece-boundary check | Skips if unsafe when the **Piece boundary safety check** is enabled | Never skips (clones are safe to modify) |
 | Recheck | Only when extras or disc layouts require verification | Only when extras or disc layouts require verification |
 | Disk usage | Zero (shared blocks) | Starts near zero, grows as modified |
 

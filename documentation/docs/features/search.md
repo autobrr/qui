@@ -20,7 +20,7 @@ Each indexer row has actions to test the connection and to sync its capabilities
 
 ## Run a search
 
-1. Open **Search** and pick a search type: **Auto detect**, **Movies**, **TV**, **Music**, **Books & comics**, **Apps & games**, or **Adult**. Auto detect infers the categories from your query.
+1. Open **Search** and pick a search type: **Movies** (the default), **TV**, **Music**, **Books & comics**, **Apps & games**, or **Adult**. The search type sets the Torznab categories that qui sends to the indexers.
 2. Enter a query. qui recognizes IMDb IDs (`tt1234567`) and TVDb IDs (`tvdb 123456`) inside the query and sends them as ID parameters.
 3. Click **Search**.
 
@@ -41,7 +41,7 @@ Click **Advanced** to send extra Torznab parameters. A search with advanced para
 | Episode | Episode number |
 | Artist | Music artist |
 | Album | Music album |
-| Limit | Maximum results per indexer |
+| Limit | Maximum results in the response. qui also sends it to each indexer |
 | Offset | Skip this many results |
 
 ## Results
@@ -52,7 +52,7 @@ The filter box narrows the visible results by title, indexer, category, source, 
 
 ## Send a result to an instance
 
-Pick a target instance from the instance selector at the top of the page. qui remembers the choice for the browser session.
+Pick a target instance from the instance selector at the top of the page. qui remembers the choice for the current browser tab.
 
 Select a result row, then click **Add to (instance name)**. The add-torrent dialog opens with the download URL prefilled. You can set the category, tags, and save path before you add the torrent. The dropdown next to the button adds the result to a different instance.
 
@@ -96,4 +96,4 @@ Set **Cache TTL (minutes)** to control how long results stay cached. The minimum
 
 **Settings > Integrations** holds your Sonarr and Radarr instances. qui queries them to resolve external IDs, which improves cross-seed searches on indexers that support ID lookups. Enter the base URL and the API key (found in **Settings > General** in Sonarr or Radarr). If you run several instances, set a priority. qui queries higher priority instances first.
 
-Cross-seed uses the same indexers and the same *arr integrations as the Search page. See [Cross-Seed](./cross-seed/overview.md) for details.
+Cross-seed uses the same indexers as the Search page. Cross-seed and directory scan searches use the Sonarr and Radarr integrations. The Search page does not. See [Cross-Seed](./cross-seed/overview.md) for details.

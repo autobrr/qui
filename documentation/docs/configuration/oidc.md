@@ -6,7 +6,7 @@ description: Single sign-on with an OpenID Connect provider.
 
 # OpenID Connect (OIDC)
 
-Set `QUI__OIDC_ENABLED=true` to delegate authentication to an external identity provider. When the backend detects a valid OIDC configuration, the login screen shows a "Sign in with OIDC" button.
+Set `QUI__OIDC_ENABLED=true` to delegate authentication to an external identity provider. You must also set the issuer, client ID, client secret, and redirect URL. If one of these values is missing, or qui cannot reach the issuer, qui does not start. When OIDC is enabled, the login screen shows an **OpenID Connect** button.
 
 If your provider advertises PKCE (`S256`) support, qui uses it for the authorization flow. You do not need to configure extra settings in qui.
 To make sure that PKCE is active, inspect `/api/auth/oidc/config`. The `authorizationUrl` must include both `code_challenge=` and `code_challenge_method=S256`.
@@ -47,7 +47,8 @@ QUI__OIDC_ISSUER=https://auth.example.com/realms/main \
 QUI__OIDC_CLIENT_ID=qui \
 QUI__OIDC_CLIENT_SECRET=super-secret-value \
 QUI__OIDC_REDIRECT_URL=https://qui.example.com/api/auth/oidc/callback \
-QUI__OIDC_DISABLE_BUILT_IN_LOGIN=true
+QUI__OIDC_DISABLE_BUILT_IN_LOGIN=true \
+qui serve
 ```
 
 You can set the same options in `config.toml` with the `oidc*` keys that `qui generate-config` writes.
