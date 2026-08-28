@@ -641,7 +641,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (incognitoMode) return
     try {
       await copyTextToClipboard(peer.key)
-      toast.success(t("detailsPanel.toast.copied", { type: t("peersTable.address") }))
+      toast.success(t("peersTable.toast.ipCopied"))
     } catch (err) {
       console.error("Failed to copy to clipboard:", err)
       toast.error(t("detailsPanel.toast.copyFailed"))
