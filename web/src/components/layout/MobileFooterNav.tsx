@@ -27,6 +27,7 @@ import { getThemeById, isThemePremium, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
@@ -79,10 +80,6 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-
-
-const MOBILE_VIEW_MODES = ["normal", "compact", "ultra-compact"] as const
-
 // Custom hook for theme change detection
 const useThemeChange = () => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
@@ -116,7 +113,8 @@ export function MobileFooterNav() {
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { isFooterVisible } = useMobileScroll()
-  const { viewMode, setViewMode } = usePersistedCompactViewState("compact", MOBILE_VIEW_MODES)
+  const isMobile = useIsMobile()
+  const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
   const { currentMode, currentTheme } = useThemeChange()
   const { customThemes } = useCustomThemes()
   // Subscribe so the list re-renders when the async theme registry lands.
@@ -629,7 +627,7 @@ export function MobileFooterNav() {
             <div>
               <div className="text-sm font-medium mb-2">{tTorrents("filterSidebar.viewMode")}</div>
               <div className="grid grid-cols-3 gap-1">
-                {MOBILE_VIEW_MODES.map((mode) => (
+                {viewModes.map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
@@ -638,7 +636,9 @@ export function MobileFooterNav() {
                       viewMode === mode ? "bg-accent" : "hover:bg-accent/50"
                     )}
                   >
-                    {mode === "normal"? tTorrents("filterSidebar.viewModeNormal"): mode === "compact"? tTorrents("filterSidebar.viewModeCompact"): tTorrents("filterSidebar.viewModeUltra")}
+                    {isMobile
+                      ? mode === "normal"? tTorrents("filterSidebar.viewModeNormal"): mode === "compact"? tTorrents("filterSidebar.viewModeCompact"): tTorrents("filterSidebar.viewModeUltra")
+                      : mode === "normal"? tTorrents("statusBar.viewModes.table"): mode === "dense"? tTorrents("statusBar.viewModes.dense"): tTorrents("statusBar.viewModes.stacked")}
                   </button>
                 ))}
               </div>

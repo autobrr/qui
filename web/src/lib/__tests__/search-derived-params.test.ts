@@ -16,15 +16,10 @@ import { describe, expect, it } from "vitest"
 // scoped to the search namespace so assertions stay deterministic.
 const t = i18n.getFixedT("en", "search")
 
-// Intent: SearchType -> Torznab category IDs. 'auto' means "don't constrain"
-// (returns undefined so the backend chooses). Returns a NEW array so callers
+// Intent: SearchType -> Torznab category IDs. Returns a NEW array so callers
 // can mutate safely without corrupting the module-level map.
 describe("getCategoriesForSearchType", () => {
-  it("returns undefined for 'auto'", () => {
-    expect(getCategoriesForSearchType("auto")).toBeUndefined()
-  })
-
-  it.each<[Exclude<Parameters<typeof getCategoriesForSearchType>[0], "auto">, number]>([
+  it.each<[Parameters<typeof getCategoriesForSearchType>[0], number]>([
     ["movies", 2000],
     ["tv", 5000],
     ["music", 3000],
@@ -33,13 +28,12 @@ describe("getCategoriesForSearchType", () => {
     ["xxx", 6000],
   ])("returns a category list starting at the parent ID for %s", (type, parent) => {
     const cats = getCategoriesForSearchType(type)
-    expect(cats).toBeDefined()
-    expect(cats?.[0]).toBe(parent)
+    expect(cats[0]).toBe(parent)
   })
 
   it("returns a fresh array on each call (callers can mutate safely)", () => {
-    const a = getCategoriesForSearchType("movies")!
-    const b = getCategoriesForSearchType("movies")!
+    const a = getCategoriesForSearchType("movies")
+    const b = getCategoriesForSearchType("movies")
     expect(a).not.toBe(b)
     a.push(9999)
     expect(getCategoriesForSearchType("movies")).not.toContain(9999)
@@ -78,11 +72,9 @@ describe("inferSearchTypeFromCategories", () => {
   })
 })
 
-// Intent: human-readable label for the SearchType dropdown. Falls back to
-// 'Auto detect' for unknown values rather than blowing up the UI.
+// Intent: human-readable label for the SearchType dropdown.
 describe("getSearchTypeLabel", () => {
   it.each([
-    ["auto", "Auto detect"],
     ["movies", "Movies"],
     ["tv", "TV"],
     ["music", "Music"],
@@ -93,18 +85,15 @@ describe("getSearchTypeLabel", () => {
     expect(getSearchTypeLabel(type, t)).toBe(expected)
   })
 
-  it("falls back to 'Auto detect' for unknown values", () => {
-    expect(getSearchTypeLabel("unknown" as never, t)).toBe("Auto detect")
-  })
 })
 
 // Intent: each option in the dropdown must be a known SearchType so the
 // types stay in sync with the data shape. Catches anyone who adds an
 // option label without adding the corresponding type entry.
 describe("getSearchTypeOptions", () => {
-  it("includes exactly the known SearchType values", () => {
+  it("does not offer automatic category detection", () => {
     expect(getSearchTypeOptions(t).map(o => o.value).sort()).toEqual(
-      ["apps", "auto", "books", "movies", "music", "tv", "xxx"]
+      ["apps", "books", "movies", "music", "tv", "xxx"]
     )
   })
 })

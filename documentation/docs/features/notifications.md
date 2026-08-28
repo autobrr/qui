@@ -39,8 +39,8 @@ Notes:
 | `cross_seed_search_failed` | Seeded search run fails or cancels (summary). |
 | `cross_seed_completion_succeeded` | Completion search run completes (summary counts and samples). |
 | `cross_seed_completion_failed` | Completion search run fails. |
-| `cross_seed_webhook_succeeded` | Webhook check run completes (summary counts and samples). |
-| `cross_seed_webhook_failed` | Webhook check run fails. |
+| `cross_seed_webhook_succeeded` | Webhook apply adds one or more torrents. No-op checks and applies do not notify. |
+| `cross_seed_webhook_failed` | Webhook check or apply fails. |
 | `automations_actions_applied` | Automation rules apply actions (summary counts and samples, only if actions occur). |
 | `automations_run_failed` | Automation rules fail to run for an instance (system error). |
 

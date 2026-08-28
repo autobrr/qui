@@ -1387,7 +1387,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 	}
 }
 
-func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
+func TestCheckWebhook_DoesNotNotifySuccessfulChecks(t *testing.T) {
 	t.Parallel()
 
 	instance := &models.Instance{
@@ -1401,22 +1401,19 @@ func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
 	}
 
 	tests := []struct {
-		name              string
-		progress          float64
-		wantCanCrossSeed  bool
-		wantNotificationN int
+		name             string
+		progress         float64
+		wantCanCrossSeed bool
 	}{
 		{
-			name:              "pending-only match does not notify",
-			progress:          0.5,
-			wantCanCrossSeed:  false,
-			wantNotificationN: 0,
+			name:             "pending-only match",
+			progress:         0.5,
+			wantCanCrossSeed: false,
 		},
 		{
-			name:              "complete match notifies once",
-			progress:          1.0,
-			wantCanCrossSeed:  true,
-			wantNotificationN: 1,
+			name:             "complete match",
+			progress:         1.0,
+			wantCanCrossSeed: true,
 		},
 	}
 
@@ -1441,10 +1438,7 @@ func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
 			assert.Equal(t, "download", resp.Recommendation)
 
 			events := notifier.Events()
-			assert.Len(t, events, tt.wantNotificationN)
-			if tt.wantNotificationN > 0 {
-				assert.Equal(t, notifications.EventCrossSeedWebhookSucceeded, events[0].Type)
-			}
+			assert.Empty(t, events)
 		})
 	}
 }
@@ -2061,7 +2055,7 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 }
 
 func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
-	err := errors.New("torznab request rate-limited by tracker")
+	err := &jackett.RateLimitError{IndexerID: 1, IndexerName: "test", Scope: "query", RetryAt: time.Now().Add(time.Minute)}
 	wrapped := wrapCrossSeedSearchError(err)
 
 	if wrapped == nil {
@@ -2072,6 +2066,18 @@ func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
 	}
 	if !strings.Contains(wrapped.Error(), err.Error()) {
 		t.Fatalf("expected original error message to be included")
+	}
+	if _, ok := errors.AsType[*jackett.RateLimitError](wrapped); !ok {
+		t.Fatal("expected wrapped error to preserve the typed rate limit")
+	}
+}
+
+func TestWrapCrossSeedSearchErrorDoesNotClassifyText(t *testing.T) {
+	err := errors.New("backend says rate-limited")
+	wrapped := wrapCrossSeedSearchError(err)
+
+	if !strings.Contains(wrapped.Error(), "torznab search failed") {
+		t.Fatalf("expected untyped text to remain a generic failure, got %q", wrapped.Error())
 	}
 }
 

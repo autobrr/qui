@@ -278,15 +278,47 @@ describe("applyServerSettings", () => {
 })
 
 describe("seedAndMarkReady", () => {
+  it.each([
+    ["normal", "normal", "normal"],
+    ["dense", "compact", "dense"],
+    ["compact", "compact", "dense"],
+    ["ultra-compact", "ultra-compact", "dense"],
+  ])("migrates legacy torrent view mode %s", (legacy, mobile, desktop) => {
+    const serverSettings = { "qui-torrent-view-mode": legacy }
+    applyServerSettings(serverSettings)
+
+    seedAndMarkReady(serverSettings)
+
+    expect(localStorage.getItem("qui-torrent-mobile-view-mode")).toBe(mobile)
+    expect(localStorage.getItem("qui-torrent-desktop-view-mode")).toBe(desktop)
+  })
+
+  it("does not overwrite layout-specific torrent view modes during migration", () => {
+    const serverSettings = {
+      "qui-torrent-view-mode": "compact",
+      "qui-torrent-mobile-view-mode": "normal",
+    }
+    applyServerSettings(serverSettings)
+
+    seedAndMarkReady(serverSettings)
+
+    expect(localStorage.getItem("qui-torrent-mobile-view-mode")).toBe("normal")
+    expect(localStorage.getItem("qui-torrent-desktop-view-mode")).toBe("dense")
+  })
+
   it("pushes synced keys the server does not know, and only those", async () => {
     localStorage.setItem("qui-speed-units", "bits")
     localStorage.setItem("qui-incognito-mode", "true")
+    localStorage.setItem("qui-torrent-mobile-view-mode", "ultra-compact")
     localStorage.setItem("theme-cache", "{}") // not a synced key
 
     seedAndMarkReady({ "qui-incognito-mode": "true" })
     await vi.runAllTimersAsync()
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-speed-units": "bits" })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      "qui-speed-units": "bits",
+      "qui-torrent-mobile-view-mode": "ultra-compact",
+    })
   })
 })

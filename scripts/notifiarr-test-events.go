@@ -545,21 +545,15 @@ func buildFixtures() []fixture {
 				InstanceName: "Cross-seed webhook",
 				TorrentName:  "Example.Show.S01E01",
 				CrossSeed: &notifications.CrossSeedEventData{
-					Matches:        3,
-					Complete:       2,
-					Pending:        1,
-					Recommendation: "keep current torrent",
-					Samples:        []string{"Example.Show.S01E01.1080p", "Example.Show.S01E01.2160p"},
+					Added:   2,
+					Samples: []string{"Primary", "Archive"},
 				},
 				StartedAt:   webhookStart,
 				CompletedAt: webhookEnd,
 				Message: strings.Join([]string{
 					"Torrent: Example.Show.S01E01",
-					"Matches: 3",
-					"Complete matches: 2",
-					"Pending matches: 1",
-					"Recommendation: keep current torrent",
-					"Samples: Example.Show.S01E01.1080p; Example.Show.S01E01.2160p",
+					"Added: 2",
+					"Instances: Primary; Archive",
 				}, "\n"),
 			},
 		},
@@ -751,10 +745,10 @@ func formatEvent(event notifications.Event) (string, string) {
 		title := "Cross-seed completion search failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case notifications.EventCrossSeedWebhookSucceeded:
-		title := "Cross-seed webhook check completed"
+		title := "Cross-seed webhook torrent added"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case notifications.EventCrossSeedWebhookFailed:
-		title := "Cross-seed webhook check failed"
+		title := "Cross-seed webhook failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case notifications.EventAutomationsActionsApplied:
 		title := "Automations actions applied"

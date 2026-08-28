@@ -1129,10 +1129,7 @@ export function TorrentCardsMobile({
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
-  // Mobile cards don't support "dense" mode (which is table-row based on desktop).
-  // Mobile uses card layouts: normal (full cards), compact, and ultra-compact.
-  // This restriction syncs with FilterSidebar's mobile mode to keep view states consistent.
-  const { viewMode } = usePersistedCompactViewState("compact", ["normal", "compact", "ultra-compact"])
+  const { viewMode } = usePersistedCompactViewState("mobile")
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
   const trackerIcons = useMemo(() => {
