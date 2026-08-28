@@ -1,34 +1,35 @@
 ---
-sidebar_position: 8
+sidebar_position: 11
 title: Tracker Icons
 description: Automatic favicon caching for tracker hosts.
 ---
 
-# Tracker Icons
+# Tracker icons
 
-Cached icons live in your data directory under `tracker-icons/`. With the default SQLite engine this is next to `qui.db`; with Postgres it's still in the same data directory. Icons are stored as 16×16 PNGs; anything larger than 1024×1024 is rejected.
+qui stores cached icons in your data directory under `tracker-icons/`. If you use the default SQLite engine, this directory sits next to `qui.db`. If you use Postgres, qui uses the same data directory. qui stores icons as 16×16 PNGs and rejects source images larger than 1024×1024.
 
-qui automatically downloads a favicon the first time it encounters a tracker host and caches it for future sessions. Failed downloads are retried automatically.
+qui downloads a favicon the first time it sees a tracker host and caches it for future sessions. If a download fails, qui waits 30 minutes before it tries that host again.
 
-Set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`) to disable these network fetches.
+If you want to disable these network fetches, set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`).
 
-## Add Icons Manually
+## Add icons manually
 
-Copy PNGs named after each tracker host (e.g. `tracker.example.com.png`) into the `tracker-icons/` directory. Files are served as-is, so trimming or resizing is up to you, but matching the built-in size (16×16) keeps them crisp and avoids extra scaling.
+Copy PNGs named after each tracker host (for example, `tracker.example.com.png`) into the `tracker-icons/` directory. qui serves the files as-is, so trim and resize them yourself. If icons match the built-in size (16×16), they stay crisp and avoid extra scaling.
 
-## Preload a Bundle of Icons
+## Preload a bundle of icons
 
-If you have a library of icons, preload them via a mapping file: `tracker-icons/preload.json` (also accepts `.js` variants).
+If you have a library of icons, preload them with a mapping file in `tracker-icons/`. qui accepts the first of these file names that it finds: `preload.json`, `preload.js`, `tracker-icons.json`, `tracker-icons.js`, `tracker-icons.txt`.
 
 ### Format
 
-The file can be either a plain JSON object or a snippet exported as `const trackerIcons = { ... };`.
+Use a plain JSON object or export a snippet as `const trackerIcons = { ... };`.
 
-- Keys must be the real tracker hostnames (e.g. `tracker.example.org`)
-- If you include a `www.*` host, qui automatically mirrors the icon to the bare hostname when missing
-- On startup qui decodes each data URL, normalises the image to 16×16, and writes the PNG to `<host>.png`
+- Keys must be the real tracker hostnames (for example, `tracker.example.org`)
+- If you include a `www.*` host and the bare hostname lacks an icon, qui mirrors the icon to the bare hostname
+- On startup, qui decodes each data URL, normalizes the image to 16×16, and writes the PNG to `<host>.png`
+- qui skips a host that already has a `<host>.png`. To make the preload write it again, delete the old file
 
-### JSON Example
+### JSON example
 
 ```json
 {
@@ -37,7 +38,7 @@ The file can be either a plain JSON object or a snippet exported as `const track
 }
 ```
 
-### JavaScript Example
+### JavaScript example
 
 ```js
 const trackerIcons = {
@@ -46,6 +47,6 @@ const trackerIcons = {
 };
 ```
 
-### Community Resources
+### Community resources
 
 See [Audionut/add-trackers](https://github.com/Audionut/add-trackers/blob/8db05c0e822f9b3afa46ca784644c4e7e400c92b/ptp-add-filter-all-releases-anut.js#L768) for an example icon bundle.
