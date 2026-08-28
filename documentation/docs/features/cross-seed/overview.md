@@ -65,7 +65,7 @@ Library Scan searches other trackers for torrents you already seed. Configure it
 - **Source instance**: The qBittorrent instance to scan
 - **Categories/Tags**: Filter which torrents to include
 - **Interval**: The delay between torrents. If you enable Torznab, the minimum is 60 seconds. If you disable Torznab and configure Gazelle, the minimum is 5 seconds. Set 10 seconds or more for Gazelle-only runs.
-- **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records the stamp only after an actual remote Gazelle or Torznab request. Local preflight failures and local Gazelle skips do not suppress future searches.
+- **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
 
 :::warning

@@ -55,18 +55,18 @@ If the file already exists, the command keeps it and does not overwrite it.
 
 Create and manage the user account from the command line:
 
+For normal use, omit the password flag. qui prompts for the password and masks your input. Your shell can save `--password` or `--new-password` values in its history. Other users on the system may see those values in the process list.
+
 ```bash
-# Create the initial user account
-./qui create-user --username admin --password mypassword
-
-# Create a user with a prompt (masked password input)
+# Create a user with a masked password prompt
 ./qui create-user --username admin
-
-# Change the password for the existing user (the old password is not needed)
-./qui change-password --username admin --new-password mynewpassword
 
 # Change the password with a masked prompt
 ./qui change-password --username admin
+
+# Both commands accept password flags
+./qui create-user --username admin --password mypassword
+./qui change-password --username admin --new-password mynewpassword
 
 # Pipe passwords for scripting (works with both commands)
 echo "mypassword" | ./qui create-user --username admin
@@ -84,7 +84,7 @@ printf "password" | ./qui change-password --username admin
 - Passwords must be at least 8 characters long.
 - Interactive prompts mask the password.
 - Both commands accept piped input for automation and scripting.
-- A piped password must not contain spaces. For a password with spaces, use `--password` or `--new-password`, or type it at the interactive prompt.
+- A piped password must not contain spaces. Type passwords with spaces at the interactive prompt.
 - If the database does not exist, `create-user` creates it. `change-password` requires an existing database.
 - The commands do not ask you to confirm the password.
 
@@ -95,7 +95,7 @@ If you forgot your password, set a new one with the `change-password` command. T
 **Linux / macOS:**
 
 ```bash
-./qui change-password --username admin --new-password mynewpassword
+./qui change-password --username admin
 ```
 
 **Windows (Command Prompt):**
@@ -103,16 +103,16 @@ If you forgot your password, set a new one with the `change-password` command. T
 Open the folder that contains `qui.exe` and run:
 
 ```batch
-qui.exe change-password --username admin --new-password mynewpassword
+qui.exe change-password --username admin
 ```
 
 **Docker:**
 
 ```bash
-docker exec -it <container-name> qui change-password --username admin --new-password mynewpassword
+docker exec -it <container-name> qui change-password --username admin
 ```
 
-Replace `admin` with your username and `mynewpassword` with your new password (minimum 8 characters).
+Replace `admin` with your username. Enter a new password of at least 8 characters at the prompt.
 
 ## update
 

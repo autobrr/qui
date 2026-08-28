@@ -25,13 +25,13 @@ If the command fails with a permission error, run it again with `sudo`. If you d
 
 ## Manual download
 
-Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases). Then extract the archive:
+Download the latest release for your platform from the [releases page](https://github.com/autobrr/qui/releases). Windows users should follow the [Windows guide](./windows.md).
+
+On Linux or macOS, extract the archive:
 
 ```bash
 tar -xzf qui*.tar.gz qui
 ```
-
-For Windows, see [Windows](./windows.md).
 
 ## Run
 

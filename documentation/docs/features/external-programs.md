@@ -94,7 +94,7 @@ Programs run asynchronously. qui does not wait for processes to complete.
 
 If you enable "Launch in terminal window", qui detects and uses an available terminal emulator. Detection priority:
 
-1. **TERM_PROGRAM environment variable**: If `TERM_PROGRAM` names one of the terminals in the next two groups and that terminal is installed, qui uses it
+1. **TERM_PROGRAM environment variable**: qui accepts `WezTerm`, `Hyper`, `kitty`, `alacritty`, `iTerm.app`, and `Apple_Terminal`. If qui finds the matching terminal, it uses it
 2. **Cross-platform terminals** (checked on all platforms):
    - WezTerm
    - Hyper

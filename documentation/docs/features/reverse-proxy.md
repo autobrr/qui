@@ -31,7 +31,7 @@ The **Client Proxy** page lists every key with its client name, instance, creati
 Use qui as the qBittorrent host with the proxy URL format:
 
 **Complete URL example:**
-```
+```text
 http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
 ```
 
@@ -61,7 +61,7 @@ If you use cross-seed integration with autobrr, see the [Cross-Seed](./cross-see
 1. Open the cross-seed configuration file.
 2. Add or edit the `torrentClients` section.
 3. Append the full URL as the documentation describes:
-   ```
+   ```js
    torrentClients: ["qbittorrent:http://localhost:7476/proxy/abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"],
    ```
 4. Save the configuration file and restart cross-seed.

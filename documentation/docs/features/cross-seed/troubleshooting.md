@@ -66,10 +66,9 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 Failed search or completion runs can trigger notification events. See [Notifications](../notifications.md#event-types) for the event keys.
 
 :::tip
-`size_mismatch` failures come from the sizes reported inside torrent files, not from the content on disk. A `size_mismatch` means the two copies have different piece hashes. One tracker has a bad copy. Compare the metadata and the file lists of both torrents before you report a bad hash copy on a tracker.
+`size_mismatch` comes from the file sizes in torrent metadata. qui found a size difference between the source and candidate file lists. A different encode or layout can produce this status. The check does not compare piece hashes.
 
-The failures reflect size mismatches against the selected source torrent for cross-seed searching (typically content in a folder). They do not report which trackers have bad hashes.
-If the source torrent contains the bad hash, the hash in the `debug` log entry `[CROSSSEED-ASYNC] Starting async torrent analysis` shows the source hash that qui used.
+Compare both torrents' metadata and file lists before reporting bad data to a tracker. The `debug` log entry `[CROSSSEED-ASYNC] Starting async torrent analysis` includes the source torrent hash.
 :::
 
 :::tip

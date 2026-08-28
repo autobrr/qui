@@ -28,12 +28,12 @@ For the full mapping (TOML keys + environment variables + defaults), see [Config
 ## Redirect URL format
 
 If you use a default install, use:
-```
+```text
 http://localhost:7476/api/auth/oidc/callback
 ```
 
 If you use a reverse proxy, include your base URL:
-```
+```text
 https://host/qui/api/auth/oidc/callback
 ```
 

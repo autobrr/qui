@@ -59,6 +59,6 @@ If you enable **Fallback to regular mode** and link-tree creation fails, qui add
 
 If hardlinks fail across filesystem or device boundaries, this fallback prevents injection errors. For example, a pooled mount presents paths that look identical but resolve to different underlying devices.
 
-If no base directory shares a filesystem with the source files, or link creation failed, qui adds the torrent paused and rechecks it. qui auto-resumes only after qBittorrent reports 100% complete. If you enable **Skip recheck**, qui skips those candidates. Fallbacks for configuration problems (an empty base directory, or no local filesystem access) add the torrent in regular mode with the normal regular-mode rules.
+If no base directory shares a filesystem with the source files, or link creation failed, qui adds the torrent paused and rechecks it. qui starts the torrent after qBittorrent reports 100% complete. For Cross-Seed, **Skip recheck** skips these candidates. Dir Scan runs the recheck even when **Skip recheck** is on. Fallbacks for configuration problems (an empty base directory, or no local filesystem access) add the torrent in regular mode with the normal regular-mode rules.
 
 If you disable fallback and link-tree creation fails, qui skips or fails the candidate.
