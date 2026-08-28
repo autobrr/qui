@@ -6,62 +6,87 @@ description: Configure qBittorrent instance connections in qui.
 
 # Instance Settings
 
-Add and configure qBittorrent instances that qui connects to. Each instance represents a separate qBittorrent WebUI that qui can manage.
+Add and configure the qBittorrent instances that qui connects to. Each instance is a separate qBittorrent WebUI that qui manages.
 
-## Adding an Instance
+## Add an instance
 
-1. Open qui and go to **Settings → Instances**
-2. Click **Add Instance**
-3. Enter connection details and click **Save**
+1. Open **Settings → Instances**.
+2. Click **Add Instance**.
+3. Enter the connection details and click **Add Instance**.
 
-## Instance Configuration
+## Edit an instance
 
-On the Dashboard, click the gear icon next to an instance name. In **Settings → Instances**, click the three-dot menu and select **Edit**.
+Two paths open the instance settings dialog:
 
-### Connection Settings
+- On the Dashboard, click the gear icon next to the instance name.
+- In **Settings → Instances**, open the three-dot menu on the instance card and select **Edit**.
+
+### Connection settings
 
 | Field | Description |
 |-------|-------------|
-| **Name** | Display name shown in qui's sidebar and instance selector. |
-| **Host** | Full URL to qBittorrent WebUI (e.g., `http://localhost:8080`). |
-| **Skip TLS Verification** | Bypass certificate validation for self-signed certificates. |
-| **Local Filesystem Access** | Enable for features requiring direct file access. |
+| **Instance Name** | Display name in qui's sidebar and instance selector. |
+| **URL** | Full URL to the qBittorrent WebUI (for example, `http://localhost:8080`). |
+| **Skip TLS Verification** (**Skip TLS Certificate Verification** in the Add Instance form) | Accept self-signed or otherwise untrusted certificates. |
+| **Local Filesystem Access** | Enable for features that read files directly. See [Local Filesystem Access](#local-filesystem-access). |
 
 ### Authentication
 
-qui supports multiple authentication methods depending on your setup:
+Select how qui authenticates to qBittorrent under **qBittorrent Authentication**:
 
-| Option | When to Use |
+| Option | When to use |
 |--------|-------------|
-| **qBittorrent Login** | Enable and enter credentials for standard WebUI authentication. Disable if qBittorrent bypasses auth for localhost or whitelisted IPs. |
-| **HTTP Basic Auth** | Enable when a reverse proxy adds Basic Authentication in front of qBittorrent. |
+| **None** | qBittorrent bypasses authentication for localhost or whitelisted IPs. |
+| **Username and Password** | Standard WebUI credentials. |
+| **API Key** | The instance accepts an API key instead of credentials. |
+
+If a reverse proxy requires credentials in front of qBittorrent, enable **HTTP Basic Authentication**.
 
 :::note
-HTTP Basic Auth is separate from qBittorrent's built-in auth. Enable it when your reverse proxy (nginx, Caddy, etc.) requires credentials before reaching qBittorrent.
+HTTP Basic Authentication is separate from qBittorrent's built-in authentication. If your reverse proxy, for example nginx or Caddy, requires credentials before requests reach qBittorrent, enable it.
 :::
 
 ## Local Filesystem Access
 
-When enabled, qui can access the same filesystem as qBittorrent. This unlocks several features:
+If enabled, qui reads the same filesystem as qBittorrent. This setting turns on these features:
 
-- **Content File Download** - Download individual files from a torrent's content directly through the browser (right-click a file in the Content tab).
-- **Hardlink Detection** - Automations can detect whether torrent files have hardlinks to your media library.
-- **Orphan Scan** - Find files on disk that aren't tracked by any torrent.
-- **Free Space (Path)** - Automation rules can check free space on specific mount points instead of relying on qBittorrent's reported value.
+- **Content file download**: Download single files from a torrent through the browser. Right-click a file in the Content tab.
+- **Hardlink detection**: Automations detect whether torrent files have hardlinks into your media library.
+- **Orphan scan**: Find files on disk that no torrent references.
+- **Free space (path)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports.
+- **Has Missing Files condition**: Automation rules check whether a completed torrent has files missing on disk.
+- **MediaInfo**: Show MediaInfo for a file in the Content tab.
+- **Cross-seed hardlink and reflink mode**: Create links instead of a second copy.
+- **Cross-seed ID fallback**: Read IMDb, TMDb, and TVDb tags from MKV files when a search finds no results.
+- **Directory scan**: Use the instance as a directory scan target.
 
 :::warning
-Only enable this if qui runs on the same machine (or has the same mounts) as qBittorrent. If paths don't match, features will fail silently or produce incorrect results.
+Enable this setting only if qui runs on the same machine as qBittorrent or has the same mounts. If the paths differ, these features fail without an error or return wrong results.
 :::
 
-For Docker deployments, ensure the container has the necessary volume mounts. See [Docker configuration](../getting-started/docker.md) for details.
+If qui runs in Docker, mount the same data volumes in the qui container. See [Docker configuration](../getting-started/docker.md) for details.
 
-## Instance Actions
+## Incognito mode
 
-At the bottom of the settings panel:
+In **Settings → Instances**, click the eye icon next to an instance URL to toggle [incognito mode](./incognito.md).
 
-- **Enable / Disable** - Toggle whether qui actively connects to and manages this instance.
-- **Delete** - Remove the instance from qui. This does not affect qBittorrent itself.
+## Instance actions
+
+In the instance settings dialog, open the three-dot menu next to the dialog title:
+
+- **Disable Instance** / **Enable Instance**: Control whether qui connects to and manages this instance.
+- **Delete Instance**: Remove the instance from qui. This does not change qBittorrent itself.
 
 ## qBittorrent Preferences
 
-The settings dialog includes tabs for configuring qBittorrent's application preferences (speed limits, queue management, connection settings, etc.). These are passed directly to qBittorrent's API and behave identically to the native WebUI settings.
+The settings dialog has tabs for qBittorrent application preferences: **Speed**, **Queue**, **Files**, **Seeding**, **Connect**, **Discovery**, and **Advanced**. qui sends these values to qBittorrent's API. They behave the same as the native WebUI settings.
+
+### Monitored folders
+
+qBittorrent watches folders and adds any torrent file that appears in them. Configure this in qui:
+
+1. Open the instance settings dialog and select the **Files** tab.
+2. Under **Watch Folders**, click **Add Folder**.
+3. Enter the path of the folder to monitor.
+4. Select the **Torrent Destination** for discovered torrents: **Monitored folder**, **Default save location**, or **Other** with a custom save path.
+5. Click **Save Changes**.
