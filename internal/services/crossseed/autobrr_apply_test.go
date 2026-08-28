@@ -14,8 +14,307 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
+
+func TestAutobrrApplyNotifiesAfterAddingTorrent(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		name       = "Harbor.Signal.2026.1080p.WEB-DL.H.264-LUMA"
+		sourceHash = "source-hash"
+		size       = int64(2_000_000)
+	)
+	fileName := name + ".mkv"
+	torrentData := createNamedFileTestTorrent(t, name, fileName, size)
+	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+	}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: fileName, Size: size}},
+		})},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SkipPieceBoundarySafetyCheck = true
+			return settings, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.True(t, response.Success, "apply rejected the torrent: %+v", response.Results)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookSucceeded, events[0].Type)
+	require.NotNil(t, events[0].CrossSeed)
+	require.Equal(t, 1, events[0].CrossSeed.Added)
+}
+
+func TestAutobrrApplyDoesNotNotifyWhenTorrentExists(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		name       = "Silent.Harbor.2026.1080p.WEB-DL.H.264-LUMA"
+		size       = int64(2_000_000)
+	)
+	fileName := name + ".mkv"
+	torrentData := createNamedFileTestTorrent(t, name, fileName, size)
+	metadata, err := ParseTorrentMetadataWithInfo(torrentData)
+	require.NoError(t, err)
+	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: metadata.HashV1, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+	}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			metadata.HashV1: {{Name: fileName, Size: size}},
+		})},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.False(t, response.Success)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "exists", response.Results[0].Status)
+	require.Empty(t, notifier.Events())
+}
+
+type failingAutobrrApplySyncManager struct {
+	*applyFakeSyncManager
+}
+
+func (f *failingAutobrrApplySyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("synthetic add failure")
+}
+
+func TestAutobrrApplyNotifiesWhenAddFails(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID = 1
+		name       = "Broken.Harbor.2026.1080p.WEB-DL.H.264-LUMA"
+		sourceHash = "source-hash"
+		size       = int64(2_000_000)
+	)
+	fileName := name + ".mkv"
+	torrentData := createNamedFileTestTorrent(t, name, fileName, size)
+	instance := &models.Instance{ID: instanceID, Name: "primary", IsActive: true}
+	source := qbt.Torrent{
+		Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1, SavePath: "/downloads",
+	}
+	notifier := &recordingNotifier{}
+	service := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager: &failingAutobrrApplySyncManager{&applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: fileName, Size: size}},
+		})}},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		notifier:         notifier,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SkipPieceBoundarySafetyCheck = true
+			return settings, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+		InstanceIDs: []int{instanceID},
+	})
+	require.NoError(t, err)
+	require.False(t, response.Success)
+	require.Len(t, response.Results, 1)
+	require.Equal(t, "error", response.Results[0].Status)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.NotNil(t, events[0].CrossSeed)
+	require.Equal(t, 1, events[0].CrossSeed.Failed)
+}
+
+func TestAutobrrApplyNotifiesWhenApplyPartiallyFails(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{
+		notifier: notifier,
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			return &CrossSeedResponse{
+				Success: true,
+				Results: []InstanceCrossSeedResult{
+					{InstanceID: 1, InstanceName: "primary", Success: true, Status: "added"},
+					{InstanceID: 2, InstanceName: "archive", Status: "error", Message: "synthetic add failure"},
+				},
+			}, errors.New("synthetic add failure")
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+	require.NoError(t, err)
+	require.True(t, response.Success)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.Equal(t, 1, events[0].CrossSeed.Added)
+	require.Equal(t, 1, events[0].CrossSeed.Failed)
+	require.Contains(t, events[0].ErrorMessage, "synthetic add failure")
+}
+
+func TestAutobrrApplyNotifiesWhenProcessingFails(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: base64.StdEncoding.EncodeToString([]byte("not a torrent")),
+		TorrentName: "Invalid.Harbor.2026.1080p.WEB-DL.H.264-LUMA",
+	})
+	require.Error(t, err)
+	require.Nil(t, response)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.NotEmpty(t, events[0].ErrorMessage)
+}
+
+func TestAutobrrApplyNotifiesWhenTorrentDataIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Nil(t, response)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.Contains(t, events[0].ErrorMessage, "torrentData is required")
+}
+
+func TestAutobrrApplyNotifiesWhenInstanceIDsAreInvalid(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	service := &Service{notifier: notifier}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+		TorrentData: "ZGF0YQ==",
+		InstanceIDs: []int{0, -1},
+	})
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Nil(t, response)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, notifications.EventCrossSeedWebhookFailed, events[0].Type)
+	require.Contains(t, events[0].ErrorMessage, "instanceIds must contain at least one positive integer")
+}
+
+func TestAutobrrApplyNotifiesForLinkModeResults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		status    string
+		success   bool
+		eventType notifications.EventType
+		added     int
+		failed    int
+	}{
+		{name: "hardlink added", status: "added_hardlink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
+		{name: "reflink added", status: "added_reflink", success: true, eventType: notifications.EventCrossSeedWebhookSucceeded, added: 1},
+		{name: "hardlink failed", status: "hardlink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+		{name: "reflink failed", status: "reflink_error", eventType: notifications.EventCrossSeedWebhookFailed, failed: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			notifier := &recordingNotifier{}
+			service := &Service{
+				notifier: notifier,
+				crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+					return &CrossSeedResponse{
+						Success: tt.success,
+						Results: []InstanceCrossSeedResult{{
+							InstanceID: 1, InstanceName: "Primary", Success: tt.success, Status: tt.status, Message: "synthetic result",
+						}},
+					}, nil
+				},
+			}
+
+			response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+			require.NoError(t, err)
+			require.Equal(t, tt.success, response.Success)
+
+			events := notifier.Events()
+			require.Len(t, events, 1)
+			require.Equal(t, tt.eventType, events[0].Type)
+			require.NotNil(t, events[0].CrossSeed)
+			require.Equal(t, tt.added, events[0].CrossSeed.Added)
+			require.Equal(t, tt.failed, events[0].CrossSeed.Failed)
+		})
+	}
+}
+
+func TestAutobrrApplyNotificationSamplesAreUniqueAndLimited(t *testing.T) {
+	t.Parallel()
+
+	notifier := &recordingNotifier{}
+	names := []string{"Primary", "", "Archive", "Primary", "Backup", "Overflow"}
+	results := make([]InstanceCrossSeedResult, 0, len(names))
+	for id, name := range names {
+		results = append(results, InstanceCrossSeedResult{
+			InstanceID: id + 1, InstanceName: name, Success: true, Status: "added",
+		})
+	}
+	service := &Service{
+		notifier: notifier,
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			return &CrossSeedResponse{Success: true, Results: results}, nil
+		},
+	}
+
+	response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{TorrentData: "ZGF0YQ=="})
+	require.NoError(t, err)
+	require.True(t, response.Success)
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, []string{"Primary", "Archive", "Backup"}, events[0].CrossSeed.Samples)
+	require.Contains(t, events[0].Message, "Instances: Primary; Archive; Backup")
+	require.NotContains(t, events[0].Message, "Overflow")
+}
 
 func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	t.Parallel()

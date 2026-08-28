@@ -5153,15 +5153,20 @@ func (s *Service) invokeSeasonPackApply(ctx context.Context, req *SeasonPackAppl
 
 // AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.
 func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*CrossSeedResponse, error) {
+	startedAt := time.Now().UTC()
 	if req == nil {
 		return nil, fmt.Errorf("%w: request is required", ErrInvalidRequest)
 	}
 	if strings.TrimSpace(req.TorrentData) == "" {
-		return nil, fmt.Errorf("%w: torrentData is required", ErrInvalidRequest)
+		err := fmt.Errorf("%w: torrentData is required", ErrInvalidRequest)
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 	targetInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
 	if len(req.InstanceIDs) > 0 && len(targetInstanceIDs) == 0 {
-		return nil, fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
+		err := fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 
 	settings, settingsErr := s.GetAutomationSettings(ctx)
@@ -5238,6 +5243,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	}
 	if err != nil {
 		if resp == nil || !resp.Success {
+			s.notifyWebhookApply(ctx, req, resp, err, startedAt)
 			return nil, err
 		}
 		log.Warn().Err(err).Msg("AutobrrApply completed with partial instance errors")
@@ -5259,6 +5265,8 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 			Str("message", r.Message).
 			Msg("AutobrrApply instance result")
 	}
+
+	s.notifyWebhookApply(ctx, req, resp, err, startedAt)
 
 	return resp, nil
 }
@@ -12687,87 +12695,103 @@ func formatSamplesForMessage(samples []string, maxCount int) string {
 	return out
 }
 
-func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string {
-	if len(matches) == 0 {
-		return nil
-	}
-
-	capHint := 64
-	if limit > 0 {
-		capHint = min(limit, len(matches))
-	} else {
-		capHint = min(capHint, len(matches))
-	}
-	seen := make(map[string]struct{}, capHint)
-	samples := make([]string, 0, capHint)
-	for _, match := range matches {
-		label := strings.TrimSpace(match.TorrentName)
-		if label == "" {
-			label = strings.TrimSpace(match.TorrentHash)
-		}
-		if label == "" {
-			continue
-		}
-		if strings.TrimSpace(match.InstanceName) != "" {
-			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(match.InstanceName))
-		}
-		if _, ok := seen[label]; ok {
-			continue
-		}
-		seen[label] = struct{}{}
-		samples = append(samples, label)
-		if limit > 0 && len(samples) >= limit {
-			break
-		}
-	}
-	return samples
-}
-
-func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
-	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
+func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyRequest, resp *CrossSeedResponse, runErr error, startedAt time.Time) {
+	if s == nil || s.notifier == nil || req == nil {
 		return
 	}
 
-	completeCount := 0
-	pendingCount := 0
-	for _, match := range matches {
-		if match.Progress >= 1.0 {
-			completeCount++
-		} else {
-			pendingCount++
+	var addedResults, failedResults []InstanceCrossSeedResult
+	if resp != nil {
+		addedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
+		failedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
+		for _, result := range resp.Results {
+			switch result.Status {
+			case "added", "added_hardlink", "added_reflink":
+				if result.Success {
+					addedResults = append(addedResults, result)
+				}
+			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error":
+				failedResults = append(failedResults, result)
+			}
 		}
 	}
-	if completeCount == 0 {
+	if len(addedResults) == 0 && len(failedResults) == 0 && runErr == nil {
 		return
 	}
 
-	lines := []string{
-		"Torrent: " + strings.TrimSpace(req.TorrentName),
-		fmt.Sprintf("Matches: %d", len(matches)),
-		fmt.Sprintf("Complete matches: %d", completeCount),
-		fmt.Sprintf("Pending matches: %d", pendingCount),
+	torrentName := strings.TrimSpace(req.TorrentName)
+	if torrentName == "" && resp != nil && resp.TorrentInfo != nil {
+		torrentName = strings.TrimSpace(resp.TorrentInfo.Name)
 	}
-	if strings.TrimSpace(recommendation) != "" {
-		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
+	failedCount := len(failedResults)
+	if failedCount == 0 && runErr != nil {
+		failedCount = 1
 	}
-	samples := collectWebhookMatchSamples(matches, 0)
-	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
-		lines = append(lines, "Samples: "+sampleText)
+	lines := make([]string, 0, 3)
+	if torrentName != "" {
+		lines = append(lines, "Torrent: "+torrentName)
+	}
+	lines = append(lines, fmt.Sprintf("Added: %d", len(addedResults)))
+	if failedCount > 0 {
+		lines = append(lines, fmt.Sprintf("Failed: %d", failedCount))
+	}
+
+	results := make([]InstanceCrossSeedResult, 0, len(addedResults)+len(failedResults))
+	results = append(results, addedResults...)
+	results = append(results, failedResults...)
+	const maxSamples = 3
+	samples := make([]string, 0, min(maxSamples, len(results)))
+	seenSamples := make(map[string]struct{}, min(maxSamples, len(results)))
+	for _, result := range results {
+		if instanceName := strings.TrimSpace(result.InstanceName); instanceName != "" {
+			if _, ok := seenSamples[instanceName]; ok {
+				continue
+			}
+			seenSamples[instanceName] = struct{}{}
+			samples = append(samples, instanceName)
+			if len(samples) == maxSamples {
+				break
+			}
+		}
+	}
+	if sampleText := formatSamplesForMessage(samples, maxSamples); sampleText != "" {
+		lines = append(lines, "Instances: "+sampleText)
+	}
+
+	eventType := notifications.EventCrossSeedWebhookSucceeded
+	errorMessage := ""
+	if len(failedResults) > 0 || runErr != nil {
+		eventType = notifications.EventCrossSeedWebhookFailed
+		if runErr != nil {
+			errorMessage = strings.TrimSpace(runErr.Error())
+		}
+		if errorMessage == "" && len(failedResults) > 0 {
+			errorMessage = strings.TrimSpace(failedResults[0].Message)
+		}
+		if errorMessage == "" {
+			errorMessage = "cross-seed webhook apply failed"
+		}
+		lines = append(lines, "Error: "+errorMessage)
 	}
 
 	completedAt := time.Now().UTC()
 	s.notifier.Notify(ctx, notifications.Event{
-		Type:         notifications.EventCrossSeedWebhookSucceeded,
+		Type:         eventType,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
-		TorrentName:  strings.TrimSpace(req.TorrentName),
+		TorrentName:  torrentName,
 		CrossSeed: &notifications.CrossSeedEventData{
-			Matches:        len(matches),
-			Complete:       completeCount,
-			Pending:        pendingCount,
-			Recommendation: strings.TrimSpace(recommendation),
-			Samples:        samples,
+			Added:   len(addedResults),
+			Failed:  failedCount,
+			Samples: samples,
 		},
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if errorMessage == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
 		StartedAt:   &startedAt,
 		CompletedAt: &completedAt,
 	})
@@ -13974,8 +13998,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
-
-	s.notifyWebhookCheck(ctx, req, matches, recommendation, startedAt)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,
