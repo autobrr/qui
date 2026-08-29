@@ -2389,8 +2389,8 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 			return sortedPeers[i].UpSpeed > sortedPeers[j].UpSpeed
 		}
 
-		// Finally by IP for stable sorting
-		return sortedPeers[i].IP < sortedPeers[j].IP
+		// Finally by canonical peer address for stable sorting.
+		return sortedPeers[i].Key < sortedPeers[j].Key
 	})
 
 	// Create response with sorted peers

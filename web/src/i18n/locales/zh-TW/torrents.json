@@ -1075,7 +1075,7 @@
       "unknownClient": "未知用戶端"
     },
     "actions": {
-      "copyIpPort": "複製 IP:連接埠",
+      "copyIpPort": "複製位址",
       "banPeerPermanently": "永久封鎖節點",
       "selectAll": "全部",
       "selectNone": "無"
@@ -1149,7 +1149,7 @@
     "editTrackerUrl": "編輯 Tracker URL"
   },
   "peersTable": {
-    "address": "IP:連接埠",
+    "address": "IP/位址",
     "client": "用戶端",
     "flags": "標誌",
     "progress": "進度",
@@ -1158,11 +1158,11 @@
     "downloaded": "已下載",
     "uploaded": "已上傳",
     "relevance": "相關性",
-    "copyIpAddress": "複製 IP 位址",
+    "copyIpAddress": "複製位址",
     "banPeer": "封鎖節點",
     "noPeersConnected": "無已連線節點",
     "toast": {
-      "ipCopied": "IP 位址已複製到剪貼簿"
+      "ipCopied": "位址已複製到剪貼簿"
     }
   },
   "routes": {

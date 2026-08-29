@@ -1134,7 +1134,7 @@
       "unknownClient": "Neznámý klient"
     },
     "actions": {
-      "copyIpPort": "Kopírovat IP:port",
+      "copyIpPort": "Kopírovat adresu",
       "banPeerPermanently": "Permanentně zakázat peer",
       "selectAll": "Všechny",
       "selectNone": "Žádné"
@@ -1208,7 +1208,7 @@
     "editTrackerUrl": "Upravit URL trackeru"
   },
   "peersTable": {
-    "address": "IP:Port",
+    "address": "IP/adresa",
     "client": "Klient",
     "flags": "Vlajky",
     "progress": "Postup",
@@ -1217,11 +1217,11 @@
     "downloaded": "Stáhnuto",
     "uploaded": "Odesláno",
     "relevance": "Relevance",
-    "copyIpAddress": "Kopírovat IP adresu",
+    "copyIpAddress": "Kopírovat adresu",
     "banPeer": "Zakázat peer",
     "noPeersConnected": "Žádné peerové připojení",
     "toast": {
-      "ipCopied": "IP adresa zkopírována do schránky"
+      "ipCopied": "Adresa zkopírována do schránky"
     }
   },
   "routes": {

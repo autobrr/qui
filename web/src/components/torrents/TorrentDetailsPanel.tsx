@@ -26,12 +26,13 @@ import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-ut
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker, TorrentPeer } from "@/types"
+import type { SortedPeer, SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
@@ -82,7 +83,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const { formatTimestamp } = useDateTimeFormatters()
   const [showBanPeerDialog, setShowBanPeerDialog] = useState(false)
   const [peersToAdd, setPeersToAdd] = useState("")
-  const [peerToBan, setPeerToBan] = useState<TorrentPeer | null>(null)
+  const [peerToBan, setPeerToBan] = useState<SortedPeer | null>(null)
   const [isReady, setIsReady] = useState(false)
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
@@ -635,29 +636,28 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, torrent.hash] })
   }, [instanceId, queryClient, torrent])
 
-  // Handle copy peer IP:port
-  const handleCopyPeer = useCallback(async (peer: TorrentPeer) => {
-    const peerAddress = `${peer.ip}:${peer.port}`
+  // Handle copy peer address
+  const handleCopyPeer = useCallback(async (peer: SortedPeer) => {
+    if (incognitoMode) return
     try {
-      await copyTextToClipboard(peerAddress)
-      toast.success(t("detailsPanel.toast.copied", { type: t("peersTable.address") }))
+      await copyTextToClipboard(peer.key)
+      toast.success(t("peersTable.toast.ipCopied"))
     } catch (err) {
       console.error("Failed to copy to clipboard:", err)
       toast.error(t("detailsPanel.toast.copyFailed"))
     }
-  }, [t])
+  }, [incognitoMode, t])
 
   // Handle ban peer click
-  const handleBanPeerClick = useCallback((peer: TorrentPeer) => {
+  const handleBanPeerClick = useCallback((peer: SortedPeer) => {
     setPeerToBan(peer)
     setShowBanPeerDialog(true)
   }, [])
 
   // Handle ban peer confirmation
   const handleBanPeerConfirm = useCallback(() => {
-    if (peerToBan) {
-      const peerAddress = `${peerToBan.ip}:${peerToBan.port}`
-      banPeerMutation.mutate(peerAddress)
+    if (peerToBan && canBanPeer(peerToBan)) {
+      banPeerMutation.mutate(peerToBan.key)
     }
   }, [peerToBan, banPeerMutation])
 
@@ -1403,7 +1403,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 space-y-1">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-mono text-sm cursor-context-menu">{peer.ip}:{peer.port}</span>
+                                        <span className="font-mono text-sm break-all cursor-context-menu">{getPeerDisplayAddress(peer, incognitoMode)}</span>
                                         {peer.country_code && (
                                           <span
                                             className={`fi fi-${peer.country_code.toLowerCase()} rounded text-sm`}
@@ -1517,18 +1517,23 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               <ContextMenuContent>
                                 <ContextMenuItem
                                   onClick={() => handleCopyPeer(peer)}
+                                  disabled={incognitoMode}
                                 >
                                   <Copy className="h-4 w-4 mr-2" />
                                   {t("detailsPanel.actions.copyIpPort")}
                                 </ContextMenuItem>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem
-                                  onClick={() => handleBanPeerClick(peer)}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Ban className="h-4 w-4 mr-2" />
-                                  {t("detailsPanel.actions.banPeerPermanently")}
-                                </ContextMenuItem>
+                                {canBanPeer(peer) && (
+                                  <>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem
+                                      onClick={() => handleBanPeerClick(peer)}
+                                      className="text-destructive focus:text-destructive"
+                                    >
+                                      <Ban className="h-4 w-4 mr-2" />
+                                      {t("detailsPanel.actions.banPeerPermanently")}
+                                    </ContextMenuItem>
+                                  </>
+                                )}
                               </ContextMenuContent>
                             </ContextMenu>
                           )
@@ -2003,7 +2008,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
             <div className="space-y-2 text-sm">
               <div>
                 <span className="text-muted-foreground">{t("detailsPanel.banPeerPermanent.ipAddress")}</span>
-                <span className="ml-2 font-mono">{peerToBan.ip}:{peerToBan.port}</span>
+                <span className="ml-2 font-mono">{getPeerDisplayAddress(peerToBan, incognitoMode)}</span>
               </div>
               {peerToBan.client && (
                 <div>

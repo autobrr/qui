@@ -1075,7 +1075,7 @@
       "unknownClient": "알 수 없는 클라이언트"
     },
     "actions": {
-      "copyIpPort": "IP:port 복사",
+      "copyIpPort": "주소 복사",
       "banPeerPermanently": "피어 영구 차단",
       "selectAll": "전체",
       "selectNone": "없음"
@@ -1149,7 +1149,7 @@
     "editTrackerUrl": "트래커 URL 편집"
   },
   "peersTable": {
-    "address": "IP:포트",
+    "address": "IP/주소",
     "client": "클라이언트",
     "flags": "플래그",
     "progress": "진행률",
@@ -1158,11 +1158,11 @@
     "downloaded": "다운로드됨",
     "uploaded": "업로드됨",
     "relevance": "관련성",
-    "copyIpAddress": "IP 주소 복사",
+    "copyIpAddress": "주소 복사",
     "banPeer": "피어 차단",
     "noPeersConnected": "연결된 피어 없음",
     "toast": {
-      "ipCopied": "IP 주소가 클립보드에 복사되었습니다"
+      "ipCopied": "주소가 클립보드에 복사되었습니다"
     }
   },
   "routes": {
