@@ -672,6 +672,33 @@ func TestCrossSeedPartialPoolActiveReconciliationListing(t *testing.T) {
 	require.Len(t, pools, 2, "startup recovery and settled audits retain dormant pools")
 }
 
+func TestCrossSeedPartialPoolRecheckObservationListing(t *testing.T) {
+	store, _, firstID, secondID := newPartialPoolTestStore(t)
+	register := func(torrentKey, sourceKey, status, lastError string) *models.CrossSeedPartialPoolMember {
+		t.Helper()
+		registration := partialPoolRegistration(t, secondID, firstID, torrentKey, torrentKey, "", sourceKey)
+		registration.Member.Status = status
+		registration.Member.LastError = lastError
+		_, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+		require.NoError(t, err)
+		return member
+	}
+
+	verifying := register("verifying", "verifying-source", models.CrossSeedPartialPoolMemberStatusVerifying, "partial pool recheck requested")
+	rechecking := register("rechecking", "rechecking-source", models.CrossSeedPartialPoolMemberStatusRechecking, "partial pool recheck requested")
+	register("complete", "complete-source", models.CrossSeedPartialPoolMemberStatusComplete, "partial pool recheck requested")
+	register("manual", "manual-source", models.CrossSeedPartialPoolMemberStatusManual, "partial pool recheck requested")
+	register("pending", "pending-source", models.CrossSeedPartialPoolMemberStatusVerifying, models.CrossSeedPartialPoolRecheckPending)
+
+	members, err := store.ListPartialPoolMembersAwaitingRecheckObservation(t.Context())
+	require.NoError(t, err)
+	require.Len(t, members, 2)
+	require.Equal(t, []int64{verifying.ID, rechecking.ID}, []int64{members[0].ID, members[1].ID})
+	for _, member := range members {
+		require.Empty(t, member.Files)
+	}
+}
+
 func TestCrossSeedPartialPoolRegistrationReportsInvalidFileField(t *testing.T) {
 	tests := []struct {
 		name    string

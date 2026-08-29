@@ -39,7 +39,7 @@ const (
 	partialPoolAdmissionHold          = 2 * time.Second
 
 	partialPoolRecheckPending    = models.CrossSeedPartialPoolRecheckPending
-	partialPoolRecheckRequested  = "partial pool recheck requested"
+	partialPoolRecheckRequested  = models.CrossSeedPartialPoolRecheckRequested
 	partialPoolRecheckObserved   = "partial pool recheck observed"
 	partialPoolRecheckUnobserved = "piece-check start was not observed after the recheck request"
 	partialPoolPropagationPause  = "partial pool propagation pause pending"
@@ -780,17 +780,13 @@ func (s *Service) observeRequestedPartialPoolRechecks(ctx context.Context, now t
 	if ctx.Err() != nil {
 		return false
 	}
-	pools, err := s.automationStore.ListPartialPoolsForReconciliation(ctx)
+	members, err := s.automationStore.ListPartialPoolMembersAwaitingRecheckObservation(ctx)
 	if err != nil {
 		return false
 	}
 	targetsByInstance := make(map[int][]*models.CrossSeedPartialPoolMember)
-	for _, pool := range pools {
-		for _, member := range pool.Members {
-			if partialPoolRecheckObservationOwned(member) {
-				targetsByInstance[member.InstanceID] = append(targetsByInstance[member.InstanceID], member)
-			}
-		}
+	for _, member := range members {
+		targetsByInstance[member.InstanceID] = append(targetsByInstance[member.InstanceID], member)
 	}
 
 	pending := false

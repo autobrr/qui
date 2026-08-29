@@ -40,7 +40,8 @@ const (
 	CrossSeedPartialPoolFileStatusVerified    = "verified"
 	CrossSeedPartialPoolFileStatusManual      = "manual"
 
-	CrossSeedPartialPoolRecheckPending = "partial pool recheck pending"
+	CrossSeedPartialPoolRecheckPending   = "partial pool recheck pending"
+	CrossSeedPartialPoolRecheckRequested = "partial pool recheck requested"
 )
 
 // CrossSeedPartialPool groups partial link-mode torrents by their original source.
@@ -802,6 +803,38 @@ func (s *CrossSeedStore) ListPartialPoolsForReconciliation(ctx context.Context) 
 // non-removed member.
 func (s *CrossSeedStore) ListActivePartialPoolsForReconciliation(ctx context.Context) ([]*CrossSeedPartialPool, error) {
 	return s.listPartialPoolsForReconciliation(ctx, CrossSeedPartialPoolStatusActive)
+}
+
+// ListPartialPoolMembersAwaitingRecheckObservation loads only members whose
+// requested piece check has not yet been observed.
+func (s *CrossSeedStore) ListPartialPoolMembersAwaitingRecheckObservation(ctx context.Context) ([]*CrossSeedPartialPoolMember, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, pool_id, instance_id, torrent_key, infohash_v1, infohash_v2,
+		       mode, root_path, status, missing_bytes,
+		       started_by_pool, last_downloaded_bytes, last_progress_at, retry_after,
+		       review_pause_pending, resume_attempts, recovery_attempts,
+		       last_error, created_at, updated_at
+		FROM cross_seed_partial_pool_members
+		WHERE status IN (?, ?) AND last_error = ?
+		ORDER BY id
+	`, CrossSeedPartialPoolMemberStatusVerifying, CrossSeedPartialPoolMemberStatusRechecking, CrossSeedPartialPoolRecheckRequested)
+	if err != nil {
+		return nil, fmt.Errorf("list partial pool recheck observations: %w", err)
+	}
+	defer rows.Close()
+
+	var members []*CrossSeedPartialPoolMember
+	for rows.Next() {
+		member, scanErr := scanPartialPoolMember(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return members, nil
 }
 
 func (s *CrossSeedStore) listPartialPoolsForReconciliation(ctx context.Context, status string) ([]*CrossSeedPartialPool, error) {
