@@ -36,7 +36,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 
 ## Steps
 
-1. Read the discussion, its comments, and its labels. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer.
+1. Read the discussion, its comments, and its labels. If the discussion is closed, stop and report that it was triaged before. If it carries `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`, and the discussion author has not commented after the last triage comment, stop and report the same. If a comment holds prior triage notes, read them first. Do not ask a question that those notes already answer.
 2. Read `CONTEXT.md` and `docs/architecture.md` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.

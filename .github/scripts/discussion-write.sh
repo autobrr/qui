@@ -139,6 +139,15 @@ case "$cmd" in
     op_allowed create-issue || die "create-issue is not permitted here (allowed: $ALLOWED_OPS)"
     [[ $# -eq 2 ]] || die "create-issue requires a title and a body argument"
     [[ -n "$1" && -n "$2" ]] || die "create-issue title and body must not be empty"
+    # A re-run on an already promoted discussion reuses its issue.
+    # ponytail: issue search is eventually consistent, so this is a backstop; the
+    # playbook's closed/label check is the real guard.
+    existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body author:app/github-actions" --json url --jq '.[0].url // empty')
+    if [[ -n "$existing" ]]; then
+      echo "Issue already exists for discussion #$NUMBER: $existing" >&2
+      echo "$existing"
+      exit 0
+    fi
     gh issue create --title "$1" --label ready-for-agent \
       --body "$2"$'\n\n'"From discussion #$NUMBER"
     ;;
