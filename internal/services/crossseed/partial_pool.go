@@ -2670,14 +2670,34 @@ func (s *Service) finishPartialPoolPropagation(
 			targetSnapshot.stateRetryPending = true
 		}
 	}
+	cleanupStagingBeforeManual := func() bool {
+		if err := cleanupPartialPoolMemberReflinkStaging(pool, targetMember); err != nil {
+			log.Warn().
+				Err(err).
+				Int64("poolID", targetMember.PoolID).
+				Int64("memberID", targetMember.ID).
+				Msg("Failed to clean partial pool reflink staging for unavailable source")
+			if targetSnapshot != nil {
+				targetSnapshot.stateRetryPending = true
+			}
+			return false
+		}
+		return true
+	}
 	sourceMember, sourceFile := partialPoolFileByID(pool, *targetFile.SourceFileID)
 	if sourceMember == nil || sourceFile == nil {
+		if !cleanupStagingBeforeManual() {
+			return false
+		}
 		markManual("source_missing", "propagation source no longer exists")
 		return false
 	}
 	if sourceMember.Status == models.CrossSeedPartialPoolMemberStatusManual ||
 		sourceMember.Status == models.CrossSeedPartialPoolMemberStatusRemoved ||
 		(sourceFile.Status != models.CrossSeedPartialPoolFileStatusAvailable && sourceFile.Status != models.CrossSeedPartialPoolFileStatusVerified) {
+		if !cleanupStagingBeforeManual() {
+			return false
+		}
 		markManual("source_unavailable", "persisted propagation source is no longer available")
 		return false
 	}

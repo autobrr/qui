@@ -507,6 +507,7 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			store, instanceID := newPartialPoolFilesystemStore(t)
+			targetRoot := t.TempDir()
 			pool, _, err := store.RegisterPartialPoolMember(t.Context(), partialPoolFilesystemRegistration(
 				instanceID,
 				"source",
@@ -521,7 +522,7 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 				instanceID,
 				"target",
 				models.CrossSeedPartialPoolModeReflink,
-				t.TempDir(),
+				targetRoot,
 				models.CrossSeedPartialPoolMemberStatusWaiting,
 				models.CrossSeedPartialPoolFileStatusMissing,
 				nil,
@@ -540,6 +541,12 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 			require.NoError(t, err)
 			target = partialPoolMemberByTorrentKey(pool, "target")
 
+			targetPath, err := partialPoolLocalPath(target, target.Files[0])
+			require.NoError(t, err)
+			stagingRoot, stagingPath := partialPoolReflinkStagingPaths(targetPath)
+			require.NoError(t, ensurePartialPoolReflinkStagingRoot(stagingRoot))
+			require.NoError(t, os.WriteFile(stagingPath, []byte("orphaned crash clone"), 0o600))
+
 			materializerCalled := false
 			service := &Service{
 				automationStore: store,
@@ -550,6 +557,8 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 			}
 			require.False(t, service.finishPartialPoolPropagation(t.Context(), pool, target, target.Files[0], nil, nil))
 			require.False(t, materializerCalled)
+			require.NoFileExists(t, stagingPath)
+			require.NoDirExists(t, stagingRoot)
 
 			reloaded, err := store.GetPartialPool(t.Context(), pool.ID)
 			require.NoError(t, err)
