@@ -373,6 +373,8 @@ The UI shows the current phase and progress during active scans.
 
 ## Hardlink/Reflink Modes
 
+You configure each instance under **Cross-Seed > Rules > [Hardlink / Reflink Mode](./hardlink-mode.md#how-to-enable)**.
+
 If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Scan uses the same behavior as other cross-seed methods:
 
 - Builds a link tree that matches the incoming torrent's layout.

@@ -713,7 +713,7 @@
       "typeToAddTags": "Type to add tags",
       "tagsLoadError": "Could not load tags from qBittorrent. You can still type custom values.",
       "regularModeTitle": "Regular mode is enabled for this instance",
-      "regularModeHelp": "Use <hardlink>hardlink</hardlink> or <reflink>reflink</reflink> mode in instance settings to avoid this risk.",
+      "regularModeHelp": "Select <hardlink>hardlink</hardlink> or <reflink>reflink</reflink> under Cross-Seed > Rules > Hardlink / Reflink Mode to avoid this risk. First enable \"Local filesystem access\" in Instance Settings.",
       "regularModeAcknowledge": "I understand the risks of using regular mode with media directories",
       "cancel": "Cancel",
       "addButton": "Add Directory",

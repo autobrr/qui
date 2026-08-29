@@ -713,7 +713,7 @@
       "typeToAddTags": "Tippen, um Tags hinzuzufügen",
       "tagsLoadError": "Tags konnten nicht aus qBittorrent geladen werden. Du kannst trotzdem eigene Werte eingeben.",
       "regularModeTitle": "Für diese Instanz ist der reguläre Modus aktiviert",
-      "regularModeHelp": "Verwende in den Instanz-Einstellungen den <hardlink>hardlink</hardlink>- oder <reflink>reflink</reflink>-Modus, um dieses Risiko zu vermeiden.",
+      "regularModeHelp": "Wähle <hardlink>Hardlink</hardlink> oder <reflink>Reflink</reflink> unter Cross-Seed > Regeln > Hardlink-/Reflink-Modus, um dieses Risiko zu vermeiden. Aktiviere zuerst „Local filesystem access“ in den Instanz-Einstellungen.",
       "regularModeAcknowledge": "Ich verstehe die Risiken, den regulären Modus mit Medienverzeichnissen zu verwenden",
       "cancel": "Abbrechen",
       "addButton": "Verzeichnis hinzufügen",

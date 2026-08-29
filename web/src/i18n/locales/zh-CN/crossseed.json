@@ -703,7 +703,7 @@
       "typeToAddTags": "输入以添加标签",
       "tagsLoadError": "无法从 qBittorrent 加载标签。你仍可输入自定义值。",
       "regularModeTitle": "此实例已启用常规模式",
-      "regularModeHelp": "在实例设置中使用<hardlink>硬链接</hardlink>或<reflink>引用链接</reflink>模式以避免此风险。",
+      "regularModeHelp": "要避免此风险，请在 Cross-Seed > 规则 > 硬链接 / 引用链接模式中选择<hardlink>硬链接</hardlink>或<reflink>引用链接</reflink>。请先在实例设置中启用“本地文件系统访问”。",
       "regularModeAcknowledge": "我了解在媒体目录中使用常规模式的风险",
       "cancel": "取消",
       "addButton": "添加目录",

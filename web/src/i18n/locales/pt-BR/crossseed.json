@@ -713,7 +713,7 @@
       "typeToAddTags": "Digite para adicionar tags",
       "tagsLoadError": "Não foi possível carregar as tags do qBittorrent. Você ainda pode digitar valores personalizados.",
       "regularModeTitle": "O modo regular está ativado para esta instância",
-      "regularModeHelp": "Use os modos <hardlink>hardlink</hardlink> ou <reflink>reflink</reflink> nas configurações da instância para evitar esse risco.",
+      "regularModeHelp": "Selecione <hardlink>Hardlink</hardlink> ou <reflink>Reflink</reflink> em Cross-Seed > Regras > Modo Hardlink / Reflink para evitar esse risco. Primeiro, ative \"Acesso ao sistema de arquivos local\" nas Configurações da Instância.",
       "regularModeAcknowledge": "Entendo os riscos de usar o modo regular com diretórios de mídia",
       "cancel": "Cancelar",
       "addButton": "Adicionar Diretório",
