@@ -40,7 +40,7 @@ Only a local session writes `.out-of-scope/`, when a human rejects a request on 
 2. Read `CONTEXT.md` and `docs/architecture.md` for the area that the discussion names.
 3. Search for the same request in open and closed discussions and in open issues. Search by the domain concept, not by the words of the reporter.
 4. Read every file in `.out-of-scope/`. Compare by concept, not by keyword.
-5. For a bug, find the code path. Decide whether the report agrees with the code. For an enhancement, search the codebase for an existing implementation.
+5. For an enhancement, search the codebase for an existing implementation. For a bug, find the code path and decide whether the report still agrees with the code. If it does not, search merged pull requests in that area with `gh search prs --repo <owner/repo> --merged` for the fix. The current release is `gh release list --limit 1 --exclude-pre-releases`.
 6. Pick one outcome from the list that follows. If two outcomes fit, pick `needs-info`.
 7. Apply the outcome with the write operations named for it.
 
@@ -54,10 +54,11 @@ Close a discussion only for one of these reasons:
 | --- | --- | --- |
 | Duplicate of an open discussion or issue | `DUPLICATE` | Link to the original. |
 | Already implemented | `RESOLVED` | Where the feature lives and how to use it. |
+| Bug already fixed | `RESOLVED` | The release or pull request that fixed it. |
 | Matches a concept in `.out-of-scope/` | `RESOLVED` | The reason from the file and a link to it. |
 | Bug in another program | `RESOLVED` | Name the program. Add the `external-bug` label. |
 
-Apply it: add `wontfix`, remove the old state label, post the comment, then `close <reason>`.
+Apply it: add `wontfix` (not for a fixed bug), remove the old state label, post the comment, then `close <reason>`.
 
 Every other rejection is a human decision. For a request that looks out of scope, add `ready-for-human` and `maybe-later`, remove `needs-triage`, and post no comment.
 
@@ -84,6 +85,8 @@ The report lacks a detail that blocks a decision. Post this comment, add `needs-
 ```
 
 Each question must name the exact detail you need. Put everything you established into the first list, so the next pass does not repeat your work.
+
+A bug report whose code path no longer matches the report, with no fix found in merged pull requests, is also `needs-info`: ask the reporter to retest on the current release and name that release. A report that still matches the code is a confirmed bug and goes to `ready-for-agent` or `ready-for-human`. The daily sweep closes a `needs-info` discussion if nobody answers in 30 days.
 
 ### ready-for-agent
 
