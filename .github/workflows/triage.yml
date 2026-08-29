@@ -5,7 +5,7 @@ on:
   discussion_comment:
     types: [created]
   schedule:
-    # 05:00 UTC daily. Sweeps the needs-triage backlog and closes stale needs-info.
+    # 05:00 UTC daily. Sweeps the untriaged backlog and closes stale needs-info.
     - cron: '0 5 * * *'
   workflow_dispatch:
     inputs:
@@ -41,7 +41,7 @@ jobs:
             -f discussion_number=${{ github.event.discussion.number }}
 
   # Daily backlog sweep. Plain gh calls, no model: dispatches the oldest
-  # needs-triage discussions and closes needs-info discussions nobody answered.
+  # untriaged discussions and closes needs-info discussions nobody answered.
   sweep:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule'
@@ -52,14 +52,15 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       STALE_DAYS: 30
     steps:
-      - name: Dispatch the 10 oldest needs-triage discussions
+      - name: Dispatch the 10 oldest untriaged discussions
         run: |
+          # Older discussions may lack needs-triage, so the query excludes the
+          # post-triage state labels instead of requiring it.
           # shellcheck disable=SC2016 # $q/$n are GraphQL variables
           gh api graphql \
-            -f q="repo:${{ github.repository }} is:open label:needs-triage sort:created-asc" -F n=50 \
-            -f query='query($q:String!,$n:Int!){search(query:$q,type:DISCUSSION,first:$n){nodes{... on Discussion{number category{slug}}}}}' \
-            --jq '.data.search.nodes[] | select(.category.slug == "issue-triage" or .category.slug == "feature-requests-ideas") | .number' \
-            | head -n 10 \
+            -f q="repo:${{ github.repository }} is:open category:\"Issue Triage\" category:\"Feature Requests, Ideas\" -label:needs-info -label:ready-for-agent -label:ready-for-human -label:wontfix sort:created-asc" -F n=10 \
+            -f query='query($q:String!,$n:Int!){search(query:$q,type:DISCUSSION,first:$n){nodes{... on Discussion{number}}}}' \
+            --jq '.data.search.nodes[].number' \
             | while read -r number; do
                 echo "dispatching #$number"
                 gh workflow run triage.yml --repo ${{ github.repository }} -f discussion_number="$number"
@@ -149,6 +150,7 @@ jobs:
             - End with a short report: the labels you set, the outcome you chose, and why.
           claude_args: |
             --allowedTools "Read,Grep,Glob,Bash(gh label list:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh discussion list:*),Bash(gh discussion view:*),Bash(./.github/scripts/discussion-write.sh:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
+            --model claude-opus-5
             --max-turns 40
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
