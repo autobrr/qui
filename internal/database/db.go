@@ -190,6 +190,10 @@ var sqliteMigrationFilenameRenames = []migrationFilenameRename{
 		from: "075_add_season_pack_category.sql",
 		to:   "076_add_season_pack_category.sql",
 	},
+	{
+		from: "091_drop_unused_timestamp_indexes.sql",
+		to:   "093_drop_unused_timestamp_indexes.sql",
+	},
 }
 
 var postgresMigrationFilenameRenames = []migrationFilenameRename{
@@ -248,6 +252,10 @@ var postgresMigrationFilenameRenames = []migrationFilenameRename{
 	{
 		from: "076_add_season_pack_category.sql",
 		to:   "077_add_season_pack_category.sql",
+	},
+	{
+		from: "093_drop_unused_timestamp_indexes.sql",
+		to:   "094_drop_unused_timestamp_indexes.sql",
 	},
 }
 

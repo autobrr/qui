@@ -1,5 +1,5 @@
 -- Drop unused timestamp indexes on torrent_files_cache/torrent_files_sync (Postgres
--- mirror of SQLite migration 091).
+-- mirror of SQLite migration 093).
 --
 -- cached_at and last_synced_at are rewritten on every upsert (once per torrent per sync
 -- cycle), but neither column is ever used in a WHERE or ORDER BY clause: cache eviction

@@ -1766,6 +1766,13 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.LastSeenAt = now
 	}
 
+	// Truncate to day precision so repeated polls on the same day write an
+	// identical last_seen_at value. PruneFeedItems only needs day-level
+	// precision for its 30-day cutoff, and writing the same value each poll
+	// lets Postgres treat the update as HOT-eligible instead of rewriting the
+	// last_seen_at index on every single feed poll.
+	lastSeenAt := item.LastSeenAt.Truncate(24 * time.Hour)
+
 	query := `
 		INSERT INTO cross_seed_feed_items (
 			guid, indexer_id, title, first_seen_at,
@@ -1784,7 +1791,7 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.IndexerID,
 		item.Title,
 		item.FirstSeenAt,
-		item.LastSeenAt,
+		lastSeenAt,
 		item.LastStatus,
 		item.LastRunID,
 		item.InfoHash,

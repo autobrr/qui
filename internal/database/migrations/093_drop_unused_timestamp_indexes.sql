@@ -1,4 +1,4 @@
--- Migration 091: Drop unused timestamp indexes on torrent_files_cache/torrent_files_sync
+-- Migration 093: Drop unused timestamp indexes on torrent_files_cache/torrent_files_sync
 --
 -- cached_at and last_synced_at are rewritten on every upsert (once per torrent per sync
 -- cycle), but neither column is ever used in a WHERE or ORDER BY clause: cache eviction
