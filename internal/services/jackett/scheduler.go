@@ -78,6 +78,12 @@ func NewRateLimiter(minInterval time.Duration) *RateLimiter {
 	}
 }
 
+func (r *RateLimiter) setMinInterval(d time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.minInterval = d
+}
+
 func (r *RateLimiter) RecordRequestComplete(indexerID int, ts time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -1145,3 +1145,15 @@ func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
 		t.Fatalf("WaitForMinInterval waited unexpectedly long (cooldown should be ignored)")
 	}
 }
+
+func TestWithMinRequestInterval(t *testing.T) {
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
+
+	paced := NewService(nil)
+	paced.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
+	require.Greater(t, paced.rateLimiter.NextWait(indexer), time.Second, "default pacing should make the next request wait")
+
+	fast := NewService(nil, WithMinRequestInterval(time.Millisecond))
+	fast.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
+	require.LessOrEqual(t, fast.rateLimiter.NextWait(indexer), time.Millisecond)
+}
