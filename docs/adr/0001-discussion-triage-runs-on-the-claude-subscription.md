@@ -14,4 +14,4 @@ The triage workflow (`.github/workflows/triage.yml`) runs `anthropics/claude-cod
 
 ## Consequences
 
-If the Claude subscription ends, the workflow keeps running on `anthropic_api_key` with per-token cost, and the sweep pace in `triage.yml` must drop before the cron fires again. A port to Codex rewrites the action step, the MCP setup step, and the tool allowlist as a permission profile, at API cost either way.
+If the Claude subscription ends, the workflow stops until the action step is switched to `anthropic_api_key`, and the sweep pace in `triage.yml` must drop before the cron fires again. A port to Codex rewrites the action step, the MCP setup step, and the tool allowlist as a permission profile, at API cost either way.

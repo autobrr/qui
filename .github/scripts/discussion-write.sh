@@ -142,7 +142,7 @@ case "$cmd" in
     # A re-run on an already promoted discussion reuses its issue.
     # ponytail: issue search is eventually consistent, so this is a backstop; the
     # playbook's closed/label check is the real guard.
-    existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body" --json url --jq '.[0].url // empty')
+    existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body author:app/github-actions" --json url --jq '.[0].url // empty')
     if [[ -n "$existing" ]]; then
       echo "Issue already exists for discussion #$NUMBER: $existing" >&2
       echo "$existing"
