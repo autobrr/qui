@@ -104,7 +104,7 @@ func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service
 				Capabilities: []string{"search", "music-search", "audio-search"},
 				Categories:   []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 3000, CategoryName: "Audio"}},
 			},
-		}}}),
+		}}}, jackett.WithMinRequestInterval(time.Millisecond)),
 		syncManager: &hashFilteringSyncManager{
 			torrents: []qbt.Torrent{sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{

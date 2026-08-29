@@ -466,6 +466,16 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 	return err
 }
 
+// WithMinRequestInterval overrides the pacing between requests to one native
+// Torznab indexer. Tests use it to skip the 60 s default.
+func WithMinRequestInterval(d time.Duration) ServiceOption {
+	return func(s *Service) {
+		if d > 0 {
+			s.rateLimiter.setMinInterval(d)
+		}
+	}
+}
+
 // WithTorrentCache wires a torrent payload cache into the service.
 func WithTorrentCache(cache *models.TorznabTorrentCacheStore) ServiceOption {
 	return func(s *Service) {

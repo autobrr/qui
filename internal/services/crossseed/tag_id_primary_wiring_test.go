@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -118,7 +119,7 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 				Capabilities: []string{"search", "movie-search"},
 				Categories:   movieCategories,
 			},
-		}}}),
+		}}}, jackett.WithMinRequestInterval(time.Millisecond)),
 		syncManager: &gazelleSkipHashSyncManager{
 			torrents: []qbt.Torrent{sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{

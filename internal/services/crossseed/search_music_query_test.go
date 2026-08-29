@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
@@ -115,7 +116,7 @@ func TestSearchTorrentMatches_ForcedMusicBuildsMusicQuery(t *testing.T) {
 						Capabilities: []string{"search", "music-search", "audio-search"},
 						Categories:   []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 3000, CategoryName: "Audio"}},
 					},
-				}}}),
+				}}}, jackett.WithMinRequestInterval(time.Millisecond)),
 				syncManager: &gazelleSkipHashSyncManager{
 					torrents: []qbt.Torrent{sourceTorrent},
 					filesByHash: map[string]qbt.TorrentFiles{

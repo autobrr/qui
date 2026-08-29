@@ -131,7 +131,7 @@ func newFailingJackettService(err error) *jackett.Service {
 }
 
 func newJackettServiceWithIndexers(indexers []*models.TorznabIndexer) *jackett.Service {
-	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers})
+	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers}, jackett.WithMinRequestInterval(time.Millisecond))
 }
 
 func TestIsNilARRLookupServiceHandlesTypedNilARRService(t *testing.T) {
