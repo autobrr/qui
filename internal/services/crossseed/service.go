@@ -3879,7 +3879,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 	// Opportunistic cleanup of stale feed items (older than 30 days)
 	if s.automationStore != nil {
-		cutoff := time.Now().Add(-30 * 24 * time.Hour)
+		cutoff := time.Now().UTC().Truncate(24 * time.Hour).Add(-30 * 24 * time.Hour)
 		if _, pruneErr := s.automationStore.PruneFeedItems(ctx, cutoff); pruneErr != nil {
 			log.Debug().Err(pruneErr).Msg("Failed to prune cross-seed feed cache")
 		}
