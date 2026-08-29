@@ -52,13 +52,13 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       STALE_DAYS: 30
     steps:
-      - name: Dispatch the 10 oldest untriaged discussions
+      - name: Dispatch 20 untriaged discussions
         run: |
           # Older discussions may lack needs-triage, so the query excludes the
           # post-triage state labels instead of requiring it.
           # shellcheck disable=SC2016 # $q/$n are GraphQL variables
           gh api graphql \
-            -f q="repo:${{ github.repository }} is:open category:\"Issue Triage\" category:\"Feature Requests, Ideas\" -label:needs-info -label:ready-for-agent -label:ready-for-human -label:wontfix sort:created-asc" -F n=10 \
+            -f q="repo:${{ github.repository }} is:open category:\"Issue Triage\" category:\"Feature Requests, Ideas\" -label:needs-info -label:ready-for-agent -label:ready-for-human -label:wontfix sort:created-asc" -F n=20 \
             -f query='query($q:String!,$n:Int!){search(query:$q,type:DISCUSSION,first:$n){nodes{... on Discussion{number}}}}' \
             --jq '.data.search.nodes[].number' \
             | while read -r number; do
