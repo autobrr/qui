@@ -429,8 +429,9 @@ func (s *Service) reconcilePartialPoolReviewPauses(ctx context.Context, pool *mo
 }
 
 type partialPoolTorrentInventory struct {
-	loaded  bool
-	byAlias map[string]qbt.Torrent
+	loaded        bool
+	authoritative bool
+	byAlias       map[string]qbt.Torrent
 }
 
 type partialPoolMemberSnapshot struct {
@@ -769,7 +770,7 @@ func (s *Service) loadPartialPoolTorrentInventories(ctx context.Context, pools [
 		if err != nil {
 			continue
 		}
-		inventories[instanceID] = newPartialPoolTorrentInventory(torrents)
+		inventories[instanceID] = newPartialPoolTorrentInventory(torrents, false)
 	}
 	return inventories
 }
@@ -812,7 +813,7 @@ func (s *Service) observeRequestedPartialPoolRechecks(ctx context.Context, now t
 				continue
 			}
 		}
-		inventory := newPartialPoolTorrentInventory(torrents)
+		inventory := newPartialPoolTorrentInventory(torrents, fresh)
 		missing := false
 		for _, member := range targets {
 			if _, found := partialPoolInventoryTorrent(inventory, member); !found {
@@ -822,7 +823,7 @@ func (s *Service) observeRequestedPartialPoolRechecks(ctx context.Context, now t
 		}
 		if missing {
 			if all, allErr := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{}); allErr == nil {
-				inventory = newPartialPoolTorrentInventory(all)
+				inventory = newPartialPoolTorrentInventory(all, false)
 			}
 		}
 
@@ -851,6 +852,9 @@ func (s *Service) observeRequestedPartialPoolRechecks(ctx context.Context, now t
 // forcePartialPoolTorrentSnapshot refreshes and immediately reads raw state so
 // a later sync cannot overwrite a brief checking transition before inspection.
 func (s *Service) forcePartialPoolTorrentSnapshot(ctx context.Context, instanceID int, hashes []string) ([]qbt.Torrent, bool) {
+	if s == nil || s.syncManager == nil {
+		return nil, false
+	}
 	syncManager, err := s.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
 	if err != nil || syncManager == nil {
 		return nil, false
@@ -898,7 +902,7 @@ func (s *Service) refreshPartialPoolTorrentStates(
 		if !fresh {
 			return false
 		}
-		inventory := newPartialPoolTorrentInventory(torrents)
+		inventory := newPartialPoolTorrentInventory(torrents, true)
 		for _, candidate := range instanceMembers {
 			torrent, found := partialPoolInventoryTorrent(inventory, candidate)
 			if !found {
@@ -912,8 +916,8 @@ func (s *Service) refreshPartialPoolTorrentStates(
 }
 
 // newPartialPoolTorrentInventory indexes canonical and hybrid hash aliases.
-func newPartialPoolTorrentInventory(torrents []qbt.Torrent) partialPoolTorrentInventory {
-	inventory := partialPoolTorrentInventory{loaded: true, byAlias: make(map[string]qbt.Torrent, len(torrents)*2)}
+func newPartialPoolTorrentInventory(torrents []qbt.Torrent, authoritative bool) partialPoolTorrentInventory {
+	inventory := partialPoolTorrentInventory{loaded: true, authoritative: authoritative, byAlias: make(map[string]qbt.Torrent, len(torrents)*2)}
 	for _, torrent := range torrents {
 		for _, alias := range normalizedHashes(torrent.Hash, torrent.InfohashV1, torrent.InfohashV2) {
 			inventory.byAlias[alias] = torrent
@@ -962,6 +966,7 @@ func (s *Service) observePartialPoolMembers(
 	inventories map[int]partialPoolTorrentInventory,
 ) map[int64]qbt.Torrent {
 	observed := make(map[int64]qbt.Torrent, len(pool.Members))
+	authoritativeLookupAttempted := make(map[int]bool)
 	for _, member := range pool.Members {
 		inventory := inventories[member.InstanceID]
 		if !inventory.loaded {
@@ -973,6 +978,22 @@ func (s *Service) observePartialPoolMembers(
 				member.LastError == partialPoolRecheckPending &&
 				now.Before(member.CreatedAt.Add(partialPoolRecheckGrace)) {
 				continue
+			}
+			if !inventory.authoritative {
+				if !authoritativeLookupAttempted[member.InstanceID] {
+					authoritativeLookupAttempted[member.InstanceID] = true
+					if torrents, fresh := s.forcePartialPoolTorrentSnapshot(ctx, member.InstanceID, nil); fresh {
+						inventory = newPartialPoolTorrentInventory(torrents, true)
+						inventories[member.InstanceID] = inventory
+					}
+				}
+				if !inventory.authoritative {
+					continue
+				}
+				if torrent, found = partialPoolInventoryTorrent(inventory, member); found {
+					observed[member.ID] = torrent
+					continue
+				}
 			}
 			if err := cleanupPartialPoolMemberReflinkStaging(pool, member); err != nil {
 				log.Warn().Err(err).Int64("memberID", member.ID).Msg("Failed to clean partial pool reflink staging before member removal")
@@ -2676,7 +2697,7 @@ func (s *Service) finishPartialPoolPropagation(
 				Err(err).
 				Int64("poolID", targetMember.PoolID).
 				Int64("memberID", targetMember.ID).
-				Msg("Failed to clean partial pool reflink staging for unavailable source")
+				Msg("Failed to clean partial pool reflink staging before manual propagation handling")
 			if targetSnapshot != nil {
 				targetSnapshot.stateRetryPending = true
 			}
@@ -2732,6 +2753,9 @@ func (s *Service) finishPartialPoolPropagation(
 		return false
 	}
 	if sourceSnapshot.torrent.State == qbt.TorrentStateError || sourceSnapshot.torrent.State == qbt.TorrentStateMissingFiles || sourceCurrent.Progress < 1 {
+		if !cleanupStagingBeforeManual() {
+			return false
+		}
 		markManual("source_incomplete", "propagation source is no longer complete")
 		return false
 	}

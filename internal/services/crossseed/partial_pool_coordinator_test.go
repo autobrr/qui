@@ -1966,7 +1966,7 @@ func TestObservePartialPoolMembersRemovesMissingTorrent(t *testing.T) {
 
 	service := &Service{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), pool.Members[0].CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
-		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
+		instanceID: {loaded: true, authoritative: true, byAlias: map[string]qbt.Torrent{}},
 	})
 	require.Empty(t, observed)
 
@@ -1991,12 +1991,37 @@ func TestObservePartialPoolMembersRemovesPendingAdmissionAfterVisibilityGrace(t 
 
 	service := &Service{automationStore: store}
 	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
-		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
+		instanceID: {loaded: true, authoritative: true, byAlias: map[string]qbt.Torrent{}},
 	})
 	require.Empty(t, observed)
 
 	_, err = store.GetPartialPool(t.Context(), pool.ID)
 	require.Error(t, err, "pending admission must retain normal removal after its visibility grace")
+}
+
+func TestObservePartialPoolMembersRetainsPendingAdmissionWithoutAuthoritativeAbsence(t *testing.T) {
+	store, instanceID := newPartialPoolFilesystemStore(t)
+	registration := partialPoolFilesystemRegistration(
+		instanceID,
+		"pending",
+		models.CrossSeedPartialPoolModeReflink,
+		t.TempDir(),
+		models.CrossSeedPartialPoolMemberStatusVerifying,
+		models.CrossSeedPartialPoolFileStatusPresent,
+		nil,
+	)
+	registration.Member.LastError = partialPoolRecheckPending
+	pool, member, err := store.RegisterPartialPoolMember(t.Context(), registration)
+	require.NoError(t, err)
+
+	service := &Service{automationStore: store, syncManager: &recheckResumeSyncManager{}}
+	observed := service.observePartialPoolMembers(t.Context(), member.CreatedAt.Add(partialPoolRecheckGrace), pool, map[int]partialPoolTorrentInventory{
+		instanceID: {loaded: true, byAlias: map[string]qbt.Torrent{}},
+	})
+	require.Empty(t, observed)
+
+	_, err = store.GetPartialPool(t.Context(), pool.ID)
+	require.NoError(t, err, "a cached absence must not remove durable pool state")
 }
 
 func TestPartialPoolAdmissionDriftPausesForReview(t *testing.T) {

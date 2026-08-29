@@ -487,21 +487,32 @@ func TestPartialPoolPersistedPropagationRetriesInstanceLookupFailure(t *testing.
 	require.Equal(t, payload, targetPayload)
 }
 
-func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
+func TestPartialPoolPersistedPropagationRejectsUnavailableOrIncompleteSource(t *testing.T) {
 	testCases := []struct {
 		name               string
 		sourceMemberStatus string
 		sourceFileStatus   string
+		liveIncomplete     bool
+		reason             string
 	}{
 		{
 			name:               "manual source member",
 			sourceMemberStatus: models.CrossSeedPartialPoolMemberStatusManual,
 			sourceFileStatus:   models.CrossSeedPartialPoolFileStatusAvailable,
+			reason:             "persisted propagation source is no longer available",
 		},
 		{
 			name:               "missing source file",
 			sourceMemberStatus: models.CrossSeedPartialPoolMemberStatusComplete,
 			sourceFileStatus:   models.CrossSeedPartialPoolFileStatusMissing,
+			reason:             "persisted propagation source is no longer available",
+		},
+		{
+			name:               "incomplete source file",
+			sourceMemberStatus: models.CrossSeedPartialPoolMemberStatusComplete,
+			sourceFileStatus:   models.CrossSeedPartialPoolFileStatusAvailable,
+			liveIncomplete:     true,
+			reason:             "propagation source is no longer complete",
 		},
 	}
 	for _, testCase := range testCases {
@@ -539,6 +550,7 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 			require.True(t, changed)
 			pool, err = store.GetPartialPool(t.Context(), pool.ID)
 			require.NoError(t, err)
+			source = partialPoolMemberByTorrentKey(pool, "source")
 			target = partialPoolMemberByTorrentKey(pool, "target")
 
 			targetPath, err := partialPoolLocalPath(target, target.Files[0])
@@ -555,7 +567,31 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 					return nil, errors.New("unexpected materializer call")
 				},
 			}
-			require.False(t, service.finishPartialPoolPropagation(t.Context(), pool, target, target.Files[0], nil, nil))
+			var snapshots map[int64]*partialPoolMemberSnapshot
+			var refreshed map[int64]bool
+			if testCase.liveIncomplete {
+				sourceSnapshot := partialPoolTestSnapshot(source, source.Files[0].SizeBytes)
+				sourceSnapshot.torrent.Hash = source.TorrentKey
+				sourceSnapshot.files[0].Progress = 0.5
+				sourceSnapshot.fileByIndex[0] = sourceSnapshot.files[0]
+				targetSnapshot := partialPoolTestSnapshot(target, target.Files[0].SizeBytes)
+				targetSnapshot.torrent.Hash = target.TorrentKey
+				syncManager := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{
+					source.TorrentKey: sourceSnapshot.files,
+					target.TorrentKey: targetSnapshot.files,
+				}}
+				service.syncManager = syncManager
+				service.partialPoolTorrentRefresher = partialPoolTestRefreshTorrentStates
+				service.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{PooledPartialCompletionEnabled: true}, nil
+				}
+				snapshots = map[int64]*partialPoolMemberSnapshot{
+					source.ID: sourceSnapshot,
+					target.ID: targetSnapshot,
+				}
+				refreshed = make(map[int64]bool)
+			}
+			require.False(t, service.finishPartialPoolPropagation(t.Context(), pool, target, target.Files[0], snapshots, refreshed))
 			require.False(t, materializerCalled)
 			require.NoFileExists(t, stagingPath)
 			require.NoDirExists(t, stagingRoot)
@@ -565,8 +601,8 @@ func TestPartialPoolPersistedPropagationRejectsUnavailableSource(t *testing.T) {
 			reloadedTarget := partialPoolMemberByTorrentKey(reloaded, target.TorrentKey)
 			require.Equal(t, models.CrossSeedPartialPoolMemberStatusManual, reloadedTarget.Status)
 			require.Equal(t, models.CrossSeedPartialPoolFileStatusManual, reloadedTarget.Files[0].Status)
-			require.Equal(t, "persisted propagation source is no longer available", reloadedTarget.LastError)
-			require.Equal(t, "persisted propagation source is no longer available", reloadedTarget.Files[0].LastError)
+			require.Equal(t, testCase.reason, reloadedTarget.LastError)
+			require.Equal(t, testCase.reason, reloadedTarget.Files[0].LastError)
 		})
 	}
 }
@@ -1476,7 +1512,7 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 
 	service := &Service{automationStore: store}
 	service.observePartialPoolMembers(t.Context(), time.Now(), pool, map[int]partialPoolTorrentInventory{
-		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}),
+		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}, true),
 	})
 	require.FileExists(t, stagingPath)
 	require.FileExists(t, cleanupFaultPath)
@@ -1491,7 +1527,7 @@ func TestPartialPoolReflinkCrashStagingCleanupFailureDelaysMemberRemovalAndReadd
 
 	require.NoError(t, os.Remove(cleanupFaultPath))
 	service.observePartialPoolMembers(t.Context(), time.Now(), pool, map[int]partialPoolTorrentInventory{
-		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}),
+		instanceID: newPartialPoolTorrentInventory([]qbt.Torrent{{Hash: source.TorrentKey}}, true),
 	})
 	require.NoFileExists(t, stagingPath)
 	require.NoDirExists(t, stagingRoot)
