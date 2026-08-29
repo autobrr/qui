@@ -151,7 +151,7 @@ jobs:
           claude_args: |
             --allowedTools "Read,Grep,Glob,Bash(gh label list:*),Bash(gh release list:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh discussion list:*),Bash(gh discussion view:*),Bash(./.github/scripts/discussion-write.sh:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
             --model claude-opus-5
-            --max-turns 40
+            --max-turns 80
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
             {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "DISCUSSION_WRITE_ALLOWED_OPS": "add-label,remove-label,comment,close,create-issue"}}
