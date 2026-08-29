@@ -1,4 +1,3 @@
-@import "tailwindcss";
 @import "@fontsource-variable/jetbrains-mono";
 
 /**
@@ -347,14 +346,6 @@ html {
 [data-theme='dark'] ::selection {
   background-color: var(--ifm-color-primary);
   color: #1a1a1a;
-}
-
-/* Fix Tailwind preflight making SVG icons block-level */
-.footer__link-item svg,
-.navbar__link svg,
-a svg[class*="external"] {
-  display: inline;
-  vertical-align: middle;
 }
 
 /* Navbar icon links */
