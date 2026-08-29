@@ -4,6 +4,7 @@
 package dirscan
 
 import (
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,15 +19,15 @@ func TestMergeWebhookScanRoots(t *testing.T) {
 	dir := "/data/media/tv"
 
 	require.Equal(t, dir, mergeWebhookScanRoots(dir, "", dir))
-	require.Equal(t, filepath.Join(dir, "Show"), mergeWebhookScanRoots(
+	require.Equal(t, path.Join(dir, "Show"), mergeWebhookScanRoots(
 		dir,
-		filepath.Join(dir, "Show", "Season 01"),
-		filepath.Join(dir, "Show", "Season 02"),
+		path.Join(dir, "Show", "Season 01"),
+		path.Join(dir, "Show", "Season 02"),
 	))
 	require.Equal(t, dir, mergeWebhookScanRoots(
 		dir,
-		filepath.Join(dir, "Show A", "Season 01"),
-		filepath.Join(dir, "Show B", "Season 01"),
+		path.Join(dir, "Show A", "Season 01"),
+		path.Join(dir, "Show B", "Season 01"),
 	))
 }
 
