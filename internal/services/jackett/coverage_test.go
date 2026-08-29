@@ -5,6 +5,7 @@ package jackett
 
 import (
 	"context"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,63 @@ func TestSearchResponse_FullyCovered(t *testing.T) {
 	}
 
 	require.False(t, (*SearchResponse)(nil).FullyCovered())
+}
+
+func TestSearchResponseIsPartialWhenCoverageIsIncomplete(t *testing.T) {
+	indexers := []*models.TorznabIndexer{
+		{ID: 1, Name: "Answered", Enabled: true},
+		{ID: 2, Name: "Unavailable", Enabled: true},
+	}
+	service := NewService(&mockTorznabIndexerStore{indexers: indexers})
+	t.Cleanup(service.searchScheduler.Stop)
+	service.searchExecutor = func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+		return []Result{{IndexerID: 1, Title: "result"}}, []int{1}, nil
+	}
+
+	var response *SearchResponse
+	req := &TorznabSearchRequest{
+		Query:      "test query",
+		IndexerIDs: []int{1, 2},
+		CacheMode:  CacheModeBypass,
+		OnAllComplete: func(resp *SearchResponse, err error) {
+			require.NoError(t, err)
+			response = resp
+		},
+	}
+	require.NoError(t, service.SearchGeneric(t.Context(), req))
+	require.NotNil(t, response)
+	require.True(t, response.Partial)
+	require.Equal(t, []int{1}, response.CoveredIndexerIDs)
+}
+
+func TestSearchDeduplicatesRequestedIndexerIDs(t *testing.T) {
+	indexer := &models.TorznabIndexer{ID: 1, Name: "Answered", Enabled: true}
+	service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{indexer}})
+	t.Cleanup(service.searchScheduler.Stop)
+
+	var searchedIndexerIDs []int
+	service.searchExecutor = func(_ context.Context, indexers []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		for _, indexer := range indexers {
+			searchedIndexerIDs = append(searchedIndexerIDs, indexer.ID)
+		}
+		return []Result{{IndexerID: 1, Title: "result"}}, []int{1}, nil
+	}
+
+	var response *SearchResponse
+	req := &TorznabSearchRequest{
+		Query:      "test query",
+		IndexerIDs: []int{1, 1},
+		CacheMode:  CacheModeBypass,
+		OnAllComplete: func(resp *SearchResponse, err error) {
+			require.NoError(t, err)
+			response = resp
+		},
+	}
+	require.NoError(t, service.SearchGeneric(t.Context(), req))
+	require.NotNil(t, response)
+	require.Equal(t, []int{1}, searchedIndexerIDs)
+	require.Equal(t, []int{1}, response.RequestedIndexerIDs)
+	require.False(t, response.Partial)
 }
 
 func TestFilterIndexersForCapabilities_MirrorsExecutorGate(t *testing.T) {

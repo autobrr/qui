@@ -413,10 +413,10 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		title := "Cross-seed completion search failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedWebhookSucceeded:
-		title := "Cross-seed webhook check completed"
+		title := "Cross-seed webhook torrent added"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventCrossSeedWebhookFailed:
-		title := "Cross-seed webhook check failed"
+		title := "Cross-seed webhook failed"
 		return formatCustomEvent(instanceLabel, title, event.Title, customMessage)
 	case EventAutomationsActionsApplied:
 		title := "Automations actions applied"

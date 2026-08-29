@@ -1,12 +1,12 @@
 ---
-sidebar_position: 10
+sidebar_position: 13
 title: Client Migration
 description: Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent.
 ---
 
-# Client Migration
+# Client migration
 
-The `qui migrate` command imports torrents from Deluge, rTorrent or Transmission into qBittorrent, keeping their state: save paths, trackers, transfer totals, timestamps, seeding time, labels, paused state and per-file selection. Torrents arrive verified, so qBittorrent starts seeding them without a recheck.
+The `qui migrate` command imports torrents from Deluge, rTorrent, or Transmission into qBittorrent. It preserves their state: save paths, trackers, transfer totals, timestamps, seeding time, labels, paused state, and per-file selection. Completed torrents arrive in a verified state, so qBittorrent skips the recheck.
 
 ```bash
 qui migrate {deluge | rtorrent | transmission} \
@@ -14,25 +14,25 @@ qui migrate {deluge | rtorrent | transmission} \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 ```
 
-Run with `--dry-run` first to see what would be imported without writing anything.
+Run with `--dry-run` first to preview the import. The dry run writes nothing.
 
-## Before You Start
+## Before you start
 
-1. **Stop the source client cleanly.** All three clients flush their resume state on shutdown; a killed process can leave stale or missing state files.
-2. **Stop qBittorrent.** The importer writes directly into qBittorrent's `BT_backup` directory, which qBittorrent only reads at startup.
-3. Start qBittorrent after the migration finishes. The imported torrents appear immediately with their history intact.
+1. **Stop the source client cleanly.** All three clients flush their resume state on shutdown. If you terminate the process abruptly, it leaves stale or missing state files.
+2. **Stop qBittorrent.** The importer writes into qBittorrent's `BT_backup` directory. qBittorrent reads that directory only at startup.
+3. After the migration finishes, start qBittorrent. The imported torrents appear with their history intact.
 
-Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in the current working directory before anything is written — the qBittorrent directory only when it already exists, so a fresh destination produces just the source archive. Re-running a migration is safe: torrents that already exist in the target are skipped.
+If you do not set `--skip-backup`, the command archives both directories to `qbt_backup/` in the current working directory before it writes anything. If the qBittorrent directory already exists, the command archives it. A fresh destination produces only the source archive. If you run the migration again, the command safely skips torrents that already exist in the target.
 
-The `--qbit-dir` is qBittorrent's session directory, commonly `~/.local/share/qBittorrent/BT_backup` on Linux, `%LOCALAPPDATA%\qBittorrent\BT_backup` on Windows, or `/config/qBittorrent/BT_backup` in Docker images.
+`--qbit-dir` is qBittorrent's session directory. Common locations: `~/.local/share/qBittorrent/BT_backup` on Linux, `%LOCALAPPDATA%\qBittorrent\BT_backup` on Windows, and `/config/qBittorrent/BT_backup` in Docker images.
 
 :::warning
-The save paths recorded by the source client are carried over as-is. qBittorrent must see the downloaded data at those same paths — when moving between machines or containers, keep the mount layout identical or the torrents will show as missing files. For the same reason, run the migration on the same OS family as the source client: a Unix session dir cannot be imported on a Windows host.
+The command carries over save paths from the source client without changes. qBittorrent must see the downloaded data at those same paths. If you move between machines or containers, keep the mount layout identical. Otherwise, the torrents show as missing files. Run the migration on the same OS family as the source client. You cannot import a Unix session directory on a Windows host.
 :::
 
 ## Deluge
 
-Point `--source-dir` at the `state` directory inside the Deluge config dir:
+Point `--source-dir` at the `state` directory inside the Deluge configuration directory:
 
 ```bash
 qui migrate deluge \
@@ -40,11 +40,11 @@ qui migrate deluge \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 ```
 
-Supported: Deluge 1.3.x and 2.x. The importer reads `torrents.fastresume` (falling back to the `.bak` copy and the pre-1.3 location) plus the per-torrent `.torrent` files.
+Supported: Deluge 1.3.x and 2.x. The importer reads `torrents.fastresume` and the per-torrent `.torrent` files. If the importer cannot find or read `torrents.fastresume`, it falls back to the `.bak` copy and the pre-1.3 location.
 
-- Labels from the Label plugin become the qBittorrent **category**, read from `label.conf` in the config dir.
-- Deluge 2.x paused/resumed state and file renames are preserved. Deluge 1.3.x cannot preserve paused state — its resume data marks the whole library paused on shutdown — so all 1.3.x imports start resumed.
-- BitTorrent v2 torrents are skipped: their merkle trees do not survive this migration path and qBittorrent would reject them.
+- Labels from the Label plugin become the qBittorrent **category**. The importer reads these labels from `label.conf` in the configuration directory.
+- The importer preserves Deluge 2.x paused state and file renames. Because Deluge 1.3.x marks the whole library paused on shutdown, the importer cannot preserve paused state for version 1.3.x. All Deluge 1.3.x imports start resumed.
+- The importer skips BitTorrent v2 torrents. Their merkle trees do not survive this migration path, and qBittorrent rejects them.
 
 ## rTorrent
 
@@ -58,15 +58,15 @@ qui migrate rtorrent \
 
 Supported: rTorrent 0.9.x through 0.16.x, with or without ruTorrent.
 
-- ruTorrent labels (`custom1`) become the qBittorrent **category**; ruTorrent's `addtime`/`seedingtime` timestamps are used when present, with sane fallbacks for plain rTorrent.
-- Both directory layouts work: the standard one where the torrent's folder sits inside the download directory, and `d.directory_base` layouts where files live directly in it.
-- Trackers keep their tiers from the torrent file; trackers you disabled in rTorrent stay out, trackers you added at runtime come along.
-- Stopped torrents stay stopped. Unfinished magnet downloads are skipped.
-- rTorrent keeps no cumulative seeding counter, so seeding time is approximated as time since seeding began — including time the client was offline. Check your share limits before importing a long-lived library.
+- ruTorrent labels (`custom1`) become the qBittorrent **category**. If ruTorrent `addtime`/`seedingtime` timestamps exist, the importer uses them. Otherwise, it falls back to plain rTorrent timestamps.
+- Both directory layouts work: the standard layout where the torrent folder sits inside the download directory, and `d.directory_base` layouts where files live directly in the download directory.
+- Trackers keep their tiers from the torrent file. The importer excludes trackers that you disabled in rTorrent and includes trackers that you added at runtime.
+- Stopped torrents stay stopped. The importer skips unfinished magnet downloads.
+- rTorrent tracks no cumulative seeding counter. The importer calculates seeding time as elapsed time since seeding began, and counts offline time in that total. If you import a long-lived library, review your share limits before you run the migration.
 
 ## Transmission
 
-Point `--source-dir` at the Transmission config directory (the one containing `torrents/` and `resume/`):
+Point `--source-dir` at the Transmission configuration directory (the one that contains `torrents/` and `resume/`):
 
 ```bash
 qui migrate transmission \
@@ -74,13 +74,13 @@ qui migrate transmission \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup
 ```
 
-Supported: Transmission 2.4 through 4.x, including the legacy name-based session file naming from 2.x. Resume files last written by versions older than 2.4 use legacy progress and limit formats and are skipped.
+Supported: Transmission 2.4 through 4.x. The importer supports legacy name-based session file names from 2.x. Resume files written by versions older than 2.4 have no block progress data, so the importer skips them. The log reports these torrents as not fully downloaded.
 
 - Transmission labels become qBittorrent **tags**.
-- Paused torrents stay paused; per-torrent ratio and speed limits carry over.
-- Files marked "do not download" keep priority 0 in qBittorrent.
+- Paused torrents stay paused. Per-torrent ratio and speed limits carry over.
+- If you set files to "do not download", they keep priority 0 in qBittorrent.
 
-## What Is Imported
+## What is imported
 
 | | Deluge | rTorrent | Transmission |
 |---|---|---|---|
@@ -96,14 +96,14 @@ Supported: Transmission 2.4 through 4.x, including the legacy name-based session
 | File renames | ✓ | — | — |
 | Per-torrent ratio/speed limits | — | — | ✓ |
 
-Every imported torrent is tagged `migrated` so you can find them in one filter. Torrents import auto-managed, so qBittorrent's queueing and share limits apply; torrents you had stopped stay stopped.
+The importer tags every imported torrent `migrated` so you can find them with one filter. Running torrents import as auto-managed, so qBittorrent applies its queueing and share limits. Torrents that you stopped stay stopped and stay out of auto-management.
 
-## Partial Torrents
+## Partial torrents
 
-Only fully downloaded torrents are imported — "fully downloaded" meaning every file you actually selected. Torrents still mid-download are skipped with a warning and stay in the source client, so nothing is ever imported with incorrect piece state. Finish or remove them, then re-run the migration.
+The importer imports only fully downloaded torrents. "Fully downloaded" means every file that you selected. If a torrent is still in progress, the importer skips it with a warning and leaves it in the source client. This check ensures that no torrent imports with incorrect piece state. If you have incomplete torrents, finish or remove them before you run the migration again.
 
 :::note
-On first start after a migration, qBittorrent logs a one-time warning per label that the category/tag was "missing from the configuration file" and recovers it automatically. This is cosmetic.
+On first start after a migration, qBittorrent logs a one-time warning per label that the category/tag was "missing from the configuration file" and recovers it. This warning is cosmetic.
 :::
 
 See [CLI Commands](../configuration/cli-commands.md#migrate-from-other-torrent-clients) for the full flag reference.

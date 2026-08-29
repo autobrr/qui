@@ -1,41 +1,72 @@
 ---
 sidebar_position: 5
 title: CLI Commands
+description: CLI commands for users, updates, migration, and the database.
 ---
 
 # CLI Commands
 
-## Generate Configuration File
+## serve
+
+Start the server:
+
+```bash
+./qui serve
+
+# Custom config directory (config.toml is created inside)
+./qui serve --config-dir /path/to/config/
+
+# Custom data directory for the database and other data files
+./qui serve --data-dir /path/to/data/
+
+# Log to a file instead of stdout
+./qui serve --log-path /path/to/qui.log
+
+# Enable the pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR)
+./qui serve --pprof
+```
+
+## version
+
+Print the version of qui:
+
+```bash
+./qui version
+```
+
+## generate-config
 
 Create a default configuration file without starting the server:
 
 ```bash
-# Generate config in OS-specific default location
+# Generate config in the OS-specific default location
 ./qui generate-config
 
-# Generate config in custom directory
+# Generate config in a custom directory
 ./qui generate-config --config-dir /path/to/config/
 
-# Generate config with custom filename
+# Generate config with a custom filename
 ./qui generate-config --config-dir /path/to/myconfig.toml
 ```
 
-## User Management
+If the file already exists, the command keeps it and does not overwrite it.
 
-Create and manage user accounts from the command line:
+## create-user and change-password
+
+Create and manage the user account from the command line:
+
+For normal use, omit the password flag. qui prompts for the password and masks your input. Your shell can save `--password` or `--new-password` values in its history. Other users on the system may see those values in the process list.
 
 ```bash
-# Create initial user account
-./qui create-user --username admin --password mypassword
-
-# Create user with prompts (secure password input)
+# Create a user with a masked password prompt
 ./qui create-user --username admin
 
-# Change password for existing user (no old password required)
-./qui change-password --username admin --new-password mynewpassword
-
-# Change password with secure prompt
+# Change the password with a masked prompt
 ./qui change-password --username admin
+
+# Both commands accept password flags
+./qui create-user --username admin --password mypassword
+./qui change-password --username admin --new-password mynewpassword
 
 # Pipe passwords for scripting (works with both commands)
 echo "mypassword" | ./qui create-user --username admin
@@ -43,70 +74,62 @@ echo "newpassword" | ./qui change-password --username admin
 printf "password" | ./qui change-password --username admin
 ./qui change-password --username admin < password.txt
 
-# All commands support custom config/data directories
+# Both commands accept custom config/data directories
 ./qui create-user --config-dir /path/to/config/ --username admin
 ```
 
 ### Notes
 
-- Only one user account is allowed in the system
-- Passwords must be at least 8 characters long
-- Interactive prompts use secure input (passwords are masked)
-- Supports piped input for automation and scripting
-- Commands will create the database if it doesn't exist
-- No password confirmation required - perfect for automation
+- The system allows only one user account.
+- Passwords must be at least 8 characters long.
+- Interactive prompts mask the password.
+- Both commands accept piped input for automation and scripting.
+- A piped password must not contain spaces. Type passwords with spaces at the interactive prompt.
+- If the database does not exist, `create-user` creates it. `change-password` requires an existing database.
+- The commands do not ask you to confirm the password.
 
-### Reset a Forgotten Password {#reset-password}
+### Reset a forgotten password {#reset-password}
 
-If you've forgotten your password, use the `change-password` command to set a new one. No old password is required.
+If you forgot your password, set a new one with the `change-password` command. The command does not ask for the old password.
 
 **Linux / macOS:**
 
 ```bash
-./qui change-password --username admin --new-password mynewpassword
+./qui change-password --username admin
 ```
 
 **Windows (Command Prompt):**
 
-Navigate to the folder containing `qui.exe` and run:
+Open the folder that contains `qui.exe` and run:
 
 ```batch
-qui.exe change-password --username admin --new-password mynewpassword
+qui.exe change-password --username admin
 ```
 
 **Docker:**
 
 ```bash
-docker exec -it <container-name> qui change-password --username admin --new-password mynewpassword
+docker exec -it <container-name> qui change-password --username admin
 ```
 
-Replace `admin` with your username and `mynewpassword` with your desired password (minimum 8 characters).
+Replace `admin` with your username. Enter a new password of at least 8 characters at the prompt.
 
-## Update Command
+## update
 
-Keep your qui installation up-to-date:
+Update qui to the latest release:
 
 ```bash
-# Update to the latest version
 ./qui update
 ```
 
-## Command Line Flags
-
-```bash
-# Specify config directory (config.toml will be created inside)
-./qui serve --config-dir /path/to/config/
-
-# Specify data directory for database and other data files
-./qui serve --data-dir /path/to/data/
-```
+This command replaces the qui binary in place. For Docker, pull a new image instead (see [Docker](../getting-started/docker.md#updating)).
 
 ## Migrate From Other Torrent Clients
 
-Import torrents with their state from Deluge, rTorrent or Transmission into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what gets preserved.
+Import torrents with their state from Deluge, rTorrent, or Transmission into qBittorrent's `BT_backup` directory. See [Client Migration](../features/client-migration.md) for per-client details and what qui preserves.
 
 ```bash
-# Preview what would be imported, without writing anything
+# Preview what the import would do, without writing anything
 ./qui migrate transmission \
   --source-dir ~/.config/transmission-daemon \
   --qbit-dir ~/.local/share/qBittorrent/BT_backup \
@@ -128,14 +151,14 @@ Import torrents with their state from Deluge, rTorrent or Transmission into qBit
 
 Notes:
 
-- Stop the source client and qBittorrent before migrating; start qBittorrent afterwards and it will pick up the imported torrents.
-- Only fully downloaded torrents are imported. Partial torrents are skipped with a warning so no incorrect piece state ever reaches qBittorrent.
-- Preserved per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state, Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
-- Supported source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x and newer.
-- Unless `--skip-backup` is set, both directories are archived to `qbt_backup/` in the current working directory first. The qBittorrent directory is archived only when it already exists; a fresh destination produces only the source archive.
-- Torrents already present in the target `BT_backup` are skipped, so re-running is safe.
+- Stop the source client and qBittorrent before you migrate. Start qBittorrent afterwards, and it picks up the imported torrents.
+- qui imports only fully downloaded torrents. It skips partial torrents with a warning, so no incorrect piece state reaches qBittorrent.
+- qui preserves these fields per torrent: save path, trackers, upload/download totals, added/completed timestamps, seeding time, paused state (Deluge 2.x only; Deluge 1.3.x imports start resumed), Transmission labels (as qBittorrent tags), Deluge and ruTorrent labels (as the qBittorrent category).
+- qui supports these source versions: Transmission 2.4-4.x, Deluge 1.3.x and 2.x, rTorrent 0.9.x through 0.16.x.
+- If you do not set `--skip-backup`, qui first archives both directories to `qbt_backup/` in the current working directory. If the qBittorrent directory already exists, qui archives it. A fresh destination produces only the source archive.
+- If a torrent already exists in the target `BT_backup`, qui skips it. You can run the command again.
 
-## Database Migration
+## Database migration (db migrate)
 
 Offline SQLite to Postgres migration:
 
@@ -169,21 +192,22 @@ cp /path/to/qui.db /path/to/qui.db.bak
 
 Notes:
 
-- Run this while qui is stopped.
-- Create the target Postgres database before running migration.
-- `--dry-run` and `--apply` are mutually exclusive.
+- Stop qui before you run the migration.
+- Create the target Postgres database before you run the migration.
+- Set exactly one of `--dry-run` or `--apply`.
 - The command copies all runtime tables except migration history.
-- The migrator bootstraps schema/tables inside the destination DB, but does not create the database itself.
+- The migrator creates the schema and tables inside the destination database. It does not create the database itself.
 - The output includes per-table row counts for SQLite and Postgres.
+- On a new database, the dry run lists every table under `Missing Postgres tables` with `postgres=0`. This is expected. `--apply` creates them.
+- `--apply` empties every table in the destination database before it copies rows. Point it only at a new or empty database. If qui already ran against that Postgres database, its data is lost. A non-zero `postgres=` count in the dry run output means the destination is not empty.
 
 ### FAQ
 
 **Q: Why is `cross_seed_feed_items` row count lower in Postgres after migration?**
 
-This is expected when the SQLite file contains historical rows whose `indexer_id` no longer exists in `torznab_indexers`.
-Postgres enforces the foreign key strictly, so migration keeps only rows that still have valid parent records.
+If the SQLite file contains historical rows whose `indexer_id` no longer exists in `torznab_indexers`, the migration skips them. Postgres enforces the foreign key, so the migration keeps only rows that have valid parent records.
 
-You can verify this in SQLite:
+You can check this in SQLite:
 
 ```sql
 SELECT COUNT(*) AS orphaned_rows
@@ -192,4 +216,4 @@ LEFT JOIN torznab_indexers i ON i.id = f.indexer_id
 WHERE i.id IS NULL;
 ```
 
-If `orphaned_rows` matches the migration delta (`sqlite_count - postgres_count`), migration behavior is working as intended.
+If `orphaned_rows` matches the migration delta (`sqlite_count - postgres_count`), the migration works as intended.

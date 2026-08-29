@@ -249,6 +249,10 @@ var postgresMigrationFilenameRenames = []migrationFilenameRename{
 		from: "076_add_season_pack_category.sql",
 		to:   "077_add_season_pack_category.sql",
 	},
+	{
+		from: "093_drop_unused_timestamp_indexes.sql",
+		to:   "094_drop_unused_timestamp_indexes.sql",
+	},
 }
 
 // Tx wraps sql.Tx to provide prepared statement caching for transaction queries

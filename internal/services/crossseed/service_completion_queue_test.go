@@ -3,7 +3,6 @@ package crossseed
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -420,7 +419,7 @@ func TestSnapshotCompletionWaits_CopiesSchedulingFields(t *testing.T) {
 	require.False(t, entry.retryAt.Equal(updatedRetryAt))
 }
 
-func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
+func TestHandleTorrentCompletion_DoesNotRetryRateLimitError(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
 	attempts := 0
@@ -440,16 +439,12 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 		},
 		completionSearchInvoker: func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error {
 			attempts++
-			if attempts == 1 {
-				return &jackett.RateLimitWaitError{
-					IndexerID:   1,
-					IndexerName: "test",
-					Wait:        10 * time.Millisecond,
-					MaxWait:     30 * time.Second,
-					Priority:    jackett.RateLimitPriorityCompletion,
-				}
+			return &jackett.RateLimitError{
+				IndexerID:   1,
+				IndexerName: "test",
+				Scope:       "query",
+				RetryAt:     time.Now().Add(10 * time.Millisecond),
 			}
-			return nil
 		},
 	}
 
@@ -460,7 +455,7 @@ func TestHandleTorrentCompletion_RetriesOnRateLimitError(t *testing.T) {
 		CompletionOn: 125,
 	})
 
-	assert.Equal(t, 2, attempts)
+	assert.Equal(t, 1, attempts)
 }
 
 func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
@@ -893,57 +888,4 @@ func TestWaitForCompletionTorrentReady_DeduplicatesConcurrentWaitersDuringRetryB
 	}
 
 	require.Equal(t, 4, syncMock.hitCount(hash))
-}
-
-func TestCompletionRetryDelay_FallbackRateLimitMessages(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		err  error
-		want bool
-	}{
-		{
-			name: "rate-limited wording from jackett cooldown path",
-			err:  errors.New("all indexers are currently rate-limited. 2 indexer(s) in cooldown"),
-			want: true,
-		},
-		{
-			name: "cooldown wording",
-			err:  errors.New("skipping request due to cooldown"),
-			want: true,
-		},
-		{
-			name: "prowlarr query limit wording",
-			err:  errors.New("user configurable indexer query limit of 10 in last 1 hour(s) reached"),
-			want: true,
-		},
-		{
-			name: "prowlarr grab limit wording",
-			err:  errors.New("user configurable indexer grab limit of 10 in last 1 hour(s) reached"),
-			want: true,
-		},
-		{
-			name: "torznab request limit wording",
-			err:  errors.New("Request limit reached"),
-			want: true,
-		},
-		{
-			name: "non rate limit error",
-			err:  errors.New("network timeout"),
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			delay, retry := completionRetryDelay(tt.err)
-			assert.Equal(t, tt.want, retry)
-			if tt.want {
-				assert.Equal(t, defaultCompletionRetryDelay, delay)
-			} else {
-				assert.Zero(t, delay)
-			}
-		})
-	}
 }

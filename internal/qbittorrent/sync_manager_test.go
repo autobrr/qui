@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1085,8 +1087,50 @@ func TestWaitForPostAddRecheckReadyWaitsForResumeDataCheck(t *testing.T) {
 	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 2, syncer.syncCalls)
 	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyFreshCheckingAllowsRequestedRecheck(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []qbt.TorrentState{qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl} {
+		t.Run(string(state), func(t *testing.T) {
+			syncer := &bulkActionRetrySyncer{
+				currentMap: map[string]qbt.Torrent{
+					"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl},
+				},
+				mapsAfterSync: []map[string]qbt.Torrent{
+					{"abc": {Hash: "abc", State: state}},
+				},
+			}
+
+			err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
+
+			require.NoError(t, err)
+			require.Equal(t, 1, syncer.syncCalls)
+			require.Equal(t, 1, syncer.mapCalls)
+		})
+	}
+}
+
+func TestWaitForPostAddRecheckReadyFreshStoppedNeedsRecheck(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		currentMap: map[string]qbt.Torrent{
+			"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl},
+		},
+		mapsAfterSync: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Nanosecond, time.Second)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 1, syncer.mapCalls)
 }
 
 func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
@@ -1102,7 +1146,7 @@ func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.Equal(t, 2, syncer.syncCalls)
-	require.Equal(t, 4, syncer.mapCalls)
+	require.Equal(t, 2, syncer.mapCalls)
 }
 
 func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
@@ -1121,7 +1165,7 @@ func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
 
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, syncer.syncCalls)
-	require.Equal(t, 1, syncer.mapCalls)
+	require.Equal(t, 0, syncer.mapCalls)
 }
 
 func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
@@ -1138,7 +1182,7 @@ func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
 
 	require.ErrorIs(t, err, errPostAddRecheckNotReady)
 	require.Equal(t, 1, syncer.syncCalls)
-	require.Equal(t, 2, syncer.mapCalls)
+	require.Equal(t, 0, syncer.mapCalls)
 }
 
 func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
@@ -1224,6 +1268,217 @@ func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
 	require.Equal(t, cacheCall{hash: "def456", progress: 0.0}, fm.cacheCalls[0])
 
 	require.Equal(t, []string{"Def456"}, client.fileRequests)
+}
+
+func TestGetTorrentFilesBatch_DefaultOmitsPerHashFailure(t *testing.T) {
+	t.Parallel()
+
+	fetchErr := errors.New("files unavailable")
+	goodFiles := qbt.TorrentFiles{{Name: "good.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{
+			"GoodHash": {{files: &goodFiles}},
+			"BadHash":  {{err: fetchErr}},
+		},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{" GoodHash ", "BadHash"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"goodhash": goodFiles}, filesByHash)
+	require.Equal(t, 1, client.callCount("GoodHash"))
+	require.Equal(t, 1, client.callCount("BadHash"))
+	require.Equal(t, []cacheCall{{hash: "goodhash"}}, fm.cacheCalls)
+}
+
+func TestGetTorrentFilesBatch_DefaultReturnsAndCachesEmptyFileList(t *testing.T) {
+	t.Parallel()
+
+	emptyFiles := qbt.TorrentFiles{}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{
+			"EmptyHash": {{files: &emptyFiles}},
+		},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+	}
+	sm.SetFilesManager(fm)
+
+	filesByHash, err := sm.GetTorrentFilesBatch(context.Background(), 1, []string{"EmptyHash"})
+
+	require.NoError(t, err)
+	require.Equal(t, map[string]qbt.TorrentFiles{"emptyhash": {}}, filesByHash)
+	require.Equal(t, 1, client.callCount("EmptyHash"))
+	require.Equal(t, []cacheCall{{hash: "emptyhash"}}, fm.cacheCalls)
+	require.Contains(t, fm.cached, "emptyhash")
+	require.Empty(t, fm.cached["emptyhash"])
+}
+
+func TestGetTorrentFilesBatch_PostAddRetriesAndReturnsTerminalErrors(t *testing.T) {
+	t.Parallel()
+
+	transientErr := errors.New("not visible yet")
+	terminalErr := errors.New("still unavailable")
+	emptyFiles := qbt.TorrentFiles{}
+	readyFiles := qbt.TorrentFiles{{Name: "ready.mkv", Size: 1}}
+	client := &scriptedTorrentFilesClient{
+		responses: map[string][]torrentFilesResponse{
+			"AbC": {
+				{err: transientErr},
+				{},
+				{files: &emptyFiles},
+				{files: &readyFiles},
+			},
+			"Fail": {{err: terminalErr}},
+		},
+	}
+	fm := &stubFilesManager{cached: make(map[string]qbt.TorrentFiles)}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+	sm.SetFilesManager(fm)
+
+	ctx := WithPostAddFileFetchRetry(context.Background())
+	filesByHash, err := sm.getTorrentFilesBatch(ctx, 1, []string{" AbC ", "Fail"}, bulkActionAddRetryAttempts, 0)
+
+	require.ErrorIs(t, err, terminalErr)
+	require.Equal(t, map[string]qbt.TorrentFiles{"abc": readyFiles}, filesByHash)
+	require.Equal(t, 4, client.callCount("AbC"))
+	require.Equal(t, bulkActionAddRetryAttempts, client.callCount("Fail"))
+	require.Equal(t, []cacheCall{{hash: "abc"}}, fm.cacheCalls)
+}
+
+func TestFetchTorrentFilesWithRetry_Exhaustion(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("api failure")
+	emptyFiles := qbt.TorrentFiles{}
+	tests := []struct {
+		name      string
+		response  torrentFilesResponse
+		postAdd   bool
+		wantError string
+		wantIs    error
+	}{
+		{name: "API error", response: torrentFilesResponse{err: sentinel}, wantError: "fetch torrent files abc: api failure", wantIs: sentinel},
+		{name: "nil response", response: torrentFilesResponse{}, wantError: "fetch torrent files abc: empty response"},
+		{name: "post-add empty file list", response: torrentFilesResponse{files: &emptyFiles}, postAdd: true, wantError: "fetch torrent files abc: empty file list"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &scriptedTorrentFilesClient{responses: map[string][]torrentFilesResponse{"abc": {tt.response}}}
+			ctx := context.Background()
+			if tt.postAdd {
+				ctx = WithPostAddFileFetchRetry(ctx)
+			}
+
+			files, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, 0)
+
+			require.Nil(t, files)
+			require.EqualError(t, err, tt.wantError)
+			if tt.wantIs != nil {
+				require.ErrorIs(t, err, tt.wantIs)
+			}
+			require.Equal(t, 3, client.callCount("abc"))
+		})
+	}
+}
+
+func TestFetchTorrentFilesWithRetry_CancellationStopsRequests(t *testing.T) {
+	t.Parallel()
+
+	t.Run("already canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		client := &scriptedTorrentFilesClient{}
+
+		_, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, time.Hour)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Zero(t, client.callCount("abc"))
+	})
+
+	t.Run("deadline expired", func(t *testing.T) {
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+		defer cancel()
+		client := &scriptedTorrentFilesClient{}
+
+		_, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, time.Hour)
+
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Zero(t, client.callCount("abc"))
+	})
+
+	t.Run("canceled after first failure", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &scriptedTorrentFilesClient{
+			responses: map[string][]torrentFilesResponse{
+				"abc": {{err: errors.New("not ready"), after: cancel}},
+			},
+		}
+
+		_, err := fetchTorrentFilesWithRetry(ctx, client, "abc", 3, time.Hour)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Equal(t, 1, client.callCount("abc"))
+	})
+}
+
+func TestGetTorrentFilesBatch_PartialFailureLogCapsErrorSample(t *testing.T) {
+	var buf bytes.Buffer
+	originalLogger := log.Logger
+	log.Logger = zerolog.New(&buf).Level(zerolog.DebugLevel)
+	t.Cleanup(func() { log.Logger = originalLogger })
+
+	responses := make(map[string][]torrentFilesResponse, 5)
+	hashes := make([]string, 0, 5)
+	for i := range 5 {
+		hash := fmt.Sprintf("hash-%d", i)
+		hashes = append(hashes, hash)
+		responses[hash] = []torrentFilesResponse{{err: fmt.Errorf("sentinel-%d", i)}}
+	}
+	client := &scriptedTorrentFilesClient{responses: responses}
+	sm := &SyncManager{
+		torrentFilesClientProvider: func(context.Context, int) (torrentFilesClient, error) {
+			return client, nil
+		},
+		fileFetchMaxConcurrent: 1,
+	}
+
+	_, err := sm.GetTorrentFilesBatch(context.Background(), 7, hashes)
+	require.NoError(t, err)
+
+	var partialFailureLog map[string]any
+	for line := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry))
+		if entry[zerolog.MessageFieldName] == "Completed batch torrent file fetch with partial failures" {
+			partialFailureLog = entry
+		}
+	}
+	require.NotNil(t, partialFailureLog)
+	require.InDelta(t, 5, partialFailureLog["missing"], 0)
+	require.InDelta(t, 5, partialFailureLog["requested"], 0)
+	errorSample, ok := partialFailureLog[zerolog.ErrorFieldName].(string)
+	require.True(t, ok)
+	require.Equal(t, 3, strings.Count(errorSample, "fetch torrent files"))
+	require.Equal(t, 3, strings.Count(errorSample, "sentinel-"))
 }
 
 func TestGetTorrentFilesBatch_SanitizesInvalidUTF8(t *testing.T) {
@@ -1465,6 +1720,54 @@ type stubTorrentFilesClient struct {
 	fileRequests    []string
 }
 
+type torrentFilesResponse struct {
+	files *qbt.TorrentFiles
+	err   error
+	after func()
+}
+
+type scriptedTorrentFilesClient struct {
+	mu        sync.Mutex
+	responses map[string][]torrentFilesResponse
+	calls     map[string]int
+}
+
+func (*scriptedTorrentFilesClient) getTorrentsByHashes([]string) []qbt.Torrent {
+	return nil
+}
+
+func (c *scriptedTorrentFilesClient) GetFilesInformationCtx(_ context.Context, hash string) (*qbt.TorrentFiles, error) {
+	c.mu.Lock()
+	if c.calls == nil {
+		c.calls = make(map[string]int)
+	}
+	call := c.calls[hash]
+	c.calls[hash]++
+	responses := c.responses[hash]
+	if len(responses) == 0 {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("no response for hash %s", hash)
+	}
+	response := responses[min(call, len(responses)-1)]
+	var files *qbt.TorrentFiles
+	if response.files != nil {
+		copied := slices.Clone(*response.files)
+		files = &copied
+	}
+	c.mu.Unlock()
+
+	if response.after != nil {
+		response.after()
+	}
+	return files, response.err
+}
+
+func (c *scriptedTorrentFilesClient) callCount(hash string) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls[hash]
+}
+
 func (c *stubTorrentFilesClient) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 	copied := append([]string(nil), hashes...)
 	c.requestedHashes = append(c.requestedHashes, copied)
@@ -1627,6 +1930,8 @@ func (s *stubTorrentLookup) GetTorrent(hash string) (qbt.Torrent, bool) {
 
 type bulkActionRetrySyncer struct {
 	maps               []map[string]qbt.Torrent
+	currentMap         map[string]qbt.Torrent
+	mapsAfterSync      []map[string]qbt.Torrent
 	syncErr            error
 	syncCalls          int
 	mapCalls           int
@@ -1639,11 +1944,18 @@ func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}
+	if len(s.mapsAfterSync) > 0 {
+		index := min(s.syncCalls-1, len(s.mapsAfterSync)-1)
+		s.currentMap = s.mapsAfterSync[index]
+	}
 	return s.syncErr
 }
 
 func (s *bulkActionRetrySyncer) GetTorrentMap(qbt.TorrentFilterOptions) map[string]qbt.Torrent {
 	s.mapCalls++
+	if s.currentMap != nil || s.mapsAfterSync != nil {
+		return s.currentMap
+	}
 	if len(s.maps) == 0 {
 		return nil
 	}

@@ -210,6 +210,7 @@ export interface CrossSeedAutomationSettings {
   webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
   autoResumeMaxDownloadMb: number
+  pooledPartialCompletionEnabled: boolean
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -277,6 +278,7 @@ export interface CrossSeedAutomationSettingsPatch {
   webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
   autoResumeMaxDownloadMb?: number
+  pooledPartialCompletionEnabled?: boolean
   useCategoryFromIndexer?: boolean
   useCrossCategoryAffix?: boolean
   categoryAffixMode?: "prefix" | "suffix"
