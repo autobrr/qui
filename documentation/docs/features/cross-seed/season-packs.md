@@ -176,6 +176,23 @@ If you do not already have an API key for autobrr:
 Create a **separate autobrr filter** for season packs. Do not reuse your existing cross-seed filter. The endpoints and payload differ.
 :::
 
+Set the filter priorities in this order:
+
+1. Your regular [qui cross-seed filter](https://autobrr.com/filters/cross-seed-qui#create-the-filter)
+2. The season-pack filter from this guide
+3. Your normal TV or Sonarr grab filters
+
+autobrr stops after the first successful matching filter. This order lets a direct whole-pack cross-seed win first. If qui rejects the season-pack check, autobrr can continue to a normal grab filter.
+
+In the **Movies and TV** tab, use the [season-pack matcher](https://autobrr.com/filters/examples#only-season-packs):
+
+| Field    | Value  |
+| -------- | ------ |
+| Seasons  | `1-99` |
+| Episodes | `0`    |
+
+This includes ordinary `S01` through `S99` packs and excludes specials (`S00`), seasonless packs, and individual episodes.
+
 :::tip
 **Docker Compose:** Use your qui container hostname instead of `localhost` (often the Compose service name), for example: `http://qui:7476/api/cross-seed/season-pack/check`.
 :::
@@ -191,6 +208,8 @@ In your new autobrr filter, go to **External** tab > **Add new**:
 | HTTP Method               | `POST`                                                    |
 | HTTP Request Headers      | `X-API-Key=YOUR_QUI_API_KEY`                              |
 | Expected HTTP Status Code | `200`                                                     |
+
+Leave every field under **Retry** blank. The grey `10` and `1` values are placeholders, not active defaults. A blank retry section makes one check request. The endpoint uses `404` as a normal "not eligible" result, so retrying it does not help.
 
 **Data (JSON):**
 
