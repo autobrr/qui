@@ -103,7 +103,7 @@ Do not post the brief on the discussion. It lives in the issue, and the issue bo
 
 ### ready-for-human
 
-Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
+Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. For an `enhancement` with no narrower decision the line reads `Feature scope is a maintainer call.` A discussion that got `maybe-later` gets no comment. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
 
 ## Agent brief
 
