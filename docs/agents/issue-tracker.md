@@ -18,7 +18,7 @@ Use the `gh` CLI for all operations. GitHub shares one number space across discu
   ```
 
   Reasons: `RESOLVED`, `OUTDATED`, `DUPLICATE`.
-- **Promote to issue**: `gh issue create --title "..." --label ready-for-agent --body "..."` with `From discussion #<number>` as the last line of the body. Then comment the issue URL on the discussion and close it with reason `RESOLVED`.
+- **Promote to issue**: `gh issue create --title "..." --label ready-for-agent --body "..."` with `From discussion #<number>` as the last line of the body. Then comment the issue URL on the discussion and close the discussion with reason `RESOLVED`.
 
 In the triage workflow, `./.github/scripts/discussion-write.sh` wraps these writes and binds them to the discussion under triage. The playbook in `docs/agents/triage.md` is the process.
 

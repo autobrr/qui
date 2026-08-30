@@ -64,7 +64,7 @@ Every other rejection is a human decision. For a request that looks out of scope
 
 ### qBittorrent parity
 
-qui mirrors the qBittorrent WebAPI. A request for a control that qBittorrent exposes and qui lacks is always an accepted `enhancement`. Add `qbit-native-feature`. Never close it as `wontfix`. It goes to `ready-for-human` like every feature request, and the brief names the WebAPI endpoint.
+qui mirrors the qBittorrent WebAPI. A request for a control that qBittorrent exposes and qui lacks is always an accepted `enhancement`. Add `qbit-native-feature`. Never close it as `wontfix`. It goes to `ready-for-human` like every `enhancement`, and the brief names the WebAPI endpoint.
 
 ### needs-info
 
@@ -90,7 +90,7 @@ A bug report whose code path no longer matches the report, with no fix found in 
 
 ### ready-for-agent
 
-Bug reports only. A feature request never becomes an issue in triage: which requests get built is a human decision, so a feature request that is not `needs-info` or a mechanical wontfix goes to `ready-for-human`.
+`bug` only. An `enhancement` never becomes an issue in triage, whatever category it was filed in: which requests get built is a human decision. An `enhancement` that is not `needs-info` or a mechanical wontfix goes to `ready-for-human`.
 
 The bug is confirmed against the code path and an agent can fix it without a design decision. The issue becomes the only open thread for the work:
 
@@ -103,7 +103,7 @@ Do not post the brief on the discussion. It lives in the issue, and the issue bo
 
 ### ready-for-human
 
-Every feature request lands here, and a bug that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
+Every `enhancement` lands here, and a `bug` that needs a decision only a human can make: UI placement, product scope, external access, or manual testing. Post the agent brief with one extra line, `**Why a human:**`, that names the decision. Add `ready-for-human`, remove `needs-triage`. Do not create an issue.
 
 ## Agent brief
 
