@@ -215,7 +215,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   webhookSourceTags: [],
   webhookSourceExcludeCategories: [],
   webhookSourceExcludeTags: [],
-  // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
 function normalizeStringList(values: string[]): string[] {
@@ -1220,7 +1219,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         seasonPackCategoryRules: settings.seasonPackCategoryRules ?? [],
         seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
         seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
-        // Note: Hardlink mode is now per-instance (configured in Instance Settings)
       })
       setGlobalSettingsInitialized(true)
     }
@@ -1323,7 +1321,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackCategoryRules: settings.seasonPackCategoryRules ?? [],
       seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
       seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
-      // Note: Hardlink mode is now per-instance
     }
 
     return {
@@ -1372,7 +1369,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackCategoryRules: globalSource.seasonPackCategoryRules,
       seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
       seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
-      // Note: Hardlink mode is now per-instance (see Instance Settings)
     }
   }, [
     settings,

@@ -703,7 +703,7 @@
       "typeToAddTags": "輸入以新增標籤",
       "tagsLoadError": "無法從 qBittorrent 載入標籤。您仍可輸入自訂值。",
       "regularModeTitle": "此實例已啟用一般模式",
-      "regularModeHelp": "在實例設定中使用<hardlink>硬連結</hardlink>或<reflink>引用連結</reflink>模式以避免此風險。",
+      "regularModeHelp": "要避免此風險，請在 Cross-Seed > 規則 > 硬連結 / 引用連結模式中選擇<hardlink>硬連結</hardlink>或<reflink>引用連結</reflink>。請先在實例設定中啟用「本機檔案系統存取」。",
       "regularModeAcknowledge": "我瞭解在媒體目錄中使用一般模式的風險",
       "cancel": "取消",
       "addButton": "新增目錄",

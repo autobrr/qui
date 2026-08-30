@@ -702,7 +702,7 @@
       "typeToAddTags": "Zadat tagy",
       "tagsLoadError": "Selhalo načítání tagů z qBittorrentu. Můžete stále zadat vlastní hodnotu.",
       "regularModeTitle": "Režim je povolen pro tuto instanci",
-      "regularModeHelp": "K vyhnutí rizika použijte <hardlink>hardlink</hardlink> nebo <reflink>reflink</reflink> režim v nastavení instance.",
+      "regularModeHelp": "Vyberte <hardlink>Hardlink</hardlink> nebo <reflink>Reflink</reflink> v Cross-Seed > Pravidla > Hardlink / Reflink režim, abyste tomuto riziku předešli. Nejprve povolte \"Místní souborový přístup\" v Nastavení instance.",
       "regularModeAcknowledge": "Rozumím rizikům použití režimu s media adresáři",
       "cancel": "Zrušit",
       "addButton": "Přidat adresář",

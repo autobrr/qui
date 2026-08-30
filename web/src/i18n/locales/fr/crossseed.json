@@ -713,7 +713,7 @@
       "typeToAddTags": "Taper pour ajouter",
       "tagsLoadError": "Impossible de charger les tags de qBittorrent.",
       "regularModeTitle": "Le mode normal est activé pour cette instance",
-      "regularModeHelp": "Utilisez le mode <hardlink>hardlink</hardlink> ou <reflink>reflink</reflink> pour éviter les risques.",
+      "regularModeHelp": "Sélectionnez <hardlink>Hardlink</hardlink> ou <reflink>Reflink</reflink> sous Cross-Seed > Règles > Mode Hardlink / Reflink pour éviter ce risque. Activez d'abord « Accès au système de fichiers local » dans les paramètres de l'instance.",
       "regularModeAcknowledge": "Je comprends les risques du mode normal avec des répertoires de médias",
       "cancel": "Annuler",
       "addButton": "Ajouter le répertoire",
