@@ -175,7 +175,7 @@ func (s *Service) RequestReannounce(ctx context.Context, instanceID int, hashes 
 		return nil
 	}
 	settings := s.getSettings(ctx, instanceID)
-	if settings == nil || !settings.Enabled {
+	if !settings.CanMatchTorrents() {
 		return nil
 	}
 	upperHashes := normalizeHashes(hashes)
@@ -225,15 +225,15 @@ func (s *Service) scanInstances(ctx context.Context) {
 		if instance == nil || !instance.IsActive {
 			continue
 		}
-		settings := s.getSettings(ctx, instance.ID)
-		if settings == nil || !settings.Enabled {
-			continue
-		}
-		s.scanInstance(ctx, instance.ID, settings)
+		s.scanInstance(ctx, instance.ID, s.getSettings(ctx, instance.ID))
 	}
 }
 
 func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *models.InstanceReannounceSettings) {
+	if !settings.CanMatchTorrents() {
+		return
+	}
+
 	client, err := s.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: client unavailable for scan")
@@ -287,7 +287,7 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 	}
 
 	settings := s.getSettings(ctx, instanceID)
-	if settings == nil || !settings.Enabled {
+	if !settings.CanMatchTorrents() {
 		return nil
 	}
 
@@ -563,7 +563,7 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 // category/tag/tracker filters) WITHOUT checking the initial wait period. Used by
 // GetMonitoredTorrents to show new torrents that are still in their initial wait.
 func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.InstanceReannounceSettings) bool {
-	if settings == nil || !settings.Enabled {
+	if !settings.CanMatchTorrents() {
 		return false
 	}
 
@@ -615,30 +615,8 @@ func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.In
 		return true
 	}
 
-	// 3. Check inclusions
-	// If no inclusions are defined, we shouldn't match anything (unless MonitorAll is true, handled above).
-	// However, existing tests imply that empty inclusion lists act as "wildcard" if we don't check for emptiness.
-	// But the new logic is specific: you must match AT LEAST one inclusion criteria if MonitorAll is false.
-	// Let's check if any inclusion criteria is actually set.
-
-	hasInclusionCriteria := (len(settings.Categories) > 0 && !settings.ExcludeCategories) ||
-		(len(settings.Tags) > 0 && !settings.ExcludeTags) ||
-		(len(settings.Trackers) > 0 && !settings.ExcludeTrackers)
-
-	if !hasInclusionCriteria {
-		// If MonitorAll is false and no inclusion criteria are provided, we match nothing.
-		// Wait, if I have "Exclude Category TV" and MonitorAll=False, does it mean "Include Everything EXCEPT TV"?
-		// If MonitorAll is false, the UI says "Monitor specific ...".
-		// If I set "Exclude Category TV", then MonitorAll=False, do I want to monitor everything else?
-		// The UI implies "Monitor scope" switch toggles between "All" and "Specific".
-		// If "Specific", you must provide positive criteria.
-		// BUT, now we have exclusions.
-		// If I want to "Monitor All EXCEPT TV", I should enable MonitorAll and add Exclude TV.
-		// If I disable MonitorAll, I am in "Allowlist" mode (plus local blocklists).
-		// So if MonitorAll=False, I MUST match an Allowlist entry.
-		return false
-	}
-
+	// 3. Check inclusions. CanMatchTorrents above guarantees at least one
+	// inclusion list is set, so a torrent must match one of them.
 	if !settings.ExcludeCategories && len(settings.Categories) > 0 {
 		for _, category := range settings.Categories {
 			if strings.EqualFold(category, torrent.Category) {
@@ -669,8 +647,7 @@ func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.In
 		}
 	}
 
-	// If MonitorAll is false, we require at least one positive inclusion criterion to match.
-	// Since we haven't returned true by now, no inclusion criteria were matched.
+	// No inclusion entry matched.
 	return false
 }
 

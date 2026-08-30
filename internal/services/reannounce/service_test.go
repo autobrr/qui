@@ -526,3 +526,41 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 	}
 	require.Equal(t, 4, failedCount)
 }
+
+func TestCanMatchTorrents(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings *models.InstanceReannounceSettings
+		want     bool
+	}{
+		{name: "Nil", settings: nil, want: false},
+		{name: "Disabled", settings: &models.InstanceReannounceSettings{MonitorAll: true}, want: false},
+		{name: "Empty scope", settings: &models.InstanceReannounceSettings{Enabled: true}, want: false},
+		{name: "Exclusions only", settings: &models.InstanceReannounceSettings{
+			Enabled:           true,
+			ExcludeCategories: true,
+			Categories:        []string{"tv"},
+		}, want: false},
+		{name: "MonitorAll", settings: &models.InstanceReannounceSettings{Enabled: true, MonitorAll: true}, want: true},
+		{name: "Category include", settings: &models.InstanceReannounceSettings{Enabled: true, Categories: []string{"tv"}}, want: true},
+		{name: "Tag include", settings: &models.InstanceReannounceSettings{Enabled: true, Tags: []string{"tagA"}}, want: true},
+		{name: "Tracker include", settings: &models.InstanceReannounceSettings{Enabled: true, Trackers: []string{"tracker.example.com"}}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.settings.CanMatchTorrents())
+		})
+	}
+}
+
+// A scope that cannot match any torrent must not reach the client. The service
+// here has no client pool, so a fetch attempt would panic: returning cleanly
+// proves the scan short-circuited before the request.
+func TestScanInstance_SkipsFetchWhenScopeCannotMatch(t *testing.T) {
+	svc := &Service{}
+
+	require.NotPanics(t, func() {
+		svc.scanInstance(context.Background(), 1, &models.InstanceReannounceSettings{Enabled: true})
+	})
+}

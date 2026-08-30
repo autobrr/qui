@@ -41,6 +41,8 @@ Choose which torrents qui monitors:
 - **Monitor All Stalled Torrents**: qui checks every stalled torrent. If you want to ignore specific categories, tags, or trackers (such as public trackers), add **Exclude** rules.
 - **Custom filter (Monitor All disabled)**: qui checks only torrents that match your **Include** rules. **Exclude** rules still block specific items within those groups.
 
+If you disable **Monitor All** and add no **Include** rules, no torrent can match. qui then does no scan and sends no request to qBittorrent.
+
 ### Quick Retry
 
 By default, qui waits about **2 minutes** between reannounce attempts for the same torrent. This duration acts as a per-torrent cooldown between scans.
