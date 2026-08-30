@@ -1157,3 +1157,102 @@ func TestWithMinRequestInterval(t *testing.T) {
 	fast.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
 	require.LessOrEqual(t, fast.rateLimiter.NextWait(indexer), time.Millisecond)
 }
+
+func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
+	base := time.Now()
+	newItem := func(taskID uint64, indexerID int, priority int, age time.Duration) *taskItem {
+		return &taskItem{
+			task: workerTask{
+				jobID:   1,
+				taskID:  taskID,
+				indexer: &models.TorznabIndexer{ID: indexerID, Name: "Indexer"},
+			},
+			priority: priority,
+			created:  base.Add(age),
+		}
+	}
+
+	s := &searchScheduler{
+		inFlight:   make(map[int]*taskItem),
+		jobs:       make(map[uint64]*jobState),
+		workerPool: make(chan struct{}, 4),
+	}
+
+	// Queued: a push order whose heap array is [4 5 1 2 3 6], so the raw array
+	// cannot pass for dequeue order. Tasks 1 and 6 share a priority and a
+	// creation time, so the task ID has to break the tie.
+	queuedItems := []*taskItem{
+		newItem(1, 11, 2, time.Second),
+		newItem(2, 12, 2, 2*time.Second),
+		newItem(3, 13, 1, 3*time.Second),
+		newItem(4, 14, 0, 4*time.Second),
+		newItem(5, 15, 1, time.Second),
+		newItem(6, 16, 2, time.Second),
+	}
+	for _, item := range queuedItems {
+		heap.Push(&s.taskQueue, item)
+	}
+
+	// In-flight: two tasks share a creation time so the task ID has to break the tie.
+	for _, item := range []*taskItem{
+		newItem(20, 20, 0, 3*time.Second),
+		newItem(22, 22, 0, time.Second),
+		newItem(21, 21, 0, time.Second),
+	} {
+		s.inFlight[item.task.indexer.ID] = item
+	}
+
+	s.jobs[7] = &jobState{totalTasks: 1}
+	s.jobs[3] = &jobState{totalTasks: 1}
+	s.jobs[5] = &jobState{totalTasks: 1}
+
+	wantQueued := []uint64{4, 5, 3, 1, 6, 2}
+	wantInFlight := []uint64{21, 22, 20}
+	wantJobs := []uint64{3, 5, 7}
+
+	for range 20 {
+		status := s.GetStatus()
+
+		gotQueued := make([]uint64, 0, len(status.QueuedTasks))
+		for _, task := range status.QueuedTasks {
+			gotQueued = append(gotQueued, task.TaskID)
+		}
+		if !slices.Equal(gotQueued, wantQueued) {
+			t.Fatalf("queued order = %v, want %v", gotQueued, wantQueued)
+		}
+
+		gotInFlight := make([]uint64, 0, len(status.InFlightTasks))
+		for _, task := range status.InFlightTasks {
+			gotInFlight = append(gotInFlight, task.TaskID)
+		}
+		if !slices.Equal(gotInFlight, wantInFlight) {
+			t.Fatalf("in-flight order = %v, want %v", gotInFlight, wantInFlight)
+		}
+
+		gotJobs := make([]uint64, 0, len(status.ActiveJobs))
+		for _, job := range status.ActiveJobs {
+			gotJobs = append(gotJobs, job.JobID)
+		}
+		if !slices.Equal(gotJobs, wantJobs) {
+			t.Fatalf("active job order = %v, want %v", gotJobs, wantJobs)
+		}
+	}
+
+	// The same task set pushed in the opposite order gives a different heap
+	// array, and must still come back in the same order.
+	reversed := &searchScheduler{
+		inFlight:   make(map[int]*taskItem),
+		jobs:       make(map[uint64]*jobState),
+		workerPool: make(chan struct{}, 4),
+	}
+	for _, item := range slices.Backward(queuedItems) {
+		heap.Push(&reversed.taskQueue, item)
+	}
+	gotQueued := make([]uint64, 0, len(queuedItems))
+	for _, task := range reversed.GetStatus().QueuedTasks {
+		gotQueued = append(gotQueued, task.TaskID)
+	}
+	if !slices.Equal(gotQueued, wantQueued) {
+		t.Fatalf("queued order after reversed pushes = %v, want %v", gotQueued, wantQueued)
+	}
+}

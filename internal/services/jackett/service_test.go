@@ -3631,3 +3631,37 @@ func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
+	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{
+		{ID: 1, Name: "Alpha"},
+		{ID: 2, Name: "Charlie"},
+		{ID: 3, Name: "Bravo"},
+		{ID: 4, Name: "Delta"},
+	}}
+	service := NewService(store)
+	defer service.searchScheduler.Stop()
+
+	base := time.Now().Add(time.Minute)
+	// Indexers 2 and 3 share a cooldown end, and their names sort the opposite
+	// way from their IDs, so the name tiebreak has to decide.
+	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, base.Add(3*time.Minute))
+	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, base.Add(time.Minute))
+	service.rateLimiter.SetCooldown(3, rateLimitScopeGrab, base.Add(time.Minute))
+	service.rateLimiter.SetCooldown(4, rateLimitScopeQuery, base)
+
+	want := []int{4, 3, 2, 1}
+	for range 20 {
+		status, err := service.GetActivityStatus(context.Background())
+		if err != nil {
+			t.Fatalf("GetActivityStatus() error = %v", err)
+		}
+		got := make([]int, 0, len(status.CooldownIndexers))
+		for _, cooldown := range status.CooldownIndexers {
+			got = append(got, cooldown.IndexerID)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("cooldown order = %v, want %v", got, want)
+		}
+	}
+}

@@ -4,6 +4,7 @@
 package jackett
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -4607,6 +4608,15 @@ func (s *Service) GetActivityStatus(ctx context.Context) (*ActivityStatus, error
 					})
 				}
 			}
+			slices.SortFunc(status.CooldownIndexers, func(a, b IndexerCooldownStatus) int {
+				if c := a.CooldownEnd.Compare(b.CooldownEnd); c != 0 {
+					return c
+				}
+				if c := cmp.Compare(a.IndexerName, b.IndexerName); c != 0 {
+					return c
+				}
+				return cmp.Compare(a.IndexerID, b.IndexerID)
+			})
 		}
 	}
 
