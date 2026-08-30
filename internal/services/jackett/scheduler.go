@@ -4,11 +4,14 @@
 package jackett
 
 import (
+	"cmp"
 	"container/heap"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -292,13 +295,9 @@ type taskItem struct {
 
 type taskHeap []*taskItem
 
-func (h taskHeap) Len() int { return len(h) }
-func (h taskHeap) Less(i, j int) bool {
-	if h[i].priority == h[j].priority {
-		return h[i].created.Before(h[j].created)
-	}
-	return h[i].priority < h[j].priority
-}
+func (h taskHeap) Len() int           { return len(h) }
+func (h taskHeap) Less(i, j int) bool { return compareTasks(h[i], h[j]) < 0 }
+
 func (h taskHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i]; h[i].index = i; h[j].index = j }
 func (h *taskHeap) Push(x any) {
 	item := x.(*taskItem)
@@ -313,6 +312,18 @@ func (h *taskHeap) Pop() any {
 	item.index = -1
 	*h = old[0 : n-1]
 	return item
+}
+
+// compareTasks orders tasks the way the scheduler dequeues them: highest
+// priority first, then oldest, with the task ID to break ties.
+func compareTasks(a, b *taskItem) int {
+	if c := cmp.Compare(a.priority, b.priority); c != 0 {
+		return c
+	}
+	if c := a.created.Compare(b.created); c != 0 {
+		return c
+	}
+	return cmp.Compare(a.task.taskID, b.task.taskID)
 }
 
 // jobState tracks completion status for a multi-indexer job.
@@ -955,9 +966,10 @@ func (s *searchScheduler) GetStatus() SchedulerStatus {
 		WorkersInUse:  len(s.workerPool),
 	}
 
-	// Collect queued tasks
-	for i := 0; i < s.taskQueue.Len(); i++ {
-		item := s.taskQueue[i]
+	// Collect queued tasks by priority and age; the heap array is not sorted.
+	queued := slices.Clone(s.taskQueue)
+	slices.SortFunc(queued, compareTasks)
+	for _, item := range queued {
 		priority := "background"
 		if item.task.meta != nil && item.task.meta.rateLimit != nil {
 			priority = string(item.task.meta.rateLimit.Priority)
@@ -973,27 +985,33 @@ func (s *searchScheduler) GetStatus() SchedulerStatus {
 		})
 	}
 
-	// Collect in-flight tasks with full details
-	for _, item := range s.inFlight {
-		if item != nil {
-			priority := "background"
-			if item.task.meta != nil && item.task.meta.rateLimit != nil {
-				priority = string(item.task.meta.rateLimit.Priority)
-			}
-			status.InFlightTasks = append(status.InFlightTasks, SchedulerTaskStatus{
-				JobID:       item.task.jobID,
-				TaskID:      item.task.taskID,
-				IndexerID:   item.task.indexer.ID,
-				IndexerName: item.task.indexer.Name,
-				Priority:    priority,
-				CreatedAt:   item.created,
-				IsRSS:       item.task.isRSS,
-			})
+	// Collect in-flight tasks with full details, oldest first.
+	inFlight := slices.Collect(maps.Values(s.inFlight))
+	slices.SortFunc(inFlight, func(a, b *taskItem) int {
+		if c := a.created.Compare(b.created); c != 0 {
+			return c
 		}
+		return cmp.Compare(a.task.taskID, b.task.taskID)
+	})
+	for _, item := range inFlight {
+		priority := "background"
+		if item.task.meta != nil && item.task.meta.rateLimit != nil {
+			priority = string(item.task.meta.rateLimit.Priority)
+		}
+		status.InFlightTasks = append(status.InFlightTasks, SchedulerTaskStatus{
+			JobID:       item.task.jobID,
+			TaskID:      item.task.taskID,
+			IndexerID:   item.task.indexer.ID,
+			IndexerName: item.task.indexer.Name,
+			Priority:    priority,
+			CreatedAt:   item.created,
+			IsRSS:       item.task.isRSS,
+		})
 	}
 
-	// Collect active jobs
-	for jobID, job := range s.jobs {
+	// Collect active jobs, lowest job ID first.
+	for _, jobID := range slices.Sorted(maps.Keys(s.jobs)) {
+		job := s.jobs[jobID]
 		status.ActiveJobs = append(status.ActiveJobs, SchedulerJobStatus{
 			JobID:          jobID,
 			TotalTasks:     job.totalTasks,
