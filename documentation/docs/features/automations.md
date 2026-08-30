@@ -1137,6 +1137,20 @@ Remove completed torrents and all their cross-seeded copies when they are old en
 
 When a torrent matches, qui also deletes every other torrent that points to the same downloaded files. Use this rule when you no longer need any copy of the content.
 
+### Find duplicate releases of the same title
+
+List releases that share a parsed title but come from different release groups, such as `Show.S01.1080p.WEB-DL-GROUP1` and `Show.S01.1080p.WEB-DL-GROUP2`:
+
+- Tracker: `*`
+- Condition: `Is Grouped is true` with `groupId` set to `release_item` (see [Grouping](#grouping))
+- Action: Tag "dupe" (mode: add)
+
+The **Live impact preview** lists the matches while you edit, so the rule can stay disabled if you only want to look.
+
+:::note
+Cross-seeded copies of a release are also members of these groups, because the `release_item` key ignores the release group and the tracker.
+:::
+
 ### Organize by tracker
 
 Move torrents to tracker-named categories:
