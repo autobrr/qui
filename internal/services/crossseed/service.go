@@ -4334,6 +4334,11 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 	}
 
 	candidate := namedRelease{release: s.releaseCache.Parse(result.Title), rawName: result.Title}
+	// Resolve ARR aliases only when a torrent survives the exact-size gate
+	// below, so feed items with no byte-size collision never touch ARR.
+	aliasTitles := sync.OnceValue(func() []string {
+		return s.announceAliasTitles(ctx, result.Title, DetermineContentType(candidate.release).ContentType)
+	})
 	snapshots := (*automationSnapshots)(nil)
 	if autoCtx != nil {
 		snapshots = autoCtx.snapshots
@@ -4370,6 +4375,7 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 				findIndividualEpisodes: settings.FindIndividualEpisodes,
 				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
 				allowUnknownSize:       false,
+				candidateTitles:        aliasTitles(),
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue

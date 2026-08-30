@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -872,4 +873,71 @@ func TestMergeCrossSeedResponsesPreservesAggregateSuccess(t *testing.T) {
 
 	require.True(t, destination.Success)
 	require.True(t, destination.titleRescueUsed)
+}
+
+// TestFindRSSAnnouncementMatchesARRAlternateTitles catches an RSS fallback that
+// ignores ARR alternate titles the webhook and autobrr paths already use, and
+// an eager lookup that touches ARR for feed items with no byte-size collision.
+func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 17
+		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		announceName = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+		size         = int64(1_500_000_000)
+	)
+	aliasResult := &arr.ExternalIDsResult{
+		Titles:      []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"},
+		TitlesKnown: true,
+	}
+
+	tests := []struct {
+		name       string
+		spy        *spyARRLookupService
+		sourceSize int64
+		wantMatch  bool
+		wantCalls  int
+	}{
+		{name: "aliases recover the match with one lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size, wantMatch: true, wantCalls: 1},
+		{name: "no size collision skips the lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size + 1},
+		{name: "no arr service keeps rejecting", sourceSize: size},
+		{name: "lookup error keeps rejecting", spy: &spyARRLookupService{err: errors.New("arr down")}, sourceSize: size, wantCalls: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Hash: "frieren-source", Name: sourceName, TotalSize: tt.sourceSize, Progress: 1}
+			unrelated := qbt.Torrent{Hash: "unrelated-source", Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA", TotalSize: tt.sourceSize, Progress: 1}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{source, unrelated}, map[string]qbt.TorrentFiles{
+					source.Hash:    {{Name: source.Name, Size: tt.sourceSize}},
+					unrelated.Hash: {{Name: unrelated.Name + ".mkv", Size: tt.sourceSize}},
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			if tt.spy != nil {
+				service.arrService = tt.spy
+			}
+
+			matches, err := service.findRSSAnnouncementMatches(context.Background(), jackett.SearchResult{Title: announceName, Size: size}, &models.CrossSeedAutomationSettings{
+				TargetInstanceIDs: []int{instanceID},
+			}, nil)
+			require.NoError(t, err)
+			if tt.spy != nil {
+				require.Equal(t, tt.wantCalls, tt.spy.calls)
+			}
+			if tt.wantMatch {
+				require.Len(t, matches, 1)
+				// The decision must carry the aliases so the apply-time
+				// revalidation inside CrossSeed accepts the same pair.
+				require.Equal(t, aliasResult.Titles, matches[0].decision.CandidateTitles)
+			} else {
+				require.Empty(t, matches)
+			}
+		})
+	}
 }
