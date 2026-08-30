@@ -5,8 +5,9 @@ on:
   discussion_comment:
     types: [created]
   schedule:
-    # 05:00 UTC daily. Sweeps the untriaged backlog and closes stale needs-info.
-    - cron: '0 5 * * *'
+    # 05:17 UTC daily. Sweeps the untriaged backlog and closes stale needs-info.
+    # Off the top of the hour: GitHub delays or drops schedules queued at :00.
+    - cron: '17 5 * * *'
   workflow_dispatch:
     inputs:
       discussion_number:
