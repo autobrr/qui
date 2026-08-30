@@ -5081,7 +5081,19 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 	if !rulesUseTrackerEntryData([]*models.Automation{rule}) {
 		return torrents
 	}
-	return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+
+	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	// The rule needs tracker entries. When none arrive, the tracker conditions
+	// match nothing, and the reason (a failed fetch, or qBittorrent below 5.1)
+	// is otherwise only visible at trace level with no rule context.
+	if len(hydrated) > 0 && !slices.ContainsFunc(hydrated, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 }) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("rule", rule.Name).
+			Int("torrents", len(hydrated)).
+			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+	}
+	return hydrated
 }
 
 // rulesUseCondition checks if any enabled rule uses the given field.
