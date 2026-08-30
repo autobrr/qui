@@ -327,12 +327,6 @@ func (s *Service) normalizedReleaseTitles(release *rls.Release, rawName string) 
 	return titles
 }
 
-func addNormalizedTitles(titles map[string]struct{}, extraTitles []string) {
-	for _, title := range extraTitles {
-		addNormalizedTitle(titles, title)
-	}
-}
-
 // normalizedTitleSetContainsAny reports whether any extra title normalizes to
 // an entry of the set. It never mutates the set.
 func normalizedTitleSetContainsAny(titles map[string]struct{}, extraTitles []string) bool {
