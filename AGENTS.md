@@ -117,5 +117,5 @@ State required checks run, skipped/deferred checks with reason, and unresolved f
 ## Agent skills
 
 - Issue tracker: bug reports and feature requests are GitHub Discussions; `ready-for-agent` work becomes a linked issue. See `docs/agents/issue-tracker.md`.
-- Triage: labels equal the five role names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). The process for the workflow and for `/triage` is `docs/agents/triage.md`.
+- Triage: labels equal the five role names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). The workflow obeys `docs/agents/triage.md`. A local `/triage` session keeps its own steps (recommend, verify, grill) but applies the outcomes from that file: `ready-for-agent` (bug reports only) creates the linked issue and closes the discussion, the brief lives in the issue.
 - Domain docs: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
