@@ -4760,12 +4760,17 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// for the specific torrent whose qBittorrent size supplied the search
 			// evidence. File matching and later safety checks still run.
 			var candidateAliasTitles []string
+			var targetAliasTitles []string
 			if isSearchSource {
 				candidateAliasTitles = searchDecision.SourceTitles
+				// Announce-origin decisions resolve aliases for the incoming
+				// release, which is the target side here.
+				targetAliasTitles = searchDecision.CandidateTitles
 			}
 			fallbackInput := searchCandidateInput{
 				Source:                 targetSide,
 				Candidate:              sourceSide,
+				SourceTitles:           targetAliasTitles,
 				CandidateTitles:        candidateAliasTitles,
 				FindIndividualEpisodes: req.FindIndividualEpisodes,
 			}
@@ -4773,11 +4778,14 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 				(searchDecision.Class == searchCandidateClassExactSizeFallback ||
 					searchDecision.StrictChecksumReplay)
 			if replaysExactDecision {
+				// The listing title and info.name can differ by exactly the
+				// resolved alias, so both alias sets count; only one is ever
+				// non-empty per decision origin.
 				if ok, _ := s.searchCandidateMetadataConsistent(
 					searchDecision.SearchCandidateName,
 					targetSide,
 					searchDecision.RelaxedDifferences,
-					searchDecision.SourceTitles,
+					slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles),
 					req.FindIndividualEpisodes,
 				); !ok {
 					continue
@@ -5328,6 +5336,7 @@ func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName st
 
 func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedName string, actualSize int64, instances []*models.Instance, request *CrossSeedRequest, settings *models.CrossSeedAutomationSettings) []boundAnnouncementMatch {
 	candidate := namedRelease{release: s.releaseCache.Parse(announcedName), rawName: announcedName}
+	aliasTitles := s.announceAliasTitles(ctx, announcedName, DetermineContentType(candidate.release).ContentType)
 	matches := make([]boundAnnouncementMatch, 0, len(instances))
 	for _, instance := range instances {
 		torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
@@ -5356,6 +5365,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				rescueTitleMismatches:  settings != nil && settings.RescueTitleMismatches && !request.SkipRecheck,
 				allowUnknownSize:       false,
 				skipRecheck:            request.SkipRecheck,
+				candidateTitles:        aliasTitles,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -13865,6 +13875,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// Describe the parsed content type for easier debugging and tuning.
 	contentInfo := DetermineContentType(incomingRelease)
 
+	aliasTitles := s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
+
 	log.Debug().
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
@@ -13956,6 +13968,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
 				allowUnknownSize:       req.Size == 0,
 				skipRecheck:            settings.SkipRecheck,
+				candidateTitles:        aliasTitles,
 			})
 			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
 				continue

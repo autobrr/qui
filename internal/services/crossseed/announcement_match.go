@@ -14,6 +14,10 @@ type announcementMatchPolicy struct {
 	rescueTitleMismatches  bool
 	allowUnknownSize       bool
 	skipRecheck            bool
+	// candidateTitles are ARR alternate titles for the announced release. They
+	// attach to the candidate side only, so they can never widen the identity
+	// of an unrelated source torrent.
+	candidateTitles []string
 }
 
 type announcementCandidateDecision struct {
@@ -73,6 +77,15 @@ func (s *Service) classifyWebhookAnnouncementSource(
 	return announcementCandidateDecision{decision: decision, replayable: true}
 }
 
+// announceAliasTitles resolves ARR alternate titles for an announced release.
+// Callers run it once per announce, outside the per-torrent scan loops.
+func (s *Service) announceAliasTitles(ctx context.Context, announcedName, contentType string) []string {
+	if arrResult, _ := s.lookupARRExternalIDs(ctx, announcedName, contentType); arrResult != nil {
+		return arrResult.Titles
+	}
+	return nil
+}
+
 func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate namedRelease, candidateSize int64, policy announcementMatchPolicy) searchCandidateInput {
 	parsedSource := s.releaseCache.Parse(source.Name)
 	return searchCandidateInput{
@@ -80,6 +93,7 @@ func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate name
 		Candidate:              candidate,
 		SourceSize:             searchSourceSize(source),
 		CandidateSize:          candidateSize,
+		CandidateTitles:        policy.candidateTitles,
 		TolerancePercent:       defaultSizeMismatchTolerancePercent,
 		FindIndividualEpisodes: policy.findIndividualEpisodes,
 		RescueTitleMismatches:  policy.rescueTitleMismatches,
