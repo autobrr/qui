@@ -206,31 +206,53 @@ func TestBuildFileMapFromTorrents_SkipsSharedRootWhenTransientTorrentHasNoFiles(
 	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(root, "movie.mkv"))))
 }
 
-func TestFilterScanRootsCoveredBySkippedRoots(t *testing.T) {
+func TestFilterCoveredScanRoots(t *testing.T) {
 	t.Parallel()
 
-	root := filepath.Join(t.TempDir(), "library")
+	base := t.TempDir()
+	root := filepath.Join(base, "library")
 	child := filepath.Join(root, "transient")
 	descendant := filepath.Join(child, "nested")
 	sibling := filepath.Join(root, "stable")
+	staging := filepath.Join(base, "staging")
+	staging2 := filepath.Join(base, "staging2")
+	stagingUpper := filepath.Join(base, "Staging")
 
 	tests := []struct {
-		name         string
-		scanRoots    []string
-		skippedRoots []string
-		want         []string
+		name      string
+		scanRoots []string
+		covers    []string
+		want      []string
 	}{
 		{
-			name:         "keeps parent root when skipped root is child",
-			scanRoots:    []string{root, sibling},
-			skippedRoots: []string{child},
-			want:         []string{filepath.Clean(root), filepath.Clean(sibling)},
+			name:      "keeps parent root when cover is child",
+			scanRoots: []string{root, sibling},
+			covers:    []string{child},
+			want:      []string{filepath.Clean(root), filepath.Clean(sibling)},
 		},
 		{
-			name:         "drops descendant root covered by skipped ancestor",
-			scanRoots:    []string{descendant, sibling},
-			skippedRoots: []string{child},
-			want:         []string{filepath.Clean(sibling)},
+			name:      "drops descendant root covered by ancestor",
+			scanRoots: []string{descendant, sibling},
+			covers:    []string{child},
+			want:      []string{filepath.Clean(sibling)},
+		},
+		{
+			name:      "drops root equal to cover",
+			scanRoots: []string{staging, sibling},
+			covers:    []string{staging},
+			want:      []string{filepath.Clean(sibling)},
+		},
+		{
+			name:      "keeps root that only shares a string prefix",
+			scanRoots: []string{staging2},
+			covers:    []string{staging},
+			want:      []string{filepath.Clean(staging2)},
+		},
+		{
+			name:      "drops root spelled with different case",
+			scanRoots: []string{stagingUpper, sibling},
+			covers:    []string{staging},
+			want:      []string{filepath.Clean(sibling)},
 		},
 	}
 
@@ -238,7 +260,7 @@ func TestFilterScanRootsCoveredBySkippedRoots(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := filterScanRootsCoveredBySkippedRoots(tt.scanRoots, tt.skippedRoots)
+			got := filterCoveredScanRoots(tt.scanRoots, tt.covers)
 			assert.Equal(t, tt.want, got)
 		})
 	}

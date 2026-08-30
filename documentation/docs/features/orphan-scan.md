@@ -53,6 +53,8 @@ qui scans a directory only if at least one torrent points to it. If you delete a
 
 <OrphanScanDefaultIgnores />
 
+If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path.
+
 ## Max files per run behavior
 
 1. qui walks all scan roots during each run to keep the scan scope complete.

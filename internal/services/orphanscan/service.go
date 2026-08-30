@@ -552,6 +552,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	tfm := result.fileMap
 	scanRoots := result.scanRoots
 
+	// A save path that is not mounted on the qui host would otherwise fail the
+	// run on lstat, with no way for the user to exclude it (issue #2483).
+	rootsBeforeIgnore := len(scanRoots)
+	scanRoots = filterCoveredScanRoots(scanRoots, settings.IgnorePaths)
+
 	log.Info().
 		Int("files", tfm.Len()).
 		Int("roots", len(scanRoots)).
@@ -574,6 +579,10 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	if len(scanRoots) == 0 {
 		log.Warn().Msg("orphanscan: no scan roots found")
+		if rootsBeforeIgnore > 0 {
+			s.failRun(ctx, runID, instanceID, "no scan roots left: ignore paths cover every scan path")
+			return
+		}
 		if len(result.skippedRoots) > 0 {
 			s.failRun(ctx, runID, instanceID, "no scan roots available: qBittorrent still has transitional torrents with unavailable file lists")
 			return
@@ -1167,12 +1176,12 @@ func isSameOrDescendantPath(path, base string) bool {
 	return nPath == nBase || isPathUnderNormalized(nPath, nBase)
 }
 
-func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []string {
+func filterCoveredScanRoots(scanRoots, covers []string) []string {
 	filtered := make([]string, 0, len(scanRoots))
 	for _, root := range scanRoots {
 		covered := false
-		for _, skippedRoot := range skippedRoots {
-			if isSameOrDescendantPath(root, skippedRoot) {
+		for _, cover := range covers {
+			if isSameOrDescendantPath(root, cover) {
 				covered = true
 				break
 			}
@@ -1400,7 +1409,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	}
 
 	skippedRootList := sortedRoots(skippedRoots)
-	scanRootList := filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList)
+	scanRootList := filterCoveredScanRoots(sortedRoots(scanRoots), skippedRootList)
 
 	return &buildFileMapResult{
 		fileMap:       tfm,
@@ -1540,7 +1549,7 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsop
 		added := result.fileMap.MergeFrom(otherResult.fileMap)
 		result.skippedRoots = mergeRootLists(result.skippedRoots, otherResult.skippedRoots)
 		result.metadataRoots = mergeRootLists(result.metadataRoots, otherResult.metadataRoots)
-		result.scanRoots = filterScanRootsCoveredBySkippedRoots(result.scanRoots, result.skippedRoots)
+		result.scanRoots = filterCoveredScanRoots(result.scanRoots, result.skippedRoots)
 		log.Debug().
 			Int("instance", inst.ID).
 			Int("filesAdded", added).
