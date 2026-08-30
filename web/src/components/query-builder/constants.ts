@@ -19,7 +19,10 @@ export const CONDITION_FIELDS = {
   CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
   DOWNLOAD_PATH: { label: "Download Path", type: "string" as const, description: "Session download path from qBittorrent" },
   CREATED_BY: { label: "Created By", type: "string" as const, description: "Torrent creator metadata" },
-  TRACKERS: { label: "Trackers (All)", type: "string" as const, description: "All tracker URLs/domains/display names for this torrent" },
+  // Legacy alias of TRACKER, which now matches every tracker too. Kept out of
+  // FIELD_GROUPS so it is no longer offered, and kept here so saved rules that
+  // already use it still render a label, a type, and help text.
+  TRACKERS: { label: "Trackers (All)", type: "string" as const, description: "Same as Tracker: any tracker of the torrent (URL, domain, or display name)" },
   CONTENT_TYPE: { label: "Content Type", type: "string" as const, description: "Detected content type (movie, tv, music, etc) from release parsing" },
   EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const, description: "Parsed item key (title/year or SxxEyy) for grouping across trackers" },
   RLS_SOURCE: { label: "Source (RLS)", type: "string" as const, description: "Parsed source (normalized: WEBDL, WEBRIP, BLURAY, etc)" },
@@ -288,7 +291,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Tracker",
-    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
+    fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
   },
   {
     label: "Cross-Seed",
