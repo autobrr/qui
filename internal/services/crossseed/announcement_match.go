@@ -5,9 +5,16 @@ package crossseed
 
 import (
 	"context"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 )
+
+// announceAliasLookupTimeout bounds the ARR alias lookup on announce paths.
+// Announce checks answer autobrr inside its webhook timeout, so a hung ARR
+// instance must degrade the check to name-only matching, not stall it for the
+// full per-instance HTTP timeouts. Search paths keep their own patience.
+const announceAliasLookupTimeout = 5 * time.Second
 
 type announcementMatchPolicy struct {
 	findIndividualEpisodes bool
@@ -80,6 +87,8 @@ func (s *Service) classifyWebhookAnnouncementSource(
 // announceAliasTitles resolves ARR alternate titles for an announced release.
 // Callers run it once per announce, outside the per-torrent scan loops.
 func (s *Service) announceAliasTitles(ctx context.Context, announcedName, contentType string) []string {
+	ctx, cancel := context.WithTimeout(ctx, announceAliasLookupTimeout)
+	defer cancel()
 	if arrResult, _ := s.lookupARRExternalIDs(ctx, announcedName, contentType); arrResult != nil {
 		return arrResult.Titles
 	}

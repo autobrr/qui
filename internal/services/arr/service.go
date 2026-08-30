@@ -288,7 +288,10 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}
 
 	if cacheNegative {
-		if err := s.cacheStore.Set(ctx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
+		// Detach from the request context: a lookup that finishes near a
+		// caller's deadline must still cache, or the caller repeats the HTTP
+		// round trips on its next request.
+		if err := s.cacheStore.Set(context.WithoutCancel(ctx), titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}
 	}
@@ -309,7 +312,8 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string) *ExternalIDsResult {
 	instanceID := instance.ID
 	titles := append([]string{}, result.Titles...)
-	if err := s.cacheStore.SetWithTitles(ctx, titleHash, string(contentType), &instanceID, result.IDs, titles, false, s.positiveTTL); err != nil {
+	// Detach from the request context: see the negative-cache write above.
+	if err := s.cacheStore.SetWithTitles(context.WithoutCancel(ctx), titleHash, string(contentType), &instanceID, result.IDs, titles, false, s.positiveTTL); err != nil {
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 

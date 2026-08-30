@@ -37,12 +37,15 @@ type spyARRLookupService struct {
 	err          error
 	calls        int
 	seasonCalls  int
+	deadline     time.Time
+	hasDeadline  bool
 }
 
-func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
+func (s *spyARRLookupService) LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
 	s.calls++
 	s.title = title
 	s.contentType = contentType
+	s.deadline, s.hasDeadline = ctx.Deadline()
 	return s.result, s.err
 }
 

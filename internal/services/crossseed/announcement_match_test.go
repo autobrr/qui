@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"context"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -456,4 +457,19 @@ func TestClassifyAnnouncementSourceAvoidsUnnecessaryFileLookups(t *testing.T) {
 			require.Equal(t, tt.wantLookups, sync.lookups)
 		})
 	}
+}
+
+// TestAnnounceAliasTitlesBoundsLookup catches an announce-path alias lookup
+// without a deadline: a hung ARR instance would then stall every announce
+// check for the full per-instance HTTP timeouts.
+func TestAnnounceAliasTitlesBoundsLookup(t *testing.T) {
+	t.Parallel()
+
+	spy := &spyARRLookupService{}
+	svc := &Service{arrService: spy}
+
+	svc.announceAliasTitles(context.Background(), "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs", "tv")
+
+	require.True(t, spy.hasDeadline)
+	require.LessOrEqual(t, time.Until(spy.deadline), announceAliasLookupTimeout)
 }
