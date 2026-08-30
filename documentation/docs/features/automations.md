@@ -126,15 +126,19 @@ When qui evaluates a rule, these fields use qui's current system time. Use them 
 
 | Field | Description |
 | --- | --- |
-| Tracker | Primary tracker (URL, domain, or customization display name) |
-| Trackers (All) | All tracker URLs/domains/display names for this torrent |
+| Tracker | Any tracker of the torrent (URL, domain, or customization display name) |
+| Trackers (All) | Same as **Tracker**: all tracker URLs, domains, and display names for this torrent |
 | Private | Boolean: the torrent uses a private tracker |
 | Unregistered | Boolean: the tracker reports unregistered (requires qBittorrent 5.1+) |
 | Tracker status | Per-tracker announce status. See [Tracker status values](#tracker-status-values) (requires qBittorrent 5.1+). |
 | Tracker message | Per-tracker status message. Use `nil` for an empty message (requires qBittorrent 5.1+). |
 | Comment | Torrent comment field |
 
-If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboard → **Tracker Breakdown**), the **Tracker** condition can also match the display name in addition to the raw URL or domain.
+**Tracker** and **Trackers (All)** read the same list: every tracker the torrent announces to, including trackers that do not work. qui ignores the DHT, PeX, and LSD pseudo-trackers.
+
+If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboard → **Tracker Breakdown**), both conditions can also match the display name in addition to the raw URL or domain. A merged tracker group matches by its group name.
+
+On qBittorrent versions before 5.1, qui cannot read the full tracker list. These two conditions then see only the tracker that qBittorrent reports as working. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
 #### Mode fields
 
@@ -261,7 +265,7 @@ qui supports full RE2 (Go regex) syntax. Patterns are case-insensitive by defaul
 
 Field notes:
 
-- **Tracker**: qui checks the pattern against multiple candidates (raw URL, extracted domain, and the optional customization display name). If a regex is negative, it passes only when **none** of the candidates match.
+- **Tracker** and **Trackers (All)**: qui checks the pattern against multiple candidates for each tracker (raw URL, extracted domain, and the optional customization display name). If a regex is negative, it passes only when **none** of the candidates match.
 - **Tags**: If you do not use regex, qui applies string operators per tag. If you turn regex on, qui matches the pattern against the full raw tags string.
 
 The UI validates patterns and shows an error for invalid regex.
@@ -630,7 +634,7 @@ qui evaluates the move path as a **Go template** for each torrent. Use a fixed p
 - By tracker: `/data/{{.Tracker}}` (when a tracker display name is configured)
 
 :::note
-If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
+If you want `.Tracker` to use your [tracker customization](./tracker-customizations.md) display name, the rule also needs a **Tracker** or **Trackers (All)** condition. A tag action with **Use tracker name as tag** and **Use display name** enabled also works. Without one of those settings, `.Tracker` falls back to the tracker domain, and qui names your folders after the domain instead.
 :::
 
 ### Auto management

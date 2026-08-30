@@ -124,7 +124,8 @@ type EvalContext struct {
 	SameInstanceCrossSeedTagsByHash map[string][]string
 
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
-	// Used for UseTrackerAsTag with UseDisplayName option.
+	// Read by the TRACKER and TRACKERS conditions, and by UseTrackerAsTag with the
+	// UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
 
 	// ReleaseParser caches parsed release metadata for RLS-derived fields.
@@ -411,9 +412,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareRlsYearIfSet(torrentRlsYear(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
-	case FieldTracker:
-		return compareTracker(torrent.Tracker, cond, ctx)
-	case FieldTrackers:
+	case FieldTracker, FieldTrackers:
 		return compareTrackers(torrent, cond, ctx)
 	case FieldTrackerStatus:
 		return compareTrackerStatuses(torrent, cond)
@@ -821,10 +820,8 @@ func compareString(value string, cond *RuleCondition) bool {
 	}
 }
 
-func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bool {
-	return compareStringCandidates(trackerCandidates(trackerURL, ctx), cond)
-}
-
+// compareTrackers matches TRACKER and TRACKERS against every tracker the torrent
+// announces to: qBittorrent empties the primary tracker field when none work.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
 	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
@@ -934,6 +931,12 @@ func compareTrackerMessage(message string, cond *RuleCondition) bool {
 func trackerCandidates(trackerURL string, ctx *EvalContext) []string {
 	// Candidates: raw URL, extracted domain, optional customization display name.
 	raw := strings.TrimSpace(trackerURL)
+	// DHT/PeX/LSD are peer-discovery mechanisms, not trackers. qBittorrent reports
+	// them both as entries and as the primary tracker, and they would otherwise match
+	// a "contains dht" query on nearly every public torrent.
+	if qbittorrent.IsPseudoTrackerLabel(raw) {
+		return nil
+	}
 	domain := extractTrackerDomain(raw)
 	displayName := ""
 	if ctx != nil && ctx.TrackerDisplayNameByDomain != nil && domain != "" {

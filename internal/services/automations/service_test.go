@@ -374,6 +374,8 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 	}
 
 	statusRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackerStatus, Operator: models.OperatorEqual, Value: "error"})
+	trackerRule := deleteRule(&models.RuleCondition{Field: models.FieldTracker, Operator: models.OperatorEqual, Value: "dead"})
+	trackersRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackers, Operator: models.OperatorContains, Value: "tracker.example"})
 	nestedMessageRule := deleteRule(&models.RuleCondition{
 		Operator: models.OperatorOr,
 		Conditions: []*models.RuleCondition{
@@ -389,6 +391,8 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 		want  bool
 	}{
 		{name: "status field", rules: []*models.Automation{statusRule}, want: true},
+		{name: "tracker field", rules: []*models.Automation{trackerRule}, want: true},
+		{name: "trackers field", rules: []*models.Automation{trackersRule}, want: true},
 		{name: "message field nested in group", rules: []*models.Automation{nestedMessageRule}, want: true},
 		{name: "no tracker entry fields", rules: []*models.Automation{unrelatedRule}, want: false},
 		{name: "mixed rules detect tracker field", rules: []*models.Automation{unrelatedRule, statusRule}, want: true},
