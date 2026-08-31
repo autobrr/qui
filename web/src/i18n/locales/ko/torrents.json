@@ -1527,7 +1527,7 @@
     "title": "크로스시드 수동 매칭",
     "description": "이 데이터를 가진 기존 토렌트를 선택하세요. qui가 업로드한 토렌트를 해당 위치에 추가하고 재검사한 뒤 시딩합니다.",
     "fileLabel": "토렌트 파일",
-    "sourceSummary": "{{size}} · 파일 {{count}}개",
+    "sourceSummary_other": "{{size}} · 파일 {{count}}개",
     "loadingProposals": "파일 중복도 기준으로 대상 정렬 중...",
     "proposalsFailed": "대상 제안을 불러오지 못했습니다",
     "targetLabel": "대상 토렌트",

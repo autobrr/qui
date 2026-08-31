@@ -1527,7 +1527,7 @@
     "title": "手动辅种匹配",
     "description": "选择已持有该数据的种子。qui 会将上传的种子添加到其位置，重新校验后开始做种。",
     "fileLabel": "种子文件",
-    "sourceSummary": "{{size}} · {{count}} 个文件",
+    "sourceSummary_other": "{{size}} · {{count}} 个文件",
     "loadingProposals": "正在按文件重叠度排序目标...",
     "proposalsFailed": "加载目标建议失败",
     "targetLabel": "目标种子",

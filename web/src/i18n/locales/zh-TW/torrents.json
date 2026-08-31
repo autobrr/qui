@@ -1527,7 +1527,7 @@
     "title": "手動輔種匹配",
     "description": "選擇已持有該資料的種子。qui 會將上傳的種子加入其位置，重新校驗後開始做種。",
     "fileLabel": "種子檔案",
-    "sourceSummary": "{{size}} · {{count}} 個檔案",
+    "sourceSummary_other": "{{size}} · {{count}} 個檔案",
     "loadingProposals": "正在依檔案重疊度排序目標...",
     "proposalsFailed": "載入目標建議失敗",
     "targetLabel": "目標種子",
