@@ -480,6 +480,7 @@ export function useTorrentsList(
     Boolean(streamParams) &&
     streamState.connected &&
     streamState.initialized &&
+    !streamState.dataStalled &&
     !streamState.error &&
     hasBaselineForCurrentView
   const preferCachedQuery = currentPage === 0 && shouldDisablePolling

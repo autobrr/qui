@@ -43,6 +43,9 @@ export function isClientConnectionErrorCode(error: string | null | undefined): b
 // follows within this window the connection is considered dead even when the
 // browser still reports it open, so we force a reconnect.
 const STREAM_STALE_TIMEOUT_MS = 15000
+// Slow instances can legitimately take 60 seconds between accepted snapshots.
+// Allow two such intervals before adding REST fallback load.
+const STREAM_DATA_STALE_TIMEOUT_MS = 120000
 
 // Grace window applied until the FIRST event of a fresh connection arrives. The
 // init snapshot is a single large SSE event (hundreds of KB on big instances), and
@@ -98,6 +101,7 @@ type StreamListener = (payload: TorrentStreamPayload) => void
 export interface StreamState {
   connected: boolean
   initialized: boolean
+  dataStalled: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
   retrying: boolean
@@ -125,9 +129,13 @@ interface StreamEntry {
   listeners: Set<StreamListener>
   connected: boolean
   initialized: boolean
+  dataStalled: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
   version?: TorrentStreamVersion
+  dataDeadline?: number
+  dataTimer?: number
+  sourceGeneration: number
   handoffTimer?: number
   handoffPending?: boolean
   // Set once the replacement connection's socket has demonstrably opened during a
@@ -171,6 +179,7 @@ const SyncStreamContext = createContext<SyncStreamContextValue | null>(null)
 const DEFAULT_STREAM_STATE: StreamState = {
   connected: false,
   initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -231,6 +240,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       return {
         connected: entry.connected,
         initialized: entry.initialized,
+        dataStalled: entry.dataStalled,
         error: entry.error,
         lastMeta: entry.lastMeta,
         retrying: connection.retryTimer !== undefined,
@@ -281,6 +291,73 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       }
     },
     []
+  )
+
+  const clearDataWatchdog = useCallback((entry: StreamEntry) => {
+    if (entry.dataTimer === undefined) {
+      return
+    }
+    if (typeof window !== "undefined") {
+      window.clearTimeout(entry.dataTimer)
+    } else {
+      clearTimeout(entry.dataTimer)
+    }
+    entry.dataTimer = undefined
+  }, [])
+
+  const markDataStalled = useCallback(
+    (entry: StreamEntry) => {
+      if (
+        streamsRef.current[entry.key] !== entry ||
+        entry.dataStalled ||
+        !entry.initialized ||
+        entry.error
+      ) {
+        return
+      }
+
+      clearDataWatchdog(entry)
+      entry.dataStalled = true
+      notifyStateSubscribers(entry.key)
+    },
+    [clearDataWatchdog, notifyStateSubscribers]
+  )
+
+  const armDataWatchdog = useCallback(
+    (entry: StreamEntry) => {
+      clearDataWatchdog(entry)
+      if (
+        entry.dataDeadline === undefined ||
+        !entry.initialized ||
+        entry.error ||
+        entry.dataStalled ||
+        (typeof document !== "undefined" && document.visibilityState !== "visible")
+      ) {
+        return
+      }
+
+      const generation = entry.sourceGeneration
+      const schedule = typeof window !== "undefined"
+        ? window.setTimeout
+        : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+      entry.dataTimer = schedule(() => {
+        entry.dataTimer = undefined
+        if (entry.sourceGeneration !== generation) {
+          return
+        }
+        markDataStalled(entry)
+      }, Math.max(0, entry.dataDeadline - Date.now()))
+    },
+    [clearDataWatchdog, markDataStalled]
+  )
+
+  const acceptStreamData = useCallback(
+    (entry: StreamEntry) => {
+      entry.dataDeadline = Date.now() + STREAM_DATA_STALE_TIMEOUT_MS
+      entry.dataStalled = false
+      armDataWatchdog(entry)
+    },
+    [armDataWatchdog]
   )
 
   const clearHandoffState = useCallback((entry: StreamEntry) => {
@@ -403,6 +480,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             entry.connected = false
           }
           entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
         })
@@ -429,6 +508,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entries.forEach(entry => {
           entry.connected = false
           entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           entry.error = STREAM_ERROR_UNSUPPORTED
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
@@ -478,6 +559,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             entry.handoffPending = false
             entry.connected = false
             entry.initialized = false
+            entry.dataStalled = false
+            clearDataWatchdog(entry)
             notifyStateSubscribers(entry.key)
           }, HANDOFF_GRACE_PERIOD_MS)
           entry.handoffTimer = timer
@@ -486,6 +569,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entries.forEach(entry => {
           entry.connected = false
           entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
         })
@@ -504,6 +589,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           }
           entry.connected = false
           entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
           notifyStateSubscribers(entry.key)
         })
 
@@ -593,6 +680,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           entry.error = payload.error
           entry.connected = false
           entry.initialized = false
+          entry.dataStalled = false
+          clearDataWatchdog(entry)
         } else if (payload.type === "init" || payload.type === "update" || payload.type === "delta") {
           const nextVersion = payload.version
           const baseVersion = payload.delta?.baseVersion
@@ -612,7 +701,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             entry.error = null
             entry.connected = true
             entry.initialized = false
+            entry.dataStalled = false
             entry.version = undefined
+            clearDataWatchdog(entry)
             clearHandoffState(entry)
             notifyStateSubscribers(streamKey)
             requestRecoveryRef.current(streamKey)
@@ -629,6 +720,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           })) {
             clearConnectionRetryState()
           }
+          acceptStreamData(entry)
         }
 
         clearHandoffState(entry)
@@ -682,6 +774,19 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
         invalidateForActivity(queryClientRef.current, payload.activity)
       }
+
+      normalized.forEach(({ key }) => {
+        const entry = streamsRef.current[key]
+        if (!entry) {
+          return
+        }
+        entry.sourceGeneration += 1
+        clearDataWatchdog(entry)
+        // Retained baselines get a bounded handoff grace even if other streams
+        // keep the socket alive. An accepted frame starts a fresh data budget.
+        entry.dataDeadline = Date.now() + STREAM_DATA_STALE_TIMEOUT_MS
+        armDataWatchdog(entry)
+      })
 
       const source = new EventSource(url, { withCredentials: true })
       source.addEventListener("init", payloadHandler)
@@ -761,7 +866,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // fires if the connection produces nothing for STREAM_STALE_TIMEOUT_MS.
       resetStaleTimer()
     },
-    [clearConnectionRetryState, clearHandoffState, closeConnection, notifyStateSubscribers]
+    [acceptStreamData, armDataWatchdog, clearConnectionRetryState, clearDataWatchdog, clearHandoffState, closeConnection, notifyStateSubscribers]
   )
 
   const ensureConnection = useCallback(
@@ -886,7 +991,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           listeners: new Set(),
           connected: options.preserveConnected ?? false,
           initialized: false,
+          dataStalled: false,
           error: null,
+          sourceGeneration: 0,
         }
         streamsRef.current[key] = entry
         queueConnectionUpdate({ preserveState: true })
@@ -894,7 +1001,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         entry.params = params
         entry.error = null
         entry.initialized = false
+        entry.dataStalled = false
         entry.version = undefined
+        clearDataWatchdog(entry)
         queueConnectionUpdate({ preserveState: true, resetRetry: true })
       } else {
         queueConnectionUpdate({ preserveState: true })
@@ -903,7 +1012,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       clearEntryTeardown(entry)
       return entry
     },
-    [clearEntryTeardown, queueConnectionUpdate]
+    [clearDataWatchdog, clearEntryTeardown, queueConnectionUpdate]
   )
 
   const scheduleEntryRemoval = useCallback(
@@ -918,14 +1027,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         clearHandoffState(entry)
         entry.connected = false
         entry.initialized = false
+        entry.dataStalled = false
         entry.version = undefined
+        clearDataWatchdog(entry)
         entry.error = null
         notifyStateSubscribers(entry.key)
         queueConnectionUpdate({ preserveState: true })
       }, ENTRY_TEARDOWN_DELAY_MS)
       entry.teardownTimer = timer
     },
-    [clearEntryTeardown, clearHandoffState, notifyStateSubscribers, queueConnectionUpdate]
+    [clearDataWatchdog, clearEntryTeardown, clearHandoffState, notifyStateSubscribers, queueConnectionUpdate]
   )
 
   const connect = useCallback(
@@ -939,7 +1050,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       entry.listeners.add(listener)
       if (needsInit) {
         entry.initialized = false
+        entry.dataStalled = false
         entry.version = undefined
+        clearDataWatchdog(entry)
         queueConnectionUpdate({ preserveState: true, force: true })
       }
       notifyStateSubscribers(entry.key)
@@ -953,7 +1066,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
       }
     },
-    [ensureStream, notifyStateSubscribers, queueConnectionUpdate, scheduleEntryRemoval]
+    [clearDataWatchdog, ensureStream, notifyStateSubscribers, queueConnectionUpdate, scheduleEntryRemoval]
   )
 
   const getState = useCallback(
@@ -971,6 +1084,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       return {
         connected: entry.connected,
         initialized: entry.initialized,
+        dataStalled: entry.dataStalled,
         error: entry.error,
         lastMeta: entry.lastMeta,
         retrying: connection.retryTimer !== undefined,
@@ -1047,6 +1161,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           }
           connection.staleTimer = undefined
         }
+        Object.values(streamsRef.current).forEach(clearDataWatchdog)
         return
       }
 
@@ -1068,13 +1183,25 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // Source is OPEN and healthy: re-arm a FRESH stale timer so an overdue
       // throttled watchdog cannot immediately declare the live connection dead.
       resetStaleTimerRef.current()
+
+      const now = Date.now()
+      Object.values(streamsRef.current).forEach(entry => {
+        if (!entry.initialized || entry.error || entry.dataStalled || entry.dataDeadline === undefined) {
+          return
+        }
+        if (now >= entry.dataDeadline) {
+          markDataStalled(entry)
+        } else {
+          armDataWatchdog(entry)
+        }
+      })
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [ensureConnection])
+  }, [armDataWatchdog, clearDataWatchdog, ensureConnection, markDataStalled])
 
   useEffect(() => {
     return () => {
@@ -1089,12 +1216,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       pendingConnectionUpdateRef.current = null
       closeConnection()
       Object.values(streamsRef.current).forEach(entry => {
+        clearDataWatchdog(entry)
         clearEntryTeardown(entry)
         clearHandoffState(entry)
       })
       streamsRef.current = {}
     }
-  }, [clearEntryTeardown, clearHandoffState, closeConnection])
+  }, [clearDataWatchdog, clearEntryTeardown, clearHandoffState, closeConnection])
 
   return <SyncStreamContext.Provider value={contextValue}>{children}</SyncStreamContext.Provider>
 }
@@ -1154,6 +1282,7 @@ export function useSyncStream(
     const shouldPreserve =
       canPreserve &&
       lastStateRef.current.connected &&
+      !lastStateRef.current.dataStalled &&
       !lastStateRef.current.error
 
     const connectOptions = shouldPreserve ? { preserveConnected: true } : undefined

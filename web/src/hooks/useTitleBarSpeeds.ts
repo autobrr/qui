@@ -109,20 +109,41 @@ export function useTitleBarSpeeds({
   }, [instanceId])
 
   const isForegroundStale = !isHidden && lastHiddenAtRef.current > lastForegroundUpdateAtRef.current
-  const shouldPollBackground = enabled && (isHiddenDelayed || !foregroundSpeeds || isForegroundStale)
+  const shouldPollBackground = enabled && (
+    isHiddenDelayed ||
+    !foregroundSpeeds ||
+    isForegroundStale ||
+    streamState.dataStalled
+  )
+  const streamDataUsable =
+    streamState.connected &&
+    streamState.initialized &&
+    !streamState.dataStalled &&
+    !streamState.error &&
+    Boolean(streamSpeeds)
   const shouldUseFallbackPolling = shouldPollBackground &&
     !backgroundSpeedsOverride &&
-    (!streamState.connected || !!streamState.error || !streamSpeeds)
+    !streamDataUsable
   const backgroundSpeedsQuery = useServerStateSpeeds(
     instanceId,
     shouldUseFallbackPolling
   )
   const backgroundSpeeds = backgroundSpeedsOverride ??
     (
-      shouldUseFallbackPolling? (backgroundSpeedsQuery ?? streamSpeeds): (streamSpeeds ?? backgroundSpeedsQuery)
+      streamState.dataStalled
+        ? backgroundSpeedsQuery
+        : shouldUseFallbackPolling
+          ? (backgroundSpeedsQuery ?? streamSpeeds)
+          : (streamSpeeds ?? backgroundSpeedsQuery)
     )
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
-  const effectiveSpeeds = isHiddenDelayed? (backgroundSpeeds ?? cachedBackgroundSpeeds): (isForegroundStale? (cachedBackgroundSpeeds ?? backgroundSpeeds): (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
+  const effectiveSpeeds = streamState.dataStalled
+    ? backgroundSpeeds
+    : isHiddenDelayed
+      ? (backgroundSpeeds ?? cachedBackgroundSpeeds)
+      : isForegroundStale
+        ? (cachedBackgroundSpeeds ?? backgroundSpeeds)
+        : (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds)
   const shouldSetTitle = enabled && (isHiddenDelayed || isVisible)
 
   useEffect(() => {
@@ -173,7 +194,12 @@ export function useTitleBarSpeeds({
     }
 
     if (!effectiveSpeeds) {
-      document.title = lastSpeedTitleRef.current ?? baseTitle
+      if (streamState.dataStalled) {
+        document.title = baseTitle
+        lastSpeedTitleRef.current = null
+      } else {
+        document.title = lastSpeedTitleRef.current ?? baseTitle
+      }
       return
     }
 
@@ -191,5 +217,5 @@ export function useTitleBarSpeeds({
       document.title = nextTitle
       lastSpeedTitleRef.current = nextTitle
     }
-  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
+  }, [baseTitle, disguised, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit, streamState.dataStalled])
 }

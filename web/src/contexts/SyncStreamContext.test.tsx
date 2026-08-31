@@ -210,6 +210,7 @@ function renderSubscriber(params: StreamParams | null, enabled = true) {
 const DEFAULT: StreamState = {
   connected: false,
   initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -723,6 +724,139 @@ describe("SyncStreamContext", () => {
       // Only ever one source: no reconnect happened.
       expect(MockEventSource.instances).toHaveLength(1)
       expect(source.closed).toBe(false)
+    })
+  })
+
+  describe("per-stream data watchdog", () => {
+    it("allows slow syncs before activating fallback for a silent stream", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      const key = createStreamKey(BASE_PARAMS)
+      act(() => {
+        source.emitOpen()
+        source.emit("init", {
+          type: "init",
+          version: { major: 1, minor: 1 },
+          meta: { instanceId: 1, timestamp: "now", streamKey: key },
+          data: { torrents: [], total: 0 },
+        })
+      })
+
+      for (let elapsed = 10_000; elapsed <= 60_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          source.emit("heartbeat")
+        })
+        expect(source.closed).toBe(false)
+        expect(MockEventSource.instances).toHaveLength(1)
+      }
+
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.getState().initialized).toBe(true)
+      expect(controls.getState().dataStalled).toBe(false)
+
+      act(() => {
+        source.emit("update", {
+          type: "update",
+          version: { major: 1, minor: 2 },
+          meta: { instanceId: 1, timestamp: "now", streamKey: key },
+          data: { torrents: [], total: 0 },
+        })
+      })
+
+      expect(controls.getState().dataStalled).toBe(false)
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+      for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          source.emit("heartbeat")
+        })
+        expect(controls.getState().dataStalled).toBe(elapsed === 120_000)
+      }
+      expect(source.closed).toBe(false)
+    })
+
+    it.each([90_000, 130_000])("bounds the replacement baseline grace (%i ms delay)", delay => {
+      const paramsA = makeParams({ sort: "added_on" })
+      const paramsB = makeParams({ sort: "size" })
+      let stateA = DEFAULT
+      let showSecond: (show: boolean) => void = () => undefined
+
+      function Root() {
+        const [show, setShow] = useState(false)
+        showSecond = setShow
+        stateA = useSyncStream(paramsA)
+        useSyncStream(show ? paramsB : null, { enabled: show })
+        return null
+      }
+
+      act(() => {
+        render(
+          <TestProviders>
+            <Root />
+          </TestProviders>
+        )
+      })
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+        first.emit("init", {
+          type: "init",
+          version: { major: 1, minor: 1 },
+          meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(paramsA) },
+          data: { torrents: [], total: 0 },
+        })
+        vi.advanceTimersByTime(14_000)
+        showSecond(true)
+      })
+      flushConnectionQueue()
+
+      expect(first.closed).toBe(true)
+      expect(MockEventSource.instances).toHaveLength(2)
+      const replacement = MockEventSource.instances[1]
+      act(() => {
+        replacement.emitOpen()
+        vi.advanceTimersByTime(1_000)
+      })
+
+      expect(stateA.dataStalled).toBe(false)
+      expect(replacement.closed).toBe(false)
+
+      act(() => {
+        for (let elapsed = 0; elapsed < delay; elapsed += 10_000) {
+          vi.advanceTimersByTime(10_000)
+          replacement.emit("heartbeat")
+        }
+      })
+      expect(stateA.dataStalled).toBe(delay >= 120_000)
+      act(() => {
+        setVisibility("hidden")
+        setVisibility("visible")
+      })
+      expect(stateA.dataStalled).toBe(delay >= 120_000)
+      act(() => {
+        replacement.emit("init", {
+          type: "init",
+          version: { major: 1, minor: 2 },
+          meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(paramsA) },
+          data: { torrents: [], total: 0 },
+        })
+      })
+      expect(stateA.dataStalled).toBe(false)
+      for (let elapsed = 10_000; elapsed <= 120_000; elapsed += 10_000) {
+        act(() => {
+          vi.advanceTimersByTime(10_000)
+          replacement.emit("heartbeat")
+        })
+        expect(stateA.dataStalled).toBe(elapsed === 120_000)
+      }
+      expect(replacement.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(2)
     })
   })
 

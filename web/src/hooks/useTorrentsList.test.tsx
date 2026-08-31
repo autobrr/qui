@@ -85,6 +85,7 @@ const mockedUseCapabilities = vi.mocked(useInstanceCapabilities)
 const DISCONNECTED: StreamState = {
   connected: false,
   initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -977,6 +978,50 @@ describe("useTorrentsList", () => {
 
     expect(mockedApi.getTorrents).toHaveBeenCalled()
     expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["rest"])
+    expect(result.current.isStreaming).toBe(false)
+  })
+
+  it("uses REST fallback while retained stream data is stalled", async () => {
+    streamState = {
+      ...DISCONNECTED,
+      connected: true,
+      initialized: true,
+    }
+    let request = 0
+    mockedApi.getTorrents.mockImplementation(() => {
+      request += 1
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({
+          hash: request === 1 ? "initial-rest" : "fallback-rest",
+          name: request === 1 ? "initial REST" : "REST fallback",
+        })],
+        total: 1,
+        hasMore: false,
+      }))
+    })
+
+    const { result, rerender } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({
+          torrents: [makeTorrent({ hash: "stream", name: "retained stream row" })],
+          total: 1,
+          hasMore: false,
+        }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["stream"])
+
+    streamState = { ...streamState, dataStalled: true }
+    rerender()
+    await flush()
+
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(2)
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["fallback-rest"])
     expect(result.current.isStreaming).toBe(false)
   })
 
