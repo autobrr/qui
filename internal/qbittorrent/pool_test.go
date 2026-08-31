@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -36,6 +38,182 @@ func setupTestPool(t *testing.T) *ClientPool {
 	return pool
 }
 
+func writePoolLogin(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+	_, _ = w.Write([]byte("Ok."))
+}
+
+func newPoolServer(t *testing.T, login, syncData http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			if login != nil {
+				login(w, r)
+			} else {
+				writePoolLogin(w)
+			}
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/sync/maindata":
+			if syncData != nil {
+				syncData(w, r)
+			} else {
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+type blockedErrorDB struct {
+	dbinterface.Querier
+	started    chan struct{}
+	release    chan struct{}
+	blockBegin bool
+}
+
+type blockedRecordDB struct {
+	dbinterface.Querier
+	started chan struct{}
+	release chan struct{}
+}
+
+func (db *blockedRecordDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	close(db.started)
+	select {
+	case <-db.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return db.Querier.BeginTx(ctx, opts)
+}
+
+func TestClientPoolResetClearsPendingFailure(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "pool-failure-reset")
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(t.Context(), "synthetic-instance", "http://127.0.0.1:1", "user", "password", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	recordDB := &blockedRecordDB{Querier: db, started: make(chan struct{}), release: make(chan struct{})}
+	pool, err := NewClientPool(instanceStore, models.NewInstanceErrorStore(recordDB), time.Second)
+	require.NoError(t, err)
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(recordDB.release) }) }
+	recorded := make(chan struct{})
+	var reset chan struct{}
+	t.Cleanup(func() {
+		unblock()
+		<-recorded
+		if reset != nil {
+			<-reset
+		}
+		_ = pool.Close()
+	})
+
+	go func() { pool.trackFailure(t.Context(), instance.ID, errors.New("connection refused")); close(recorded) }()
+	select {
+	case <-recordDB.started:
+	case <-time.After(time.Second):
+		t.Fatal("failure record did not reach the database")
+	}
+
+	reset = make(chan struct{})
+	go func() { pool.ResetFailureTracking(instance.ID); close(reset) }()
+	select {
+	case <-reset:
+	case <-time.After(time.Second):
+	}
+	unblock()
+	<-recorded
+	<-reset
+
+	assert.False(t, pool.isInBackoff(instance.ID))
+	var errorCount int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM instance_errors WHERE instance_id = ?", instance.ID).Scan(&errorCount))
+	assert.Zero(t, errorCount)
+}
+
+func (db *blockedErrorDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	close(db.started)
+	select {
+	case <-db.release:
+		return db.Querier.ExecContext(ctx, query, args...)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (db *blockedErrorDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	if db.blockBegin {
+		close(db.started)
+		select {
+		case <-db.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return db.Querier.BeginTx(ctx, opts)
+}
+
+func TestClientPoolResetDoesNotBlockReaders(t *testing.T) {
+	db := &blockedErrorDB{
+		Querier: testdb.NewMigratedSQLite(t, "pool-reset"),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	const instanceID = 1
+	client := &Client{instanceID: instanceID, isHealthy: true}
+	pool := setupTestPool(t)
+	t.Cleanup(func() { _ = pool.Close() })
+	pool.errorStore = models.NewInstanceErrorStore(db)
+	pool.clients[instanceID] = client
+	pool.failureTracker[instanceID] = &failureInfo{attempts: 1}
+	pool.decryptionTracker[instanceID] = &decryptionErrorInfo{}
+	done := make(chan struct{})
+	go func() {
+		pool.ResetFailureTracking(instanceID)
+		close(done)
+	}()
+	var readDone chan struct{}
+	t.Cleanup(func() {
+		close(db.release)
+		<-done
+		if readDone != nil {
+			<-readDone
+		}
+	})
+
+	select {
+	case <-db.started:
+	case <-time.After(time.Second):
+		t.Fatal("reset did not reach database cleanup")
+	}
+
+	readDone = make(chan struct{})
+	go func() {
+		got, err := pool.GetClientWithTimeout(context.Background(), instanceID, time.Second)
+		assert.NoError(t, err)
+		assert.Same(t, client, got)
+		pool.mu.RLock()
+		assert.Empty(t, pool.failureTracker)
+		assert.Empty(t, pool.decryptionTracker)
+		pool.mu.RUnlock()
+		close(readDone)
+	}()
+	select {
+	case <-readDone:
+	case <-time.After(time.Second):
+		t.Error("database cleanup blocked pool readers")
+	}
+	// Release the database before waiting for a reader on the failure path.
+	t.Cleanup(func() { <-readDone })
+}
+
 func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -44,8 +222,8 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	banError := errors.New("User's IP is banned for too many failed login attempts")
 
 	// Track multiple failures
-	pool.trackFailure(instanceID, banError)
-	pool.trackFailure(instanceID, banError)
+	pool.trackFailure(t.Context(), instanceID, banError)
+	pool.trackFailure(t.Context(), instanceID, banError)
 
 	// Should be in backoff
 	assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failures")
@@ -79,7 +257,7 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 	pool.mu.Unlock()
 
 	// Drive the instance into failure backoff.
-	pool.trackFailure(instanceID, errors.New("connection refused"))
+	pool.trackFailure(t.Context(), instanceID, errors.New("connection refused"))
 	require.True(t, pool.isInBackoff(instanceID), "instance should be in backoff")
 
 	start := time.Now()
@@ -471,4 +649,574 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 
 	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
 	require.Same(t, existing, client)
+}
+
+func TestClientPoolReconnectDuringRemoval(t *testing.T) {
+	loginStarted := make(chan struct{}, 3)
+	releaseLogin := make(chan struct{})
+	unblockLogin := sync.OnceFunc(func() { close(releaseLogin) })
+	var firstLogin sync.Once
+	srv := newPoolServer(t, func(w http.ResponseWriter, r *http.Request) {
+		first := false
+		firstLogin.Do(func() { first = true })
+		loginStarted <- struct{}{}
+		if !first {
+			select {
+			case <-releaseLogin:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		writePoolLogin(w)
+	}, nil)
+	pool := setupTestPool(t)
+	defer pool.Close()
+	defer unblockLogin()
+	instance, err := pool.instanceStore.Create(
+		t.Context(), "reconnecting", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+	original, err := pool.GetClient(t.Context(), instance.ID)
+	require.NoError(t, err)
+	<-loginStarted
+
+	removing := make(chan struct{})
+	releaseRemoval := make(chan struct{})
+	unblockRemoval := sync.OnceFunc(func() { close(releaseRemoval) })
+	defer unblockRemoval()
+	// Hold worker cancellation so a reconnect can queue during removal.
+	pool.SetSyncManager(&SyncManager{trackerHealthCancel: map[int]context.CancelFunc{
+		instance.ID: func() {
+			close(removing)
+			<-releaseRemoval
+		},
+	}})
+	removed := make(chan struct{})
+	go func() {
+		pool.RemoveClient(instance.ID)
+		close(removed)
+	}()
+	select {
+	case <-removing:
+	case <-time.After(time.Second):
+		t.Fatal("removal did not reach worker cancellation")
+	}
+	pool.SetSyncManager(nil)
+	type result struct {
+		client *Client
+		err    error
+	}
+	results := make(chan result, 2)
+	acquire := func() {
+		client, err := pool.GetClient(t.Context(), instance.ID)
+		results <- result{client, err}
+	}
+	go acquire()
+	select {
+	case <-loginStarted:
+		t.Fatal("reconnect started before removal finished cancelling workers")
+	case <-results:
+		t.Fatal("acquisition finished while removal was still pending")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	unblockRemoval()
+	select {
+	case <-removed:
+	case <-time.After(time.Second):
+		t.Fatal("removal did not finish")
+	}
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("queued reconnect did not reach login")
+	}
+	go acquire()
+	select {
+	case <-loginStarted:
+		t.Fatal("reconnects on opposite sides of removal started duplicate logins")
+	case <-results:
+		t.Fatal("acquisition finished before login completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	unblockLogin()
+	for range 2 {
+		select {
+		case result := <-results:
+			require.NoError(t, result.err)
+			require.NotSame(t, original, result.client)
+			pooled, err := pool.GetClientOffline(t.Context(), instance.ID)
+			require.NoError(t, err)
+			require.Same(t, pooled, result.client)
+		case <-time.After(time.Second):
+			t.Fatal("reconnect did not finish")
+		}
+	}
+}
+
+func TestClientPoolDecryptionTrackerConcurrentAccess(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+	const workers = 8
+	const instances = 16
+
+	start := make(chan struct{})
+	logged := make(chan int, workers*instances)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			<-start
+			for instanceID := range instances {
+				if pool.shouldLogDecryptionError(instanceID + 1) {
+					logged <- instanceID + 1
+				}
+			}
+		})
+	}
+
+	wg.Go(func() {
+		<-start
+		for range 500 {
+			_ = pool.GetInstancesWithDecryptionErrors()
+		}
+	})
+	close(start)
+	wg.Wait()
+	expected := make([]int, instances)
+	for i := range expected {
+		expected[i] = i + 1
+	}
+	close(logged)
+	var firstErrors []int
+	for instanceID := range logged {
+		firstErrors = append(firstErrors, instanceID)
+	}
+	require.ElementsMatch(t, expected, firstErrors, "each instance should log its first error exactly once")
+	require.ElementsMatch(t, expected, pool.GetInstancesWithDecryptionErrors())
+	for _, instanceID := range expected {
+		require.False(t, pool.shouldLogDecryptionError(instanceID), "repeated errors should not be logged")
+	}
+
+	for _, instanceID := range expected {
+		wg.Go(func() {
+			pool.ResetFailureTracking(instanceID)
+			_ = pool.GetInstancesWithDecryptionErrors()
+		})
+	}
+	wg.Wait()
+	require.Empty(t, pool.GetInstancesWithDecryptionErrors())
+	for _, instanceID := range expected {
+		require.True(t, pool.shouldLogDecryptionError(instanceID), "reset should permit logging the next error")
+		require.False(t, pool.shouldLogDecryptionError(instanceID))
+	}
+	require.ElementsMatch(t, expected, pool.GetInstancesWithDecryptionErrors())
+}
+
+func TestClientPoolCancelledLogin(t *testing.T) {
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var firstLogin sync.Once
+	srv := newPoolServer(t, func(w http.ResponseWriter, r *http.Request) {
+		first := false
+		firstLogin.Do(func() {
+			first = true
+			close(loginStarted)
+		})
+		if first {
+			select {
+			case <-releaseLogin:
+			case <-r.Context().Done():
+			}
+			return
+		}
+		writePoolLogin(w)
+	}, nil)
+	defer close(releaseLogin)
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "cancelled-login", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := pool.GetClient(ctx, instance.ID)
+		resultCh <- err
+	}()
+
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach login")
+	}
+	cancel()
+	select {
+	case err := <-resultCh:
+		require.Error(t, err)
+		require.True(t, isContextStopped(err))
+	case <-time.After(time.Second):
+		t.Fatal("cancelled login did not return")
+	}
+
+	require.False(t, pool.isInBackoff(instance.ID))
+	recentErrors, err := pool.errorStore.GetRecentErrors(context.Background(), instance.ID, 10)
+	require.NoError(t, err)
+	require.Empty(t, recentErrors)
+
+	client, err := pool.GetClientWithTimeout(context.Background(), instance.ID, time.Second)
+	require.NoError(t, err, "a fresh caller should be able to connect immediately")
+	require.NotNil(t, client)
+}
+
+func TestClientPoolTimedOutLoginDoesNotBackOff(t *testing.T) {
+	var firstLogin sync.Once
+	releaseLogin := make(chan struct{})
+	defer close(releaseLogin)
+	srv := newPoolServer(t, func(w http.ResponseWriter, r *http.Request) {
+		first := false
+		firstLogin.Do(func() { first = true })
+		if first {
+			select {
+			case <-r.Context().Done():
+			case <-releaseLogin:
+			}
+			return
+		}
+		writePoolLogin(w)
+	}, nil)
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		t.Context(), "timed-out-login", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	_, err = pool.GetClientWithTimeout(t.Context(), instance.ID, 150*time.Millisecond)
+	require.Error(t, err)
+	require.True(t, isDeadlineExpired(err))
+	require.False(t, pool.isInBackoff(instance.ID))
+	recentErrors, err := pool.errorStore.GetRecentErrors(t.Context(), instance.ID, 10)
+	require.NoError(t, err)
+	require.Empty(t, recentErrors)
+
+	client, err := pool.GetClientWithTimeout(t.Context(), instance.ID, 5*time.Second)
+	require.NoError(t, err, "a later caller should not inherit a timeout backoff")
+	require.NotNil(t, client)
+}
+
+func TestClientPoolRejectsClientCreatedDuringClose(t *testing.T) {
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var signalLogin sync.Once
+	srv := newPoolServer(t, func(w http.ResponseWriter, r *http.Request) {
+		signalLogin.Do(func() { close(loginStarted) })
+		select {
+		case <-releaseLogin:
+		case <-r.Context().Done():
+			return
+		}
+		writePoolLogin(w)
+	}, nil)
+	defer close(releaseLogin)
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "closing", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, createErr := pool.GetClientWithTimeout(context.Background(), instance.ID, 30*time.Second)
+		resultCh <- result{client: client, err: createErr}
+	}()
+
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach login")
+	}
+
+	closeResult := make(chan error, 1)
+	go func() {
+		closeResult <- pool.Close()
+	}()
+
+	select {
+	case err := <-closeResult:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Close did not cancel the in-flight login")
+	}
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, ErrPoolClosed)
+		require.Nil(t, result.client)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not finish")
+	}
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	require.Empty(t, pool.clients)
+}
+
+func TestClientPoolCloseCancelsInitialSyncBeforePublication(t *testing.T) {
+	syncStarted := make(chan struct{})
+	syncStopped := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var signalSync sync.Once
+	var signalStopped sync.Once
+	srv := newPoolServer(t, nil, func(w http.ResponseWriter, r *http.Request) {
+		signalSync.Do(func() { close(syncStarted) })
+		select {
+		case <-r.Context().Done():
+		case <-releaseSync:
+		}
+		signalStopped.Do(func() { close(syncStopped) })
+	})
+	defer close(releaseSync)
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "closing-sync", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, createErr := pool.GetClientWithTimeout(context.Background(), instance.ID, 30*time.Second)
+		resultCh <- result{client: client, err: createErr}
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach initial sync")
+	}
+
+	client, err := pool.GetClientOffline(t.Context(), instance.ID)
+	require.ErrorIs(t, err, ErrClientNotFound, "initial sync is still pending")
+	require.Nil(t, client)
+
+	closeResult := make(chan error, 1)
+	go func() {
+		closeResult <- pool.Close()
+	}()
+
+	select {
+	case err := <-closeResult:
+		require.NoError(t, err)
+	case <-time.After(6 * time.Second):
+		t.Fatal("Close did not cancel the in-flight initial sync")
+	}
+
+	select {
+	case <-syncStopped:
+	case <-time.After(time.Second):
+		t.Fatal("initial sync request remained active after Close returned")
+	}
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, ErrPoolClosed)
+		require.Nil(t, result.client)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not finish after Close")
+	}
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	require.Empty(t, pool.clients)
+}
+
+func TestClientPoolCanceledInitialSyncNotPublished(t *testing.T) {
+	syncStarted := make(chan struct{})
+	var firstSync sync.Once
+	srv := newPoolServer(t, nil, func(w http.ResponseWriter, r *http.Request) {
+		first := false
+		firstSync.Do(func() {
+			first = true
+			close(syncStarted)
+		})
+		if first {
+			<-r.Context().Done()
+			return
+		}
+		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+	})
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		t.Context(), "cancelled-sync", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, getErr := pool.GetClient(ctx, instance.ID)
+		resultCh <- result{client, getErr}
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach initial sync")
+	}
+	cancel()
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, context.Canceled)
+		require.Nil(t, result.client)
+	case <-time.After(8 * time.Second):
+		t.Fatal("cancelled initial sync did not return")
+	}
+	client, err := pool.GetClientOffline(t.Context(), instance.ID)
+	require.ErrorIs(t, err, ErrClientNotFound)
+	require.Nil(t, client)
+
+	client, err = pool.GetClientWithTimeout(t.Context(), instance.ID, time.Second)
+	require.NoError(t, err, "a fresh caller should complete initial sync")
+	require.NotNil(t, client)
+}
+
+func TestClientPoolPublishedCleanupSurvivesCallerCancel(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "pool-published-cleanup")
+	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	srv := newPoolServer(t, nil, nil)
+	instance, err := instanceStore.Create(
+		t.Context(), "published-cleanup", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+	require.NoError(t, models.NewInstanceErrorStore(db).RecordError(t.Context(), instance.ID, errors.New("previous connection failure")))
+
+	blockedDB := &blockedErrorDB{Querier: db, started: make(chan struct{}), release: make(chan struct{})}
+	pool, err := NewClientPool(instanceStore, models.NewInstanceErrorStore(blockedDB), time.Second)
+	require.NoError(t, err)
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(blockedDB.release) }) }
+	t.Cleanup(func() { unblock(); _ = pool.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh := make(chan error, 1)
+	go func() {
+		_, getErr := pool.GetClient(ctx, instance.ID)
+		resultCh <- getErr
+	}()
+	select {
+	case <-blockedDB.started:
+	case <-time.After(time.Second):
+		t.Fatal("published client did not reach error cleanup")
+	}
+	client, err := pool.GetClientOffline(t.Context(), instance.ID)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	cancel()
+	unblock()
+	select {
+	case <-resultCh:
+	case <-time.After(time.Second):
+		t.Fatal("post-publication cleanup did not finish")
+	}
+	var errorCount int
+	require.NoError(t, db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM instance_errors WHERE instance_id = ?", instance.ID).Scan(&errorCount))
+	require.Zero(t, errorCount)
+}
+
+func TestClientPoolCloseCancelsErrorStoreWrites(t *testing.T) {
+	tests := []struct {
+		name       string
+		blockBegin bool
+		login      http.HandlerFunc
+	}{
+		{
+			name:       "failed login records error",
+			blockBegin: true,
+			login: func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "invalid credentials", http.StatusForbidden)
+			},
+		},
+		{name: "successful login clears errors"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := &blockedErrorDB{
+				Querier:    testdb.NewMigratedSQLite(t, "pool-close-error-store"),
+				started:    make(chan struct{}),
+				release:    make(chan struct{}),
+				blockBegin: tt.blockBegin,
+			}
+			defer close(db.release)
+			srv := newPoolServer(t, tt.login, nil)
+			pool := setupTestPool(t)
+			defer pool.Close()
+			pool.errorStore = models.NewInstanceErrorStore(db)
+			instance, err := pool.instanceStore.Create(
+				t.Context(), "synthetic-instance", srv.URL, "user", "password", nil, nil, false, nil,
+			)
+			require.NoError(t, err)
+
+			type result struct {
+				client *Client
+				err    error
+			}
+			resultCh := make(chan result, 1)
+			go func() {
+				client, getErr := pool.GetClientWithTimeout(t.Context(), instance.ID, 30*time.Second)
+				resultCh <- result{client, getErr}
+			}()
+
+			select {
+			case <-db.started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("constructor did not reach the error store")
+			}
+
+			closeResult := make(chan error, 1)
+			go func() { closeResult <- pool.Close() }()
+			select {
+			case err := <-closeResult:
+				require.NoError(t, err)
+			case <-time.After(time.Second):
+				t.Fatal("Close waited for the error-store timeout")
+			}
+
+			select {
+			case result := <-resultCh:
+				require.ErrorIs(t, result.err, ErrPoolClosed)
+				require.Nil(t, result.client)
+			case <-time.After(time.Second):
+				t.Fatal("constructor remained blocked after Close")
+			}
+			_, err = pool.GetClientOffline(t.Context(), instance.ID)
+			require.ErrorIs(t, err, ErrPoolClosed)
+		})
+	}
 }
