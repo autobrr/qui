@@ -23,6 +23,10 @@ const (
 	// Long TTL because external IDs (IMDb, TMDb, TVDb, TVMaze) are immutable
 	DefaultPositiveCacheTTL = 30 * 24 * time.Hour // 30 days
 
+	// cacheWriteTimeout bounds detached cache writes so a wedged SQLite writer
+	// cannot hold them forever; writerMu is not context-aware while blocked.
+	cacheWriteTimeout = 5 * time.Second
+
 	// DefaultNegativeCacheTTL is the default TTL for negative cache entries (no IDs found)
 	// Short TTL because content may be added to *arr instances later
 	DefaultNegativeCacheTTL = 1 * time.Hour
@@ -288,7 +292,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}
 
 	if cacheNegative {
-		if err := s.cacheStore.Set(ctx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
+		writeCtx, cancel := detachedCacheWriteContext(ctx)
+		defer cancel()
+		if err := s.cacheStore.Set(writeCtx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}
 	}
@@ -309,7 +315,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string) *ExternalIDsResult {
 	instanceID := instance.ID
 	titles := append([]string{}, result.Titles...)
-	if err := s.cacheStore.SetWithTitles(ctx, titleHash, string(contentType), &instanceID, result.IDs, titles, false, s.positiveTTL); err != nil {
+	writeCtx, cancel := detachedCacheWriteContext(ctx)
+	defer cancel()
+	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, false, s.positiveTTL); err != nil {
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 
@@ -642,4 +650,11 @@ func (s *Service) maybeScheduleCacheCleanup() {
 			log.Debug().Int64("deleted", deleted).Msg("[ARR-LOOKUP] Cleaned up expired cache entries")
 		}
 	}()
+}
+
+// detachedCacheWriteContext survives the caller's cancellation, so a lookup
+// that finishes near the caller's deadline still caches, while its own
+// timeout keeps the write from blocking forever on the serialized writer.
+func detachedCacheWriteContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), cacheWriteTimeout)
 }

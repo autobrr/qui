@@ -14,6 +14,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -810,6 +811,76 @@ func TestAutobrrApplyNonexactAnnouncementCheapGate(t *testing.T) {
 			} else {
 				require.True(t, response.Success)
 			}
+		})
+	}
+}
+
+// TestAutobrrApplyUsesARRAlternateTitles catches an apply path that loses the
+// announce's ARR alias titles between the webhook check and injection: the
+// bound decision must carry them into the CrossSeed revalidation, with exactly
+// one ARR lookup for the whole request.
+func TestAutobrrApplyUsesARRAlternateTitles(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sourceName     = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		announcedName  = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
+		downloadedName = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+	)
+	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
+
+	torrentData := createTestTorrent(t, downloadedName, []string{"payload.mkv"}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(torrentData)
+	require.NoError(t, err)
+	var torrentSize int64
+	for _, file := range meta.Files {
+		torrentSize += file.Size
+	}
+
+	instance := &models.Instance{ID: 47, Name: "primary", IsActive: true}
+
+	tests := []struct {
+		name        string
+		spy         *spyARRLookupService
+		wantMatched bool
+	}{
+		{
+			name:        "aliases carry from announce match into apply revalidation",
+			spy:         &spyARRLookupService{result: &arr.ExternalIDsResult{Titles: aliasTitles, TitlesKnown: true}},
+			wantMatched: true,
+		},
+		{name: "no arr service still rejects the alias announce"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Hash: "frieren-library", Name: sourceName, Size: torrentSize, TotalSize: torrentSize, Progress: 1}
+			service := &Service{
+				instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{source.Hash: meta.Files}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{}, nil
+				},
+			}
+			if tt.spy != nil {
+				service.arrService = tt.spy
+			}
+
+			response, err := service.AutobrrApply(context.Background(), &AutobrrApplyRequest{
+				TorrentData: base64.StdEncoding.EncodeToString(torrentData),
+				TorrentName: announcedName,
+				InstanceIDs: []int{instance.ID},
+			})
+			require.NoError(t, err)
+			if !tt.wantMatched {
+				require.Empty(t, response.Results)
+				return
+			}
+			require.Equal(t, 1, tt.spy.calls)
+			require.Len(t, response.Results, 1)
+			require.NotEqual(t, "no_match", response.Results[0].Status)
 		})
 	}
 }

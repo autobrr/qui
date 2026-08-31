@@ -101,6 +101,8 @@ qui still checks the downloaded torrent metadata, files, layout, and piece bound
 
 RSS uses the same classifier with its feed title and byte count. The [autobrr integration](./autobrr.md) uses passive announcement data during `/check`.
 
+Announce matching over alternate titles, such as an anime announced under its English or romaji name, needs a [Sonarr or Radarr integration](../search.md#sonarr-and-radarr-integrations). Without one, qui matches announces on the release name only.
+
 If autobrr has no positive size, qui uses a narrow name-only preflight. This preflight can approve one download, but it cannot approve an add.
 
 ### Season Pack Assembly

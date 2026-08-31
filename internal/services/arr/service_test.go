@@ -626,3 +626,30 @@ func TestDefaultTTL_Values(t *testing.T) {
 	assert.Equal(t, 30*24*time.Hour, DefaultPositiveCacheTTL)
 	assert.Equal(t, 1*time.Hour, DefaultNegativeCacheTTL)
 }
+
+// TestCacheWritesSurviveCallerCancellation catches a cache write bound to the
+// request context: an announce-path lookup that finishes near its deadline
+// would then succeed but fail to cache, so the apply-time repeat of the same
+// title pays the ARR round trips again.
+func TestCacheWritesSurviveCallerCancellation(t *testing.T) {
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.NotFoundHandler())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	const title = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+	titleHash := models.ComputeTitleHash(title)
+	instance := &models.ArrInstance{ID: 1}
+	lookupResult := &ExternalIDsLookupResult{
+		IDs:    &models.ExternalIDs{TVDbID: 424536},
+		Titles: []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"},
+	}
+
+	result := service.cacheAndBuildResult(ctx, titleHash, title, ContentTypeTV, instance, lookupResult, "parse")
+	require.NotNil(t, result)
+
+	entry, err := cacheStore.Get(context.Background(), titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	require.Equal(t, []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}, entry.Titles)
+}

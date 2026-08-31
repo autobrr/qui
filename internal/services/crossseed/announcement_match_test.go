@@ -4,8 +4,10 @@
 package crossseed
 
 import (
+	"cmp"
 	"context"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -251,6 +253,166 @@ func TestClassifyWebhookAnnouncementSourceNonexactRequiresStrictMatch(t *testing
 	require.True(t, got.replayable)
 }
 
+// TestClassifyWebhookAnnouncementSourceCandidateTitles protects the announce
+// classifier's ARR alias handling: alias titles attach to the announced
+// candidate only, recover exact-size and unknown-size matches that plain title
+// overlap rejects, and never widen an unrelated source torrent. Names follow
+// the scrubbed repro from issue #2492.
+func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
+	const (
+		instanceID = 1
+		sourceHash = "alias-announce-source"
+		sourceName = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		size       = int64(1_500_000_000)
+
+		englishAnnounce = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
+		romajiAnnounce  = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+		bracketAnnounce = "[KiraSubs] Frieren: Beyond Journey's End Season 2 - 10 [2026][Web][MKV][h264][1080p][AAC 2.0][Softsubs (KiraSubs)]"
+	)
+	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
+
+	tests := []struct {
+		name            string
+		sourceName      string // empty means the seeded Frieren source
+		candidateName   string
+		candidateSize   int64
+		candidateTitles []string
+		wantAccepted    bool
+	}{
+		{
+			name:          "english title exact size with aliases",
+			candidateName: englishAnnounce, candidateSize: size,
+			candidateTitles: aliasTitles, wantAccepted: true,
+		},
+		{
+			name:          "english title exact size without aliases",
+			candidateName: englishAnnounce, candidateSize: size,
+		},
+		{
+			name:          "romaji title exact size with aliases",
+			candidateName: romajiAnnounce, candidateSize: size,
+			candidateTitles: aliasTitles, wantAccepted: true,
+		},
+		{
+			name:          "romaji title exact size without aliases",
+			candidateName: romajiAnnounce, candidateSize: size,
+		},
+		{
+			name:          "bracket title unknown size with aliases",
+			candidateName: bracketAnnounce, candidateSize: 0,
+			candidateTitles: aliasTitles, wantAccepted: true,
+		},
+		{
+			name:          "bracket title unknown size without aliases",
+			candidateName: bracketAnnounce, candidateSize: 0,
+		},
+		{
+			name:          "aliases never widen an unrelated source torrent",
+			sourceName:    "[KiraSubs] Different Voyage S2 - 10 (1080p) [ABCD1234].mkv",
+			candidateName: englishAnnounce, candidateSize: size,
+			candidateTitles: aliasTitles,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := cmp.Or(tt.sourceName, sourceName)
+			source := qbt.Torrent{Hash: sourceHash, Name: name, Size: size, TotalSize: size, Progress: 1}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			svc := &Service{
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+					sourceHash: {{Name: name, Size: size}},
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
+
+			got := svc.classifyWebhookAnnouncementSource(context.Background(), instanceID, &source, candidate, tt.candidateSize, announcementMatchPolicy{
+				allowUnknownSize: tt.candidateSize == 0,
+				candidateTitles:  tt.candidateTitles,
+			})
+
+			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassExactSizeFallback, got.decision.Class)
+				require.Contains(t, got.decision.RelaxedDifferences, "checksum")
+			}
+		})
+	}
+}
+
+// TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum protects the
+// advisory check's checksum tolerance: IRC announce sizes are rounded, so a
+// CRC tag on only the local file name must not veto a within-tolerance check
+// when everything else matches strictly. Apply omits the policy flag and keeps
+// demanding strict, because it classifies real torrent bytes.
+func TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum(t *testing.T) {
+	const (
+		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		announceName = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
+		size         = int64(1_468_228_504)
+		roundedSize  = int64(1_471_026_298) // 1.37 GiB: what the IRC announce advertises
+	)
+	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+
+	tests := []struct {
+		name          string
+		candidateName string
+		candidateSize int64
+		tolerate      bool
+		wantAccepted  bool
+	}{
+		{
+			name:          "one-sided checksum within tolerance tolerated",
+			candidateName: announceName, candidateSize: roundedSize,
+			tolerate: true, wantAccepted: true,
+		},
+		{
+			name:          "apply policy still rejects one-sided checksum",
+			candidateName: announceName, candidateSize: roundedSize,
+		},
+		{
+			name:          "conflicting checksums stay rejected",
+			candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [DEADBEEF].mkv", candidateSize: roundedSize,
+			tolerate: true,
+		},
+		{
+			name:          "other strict failures stay rejected",
+			candidateName: "Frieren: Beyond Journey's End S02E10 720p CR WEB-DL AAC 2.0 H.264-KiraSubs", candidateSize: roundedSize,
+			tolerate: true,
+		},
+		{
+			name:          "out-of-tolerance size stays rejected",
+			candidateName: announceName, candidateSize: size * 2,
+			tolerate: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
+
+			got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, tt.candidateSize, announcementMatchPolicy{
+				candidateTitles:          aliasTitles,
+				tolerateOneSidedChecksum: tt.tolerate,
+			})
+
+			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
+			require.True(t, got.replayable)
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassStrict, got.decision.Class)
+			}
+		})
+	}
+}
+
 // TestUnknownSizePreflightDecisionAllowlist catches a future classifier
 // relaxation becoming an unknown-size download recommendation by default.
 func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {
@@ -366,4 +528,19 @@ func TestClassifyAnnouncementSourceAvoidsUnnecessaryFileLookups(t *testing.T) {
 			require.Equal(t, tt.wantLookups, sync.lookups)
 		})
 	}
+}
+
+// TestAnnounceAliasTitlesBoundsLookup catches an announce-path alias lookup
+// without a deadline: a hung ARR instance would then stall every announce
+// check for the full per-instance HTTP timeouts.
+func TestAnnounceAliasTitlesBoundsLookup(t *testing.T) {
+	t.Parallel()
+
+	spy := &spyARRLookupService{}
+	svc := &Service{arrService: spy}
+
+	svc.announceAliasTitles(context.Background(), "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs", "tv")
+
+	require.True(t, spy.hasDeadline)
+	require.LessOrEqual(t, time.Until(spy.deadline), announceAliasLookupTimeout)
 }
