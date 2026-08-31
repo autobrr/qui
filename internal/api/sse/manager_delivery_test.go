@@ -146,6 +146,53 @@ func (f *fakeSyncProvider) gateTorrentBuilds() (release func()) {
 	}
 }
 
+// TestInitBuildUsesBaselinePublishedWhileMaterializing pins the initialization
+// race: if a tick advances the group while an init candidate is being built, the
+// joiner must receive the tick's exact retained snapshot and version rather than
+// the stale candidate it materialized independently.
+func TestInitBuildUsesBaselinePublishedWhileMaterializing(t *testing.T) {
+	before := singleResp(qbittorrent.TorrentView{Torrent: &qbt.Torrent{
+		Hash:     "a",
+		Progress: 0.99,
+		State:    qbt.TorrentStateDownloading,
+	}})
+	provider := &fakeSyncProvider{torrentsResponse: before}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	opts := StreamOptions{InstanceID: 1, Limit: 300}
+	group := &subscriptionGroup{
+		key:     streamOptionsKey(opts),
+		options: opts,
+		version: StreamVersion{Major: 11},
+	}
+	release := provider.gateTorrentBuilds()
+	result := make(chan *StreamPayload, 1)
+	go func() {
+		result <- manager.buildGroupInitPayload(group, opts, &StreamMeta{InstanceID: 1})
+	}()
+
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() == 1
+	}, time.Second, time.Millisecond)
+
+	completed := singleResp(qbittorrent.TorrentView{Torrent: &qbt.Torrent{
+		Hash:     "a",
+		Progress: 1,
+		State:    qbt.TorrentStateUploading,
+	}})
+	published := group.buildUpdatePayload(opts, completed, &StreamMeta{InstanceID: 1})
+	require.Equal(t, &StreamVersion{Major: 11, Minor: 1}, published.Version)
+	release()
+
+	init := <-result
+	require.NotNil(t, init)
+	require.Equal(t, streamEventInit, init.Type)
+	require.Equal(t, published.Version, init.Version)
+	require.InDelta(t, 1, init.Data.Torrents[0].Progress, 0)
+	require.Equal(t, qbt.TorrentStateUploading, init.Data.Torrents[0].State)
+}
+
 // cloneTorrentResponse returns a shallow copy so the build path cannot mutate the
 // canned response shared across calls (buildGroupPayload sets InstanceMeta).
 func cloneTorrentResponse(resp *qbittorrent.TorrentResponse) *qbittorrent.TorrentResponse {

@@ -185,9 +185,10 @@ type StreamManager struct {
 	activityUnsub   func()
 	activityCounter atomic.Uint64
 
-	counter atomic.Uint64
-	closing atomic.Bool
-	mu      sync.RWMutex
+	nextSubscriptionID uint64 // guarded by mu
+	nextStreamMajor    uint64 // guarded by mu
+	closing            atomic.Bool
+	mu                 sync.RWMutex
 
 	// Observability counters (lifetime totals).
 	eventsPublished atomic.Uint64
@@ -221,6 +222,7 @@ type subscriptionState struct {
 type subscriptionGroup struct {
 	key     string
 	options StreamOptions
+	version StreamVersion // guarded by baselineMu
 
 	mu          sync.Mutex
 	sending     bool
@@ -233,17 +235,12 @@ type subscriptionGroup struct {
 	// Delta baseline for this group's page-0 window, owned by the single tick
 	// processor (processGroup) and guarded by baselineMu against the unrelated init
 	// path. baselineFP maps each row key to its last-broadcast change fingerprint;
-	// baselineOrder is the last-broadcast key order. See buildUpdatePayload.
-	// baselinePrefs is the preferences blob this group last put on the wire, and
-	// baselineCounts the fingerprint of the sidebar counts it last sent, so a delta
-	// can drop either field while it is unchanged.
-	baselineMu         sync.Mutex
-	baselineFP         map[string]uint64
-	baselineOrder      []string
-	baselinePrefs      json.RawMessage
-	baselineCounts     uint64
-	baselineCountsData *qbittorrent.TorrentCounts // retained for the init backfill, see reconcileInitWithBaseline
-	baselineSeeded     bool
+	// baselineOrder is the last-broadcast key order, and baselineSnapshot is the
+	// complete reconstructed frame represented by version. See buildUpdatePayload.
+	baselineMu       sync.Mutex
+	baselineFP       map[string]uint64
+	baselineOrder    []string
+	baselineSnapshot *qbittorrent.TorrentResponse
 }
 
 type syncLoopState struct {
@@ -268,11 +265,21 @@ type backoffState struct {
 
 // StreamPayload is the message envelope sent to the frontend.
 type StreamPayload struct {
-	Type  string                       `json:"type"`
-	Data  *qbittorrent.TorrentResponse `json:"data,omitempty"`
-	Delta *StreamDelta                 `json:"delta,omitempty"`
-	Meta  *StreamMeta                  `json:"meta,omitempty"`
-	Err   string                       `json:"error,omitempty"`
+	Type    string                       `json:"type"`
+	Data    *qbittorrent.TorrentResponse `json:"data,omitempty"`
+	Delta   *StreamDelta                 `json:"delta,omitempty"`
+	Meta    *StreamMeta                  `json:"meta,omitempty"`
+	Version *StreamVersion               `json:"version,omitempty"`
+	Err     string                       `json:"error,omitempty"`
+}
+
+// StreamVersion is a lexicographic generation clock for one filtered stream.
+// Major changes when a subscription group is recreated; Minor advances for every
+// data frame within that group. It is not a distributed vector clock: baselineMu
+// serializes the group's sole version writer.
+type StreamVersion struct {
+	Major uint64 `json:"major"`
+	Minor uint64 `json:"minor"`
 }
 
 // StreamDelta describes how to reconcile a group's page-0 window against the
@@ -289,7 +296,8 @@ type StreamPayload struct {
 // making a full clear indistinguishable from an aggregate-only tick and leaving the
 // deleted rows on screen until the next keyframe.
 type StreamDelta struct {
-	Order *[]string `json:"order,omitempty"`
+	Order       *[]string     `json:"order,omitempty"`
+	BaseVersion StreamVersion `json:"baseVersion"`
 }
 
 // StreamMeta carries lightweight metadata about the sync update.
@@ -475,15 +483,6 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 		return "", errors.New("stream manager shutting down")
 	}
 
-	id := fmt.Sprintf("qui-session-%d", m.counter.Add(1))
-	state := &subscriptionState{
-		id:        id,
-		options:   opts,
-		created:   time.Now(),
-		groupKey:  streamOptionsKey(opts),
-		clientKey: clientKey,
-	}
-
 	m.mu.Lock()
 	// Re-check under the lock: Shutdown sets closing before draining the loop maps,
 	// so without this a registration that passed the pre-lock check could repopulate
@@ -492,11 +491,22 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 		m.mu.Unlock()
 		return "", errors.New("stream manager shutting down")
 	}
+	m.nextSubscriptionID++
+	id := fmt.Sprintf("qui-session-%d", m.nextSubscriptionID)
+	state := &subscriptionState{
+		id:        id,
+		options:   opts,
+		created:   time.Now(),
+		groupKey:  streamOptionsKey(opts),
+		clientKey: clientKey,
+	}
 	group, ok := m.groups[state.groupKey]
 	if !ok {
+		m.nextStreamMajor++
 		group = &subscriptionGroup{
 			key:     state.groupKey,
 			options: opts,
+			version: StreamVersion{Major: m.nextStreamMajor},
 			subs:    make(map[string]*subscriptionState),
 		}
 		m.groups[state.groupKey] = group
@@ -1122,17 +1132,9 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		Timestamp:  time.Now(),
 	}
 
-	payload := m.buildGroupPayload(group, group.options, streamEventInit, meta)
+	payload := m.buildGroupInitPayload(group, group.options, meta)
 	if payload == nil || m.closing.Load() {
 		return false
-	}
-
-	// Seed the delta baseline from this init snapshot so the client's first frame and
-	// the server baseline match exactly; the next tick is then a clean delta. When the
-	// group is already seeded (a tick or an earlier joiner got there first) the
-	// snapshot instead inherits the baseline's edge-triggered fields.
-	if payload.Data != nil {
-		group.reconcileInitWithBaseline(group.options, payload.Data)
 	}
 
 	return m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
@@ -1373,25 +1375,31 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 	}
 }
 
-// buildGroupPayload materializes the current page and wraps it as a full snapshot
-// of the given event type. Used for the synchronous init write; tick updates go
-// through buildGroupUpdatePayload instead.
-func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamOptions, eventType string, meta *StreamMeta) *StreamPayload {
+// buildGroupInitPayload returns the exact snapshot represented by the group's
+// current baseline. A new group materializes one candidate and seeds from it; if a
+// tick wins while that build is in flight, the candidate is discarded in favor of
+// the tick's retained snapshot.
+func (m *StreamManager) buildGroupInitPayload(group *subscriptionGroup, opts StreamOptions, meta *StreamMeta) *StreamPayload {
 	if group == nil || m.syncManager == nil || m.closing.Load() {
 		return nil
 	}
 
 	metaCopy := cloneMeta(meta)
+	if payload := group.buildInitPayload(opts, nil, metaCopy); payload != nil {
+		return payload
+	}
+
 	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
 	if errPayload != nil {
+		// A concurrent tick may have seeded the group while materialization failed.
+		// Prefer its valid retained baseline to failing a joiner unnecessarily.
+		if payload := group.buildInitPayload(opts, nil, metaCopy); payload != nil {
+			return payload
+		}
 		return errPayload
 	}
 
-	return &StreamPayload{
-		Type: eventType,
-		Data: response,
-		Meta: metaCopy,
-	}
+	return group.buildInitPayload(opts, response, metaCopy)
 }
 
 // buildGroupUpdatePayload materializes the current page and turns it into a tick

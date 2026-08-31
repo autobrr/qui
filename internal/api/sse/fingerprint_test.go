@@ -57,8 +57,7 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 	case reflect.Slice:
 		f.Set(reflect.Append(f, reflect.New(f.Type().Elem()).Elem()))
 	case reflect.Map:
-		// One entry with a zero value: fpSortedMap hashes the length and key, so
-		// the entry alone must move the fingerprint.
+		// A new map key must be detected even when its value is zero.
 		m := reflect.MakeMap(f.Type())
 		m.SetMapIndex(reflect.ValueOf("x"), reflect.New(f.Type().Elem()).Elem())
 		f.Set(m)
@@ -137,24 +136,25 @@ func TestTrackerFingerprintCoversEveryField(t *testing.T) {
 	})
 }
 
-// TestCountsFingerprintCoversEveryField proves the counts fingerprint reacts to
-// every TorrentCounts field, the way the row fingerprint is already guarded.
-func TestCountsFingerprintCoversEveryField(t *testing.T) {
-	assertEveryFieldHashed(t, "add it to countsFingerprint", func(c qbittorrent.TorrentCounts) uint64 {
-		return countsFingerprint(&c)
-	})
+func TestCountsEqualCoversEveryField(t *testing.T) {
+	var base qbittorrent.TorrentCounts
+	typ := reflect.TypeFor[qbittorrent.TorrentCounts]()
+	for i := range typ.NumField() {
+		var changed qbittorrent.TorrentCounts
+		setSampleValue(t, reflect.ValueOf(&changed).Elem().Field(i))
+		require.False(t, countsEqual(&base, &changed), "%s must affect countsEqual", typ.Field(i).Name)
+	}
 }
 
-// TestTrackerTransferStatsFingerprintCoversEveryField does the same for the
-// per-domain transfer stats nested inside TorrentCounts.TrackerTransfers. The
-// map sample in the counts test only proves the map key is hashed, not the
-// struct fields of its values.
-func TestTrackerTransferStatsFingerprintCoversEveryField(t *testing.T) {
-	assertEveryFieldHashed(t, "add it to countsFingerprint's TrackerTransfers loop", func(s qbittorrent.TrackerTransferStats) uint64 {
-		return countsFingerprint(&qbittorrent.TorrentCounts{
-			TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": s},
-		})
-	})
+func TestCountsEqualCoversTransferFields(t *testing.T) {
+	base := &qbittorrent.TorrentCounts{TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": {}}}
+	typ := reflect.TypeFor[qbittorrent.TrackerTransferStats]()
+	for i := range typ.NumField() {
+		var stats qbittorrent.TrackerTransferStats
+		setSampleValue(t, reflect.ValueOf(&stats).Elem().Field(i))
+		changed := &qbittorrent.TorrentCounts{TrackerTransfers: map[string]qbittorrent.TrackerTransferStats{"x": stats}}
+		require.False(t, countsEqual(base, changed), "%s must affect countsEqual", typ.Field(i).Name)
+	}
 }
 
 func BenchmarkSingleRowFingerprint(b *testing.B) {
