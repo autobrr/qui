@@ -563,8 +563,7 @@ func (h *Handler) monitoringEnabled(instanceID int) bool {
 	if h.reannounceCache == nil {
 		return false
 	}
-	settings := h.reannounceCache.Get(instanceID)
-	return settings != nil && settings.Enabled
+	return h.reannounceCache.Get(instanceID).CanMatchTorrents()
 }
 
 func restoreBody(r *http.Request, body []byte) {

@@ -38,8 +38,10 @@ Some slow trackers need up to 50 retries at 7s intervals (about 6 minutes) to re
 
 Choose which torrents qui monitors:
 
-- **Monitor All Stalled Torrents**: qui checks every stalled torrent. If you want to ignore specific categories, tags, or trackers (such as public trackers), add **Exclude** rules.
+- **Monitor All Stalled Torrents**: qui checks every stalled torrent. This is the default setting for new instances. If you want to ignore specific categories, tags, or trackers (such as public trackers), add **Exclude** rules.
 - **Custom filter (Monitor All disabled)**: qui checks only torrents that match your **Include** rules. **Exclude** rules still block specific items within those groups.
+
+If you disable **Monitor All** and add no **Include** rules, no torrent can match. qui then does no scan and sends no request to qBittorrent.
 
 ### Quick Retry
 
