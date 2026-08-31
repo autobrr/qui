@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { fileToBase64, overlapPercent } from "@/lib/manual-cross-seed"
@@ -57,7 +56,6 @@ export function ManualCrossSeedDialog({
   const [categoryEdit, setCategoryEdit] = useState<string | null>(null)
   const [tagsEdit, setTagsEdit] = useState<string[] | null>(null)
   const [newTag, setNewTag] = useState("")
-  const [startPaused, setStartPaused] = useState(true)
   const [pickerSearch, setPickerSearch] = useState("")
   const [showPicker, setShowPicker] = useState(false)
 
@@ -81,7 +79,7 @@ export function ManualCrossSeedDialog({
   }, [open, activeFile])
 
   const requestedHash = pinnedHash ?? preselectedTarget?.hash ?? undefined
-  const fileKey = activeFile ? `${activeFile.name}:${activeFile.size}` : ""
+  const fileKey = activeFile ? `${activeFile.name}:${activeFile.size}:${activeFile.lastModified}` : ""
   const proposalsQuery = useQuery({
     queryKey: ["cross-seed-manual-proposals", instanceId, fileKey, requestedHash],
     queryFn: () => api.getManualCrossSeedProposals({
@@ -123,7 +121,6 @@ export function ManualCrossSeedDialog({
       targetHash: effectiveSelectedHash ?? "",
       category: categoryValue || undefined,
       tags: selectedTags,
-      startPaused,
     }),
     onSuccess: response => {
       const firstResult = response.results[0]
@@ -152,7 +149,6 @@ export function ManualCrossSeedDialog({
       setCategoryEdit(null)
       setTagsEdit(null)
       setNewTag("")
-      setStartPaused(true)
       setPickerSearch("")
       setShowPicker(false)
     }
@@ -371,15 +367,6 @@ export function ManualCrossSeedDialog({
                 <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs break-all">
                   {selectedProposal.effectiveSavePath}
                 </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="manual-cross-seed-start-paused"
-                  checked={startPaused}
-                  onCheckedChange={setStartPaused}
-                />
-                <Label htmlFor="manual-cross-seed-start-paused">{t("manualCrossSeed.startPaused")}</Label>
               </div>
             </div>
           )}

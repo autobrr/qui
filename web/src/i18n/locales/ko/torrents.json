@@ -1542,7 +1542,6 @@
     "tags": "태그",
     "newTagPlaceholder": "태그를 입력하고 Enter를 누르세요",
     "savePath": "저장 경로(실제 대상 위치)",
-    "startPaused": "일시정지 상태로 시작",
     "cancel": "취소",
     "apply": "크로스시드 추가",
     "applying": "추가 중...",

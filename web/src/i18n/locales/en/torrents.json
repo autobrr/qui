@@ -1605,7 +1605,6 @@
     "tags": "Tags",
     "newTagPlaceholder": "Add a tag and press Enter",
     "savePath": "Save path (effective destination)",
-    "startPaused": "Start paused",
     "cancel": "Cancel",
     "apply": "Add cross-seed",
     "applying": "Adding...",

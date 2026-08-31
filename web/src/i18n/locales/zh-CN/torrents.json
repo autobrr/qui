@@ -1542,7 +1542,6 @@
     "tags": "标签",
     "newTagPlaceholder": "输入标签后按 Enter",
     "savePath": "保存路径（实际目标位置）",
-    "startPaused": "暂停开始",
     "cancel": "取消",
     "apply": "添加辅种",
     "applying": "正在添加...",

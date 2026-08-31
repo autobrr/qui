@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -30,7 +31,6 @@ type ManualMatchApplyRequest struct {
 	TargetHash  string   `json:"target_hash"`
 	Category    string   `json:"category,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
-	StartPaused *bool    `json:"start_paused,omitempty"`
 }
 
 // ManualMatchProposals godoc
@@ -71,7 +71,7 @@ func (h *CrossSeedHandler) ManualMatchProposals(w http.ResponseWriter, r *http.R
 
 // ManualMatchApply godoc
 // @Summary Apply a Manual match cross-seed against a chosen target torrent
-// @Description Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target. The recheck arbitrates a wrong pick.
+// @Description Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target. Every Manual match runs a full recheck before it seeds; the recheck arbitrates a wrong pick and cannot be skipped.
 // @Tags cross-seed
 // @Accept json
 // @Produce json
@@ -106,19 +106,21 @@ func (h *CrossSeedHandler) ManualMatchApply(w http.ResponseWriter, r *http.Reque
 		ManualTargetHash:  req.TargetHash,
 		Category:          req.Category,
 		Tags:              req.Tags,
-		StartPaused:       req.StartPaused,
 	}
+	// Detach from the request context like the other apply handlers: a client
+	// disconnect mid-apply must not cancel the recheck or resume-queue setup.
+	ctx := context.WithoutCancel(r.Context())
 	// Full pipeline parity with the other interactive flows: honor the saved
 	// tag-inheritance and piece-boundary preferences. SkipRecheck is not
 	// propagated because the recheck is the arbiter of a Manual match.
-	if settings, err := h.service.GetAutomationSettings(r.Context()); err == nil && settings != nil {
+	if settings, err := h.service.GetAutomationSettings(ctx); err == nil && settings != nil {
 		crossReq.InheritSourceTags = settings.InheritSourceTags
 		crossReq.SkipPieceBoundarySafetyCheck = settings.SkipPieceBoundarySafetyCheck
 	} else if err != nil {
 		log.Warn().Err(err).Msg("Manual match apply: failed to load automation settings, using defaults")
 	}
 
-	resp, err := h.service.CrossSeed(r.Context(), crossReq)
+	resp, err := h.service.CrossSeed(ctx, crossReq)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", req.InstanceID).Str("targetHash", req.TargetHash).Msg("Manual match apply failed")
 		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())

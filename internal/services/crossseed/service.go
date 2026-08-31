@@ -5569,10 +5569,8 @@ func (s *Service) processCrossSeedCandidate(
 	matchedTorrent := &addPlan.torrent
 	candidateFiles := addPlan.files
 	matchType := addPlan.matchType
-	// A Manual match with no validated file correspondence always verifies
-	// before seeding: the recheck is the arbiter of a wrong pick.
 	manualUnvalidated := matchType == manualMatchType
-	verifyBeforeSeed := candidateRequiresVerification(candidate, matchedTorrent.Hash, req) || manualUnvalidated
+	verifyBeforeSeed := candidateRequiresVerification(candidate, matchedTorrent.Hash, req)
 	if verifyBeforeSeed && req.SkipRecheck {
 		result.Status = "skipped_recheck"
 		result.Message = skippedRecheckMessage
@@ -5650,8 +5648,11 @@ func (s *Service) processCrossSeedCandidate(
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
 	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
 	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
-	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks
-	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
+	// An unvalidated Manual match has no validated file correspondence to link
+	// (zero overlap would fail materialization outright), so it always takes the
+	// regular paused add + recheck path.
+	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks && !manualUnvalidated
+	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks && !manualUnvalidated
 
 	runReuseSafetyChecks := func() bool {
 		// SAFETY: Reject cross-seeds where main content file sizes don't match.

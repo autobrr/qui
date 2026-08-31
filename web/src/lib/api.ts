@@ -1526,7 +1526,6 @@ class ApiClient {
     targetHash: string
     category?: string
     tags?: string[]
-    startPaused?: boolean
   }): Promise<ManualCrossSeedApplyResponse> {
     type RawResponse = {
       success: boolean
@@ -1544,10 +1543,6 @@ class ApiClient {
     if (payload.tags && payload.tags.length > 0) {
       body.tags = payload.tags
     }
-    if (payload.startPaused !== undefined) {
-      body.start_paused = payload.startPaused
-    }
-
     const raw = await this.request<RawResponse>("/cross-seed/manual/apply", {
       method: "POST",
       body: JSON.stringify(body),

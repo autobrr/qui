@@ -1605,7 +1605,6 @@
     "tags": "Tags",
     "newTagPlaceholder": "Ajoutez un tag et appuyez sur Entrée",
     "savePath": "Chemin de sauvegarde (destination effective)",
-    "startPaused": "Démarrer en pause",
     "cancel": "Annuler",
     "apply": "Ajouter le cross-seed",
     "applying": "Ajout...",

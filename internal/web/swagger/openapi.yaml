@@ -4732,7 +4732,7 @@ paths:
       summary: Apply a Manual match cross-seed against a chosen target torrent
       description: |
         Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target torrent.
-        Candidate discovery and the category and content-type gates are bypassed; the recheck is the arbiter of a wrong pick.
+        Candidate discovery and the category and content-type gates are bypassed. Every Manual match runs a full recheck before it seeds; the recheck is the arbiter of a wrong pick and cannot be skipped.
       requestBody:
         required: true
         content:
@@ -4758,8 +4758,6 @@ paths:
                   type: array
                   items:
                     type: string
-                start_paused:
-                  type: boolean
       responses:
         '200':
           description: Apply result

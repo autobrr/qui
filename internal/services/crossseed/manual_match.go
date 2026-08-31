@@ -23,8 +23,9 @@ import (
 // of a wrong pick.
 
 // manualMatchType marks an add plan whose target was pinned by the user and
-// whose files did not validate against the uploaded torrent. Such adds always
-// verify before seeding and skip file alignment.
+// whose files did not validate against the uploaded torrent. Such adds skip
+// file alignment and the link modes (nothing validated to link). Every Manual
+// match, validated or not, verifies before seeding.
 const manualMatchType = "manual"
 
 const (
@@ -147,20 +148,27 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		keep    bool
 	}
 	coarse := make([]coarseEntry, 0, manualMatchCoarseLimit)
+	var requestedTorrent *qbt.Torrent
 	for _, view := range views {
 		if view.Torrent == nil {
 			continue
 		}
 		torrent := *view.Torrent
-		isRequested := wantHash != "" && normalizeHash(torrent.Hash) == wantHash
-		if !isRequested && (torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State)) {
+		if wantHash != "" && normalizeHash(torrent.Hash) == wantHash {
+			// The requested hash claims its shortlist slot outright: the
+			// "always included" guarantee must survive a coarse pass crowded
+			// with keeps that outrank it.
+			requestedTorrent = &torrent
 			continue
 		}
-		entry := coarseEntry{torrent: torrent, keep: isRequested}
+		if torrent.Progress < 1 || s.shouldSkipErroredTorrent(torrent.State) {
+			continue
+		}
+		entry := coarseEntry{torrent: torrent}
 		if torrent.Size > 0 {
 			entry.ratio = float64(min(torrent.Size, sourceTotal)) / float64(max(torrent.Size, sourceTotal))
 		}
-		if !entry.keep && sourceTitle != "" {
+		if sourceTitle != "" {
 			if release := s.releaseCache.Parse(torrent.Name); release != nil &&
 				s.stringNormalizer.Normalize(release.Title) == sourceTitle {
 				entry.keep = true
@@ -173,6 +181,9 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	})
 
 	shortlist := make([]qbt.Torrent, 0, manualMatchCoarseLimit)
+	if requestedTorrent != nil {
+		shortlist = append(shortlist, *requestedTorrent)
+	}
 	for _, entry := range coarse {
 		if entry.keep && len(shortlist) < manualMatchCoarseLimit {
 			shortlist = append(shortlist, entry.torrent)

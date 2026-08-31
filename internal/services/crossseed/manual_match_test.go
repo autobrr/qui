@@ -6,6 +6,8 @@ package crossseed
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
+	"slices"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -122,8 +124,9 @@ func TestCrossSeedManualTargetAppliesMismatchedTitle(t *testing.T) {
 	require.Equal(t, targetHash, resp.Results[0].MatchedTorrent.Hash)
 }
 
-// A zero-overlap pick must still reach the add: the recheck is the arbiter of
-// a wrong pick, and a failed recheck leaves the torrent paused.
+// A zero-overlap pick must still reach the add, also on a link-mode instance
+// (no linkable files would fail materialization): the recheck is the arbiter
+// of a wrong pick, and a failed recheck leaves the torrent paused.
 func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 	t.Parallel()
 
@@ -132,21 +135,93 @@ func TestCrossSeedManualTargetZeroOverlapStillAdds(t *testing.T) {
 		targetHash   = "dddddddddddddddddddddddddddddddddddddddd"
 		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
 	)
-	torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
+
+	tests := []struct {
+		name         string
+		useHardlinks bool
+	}{
+		{name: "regular instance"},
+		{name: "hardlink instance skips link mode", useHardlinks: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
+
+			instance := &models.Instance{ID: instanceID, Name: "main", UseHardlinks: tt.useHardlinks}
+			target := qbt.Torrent{Hash: targetHash, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
+			svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+				targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
+			})
+
+			resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
+				TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
+				TargetInstanceIDs: []int{instanceID},
+				ManualTargetHash:  targetHash,
+			})
+			require.NoError(t, err)
+			require.True(t, resp.Success, "zero-overlap manual match rejected: %+v", resp.Results)
+			require.Len(t, resp.Results, 1)
+			require.Equal(t, "added", resp.Results[0].Status)
+		})
+	}
+}
+
+// recordingApplySyncManager records add options and bulk actions so tests can
+// observe the recheck policy of an apply.
+type recordingApplySyncManager struct {
+	*applyFakeSyncManager
+	addOptions  []map[string]string
+	bulkActions []string
+}
+
+func (r *recordingApplySyncManager) AddTorrent(ctx context.Context, instanceID int, data []byte, opts map[string]string) (*qbt.TorrentAddResponse, error) {
+	r.addOptions = append(r.addOptions, opts)
+	return r.applyFakeSyncManager.AddTorrent(ctx, instanceID, data, opts)
+}
+
+func (r *recordingApplySyncManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
+	r.bulkActions = append(r.bulkActions, action)
+	return r.applyFakeSyncManager.BulkAction(ctx, instanceID, hashes, action)
+}
+
+// A perfect-twin Manual match (identical name and files) would sail through
+// the automatic pipeline with skip_checking and no recheck. Manual matches
+// bypass the release and content gates, so they must verify regardless.
+func TestCrossSeedManualTargetValidatedFilesStillRecheck(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 1
+		targetHash   = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
 
 	instance := &models.Instance{ID: instanceID, Name: "main"}
-	target := qbt.Torrent{Hash: targetHash, Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
-	svc := manualMatchTestService(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
-		targetHash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
-	})
+	target := qbt.Torrent{Hash: targetHash, Name: incomingName, SavePath: "/downloads", Progress: 1, Size: size}
+	recorder := &recordingApplySyncManager{
+		applyFakeSyncManager: &applyFakeSyncManager{newFakeSyncManager(instance, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+			targetHash: {{Name: incomingName + "/" + fileName, Size: size}},
+		})},
+	}
+	svc := manualMatchTestService(instance, nil, nil)
+	svc.syncManager = recorder
 
+	startPaused := false
 	resp, err := svc.CrossSeed(context.Background(), &CrossSeedRequest{
 		TorrentData:       base64.StdEncoding.EncodeToString(torrentBytes),
 		TargetInstanceIDs: []int{instanceID},
 		ManualTargetHash:  targetHash,
+		StartPaused:       &startPaused,
 	})
 	require.NoError(t, err)
-	require.True(t, resp.Success, "zero-overlap manual match rejected: %+v", resp.Results)
+	require.True(t, resp.Success, "manual match rejected: %+v", resp.Results)
+	require.Len(t, recorder.addOptions, 1)
+	require.Equal(t, "true", recorder.addOptions[0]["paused"], "manual match must add paused pending verification")
+	require.Contains(t, recorder.bulkActions, "recheck", "manual match must always recheck")
 }
 
 func TestManualMatchProposals(t *testing.T) {
@@ -207,4 +282,45 @@ func TestManualMatchProposals(t *testing.T) {
 		}
 	}
 	require.True(t, found, "requested target must be included")
+}
+
+// The requested hash must survive a coarse pass crowded with same-title keeps
+// that outrank it on size ratio (e.g. every episode of a long-running show).
+func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	incomingName := "Azure.Compass.S01.1080p.WEB-DL.AAC2.0.H.264-FoV"
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, incomingName+".mkv", 4<<20)
+	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
+	require.NoError(t, err)
+	sourceTotal := meta.Info.TotalLength()
+
+	requested := qbt.Torrent{
+		Hash:     "5555555555555555555555555555555555555555",
+		Name:     "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI",
+		SavePath: "/downloads",
+		Progress: 1,
+		Size:     1, // worst possible ratio: crowded out without its reserved slot
+	}
+	torrents := make([]qbt.Torrent, 0, manualMatchCoarseLimit+11)
+	torrents = append(torrents, requested)
+	for i := range manualMatchCoarseLimit + 10 {
+		torrents = append(torrents, qbt.Torrent{
+			Hash:     fmt.Sprintf("%040x", i+1),
+			Name:     fmt.Sprintf("Azure.Compass.S01E%02d.1080p.WEB-DL.AAC2.0.H.264-KIRI", i+1),
+			SavePath: "/downloads",
+			Progress: 1,
+			Size:     sourceTotal,
+		})
+	}
+
+	svc := manualMatchTestService(instance, torrents, nil)
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, requested.Hash)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(resp.Proposals, func(p ManualMatchProposal) bool {
+		return p.Hash == requested.Hash
+	}), "requested target must be included even when title keeps fill the coarse pass")
 }
