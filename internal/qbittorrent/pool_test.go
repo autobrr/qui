@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -34,6 +36,72 @@ func setupTestPool(t *testing.T) *ClientPool {
 	pool, err := NewClientPool(instanceStore, errorStore, 60*time.Second)
 	require.NoError(t, err, "Failed to create client pool")
 	return pool
+}
+
+type blockedErrorDB struct {
+	dbinterface.Querier
+	started chan struct{}
+	release chan struct{}
+}
+
+func (db *blockedErrorDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	close(db.started)
+	select {
+	case <-db.release:
+		return db.Querier.ExecContext(ctx, query, args...)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestClientPoolResetDoesNotBlockReaders(t *testing.T) {
+	db := &blockedErrorDB{
+		Querier: testdb.NewMigratedSQLite(t, "pool-reset"),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	const instanceID = 1
+	client := &Client{instanceID: instanceID, isHealthy: true}
+	pool := &ClientPool{
+		errorStore:        models.NewInstanceErrorStore(db),
+		clients:           map[int]*Client{instanceID: client},
+		failureTracker:    map[int]*failureInfo{instanceID: {attempts: 1}},
+		decryptionTracker: map[int]*decryptionErrorInfo{instanceID: {}},
+	}
+	done := make(chan struct{})
+	go func() {
+		pool.ResetFailureTracking(instanceID)
+		close(done)
+	}()
+	defer func() {
+		close(db.release)
+		<-done
+	}()
+
+	select {
+	case <-db.started:
+	case <-time.After(time.Second):
+		t.Fatal("reset did not reach database cleanup")
+	}
+
+	readDone := make(chan struct{})
+	go func() {
+		got, err := pool.GetClientWithTimeout(context.Background(), instanceID, time.Second)
+		assert.NoError(t, err)
+		assert.Same(t, client, got)
+		pool.mu.RLock()
+		assert.Empty(t, pool.failureTracker)
+		assert.Empty(t, pool.decryptionTracker)
+		pool.mu.RUnlock()
+		close(readDone)
+	}()
+	select {
+	case <-readDone:
+	case <-time.After(time.Second):
+		t.Error("database cleanup blocked pool readers")
+	}
+	// Release the database before waiting for a reader on the failure path.
+	t.Cleanup(func() { <-readDone })
 }
 
 func TestClientPool_ResetFailureTracking(t *testing.T) {
@@ -471,4 +539,406 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 
 	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
 	require.Same(t, existing, client)
+}
+
+func TestClientPoolReconnectDuringRemoval(t *testing.T) {
+	loginStarted := make(chan struct{}, 3)
+	releaseLogin := make(chan struct{})
+	unblockLogin := sync.OnceFunc(func() { close(releaseLogin) })
+	var firstLogin sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			first := false
+			firstLogin.Do(func() { first = true })
+			loginStarted <- struct{}{}
+			if !first {
+				select {
+				case <-releaseLogin:
+				case <-r.Context().Done():
+					return
+				}
+			}
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	pool := setupTestPool(t)
+	defer pool.Close()
+	defer unblockLogin()
+	instance, err := pool.instanceStore.Create(
+		t.Context(), "reconnecting", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+	original, err := pool.GetClient(t.Context(), instance.ID)
+	require.NoError(t, err)
+	<-loginStarted
+
+	removing := make(chan struct{})
+	releaseRemoval := make(chan struct{})
+	unblockRemoval := sync.OnceFunc(func() { close(releaseRemoval) })
+	defer unblockRemoval()
+	// Hold worker cancellation so a reconnect can queue during removal.
+	pool.SetSyncManager(&SyncManager{trackerHealthCancel: map[int]context.CancelFunc{
+		instance.ID: func() {
+			close(removing)
+			<-releaseRemoval
+		},
+	}})
+	removed := make(chan struct{})
+	go func() {
+		pool.RemoveClient(instance.ID)
+		close(removed)
+	}()
+	select {
+	case <-removing:
+	case <-time.After(time.Second):
+		t.Fatal("removal did not reach worker cancellation")
+	}
+	pool.SetSyncManager(nil)
+	type result struct {
+		client *Client
+		err    error
+	}
+	results := make(chan result, 2)
+	acquire := func() {
+		client, err := pool.GetClient(t.Context(), instance.ID)
+		results <- result{client, err}
+	}
+	go acquire()
+	select {
+	case <-loginStarted:
+		t.Fatal("reconnect started before removal finished cancelling workers")
+	case <-results:
+		t.Fatal("acquisition finished while removal was still pending")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	unblockRemoval()
+	select {
+	case <-removed:
+	case <-time.After(time.Second):
+		t.Fatal("removal did not finish")
+	}
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("queued reconnect did not reach login")
+	}
+	go acquire()
+	select {
+	case <-loginStarted:
+		t.Fatal("reconnects on opposite sides of removal started duplicate logins")
+	case <-results:
+		t.Fatal("acquisition finished before login completed")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	unblockLogin()
+	for range 2 {
+		select {
+		case result := <-results:
+			require.NoError(t, result.err)
+			require.NotSame(t, original, result.client)
+			pooled, err := pool.GetClientOffline(t.Context(), instance.ID)
+			require.NoError(t, err)
+			require.Same(t, pooled, result.client)
+		case <-time.After(time.Second):
+			t.Fatal("reconnect did not finish")
+		}
+	}
+}
+
+func TestClientPoolDecryptionTrackerConcurrentAccess(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+	const workers = 8
+	const instances = 16
+
+	start := make(chan struct{})
+	logged := make(chan int, workers*instances)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			<-start
+			for instanceID := range instances {
+				if pool.shouldLogDecryptionError(instanceID + 1) {
+					logged <- instanceID + 1
+				}
+			}
+		})
+	}
+
+	wg.Go(func() {
+		<-start
+		for range 500 {
+			_ = pool.GetInstancesWithDecryptionErrors()
+		}
+	})
+	close(start)
+	wg.Wait()
+	expected := make([]int, instances)
+	for i := range expected {
+		expected[i] = i + 1
+	}
+	close(logged)
+	var firstErrors []int
+	for instanceID := range logged {
+		firstErrors = append(firstErrors, instanceID)
+	}
+	require.ElementsMatch(t, expected, firstErrors, "each instance should log its first error exactly once")
+	require.ElementsMatch(t, expected, pool.GetInstancesWithDecryptionErrors())
+	for _, instanceID := range expected {
+		require.False(t, pool.shouldLogDecryptionError(instanceID), "repeated errors should not be logged")
+	}
+
+	for _, instanceID := range expected {
+		wg.Go(func() {
+			pool.ResetFailureTracking(instanceID)
+			_ = pool.GetInstancesWithDecryptionErrors()
+		})
+	}
+	wg.Wait()
+	require.Empty(t, pool.GetInstancesWithDecryptionErrors())
+	for _, instanceID := range expected {
+		require.True(t, pool.shouldLogDecryptionError(instanceID), "reset should permit logging the next error")
+		require.False(t, pool.shouldLogDecryptionError(instanceID))
+	}
+	require.ElementsMatch(t, expected, pool.GetInstancesWithDecryptionErrors())
+}
+
+func TestClientPoolCancelledLogin(t *testing.T) {
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var firstLogin sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			first := false
+			firstLogin.Do(func() {
+				first = true
+				close(loginStarted)
+			})
+			if first {
+				select {
+				case <-releaseLogin:
+				case <-r.Context().Done():
+				}
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	defer close(releaseLogin)
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "cancelled-login", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := pool.GetClient(ctx, instance.ID)
+		resultCh <- err
+	}()
+
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach login")
+	}
+	cancel()
+	select {
+	case err := <-resultCh:
+		require.Error(t, err)
+		require.True(t, isContextStopped(err))
+	case <-time.After(time.Second):
+		t.Fatal("cancelled login did not return")
+	}
+
+	require.False(t, pool.isInBackoff(instance.ID))
+	recentErrors, err := pool.errorStore.GetRecentErrors(context.Background(), instance.ID, 10)
+	require.NoError(t, err)
+	require.Empty(t, recentErrors)
+
+	client, err := pool.GetClientWithTimeout(context.Background(), instance.ID, time.Second)
+	require.NoError(t, err, "a fresh caller should be able to connect immediately")
+	require.NotNil(t, client)
+}
+
+func TestClientPoolRejectsClientCreatedDuringClose(t *testing.T) {
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var signalLogin sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			signalLogin.Do(func() { close(loginStarted) })
+			select {
+			case <-releaseLogin:
+			case <-r.Context().Done():
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	defer close(releaseLogin)
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "closing", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, createErr := pool.GetClientWithTimeout(context.Background(), instance.ID, 30*time.Second)
+		resultCh <- result{client: client, err: createErr}
+	}()
+
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach login")
+	}
+
+	closeResult := make(chan error, 1)
+	go func() {
+		closeResult <- pool.Close()
+	}()
+
+	select {
+	case err := <-closeResult:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Close did not cancel the in-flight login")
+	}
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, ErrPoolClosed)
+		require.Nil(t, result.client)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not finish")
+	}
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	require.Empty(t, pool.clients)
+}
+
+func TestClientPoolCloseCancelsInitialSyncBeforePublication(t *testing.T) {
+	syncStarted := make(chan struct{})
+	syncStopped := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var signalSync sync.Once
+	var signalStopped sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/sync/maindata":
+			signalSync.Do(func() { close(syncStarted) })
+			select {
+			case <-r.Context().Done():
+			case <-releaseSync:
+			}
+			signalStopped.Do(func() { close(syncStopped) })
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer func() {
+		close(releaseSync)
+		srv.Close()
+	}()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "closing-sync", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, createErr := pool.GetClientWithTimeout(context.Background(), instance.ID, 30*time.Second)
+		resultCh <- result{client: client, err: createErr}
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach initial sync")
+	}
+
+	client, err := pool.GetClientOffline(t.Context(), instance.ID)
+	require.ErrorIs(t, err, ErrClientNotFound, "initial sync is still pending")
+	require.Nil(t, client)
+
+	closeResult := make(chan error, 1)
+	go func() {
+		closeResult <- pool.Close()
+	}()
+
+	select {
+	case err := <-closeResult:
+		require.NoError(t, err)
+	case <-time.After(6 * time.Second):
+		t.Fatal("Close did not cancel the in-flight initial sync")
+	}
+
+	select {
+	case <-syncStopped:
+	case <-time.After(time.Second):
+		t.Fatal("initial sync request remained active after Close returned")
+	}
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, ErrPoolClosed)
+		require.Nil(t, result.client)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not finish after Close")
+	}
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	require.Empty(t, pool.clients)
 }
