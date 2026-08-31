@@ -178,6 +178,16 @@ describe("resolveDashboardDataStatusKind", () => {
       streamConnected: true,
     })).toBe("live")
   })
+
+  it("reports cached stream data as cached instead of live", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: false,
+      cacheMetadata: { source: "cache", age: 30, isStale: true },
+      isFirstLoad: false,
+      streamConnected: true,
+    })).toBe("cached")
+  })
 })
 
 describe("mergeDashboardInstanceMeta", () => {
