@@ -70,8 +70,6 @@ export function useDynamicFavicon() {
         </svg>
       `
 
-      if (cancelled) return
-
       const svgLink = getDynamicFaviconLink("svg")
       svgLink.type = "image/svg+xml"
       svgLink.href = `data:image/svg+xml,${encodeURIComponent(svg)}`
