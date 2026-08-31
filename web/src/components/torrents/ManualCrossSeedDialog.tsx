@@ -91,6 +91,10 @@ export function ManualCrossSeedDialog({
     enabled: open && Boolean(torrentData),
     staleTime: 60_000,
     retry: false,
+    // Keep proposals visible while a picker pin refetches, but blank on a
+    // file swap so the list never shows another torrent's proposals.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2] === fileKey ? previousData : undefined,
   })
   const proposals = useMemo(
     () => proposalsQuery.data?.proposals ?? [],
