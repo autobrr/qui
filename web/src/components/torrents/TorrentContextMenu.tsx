@@ -511,7 +511,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             {onManualCrossSeed && (
               <ContextMenuItem
                 onClick={() => onManualCrossSeed(torrent)}
-                disabled={isPending}
+                disabled={isPending || torrent.progress < 1}
               >
                 <FileUp className="mr-2 h-4 w-4" />
                 {t("contextMenu.manualCrossSeed")}

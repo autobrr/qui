@@ -2446,7 +2446,7 @@ export function TorrentCardsMobile({
                   onManualCrossSeed(singleSelectedTorrent)
                   setShowActionsSheet(false)
                 }}
-                disabled={!singleSelectedTorrent}
+                disabled={!singleSelectedTorrent || singleSelectedTorrent.progress < 1}
                 className="justify-start"
               >
                 <FileUp className="mr-2 h-4 w-4" />
