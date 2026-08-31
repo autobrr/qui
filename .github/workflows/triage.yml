@@ -29,6 +29,7 @@ jobs:
        github.event.discussion.category.slug == 'feature-requests-ideas') &&
       (github.event_name == 'discussion' ||
        (github.event_name == 'discussion_comment' &&
+        github.event.discussion.state == 'open' &&
         github.event.comment.user.type != 'Bot' &&
         contains(github.event.discussion.labels.*.name, 'needs-info')))
     permissions:
