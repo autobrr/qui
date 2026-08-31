@@ -32,6 +32,8 @@ export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
   1,
   Math.round(TORRENT_STREAM_POLL_INTERVAL_MS / 1000)
 )
+/** Refresh cadence for a pagination window that extends beyond stream coverage. */
+const LOADED_WINDOW_POLL_INTERVAL_MS = 10000
 
 // While the tab is hidden the table is invisible, so streaming a full page-0
 // snapshot (up to 300 torrents) every couple of seconds is pure waste: the work is
@@ -42,18 +44,6 @@ export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
 // avoids tearing the stream down on quick tab switches; on refocus it resumes at once
 // and refetchOnWindowFocus pulls fresh data immediately.
 export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
-
-// Self-resolving qBittorrent states with continuously advancing progress. A
-// recheck or move holds a row in one of these for minutes; rows past the
-// stream window get no live updates, so the window query keeps polling while
-// any loaded row is in one of these states.
-const TRANSIENT_TORRENT_STATES = new Set([
-  "checkingDL",
-  "checkingUP",
-  "checkingResumeData",
-  "allocating",
-  "moving",
-])
 
 // Drop duplicate rows, keeping the first occurrence's position with the last
 // occurrence's data (Map insertion order is first-set, values are last-set): in
@@ -73,13 +63,19 @@ function dedupeRows<T>(rows: T[], keyOf: (row: T) => string): T[] {
 // backend regardless of offset, so the base carries it for the whole window.
 // windowPageCount marks the response as window-shaped so the processing effect knows
 // it may replace the whole list with it.
-function combineWindowPages(pages: TorrentResponse[]): TorrentResponse {
+type LoadedWindowResponse = TorrentResponse & { streamCommitAtStart?: number }
+
+function combineWindowPages(
+  pages: TorrentResponse[],
+  streamCommitAtStart: number
+): LoadedWindowResponse {
   const last = pages[pages.length - 1]
 
   if (last.isCrossInstance) {
     return {
       ...last,
       windowPageCount: pages.length,
+      streamCommitAtStart,
       crossInstanceTorrents: dedupeRows(
         pages.flatMap(page => page.crossInstanceTorrents ?? page.cross_instance_torrents ?? []),
         row => `${row.instanceId}:${row.hash}`
@@ -90,7 +86,45 @@ function combineWindowPages(pages: TorrentResponse[]): TorrentResponse {
   return {
     ...last,
     windowPageCount: pages.length,
+    streamCommitAtStart,
     torrents: dedupeRows(pages.flatMap(page => page.torrents ?? []), row => row.hash),
+  }
+}
+
+function overlayStreamedFirstPage(
+  windowResponse: LoadedWindowResponse,
+  streamSnapshot: TorrentResponse,
+  crossInstance: boolean
+): LoadedWindowResponse {
+  const windowFields = {
+    hasMore: windowResponse.hasMore,
+    windowPageCount: windowResponse.windowPageCount,
+    streamCommitAtStart: windowResponse.streamCommitAtStart,
+  }
+
+  if (crossInstance) {
+    const rows = mergeStreamedCrossInstanceFirstPage(
+      windowResponse.crossInstanceTorrents ?? windowResponse.cross_instance_torrents ?? [],
+      streamSnapshot
+    )
+    return {
+      ...windowResponse,
+      ...streamSnapshot,
+      ...windowFields,
+      crossInstanceTorrents: rows,
+      cross_instance_torrents: rows,
+    }
+  }
+
+  return {
+    ...windowResponse,
+    ...streamSnapshot,
+    ...windowFields,
+    torrents: mergeStreamedFirstPage(
+      windowResponse.torrents ?? [],
+      streamSnapshot.torrents ?? [],
+      streamSnapshot.total
+    ),
   }
 }
 
@@ -134,7 +168,6 @@ export function useTorrentsList(
   const [currentPage, setCurrentPage] = useState(0)
   const [allTorrents, setAllTorrents] = useState<Torrent[]>([])
   const [hasLoadedAll, setHasLoadedAll] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [lastRequestTime, setLastRequestTime] = useState(0)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
@@ -152,6 +185,10 @@ export function useTorrentsList(
   // snapshot synchronously without re-running this callback. Seeded by every full
   // frame (init/update/keyframe) and reset when the view identity changes.
   const lastFullSnapshotRef = useRef<TorrentResponse | null>(null)
+  // Monotonically advances whenever this listener commits an accepted stream
+  // frame. Loaded-window REST requests capture it so an older response cannot
+  // replace a newer streamed page zero when the request finishes.
+  const streamCommitRef = useRef(0)
   // The last REST/query-cache data object already applied to the list. The
   // processing effect re-runs when its own state writes (lastProcessedPage) change;
   // re-applying the same data would re-assert hasLoadedAll from hasMore and override
@@ -396,6 +433,7 @@ export function useTorrentsList(
       // REST owns the list until this listener has a usable stream baseline. Once
       // a frame arrives, abort any in-flight fallback before committing the frame
       // so a slower REST response cannot overwrite the newer stream snapshot.
+      streamCommitRef.current += 1
       void queryClient.cancelQueries({ queryKey: streamQueryKey, exact: true })
 
       // Publish through the query cache FIRST and adopt its structurally-shared
@@ -483,14 +521,9 @@ export function useTorrentsList(
     !streamState.dataStalled &&
     !streamState.error &&
     hasBaselineForCurrentView
-  const preferCachedQuery = currentPage === 0 && shouldDisablePolling
-  // Polls the scrolled-in window while a recheck/move is in progress anywhere
-  // in it; stops on its own once every row settles. Not gated on the stream:
-  // the stream only covers the first page.
-  const hasTransientRows = useMemo(
-    () => allTorrents.some(t => TRANSIENT_TORRENT_STATES.has(t.state)),
-    [allTorrents]
-  )
+  // The server-side sync loop owns freshness while this listener has a usable
+  // stream baseline, including for later pages outside the streamed window.
+  const preferCachedQuery = shouldDisablePolling
   // Keep the REST query (initial fetch + fallback polling) enabled until the
   // stream is actually connected, not just until it errors. While the stream is
   // still connecting (e.g. behind a buffering reverse proxy that delays the init
@@ -502,6 +535,7 @@ export function useTorrentsList(
   // Use JSON.stringify to avoid resetting on every object reference change during polling
   useEffect(() => {
     setCurrentPage(0)
+    setLastRequestTime(0)
     setAllTorrents([])
     setHasLoadedAll(false)
     setLastKnownTotal(0)
@@ -526,9 +560,10 @@ export function useTorrentsList(
   }, [allTorrents.length, lastKnownTotal])
 
   // Query for torrents - backend handles stale-while-revalidate
-  const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
+  const { data, isLoading, isFetching, isPlaceholderData, isError, refetch } = useQuery<LoadedWindowResponse>({
     queryKey: listQueryKey,
     queryFn: async ({ signal }) => {
+      const streamCommitAtStart = streamCommitRef.current
       const fetchPage = (page: number): Promise<TorrentResponse> => {
         if (useCrossInstanceEndpoint) {
           return api.getCrossInstanceTorrents({
@@ -563,40 +598,60 @@ export function useTorrentsList(
       // full reload. Each page is served from the backend's in-memory sync cache, so
       // the window costs no qBittorrent calls.
       if (currentPage === 0 || queryClient.getQueryData(listQueryKey) === undefined) {
-        return fetchPage(currentPage)
+        const page = await fetchPage(currentPage)
+        return { ...page, streamCommitAtStart }
       }
 
       const pages = await Promise.all(
         Array.from({ length: currentPage + 1 }, (_, page) => fetchPage(page))
       )
-      return combineWindowPages(pages)
+      const combined = combineWindowPages(pages, streamCommitAtStart)
+      if (
+        streamCommitAtStart === streamCommitRef.current ||
+        lastStreamSnapshotScopeRef.current !== viewScopeKey ||
+        !lastFullSnapshotRef.current
+      ) {
+        return combined
+      }
+
+      return overlayStreamedFirstPage(
+        combined,
+        lastFullSnapshotRef.current,
+        Boolean(useCrossInstanceEndpoint)
+      )
     },
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
-    // Only poll the first page to get fresh data - don't poll pagination pages
-    // Reduce polling frequency for cross-instance calls since they're more expensive.
-    // When the SSE stream is connected we disable polling entirely on the first page.
+    // SSE owns only page zero. Refresh a loaded window on a slower cadence so
+    // external starts, completions, and deletions converge without multiplying
+    // the normal three-second fallback cost by every loaded page.
     refetchInterval:
-      currentPage === 0? (
-        pollingEnabled && !shouldDisablePolling? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
-      ): (
-        pollingEnabled && hasTransientRows? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
-      ),
+      pollingEnabled && (currentPage > 0 || !shouldDisablePolling)
+        ? (currentPage > 0 || useCrossInstanceEndpoint
+          ? LOADED_WINDOW_POLL_INTERVAL_MS
+          : TORRENT_STREAM_POLL_INTERVAL_MS)
+        : false,
     refetchIntervalInBackground, // Controls background polling behavior
-    refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
+    refetchOnWindowFocus: pollingEnabled,
     enabled: queryEnabled,
   })
+
+  const isFetchingNewPage = currentPage !== lastProcessedPage && isFetching
+  const isLoadingMore = currentPage > 0 && isFetchingNewPage
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: enabled && !isAllInstancesView })
 
   const activeData = useMemo(() => {
     const scopedStreamSnapshot =
       lastStreamSnapshotScopeRef.current === viewScopeKey ? lastStreamSnapshot : null
+    const dataPredatesStream =
+      data?.streamCommitAtStart !== undefined &&
+      data.streamCommitAtStart < streamCommitRef.current
 
-    if (shouldDisablePolling && scopedStreamSnapshot) {
+    if (scopedStreamSnapshot && (shouldDisablePolling || dataPredatesStream)) {
       return scopedStreamSnapshot
     }
 
@@ -625,21 +680,27 @@ export function useTorrentsList(
     }
     lastAppliedDataRef.current = data
 
-    updateAppInfoCache(data)
-    updateMetadataCache(data)
-    rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
+    const newerStreamSnapshotExists =
+      data.streamCommitAtStart !== undefined &&
+      data.streamCommitAtStart < streamCommitRef.current &&
+      lastStreamSnapshotScopeRef.current === viewScopeKey
 
-    if (data.total !== undefined) {
-      setLastKnownTotal(data.total)
+    if (!newerStreamSnapshotExists) {
+      updateAppInfoCache(data)
+      updateMetadataCache(data)
+      rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
+
+      if (data.total !== undefined) {
+        setLastKnownTotal(data.total)
+      }
     }
 
     // When the first page reports zero results, immediately clear the list so
     // downstream UIs don't render stale rows from the previous query.
-    if (currentPage === 0 && data.total === 0) {
+    if (currentPage === 0 && !newerStreamSnapshotExists && data.total === 0) {
       setAllTorrents([])
       setHasLoadedAll(true)
       setLastProcessedPage(currentPage)
-      setIsLoadingMore(false)
       return
     }
 
@@ -647,22 +708,35 @@ export function useTorrentsList(
     const torrentsData = data.isCrossInstance? (data.crossInstanceTorrents || data.cross_instance_torrents): data.torrents
 
     if (!torrentsData) {
-      setIsLoadingMore(false)
       return
     }
 
     if (currentPage === 0) {
+      if (newerStreamSnapshotExists) {
+        return
+      }
       // First page: replace all (covers polling updates and optimistic cache writes).
       setAllTorrents(torrentsData)
       setHasLoadedAll(!data.hasMore)
       setLastProcessedPage(currentPage)
     } else if (currentPage !== lastProcessedPage) {
       // Ordinary pagination step: queryFn fetched only the new page; append it.
-      setAllTorrents(prev => dedupeRows(
-        [...prev, ...torrentsData],
-        data.isCrossInstance? row => `${(row as CrossInstanceTorrent).instanceId}:${row.hash}`: row => row.hash
-      ))
-      if (!data.hasMore) {
+      const streamSnapshot = newerStreamSnapshotExists ? lastFullSnapshotRef.current : null
+      setAllTorrents(prev => {
+        const rows = dedupeRows(
+          [...prev, ...torrentsData],
+          data.isCrossInstance? row => `${(row as CrossInstanceTorrent).instanceId}:${row.hash}`: row => row.hash
+        )
+        if (!streamSnapshot) {
+          return rows
+        }
+        // A row can move into page zero while pagination is in flight. The
+        // accepted stream owns those rows even when the older page repeats them.
+        return data.isCrossInstance
+          ? mergeStreamedCrossInstanceFirstPage(rows, streamSnapshot)
+          : mergeStreamedFirstPage(rows, streamSnapshot.torrents ?? [], streamSnapshot.total)
+      })
+      if (!newerStreamSnapshotExists && !data.hasMore) {
         setHasLoadedAll(true)
       }
       setLastProcessedPage(currentPage)
@@ -671,34 +745,31 @@ export function useTorrentsList(
       // see queryFn): replace the list wholesale. This is what lets a post-mutation
       // refetch update rows on every loaded page instead of only page 0.
       setAllTorrents(torrentsData)
-      setHasLoadedAll(!data.hasMore)
+      if (!newerStreamSnapshotExists) {
+        setHasLoadedAll(!data.hasMore)
+      }
     }
 
-    setIsLoadingMore(false)
   }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, rememberCountsSnapshot, updateAppInfoCache, updateMetadataCache, viewScopeKey])
 
-  // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
     const now = Date.now()
 
-    // TanStack Query pattern: check hasNextPage && !isFetching before calling fetchNextPage
-    // Our equivalent: check !hasLoadedAll && !(isLoadingMore || isFetching)
-    if (hasLoadedAll) {
+    if (hasLoadedAll || isFetchingNewPage) {
       return
     }
 
-    if (isLoadingMore || isFetching) {
-      return
-    }
-
-    // Enhanced throttling: 500ms for rapid scroll scenarios (up from 300ms)
-    // This helps prevent race conditions during very fast scrolling
+    // Throttle repeated scroll callbacks.
     if (now - lastRequestTime < 500) {
       return
     }
 
     setLastRequestTime(now)
-    setIsLoadingMore(true)
+    if (isError && currentPage !== lastProcessedPage) {
+      // Retry the pending page instead of skipping rows after a failed request.
+      void refetch()
+      return
+    }
     setCurrentPage(prev => prev + 1)
   }
 
@@ -754,9 +825,10 @@ export function useTorrentsList(
   const effectiveIsFetching =
     currentPage === 0 ? (queryEnabled && isFetching) : isFetching
 
-  // Use lastKnownTotal when loading more pages to prevent flickering
+  // Later pages do not own list-wide totals. The processing effect updates this
+  // snapshot only from a response that has not been superseded by the stream.
   const effectiveTotalCount =
-    currentPage > 0 && typeof activeData?.total !== "number"? lastKnownTotal: activeData?.total ?? lastKnownTotal
+    currentPage > 0 ? lastKnownTotal : activeData?.total ?? lastKnownTotal
 
   const responseUseSubcategories = activeData?.useSubcategories ?? activeData?.serverState?.use_subcategories ?? data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false
   const supportsSubcategories = isAllInstancesView ? responseUseSubcategories : (capabilities?.supportsSubcategories ?? false)
