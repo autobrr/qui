@@ -276,7 +276,7 @@ func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 
 	require.Error(t, err)
 	require.Nil(t, client)
@@ -308,7 +308,7 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
@@ -340,7 +340,7 @@ func TestNewClientWithTimeoutTransportIndependentOfLoginBudget(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, 3*time.Second, 60*time.Second)
+	client, err := NewClientWithTimeout(context.Background(), 1, srv.URL, "user", "pass", "", nil, nil, true, 3*time.Second, 60*time.Second)
 
 	require.NoError(t, err)
 	require.Equal(t, 60*time.Second, client.GetHTTPClient().Timeout, "transport timeout must come from the pool, not the creation budget")

@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
@@ -152,6 +154,72 @@ func setupTestPool(t *testing.T) *ClientPool {
 		}
 	}
 */
+type blockedErrorDB struct {
+	dbinterface.Querier
+	started chan struct{}
+	release chan struct{}
+}
+
+func (db *blockedErrorDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	close(db.started)
+	select {
+	case <-db.release:
+		return db.Querier.ExecContext(ctx, query, args...)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestClientPoolResetDoesNotBlockReaders(t *testing.T) {
+	db := &blockedErrorDB{
+		Querier: testdb.NewMigratedSQLite(t, "pool-reset"),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	const instanceID = 1
+	client := &Client{instanceID: instanceID, isHealthy: true}
+	pool := &ClientPool{
+		errorStore:        models.NewInstanceErrorStore(db),
+		clients:           map[int]*Client{instanceID: client},
+		failureTracker:    map[int]*failureInfo{instanceID: {attempts: 1}},
+		decryptionTracker: map[int]*decryptionErrorInfo{instanceID: {}},
+	}
+	done := make(chan struct{})
+	go func() {
+		pool.ResetFailureTracking(instanceID)
+		close(done)
+	}()
+	defer func() {
+		close(db.release)
+		<-done
+	}()
+
+	select {
+	case <-db.started:
+	case <-time.After(time.Second):
+		t.Fatal("reset did not reach database cleanup")
+	}
+
+	readDone := make(chan struct{})
+	go func() {
+		got, err := pool.GetClientWithTimeout(context.Background(), instanceID, time.Second)
+		assert.NoError(t, err)
+		assert.Same(t, client, got)
+		pool.mu.RLock()
+		assert.Empty(t, pool.failureTracker)
+		assert.Empty(t, pool.decryptionTracker)
+		pool.mu.RUnlock()
+		close(readDone)
+	}()
+	select {
+	case <-readDone:
+	case <-time.After(time.Second):
+		t.Error("database cleanup blocked pool readers")
+	}
+	// Release the database before waiting for a reader on the failure path.
+	t.Cleanup(func() { <-readDone })
+}
+
 func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -587,4 +655,227 @@ func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T
 
 	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
 	require.Same(t, existing, client)
+}
+
+func TestClientPoolRemoveRetainsInstanceLock(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	original := pool.getInstanceLock(instanceID)
+
+	pool.RemoveClient(instanceID)
+	current := pool.getInstanceLock(instanceID)
+	require.Same(t, original, current)
+
+	original.Lock()
+	entered := make(chan struct{})
+	go func() {
+		current.Lock()
+		close(entered)
+		current.Unlock()
+	}()
+
+	select {
+	case <-entered:
+		original.Unlock()
+		t.Fatal("operations for one instance entered through different locks")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	original.Unlock()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("operation did not proceed after the instance lock was released")
+	}
+}
+
+func TestClientPoolDecryptionTrackerConcurrentAccess(t *testing.T) {
+	pool := &ClientPool{decryptionTracker: make(map[int]*decryptionErrorInfo)}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for worker := range 8 {
+		wg.Go(func() {
+			<-start
+			for iteration := range 500 {
+				pool.shouldLogDecryptionError(worker*500 + iteration)
+			}
+		})
+	}
+
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 500 {
+			_ = pool.GetInstancesWithDecryptionErrors()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		for range 500 {
+			pool.mu.Lock()
+			pool.decryptionTracker = make(map[int]*decryptionErrorInfo)
+			pool.mu.Unlock()
+		}
+	}()
+
+	close(start)
+	wg.Wait()
+}
+
+func TestClientPoolRejectsClientCreatedDuringClose(t *testing.T) {
+	loginStarted := make(chan struct{})
+	releaseLogin := make(chan struct{})
+	var signalLogin sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			signalLogin.Do(func() { close(loginStarted) })
+			select {
+			case <-releaseLogin:
+			case <-r.Context().Done():
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	defer close(releaseLogin)
+
+	pool := setupTestPool(t)
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "closing", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, createErr := pool.createClientWithTimeout(context.Background(), instance.ID, 30*time.Second)
+		resultCh <- result{client: client, err: createErr}
+	}()
+
+	select {
+	case <-loginStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach login")
+	}
+
+	closeResult := make(chan error, 1)
+	go func() {
+		closeResult <- pool.Close()
+	}()
+
+	select {
+	case err := <-closeResult:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("Close did not cancel the in-flight login")
+	}
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, ErrPoolClosed)
+		require.Nil(t, result.client)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not finish")
+	}
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	require.Empty(t, pool.clients)
+}
+
+func TestClientPoolCloseCancelsInitialSyncBeforePublication(t *testing.T) {
+	syncStarted := make(chan struct{})
+	syncStopped := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var signalSync sync.Once
+	var signalStopped sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "test", Path: "/"})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/sync/maindata":
+			signalSync.Do(func() { close(syncStarted) })
+			select {
+			case <-r.Context().Done():
+			case <-releaseSync:
+			}
+			signalStopped.Do(func() { close(syncStopped) })
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer func() {
+		close(releaseSync)
+		srv.Close()
+	}()
+
+	pool := setupTestPool(t)
+	instance, err := pool.instanceStore.Create(
+		context.Background(), "closing-sync", srv.URL, "user", "password", nil, nil, false, nil,
+	)
+	require.NoError(t, err)
+
+	type result struct {
+		client *Client
+		err    error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		client, createErr := pool.createClientWithTimeout(context.Background(), instance.ID, 30*time.Second)
+		resultCh <- result{client: client, err: createErr}
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not reach initial sync")
+	}
+
+	closeResult := make(chan error, 1)
+	go func() {
+		closeResult <- pool.Close()
+	}()
+
+	select {
+	case err := <-closeResult:
+		require.NoError(t, err)
+	case <-time.After(6 * time.Second):
+		t.Fatal("Close did not cancel the in-flight initial sync")
+	}
+
+	select {
+	case <-syncStopped:
+	case <-time.After(time.Second):
+		t.Fatal("initial sync request remained active after Close returned")
+	}
+
+	select {
+	case result := <-resultCh:
+		require.ErrorIs(t, result.err, ErrPoolClosed)
+		require.Nil(t, result.client)
+	case <-time.After(time.Second):
+		t.Fatal("client creation did not finish after Close")
+	}
+
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+	require.Empty(t, pool.clients)
 }

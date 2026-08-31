@@ -135,7 +135,7 @@ type Client struct {
 // timeout for every request the client ever makes. Keeping them separate stops
 // a short creation budget (e.g. the 3s login warm) from being baked into the
 // transport for the life of the client.
-func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, loginTimeout, transportTimeout time.Duration) (*Client, error) {
+func NewClientWithTimeout(ctx context.Context, instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, loginTimeout, transportTimeout time.Duration) (*Client, error) {
 	// Strip credentials embedded in the host URL (user:pass@host) so they never
 	// reach go-qbt request URLs, whose error strings get logged verbatim all
 	// over qui. They move to basic auth, which is what URL userinfo means.
@@ -162,10 +162,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 
 	qbtClient := qbt.NewClient(cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), loginTimeout)
+	loginCtx, cancel := context.WithTimeout(ctx, loginTimeout)
 	defer cancel()
 
-	if err := qbtClient.LoginCtx(ctx); err != nil {
+	if err := qbtClient.LoginCtx(loginCtx); err != nil {
 		return nil, fmt.Errorf("failed to connect to qBittorrent instance: %w", err)
 	}
 
@@ -182,7 +182,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		addedState:        make(map[string]struct{}),
 	}
 
-	if err := client.RefreshCapabilities(ctx); err != nil {
+	if err := client.RefreshCapabilities(loginCtx); err != nil {
 		if errors.Is(err, errInvalidWebAPIVersion) {
 			client.updateHealthStatus(false)
 			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
