@@ -132,9 +132,10 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
 
+	sourceRelease := s.releaseCache.Parse(meta.Name)
 	sourceTitle := ""
-	if release := s.releaseCache.Parse(meta.Name); release != nil {
-		sourceTitle = s.stringNormalizer.Normalize(release.Title)
+	if sourceRelease != nil {
+		sourceTitle = s.stringNormalizer.Normalize(sourceRelease.Title)
 	}
 	wantHash := normalizeHash(requestedHash)
 
@@ -218,19 +219,32 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		return path
 	}
 
+	linkMode := instance != nil && (instance.UseReflinks || instance.UseHardlinks)
 	proposals := make([]ManualMatchProposal, 0, manualMatchProposalLimit+1)
 	for _, torrent := range shortlist {
-		overlap := overlapBytesBySize(sourceSizes, filesByHash[normalizeHash(torrent.Hash)])
-		isRequested := wantHash != "" && normalizeHash(torrent.Hash) == wantHash
+		hashKey := normalizeHash(torrent.Hash)
+		candidateFiles := filesByHash[hashKey]
+		overlap := overlapBytesBySize(sourceSizes, candidateFiles)
+		isRequested := wantHash != "" && hashKey == wantHash
 		if overlap == 0 && !isRequested {
 			continue
+		}
+		// The apply skips link modes for a pick whose files do not validate,
+		// landing it at the target's save path; only a validated pick reaches
+		// the link-mode destination. Mirror the apply's validation call so the
+		// read-only save path shows what the add will actually do.
+		// ponytail: plain parsed releases approximate the apply's release view.
+		effectiveSavePath := torrent.SavePath
+		if linkMode && overlap > 0 &&
+			s.getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
+			effectiveSavePath = effectiveFor(torrent)
 		}
 		proposals = append(proposals, ManualMatchProposal{
 			Hash:              torrent.Hash,
 			Name:              torrent.Name,
 			Size:              torrent.Size,
 			Category:          torrent.Category,
-			EffectiveSavePath: effectiveFor(torrent),
+			EffectiveSavePath: effectiveSavePath,
 			OverlapBytes:      overlap,
 			OverlapFraction:   float64(overlap) / float64(sourceTotal),
 		})

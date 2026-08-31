@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -283,6 +284,43 @@ func TestManualMatchProposals(t *testing.T) {
 		}
 	}
 	require.True(t, found, "requested target must be included")
+}
+
+// On a link-mode instance the effective save path must track validation: a
+// validated pick lands at the link destination, but a zero-overlap pick takes
+// the regular add at the target's save path (the apply skips link modes for it).
+func TestManualMatchProposalsEffectiveSavePathTracksValidation(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	instance := &models.Instance{ID: instanceID, Name: "main", UseHardlinks: true, HardlinkBaseDir: "/links"}
+
+	const (
+		incomingName = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Azure.Compass.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+
+	validated := qbt.Torrent{Hash: "6666666666666666666666666666666666666666", Name: incomingName, SavePath: "/downloads", Progress: 1, Size: size}
+	zeroOverlap := qbt.Torrent{Hash: "7777777777777777777777777777777777777777", Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI", SavePath: "/downloads", Progress: 1, Size: 9 << 20}
+	svc := manualMatchTestService(instance, []qbt.Torrent{validated, zeroOverlap}, map[string]qbt.TorrentFiles{
+		validated.Hash:   {{Name: incomingName + "/" + fileName, Size: size}},
+		zeroOverlap.Hash: {{Name: "Sakura.Grove.S02.2160p.WEB-DL.x265-KIRI/episode.mkv", Size: 9 << 20}},
+	})
+
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, zeroOverlap.Hash)
+	require.NoError(t, err)
+	byHash := make(map[string]ManualMatchProposal, len(resp.Proposals))
+	for _, p := range resp.Proposals {
+		byHash[p.Hash] = p
+	}
+	require.Contains(t, byHash, validated.Hash)
+	require.Contains(t, byHash, zeroOverlap.Hash)
+	require.True(t, strings.HasPrefix(byHash[validated.Hash].EffectiveSavePath, "/links"),
+		"validated pick previews the link destination, got %q", byHash[validated.Hash].EffectiveSavePath)
+	require.Equal(t, "/downloads", byHash[zeroOverlap.Hash].EffectiveSavePath,
+		"zero-overlap pick previews the target save path (regular add)")
 }
 
 // The requested hash must survive a coarse pass crowded with same-title keeps

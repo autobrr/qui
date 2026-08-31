@@ -131,6 +131,8 @@ export function ManualCrossSeedDialog({
       const firstResult = response.results[0]
       if (response.success) {
         toast.success(t("manualCrossSeed.applySuccess"))
+        // Same post-add delay as AddTorrentDialog: give qBittorrent a beat to
+        // register the torrent before the list refetch.
         setTimeout(() => {
           void queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
         }, 500)

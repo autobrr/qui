@@ -1485,7 +1485,6 @@ class ApiClient {
       source_name: string
       source_size: number
       source_file_count: number
-      tracker_domain?: string
       default_tags?: string[]
       proposals?: RawProposal[]
     }
