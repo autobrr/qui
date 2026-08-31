@@ -181,7 +181,9 @@ export function ManualCrossSeedDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
+      {/* Top-pinned with dvh so the footer stays reachable when the iOS
+          keyboard opens (same mitigation as AddTorrentDialog). */}
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] flex flex-col !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
         <DialogHeader>
           <DialogTitle>{t("manualCrossSeed.title")}</DialogTitle>
           <DialogDescription>{t("manualCrossSeed.description")}</DialogDescription>
@@ -239,7 +241,7 @@ export function ManualCrossSeedDialog({
                 <p className="text-sm text-muted-foreground">{t("manualCrossSeed.noProposals")}</p>
               )}
               {proposals.length > 0 && (
-                <div className="space-y-1 max-h-48 overflow-y-auto rounded-md border p-1">
+                <div className="space-y-1 rounded-md border p-1 sm:max-h-48 sm:overflow-y-auto">
                   {proposals.map(proposal => {
                     const isSelected = proposal.hash.toLowerCase() === effectiveSelectedHash?.toLowerCase()
                     return (
@@ -268,12 +270,14 @@ export function ManualCrossSeedDialog({
               ) : (
                 <div className="space-y-1">
                   <Input
+                    type="search"
+                    enterKeyHint="search"
                     value={pickerSearch}
                     onChange={event => setPickerSearch(event.target.value)}
                     placeholder={t("manualCrossSeed.pickerPlaceholder")}
                   />
                   {pickerQuery.data && (
-                    <div className="max-h-40 overflow-y-auto rounded-md border p-1">
+                    <div className="rounded-md border p-1 sm:max-h-40 sm:overflow-y-auto">
                       {completePickerTorrents.length === 0 && (
                         <p className="px-2 py-1.5 text-sm text-muted-foreground">{t("manualCrossSeed.pickerNoResults")}</p>
                       )}
@@ -335,17 +339,18 @@ export function ManualCrossSeedDialog({
                     return (
                       <Badge
                         key={tag}
+                        asChild
                         variant={isActive ? "default" : "outline"}
-                        className="cursor-pointer select-none"
-                        onClick={() => toggleTag(tag)}
+                        className="cursor-pointer select-none min-h-[44px] px-3 text-sm sm:min-h-0 sm:px-2 sm:text-xs"
                       >
-                        {tag}
+                        <button type="button" onClick={() => toggleTag(tag)}>{tag}</button>
                       </Badge>
                     )
                   })}
                 </div>
                 <Input
                   id="manual-cross-seed-new-tag"
+                  enterKeyHint="done"
                   value={newTag}
                   onChange={event => setNewTag(event.target.value)}
                   onKeyDown={event => {
