@@ -70,6 +70,7 @@ import {
   EyeOff,
   FastForward,
   FileEdit,
+  FileUp,
   Filter,
   Folder,
   FolderOpen,
@@ -452,6 +453,7 @@ interface TorrentCardsMobileProps {
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
+  onManualCrossSeed?: (torrent: Torrent) => void
 }
 
 function formatEta(seconds: number): string {
@@ -1069,6 +1071,7 @@ export function TorrentCardsMobile({
   canCrossSeedSearch,
   onCrossSeedSearch,
   isCrossSeedSearching,
+  onManualCrossSeed,
 }: TorrentCardsMobileProps) {
   const { t } = useTranslation("torrents")
   const isAllInstancesView = isAllInstancesScope(instanceId)
@@ -2431,6 +2434,23 @@ export function TorrentCardsMobile({
               >
                 <Search className="mr-2 h-4 w-4" />
                 {t("contextMenu.searchCrossSeeds")}
+              </Button>
+            )}
+            {onManualCrossSeed && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!singleSelectedTorrent) {
+                    return
+                  }
+                  onManualCrossSeed(singleSelectedTorrent)
+                  setShowActionsSheet(false)
+                }}
+                disabled={!singleSelectedTorrent}
+                className="justify-start"
+              >
+                <FileUp className="mr-2 h-4 w-4" />
+                {t("contextMenu.manualCrossSeed")}
               </Button>
             )}
             <Button

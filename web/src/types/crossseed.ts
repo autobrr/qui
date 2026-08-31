@@ -144,6 +144,29 @@ export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
 }
 
+export interface ManualCrossSeedProposal {
+  hash: string
+  name: string
+  size: number
+  category: string
+  effectiveSavePath: string
+  overlapBytes: number
+  overlapFraction: number
+}
+
+export interface ManualCrossSeedProposalsResponse {
+  sourceName: string
+  sourceSize: number
+  sourceFileCount: number
+  defaultTags: string[]
+  proposals: ManualCrossSeedProposal[]
+}
+
+export interface ManualCrossSeedApplyResponse {
+  success: boolean
+  results: CrossSeedInstanceResult[]
+}
+
 export interface CrossSeedBlocklistEntry {
   instanceId: number
   infoHash: string

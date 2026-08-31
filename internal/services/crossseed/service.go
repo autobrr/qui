@@ -4593,6 +4593,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 		return nil, errors.New("torrent_name is required")
 	}
 
+	if req.ManualTargetHash != "" {
+		return s.findManualTargetCandidate(ctx, req)
+	}
+
 	// Parse the title string to understand what we're looking for. Apply may
 	// supply a file-derived view whose selected-file tags are part of the same
 	// identity evidence and must travel with it.
@@ -4999,7 +5003,15 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		TargetRelease:          sourceView,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
+		ManualTargetHash:       req.ManualTargetHash,
 		SearchDecision:         req.SearchDecision.clone(),
+	}
+	if req.ManualTargetHash != "" {
+		log.Info().
+			Str("torrentName", meta.Name).
+			Str("torrentHash", torrentHash).
+			Str("manualTargetHash", req.ManualTargetHash).
+			Msg("[CROSSSEED] Manual match: applying against user-chosen target")
 	}
 	// Pass through source filters for RSS automation
 	if len(req.SourceFilterCategories) > 0 {
@@ -5557,7 +5569,10 @@ func (s *Service) processCrossSeedCandidate(
 	matchedTorrent := &addPlan.torrent
 	candidateFiles := addPlan.files
 	matchType := addPlan.matchType
-	verifyBeforeSeed := candidateRequiresVerification(candidate, matchedTorrent.Hash, req)
+	// A Manual match with no validated file correspondence always verifies
+	// before seeding: the recheck is the arbiter of a wrong pick.
+	manualUnvalidated := matchType == manualMatchType
+	verifyBeforeSeed := candidateRequiresVerification(candidate, matchedTorrent.Hash, req) || manualUnvalidated
 	if verifyBeforeSeed && req.SkipRecheck {
 		result.Status = "skipped_recheck"
 		result.Message = skippedRecheckMessage
@@ -5602,8 +5617,9 @@ func (s *Service) processCrossSeedCandidate(
 			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and only resumed after full recheck")
 	}
 
-	// Check if we need rename alignment (folder/file names differ)
-	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
+	// Check if we need rename alignment (folder/file names differ). An
+	// unvalidated Manual match has no file mapping to align to.
+	requiresAlignment := !manualUnvalidated && needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
 
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
@@ -5642,7 +5658,9 @@ func (s *Service) processCrossSeedCandidate(
 		// This prevents corrupting existing good data with potentially different or corrupted files.
 		// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
 		// it indicates either corruption or a different release that shouldn't be cross-seeded.
-		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
+		// An unvalidated Manual match skips this heuristic by design (the UI already
+		// warned about the overlap); the piece-boundary check below still applies.
+		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch && !manualUnvalidated {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
 			log.WithLevel(s.sizeMismatchLogLevel(torrentHash, matchedTorrent.Hash)).
@@ -5966,7 +5984,7 @@ func (s *Service) processCrossSeedCandidate(
 	//
 	// Hardlink/reflink modes are safe because they use contentLayout=Original and preserve
 	// the incoming torrent's layout exactly via hardlink/reflink tree creation.
-	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles {
+	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles && !manualUnvalidated {
 		result.Status = "requires_hardlink_reflink"
 		result.Message = "Skipped: cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
 		log.Warn().
@@ -6238,10 +6256,14 @@ func (s *Service) processCrossSeedCandidate(
 		result.Message += " - link-mode filesystem fallback, full recheck required"
 	}
 
-	// Attempt to align the new torrent's naming and file layout with the matched torrent
-	alignmentSucceeded, activeHash := s.alignCrossSeedContentPaths(
-		ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan,
-	)
+	// Attempt to align the new torrent's naming and file layout with the matched
+	// torrent. An unvalidated Manual match has no mapping to align.
+	alignmentSucceeded, activeHash := true, torrentHash
+	if !manualUnvalidated {
+		alignmentSucceeded, activeHash = s.alignCrossSeedContentPaths(
+			ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan,
+		)
+	}
 	if activeHash == "" {
 		activeHash = torrentHash
 	}
@@ -7296,6 +7318,10 @@ func matchTypePriority(matchType string) int {
 		return 2
 	case "size-partial-contains":
 		return 1
+	case manualMatchType:
+		// A pinned Manual match target with no validated file correspondence.
+		// It is the only candidate in its request, so the rank is nominal.
+		return 1
 	default:
 		// Unknown/unsupported match types (e.g. "release-match")
 		// intentionally receive priority 0 so callers treat them as unusable unless
@@ -7382,10 +7408,14 @@ func (s *Service) selectBestCandidateAddPlan(
 			candidateRelease = s.searchSourceReleaseViewFromFiles(ctx, &torrent, candidateRelease, files).release
 		}
 
+		manualTarget := req != nil && req.ManualTargetHash != "" &&
+			hashKey == normalizeHash(req.ManualTargetHash)
+
 		// Reject forbidden pairing: season pack (new) vs single episode (existing).
 		// Force-on safety guard: always check regardless of user setting since reaching this
 		// code path means we're actually applying a cross-seed (not just searching).
-		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject {
+		// A Manual match target is the user's explicit pick; the recheck arbitrates.
+		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject && !manualTarget {
 			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {
 				bestRejectReason = reason
 			}
@@ -7402,7 +7432,7 @@ func (s *Service) selectBestCandidateAddPlan(
 			// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 			// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
 			matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
-			if matchResult.MatchType == "" {
+			if matchResult.MatchType == "" && !manualTarget {
 				// Track the rejection reason - prefer more specific reasons
 				if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
 					bestRejectReason = matchResult.Reason
@@ -7413,6 +7443,10 @@ func (s *Service) selectBestCandidateAddPlan(
 			// Since we swapped parameters above, swap partial match types to keep caller semantics.
 			actualMatchType = matchResult.MatchType
 			switch actualMatchType {
+			case "":
+				// Pinned Manual match target whose files did not validate: proceed
+				// anyway, verify before seeding, and let the recheck arbitrate.
+				actualMatchType = manualMatchType
 			case "partial-in-pack":
 				actualMatchType = "partial-contains"
 			case "partial-contains":
@@ -7432,6 +7466,13 @@ func (s *Service) selectBestCandidateAddPlan(
 		}
 
 		plan := buildCrossSeedAddPlan(torrent, files, actualMatchType, sourceRelease, candidateRelease, sourceFiles)
+		if actualMatchType == manualMatchType {
+			// No validated file correspondence: keep the incoming torrent's own
+			// layout at the target's location instead of mapping into the
+			// candidate's structure.
+			plan.contentLayout = "Original"
+			plan.savePathOverride = ""
+		}
 		if plan.betterThan(bestPlan, hasBestPlan) {
 			bestPlan = plan
 			hasBestPlan = true
