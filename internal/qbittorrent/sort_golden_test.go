@@ -157,7 +157,7 @@ func newSortTestClient(t *testing.T, instanceID int, trackers func(i int) []qbt.
 	}))
 	t.Cleanup(srv.Close)
 
-	client, err := NewClientWithTimeout(instanceID, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
+	client, err := NewClientWithTimeout(t.Context(), instanceID, srv.URL, "", "", "", nil, nil, false, time.Second, time.Second)
 	require.NoError(t, err)
 	t.Cleanup(client.optimisticUpdates.Close)
 	require.NoError(t, client.GetSyncManager().Sync(t.Context()))
