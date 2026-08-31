@@ -22,8 +22,6 @@ export function useDynamicFavicon() {
       canvas.height = size
       const ctx = canvas.getContext("2d")
 
-      if (!ctx) return
-
       // Get the dark mode primary color from the current theme
       const currentTheme = getThemeById(theme)
       if (!currentTheme) return
@@ -72,6 +70,15 @@ export function useDynamicFavicon() {
         </svg>
       `
 
+      if (cancelled) return
+
+      const svgLink = getDynamicFaviconLink("svg")
+      svgLink.type = "image/svg+xml"
+      svgLink.href = `data:image/svg+xml,${encodeURIComponent(svg)}`
+      document.head.appendChild(svgLink)
+
+      if (!ctx) return
+
       const img = new Image()
       img.onload = () => {
         // A theme switch superseded this load.
@@ -79,16 +86,12 @@ export function useDynamicFavicon() {
         ctx.clearRect(0, 0, size, size)
         ctx.drawImage(img, 0, 0, size, size)
 
-        const faviconUrl = canvas.toDataURL("image/png")
-
-        let link = document.querySelector<HTMLLinkElement>("link[rel*='icon']")
-        if (!link) {
-          link = document.createElement("link")
-          link.type = "image/png"
-          link.rel = "icon"
-          document.getElementsByTagName("head")[0].appendChild(link)
-        }
-        link.href = faviconUrl
+        const pngLink = getDynamicFaviconLink("png")
+        pngLink.type = "image/png"
+        pngLink.href = canvas.toDataURL("image/png")
+        pngLink.setAttribute("sizes", `${size}x${size}`)
+        document.head.insertBefore(pngLink, svgLink)
+        document.head.appendChild(svgLink)
       }
 
       img.src = `data:image/svg+xml;base64,${btoa(svg)}`
@@ -101,4 +104,14 @@ export function useDynamicFavicon() {
       clearTimeout(timeoutId)
     }
   }, [theme, variation])
+}
+
+function getDynamicFaviconLink(format: "png" | "svg"): HTMLLinkElement {
+  let link = document.querySelector<HTMLLinkElement>(`link[data-dynamic-favicon="${format}"]`)
+  if (!link) {
+    link = document.createElement("link")
+    link.rel = "icon"
+    link.dataset.dynamicFavicon = format
+  }
+  return link
 }
