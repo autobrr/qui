@@ -36,9 +36,9 @@ import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
 import { useMobileScroll, useRegisterMobileScrollContainer } from "@/contexts/MobileScrollContext"
-import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
+import { useActiveTaskCount } from "@/hooks/useActiveTaskCount"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstances } from "@/hooks/useInstances"
@@ -47,7 +47,6 @@ import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { api } from "@/lib/api"
 import { useClientSetting } from "@/lib/client-settings"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
@@ -120,8 +119,7 @@ import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinu
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
-import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters, TorrentStreamPayload } from "@/types"
-import { useQuery } from "@tanstack/react-query"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 // Mobile-friendly Share Limits Dialog
@@ -1255,67 +1253,7 @@ export function TorrentCardsMobile({
 
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
   const navigate = useNavigate()
-  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    setStreamActiveTaskCount(null)
-  }, [instanceId])
-
-  const activeTaskStreamParams = useMemo(() => {
-    // The torrent stream is keyed to a single concrete instance; never open one
-    // for the all-instances scope or an unselected instance, otherwise the backend
-    // rejects the whole multiplexed batch and the shared EventSource reconnects forever.
-    if (isAllInstancesView || instanceId <= 0) {
-      return null
-    }
-
-    return {
-      instanceId,
-      page: 0,
-      limit: 1,
-      sort: "added_on",
-      order: "desc" as const,
-    }
-  }, [instanceId, isAllInstancesView])
-
-  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
-    const value = payload.data?.activeTaskCount
-    if (typeof value === "number") {
-      setStreamActiveTaskCount(value)
-    }
-  }, [])
-
-  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
-    enabled: Boolean(activeTaskStreamParams),
-    onMessage: handleActiveTaskStreamMessage,
-  })
-
-  // Drop the streamed value when the stream is not live so the count reflects the
-  // fresh REST fallback instead of a stale snapshot from before the disconnect.
-  useEffect(() => {
-    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
-      setStreamActiveTaskCount(null)
-    }
-  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
-
-  const canPollActiveTask = !isAllInstancesView && instanceId > 0
-  const shouldUseActiveTaskFallback =
-    canPollActiveTask && (
-      !activeTaskStreamState.connected ||
-      !!activeTaskStreamState.error ||
-      streamActiveTaskCount === null
-    )
-
-  // Active task count is streamed via SSE; REST polling only runs as fallback
-  // and never for the all-instances view or an unselected instance.
-  const { data: polledActiveTaskCount = 0 } = useQuery({
-    queryKey: ["active-task-count", instanceId],
-    queryFn: () => api.getActiveTaskCount(instanceId),
-    enabled: shouldUseActiveTaskFallback,
-    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check)
-    refetchIntervalInBackground: true,
-  })
-  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
+  const activeTaskCount = useActiveTaskCount(instanceId, !isAllInstancesView)
 
   // Columns controls removed on mobile
 
