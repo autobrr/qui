@@ -25,6 +25,12 @@ type announcementMatchPolicy struct {
 	// attach to the candidate side only, so they can never widen the identity
 	// of an unrelated source torrent.
 	candidateTitles []string
+	// tolerateOneSidedChecksum lets the advisory webhook check pass a candidate
+	// whose only strict failure is a CRC tag on one side. IRC announce sizes are
+	// rounded, so the check cannot reach the exact-size checksum relaxation that
+	// apply gets from the real torrent bytes. A false positive here costs one
+	// torrent download; apply re-validates and stays authoritative.
+	tolerateOneSidedChecksum bool
 }
 
 type announcementCandidateDecision struct {
@@ -75,7 +81,13 @@ func (s *Service) classifyWebhookAnnouncementSource(
 		return s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
 	}
 
-	decision := s.classifySearchCandidate(s.announcementRawSearchInput(source, candidate, candidateSize, policy))
+	input := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
+	decision := s.classifySearchCandidate(input)
+	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
+		s.hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
+		relaxed, _ := s.withRelaxedDifferenceNeutralized(input, "checksum")
+		decision = s.classifySearchCandidate(relaxed)
+	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected

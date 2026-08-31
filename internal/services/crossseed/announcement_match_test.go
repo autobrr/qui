@@ -342,6 +342,77 @@ func TestClassifyWebhookAnnouncementSourceCandidateTitles(t *testing.T) {
 	}
 }
 
+// TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum protects the
+// advisory check's checksum tolerance: IRC announce sizes are rounded, so a
+// CRC tag on only the local file name must not veto a within-tolerance check
+// when everything else matches strictly. Apply omits the policy flag and keeps
+// demanding strict, because it classifies real torrent bytes.
+func TestClassifyWebhookAnnouncementSourceToleratesOneSidedChecksum(t *testing.T) {
+	const (
+		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		announceName = "Frieren: Beyond Journey's End S02E10 1080p CR WEB-DL AAC 2.0 H.264-KiraSubs"
+		size         = int64(1_468_228_504)
+		roundedSize  = int64(1_471_026_298) // 1.37 GiB: what the IRC announce advertises
+	)
+	aliasTitles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"}
+
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	source := qbt.Torrent{Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+
+	tests := []struct {
+		name          string
+		candidateName string
+		candidateSize int64
+		tolerate      bool
+		wantAccepted  bool
+	}{
+		{
+			name:          "one-sided checksum within tolerance tolerated",
+			candidateName: announceName, candidateSize: roundedSize,
+			tolerate: true, wantAccepted: true,
+		},
+		{
+			name:          "apply policy still rejects one-sided checksum",
+			candidateName: announceName, candidateSize: roundedSize,
+		},
+		{
+			name:          "conflicting checksums stay rejected",
+			candidateName: "[KiraSubs] Frieren S2 - 10 (1080p) [DEADBEEF].mkv", candidateSize: roundedSize,
+			tolerate: true,
+		},
+		{
+			name:          "other strict failures stay rejected",
+			candidateName: "Frieren: Beyond Journey's End S02E10 720p CR WEB-DL AAC 2.0 H.264-KiraSubs", candidateSize: roundedSize,
+			tolerate: true,
+		},
+		{
+			name:          "out-of-tolerance size stays rejected",
+			candidateName: announceName, candidateSize: size * 2,
+			tolerate: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			candidate := namedRelease{release: svc.releaseCache.Parse(tt.candidateName), rawName: tt.candidateName}
+
+			got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, tt.candidateSize, announcementMatchPolicy{
+				candidateTitles:          aliasTitles,
+				tolerateOneSidedChecksum: tt.tolerate,
+			})
+
+			require.Equal(t, tt.wantAccepted, got.decision.Accepted, got.decision.RejectReason)
+			require.True(t, got.replayable)
+			if tt.wantAccepted {
+				require.Equal(t, searchCandidateClassStrict, got.decision.Class)
+			}
+		})
+	}
+}
+
 // TestUnknownSizePreflightDecisionAllowlist catches a future classifier
 // relaxation becoming an unknown-size download recommendation by default.
 func TestUnknownSizePreflightDecisionAllowlist(t *testing.T) {
