@@ -2429,7 +2429,7 @@ export function TorrentCardsMobile({
                   onCrossSeedSearch(singleSelectedTorrent)
                   setShowActionsSheet(false)
                 }}
-                disabled={!singleSelectedTorrent || isCrossSeedSearching}
+                disabled={effectiveSelectionCount !== 1 || !singleSelectedTorrent || isCrossSeedSearching}
                 className="justify-start"
               >
                 <Search className="mr-2 h-4 w-4" />
@@ -2446,7 +2446,7 @@ export function TorrentCardsMobile({
                   onManualCrossSeed(singleSelectedTorrent)
                   setShowActionsSheet(false)
                 }}
-                disabled={!singleSelectedTorrent || singleSelectedTorrent.progress < 1}
+                disabled={effectiveSelectionCount !== 1 || !singleSelectedTorrent || singleSelectedTorrent.progress < 1}
                 className="justify-start"
               >
                 <FileUp className="mr-2 h-4 w-4" />
