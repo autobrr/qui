@@ -260,6 +260,7 @@ func TestManualMatchProposals(t *testing.T) {
 	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, "")
 	require.NoError(t, err)
 	require.Equal(t, meta.Name, resp.SourceName)
+	require.Equal(t, []string{"cross-seed"}, resp.DefaultTags, "the cross-seed tag is the default, matching the search dialog")
 	require.NotEmpty(t, resp.Proposals)
 	require.Equal(t, fullOverlap.Hash, resp.Proposals[0].Hash)
 	require.Equal(t, meta.Info.TotalLength(), resp.Proposals[0].OverlapBytes)

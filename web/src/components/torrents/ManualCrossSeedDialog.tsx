@@ -16,12 +16,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useDebounce } from "@/hooks/useDebounce"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { fileToBase64, overlapPercent } from "@/lib/manual-cross-seed"
 import { formatBytes } from "@/lib/utils"
 import type { ManualCrossSeedProposal } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertTriangle, FileUp } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -107,11 +108,15 @@ export function ManualCrossSeedDialog({
     setTagsEdit(selectedTags.includes(tag) ? selectedTags.filter(item => item !== tag) : [...selectedTags, tag])
   }
 
+  const debouncedPickerSearch = useDebounce(pickerSearch, 300)
   const pickerQuery = useQuery({
-    queryKey: ["cross-seed-manual-picker", instanceId, pickerSearch],
-    queryFn: ({ signal }) => api.getTorrents(instanceId, { search: pickerSearch, limit: 20, preferCached: true }, signal),
-    enabled: open && showPicker && pickerSearch.trim().length > 0,
+    queryKey: ["cross-seed-manual-picker", instanceId, debouncedPickerSearch],
+    queryFn: ({ signal }) => api.getTorrents(instanceId, { search: debouncedPickerSearch, limit: 20, preferCached: true }, signal),
+    enabled: open && showPicker && debouncedPickerSearch.trim().length > 0,
     staleTime: 30_000,
+    // Keep the old list while the next term loads so the picker never
+    // flickers empty between searches.
+    placeholderData: keepPreviousData,
   })
 
   const applyMutation = useMutation({
@@ -276,7 +281,7 @@ export function ManualCrossSeedDialog({
                     onChange={event => setPickerSearch(event.target.value)}
                     placeholder={t("manualCrossSeed.pickerPlaceholder")}
                   />
-                  {pickerQuery.data && (
+                  {pickerSearch.trim() !== "" && pickerQuery.data && (
                     <div className="rounded-md border p-1 sm:max-h-40 sm:overflow-y-auto">
                       {completePickerTorrents.length === 0 && (
                         <p className="px-2 py-1.5 text-sm text-muted-foreground">{t("manualCrossSeed.pickerNoResults")}</p>

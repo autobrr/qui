@@ -246,9 +246,15 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		proposals = proposals[:manualMatchProposalLimit]
 	}
 
-	defaultTags := []string{}
+	// Default tag parity with the search-results dialog, which applies
+	// "cross-seed" unless the user changes it. The badges stay toggleable.
+	defaultTags := []string{"cross-seed"}
 	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
-		defaultTags = append(defaultTags, settings.SeededSearchTags...)
+		for _, tag := range settings.SeededSearchTags {
+			if !slices.Contains(defaultTags, tag) {
+				defaultTags = append(defaultTags, tag)
+			}
+		}
 	} else if err != nil {
 		log.Debug().Err(err).Msg("[CROSSSEED] Manual match proposals: failed to load automation settings for default tags")
 	}
