@@ -1962,7 +1962,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("dialogs.shareLimit.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
@@ -2308,7 +2308,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("dialogs.speedLimits.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>

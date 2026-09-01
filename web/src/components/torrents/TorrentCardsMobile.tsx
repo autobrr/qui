@@ -2305,13 +2305,13 @@ export function TorrentCardsMobile({
 
       {/* More actions sheet */}
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
-        <SheetContent side="bottom" className="h-auto pb-8">
+        <SheetContent side="bottom" className="max-h-[85dvh] pb-8">
           <SheetHeader>
             <SheetTitle>
               {isAllSelected? t("mobileCards.actionsForAll", { count: effectiveSelectionCount }): t("mobileCards.actionsForCount", { count: effectiveSelectionCount })}
             </SheetTitle>
           </SheetHeader>
-          <div className="grid gap-2 py-4 px-4">
+          <div className="grid gap-2 py-4 px-4 min-h-0 overflow-y-auto">
             {(() => {
               const { allEnabled: allForceStarted, mixed: forceStartMixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.force_start), stateUnknownForSelection)
 
