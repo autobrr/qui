@@ -363,3 +363,39 @@ func TestManualMatchProposalsRequestedSurvivesCrowdedCoarsePass(t *testing.T) {
 		return p.Hash == requested.Hash
 	}), "requested target must be included even when title keeps fill the coarse pass")
 }
+
+// A rootless target sends the apply to the target's content dir, not its save
+// path. The preview must say the same, or the read-only save path lies.
+func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+
+	const (
+		incomingName = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Amber.Lantern.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+
+	// No root folder in the file list, so the data sits directly in ContentPath's
+	// directory rather than under SavePath.
+	rootless := qbt.Torrent{
+		Hash:        "8888888888888888888888888888888888888888",
+		Name:        incomingName,
+		SavePath:    "/downloads",
+		ContentPath: "/downloads/movies/" + fileName,
+		Progress:    1,
+		Size:        size,
+	}
+	svc := manualMatchTestService(instance, []qbt.Torrent{rootless}, map[string]qbt.TorrentFiles{
+		rootless.Hash: {{Name: fileName, Size: size}},
+	})
+
+	resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, rootless.Hash)
+	require.NoError(t, err)
+	require.Len(t, resp.Proposals, 1)
+	require.Equal(t, "/downloads/movies", resp.Proposals[0].EffectiveSavePath,
+		"rootless target previews its content dir, not its save path")
+}

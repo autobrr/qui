@@ -1539,6 +1539,7 @@
     "zeroOverlapWarning": "所選種子與上傳檔案沒有相同大小的檔案。結果由重新校驗決定；校驗失敗時種子保持暫停。",
     "category": "分類",
     "noCategory": "（無分類）",
+    "pinnedCategory": "交叉做種設定將每個配對固定為「{{category}}」分類，因此無法在此變更。",
     "tags": "標籤",
     "newTagPlaceholder": "輸入標籤後按 Enter",
     "savePath": "儲存路徑（實際目標位置）",

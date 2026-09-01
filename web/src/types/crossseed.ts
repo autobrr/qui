@@ -159,6 +159,8 @@ export interface ManualCrossSeedProposalsResponse {
   sourceSize: number
   sourceFileCount: number
   defaultTags: string[]
+  /** Set when settings pin every cross-seed to one category; the apply discards any pick. */
+  pinnedCategory: string
   proposals: ManualCrossSeedProposal[]
 }
 

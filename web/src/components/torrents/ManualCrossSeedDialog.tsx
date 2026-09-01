@@ -106,7 +106,10 @@ export function ManualCrossSeedDialog({
     proposal => proposal.hash.toLowerCase() === effectiveSelectedHash?.toLowerCase()
   )
 
-  const categoryValue = categoryEdit ?? selectedProposal?.category ?? ""
+  // Settings can pin every cross-seed to one category, in which case the apply
+  // discards whatever the dialog sends. Show the pinned value and lock the pick.
+  const pinnedCategory = proposalsQuery.data?.pinnedCategory ?? ""
+  const categoryValue = pinnedCategory || (categoryEdit ?? selectedProposal?.category ?? "")
   const selectedTags = tagsEdit ?? proposalsQuery.data?.defaultTags ?? []
   const toggleTag = (tag: string) => {
     setTagsEdit(selectedTags.includes(tag) ? selectedTags.filter(item => item !== tag) : [...selectedTags, tag])
@@ -324,6 +327,7 @@ export function ManualCrossSeedDialog({
                 <Select
                   value={categoryValue === "" ? "__none__" : categoryValue}
                   onValueChange={value => setCategoryEdit(value === "__none__" ? "" : value)}
+                  disabled={pinnedCategory !== ""}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -340,6 +344,11 @@ export function ManualCrossSeedDialog({
                     )}
                   </SelectContent>
                 </Select>
+                {pinnedCategory !== "" && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("manualCrossSeed.pinnedCategory", { category: pinnedCategory })}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

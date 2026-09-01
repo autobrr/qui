@@ -1486,6 +1486,7 @@ class ApiClient {
       source_size: number
       source_file_count: number
       default_tags?: string[]
+      pinned_category?: string
       proposals?: RawProposal[]
     }
 
@@ -1507,6 +1508,7 @@ class ApiClient {
       sourceSize: raw.source_size,
       sourceFileCount: raw.source_file_count,
       defaultTags: raw.default_tags ?? [],
+      pinnedCategory: raw.pinned_category ?? "",
       proposals: (raw.proposals ?? []).map((proposal): ManualCrossSeedProposal => ({
         hash: proposal.hash,
         name: proposal.name,

@@ -5797,10 +5797,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Detect episode matched to season pack - these need special handling
 	// to use the season pack's content path instead of category save path
 	isEpisodeInPack := addPlan.isEpisodeInPack
-	rootlessContentDir := ""
-	if !isEpisodeInPack && candidateRoot == "" {
-		rootlessContentDir = resolveRootlessContentDir(matchedTorrent, candidateFiles)
-	}
+	rootlessContentDir := rootlessDestDir(matchedTorrent, candidateFiles, isEpisodeInPack)
 
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
@@ -13498,6 +13495,16 @@ func isWindowsDriveAbs(p string) bool {
 // Shared implementation lives in pkg/pathcmp.
 func normalizePath(p string) string {
 	return pathcmp.NormalizePath(p)
+}
+
+// rootlessDestDir returns the content dir that a rootless target sends an add
+// to, or "" when the add lands at the target's save path instead. The apply and
+// the Manual match save-path preview must agree on this, so both call it.
+func rootlessDestDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles, isEpisodeInPack bool) string {
+	if isEpisodeInPack || detectCommonRoot(candidateFiles) != "" {
+		return ""
+	}
+	return resolveRootlessContentDir(matchedTorrent, candidateFiles)
 }
 
 func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles) string {

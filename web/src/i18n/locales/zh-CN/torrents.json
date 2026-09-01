@@ -1539,6 +1539,7 @@
     "zeroOverlapWarning": "所选种子与上传文件没有相同大小的文件。结果由重新校验决定；校验失败时种子保持暂停。",
     "category": "分类",
     "noCategory": "（无分类）",
+    "pinnedCategory": "交叉做种设置将每个匹配固定为“{{category}}”分类，因此无法在此更改。",
     "tags": "标签",
     "newTagPlaceholder": "输入标签后按 Enter",
     "savePath": "保存路径（实际目标位置）",

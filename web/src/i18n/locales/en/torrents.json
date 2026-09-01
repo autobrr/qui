@@ -1603,6 +1603,7 @@
     "zeroOverlapWarning": "The selected torrent shares no file sizes with the upload. The recheck decides the outcome; a failed recheck leaves the torrent paused.",
     "category": "Category",
     "noCategory": "(no category)",
+    "pinnedCategory": "Cross-seed settings pin every match to “{{category}}”, so this cannot be changed here.",
     "tags": "Tags",
     "newTagPlaceholder": "Add a tag and press Enter",
     "savePath": "Save path (effective destination)",

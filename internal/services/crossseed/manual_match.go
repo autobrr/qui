@@ -87,11 +87,15 @@ type ManualMatchProposal struct {
 // ManualMatchProposalsResponse carries the ranked target proposals plus the
 // prefill values the Manual match dialog needs.
 type ManualMatchProposalsResponse struct {
-	SourceName      string                `json:"source_name"`
-	SourceSize      int64                 `json:"source_size"`
-	SourceFileCount int                   `json:"source_file_count"`
-	DefaultTags     []string              `json:"default_tags"`
-	Proposals       []ManualMatchProposal `json:"proposals"`
+	SourceName      string   `json:"source_name"`
+	SourceSize      int64    `json:"source_size"`
+	SourceFileCount int      `json:"source_file_count"`
+	DefaultTags     []string `json:"default_tags"`
+	// PinnedCategory is set when the automation settings pin every cross-seed to
+	// one category. The apply then ignores the request category, so the dialog
+	// shows this value instead of offering a pick it would discard.
+	PinnedCategory string                `json:"pinned_category"`
+	Proposals      []ManualMatchProposal `json:"proposals"`
 }
 
 // ManualMatchProposalsFromBase64 decodes a base64 torrent payload and ranks
@@ -229,12 +233,14 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		if overlap == 0 && !isRequested {
 			continue
 		}
+		// A rootless target sends the add to its content dir, not its save path.
+		// A pinned target is never an episode in a pack.
+		effectiveSavePath := cmp.Or(rootlessDestDir(&torrent, candidateFiles, false), torrent.SavePath)
 		// The apply skips link modes for a pick whose files do not validate,
 		// landing it at the target's save path; only a validated pick reaches
 		// the link-mode destination. Mirror the apply's validation call so the
 		// read-only save path shows what the add will actually do.
 		// ponytail: plain parsed releases approximate the apply's release view.
-		effectiveSavePath := torrent.SavePath
 		if linkMode && overlap > 0 &&
 			s.getMatchTypeWithReason(s.releaseCache.Parse(torrent.Name), sourceRelease, candidateFiles, meta.Files, defaultSizeMismatchTolerancePercent).MatchType != "" {
 			effectiveSavePath = effectiveFor(torrent)
@@ -263,11 +269,15 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	// Default tag parity with the search-results dialog, which applies
 	// "cross-seed" unless the user changes it. The badges stay toggleable.
 	defaultTags := []string{"cross-seed"}
+	pinnedCategory := ""
 	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
 		for _, tag := range settings.SeededSearchTags {
 			if !slices.Contains(defaultTags, tag) {
 				defaultTags = append(defaultTags, tag)
 			}
+		}
+		if settings.UseCustomCategory && settings.CustomCategory != "" {
+			pinnedCategory = settings.CustomCategory
 		}
 	} else if err != nil {
 		log.Debug().Err(err).Msg("[CROSSSEED] Manual match proposals: failed to load automation settings for default tags")
@@ -278,6 +288,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 		SourceSize:      sourceTotal,
 		SourceFileCount: len(meta.Files),
 		DefaultTags:     defaultTags,
+		PinnedCategory:  pinnedCategory,
 		Proposals:       proposals,
 	}, nil
 }

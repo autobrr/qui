@@ -1603,6 +1603,7 @@
     "zeroOverlapWarning": "O torrent selecionado não compartilha nenhum tamanho de arquivo com o upload. A nova verificação decide o resultado; se falhar, o torrent permanece pausado.",
     "category": "Categoria",
     "noCategory": "(sem categoria)",
+    "pinnedCategory": "As configurações de cross-seed fixam a categoria “{{category}}” para toda correspondência, então ela não pode ser alterada aqui.",
     "tags": "Tags",
     "newTagPlaceholder": "Adicione uma tag e pressione Enter",
     "savePath": "Caminho de salvamento (destino efetivo)",

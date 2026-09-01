@@ -4694,6 +4694,9 @@ paths:
                     type: array
                     items:
                       type: string
+                  pinned_category:
+                    type: string
+                    description: Category the apply pins every cross-seed to; empty when unset.
                   proposals:
                     type: array
                     items:

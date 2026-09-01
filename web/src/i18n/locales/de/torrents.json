@@ -1603,6 +1603,7 @@
     "zeroOverlapWarning": "Der gewählte Torrent teilt keine Dateigrößen mit dem Upload. Die erneute Prüfung entscheidet; schlägt sie fehl, bleibt der Torrent pausiert.",
     "category": "Kategorie",
     "noCategory": "(keine Kategorie)",
+    "pinnedCategory": "Die Cross-Seed-Einstellungen legen für jeden Treffer die Kategorie „{{category}}“ fest. Sie kann hier nicht geändert werden.",
     "tags": "Tags",
     "newTagPlaceholder": "Tag eingeben und Enter drücken",
     "savePath": "Speicherpfad (effektives Ziel)",

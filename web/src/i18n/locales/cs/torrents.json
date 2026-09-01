@@ -1604,6 +1604,7 @@
     "zeroOverlapWarning": "Vybraný torrent nesdílí s nahraným souborem žádné velikosti souborů. O výsledku rozhodne opětovné ověření; při neúspěchu zůstane torrent pozastavený.",
     "category": "Kategorie",
     "noCategory": "(bez kategorie)",
+    "pinnedCategory": "Nastavení cross-seedu určuje pro každou shodu kategorii „{{category}}“, proto ji zde nelze změnit.",
     "tags": "Štítky",
     "newTagPlaceholder": "Zadejte štítek a stiskněte Enter",
     "savePath": "Cesta uložení (skutečné umístění)",

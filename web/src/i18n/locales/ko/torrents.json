@@ -1539,6 +1539,7 @@
     "zeroOverlapWarning": "선택한 토렌트는 업로드와 같은 크기의 파일이 없습니다. 재검사가 결과를 결정하며, 실패하면 토렌트는 일시정지 상태로 남습니다.",
     "category": "카테고리",
     "noCategory": "(카테고리 없음)",
+    "pinnedCategory": "크로스 시드 설정이 모든 매치를 “{{category}}” 분류로 고정하므로 여기서는 변경할 수 없습니다.",
     "tags": "태그",
     "newTagPlaceholder": "태그를 입력하고 Enter를 누르세요",
     "savePath": "저장 경로(실제 대상 위치)",
