@@ -7797,17 +7797,9 @@ func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) (r
 // Domains are expanded using TrackerCustomizations (including IncludedInStats).
 // Sizes are deduplicated by ContentPath across all instances so that cross-seeds
 // spanning multiple instances are only counted once.
-func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, domains []string) int64 {
-	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil {
-		return 0
-	}
-
-	instances, err := sm.clientPool.instanceStore.List(ctx)
-	if err != nil || len(instances) == 0 {
-		return 0
-	}
-
-	// Build target domain set from domains and pattern
+// BuildTrackerTargetDomains constructs the expanded target domain set from pattern,
+// explicit domains, and TrackerCustomization aliases (e.g. IncludedInStats).
+func (sm *SyncManager) BuildTrackerTargetDomains(ctx context.Context, pattern string, domains []string) map[string]struct{} {
 	targetDomains := make(map[string]struct{})
 	for _, d := range domains {
 		d = strings.ToLower(strings.TrimSpace(d))
@@ -7828,7 +7820,7 @@ func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, d
 	}
 
 	// Expand target domains using TrackerCustomizations (e.g. IncludedInStats)
-	if sm.trackerCustomizationStore != nil && len(targetDomains) > 0 {
+	if sm != nil && sm.trackerCustomizationStore != nil && len(targetDomains) > 0 {
 		if customizations, err := sm.trackerCustomizationStore.List(ctx); err == nil {
 			for _, c := range customizations {
 				if c == nil {
@@ -7867,6 +7859,21 @@ func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, d
 		}
 	}
 
+	return targetDomains
+}
+
+func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, domains []string) int64 {
+	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil {
+		return 0
+	}
+
+	instances, err := sm.clientPool.instanceStore.List(ctx)
+	if err != nil || len(instances) == 0 {
+		return 0
+	}
+
+	targetDomains := sm.BuildTrackerTargetDomains(ctx, pattern, domains)
+
 	// Collect matching torrents from all active instances
 	var matchingTorrents []qbt.Torrent
 	for _, instance := range instances {
@@ -7884,7 +7891,7 @@ func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, d
 			for d := range tDomainSet {
 				tDomains = append(tDomains, d)
 			}
-			if sm.matchesTargetDomains(pattern, targetDomains, tDomains) {
+			if sm.MatchesTargetDomains(pattern, targetDomains, tDomains) {
 				matchingTorrents = append(matchingTorrents, *t)
 			}
 		}
@@ -7904,8 +7911,8 @@ func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, d
 	return total.total()
 }
 
-// matchesTargetDomains checks if a torrent's tracker domains match the target domain set or pattern.
-func (sm *SyncManager) matchesTargetDomains(pattern string, targetDomains map[string]struct{}, torrentDomains []string) bool {
+// MatchesTargetDomains checks if a torrent's tracker domains match the target domain set or pattern.
+func (sm *SyncManager) MatchesTargetDomains(pattern string, targetDomains map[string]struct{}, torrentDomains []string) bool {
 	if len(torrentDomains) == 0 {
 		return false
 	}

@@ -991,6 +991,9 @@ func (s *Service) setupSeedSizeContext(
 		evalCtx.SeedSizeStates = make(map[int]*SeedSizeRuleState)
 	}
 
+	// Build target domain set (including TrackerDomains and TrackerCustomization aliases)
+	targetDomains := s.syncManager.BuildTrackerTargetDomains(ctx, rule.TrackerPattern, rule.TrackerDomains)
+
 	// Calculate current cross-instance seed size for this tracker
 	currentSeedSize := s.syncManager.GetTrackerSeedSize(ctx, rule.TrackerPattern, rule.TrackerDomains)
 
@@ -1012,7 +1015,7 @@ func (s *Service) setupSeedSizeContext(
 						continue
 					}
 					otDomains := collectTrackerDomains(*ot, s.syncManager)
-					if matchesTracker(rule.TrackerPattern, otDomains) {
+					if s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, otDomains) {
 						otherInstancesContentPaths[ot.ContentPath] = struct{}{}
 					}
 				}
@@ -1028,7 +1031,7 @@ func (s *Service) setupSeedSizeContext(
 			continue
 		}
 		tDomains := collectTrackerDomains(*t, s.syncManager)
-		if matchesTracker(rule.TrackerPattern, tDomains) {
+		if s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, tDomains) {
 			instanceContentPathCount[t.ContentPath]++
 		}
 	}
