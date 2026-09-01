@@ -7913,6 +7913,9 @@ func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, d
 
 // MatchesTargetDomains checks if a torrent's tracker domains match the target domain set or pattern.
 func (sm *SyncManager) MatchesTargetDomains(pattern string, targetDomains map[string]struct{}, torrentDomains []string) bool {
+	if pattern == "*" {
+		return true
+	}
 	if len(torrentDomains) == 0 {
 		return false
 	}

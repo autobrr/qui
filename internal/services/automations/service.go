@@ -1106,6 +1106,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
 		return s.previewDeleteIncludeCrossSeeds(
+			ctx,
 			rule,
 			torrents,
 			evalCtx,
@@ -1244,6 +1245,11 @@ func (s *Service) previewDeleteStandard(
 		Examples: make([]PreviewTorrent, 0, cfg.limit),
 	}
 
+	var targetDomains map[string]struct{}
+	if s.syncManager != nil && rule != nil {
+		targetDomains = s.syncManager.BuildTrackerTargetDomains(ctx, rule.TrackerPattern, rule.TrackerDomains)
+	}
+
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil &&
 		deleteMode == DeleteModeKeepFiles && strings.TrimSpace(rule.Conditions.Delete.GroupID) != "" {
 		deleteCond := rule.Conditions.Delete
@@ -1271,7 +1277,11 @@ func (s *Service) previewDeleteStandard(
 			torrent := &torrents[i]
 
 			trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-			if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+			if s.syncManager != nil {
+				if !s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, trackerDomains) {
+					continue
+				}
+			} else if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 				continue
 			}
 			if !shouldDeleteTorrent(rule, torrent, evalCtx) {
@@ -1378,7 +1388,11 @@ func (s *Service) previewDeleteStandard(
 		torrent := &torrents[i]
 
 		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+		if s.syncManager != nil {
+			if !s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, trackerDomains) {
+				continue
+			}
+		} else if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 			continue
 		}
 
@@ -1452,6 +1466,7 @@ func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex
 // When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
 // If IncludeHardlinks is enabled, also expands with hardlink copies (same physical files).
 func (s *Service) previewDeleteIncludeCrossSeeds(
+	ctx context.Context,
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -1470,6 +1485,11 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	deleteCond := rule.Conditions.Delete
 	includeHardlinks := deleteCond.IncludeHardlinks
 
+	var targetDomains map[string]struct{}
+	if s.syncManager != nil && rule != nil {
+		targetDomains = s.syncManager.BuildTrackerTargetDomains(ctx, rule.TrackerPattern, rule.TrackerDomains)
+	}
+
 	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
 
 	for i := range torrents {
@@ -1478,7 +1498,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx) {
+		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx, targetDomains) {
 			continue
 		}
 
@@ -1517,9 +1537,13 @@ func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIn
 }
 
 // torrentMatchesDeleteRule checks if a torrent matches the tracker pattern and delete condition.
-func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
+func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext, targetDomains map[string]struct{}) bool {
 	trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-	if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+	if s.syncManager != nil && rule != nil {
+		if !s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, trackerDomains) {
+			return false
+		}
+	} else if rule != nil && !matchesTracker(rule.TrackerPattern, trackerDomains) {
 		return false
 	}
 

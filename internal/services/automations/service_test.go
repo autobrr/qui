@@ -1250,6 +1250,7 @@ func TestPreviewDeleteIncludeCrossSeeds_AllDirectMatches(t *testing.T) {
 	}
 
 	result, err := s.previewDeleteIncludeCrossSeeds(
+		context.Background(),
 		rule,
 		torrents,
 		&EvalContext{},
