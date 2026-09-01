@@ -56,6 +56,11 @@ type CrossSeedRequest struct {
 	// SkipPieceBoundarySafetyCheck bypasses the piece boundary safety check that prevents
 	// corruption when extra files share pieces with content. Risky: may corrupt existing seeded data.
 	SkipPieceBoundarySafetyCheck bool `json:"skip_piece_boundary_safety_check,omitempty"`
+	// ManualTargetHash pins candidate discovery to one user-chosen existing
+	// torrent (Manual match). Requires exactly one target instance. The
+	// release-matching and content-type gates are bypassed; the recheck is the
+	// arbiter of a wrong pick.
+	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
 	// SourceFilterCategories filters candidate torrents to only those in these categories.
 	// Used by RSS automation to respect RSSSourceCategories setting.
@@ -166,6 +171,9 @@ type FindCandidatesRequest struct {
 	// incomplete "season pack from episode" outcomes.
 	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+	// ManualTargetHash short-circuits discovery to one user-chosen torrent
+	// (Manual match). Requires exactly one target instance.
+	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
 	// Source filters - used to restrict which existing torrents are considered as candidates.
 	// These are applied when fetching torrents (if no pre-built snapshot is provided).

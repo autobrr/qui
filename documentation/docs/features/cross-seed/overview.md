@@ -105,6 +105,21 @@ Announce matching over alternate titles, such as an anime announced under its En
 
 If autobrr has no positive size, qui uses a narrow name-only preflight. This preflight can approve one download, but it cannot approve an add.
 
+### Manual Match
+
+A Manual match is a cross-seed apply where you choose the target torrent yourself. Use it when automatic matching fails, for example when the release name parses as the wrong content type, or when the tracker has no searchable indexer.
+
+Two entry points open the same flow:
+
+- **Add Torrent dialog**: select exactly one `.torrent` file, then click **Match manually**. Magnets, URLs, and multi-file adds cannot use this option.
+- **Right-click a torrent** and select **Add Cross-Seed Manually**. The flow opens with that torrent preselected as the target.
+
+qui ranks torrents from the same instance by file-size overlap with the uploaded file. You can also pick any other torrent. A pick with no file overlap shows a warning, but you can proceed.
+
+A manual selection bypasses candidate discovery and the category and content-type gates. Link mode per instance settings and tag and category treatment stay the same as the automatic pipeline. Every manual match runs a full recheck before it seeds; you cannot skip it, and it decides a wrong pick. A failed recheck leaves the torrent paused for manual review.
+
+The dialog prefills the category from the target torrent and the tags from the cross-seed tag settings. You can edit both. If **Use Custom Category** is on, every cross-seed goes to that one category. The dialog then shows the category and locks it. The save path shows the effective destination and is read-only. With **By Tracker** directory organization, the tracker folder comes from the announce URL in the uploaded file. The tracker does not need a configured indexer.
+
 ### Season Pack Assembly
 
 qui can assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes. RSS automation, a cross-seed apply, and Library Scan can also start this flow when you seed only episodes of a pack. qui links the episodes that exist locally. When coverage passes the configured threshold (default 75%), qui adds the pack and qBittorrent downloads the remainder after a recheck. When available, Sonarr, TVDB, and TVMaze improve the threshold decision. This feature requires local filesystem access and hardlink or reflink mode. See [Season Packs](./season-packs.md) for setup.

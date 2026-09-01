@@ -717,6 +717,12 @@ func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash st
 	if candidate.titleRescue {
 		return true
 	}
+	// A Manual match always verifies before seeding, validated files or not:
+	// the pinned target bypassed the release and content gates, so the recheck
+	// is the arbiter. There is deliberately no way to skip it.
+	if req != nil && req.ManualTargetHash != "" {
+		return true
+	}
 	if req == nil || candidate.InstanceID != req.SearchDecision.SourceInstanceID {
 		return false
 	}

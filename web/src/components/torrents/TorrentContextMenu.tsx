@@ -30,6 +30,7 @@ import {
   Copy,
   Download,
   FastForward,
+  FileUp,
   FolderOpen,
   Gauge,
   GitBranch,
@@ -86,6 +87,7 @@ export interface TorrentContextMenuProps {
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
+  onManualCrossSeed?: (torrent: Torrent) => void
   onFilterChange?: (filters: TorrentFilters) => void
   onFetchTorrentField?: (
     field: TorrentFieldName,
@@ -125,6 +127,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   canCrossSeedSearch = false,
   onCrossSeedSearch,
   isCrossSeedSearching = false,
+  onManualCrossSeed,
   onFilterChange,
   onFetchTorrentField,
 }: TorrentContextMenuProps) {
@@ -505,6 +508,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 {t("contextMenu.searchCrossSeeds")}
               </ContextMenuItem>
             )}
+            {onManualCrossSeed && (
+              <ContextMenuItem
+                onClick={() => onManualCrossSeed(torrent)}
+                disabled={isPending || torrent.progress < 1}
+              >
+                <FileUp className="mr-2 h-4 w-4" />
+                {t("contextMenu.manualCrossSeed")}
+              </ContextMenuItem>
+            )}
             {onFilterChange && supportsInstanceScopedActions && (
               <ContextMenuItem
                 onClick={handleFilterCrossSeeds}
@@ -520,7 +532,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
               </ContextMenuItem>
             )}
-            {(canCrossSeedSearch || (onFilterChange && supportsInstanceScopedActions)) && <ContextMenuSeparator />}
+            {(canCrossSeedSearch || onManualCrossSeed || (onFilterChange && supportsInstanceScopedActions)) && <ContextMenuSeparator />}
             <ContextMenuItem
               onClick={() => onPrepareTags(hashes, torrents)}
               disabled={isPending}

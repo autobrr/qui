@@ -4649,6 +4649,133 @@ paths:
         '500':
           description: Failed to process autobrr apply request
 
+  /api/cross-seed/manual/proposals:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Rank Manual match target proposals for an uploaded torrent
+      description: |
+        Ranks complete torrents in one instance by file-size overlap with the uploaded torrent file.
+        When `target_hash` is set, that torrent is always included in the proposals with its computed overlap, even at zero overlap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instance_id
+                - torrent_data
+              properties:
+                instance_id:
+                  type: integer
+                torrent_data:
+                  type: string
+                  description: Base64-encoded .torrent file
+                target_hash:
+                  type: string
+                  description: Optional torrent hash to always include in the proposals
+      responses:
+        '200':
+          description: Ranked proposals and dialog prefill values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source_name:
+                    type: string
+                  source_size:
+                    type: integer
+                    format: int64
+                  source_file_count:
+                    type: integer
+                  default_tags:
+                    type: array
+                    items:
+                      type: string
+                  pinned_category:
+                    type: string
+                    description: Category the apply pins every cross-seed to; empty when unset.
+                  proposals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                          format: int64
+                        category:
+                          type: string
+                        effective_save_path:
+                          type: string
+                          description: Where a Manual match apply would land the torrent (target save path, or the link-mode destination)
+                        overlap_bytes:
+                          type: integer
+                          format: int64
+                        overlap_fraction:
+                          type: number
+                          format: double
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to build proposals
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Apply a Manual match cross-seed against a chosen target torrent
+      description: |
+        Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target torrent.
+        Candidate discovery and the category and content-type gates are bypassed. Every Manual match runs a full recheck before it seeds; the recheck is the arbiter of a wrong pick and cannot be skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instance_id
+                - torrent_data
+                - target_hash
+              properties:
+                instance_id:
+                  type: integer
+                torrent_data:
+                  type: string
+                  description: Base64-encoded .torrent file
+                target_hash:
+                  type: string
+                  description: Hash of the existing torrent that holds the data
+                category:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedResponse'
+        '400':
+          description: Invalid request, target not found, or target not complete
+        '500':
+          description: Failed to apply the cross-seed
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
   /api/cross-seed/torrents/{instanceID}/{hash}/analyze:
     get:
       tags:

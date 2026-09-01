@@ -248,6 +248,7 @@ interface TorrentTableOptimizedProps {
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
+  onManualCrossSeed?: (torrent: Torrent) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -266,6 +267,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   canCrossSeedSearch,
   onCrossSeedSearch,
   isCrossSeedSearching,
+  onManualCrossSeed,
 }: TorrentTableOptimizedProps) {
   const isReadOnly = readOnly
   const isUnifiedView = isAllInstancesScope(instanceId)
@@ -1310,9 +1312,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     canCrossSeedSearch,
     onCrossSeedSearch,
     isCrossSeedSearching,
+    onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({
