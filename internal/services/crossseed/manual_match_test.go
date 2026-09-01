@@ -399,3 +399,53 @@ func TestManualMatchProposalsRootlessTargetPreviewsContentDir(t *testing.T) {
 	require.Equal(t, "/downloads/movies", resp.Proposals[0].EffectiveSavePath,
 		"rootless target previews its content dir, not its save path")
 }
+
+// The dialog locks its category select on PinnedCategory, so the condition here
+// must stay in step with determineCrossSeedCategory. A pin the apply does not
+// honour locks the user out of a choice they still have.
+func TestManualMatchProposalsPinnedCategory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		settings *models.CrossSeedAutomationSettings
+		want     string
+	}{
+		{
+			name:     "custom category in use pins the dialog",
+			settings: &models.CrossSeedAutomationSettings{UseCustomCategory: true, CustomCategory: "xseed"},
+			want:     "xseed",
+		},
+		{
+			name:     "custom category set but switched off leaves the pick free",
+			settings: &models.CrossSeedAutomationSettings{UseCustomCategory: false, CustomCategory: "xseed"},
+			want:     "",
+		},
+	}
+
+	const (
+		instanceID   = 1
+		incomingName = "Cobalt.Harbour.2024.1080p.WEB-DL.AAC2.0.H.264-FoV"
+		fileName     = "Cobalt.Harbour.2024.1080p.WEB-DL.AAC2.0.H.264-FoV.mkv"
+		size         = int64(4 << 20)
+	)
+	torrentBytes := createNamedFileTestTorrent(t, incomingName, fileName, size)
+	target := qbt.Torrent{Hash: "9999999999999999999999999999999999999999", Name: incomingName, SavePath: "/downloads", Progress: 1, Size: size}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := manualMatchTestService(&models.Instance{ID: instanceID, Name: "main"}, []qbt.Torrent{target}, map[string]qbt.TorrentFiles{
+				target.Hash: {{Name: incomingName + "/" + fileName, Size: size}},
+			})
+			svc.automationSettingsLoader = func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+				return tt.settings, nil
+			}
+
+			resp, err := svc.ManualMatchProposals(context.Background(), instanceID, torrentBytes, target.Hash)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, resp.PinnedCategory)
+		})
+	}
+}
