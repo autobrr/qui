@@ -39,19 +39,26 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+type RunMutation = { mutateAsync: (payload: never) => Promise<unknown> }
+
+async function expectPrependsRun(hook: () => RunMutation, payload: unknown) {
+  mockedApi.triggerBackup.mockResolvedValue(run)
+  mockedApi.importBackupManifest.mockResolvedValue(run)
+  const { queryClient, wrapper } = makeClient()
+  const { result } = renderHook(hook, { wrapper })
+
+  await expect(result.current.mutateAsync(payload as never)).resolves.toEqual(run)
+
+  expect(queryClient.getQueryData(["instance-backups", 1, "runs", 25, 0])).toEqual({ runs: [run, existingRun], hasMore: false })
+  expect(queryClient.getQueryData(["orphan-scan", 1, "runs", null])).toBe(orphanRuns)
+}
+
 describe("backup run mutations", () => {
-  it.each([
-    ["useTriggerBackup", () => useTriggerBackup(1), {}],
-    ["useImportBackupManifest", () => useImportBackupManifest(1), new File([], "m.json")],
-  ] as const)("%s prepends the run without touching other features' runs queries", async (_name, hook, payload) => {
-    mockedApi.triggerBackup.mockResolvedValue(run)
-    mockedApi.importBackupManifest.mockResolvedValue(run)
-    const { queryClient, wrapper } = makeClient()
-    const { result } = renderHook(hook, { wrapper })
+  it("useTriggerBackup prepends the run without touching other features' runs queries", async () => {
+    await expectPrependsRun(() => useTriggerBackup(1), {})
+  })
 
-    await expect(result.current.mutateAsync(payload as never)).resolves.toEqual(run)
-
-    expect(queryClient.getQueryData(["instance-backups", 1, "runs", 25, 0])).toEqual({ runs: [run, existingRun], hasMore: false })
-    expect(queryClient.getQueryData(["orphan-scan", 1, "runs", null])).toBe(orphanRuns)
+  it("useImportBackupManifest prepends the run without touching other features' runs queries", async () => {
+    await expectPrependsRun(() => useImportBackupManifest(1), new File([], "m.json"))
   })
 })
