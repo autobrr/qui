@@ -937,7 +937,7 @@ func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceI
 	if s == nil || s.trackerCustomizationStore == nil {
 		return
 	}
-	if !ConditionUsesField(cond, FieldTracker) {
+	if !ConditionUsesField(cond, FieldTracker) && !ConditionUsesField(cond, FieldTrackers) {
 		return
 	}
 
@@ -1948,10 +1948,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, nil
 	}
 
-	// Pre-filter rules by interval eligibility
+	// Pre-filter rules by enablement and interval eligibility
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
 	for _, rule := range rules {
+		// A disabled rule never stamps lastRuleRun, so the interval filter below can
+		// never drop it: without this it stays eligible on every tick and pulls the
+		// data the gates further down fetch.
+		if !rule.Enabled {
+			continue
+		}
 		if !force {
 			interval := DefaultRuleInterval
 			if rule.IntervalSeconds != nil {
@@ -2026,6 +2032,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	if rulesUseTrackerEntryData(eligibleRules) {
 		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+		if trackerDataMissing(torrents) {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Int("torrents", len(torrents)).
+				Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+		}
 	}
 
 	// Get instance for local filesystem access check
@@ -2169,9 +2181,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
-	// Load tracker display names when needed by tagging OR by TRACKER conditions.
+	// Load tracker display names when needed by tagging OR by TRACKER/TRACKERS conditions.
 	// KISS: only load customizations when a rule actually references them.
-	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker)) && s.trackerCustomizationStore != nil {
+	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker) || rulesUseCondition(eligibleRules, FieldTrackers)) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
@@ -2205,10 +2217,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// This must happen after skipCheck is defined so we only stamp lastRuleRun
 	// for rules that will actually process at least one torrent.
 	rulesUsed := make(map[int]struct{})
+	consideredTorrents := 0
 	for _, torrent := range torrents {
 		if skipCheck(torrent.Hash) {
 			continue
 		}
+		consideredTorrents++
 		for _, rule := range selectMatchingRules(torrent, eligibleRules, s.syncManager) {
 			rulesUsed[rule.ID] = struct{}{}
 		}
@@ -2228,37 +2242,50 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("torrents", len(torrents)).
 			Int("matchedRules", len(rulesUsed)).
 			Msg("automations: no actions to apply")
+	}
 
-		for _, rule := range eligibleRules {
-			stats := ruleStats[rule.ID]
-			if stats == nil || stats.MatchedTrackers == 0 {
-				continue
+	// Report every rule that did nothing, even when another rule acted. A rule
+	// matching zero torrents is the hardest run to diagnose, so it must not stay silent.
+	for _, rule := range eligibleRules {
+		stats := ruleStats[rule.ID]
+		if stats == nil || stats.MatchedTrackers == 0 {
+			// Stay quiet when every torrent was skipped as recently processed:
+			// the rule saw nothing, which says nothing about the rule.
+			if consideredTorrents > 0 {
+				log.Debug().
+					Int("instanceID", instanceID).
+					Int("ruleID", rule.ID).
+					Str("ruleName", rule.Name).
+					Str("trackerPattern", rule.TrackerPattern).
+					Int("consideredTorrents", consideredTorrents).
+					Msg("automations: rule matched no torrents")
 			}
-			if stats.totalApplied() > 0 {
-				continue
-			}
-
-			log.Debug().
-				Int("instanceID", instanceID).
-				Int("ruleID", rule.ID).
-				Str("ruleName", rule.Name).
-				Int("matchedTrackers", stats.MatchedTrackers).
-				Int("speedNoMatch", stats.SpeedConditionNotMet).
-				Int("shareNoMatch", stats.ShareConditionNotMet).
-				Int("pauseNoMatch", stats.PauseConditionNotMet).
-				Int("resumeNoMatch", stats.ResumeConditionNotMet).
-				Int("recheckNoMatch", stats.RecheckConditionNotMet).
-				Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
-				Int("tagNoMatch", stats.TagConditionNotMet).
-				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
-				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
-				Int("deleteNoMatch", stats.DeleteConditionNotMet).
-				Int("moveNoMatch", stats.MoveConditionNotMet).
-				Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
-				Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
-				Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
-				Msg("automations: rule matched trackers but applied no actions")
+			continue
 		}
+		if stats.totalApplied() > 0 {
+			continue
+		}
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("ruleID", rule.ID).
+			Str("ruleName", rule.Name).
+			Int("matchedTrackers", stats.MatchedTrackers).
+			Int("speedNoMatch", stats.SpeedConditionNotMet).
+			Int("shareNoMatch", stats.ShareConditionNotMet).
+			Int("pauseNoMatch", stats.PauseConditionNotMet).
+			Int("resumeNoMatch", stats.ResumeConditionNotMet).
+			Int("recheckNoMatch", stats.RecheckConditionNotMet).
+			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
+			Int("tagNoMatch", stats.TagConditionNotMet).
+			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
+			Int("deleteNoMatch", stats.DeleteConditionNotMet).
+			Int("moveNoMatch", stats.MoveConditionNotMet).
+			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
+			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
+			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
+			Msg("automations: rule matched trackers but applied no actions")
 	}
 
 	// Update lastRuleRun only for rules that matched at least one non-skipped torrent
@@ -5050,18 +5077,38 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	return false
 }
 
+// rulesUseTrackerEntryData reports whether any rule needs the per-torrent tracker
+// list. Rules without a tracker condition skip hydration entirely.
 func rulesUseTrackerEntryData(rules []*models.Automation) bool {
-	return rulesUseCondition(rules, FieldTrackerStatus) || rulesUseCondition(rules, FieldTrackerMessage)
+	return rulesUseCondition(rules, FieldTracker) ||
+		rulesUseCondition(rules, FieldTrackers) ||
+		rulesUseCondition(rules, FieldTrackerStatus) ||
+		rulesUseCondition(rules, FieldTrackerMessage)
 }
 
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {
 	if s == nil || s.syncManager == nil || rule == nil {
 		return torrents
 	}
-	if !ruleUsesCondition(rule, FieldTrackerStatus) && !ruleUsesCondition(rule, FieldTrackerMessage) {
+	if !rulesUseTrackerEntryData([]*models.Automation{rule}) {
 		return torrents
 	}
-	return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+
+	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	if trackerDataMissing(hydrated) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("rule", rule.Name).
+			Int("torrents", len(hydrated)).
+			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+	}
+	return hydrated
+}
+
+// trackerDataMissing reports that no torrent carries tracker entries. An empty
+// torrent list is not missing data: it says nothing about hydration.
+func trackerDataMissing(torrents []qbt.Torrent) bool {
+	return len(torrents) > 0 && !slices.ContainsFunc(torrents, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 })
 }
 
 // rulesUseCondition checks if any enabled rule uses the given field.
