@@ -544,6 +544,15 @@ If you enable "Include hardlinked copies" (available only with `deleteWithFilesI
 
 If qBittorrent holds hardlinked copies of content in different locations and you want to remove all copies together, use this mode.
 
+**Seed size targets (optional):**
+
+When targeting specific trackers, you can set seed size targets to automate tracker-wide seeding caps or safety floors across all connected instances:
+
+- **Target seed size (max)**: Delete torrents (oldest first or according to the rule's sorting order) until the total seed size visible to this tracker drops to or below this target.
+- **Minimum seed size (floor)**: Stop deleting torrents if the total seed size visible to this tracker would fall below this floor.
+- **Cross-instance awareness**: Seed size is computed across all active instances seeding to the tracker, deduplicating content paths so shared content counts once.
+- **Requirements**: Requires selecting specific tracker(s); disabled when "Apply to all trackers" is enabled.
+
 ### Tag
 
 Manage tags on torrents. You can add multiple Tag actions in one workflow.
