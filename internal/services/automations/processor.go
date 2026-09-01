@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -980,12 +981,7 @@ func ruleUsesSeedSizeTarget(rule *models.Automation) bool {
 
 // rulesUseSeedSizeTarget checks if any rule in the list specifies a min or max seed size.
 func rulesUseSeedSizeTarget(rules []*models.Automation) bool {
-	for _, r := range rules {
-		if ruleUsesSeedSizeTarget(r) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(rules, ruleUsesSeedSizeTarget)
 }
 
 // checkAndDeleteUnderSeedSizeTargets evaluates whether a torrent can be deleted
