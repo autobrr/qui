@@ -1383,7 +1383,7 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 
-		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx) {
+		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx, cpIndex) {
 			continue
 		}
 
@@ -1479,7 +1479,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx) {
+		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx, cpIndex) {
 			continue
 		}
 

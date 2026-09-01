@@ -2664,3 +2664,63 @@ func TestProcessTorrents_SeedSizeTarget_CrossInstanceDedup(t *testing.T) {
 	require.Contains(t, states, "b")
 	require.Equal(t, int64(20_000_000_000), evalCtx.SeedSizeStates[1].ProjectedSeedSize)
 }
+
+func TestProcessTorrents_SeedSizeTarget_IncludeCrossSeeds(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Instance 1 has 2 cross-seeds sharing /data/shared (30GB each) and 1 separate torrent /data/unique (30GB).
+	// Total tracker seed size is 60GB (deduplicated).
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "t1", Size: 30_000_000_000, AddedOn: 1000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/shared"},
+		{Hash: "b", Name: "t2", Size: 30_000_000_000, AddedOn: 2000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/shared"},
+		{Hash: "c", Name: "t3", Size: 30_000_000_000, AddedOn: 3000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/unique"},
+	}
+
+	maxTarget := int64(30_000_000_000) // target 30GB (initial 60GB)
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "redacted.ch",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Delete: &models.DeleteAction{
+				Enabled:     true,
+				Mode:        DeleteModeWithFilesIncludeCrossSeeds,
+				MaxSeedSize: &maxTarget,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThanOrEqual,
+					Value:    "0",
+				},
+			},
+		},
+	}
+
+	evalCtx := &EvalContext{
+		CrossSeedFilesByHash: map[string]qbt.TorrentFiles{
+			"a": {{Name: "shared/movie.mkv", Size: 30_000_000_000, Priority: 1}},
+			"b": {{Name: "shared/movie.mkv", Size: 30_000_000_000, Priority: 1}},
+			"c": {{Name: "unique/other.mkv", Size: 30_000_000_000, Priority: 1}},
+		},
+		SeedSizeStates: map[int]*SeedSizeRuleState{
+			1: {
+				InitialSeedSize:            60_000_000_000,
+				ProjectedSeedSize:          60_000_000_000,
+				OtherInstancesContentPaths: make(map[string]struct{}),
+				InstanceContentPathCount:   map[string]int{"/data/shared": 2, "/data/unique": 1},
+				ClearedHashes:              make(map[string]struct{}),
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+
+	// In include-cross-seeds mode, deleting "a" expands to the group {"a", "b"} atomically,
+	// reducing the projected seed size from 60GB down to 30GB (target reached).
+	// "c" is not marked for deletion.
+	require.Contains(t, states, "a")
+	require.Equal(t, int64(30_000_000_000), evalCtx.SeedSizeStates[1].ProjectedSeedSize)
+	require.Contains(t, evalCtx.SeedSizeStates[1].ClearedHashes, "a")
+	require.Contains(t, evalCtx.SeedSizeStates[1].ClearedHashes, "b")
+}
+
