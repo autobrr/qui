@@ -2723,4 +2723,3 @@ func TestProcessTorrents_SeedSizeTarget_IncludeCrossSeeds(t *testing.T) {
 	require.Contains(t, evalCtx.SeedSizeStates[1].ClearedHashes, "a")
 	require.Contains(t, evalCtx.SeedSizeStates[1].ClearedHashes, "b")
 }
-
