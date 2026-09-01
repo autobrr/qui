@@ -73,10 +73,11 @@ type CrossSeedAutomationSettings struct {
 	WebhookSourceExcludeTags       []string `json:"webhookSourceExcludeTags"`       // Skip torrents with these tags
 
 	// Global cross-seed settings (apply to both RSS Automation and Seeded Torrent Search)
-	FindIndividualEpisodes  bool `json:"findIndividualEpisodes"`  // Match season packs with individual episodes
-	AutoResumeMaxDownloadMB int  `json:"autoResumeMaxDownloadMb"` // Max missing data (MiB) to still auto-resume a new cross-seed; 0 = only complete torrents (default: 50)
-	UseCategoryFromIndexer  bool `json:"useCategoryFromIndexer"`  // Use indexer name as category for cross-seeds
-	RunExternalProgramID    *int `json:"runExternalProgramId"`    // Optional external program to run after successful cross-seed injection
+	FindIndividualEpisodes         bool `json:"findIndividualEpisodes"`         // Match season packs with individual episodes
+	AutoResumeMaxDownloadMB        int  `json:"autoResumeMaxDownloadMb"`        // Max missing data (MiB) to still auto-resume a new cross-seed; 0 = only complete torrents (default: 50)
+	PooledPartialCompletionEnabled bool `json:"pooledPartialCompletionEnabled"` // Coordinate partial hardlink/reflink completion pools
+	UseCategoryFromIndexer         bool `json:"useCategoryFromIndexer"`         // Use indexer name as category for cross-seeds
+	RunExternalProgramID           *int `json:"runExternalProgramId"`           // Optional external program to run after successful cross-seed injection
 
 	// Category mapping rules force the search category for torrents in a
 	// qBittorrent category; a matching rule wins over content type detection.
@@ -169,6 +170,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		WebhookSourceExcludeTags:       []string{},
 		FindIndividualEpisodes:         false, // Default to false - only find season packs when searching with season packs
 		AutoResumeMaxDownloadMB:        DefaultAutoResumeMaxDownloadMB,
+		PooledPartialCompletionEnabled: false,
 		UseCategoryFromIndexer:         false, // Default to false - don't override categories by default
 		RunExternalProgramID:           nil,   // No external program by default
 		CategoryMappingRules:           []CategoryMappingRule{},
@@ -447,6 +449,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       webhook_source_exclude_categories, webhook_source_exclude_tags,
 		       find_individual_episodes,
 		       auto_resume_max_download_mb,
+		       pooled_partial_completion_enabled,
 		       use_category_from_indexer, run_external_program_id,
 		       category_mapping_rules,
 		       rss_automation_tags, seeded_search_tags, completion_search_tags,
@@ -478,6 +481,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var runExternalProgramID sql.NullInt64
 	var enabled, startPaused int
 	var findIndividualEpisodes, useCategoryFromIndexer int
+	var pooledPartialCompletionEnabled int
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
 	var skipRecheck, rescueTitleMismatches, skipPieceBoundarySafetyCheck int
@@ -510,6 +514,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&webhookSourceExcludeTags,
 		&findIndividualEpisodes,
 		&settings.AutoResumeMaxDownloadMB,
+		&pooledPartialCompletionEnabled,
 		&useCategoryFromIndexer,
 		&runExternalProgramID,
 		&categoryMappingRules,
@@ -642,6 +647,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.Enabled = SQLiteIntToBool(enabled)
 	settings.StartPaused = SQLiteIntToBool(startPaused)
 	settings.FindIndividualEpisodes = SQLiteIntToBool(findIndividualEpisodes)
+	settings.PooledPartialCompletionEnabled = SQLiteIntToBool(pooledPartialCompletionEnabled)
 	settings.UseCategoryFromIndexer = SQLiteIntToBool(useCategoryFromIndexer)
 	settings.InheritSourceTags = SQLiteIntToBool(inheritSourceTags)
 	settings.UseCrossCategoryAffix = SQLiteIntToBool(useCrossCategoryAffix)
@@ -950,6 +956,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_source_exclude_categories, webhook_source_exclude_tags,
 			find_individual_episodes,
 			auto_resume_max_download_mb,
+			pooled_partial_completion_enabled,
 			use_category_from_indexer, run_external_program_id,
 			category_mapping_rules,
 			rss_automation_tags, seeded_search_tags, completion_search_tags,
@@ -966,7 +973,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -986,6 +993,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			webhook_source_exclude_tags = excluded.webhook_source_exclude_tags,
 			find_individual_episodes = excluded.find_individual_episodes,
 			auto_resume_max_download_mb = excluded.auto_resume_max_download_mb,
+			pooled_partial_completion_enabled = excluded.pooled_partial_completion_enabled,
 			use_category_from_indexer = excluded.use_category_from_indexer,
 			run_external_program_id = excluded.run_external_program_id,
 			category_mapping_rules = excluded.category_mapping_rules,
@@ -1053,6 +1061,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		webhookSourceExcludeTagsJSON,
 		BoolToSQLite(settings.FindIndividualEpisodes),
 		settings.AutoResumeMaxDownloadMB,
+		BoolToSQLite(settings.PooledPartialCompletionEnabled),
 		BoolToSQLite(settings.UseCategoryFromIndexer),
 		runExternalProgramID,
 		categoryMappingRules,
@@ -1757,6 +1766,13 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.LastSeenAt = now
 	}
 
+	// Truncate to day precision so repeated polls on the same day write an
+	// identical last_seen_at value. PruneFeedItems only needs day-level
+	// precision for its 30-day cutoff, and writing the same value each poll
+	// lets Postgres treat the update as HOT-eligible instead of rewriting the
+	// last_seen_at index on every single feed poll.
+	lastSeenAt := item.LastSeenAt.Truncate(24 * time.Hour)
+
 	query := `
 		INSERT INTO cross_seed_feed_items (
 			guid, indexer_id, title, first_seen_at,
@@ -1775,7 +1791,7 @@ func (s *CrossSeedStore) MarkFeedItem(ctx context.Context, item *CrossSeedFeedIt
 		item.IndexerID,
 		item.Title,
 		item.FirstSeenAt,
-		item.LastSeenAt,
+		lastSeenAt,
 		item.LastStatus,
 		item.LastRunID,
 		item.InfoHash,

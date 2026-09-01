@@ -13,11 +13,14 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -116,7 +119,7 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 				Capabilities: []string{"search", "movie-search"},
 				Categories:   movieCategories,
 			},
-		}}}),
+		}}}, jackett.WithMinRequestInterval(time.Millisecond)),
 		syncManager: &gazelleSkipHashSyncManager{
 			torrents: []qbt.Torrent{sourceTorrent},
 			filesByHash: map[string]qbt.TorrentFiles{
@@ -133,6 +136,8 @@ func TestTagIDPrimaryMixedModeWithTitleRescue(t *testing.T) {
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	// The MKV path behind the ID retry is resolved through the instance's backend.
+	svc.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
 
 	resp, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, mediaIDWiringSourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}}, nil)
 	require.NoError(t, err)

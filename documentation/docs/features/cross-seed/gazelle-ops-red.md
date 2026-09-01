@@ -1,35 +1,40 @@
 ---
-sidebar_position: 25
+sidebar_position: 9
 title: OPS/RED (Gazelle)
-description: Cross-seed using Orpheus/Redacted Gazelle APIs, optionally alongside Torznab.
+description: Cross-seed between Orpheus and Redacted with their Gazelle JSON APIs, with or without Torznab.
 ---
 
 # OPS/RED (Gazelle)
 
-qui can cross-seed between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs.
+qui cross-seeds between Orpheus (OPS) and Redacted (RED) using the trackers' Gazelle JSON APIs.
 
 :::tip TL;DR
-- Want the best OPS/RED cross-seed coverage: enable Gazelle and set **both** API keys.
+- For the best OPS/RED cross-seed coverage, enable Gazelle and set **both** API keys.
 - If you set **only one** key, Gazelle matching still works, but coverage is **partial**:
-  - OPS-sourced torrents need the **RED** key (because qui queries the opposite site)
-  - RED-sourced torrents need the **OPS** key (because qui queries the opposite site)
-- "Library Scan" (Seeded Torrent Search) can run in Gazelle-only mode without Torznab. Use it sparingly and prefer an interval of **10+ seconds**.
+  - OPS-sourced torrents need the **RED** key because qui queries the opposite site
+  - RED-sourced torrents need the **OPS** key because qui queries the opposite site
+- Library Scan (Seeded Torrent Search) can run in Gazelle-only mode without Torznab. Use an interval of **10+ seconds**.
 :::
 
-## What It Does
+## What it does
 
-When Gazelle matching is enabled:
+If you enable Gazelle matching:
 
-- OPS/RED source torrents query **only the opposite site** (RED -> OPS, OPS -> RED)
-- Non-OPS/RED source torrents can still be checked against whichever Gazelle sites you configured
-- Torznab can run in parallel, but for per-torrent searches (manual/completion/library scan) OPS/RED Torznab indexers are excluded only when **both** Gazelle keys are configured (so partial-key setups keep Torznab as fallback)
-- If Torznab is unavailable, qui can still return a successful empty result for a torrent that was handled by Gazelle. This includes cases where a local prefilter proves the target tracker content is already present and no remote Gazelle request is needed.
+- If a torrent comes from OPS or RED, qui queries **only the opposite site** (RED -> OPS, OPS -> RED).
+- If a torrent comes from another source, qui checks it against the Gazelle sites you configured.
+- Torznab can run in parallel. If you configure **both** Gazelle keys, qui excludes OPS/RED Torznab indexers from per-torrent searches (manual, completion, library scan). If you configure only one key, qui keeps Torznab as a fallback.
+- Completion searches are the exception. If a completed torrent comes from OPS or RED, qui searches only the opposite site when you configured its key. It skips Torznab for that torrent.
+- If Torznab is unavailable, qui still returns a successful empty result for a torrent that Gazelle handled. If a local prefilter proves the target tracker content is already present, qui sends no remote Gazelle request.
 
-Gazelle support exists to better target music specific handling with OPS/RED. qui uses tracker-native APIs that can search by Gazelle release metadata and source-specific infohashes. Direct Gazelle API use gives qui OPS/RED-specific matching and lets Gazelle-only scans run without any Torznab backend, but it also means API pacing and key coverage are handled separately from Torznab indexer rules.
+Gazelle support gives qui music-specific handling for OPS/RED. The tracker-native APIs search by Gazelle release metadata and source-specific infohashes. Direct Gazelle API use lets Gazelle-only scans run without a Torznab backend. qui paces API requests and tracks key coverage separately from Torznab indexer rules.
 
-## When It Applies
+### Content gate for non-OPS/RED torrents
 
-OPS/RED source detection is based on the announce/tracker URL:
+Before qui spends an API call on a non-OPS/RED torrent, it reads the torrent's file extensions. If most of the torrent's bytes are not audio, e-book, or comic files, qui skips the Gazelle query for that torrent. If a torrent is already on OPS or RED, it skips this gate because the source tracker proves that the content fits.
+
+## When it applies
+
+qui detects OPS and RED sources by reading the announce URL:
 
 - RED announce host: `flacsfor.me`
 - OPS announce host: `home.opsfet.ch`
@@ -39,83 +44,84 @@ These map to the Gazelle API sites:
 - RED API host: `redacted.sh`
 - OPS API host: `orpheus.network`
 
-## Keys And Coverage (ELI5)
+## Keys and coverage
 
-You can configure one key or both. What qui can query depends on what you seed.
+You can configure one key or both. What qui queries depends on what you seed.
 
-- If a torrent is sourced from **OPS**, qui tries to find it on **RED**. That requires a **RED key**.
-- If a torrent is sourced from **RED**, qui tries to find it on **OPS**. That requires an **OPS key**.
+- If a torrent is sourced from **OPS**, qui searches for it on **RED**. That requires a **RED key**.
+- If a torrent is sourced from **RED**, qui searches for it on **OPS**. That requires an **OPS key**.
 
-If you only set one key, expect this:
+If you set only one key, expect this behavior:
 
-- Mixed OPS+RED libraries: some torrents will be "no match" simply because qui cannot query the needed opposite site.
-- Non-OPS/RED torrents: qui will query whichever Gazelle sites you configured (one or both).
+- Mixed OPS+RED libraries: some torrents return "no match" because qui cannot query the needed opposite site.
+- Non-OPS/RED torrents: qui queries whichever Gazelle sites you configured, one or both.
 
-## What Happens If Gazelle Isn't Configured
+## What happens if Gazelle is not configured
 
-If Gazelle is disabled or no API keys are set:
+If you disable Gazelle or set no API keys:
 
 - qui falls back to Torznab (Jackett/Prowlarr) where available
 - Gazelle-only modes (Torznab disabled) cannot run
 
-## How It Matches
+## How it matches
 
 In order:
 
-1. Infohash match using Gazelle-style `info["source"]` swap logic (see [nemorosa](https://github.com/KyokoMiki/nemorosa))
-2. Filename search + exact total size
-3. Filename search + filelist verification (size multiset)
+1. Infohash match with the Gazelle-style `info["source"]` swap logic (see [nemorosa](https://github.com/KyokoMiki/nemorosa))
+2. Filename search plus exact total size
+3. Filename search plus filelist verification
 
-If the target tracker is down or errors, the torrent is treated as **no match** and the run continues (best-effort).
+If the target tracker is down or returns an error, qui treats the torrent as **no match** and continues the run.
 
 ## Configuration
 
-UI: **Cross-Seed -> Rules -> Gazelle (OPS/RED)**
+UI: **Cross-Seed > Rules > Gazelle (OPS/RED)**
 
 - Enable Gazelle matching
 - Set one or both API keys
-- Keys are encrypted at rest and redacted in API/UI responses
+- qui encrypts the keys at rest and redacts them in API and UI responses
 
-## Common Issues
+## Common issues
 
 ### "torznab disabled but gazelle not configured"
 
-You tried to run in Gazelle-only mode (Torznab disabled), but qui has no usable Gazelle client.
+You tried to run in Gazelle-only mode with Torznab disabled, but qui has no usable Gazelle client.
 
 Fix:
 
 - Enable Gazelle
 - Set at least one API key
-- If you changed `session_secret`, re-enter the key(s) (old encrypted values cannot be decrypted)
-- For best OPS/RED coverage, set **both** keys
+- If you changed `sessionSecret` (or `QUI__SESSION_SECRET`), enter the keys again. qui cannot decrypt the old encrypted values.
+- For the best OPS/RED coverage, set **both** keys
 
-### Only One Key Set
+### Only one key set
 
-This is supported, but coverage is partial.
+This configuration works, but coverage is partial.
 
-Example: only RED key is set.
+For example, if you set only the RED key:
 
-- OPS-sourced torrents can be checked against RED
-- RED-sourced torrents cannot be checked against OPS
+- qui can check OPS-sourced torrents against RED
+- qui cannot check RED-sourced torrents against OPS
 
-## Rate Limiting
+## Rate limiting
 
-Requests to OPS/RED are rate-limited and **shared across the whole qui process**, so running multiple qBittorrent instances does not multiply API pressure.
+qui rate-limits requests to OPS/RED and shares the limit across the whole qui process. Multiple qBittorrent instances do not multiply API pressure.
 
-Gazelle and Torznab also differ in how time-based search constraints are applied:
+Gazelle and Torznab also differ in how qui applies time-based search constraints:
 
-- With Torznab enabled, Library Scan keeps the conservative per-torrent interval floor used for indexer searches.
-- With Torznab disabled and Gazelle configured, Library Scan can use a lower interval floor because requests go directly to the tracker APIs instead of through Torznab indexers.
-- The search cooldown is recorded only after qui actually attempts a remote Gazelle or Torznab request. Local preflight failures, no-backend skips, or local-prefilter skips do not mark the torrent as recently searched.
-- Duplicate torrent cooldown history is propagated only after the representative torrent has made a cooldown-worthy remote request.
+- If you enable Torznab, Library Scan keeps the per-torrent interval floor of 60 seconds used for indexer searches.
+- If you disable Torznab and configure Gazelle, Library Scan can use a lower interval floor because requests go directly to the tracker APIs instead of through Torznab indexers.
+- qui stamps the Gazelle cooldown for a torrent when it sends a Gazelle lookup. It also stamps it when Gazelle was enabled for the run but had nothing to look up for that torrent. Causes: the content gate, the local prefilter, or the target hash already present. A search that fails before any lookup does not stamp it.
+- qui stamps Torznab cooldowns per indexer, and only for indexers that completed the search. An indexer that was rate limited or failed stays eligible on the next run.
+- After each search attempt, qui copies the representative torrent's Gazelle and per-indexer cooldown stamps to its duplicate torrents.
 
-### Library Scan Without Torznab
+### Library Scan without Torznab
 
-Seeded Torrent Search (Library Scan) can run with **no enabled Torznab indexers** if Gazelle is configured.
+If you configure Gazelle, Seeded Torrent Search (Library Scan) can run with **no enabled Torznab indexers**.
 
 In that mode:
 
-- All source torrents are still processed
-- Matches come only from configured Gazelle sites (RED/OPS)
-- You can lower the Library Scan interval below the Torznab floor (minimum 5 seconds), but actual request pacing still respects the shared OPS/RED API rate limits
-- Recommended: 10+ seconds to reduce API pressure (interval is per-torrent pacing; each torrent can trigger multiple API calls)
+- qui still processes all source torrents
+- Matches come only from the configured Gazelle sites (RED/OPS)
+- You can lower the Library Scan interval below the Torznab floor, down to a minimum of 5 seconds. Actual request pacing still respects the shared OPS/RED API rate limits.
+- Use 10 seconds or more to reduce API pressure. The interval is per-torrent pacing, and each torrent can trigger multiple API calls.

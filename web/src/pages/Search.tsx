@@ -23,7 +23,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import type { ColumnFilter } from "@/lib/column-filter-utils"
 import { filterSearchResult } from "@/lib/column-filter-utils"
-import { getCategoriesForSearchType, getSearchTypeLabel, getSearchTypeOptions, inferSearchTypeFromCategories, type SearchType } from "@/lib/search-derived-params"
+import { getCategoriesForSearchType, getSearchTypeLabel, getSearchTypeOptions, inferSearchTypeFromCategories, resolveSuggestionIndexerIds, type SearchType } from "@/lib/search-derived-params"
 import { extractImdbId, extractTvdbId } from "@/lib/search-id-parsing"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from "@/types"
@@ -67,7 +67,6 @@ const ADVANCED_PARAM_DEFAULTS: AdvancedParamsState = {
 }
 
 const SEARCH_PLACEHOLDER_KEYS: Record<SearchType, string> = {
-  auto: "searchTypes.auto.placeholder",
   movies: "searchTypes.movies.placeholder",
   tv: "searchTypes.tv.placeholder",
   music: "searchTypes.music.placeholder",
@@ -253,7 +252,7 @@ export function Search() {
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [selectedIndexers, setSelectedIndexers] = useState<Set<number>>(new Set())
   const [indexerSheetOpen, setIndexerSheetOpen] = useState(false)
-  const [searchType, setSearchType] = useState<SearchType>("auto")
+  const [searchType, setSearchType] = useState<SearchType>("movies")
   const [loadingIndexers, setLoadingIndexers] = useState(true)
   const { instances, isLoading: loadingInstances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = useState<number | null>(null)
@@ -393,8 +392,9 @@ export function Search() {
     }
   }
 
-  const validateSearchInputs = useCallback((overrideQuery?: string) => {
+  const validateSearchInputs = useCallback((overrideQuery?: string, overrideIndexers?: Set<number> | null) => {
     const normalizedQuery = (overrideQuery ?? query).trim()
+    const activeIndexers = overrideIndexers ?? selectedIndexers
 
     // Allow search with either query or advanced parameters
     if (!normalizedQuery && !hasAdvancedParams) {
@@ -402,7 +402,7 @@ export function Search() {
       return false
     }
 
-    if (selectedIndexers.size === 0) {
+    if (activeIndexers.size === 0) {
       toast.error(t("toast.selectIndexer"))
       return false
     }
@@ -431,7 +431,8 @@ export function Search() {
       bypassCache = false,
       queryOverride,
       searchTypeOverride,
-    }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType } = {}) => {
+      indexerIdsOverride,
+    }: { bypassCache?: boolean; queryOverride?: string; searchTypeOverride?: SearchType; indexerIdsOverride?: Set<number> | null } = {}) => {
       const reqId = ++latestReqIdRef.current
       const searchQuery = (queryOverride ?? query).trim()
       const targetSearchType = searchTypeOverride ?? searchType
@@ -446,13 +447,10 @@ export function Search() {
       try {
         const payload: TorznabSearchRequest = {
           query: searchQuery,
-          indexer_ids: Array.from(selectedIndexers),
+          indexer_ids: Array.from(indexerIdsOverride ?? selectedIndexers),
         }
 
-        const derivedCategories = getCategoriesForSearchType(targetSearchType)
-        if (derivedCategories && derivedCategories.length > 0) {
-          payload.categories = derivedCategories
-        }
+        payload.categories = getCategoriesForSearchType(targetSearchType)
 
         const parseNumberParam = (value: string) => {
           const trimmed = value.trim()
@@ -672,19 +670,6 @@ export function Search() {
     persistSelectedInstanceId(instanceId)
     setInstanceMenuOpen(false)
   }, [persistSelectedInstanceId, setInstanceMenuOpen])
-
-  const applyIndexerSelectionFromSuggestion = useCallback((indexerIds: number[]) => {
-    if (!indexerIds || indexerIds.length === 0 || indexers.length === 0) {
-      return
-    }
-
-    const enabled = new Set(indexers.map(idx => idx.id))
-    const filtered = indexerIds.filter(id => enabled.has(id))
-    if (filtered.length === 0) {
-      return
-    }
-    setSelectedIndexers(new Set(filtered))
-  }, [indexers])
 
   const toggleIndexer = (id: number) => {
     setSelectedIndexers(prev => {
@@ -906,16 +891,21 @@ export function Search() {
 
   const handleSuggestionClick = useCallback((search: TorznabRecentSearch) => {
     setQuery(search.query)
-    const derivedType = inferSearchTypeFromCategories(search.categories) ?? "auto"
+    const derivedType = inferSearchTypeFromCategories(search.categories) ?? "movies"
     setSearchType(derivedType)
-    applyIndexerSelectionFromSuggestion(search.indexerIds)
+    // setSelectedIndexers only applies on the next render, so the restored ids
+    // must also flow into validation and the request directly.
+    const restoredIndexerIds = resolveSuggestionIndexerIds(search.indexerIds, indexers.map(idx => idx.id))
+    if (restoredIndexerIds) {
+      setSelectedIndexers(restoredIndexerIds)
+    }
     const normalized = search.query.trim()
-    if (!validateSearchInputs(normalized)) {
+    if (!validateSearchInputs(normalized, restoredIndexerIds)) {
       return
     }
     closeSuggestions()
-    void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType })
-  }, [applyIndexerSelectionFromSuggestion, closeSuggestions, runSearch, validateSearchInputs])
+    void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType, indexerIdsOverride: restoredIndexerIds })
+  }, [closeSuggestions, indexers, runSearch, validateSearchInputs])
 
   const handleDownload = useCallback((result: TorznabSearchResult) => {
     window.open(result.downloadUrl, "_blank", "noopener,noreferrer")
@@ -1177,7 +1167,7 @@ export function Search() {
                     <Label htmlFor="search-type" className="sr-only">{t("searchForm.searchType")}</Label>
                     <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
                       <SelectTrigger id="search-type" className="w-full">
-                        <SelectValue placeholder={t("searchTypes.auto.label")} />
+                        <SelectValue placeholder={t("searchTypes.movies.label")} />
                       </SelectTrigger>
                       <SelectContent>
                         {searchTypeOptions.map((option) => (
@@ -1254,7 +1244,7 @@ export function Search() {
                       <div className="absolute left-0 right-0 z-50 mt-1 rounded-md border bg-popover shadow-lg">
                         {suggestionMatches.map((search) => {
                           const suggestionType = inferSearchTypeFromCategories(search.categories)
-                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "auto", t)
+                          const suggestionTypeLabel = getSearchTypeLabel(suggestionType ?? "movies", t)
                           return (
                             <button
                               type="button"

@@ -80,12 +80,46 @@ export interface CrossSeedTorrentSearchResult {
 /** Set when the ARR external-ID lookup could not supply IDs and the search ran title-only. */
 export type CrossSeedQueryDegradedReason = "arr_lookup_failed" | "arr_no_ids"
 
+export interface CrossSeedSearchRejectedCandidate {
+  indexer: string
+  indexerId: number
+  title: string
+  size: number
+  reason: string
+}
+
+export type CrossSeedSearchIndexerStatus = "searched" | "not_covered" | "error" | "excluded"
+
+export interface CrossSeedSearchIndexerOutcome {
+  indexerId: number
+  status: CrossSeedSearchIndexerStatus
+  detail?: string
+  candidates: number
+}
+
+/** Explains why the Torznab passes accepted or rejected candidates. Absent when no Torznab search ran. */
+export interface CrossSeedSearchDecisionTrace {
+  sourceSize: number
+  tolerancePercent: number
+  totalResults: number
+  sizeFiltered: number
+  releaseFiltered: number
+  lateContentFiltered: number
+  duplicateFiltered: number
+  finalMatches: number
+  rejectionCounts?: Record<string, number>
+  /** Capped at 5 candidates per rejection reason; rejectionCounts holds the full totals. */
+  rejectedCandidates?: CrossSeedSearchRejectedCandidate[]
+  indexers?: CrossSeedSearchIndexerOutcome[]
+}
+
 export interface CrossSeedTorrentSearchResponse {
   sourceTorrent: CrossSeedTorrentInfo
   results: CrossSeedTorrentSearchResult[]
   cache?: TorznabSearchCacheMetadata
   partial?: boolean
   queryDegraded?: CrossSeedQueryDegradedReason
+  decisionTrace?: CrossSeedSearchDecisionTrace
 }
 
 export interface CrossSeedTorrentSearchSelection {
@@ -108,6 +142,31 @@ export interface CrossSeedApplyResult {
 
 export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
+}
+
+export interface ManualCrossSeedProposal {
+  hash: string
+  name: string
+  size: number
+  category: string
+  effectiveSavePath: string
+  overlapBytes: number
+  overlapFraction: number
+}
+
+export interface ManualCrossSeedProposalsResponse {
+  sourceName: string
+  sourceSize: number
+  sourceFileCount: number
+  defaultTags: string[]
+  /** Set when settings pin every cross-seed to one category; the apply discards any pick. */
+  pinnedCategory: string
+  proposals: ManualCrossSeedProposal[]
+}
+
+export interface ManualCrossSeedApplyResponse {
+  success: boolean
+  results: CrossSeedInstanceResult[]
 }
 
 export interface CrossSeedBlocklistEntry {
@@ -176,6 +235,7 @@ export interface CrossSeedAutomationSettings {
   webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
   autoResumeMaxDownloadMb: number
+  pooledPartialCompletionEnabled: boolean
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -243,6 +303,7 @@ export interface CrossSeedAutomationSettingsPatch {
   webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
   autoResumeMaxDownloadMb?: number
+  pooledPartialCompletionEnabled?: boolean
   useCategoryFromIndexer?: boolean
   useCrossCategoryAffix?: boolean
   categoryAffixMode?: "prefix" | "suffix"

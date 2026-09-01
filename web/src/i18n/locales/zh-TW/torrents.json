@@ -56,6 +56,7 @@
     "searchCrossSeeds": "搜尋輔種",
     "filterCrossSeeds": "篩選輔種",
     "filterCrossSeedsSingleOnly": "篩選輔種（僅限單選）",
+    "manualCrossSeed": "手動新增輔種",
     "setTags": "設定標籤",
     "setLocation": "設定位置",
     "setShareLimits": "設定分享限制",
@@ -671,6 +672,25 @@
     "block": "封鎖",
     "addedToBlocklist": "已新增到封鎖清單",
     "missingInstance": "封鎖清單缺少實例",
+    "trace": {
+      "title": "搜尋明細",
+      "summaryBadge": "{{total}} 個候選，{{matches}} 個匹配項",
+      "summary": "共傳回 {{total}} 個候選。被拒絕：發布資訊不符 {{release}} 個，大小不符 {{size}} 個，內容過濾 {{late}} 個，重複 {{duplicates}} 個。剩餘 {{matches}} 個匹配項。",
+      "indexersHeading": "索引器",
+      "status": {
+        "searched": "已搜尋",
+        "notCovered": "未完成",
+        "error": "錯誤",
+        "excluded": "已排除"
+      },
+      "candidateCount": "{{count}} 個候選",
+      "rejectionsHeading": "被拒絕的候選",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "還有 {{count}} 個相同原因的候選",
+      "copyReport": "複製報告",
+      "copied": "報告已複製到剪貼簿",
+      "copyFailed": "無法複製報告"
+    },
     "scope": {
       "allIndexers": "所有索引器",
       "selectCustom": "自訂選擇",
@@ -1056,7 +1076,7 @@
       "unknownClient": "未知用戶端"
     },
     "actions": {
-      "copyIpPort": "複製 IP:連接埠",
+      "copyIpPort": "複製位址",
       "banPeerPermanently": "永久封鎖節點",
       "selectAll": "全部",
       "selectNone": "無"
@@ -1130,7 +1150,7 @@
     "editTrackerUrl": "編輯 Tracker URL"
   },
   "peersTable": {
-    "address": "IP:連接埠",
+    "address": "IP/位址",
     "client": "用戶端",
     "flags": "標誌",
     "progress": "進度",
@@ -1139,11 +1159,11 @@
     "downloaded": "已下載",
     "uploaded": "已上傳",
     "relevance": "相關性",
-    "copyIpAddress": "複製 IP 位址",
+    "copyIpAddress": "複製位址",
     "banPeer": "封鎖節點",
     "noPeersConnected": "無已連線節點",
     "toast": {
-      "ipCopied": "IP 位址已複製到剪貼簿"
+      "ipCopied": "位址已複製到剪貼簿"
     }
   },
   "routes": {
@@ -1502,5 +1522,34 @@
     "failedToUpdatePriorities": "更新檔案優先順序失敗",
     "failedToRenameFile": "重新命名檔案失敗",
     "failedToRenameFolder": "重新命名資料夾失敗"
+  },
+  "manualCrossSeed": {
+    "title": "手動輔種匹配",
+    "description": "選擇已持有該資料的種子。qui 會將上傳的種子加入其位置，重新校驗後開始做種。",
+    "fileLabel": "種子檔案",
+    "sourceSummary_other": "{{size}} · {{count}} 個檔案",
+    "loadingProposals": "正在依檔案重疊度排序目標...",
+    "proposalsFailed": "載入目標建議失敗",
+    "targetLabel": "目標種子",
+    "noProposals": "找不到重疊的種子。請手動選擇目標。",
+    "overlap": "檔案重疊 {{percent}}%",
+    "pickManually": "選擇其他種子",
+    "pickerPlaceholder": "搜尋種子...",
+    "pickerNoResults": "沒有符合的種子",
+    "zeroOverlapWarning": "所選種子與上傳檔案沒有相同大小的檔案。結果由重新校驗決定；校驗失敗時種子保持暫停。",
+    "category": "分類",
+    "noCategory": "（無分類）",
+    "pinnedCategory": "交叉做種設定將每個配對固定為「{{category}}」分類，因此無法在此變更。",
+    "tags": "標籤",
+    "newTagPlaceholder": "輸入標籤後按 Enter",
+    "savePath": "儲存路徑（實際目標位置）",
+    "cancel": "取消",
+    "apply": "新增輔種",
+    "applying": "正在新增...",
+    "applySuccess": "輔種已新增",
+    "applyFailed": "輔種失敗：{{message}}",
+    "addOptionTitle": "作為輔種新增",
+    "addOptionDescription": "將此種子與現有種子匹配，而不是重新下載。",
+    "addOptionButton": "手動匹配"
   }
 }

@@ -6,9 +6,12 @@
 package automations
 
 import (
+	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -58,22 +61,25 @@ func TestResolveFreeSpaceSource(t *testing.T) {
 	}
 }
 
-func TestGetLocalFreeSpaceBytes(t *testing.T) {
-	// Test with a known-existing directory (temp dir should always exist)
+func TestGetFreeSpaceBytesForSource_PathViaBackend(t *testing.T) {
 	tmpDir := os.TempDir()
-	bytes, err := getLocalFreeSpaceBytes(tmpDir)
+	backend := local.NewBackend()
+	src := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: tmpDir}
+	bytes, err := GetFreeSpaceBytesForSource(context.Background(), nil, nil, src, backend)
 	if err != nil {
-		t.Fatalf("getLocalFreeSpaceBytes(%q) returned error: %v", tmpDir, err)
+		t.Fatalf("GetFreeSpaceBytesForSource(%q) returned error: %v", tmpDir, err)
 	}
 	if bytes <= 0 {
-		t.Errorf("getLocalFreeSpaceBytes(%q) returned %d, want > 0", tmpDir, bytes)
+		t.Errorf("GetFreeSpaceBytesForSource(%q) returned %d, want > 0", tmpDir, bytes)
 	}
 }
 
-func TestGetLocalFreeSpaceBytes_InvalidPath(t *testing.T) {
-	_, err := getLocalFreeSpaceBytes("/nonexistent/path/that/should/not/exist")
+func TestGetFreeSpaceBytesForSource_PathInvalidPath(t *testing.T) {
+	backend := local.NewBackend()
+	src := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: filepath.Join(t.TempDir(), "nonexistent")}
+	_, err := GetFreeSpaceBytesForSource(context.Background(), nil, nil, src, backend)
 	if err == nil {
-		t.Error("getLocalFreeSpaceBytes with invalid path should return error")
+		t.Error("GetFreeSpaceBytesForSource with invalid path should return error")
 	}
 }
 

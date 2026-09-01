@@ -112,8 +112,6 @@ import { TableColumnHeader } from "./table/TableColumnHeader"
 import { TorrentTableRow, type CompactRowSharedProps, type TorrentRowMenuProps } from "./table/TorrentTableRow"
 import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 
-const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
-
 // Default values for persisted state hooks (module scope for stable references)
 const DEFAULT_COLUMN_VISIBILITY = {
   priority: true,
@@ -250,6 +248,7 @@ interface TorrentTableOptimizedProps {
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
+  onManualCrossSeed?: (torrent: Torrent) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -268,6 +267,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   canCrossSeedSearch,
   onCrossSeedSearch,
   isCrossSeedSearching,
+  onManualCrossSeed,
 }: TorrentTableOptimizedProps) {
   const isReadOnly = readOnly
   const isUnifiedView = isAllInstancesScope(instanceId)
@@ -293,8 +293,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
-  // Desktop view mode state (separate from mobile view mode)
-  const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
+  const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("desktop")
 
   // Spreadsheet theme: row numbers down the left edge, with a blank corner cell
   // in the header. Stacked (compact) rows have no column grid to number.
@@ -1313,9 +1312,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     canCrossSeedSearch,
     onCrossSeedSearch,
     isCrossSeedSearching,
+    onManualCrossSeed,
     onFilterChange,
     onFetchTorrentField: fetchTorrentField,
-  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onFilterChange, fetchTorrentField])
+  }), [instanceId, isReadOnly, isAllSelected, selectedHashes, selectedTorrents, effectiveSelectionCount, onTorrentSelect, runAction, prepareDeleteAction, prepareTagsAction, prepareCommentAction, prepareCategoryAction, prepareCreateCategoryAction, prepareShareLimitAction, prepareSpeedLimitAction, prepareLocationAction, prepareRenameTorrentAction, prepareRecheckAction, prepareReannounceAction, prepareTmmAction, availableCategories, handleSetCategoryDirect, isPending, handleExportWrapper, isExportingTorrent, capabilities, allowSubcategories, canCrossSeedSearch, onCrossSeedSearch, isCrossSeedSearching, onManualCrossSeed, onFilterChange, fetchTorrentField])
 
   const showCompactCheckbox = table.getColumn("select")?.getIsVisible() !== false
   const compactRowProps = useMemo<CompactRowSharedProps>(() => ({

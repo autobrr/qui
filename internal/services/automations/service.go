@@ -21,6 +21,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
@@ -544,6 +545,7 @@ type Service struct {
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
 	crossMatcher              CrossMatcher
+	backendPool               *fsops.Pool
 	activityRuns              *activityRunStore
 	releaseParser             *releases.Parser
 
@@ -558,7 +560,7 @@ type Service struct {
 	activityPublisher activity.Publisher
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher, backendPool *fsops.Pool) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -587,6 +589,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
 		crossMatcher:              crossMatcher,
+		backendPool:               backendPool,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
 		lastApplied:               make(map[int]map[string]time.Time),
@@ -934,7 +937,7 @@ func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceI
 	if s == nil || s.trackerCustomizationStore == nil {
 		return
 	}
-	if !ConditionUsesField(cond, FieldTracker) {
+	if !ConditionUsesField(cond, FieldTracker) && !ConditionUsesField(cond, FieldTrackers) {
 		return
 	}
 
@@ -952,7 +955,14 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 		return nil
 	}
 
-	freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, rule.FreeSpaceSource)
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		// The rule needs FREE_SPACE; evaluating without it would silently
+		// treat the disk as having no data. Fail the setup instead.
+		return fmt.Errorf("no filesystem backend for free space check: %w", err)
+	}
+
+	freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, rule.FreeSpaceSource, backend)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get free space")
 		return fmt.Errorf("failed to get free space: %w", err)
@@ -1093,7 +1103,12 @@ func (s *Service) setupMissingFilesContext(
 		return
 	}
 
-	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+	missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
+		return
+	}
+	evalCtx.HasMissingFilesByHash = missing
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -1933,10 +1948,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, nil
 	}
 
-	// Pre-filter rules by interval eligibility
+	// Pre-filter rules by enablement and interval eligibility
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
 	for _, rule := range rules {
+		// A disabled rule never stamps lastRuleRun, so the interval filter below can
+		// never drop it: without this it stays eligible on every tick and pulls the
+		// data the gates further down fetch.
+		if !rule.Enabled {
+			continue
+		}
 		if !force {
 			interval := DefaultRuleInterval
 			if rule.IntervalSeconds != nil {
@@ -2011,6 +2032,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	if rulesUseTrackerEntryData(eligibleRules) {
 		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+		if trackerDataMissing(torrents) {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Int("torrents", len(torrents)).
+				Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+		}
 	}
 
 	// Get instance for local filesystem access check
@@ -2067,7 +2094,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
 	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
-		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+		missing, err := s.detectMissingFiles(ctx, instanceID, torrents)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
+		} else {
+			evalCtx.HasMissingFilesByHash = missing
+		}
 	}
 
 	// On-demand cross-match lookup (same-instance and other-instance cross-seed detection)
@@ -2102,7 +2134,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 
 			// Get free space for this source
-			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource)
+			backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
+			if backendErr != nil {
+				log.Warn().Err(backendErr).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: no backend for free space")
+				wrapped := fmt.Errorf("failed to get backend for free space source %s: %w", sourceKey, backendErr)
+				s.notifyAutomationFailure(ctx, instanceID, wrapped)
+				return nil, wrapped
+			}
+			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource, backend)
 			if err != nil {
 				log.Error().Err(err).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: failed to get free space for source")
 				wrapped := fmt.Errorf("failed to get free space for source %s: %w", sourceKey, err)
@@ -2142,9 +2181,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
-	// Load tracker display names when needed by tagging OR by TRACKER conditions.
+	// Load tracker display names when needed by tagging OR by TRACKER/TRACKERS conditions.
 	// KISS: only load customizations when a rule actually references them.
-	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker)) && s.trackerCustomizationStore != nil {
+	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker) || rulesUseCondition(eligibleRules, FieldTrackers)) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
@@ -2178,10 +2217,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// This must happen after skipCheck is defined so we only stamp lastRuleRun
 	// for rules that will actually process at least one torrent.
 	rulesUsed := make(map[int]struct{})
+	consideredTorrents := 0
 	for _, torrent := range torrents {
 		if skipCheck(torrent.Hash) {
 			continue
 		}
+		consideredTorrents++
 		for _, rule := range selectMatchingRules(torrent, eligibleRules, s.syncManager) {
 			rulesUsed[rule.ID] = struct{}{}
 		}
@@ -2201,37 +2242,50 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("torrents", len(torrents)).
 			Int("matchedRules", len(rulesUsed)).
 			Msg("automations: no actions to apply")
+	}
 
-		for _, rule := range eligibleRules {
-			stats := ruleStats[rule.ID]
-			if stats == nil || stats.MatchedTrackers == 0 {
-				continue
+	// Report every rule that did nothing, even when another rule acted. A rule
+	// matching zero torrents is the hardest run to diagnose, so it must not stay silent.
+	for _, rule := range eligibleRules {
+		stats := ruleStats[rule.ID]
+		if stats == nil || stats.MatchedTrackers == 0 {
+			// Stay quiet when every torrent was skipped as recently processed:
+			// the rule saw nothing, which says nothing about the rule.
+			if consideredTorrents > 0 {
+				log.Debug().
+					Int("instanceID", instanceID).
+					Int("ruleID", rule.ID).
+					Str("ruleName", rule.Name).
+					Str("trackerPattern", rule.TrackerPattern).
+					Int("consideredTorrents", consideredTorrents).
+					Msg("automations: rule matched no torrents")
 			}
-			if stats.totalApplied() > 0 {
-				continue
-			}
-
-			log.Debug().
-				Int("instanceID", instanceID).
-				Int("ruleID", rule.ID).
-				Str("ruleName", rule.Name).
-				Int("matchedTrackers", stats.MatchedTrackers).
-				Int("speedNoMatch", stats.SpeedConditionNotMet).
-				Int("shareNoMatch", stats.ShareConditionNotMet).
-				Int("pauseNoMatch", stats.PauseConditionNotMet).
-				Int("resumeNoMatch", stats.ResumeConditionNotMet).
-				Int("recheckNoMatch", stats.RecheckConditionNotMet).
-				Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
-				Int("tagNoMatch", stats.TagConditionNotMet).
-				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
-				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
-				Int("deleteNoMatch", stats.DeleteConditionNotMet).
-				Int("moveNoMatch", stats.MoveConditionNotMet).
-				Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
-				Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
-				Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
-				Msg("automations: rule matched trackers but applied no actions")
+			continue
 		}
+		if stats.totalApplied() > 0 {
+			continue
+		}
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("ruleID", rule.ID).
+			Str("ruleName", rule.Name).
+			Int("matchedTrackers", stats.MatchedTrackers).
+			Int("speedNoMatch", stats.SpeedConditionNotMet).
+			Int("shareNoMatch", stats.ShareConditionNotMet).
+			Int("pauseNoMatch", stats.PauseConditionNotMet).
+			Int("resumeNoMatch", stats.ResumeConditionNotMet).
+			Int("recheckNoMatch", stats.RecheckConditionNotMet).
+			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
+			Int("tagNoMatch", stats.TagConditionNotMet).
+			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
+			Int("deleteNoMatch", stats.DeleteConditionNotMet).
+			Int("moveNoMatch", stats.MoveConditionNotMet).
+			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
+			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
+			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
+			Msg("automations: rule matched trackers but applied no actions")
 	}
 
 	// Update lastRuleRun only for rules that matched at least one non-skipped torrent
@@ -5023,18 +5077,38 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	return false
 }
 
+// rulesUseTrackerEntryData reports whether any rule needs the per-torrent tracker
+// list. Rules without a tracker condition skip hydration entirely.
 func rulesUseTrackerEntryData(rules []*models.Automation) bool {
-	return rulesUseCondition(rules, FieldTrackerStatus) || rulesUseCondition(rules, FieldTrackerMessage)
+	return rulesUseCondition(rules, FieldTracker) ||
+		rulesUseCondition(rules, FieldTrackers) ||
+		rulesUseCondition(rules, FieldTrackerStatus) ||
+		rulesUseCondition(rules, FieldTrackerMessage)
 }
 
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {
 	if s == nil || s.syncManager == nil || rule == nil {
 		return torrents
 	}
-	if !ruleUsesCondition(rule, FieldTrackerStatus) && !ruleUsesCondition(rule, FieldTrackerMessage) {
+	if !rulesUseTrackerEntryData([]*models.Automation{rule}) {
 		return torrents
 	}
-	return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+
+	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	if trackerDataMissing(hydrated) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("rule", rule.Name).
+			Int("torrents", len(hydrated)).
+			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+	}
+	return hydrated
+}
+
+// trackerDataMissing reports that no torrent carries tracker entries. An empty
+// torrent list is not missing data: it says nothing about hydration.
+func trackerDataMissing(torrents []qbt.Torrent) bool {
+	return len(torrents) > 0 && !slices.ContainsFunc(torrents, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 })
 }
 
 // rulesUseCondition checks if any enabled rule uses the given field.
@@ -5226,18 +5300,37 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 	return result
 }
 
-// buildFullPath constructs the full path for a torrent file.
-// qBittorrent always returns forward slashes, so we normalize using filepath.FromSlash.
-func buildFullPath(basePath, filePath string) string {
-	// Normalize forward slashes to OS-native path separators
-	normalizedFile := filepath.FromSlash(filePath)
-	normalizedBase := filepath.FromSlash(basePath)
-
-	cleaned := filepath.Clean(normalizedFile)
-	if filepath.IsAbs(cleaned) {
-		return cleaned
+// buildFullPath converts a torrent-internal (slash-delimited) file name into a
+// local filesystem path under basePath. Torrent metadata is untrusted on every
+// OS, so names that are absolute, drive-qualified, UNC, or escape basePath via
+// ".." are rejected in both POSIX and Windows form (ok=false). Names carrying
+// a literal backslash are rejected rather than rewritten: backslash is a legal
+// filename byte on Linux, and inventing a nested path from it makes
+// missing-files flag a file that exists (a skipped file is safe, a false
+// missing-files verdict can fire a destructive rule).
+//
+// basePath must be absolute in local form. An empty or relative save path would
+// otherwise join to a relative path that resolves against the process working
+// directory, so a file that exists would stat as missing.
+func buildFullPath(basePath, fileName string) (string, bool) {
+	base := filepath.FromSlash(basePath)
+	if base == "" || !filepath.IsAbs(base) {
+		return "", false
 	}
-	return filepath.Join(normalizedBase, cleaned)
+	if fileName == "" || strings.ContainsRune(fileName, '\\') ||
+		strings.HasPrefix(fileName, "/") || hasWindowsDrivePrefix(fileName) {
+		return "", false
+	}
+	cleaned := path.Clean(fileName)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", false
+	}
+	return filepath.Join(base, filepath.FromSlash(cleaned)), true
+}
+
+func hasWindowsDrivePrefix(p string) bool {
+	return len(p) >= 2 && p[1] == ':' &&
+		(('a' <= p[0] && p[0] <= 'z') || ('A' <= p[0] && p[0] <= 'Z'))
 }
 
 // applySpeedLimits applies upload or download limits in batches, logging and recording failures.

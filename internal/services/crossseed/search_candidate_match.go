@@ -69,6 +69,7 @@ type searchCandidateDecision struct {
 	SearchCandidateName   string
 	GroupFallbackIdentity string
 	SourceTitles          []string
+	CandidateTitles       []string
 	RejectReason          string
 	StrictMismatchReason  string
 	RelaxedDifferences    []string
@@ -93,6 +94,7 @@ type searchDecisionProvenance struct {
 	RelaxedDifferences    []string
 	GroupFallbackIdentity string
 	SourceTitles          []string
+	CandidateTitles       []string
 }
 
 func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
@@ -104,12 +106,14 @@ func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
 		RelaxedDifferences:    slices.Clone(decision.RelaxedDifferences),
 		GroupFallbackIdentity: decision.GroupFallbackIdentity,
 		SourceTitles:          slices.Clone(decision.SourceTitles),
+		CandidateTitles:       slices.Clone(decision.CandidateTitles),
 	}
 }
 
 func (provenance searchDecisionProvenance) clone() searchDecisionProvenance {
 	provenance.RelaxedDifferences = slices.Clone(provenance.RelaxedDifferences)
 	provenance.SourceTitles = slices.Clone(provenance.SourceTitles)
+	provenance.CandidateTitles = slices.Clone(provenance.CandidateTitles)
 	return provenance
 }
 
@@ -275,6 +279,7 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	decision.Accepted = true
 	decision.Class = class
 	decision.SourceTitles = slices.Clone(input.SourceTitles)
+	decision.CandidateTitles = slices.Clone(input.CandidateTitles)
 	decision.Score, decision.MatchReason = evaluateReleaseMatch(input.Source.release, input.Candidate.release)
 	if decision.Score <= 0 {
 		decision.Score = 1
@@ -710,6 +715,12 @@ func searchRelaxationRequiresVerification(strictMismatchReason string) bool {
 // relaxation must remain bound to the torrent that supplied its size evidence.
 func candidateRequiresVerification(candidate CrossSeedCandidate, selectedHash string, req *CrossSeedRequest) bool {
 	if candidate.titleRescue {
+		return true
+	}
+	// A Manual match always verifies before seeding, validated files or not:
+	// the pinned target bypassed the release and content gates, so the recheck
+	// is the arbiter. There is deliberately no way to skip it.
+	if req != nil && req.ManualTargetHash != "" {
 		return true
 	}
 	if req == nil || candidate.InstanceID != req.SearchDecision.SourceInstanceID {

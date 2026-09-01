@@ -26,10 +26,13 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/buildinfo"
+	"github.com/autobrr/qui/internal/clientmigrate"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
@@ -80,6 +83,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
 	rootCmd.AddCommand(RunUpdateCommand())
+	rootCmd.AddCommand(RunMigrateCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -411,6 +415,56 @@ Flags:
 	return command
 }
 
+func RunMigrateCommand() *cobra.Command {
+	var command = &cobra.Command{
+		Use:   "migrate {deluge | rtorrent | transmission} --source-dir dir --qbit-dir dir2 [--skip-backup] [--dry-run]",
+		Short: "Migrate from deluge,rtorrent or transmission to qBittorrent",
+		Long:  `Migrate torrents with state from other clients [deluge,rtorrent,transmission]`,
+		Example: `  qui migrate deluge --source-dir ~/.config/deluge/state/ --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate rtorrent --source-dir ~/.sessions --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+  qui migrate transmission --source-dir ~/data --qbit-dir ~/.local/share/qBittorrent/BT_backup --dry-run
+`,
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		ValidArgs: []string{string(clientmigrate.ClientTypeDeluge), string(clientmigrate.ClientTypeRTorrent), string(clientmigrate.ClientTypeTransmission)},
+	}
+
+	var (
+		sourceDir  string
+		qbitDir    string
+		dryRun     bool
+		skipBackup bool
+	)
+
+	command.Flags().BoolVar(&dryRun, "dry-run", false, "Run without importing anything")
+	command.Flags().StringVar(&sourceDir, "source-dir", "", "source client state dir (required)")
+	command.Flags().StringVar(&qbitDir, "qbit-dir", "", "qBittorrent BT_backup dir. Commonly ~/.local/share/qBittorrent/BT_backup (required)")
+	command.Flags().BoolVar(&skipBackup, "skip-backup", false, "Skip backup before import")
+
+	_ = command.MarkFlagRequired("source-dir")
+	_ = command.MarkFlagRequired("qbit-dir")
+
+	command.RunE = func(cmd *cobra.Command, args []string) error {
+		source := args[0]
+		opts := clientmigrate.Options{
+			Source:     clientmigrate.ClientType(source),
+			SourceDir:  sourceDir,
+			QbitDir:    qbitDir,
+			DryRun:     dryRun,
+			SkipBackup: skipBackup,
+		}
+
+		mig := clientmigrate.New(opts)
+
+		if err := mig.Migrate(cmd.Context()); err != nil {
+			return errors.Wrapf(err, "could not migrate from %s", source)
+		}
+
+		return nil
+	}
+
+	return command
+}
+
 type Application struct {
 	configDir string
 	dataDir   string
@@ -561,7 +615,7 @@ func (app *Application) runServer() {
 	}()
 
 	// Initialize qBittorrent client pool
-	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, errorStore, time.Duration(cfg.Config.QbittorrentTimeout)*time.Second)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize client pool")
 	}
@@ -673,15 +727,20 @@ func (app *Application) runServer() {
 	crossSeedService.SetMediaIDCacheStore(models.NewMediaIDCacheStore(db))
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
+
+	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
+	crossSeedService.SetBackendPool(backendPool)
+	syncManager.SetBackendPool(backendPool)
+
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 	automationService.SetActivityPublisher(activityHub)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
-	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool)
 	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
@@ -698,6 +757,8 @@ func (app *Application) runServer() {
 		automationCancel()
 		crossSeedService.StopAutomation()
 	}()
+	partialPoolCtx, partialPoolCancel := context.WithCancel(context.Background())
+	partialPoolDone := make(chan struct{})
 
 	reannounceCtx, reannounceCancel := context.WithCancel(context.Background())
 	defer reannounceCancel()
@@ -837,6 +898,10 @@ func (app *Application) runServer() {
 	select {
 	case <-serverReady:
 		crossSeedService.StartAutomation(automationCtx)
+		go func() {
+			defer close(partialPoolDone)
+			crossSeedService.RunPartialPoolCoordinator(partialPoolCtx)
+		}()
 	case err := <-errorChannel:
 		log.Fatal().Err(err).Msg("failed to start HTTP server")
 	}
@@ -893,6 +958,12 @@ func (app *Application) runServer() {
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	partialPoolCancel()
+	select {
+	case <-partialPoolDone:
+	case <-ctx.Done():
+		log.Error().Msg("timed out waiting for partial completion coordinator shutdown")
+	}
 
 	if err := httpServer.Shutdown(ctx); err != nil {
 		// log.Fatal().Err(err).Msg("Server forced to shutdown")

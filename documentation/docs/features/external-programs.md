@@ -1,16 +1,16 @@
 ---
-sidebar_position: 7
+sidebar_position: 8
 title: External Programs
 description: Launch scripts or applications from the torrent context menu.
 ---
 
 # External Programs
 
-Launch scripts or desktop applications directly from the torrent context menu. Each program definition stores the executable path, optional arguments, and path-mapping rules so qui can pass torrent metadata to your tools.
+Launch scripts or desktop applications from the torrent context menu. Each program definition stores the executable path, optional arguments, and path-mapping rules. qui uses them to pass torrent metadata to your tools.
 
-## Security: Allow List
+## Security: allow list
 
-To keep this power feature safe, define an allow list in `config.toml` so only trusted paths can be executed:
+Define an allow list in `config.toml` so qui executes only trusted paths:
 
 ```toml
 externalProgramAllowList = [
@@ -19,40 +19,40 @@ externalProgramAllowList = [
 ]
 ```
 
-Leave the list empty to keep the previous behaviour (any path accepted). The allow list lives exclusively in `config.toml`, which the web UI cannot edit, so you retain control over what binaries are exposed.
+If you leave the list empty, qui accepts any path. The allow list lives only in `config.toml`. The web UI cannot edit this file, so you retain full control over the binaries that qui runs.
 
-## Where Programs Run
+## Where programs run
 
-External programs always run on the same machine (or container) that is hosting the qui backend, not on the browser client. Make sure any executable paths, mounts, or environment variables are available to that host process. When you deploy qui inside Docker, the program runs inside the container unless you mount the executable in.
+External programs run on the machine or container that hosts the qui backend, not on the browser client. Make sure that the host process has access to all required executable paths, mounts, and environment variables. If you deploy qui inside Docker, qui executes programs inside the container. If an executable resides on the host, mount that executable into the container.
 
-## Creating and Editing a Program
+## Creating and editing a program
 
 1. Open qui and go to **Settings → External Programs**
 2. Click **Create External Program**
-3. Fill in the form fields, then press **Create**. Toggle **Enable this program** to make it available in torrent menus
-4. Use the edit and delete actions in the list to maintain existing programs
+3. Fill in the form fields, then click **Create**. Toggle **Enable this program** to display the program in torrent context menus
+4. Use the edit and delete actions in the list to manage existing programs
 
-### Field Reference
+### Field reference
 
 | Field | Description |
 |-------|-------------|
-| **Name** | Display label shown in the torrent context menu and settings list. Must be unique. |
-| **Program Path** | Absolute path to the executable or script. Use the host path seen by the qui backend (e.g. `/usr/local/bin/my-script.sh`, `C:\Scripts\postprocess.bat`, `C:\python312\python.exe`). |
-| **Arguments Template** | Optional string of command-line arguments. qui substitutes torrent metadata placeholders before spawning the process. |
-| **Path Mappings** | Optional array of `from → to` prefixes that rewrite remote qBittorrent paths into local mount points. Helpful when qui runs locally but qBittorrent stores data elsewhere. |
-| **Launch in terminal window** | Opens the program in an interactive terminal window. See [Supported Terminal Emulators](#supported-terminal-emulators) for the list of detected terminals. Disable for GUI apps or background daemons. |
-| **Enable this program** | Determines whether the program shows up in the torrent context menu. |
+| **Name** | Display label in the torrent context menu and settings list. Must be unique. |
+| **Program Path** | Absolute path to the executable or script. Use the host path that the qui backend sees (for example `/usr/local/bin/my-script.sh`, `C:\Scripts\postprocess.bat`, `C:\python312\python.exe`). |
+| **Arguments Template** | Optional string of command-line arguments. qui substitutes torrent metadata placeholders before it spawns the process. |
+| **Path Mappings** | Optional array of `from → to` prefixes that rewrite remote qBittorrent paths into local mount points. If qui runs locally and qBittorrent stores data elsewhere, configure path mappings here. |
+| **Launch in terminal window** | Opens the program in an interactive terminal window. See [Supported terminal emulators](#supported-terminal-emulators) for the list of detected terminals. If you run GUI apps or background daemons, disable this option. |
+| **Enable this program** | Controls whether the program appears in the torrent context menu. |
 
-## Torrent Placeholders
+## Torrent placeholders
 
-Arguments are parsed with shell-style quoting and each placeholder is replaced with the corresponding torrent value before execution.
+qui parses arguments with shell-style quoting and replaces each placeholder with the torrent value before execution.
 
 | Placeholder | Value |
 |-------------|-------|
 | `{hash}` | Torrent hash (always lowercase) |
 | `{name}` | Torrent name |
-| `{save_path}` | Torrent save path after path mappings are applied |
-| `{content_path}` | Full content path (file or folder) after path mappings are applied |
+| `{save_path}` | Torrent save path after qui applies path mappings |
+| `{content_path}` | Full content path (file or folder) after qui applies path mappings |
 | `{category}` | Torrent category |
 | `{tags}` | Comma-separated list of tags |
 | `{state}` | qBittorrent torrent state string |
@@ -67,34 +67,34 @@ Arguments are parsed with shell-style quoting and each placeholder is replaced w
 ```
 
 ```text
-D:\Upload Assistant\upload.py {save_path}\{name}
+"D:\Upload Assistant\upload.py" "{save_path}\{name}"
 ```
 
-qui splits the template into arguments before substitutions are run, so you do not need to wrap values in extra quotes unless the called application expects them.
+qui splits the template into arguments before it runs substitutions. Quotes keep a path with spaces as one argument. qui removes the quotes, so the program receives the value without them. If the program requires literal quotes, put a different quote type inside the outer pair, for example `'"{name}"'`.
 
-## Path Mappings
+## Path mappings
 
-Use path mappings when the filesystem paths reported by qBittorrent do not match the paths visible to qui. Each mapping replaces the longest matching prefix.
+If the filesystem paths from qBittorrent do not match the paths visible to qui, use path mappings. Each mapping replaces the longest matching prefix.
 
 | Remote path (from qBittorrent) | Local path seen by qui | Mapping |
 |--------------------------------|------------------------|---------|
 | `/data/torrents` | `/mnt/qbt` | `from=/data/torrents`, `to=/mnt/qbt` |
 | `Z:\downloads` | `/srv/downloads` | `from=Z:\downloads`, `to=/srv/downloads` |
 
-Given the template above, `{save_path}` becomes `/mnt/qbt/Movies` instead of `/data/torrents/Movies`. Be sure to use the same path separator style (`/` vs `\`) as the remote qBittorrent instance. If no mapping matches, the original path is used.
+With the first mapping, `{save_path}` becomes `/mnt/qbt/Movies` instead of `/data/torrents/Movies`. Use the same path separator style (`/` or `\`) as the remote qBittorrent instance. If no mapping matches, qui uses the original path.
 
-## Launch Modes
+## Launch modes
 
-- **Enable terminal window** for scripts that need interaction or visible output.
-- **Disable terminal window** for GUI applications or background tasks.
+- **Enable terminal window**: Use this option for scripts that require interaction or visible output.
+- **Disable terminal window**: Use this option for GUI applications or background tasks.
 
-Programs run asynchronously - qui does not wait for completion.
+Programs run asynchronously. qui does not wait for processes to complete.
 
-### Supported Terminal Emulators
+### Supported terminal emulators
 
-When "Launch in terminal window" is enabled, qui automatically detects and uses an available terminal emulator. Detection priority:
+If you enable "Launch in terminal window", qui detects and uses an available terminal emulator. Detection priority:
 
-1. **TERM_PROGRAM environment variable** - If qui is running inside a terminal, that terminal is preferred
+1. **TERM_PROGRAM environment variable**: qui accepts `WezTerm`, `Hyper`, `kitty`, `alacritty`, `iTerm.app`, and `Apple_Terminal`. If qui finds the matching terminal, it uses it
 2. **Cross-platform terminals** (checked on all platforms):
    - WezTerm
    - Hyper
@@ -110,26 +110,26 @@ When "Launch in terminal window" is enabled, qui automatically detects and uses 
 4. **macOS native terminals**:
    - iTerm2
    - Terminal.app
-5. **Fallback**: If no terminal is found, the command runs in the background via `sh -c`
+5. **Fallback**: If qui finds no terminal, qui runs the command in the background with `sh -c`
 
-On Windows, `cmd.exe` is always used.
+On Windows, qui always uses `cmd.exe`.
 
 :::tip
-Terminal windows stay open after the command finishes, allowing you to inspect output. Close the window manually when done.
+Terminal windows stay open after the command finishes so you can inspect output. Close the window when you finish.
 :::
 
-## Executing Programs
+## Executing programs
 
 1. Select one or more torrents
 2. Right-click to open the context menu
 3. Hover **External Programs**, then click the program name
-4. qui queues one execution per selected torrent. Results are reported via toast notifications (success, partial success, or failure)
+4. qui queues one execution per selected torrent and reports results through toast notifications (success, partial success, or failure)
 
-Execution requests include the torrents from the currently selected instance only. Disabled programs are hidden from the submenu. Command failures emitted by the host OS are logged at `info`/`debug` level through zerolog; enable debug logging to see the full command line and any non-zero exit codes.
+Execution requests include only torrents from the currently selected instance. The submenu hides disabled programs. qui logs start failures at `error` level and non-zero exit codes at `warn` level with the full command line. If you enable debug logging, qui also logs each command before execution.
 
 ## REST API
 
-Automation workflows can manage external programs through the backend API (all endpoints require authentication):
+Manage external programs through the backend API. All endpoints require authentication:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -152,41 +152,41 @@ Content-Type: application/json
 }
 ```
 
-The response contains a `results` array with per-hash `success` flags and optional error messages. Treat the endpoint as fire-and-forget; it returns once the processes have been spawned.
+The response contains a `results` array with per-hash `success` flags and optional error messages. Treat the endpoint as fire-and-forget. It returns after qui spawns the processes.
 
-## Automation Integration
+## Automation integration
 
-External programs can be triggered automatically via automation rules, allowing you to run scripts when torrents match specific conditions.
+When torrents match configured conditions, automation rules trigger external programs.
 
-### Setting Up Automation Triggers
+### Setting up automation triggers
 
 1. Create and enable an external program in **Settings → External Programs**
 2. Go to **Automations** and create or edit a rule
 3. Add an **External Program** action and select your program
-4. Optionally add a condition override specific to this action
+4. If you need a custom condition for this action, add a condition override
 
 ### Behavior
 
 | Aspect | Description |
 |--------|-------------|
-| **Execution** | Programs run asynchronously (fire-and-forget) to avoid blocking automation processing |
-| **Configuration** | Uses the same program settings (path, arguments, path mappings) as manual execution |
-| **Availability** | Only enabled programs appear in the automation dropdown |
-| **Combinable** | Can be combined with other actions (speed limits, share limits, pause, tag, category) |
+| **Execution** | Programs run asynchronously (fire-and-forget) and do not block automation processing |
+| **Configuration** | Automation uses the same program configuration (path, arguments, path mappings) as manual execution |
+| **Availability** | The dropdown lists enabled programs. A disabled program stays in the list, marked "(disabled)", only when the rule already uses it |
+| **Combinable** | You can combine this action with other actions (speed limits, share limits, pause, tag, category) |
 
-### Activity Logging
+### Activity logging
 
-Automation-triggered executions are logged in the activity feed with:
+qui logs automation executions in the activity feed with:
 - Rule name and rule ID that triggered the execution
 - Torrent name and hash
 - Success or failure status
 - Error details if the program failed to start
 
 :::note
-Success is logged after the program actually starts, not when queued. If the program fails to start (e.g., executable not found, permission denied), the error is captured and logged.
+qui logs success after the program starts, not when qui queues the task. If the program fails to start (for example, executable not found or permission denied), qui captures and logs the error.
 :::
 
-### Example Use Cases
+### Example use cases
 
 **Post-processing completed downloads:**
 - Condition: `State is completed`
@@ -197,12 +197,12 @@ Success is logged after the program actually starts, not when queued. If the pro
 - Action: External Program that sends a notification via curl/webhook
 
 **Media library scans:**
-- Condition: Category changed to "movies" (use category action + external program)
-- Action: External Program that triggers Plex/Jellyfin scan
+- Condition: `Category is movies`
+- Action: External Program that triggers a Plex or Jellyfin scan
 
 ## Troubleshooting
 
-- **Docker**: The executable must be inside the container or bind-mounted.
+- **Docker**: If qui runs in Docker, place the executable inside the container or bind-mount it from the host.
 - **Paths are wrong**: Add or adjust path mappings so `{save_path}` and `{content_path}` resolve to local mount points.
-- **Multiple torrents**: The program runs once per torrent. Ensure your script handles concurrent executions or uses a locking mechanism.
-- **Automation not triggering**: Ensure the program is enabled in Settings → External Programs. Disabled programs do not appear in automation dropdowns.
+- **Multiple torrents**: The program runs once per torrent. Make sure that your script handles concurrent executions or uses a lock.
+- **Automation not triggering**: Make sure that you enabled the program in **Settings → External Programs**. Disabled programs do not appear in the dropdown for new rules.

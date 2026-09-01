@@ -51,6 +51,10 @@ type WalkEntry struct {
 	LstatInfo
 	RelPath string
 	Err     error
+	// StatErr is set when the entry was enumerated but its metadata lookup
+	// failed; only Path and RelPath are valid then. Such entries are emitted
+	// only when WalkOptions.EmitStatErrors is set and skipped otherwise.
+	StatErr error
 }
 
 // WalkOptions controls the behavior of a WalkDir call.
@@ -59,9 +63,15 @@ type WalkOptions struct {
 	// IgnoreDirNames are directory basenames to skip, matched case-insensitively
 	// (OS/NAS metadata dirs like $RECYCLE.BIN and @eaDir vary in on-disk case).
 	IgnoreDirNames []string
-	IgnorePaths    []string
+	// IgnoreDirNamePrefixes are matched case-insensitively.
+	IgnoreDirNamePrefixes []string
+	IgnorePaths           []string
 	// WantFileID populates FileID and Nlinks on regular-file entries.
 	WantFileID bool
+	// EmitStatErrors emits entries whose metadata lookup failed with StatErr
+	// set instead of silently skipping them. Consumers that delete based on
+	// walk results use this to fail closed on paths they cannot verify.
+	EmitStatErrors bool
 }
 
 // StatfsResult holds filesystem space information.

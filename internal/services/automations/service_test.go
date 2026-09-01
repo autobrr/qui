@@ -374,6 +374,8 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 	}
 
 	statusRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackerStatus, Operator: models.OperatorEqual, Value: "error"})
+	trackerRule := deleteRule(&models.RuleCondition{Field: models.FieldTracker, Operator: models.OperatorEqual, Value: "dead"})
+	trackersRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackers, Operator: models.OperatorContains, Value: "tracker.example"})
 	nestedMessageRule := deleteRule(&models.RuleCondition{
 		Operator: models.OperatorOr,
 		Conditions: []*models.RuleCondition{
@@ -389,6 +391,8 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 		want  bool
 	}{
 		{name: "status field", rules: []*models.Automation{statusRule}, want: true},
+		{name: "tracker field", rules: []*models.Automation{trackerRule}, want: true},
+		{name: "trackers field", rules: []*models.Automation{trackersRule}, want: true},
 		{name: "message field nested in group", rules: []*models.Automation{nestedMessageRule}, want: true},
 		{name: "no tracker entry fields", rules: []*models.Automation{unrelatedRule}, want: false},
 		{name: "mixed rules detect tracker field", rules: []*models.Automation{unrelatedRule, statusRule}, want: true},
@@ -2662,4 +2666,27 @@ func (r *automationRecordingNotifier) Events() []notifications.Event {
 	out := make([]notifications.Event, len(r.events))
 	copy(out, r.events)
 	return out
+}
+
+func TestTrackerDataMissing(t *testing.T) {
+	withTrackers := qbt.Torrent{Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example/announce"}}}
+	withoutTrackers := qbt.Torrent{Tracker: "https://tracker.example/announce"}
+
+	tests := []struct {
+		name     string
+		torrents []qbt.Torrent
+		want     bool
+	}{
+		{name: "no torrents at all says nothing about hydration", torrents: nil, want: false},
+		{name: "hydration returned no tracker entries", torrents: []qbt.Torrent{withoutTrackers, withoutTrackers}, want: true},
+		{name: "one torrent with entries is enough", torrents: []qbt.Torrent{withoutTrackers, withTrackers}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := trackerDataMissing(tt.torrents); got != tt.want {
+				t.Errorf("trackerDataMissing() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

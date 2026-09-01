@@ -14,6 +14,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -171,7 +173,7 @@ func TestLargestMKVPath(t *testing.T) {
 		{Name: "Show/stub.mkv", Size: 500, Progress: 0.4},
 	}
 
-	got := largestMKVPath(dir, files)
+	got := largestMKVPath(context.Background(), local.NewBackend(), dir, files)
 	require.Equal(t, filepath.Join(dir, "Show", "episode2.mkv"), got)
 }
 
@@ -218,7 +220,12 @@ func mediaIDTestFixture(t *testing.T, report mediainfo.Report, analyzeErr error)
 			return report, analyzeErr
 		},
 	}
-	instance := &models.Instance{HasLocalFilesystemAccess: true}
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+	// The MKV path is resolved through the instance's filesystem backend.
+	svc.SetBackendPool(fsops.NewPool(
+		&discPolicyInstanceStore{instances: map[int]*models.Instance{instance.ID: instance}},
+		local.NewBackend(),
+	))
 	torrent := &qbt.Torrent{Name: "Movie.2024.1080p.WEB-DL-GROUP", Hash: "ABC123", SavePath: dir}
 	files := qbt.TorrentFiles{{Name: "movie.mkv", Size: 10, Progress: 1}}
 	return svc, cache, instance, torrent, files, &analyzeCalls

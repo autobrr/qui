@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -326,6 +330,53 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 				t.Fatalf("AdaptiveSearchTimeout(%d) = %s, want %s", tt.indexerCount, got, tt.expectedLimit)
 			}
 		})
+	}
+}
+
+func TestComputeSearchTimeoutExcludesQueueWait(t *testing.T) {
+	t.Parallel()
+
+	prowlarr := []*models.TorznabIndexer{{Backend: models.TorznabBackendProwlarr}}
+	native := []*models.TorznabIndexer{{Backend: models.TorznabBackendNative}}
+	mixed := []*models.TorznabIndexer{
+		{Backend: models.TorznabBackendProwlarr},
+		{Backend: models.TorznabBackendNative},
+	}
+
+	if got := computeSearchTimeout(prowlarr); got != timeouts.DefaultSearchTimeout {
+		t.Fatalf("Prowlarr timeout = %s, want %s", got, timeouts.DefaultSearchTimeout)
+	}
+	if got, want := computeSearchTimeout(native), timeouts.DefaultSearchTimeout; got != want {
+		t.Fatalf("native timeout = %s, want %s", got, want)
+	}
+	if got, want := computeSearchTimeout(mixed), timeouts.DefaultSearchTimeout+timeouts.PerIndexerSearchTimeout; got != want {
+		t.Fatalf("mixed timeout = %s, want %s", got, want)
+	}
+}
+
+func TestGetActivityStatusMergesCooldownScopes(t *testing.T) {
+	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{{ID: 1, Name: "IndexerOne"}}}
+	service := NewService(store)
+	defer service.searchScheduler.Stop()
+
+	queryUntil := time.Now().Add(time.Minute)
+	grabUntil := queryUntil.Add(time.Minute)
+	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, queryUntil)
+	service.rateLimiter.SetCooldown(1, rateLimitScopeGrab, grabUntil)
+
+	status, err := service.GetActivityStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetActivityStatus() error = %v", err)
+	}
+	if got := len(status.CooldownIndexers); got != 1 {
+		t.Fatalf("cooldown rows = %d, want 1", got)
+	}
+	cooldown := status.CooldownIndexers[0]
+	if !cooldown.CooldownEnd.Equal(grabUntil) {
+		t.Errorf("cooldown end = %s, want %s", cooldown.CooldownEnd, grabUntil)
+	}
+	if cooldown.Reason != "query,grab" {
+		t.Errorf("reason = %q, want %q", cooldown.Reason, "query,grab")
 	}
 }
 
@@ -1955,17 +2006,15 @@ func TestGetConfiguredTrackerDomains_ProwlarrResolvesRealDomain(t *testing.T) {
 //
 // Mock store for testing
 type mockTorznabIndexerStore struct {
-	mu                 sync.Mutex
-	indexers           []*models.TorznabIndexer
-	capabilities       map[int][]string // indexerID -> capabilities
-	cooldowns          map[int]models.TorznabIndexerCooldown
-	upsertCooldowns    []int
-	deleteCooldowns    []int
-	panicOnListEnabled bool
-	listEnabledCalls   int
-	getCalls           []int
-	apiKeyErrors       map[int]error
-	apiKeyCalls        []int
+	mu                  sync.Mutex
+	indexers            []*models.TorznabIndexer
+	capabilities        map[int][]string // indexerID -> capabilities
+	panicOnListEnabled  bool
+	listEnabledCalls    int
+	getCalls            []int
+	apiKeyErrors        map[int]error
+	apiKeyCalls         []int
+	latencyCleanupCalls chan time.Duration
 }
 
 func (m *mockTorznabIndexerStore) Get(ctx context.Context, id int) (*models.TorznabIndexer, error) {
@@ -2053,50 +2102,14 @@ func (m *mockTorznabIndexerStore) RecordLatency(ctx context.Context, indexerID i
 	return nil
 }
 
+func (m *mockTorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan time.Duration) (int64, error) {
+	if m.latencyCleanupCalls != nil {
+		m.latencyCleanupCalls <- olderThan
+	}
+	return 0, nil
+}
+
 func (m *mockTorznabIndexerStore) RecordError(ctx context.Context, indexerID int, errorMessage, errorCode string) error {
-	return nil
-}
-
-func (m *mockTorznabIndexerStore) ListRateLimitCooldowns(ctx context.Context) ([]models.TorznabIndexerCooldown, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if len(m.cooldowns) == 0 {
-		return nil, nil
-	}
-
-	entries := make([]models.TorznabIndexerCooldown, 0, len(m.cooldowns))
-	for _, cd := range m.cooldowns {
-		entries = append(entries, cd)
-	}
-	return entries, nil
-}
-
-func (m *mockTorznabIndexerStore) UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.cooldowns == nil {
-		m.cooldowns = make(map[int]models.TorznabIndexerCooldown)
-	}
-	m.cooldowns[indexerID] = models.TorznabIndexerCooldown{
-		IndexerID: indexerID,
-		ResumeAt:  resumeAt,
-		Cooldown:  cooldown,
-		Reason:    reason,
-	}
-	m.upsertCooldowns = append(m.upsertCooldowns, indexerID)
-	return nil
-}
-
-func (m *mockTorznabIndexerStore) DeleteRateLimitCooldown(ctx context.Context, indexerID int) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.cooldowns != nil {
-		delete(m.cooldowns, indexerID)
-	}
-	m.deleteCooldowns = append(m.deleteCooldowns, indexerID)
 	return nil
 }
 
@@ -2113,14 +2126,14 @@ func TestSearchMultipleIndexersSkipsRateLimitedIndexers(t *testing.T) {
 
 	service := NewService(store)
 	service.rateLimiter = NewRateLimiter(time.Millisecond)
-	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
+	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(time.Minute))
 
 	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
 	if err == nil {
 		t.Fatalf("expected error when all available indexers fail")
 	}
-	if !strings.Contains(err.Error(), "all 1 indexers failed") {
-		t.Fatalf("expected aggregated failure error, got %v", err)
+	if _, ok := errors.AsType[*RateLimitError](err); !ok {
+		t.Fatalf("expected known rate limit to be preferred, got %v", err)
 	}
 
 	if len(store.apiKeyCalls) != 1 || store.apiKeyCalls[0] != 2 {
@@ -2138,92 +2151,20 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 
 	service := NewService(store)
 	service.rateLimiter = NewRateLimiter(time.Millisecond)
-	service.rateLimiter.SetCooldown(1, time.Now().Add(time.Minute))
-	service.rateLimiter.SetCooldown(2, time.Now().Add(2*time.Minute))
+	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(time.Minute))
+	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, time.Now().Add(2*time.Minute))
 
 	_, _, err := service.searchMultipleIndexers(context.Background(), store.indexers, url.Values{"q": {"test"}}, nil)
-	if err == nil || !strings.Contains(err.Error(), "all indexers are currently rate-limited") {
-		t.Fatalf("expected all rate-limited error, got %v", err)
+	var rateLimitErr *RateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("expected RateLimitError, got %v", err)
+	}
+	if rateLimitErr.IndexerID != 1 {
+		t.Fatalf("rate-limit indexer = %d, want earliest indexer 1", rateLimitErr.IndexerID)
 	}
 
 	if len(store.apiKeyCalls) != 0 {
 		t.Fatalf("expected no API key calls when all indexers are skipped, apiKeyCalls=%v", store.apiKeyCalls)
-	}
-}
-
-func TestSearch_AllIndexersSkippedByRateLimitWaitReturnsError(t *testing.T) {
-	service := NewService(&mockTorznabIndexerStore{})
-	indexers := []*models.TorznabIndexer{
-		{ID: 1, Name: "A", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "a"},
-		{ID: 2, Name: "B", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "b"},
-	}
-
-	// Prime both indexers so wait exceeds MaxWait for every task.
-	service.rateLimiter.RecordRequestComplete(1, time.Now())
-	service.rateLimiter.RecordRequestComplete(2, time.Now())
-
-	done := make(chan struct{})
-	completeErrs := make(chan error, len(indexers))
-	var callbackErr error
-	var callbackResults []Result
-	var callbackCoverage []int
-	opts := &RateLimitOptions{
-		Priority:    RateLimitPriorityBackground,
-		MinInterval: 5 * time.Second,
-		MaxWait:     10 * time.Millisecond,
-	}
-	if wait := service.rateLimiter.NextWait(indexers[0], opts); wait <= opts.MaxWait {
-		t.Fatalf("test setup invalid: expected wait > maxWait for indexer 1, got wait=%v maxWait=%v", wait, opts.MaxWait)
-	}
-	if wait := service.rateLimiter.NextWait(indexers[1], opts); wait <= opts.MaxWait {
-		t.Fatalf("test setup invalid: expected wait > maxWait for indexer 2, got wait=%v maxWait=%v", wait, opts.MaxWait)
-	}
-
-	err := service.searchIndexersWithScheduler(
-		context.Background(),
-		indexers,
-		url.Values{"q": {"test"}},
-		&searchContext{
-			rateLimit: opts,
-		},
-		func(_ uint64, _ int, err error) {
-			completeErrs <- err
-		},
-		func(_ uint64, results []Result, coverage []int, err error) {
-			callbackResults = results
-			callbackCoverage = coverage
-			callbackErr = err
-			close(done)
-		},
-	)
-	if err != nil {
-		t.Fatalf("scheduler setup error: %v", err)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for scheduler callback")
-	}
-
-	close(completeErrs)
-	for err := range completeErrs {
-		if err == nil {
-			t.Fatal("expected per-indexer wait error, got nil")
-		}
-	}
-
-	if callbackErr == nil {
-		t.Fatal("expected rate-limit wait error when all indexers are skipped")
-	}
-	if !strings.Contains(strings.ToLower(callbackErr.Error()), "rate limit") {
-		t.Fatalf("expected rate-limit error, got: %v", callbackErr)
-	}
-	if len(callbackResults) != 0 {
-		t.Fatalf("expected no results when all indexers are skipped, got %d", len(callbackResults))
-	}
-	if len(callbackCoverage) != 0 {
-		t.Fatalf("expected no coverage when all indexers are skipped, got %v", callbackCoverage)
 	}
 }
 
@@ -3240,11 +3181,10 @@ func TestSearchIndexersWithSchedulerRSSDeduplicatedIndexerStillCompletes(t *test
 	}
 }
 
-// TestSearchIndexersWithSchedulerMixedFailureAndWaitSkipSurfacesError verifies
-// that when every effective indexer either fails or is rate-limit skipped (a
-// mix of both), the aggregation surfaces an error instead of a silent empty
-// success. Neither "all failed" nor "all wait-skipped" holds on its own here.
-func TestSearchIndexersWithSchedulerMixedFailureAndWaitSkipSurfacesError(t *testing.T) {
+// TestSearchIndexersWithSchedulerMixedFailureAndRateLimitSurfacesRateLimit
+// verifies that an unusable response containing a rate limit tells the caller
+// when to retry, even when another indexer failed normally.
+func TestSearchIndexersWithSchedulerMixedFailureAndRateLimitSurfacesRateLimit(t *testing.T) {
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
 			{ID: 1, Name: "IndexerOne", Enabled: true},
@@ -3258,9 +3198,9 @@ func TestSearchIndexersWithSchedulerMixedFailureAndWaitSkipSurfacesError(t *test
 
 	failErr := errors.New("indexer two unreachable")
 	service.searchExecutor = func(_ context.Context, idxs []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
-		// Indexer 1 is rate-limit skipped, indexer 2 fails outright.
+		// Indexer 1 is rate-limited, indexer 2 fails outright.
 		if idxs[0].ID == 1 {
-			return nil, nil, &RateLimitWaitError{IndexerID: 1, IndexerName: "IndexerOne", Wait: time.Minute, MaxWait: time.Second}
+			return nil, nil, &RateLimitError{IndexerID: 1, IndexerName: "IndexerOne", Scope: rateLimitScopeQuery, RetryAt: time.Now().Add(time.Minute)}
 		}
 		return nil, nil, failErr
 	}
@@ -3286,8 +3226,8 @@ func TestSearchIndexersWithSchedulerMixedFailureAndWaitSkipSurfacesError(t *test
 		if err == nil {
 			t.Fatal("expected a surfaced error for mixed failure/wait-skip, got success")
 		}
-		if !errors.Is(err, failErr) {
-			t.Fatalf("expected the real failure error to be preferred, got %v", err)
+		if _, ok := errors.AsType[*RateLimitError](err); !ok {
+			t.Fatalf("expected the rate limit to be preferred, got %v", err)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("aggregation never invoked the result callback")
@@ -3336,6 +3276,15 @@ func TestRecentSurfacesTotalIndexerFailure(t *testing.T) {
 // TestRecentPartialCoverageMarksPartial verifies Recent flags incomplete indexer
 // coverage as partial even when no error is returned.
 func TestRecentPartialCoverageMarksPartial(t *testing.T) {
+	originalLogger := log.Logger
+	partialLogLevel := zerolog.NoLevel
+	log.Logger = zerolog.New(io.Discard).Level(zerolog.TraceLevel).Hook(zerolog.HookFunc(func(_ *zerolog.Event, level zerolog.Level, msg string) {
+		if msg == "Recent search returning partial results" {
+			partialLogLevel = level
+		}
+	}))
+	t.Cleanup(func() { log.Logger = originalLogger })
+
 	store := &mockTorznabIndexerStore{
 		indexers: []*models.TorznabIndexer{
 			{ID: 1, Name: "IndexerOne", Enabled: true},
@@ -3378,6 +3327,10 @@ func TestRecentPartialCoverageMarksPartial(t *testing.T) {
 		t.Fatalf("expected partial success, got error %v", err)
 	case <-time.After(2 * time.Second):
 		t.Fatal("Recent never invoked its callback")
+	}
+
+	if partialLogLevel != zerolog.DebugLevel {
+		t.Fatalf("partial search log level = %s, want debug", partialLogLevel)
 	}
 }
 
@@ -3628,13 +3581,87 @@ func TestApplyIndexerRestrictionsKeepsContentTypeRouting(t *testing.T) {
 			}
 			meta := &searchContext{searchMode: tt.searchMode}
 
-			skip, rateLimited := service.applyIndexerRestrictions(context.Background(), nil, indexer, "", meta, maps.Clone(tt.params))
+			skip, rateLimitErr := service.applyIndexerRestrictions(context.Background(), nil, indexer, "", meta, maps.Clone(tt.params))
 			if skip != tt.wantSkip {
 				t.Fatalf("skip = %v, want %v", skip, tt.wantSkip)
 			}
-			if rateLimited {
+			if rateLimitErr != nil {
 				t.Fatalf("rateLimited = true, want false")
 			}
 		})
+	}
+}
+
+func TestExecuteIndexerSearchSchedulesLatencyCleanup(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		if _, err := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); err != nil {
+			t.Errorf("write RSS response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	cleanupCalls := make(chan time.Duration, 1)
+	store := &mockTorznabIndexerStore{latencyCleanupCalls: cleanupCalls}
+	service := NewService(store)
+	indexer := &models.TorznabIndexer{
+		ID:      1,
+		BaseURL: server.URL,
+		Backend: models.TorznabBackendNative,
+	}
+
+	result := service.executeIndexerSearch(context.Background(), indexer, nil, nil, indexerExecOptions{})
+	if result.err != nil {
+		t.Fatalf("executeIndexerSearch() error = %v", result.err)
+	}
+
+	select {
+	case olderThan := <-cleanupCalls:
+		if olderThan != 14*24*time.Hour {
+			t.Fatalf("CleanupOldLatency() olderThan = %v, want 14 days", olderThan)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected search to schedule latency cleanup")
+	}
+
+	service.maybeScheduleLatencyCleanup()
+	select {
+	case <-cleanupCalls:
+		t.Fatal("expected latency cleanup to be interval-gated")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestGetActivityStatusOrdersCooldownsByEnd(t *testing.T) {
+	store := &mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{
+		{ID: 1, Name: "Alpha"},
+		{ID: 2, Name: "Charlie"},
+		{ID: 3, Name: "Bravo"},
+		{ID: 4, Name: "Delta"},
+	}}
+	service := NewService(store)
+	defer service.searchScheduler.Stop()
+
+	base := time.Now().Add(time.Minute)
+	// Indexers 2 and 3 share a cooldown end, and their names sort the opposite
+	// way from their IDs, so the name tiebreak has to decide.
+	service.rateLimiter.SetCooldown(1, rateLimitScopeQuery, base.Add(3*time.Minute))
+	service.rateLimiter.SetCooldown(2, rateLimitScopeQuery, base.Add(time.Minute))
+	service.rateLimiter.SetCooldown(3, rateLimitScopeGrab, base.Add(time.Minute))
+	service.rateLimiter.SetCooldown(4, rateLimitScopeQuery, base)
+
+	want := []int{4, 3, 2, 1}
+	for range 20 {
+		status, err := service.GetActivityStatus(context.Background())
+		if err != nil {
+			t.Fatalf("GetActivityStatus() error = %v", err)
+		}
+		got := make([]int, 0, len(status.CooldownIndexers))
+		for _, cooldown := range status.CooldownIndexers {
+			got = append(got, cooldown.IndexerID)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("cooldown order = %v, want %v", got, want)
+		}
 	}
 }

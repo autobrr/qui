@@ -526,3 +526,14 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 	}
 	require.Equal(t, 4, failedCount)
 }
+
+// A scope that cannot match any torrent must not reach the client. The service
+// here has no client pool, so a fetch attempt would panic: returning cleanly
+// proves the scan short-circuited before the request.
+func TestScanInstance_SkipsFetchWhenScopeCannotMatch(t *testing.T) {
+	svc := &Service{}
+
+	require.NotPanics(t, func() {
+		svc.scanInstance(context.Background(), 1, &models.InstanceReannounceSettings{Enabled: true})
+	})
+}

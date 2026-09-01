@@ -3386,6 +3386,105 @@ paths:
                   description: Base64-encoded PNG data URL for the tracker favicon
         '500':
           description: Failed to list tracker icons
+
+  /api/torznab/search:
+    post:
+      tags:
+        - Torznab
+      summary: Search configured Torznab indexers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TorznabSearchRequest'
+      responses:
+        '200':
+          description: Search results, possibly partial when some indexers were unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorznabSearchResponse'
+        '400':
+          description: Invalid search request
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Search failed
+
+  /api/torznab/cross-seed/search:
+    post:
+      tags:
+        - Torznab
+      summary: Search configured Torznab indexers for cross-seeds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TorznabSearchRequest'
+      responses:
+        '200':
+          description: Search results, possibly partial when some indexers were unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorznabSearchResponse'
+        '400':
+          description: Invalid search request
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Search failed
+
+  /api/torznab/indexers/{indexerID}/test:
+    post:
+      tags:
+        - Torznab
+      summary: Test a Torznab indexer connection
+      parameters:
+        - name: indexerID
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Indexer connection succeeded
+        '400':
+          description: Invalid indexer ID
+        '404':
+          description: Indexer not found
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Indexer connection failed
+
+  /api/torznab/indexers/{indexerID}/caps/sync:
+    post:
+      tags:
+        - Torznab
+      summary: Refresh stored Torznab capabilities
+      parameters:
+        - name: indexerID
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Capabilities refreshed
+        '400':
+          description: Invalid indexer ID or configuration
+        '404':
+          description: Indexer not found
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Capabilities refresh failed
+
   /api/cross-seed/settings:
     get:
       tags:
@@ -4550,6 +4649,133 @@ paths:
         '500':
           description: Failed to process autobrr apply request
 
+  /api/cross-seed/manual/proposals:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Rank Manual match target proposals for an uploaded torrent
+      description: |
+        Ranks complete torrents in one instance by file-size overlap with the uploaded torrent file.
+        When `target_hash` is set, that torrent is always included in the proposals with its computed overlap, even at zero overlap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instance_id
+                - torrent_data
+              properties:
+                instance_id:
+                  type: integer
+                torrent_data:
+                  type: string
+                  description: Base64-encoded .torrent file
+                target_hash:
+                  type: string
+                  description: Optional torrent hash to always include in the proposals
+      responses:
+        '200':
+          description: Ranked proposals and dialog prefill values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source_name:
+                    type: string
+                  source_size:
+                    type: integer
+                    format: int64
+                  source_file_count:
+                    type: integer
+                  default_tags:
+                    type: array
+                    items:
+                      type: string
+                  pinned_category:
+                    type: string
+                    description: Category the apply pins every cross-seed to; empty when unset.
+                  proposals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                          format: int64
+                        category:
+                          type: string
+                        effective_save_path:
+                          type: string
+                          description: Where a Manual match apply would land the torrent (target save path, or the link-mode destination)
+                        overlap_bytes:
+                          type: integer
+                          format: int64
+                        overlap_fraction:
+                          type: number
+                          format: double
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to build proposals
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Apply a Manual match cross-seed against a chosen target torrent
+      description: |
+        Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target torrent.
+        Candidate discovery and the category and content-type gates are bypassed. Every Manual match runs a full recheck before it seeds; the recheck is the arbiter of a wrong pick and cannot be skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instance_id
+                - torrent_data
+                - target_hash
+              properties:
+                instance_id:
+                  type: integer
+                torrent_data:
+                  type: string
+                  description: Base64-encoded .torrent file
+                target_hash:
+                  type: string
+                  description: Hash of the existing torrent that holds the data
+                category:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedResponse'
+        '400':
+          description: Invalid request, target not found, or target not complete
+        '500':
+          description: Failed to apply the cross-seed
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
   /api/cross-seed/torrents/{instanceID}/{hash}/analyze:
     get:
       tags:
@@ -4625,6 +4851,8 @@ paths:
                 $ref: '#/components/schemas/CrossSeedTorrentSearchResponse'
         '400':
           description: Invalid request parameters
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
         '500':
           description: Failed to search indexers
 
@@ -5871,7 +6099,92 @@ components:
         type: integer
       description: Directory scan run ID
 
+  responses:
+    TorznabRateLimited:
+      description: An upstream indexer requested a retry after its cooldown
+      headers:
+        Retry-After:
+          description: Seconds until the request may be retried
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
+    TorznabSearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        release_name:
+          type: string
+        categories:
+          type: array
+          items:
+            type: integer
+        imdb_id:
+          type: string
+        tvdb_id:
+          type: string
+        tmdb_id:
+          type: integer
+        tvmaze_id:
+          type: integer
+        year:
+          type: integer
+        season:
+          type: integer
+        episode:
+          type: integer
+        artist:
+          type: string
+        album:
+          type: string
+        limit:
+          type: integer
+        offset:
+          type: integer
+        indexer_ids:
+          type: array
+          items:
+            type: integer
+        cache_mode:
+          type: string
+          enum: ['', bypass]
+
+    TorznabSearchResponse:
+      type: object
+      required:
+        - results
+        - total
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        total:
+          type: integer
+        partial:
+          type: boolean
+        jobId:
+          type: integer
+          format: uint64
+        cache:
+          type: object
+          additionalProperties: true
+
     ThemeSettings:
       type: object
       required:
@@ -7053,7 +7366,10 @@ components:
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
-          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
+        pooledPartialCompletionEnabled:
+          type: boolean
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -7097,7 +7413,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
@@ -7198,7 +7514,11 @@ components:
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
-          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
+        pooledPartialCompletionEnabled:
+          type: boolean
+          default: false
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -7242,7 +7562,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           default: false
@@ -7840,6 +8160,76 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        decisionTrace:
+          $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
+
+    CrossSeedSearchDecisionTrace:
+      type: object
+      description: Explains why the Torznab passes accepted or rejected candidates. Absent when no Torznab search ran.
+      properties:
+        sourceSize:
+          type: integer
+          format: int64
+        tolerancePercent:
+          type: number
+        totalResults:
+          type: integer
+        sizeFiltered:
+          type: integer
+        releaseFiltered:
+          type: integer
+        lateContentFiltered:
+          type: integer
+        duplicateFiltered:
+          type: integer
+        finalMatches:
+          type: integer
+        rejectionCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        rejectedCandidates:
+          type: array
+          description: Capped at 5 candidates per rejection reason; rejectionCounts holds the full totals.
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchRejectedCandidate'
+        indexers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchIndexerOutcome'
+
+    CrossSeedSearchRejectedCandidate:
+      type: object
+      properties:
+        indexer:
+          type: string
+        indexerId:
+          type: integer
+        title:
+          type: string
+        size:
+          type: integer
+          format: int64
+        reason:
+          type: string
+
+    CrossSeedSearchIndexerOutcome:
+      type: object
+      properties:
+        indexerId:
+          type: integer
+        status:
+          type: string
+          enum:
+            - searched
+            - not_covered
+            - error
+            - excluded
+        detail:
+          type: string
+        candidates:
+          type: integer
+          description: Raw results this indexer contributed before filtering.
 
     CrossSeedApplySelection:
       type: object

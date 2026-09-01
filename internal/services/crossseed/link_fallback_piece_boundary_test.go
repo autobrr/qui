@@ -154,6 +154,7 @@ func TestLinkModeFallbackPieceBoundaryAllowsSafeFullRecheck(t *testing.T) {
 	require.Equal(t, "true", sync.addedOptions["paused"])
 	require.Equal(t, "true", sync.addedOptions["stopped"])
 	require.NotContains(t, sync.addedOptions, "skip_checking")
+	require.Equal(t, "false", sync.addedOptions["useDownloadPath"])
 	require.Contains(t, sync.bulkActions, "recheck:"+newHash)
 
 	select {

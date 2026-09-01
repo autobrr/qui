@@ -56,6 +56,7 @@
     "searchCrossSeeds": "Cross-Seed 검색",
     "filterCrossSeeds": "Cross-Seed 필터링",
     "filterCrossSeedsSingleOnly": "Cross-Seed 필터링(단일 선택만)",
+    "manualCrossSeed": "크로스시드 수동 추가",
     "setTags": "태그 설정",
     "setLocation": "위치 설정",
     "setShareLimits": "공유 제한 설정",
@@ -671,6 +672,25 @@
     "block": "차단",
     "addedToBlocklist": "차단 목록에 추가됨",
     "missingInstance": "차단 목록에 대한 인스턴스 누락",
+    "trace": {
+      "title": "검색 상세",
+      "summaryBadge": "후보 {{total}}개, 일치 {{matches}}개",
+      "summary": "후보 {{total}}개가 반환되었습니다. 거부됨: 릴리스 불일치 {{release}}개, 크기 불일치 {{size}}개, 콘텐츠 필터 {{late}}개, 중복 {{duplicates}}개. 일치 {{matches}}개가 남았습니다.",
+      "indexersHeading": "인덱서",
+      "status": {
+        "searched": "검색됨",
+        "notCovered": "불완전",
+        "error": "오류",
+        "excluded": "제외됨"
+      },
+      "candidateCount": "후보 {{count}}개",
+      "rejectionsHeading": "거부된 후보",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "같은 이유의 후보 {{count}}개 더 있음",
+      "copyReport": "보고서 복사",
+      "copied": "보고서가 클립보드에 복사되었습니다",
+      "copyFailed": "보고서를 복사할 수 없습니다"
+    },
     "scope": {
       "allIndexers": "모든 인덱서",
       "selectCustom": "사용자 지정 선택",
@@ -1056,7 +1076,7 @@
       "unknownClient": "알 수 없는 클라이언트"
     },
     "actions": {
-      "copyIpPort": "IP:port 복사",
+      "copyIpPort": "주소 복사",
       "banPeerPermanently": "피어 영구 차단",
       "selectAll": "전체",
       "selectNone": "없음"
@@ -1130,7 +1150,7 @@
     "editTrackerUrl": "트래커 URL 편집"
   },
   "peersTable": {
-    "address": "IP:포트",
+    "address": "IP/주소",
     "client": "클라이언트",
     "flags": "플래그",
     "progress": "진행률",
@@ -1139,11 +1159,11 @@
     "downloaded": "다운로드됨",
     "uploaded": "업로드됨",
     "relevance": "관련성",
-    "copyIpAddress": "IP 주소 복사",
+    "copyIpAddress": "주소 복사",
     "banPeer": "피어 차단",
     "noPeersConnected": "연결된 피어 없음",
     "toast": {
-      "ipCopied": "IP 주소가 클립보드에 복사되었습니다"
+      "ipCopied": "주소가 클립보드에 복사되었습니다"
     }
   },
   "routes": {
@@ -1502,5 +1522,34 @@
     "failedToUpdatePriorities": "파일 우선순위를 업데이트하지 못했습니다",
     "failedToRenameFile": "파일 이름을 변경하지 못했습니다",
     "failedToRenameFolder": "폴더 이름을 변경하지 못했습니다"
+  },
+  "manualCrossSeed": {
+    "title": "크로스시드 수동 매칭",
+    "description": "이 데이터를 가진 기존 토렌트를 선택하세요. qui가 업로드한 토렌트를 해당 위치에 추가하고 재검사한 뒤 시딩합니다.",
+    "fileLabel": "토렌트 파일",
+    "sourceSummary_other": "{{size}} · 파일 {{count}}개",
+    "loadingProposals": "파일 중복도 기준으로 대상 정렬 중...",
+    "proposalsFailed": "대상 제안을 불러오지 못했습니다",
+    "targetLabel": "대상 토렌트",
+    "noProposals": "겹치는 토렌트가 없습니다. 대상을 직접 선택하세요.",
+    "overlap": "파일 중복 {{percent}}%",
+    "pickManually": "다른 토렌트 선택",
+    "pickerPlaceholder": "토렌트 검색...",
+    "pickerNoResults": "일치하는 토렌트가 없습니다",
+    "zeroOverlapWarning": "선택한 토렌트는 업로드와 같은 크기의 파일이 없습니다. 재검사가 결과를 결정하며, 실패하면 토렌트는 일시정지 상태로 남습니다.",
+    "category": "카테고리",
+    "noCategory": "(카테고리 없음)",
+    "pinnedCategory": "크로스 시드 설정이 모든 매치를 “{{category}}” 분류로 고정하므로 여기서는 변경할 수 없습니다.",
+    "tags": "태그",
+    "newTagPlaceholder": "태그를 입력하고 Enter를 누르세요",
+    "savePath": "저장 경로(실제 대상 위치)",
+    "cancel": "취소",
+    "apply": "크로스시드 추가",
+    "applying": "추가 중...",
+    "applySuccess": "크로스시드가 추가되었습니다",
+    "applyFailed": "크로스시드 실패: {{message}}",
+    "addOptionTitle": "크로스시드로 추가",
+    "addOptionDescription": "다운로드하는 대신 이 토렌트를 기존 토렌트와 매칭합니다.",
+    "addOptionButton": "수동 매칭"
   }
 }

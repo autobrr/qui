@@ -5,15 +5,32 @@ package crossseed
 
 import (
 	"context"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 )
+
+// announceAliasLookupTimeout bounds the ARR alias lookup on announce paths.
+// Announce checks answer autobrr inside its webhook timeout, so a hung ARR
+// instance must degrade the check to name-only matching, not stall it for the
+// full per-instance HTTP timeouts. Search paths keep their own patience.
+const announceAliasLookupTimeout = 5 * time.Second
 
 type announcementMatchPolicy struct {
 	findIndividualEpisodes bool
 	rescueTitleMismatches  bool
 	allowUnknownSize       bool
 	skipRecheck            bool
+	// candidateTitles are ARR alternate titles for the announced release. They
+	// attach to the candidate side only, so they can never widen the identity
+	// of an unrelated source torrent.
+	candidateTitles []string
+	// tolerateOneSidedChecksum lets the advisory webhook check pass a candidate
+	// whose only strict failure is a CRC tag on one side. IRC announce sizes are
+	// rounded, so the check cannot reach the exact-size checksum relaxation that
+	// apply gets from the real torrent bytes. A false positive here costs one
+	// torrent download; apply re-validates and stays authoritative.
+	tolerateOneSidedChecksum bool
 }
 
 type announcementCandidateDecision struct {
@@ -64,13 +81,30 @@ func (s *Service) classifyWebhookAnnouncementSource(
 		return s.classifyAnnouncementSource(ctx, instanceID, source, candidate, candidateSize, policy)
 	}
 
-	decision := s.classifySearchCandidate(s.announcementRawSearchInput(source, candidate, candidateSize, policy))
+	input := s.announcementRawSearchInput(source, candidate, candidateSize, policy)
+	decision := s.classifySearchCandidate(input)
+	if policy.tolerateOneSidedChecksum && decision.RejectReason == checksumMismatchReason &&
+		s.hasOneSidedChecksum(input.Source.release, input.Candidate.release) {
+		relaxed, _ := s.withRelaxedDifferenceNeutralized(input, "checksum")
+		decision = s.classifySearchCandidate(relaxed)
+	}
 	if decision.Accepted && decision.Class != searchCandidateClassStrict {
 		decision.Accepted = false
 		decision.Class = searchCandidateClassRejected
 		decision.RejectReason = "nonexact size requires strict match"
 	}
 	return announcementCandidateDecision{decision: decision, replayable: true}
+}
+
+// announceAliasTitles resolves ARR alternate titles for an announced release.
+// Callers run it once per announce, outside the per-torrent scan loops.
+func (s *Service) announceAliasTitles(ctx context.Context, announcedName, contentType string) []string {
+	ctx, cancel := context.WithTimeout(ctx, announceAliasLookupTimeout)
+	defer cancel()
+	if arrResult, _ := s.lookupARRExternalIDs(ctx, announcedName, contentType); arrResult != nil {
+		return arrResult.Titles
+	}
+	return nil
 }
 
 func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate namedRelease, candidateSize int64, policy announcementMatchPolicy) searchCandidateInput {
@@ -80,6 +114,7 @@ func (s *Service) announcementRawSearchInput(source *qbt.Torrent, candidate name
 		Candidate:              candidate,
 		SourceSize:             searchSourceSize(source),
 		CandidateSize:          candidateSize,
+		CandidateTitles:        policy.candidateTitles,
 		TolerancePercent:       defaultSizeMismatchTolerancePercent,
 		FindIndividualEpisodes: policy.findIndividualEpisodes,
 		RescueTitleMismatches:  policy.rescueTitleMismatches,

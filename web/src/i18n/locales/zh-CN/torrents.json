@@ -56,6 +56,7 @@
     "searchCrossSeeds": "搜索辅种",
     "filterCrossSeeds": "筛选辅种",
     "filterCrossSeedsSingleOnly": "筛选辅种（仅限单选）",
+    "manualCrossSeed": "手动添加辅种",
     "setTags": "设置标签",
     "setLocation": "设置位置",
     "setShareLimits": "设置分享限制",
@@ -671,6 +672,25 @@
     "block": "屏蔽",
     "addedToBlocklist": "已添加到屏蔽列表",
     "missingInstance": "屏蔽列表缺少实例",
+    "trace": {
+      "title": "搜索明细",
+      "summaryBadge": "{{total}} 个候选，{{matches}} 个匹配",
+      "summary": "共返回 {{total}} 个候选。被拒绝：发布信息不符 {{release}} 个，大小不符 {{size}} 个，内容过滤 {{late}} 个，重复 {{duplicates}} 个。剩余 {{matches}} 个匹配。",
+      "indexersHeading": "索引器",
+      "status": {
+        "searched": "已搜索",
+        "notCovered": "未完成",
+        "error": "错误",
+        "excluded": "已排除"
+      },
+      "candidateCount": "{{count}} 个候选",
+      "rejectionsHeading": "被拒绝的候选",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "还有 {{count}} 个相同原因的候选",
+      "copyReport": "复制报告",
+      "copied": "报告已复制到剪贴板",
+      "copyFailed": "无法复制报告"
+    },
     "scope": {
       "allIndexers": "所有索引器",
       "selectCustom": "自定义选择",
@@ -1056,7 +1076,7 @@
       "unknownClient": "未知客户端"
     },
     "actions": {
-      "copyIpPort": "复制 IP:端口",
+      "copyIpPort": "复制地址",
       "banPeerPermanently": "永久封禁节点",
       "selectAll": "全部",
       "selectNone": "无"
@@ -1130,7 +1150,7 @@
     "editTrackerUrl": "编辑 Tracker URL"
   },
   "peersTable": {
-    "address": "IP:端口",
+    "address": "IP/地址",
     "client": "客户端",
     "flags": "标志",
     "progress": "进度",
@@ -1139,11 +1159,11 @@
     "downloaded": "已下载",
     "uploaded": "已上传",
     "relevance": "相关性",
-    "copyIpAddress": "复制 IP 地址",
+    "copyIpAddress": "复制地址",
     "banPeer": "封禁节点",
     "noPeersConnected": "无已连接节点",
     "toast": {
-      "ipCopied": "IP 地址已复制到剪贴板"
+      "ipCopied": "地址已复制到剪贴板"
     }
   },
   "routes": {
@@ -1502,5 +1522,34 @@
     "failedToUpdatePriorities": "更新文件优先级失败",
     "failedToRenameFile": "重命名文件失败",
     "failedToRenameFolder": "重命名文件夹失败"
+  },
+  "manualCrossSeed": {
+    "title": "手动辅种匹配",
+    "description": "选择已持有该数据的种子。qui 会将上传的种子添加到其位置，重新校验后开始做种。",
+    "fileLabel": "种子文件",
+    "sourceSummary_other": "{{size}} · {{count}} 个文件",
+    "loadingProposals": "正在按文件重叠度排序目标...",
+    "proposalsFailed": "加载目标建议失败",
+    "targetLabel": "目标种子",
+    "noProposals": "未找到重叠的种子。请手动选择目标。",
+    "overlap": "文件重叠 {{percent}}%",
+    "pickManually": "选择其他种子",
+    "pickerPlaceholder": "搜索种子...",
+    "pickerNoResults": "没有匹配的种子",
+    "zeroOverlapWarning": "所选种子与上传文件没有相同大小的文件。结果由重新校验决定；校验失败时种子保持暂停。",
+    "category": "分类",
+    "noCategory": "（无分类）",
+    "pinnedCategory": "交叉做种设置将每个匹配固定为“{{category}}”分类，因此无法在此更改。",
+    "tags": "标签",
+    "newTagPlaceholder": "输入标签后按 Enter",
+    "savePath": "保存路径（实际目标位置）",
+    "cancel": "取消",
+    "apply": "添加辅种",
+    "applying": "正在添加...",
+    "applySuccess": "辅种已添加",
+    "applyFailed": "辅种失败：{{message}}",
+    "addOptionTitle": "作为辅种添加",
+    "addOptionDescription": "将此种子与现有种子匹配，而不是重新下载。",
+    "addOptionButton": "手动匹配"
   }
 }

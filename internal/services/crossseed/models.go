@@ -56,6 +56,11 @@ type CrossSeedRequest struct {
 	// SkipPieceBoundarySafetyCheck bypasses the piece boundary safety check that prevents
 	// corruption when extra files share pieces with content. Risky: may corrupt existing seeded data.
 	SkipPieceBoundarySafetyCheck bool `json:"skip_piece_boundary_safety_check,omitempty"`
+	// ManualTargetHash pins candidate discovery to one user-chosen existing
+	// torrent (Manual match). Requires exactly one target instance. The
+	// release-matching and content-type gates are bypassed; the recheck is the
+	// arbiter of a wrong pick.
+	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
 	// SourceFilterCategories filters candidate torrents to only those in these categories.
 	// Used by RSS automation to respect RSSSourceCategories setting.
@@ -98,6 +103,8 @@ type InstanceCrossSeedResult struct {
 	Message string `json:"message,omitempty"`
 	// MatchedTorrent is the existing torrent that matched (if any)
 	MatchedTorrent *MatchedTorrent `json:"matched_torrent,omitempty"`
+	// partialPoolPending keeps pool-only reporting out of ordinary search results.
+	partialPoolPending bool
 }
 
 // MatchedTorrent represents an existing torrent that matches the cross-seed candidate
@@ -164,6 +171,9 @@ type FindCandidatesRequest struct {
 	// incomplete "season pack from episode" outcomes.
 	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
+	// ManualTargetHash short-circuits discovery to one user-chosen torrent
+	// (Manual match). Requires exactly one target instance.
+	ManualTargetHash string `json:"manual_target_hash,omitempty"`
 
 	// Source filters - used to restrict which existing torrents are considered as candidates.
 	// These are applied when fetching torrents (if no pre-built snapshot is provided).
@@ -306,6 +316,10 @@ type TorrentSearchResponse struct {
 	// stamp per-indexer search history; an indexer missing here was rate
 	// limited or failed a pass and stays eligible for the next run.
 	CoveredIndexerIDs []int `json:"-"`
+	// DecisionTrace explains why the Torznab passes accepted or rejected
+	// candidates. Ephemeral diagnostics for the manual search dialog; unset
+	// when no Torznab search ran (Gazelle-only or failed searches).
+	DecisionTrace *SearchDecisionTrace `json:"decisionTrace,omitempty"`
 }
 
 // TorrentSearchSelection represents a user-selected search result that should be added for cross-seeding.

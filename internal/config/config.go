@@ -122,6 +122,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseMaxOpenConns", 25)
 	c.viper.SetDefault("databaseMaxIdleConns", 5)
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
+	c.viper.SetDefault("qbittorrentTimeout", 60)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
@@ -226,6 +227,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseMaxOpenConns", envPrefix+"DATABASE_MAX_OPEN_CONNS")
 	c.viper.BindEnv("databaseMaxIdleConns", envPrefix+"DATABASE_MAX_IDLE_CONNS")
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
+	c.viper.BindEnv("qbittorrentTimeout", envPrefix+"QBITTORRENT_TIMEOUT")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
@@ -345,6 +347,10 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.DatabaseMaxOpenConns = c.viper.GetInt("databaseMaxOpenConns")
 	c.Config.DatabaseMaxIdleConns = c.viper.GetInt("databaseMaxIdleConns")
 	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
+	c.Config.QbittorrentTimeout = c.viper.GetInt("qbittorrentTimeout")
+	if c.Config.QbittorrentTimeout <= 0 {
+		c.Config.QbittorrentTimeout = 60
+	}
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
@@ -537,6 +543,12 @@ sessionSecret = "{{ .sessionSecret }}"
 #databaseMaxIdleConns = 5
 #databaseConnMaxLifetime = 300
 
+# HTTP timeout in seconds for requests qui makes to qBittorrent instances
+# (sync, health checks, capabilities). Raise it for very large or slow
+# instances whose responses take longer than 60 seconds.
+# Default: 60
+#qbittorrentTimeout = 60
+
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
@@ -561,7 +573,7 @@ sessionSecret = "{{ .sessionSecret }}"
 #logLevel = "{{ .logLevel }}"
 
 # Prometheus Metrics
-# Enable Prometheus metrics on separate port (no authentication required)
+# Enable Prometheus metrics on a separate port
 # Default: false
 #metricsEnabled = false
 
@@ -575,9 +587,10 @@ sessionSecret = "{{ .sessionSecret }}"
 #metricsPort = 9074
 
 # Basic authentication for metrics endpoint (optional)
-# Format: "username:bcrypt_hash" or "user1:hash1,user2:hash2" for multiple users
-# Passwords must be bcrypt-hashed. Use tools like htpasswd or online bcrypt generators
-# Example: "prometheus:$2y$10$example_bcrypt_hash_here"
+# Format: "username:password" or "user1:password1,user2:password2" for multiple users
+# Passwords are plaintext and can contain colons. Usernames cannot contain colons.
+# Commas cannot appear in usernames or passwords. Protect this configuration file.
+# Example: "prometheus:secret"
 # Leave empty to disable authentication (default)
 #metricsBasicAuthUsers = ""
 

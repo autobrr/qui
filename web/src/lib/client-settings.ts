@@ -24,6 +24,19 @@ import { getApiBaseUrl } from "@/lib/base-url"
 const CHANGE_EVENT = "qui-client-setting-changed"
 const FLUSH_DELAY_MS = 800
 
+export const TORRENT_VIEW_MODE_KEYS = {
+  legacy: "qui-torrent-view-mode",
+  mobile: "qui-torrent-mobile-view-mode",
+  desktop: "qui-torrent-desktop-view-mode",
+} as const
+
+const LEGACY_TORRENT_VIEW_MODES = {
+  normal: { mobile: "normal", desktop: "normal" },
+  dense: { mobile: "compact", desktop: "dense" },
+  compact: { mobile: "compact", desktop: "dense" },
+  "ultra-compact": { mobile: "ultra-compact", desktop: "dense" },
+} as const
+
 // Keys synced to the server. Grown as hooks convert; keys not listed here
 // (theme boot caches, dismissed banners, sessionStorage) stay local-only.
 const SYNCED_KEYS = new Set<string>([
@@ -38,7 +51,9 @@ const SYNCED_KEYS = new Set<string>([
   "qui-filter-sidebar-collapsed",
   "qui-accordion",
   "qui-accordion-views-seeded",
-  "qui-torrent-view-mode",
+  TORRENT_VIEW_MODE_KEYS.legacy,
+  TORRENT_VIEW_MODE_KEYS.mobile,
+  TORRENT_VIEW_MODE_KEYS.desktop,
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
 ])
@@ -149,8 +164,8 @@ function scheduleFlush(): void {
 }
 
 let flushInFlight = false
-// A timer or tab-hide flush that fired while a PUT was in flight; replayed
-// once the PUT settles so the write it carried is not stalled.
+// A flush needed after the current PUT, either requested while in flight or
+// after another tab replaces a batch value.
 let flushRequestedInFlight = false
 
 async function flushPending(): Promise<void> {
@@ -174,10 +189,14 @@ async function flushPending(): Promise<void> {
       keepalive: true,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    // Drop what this PUT delivered. Entries replaced mid-flight stay queued;
-    // their own scheduleFlush timer (or the replay below) picks them up.
+    // Drop what this PUT delivered. Entries replaced in this tab stay queued;
+    // a newer value from another tab is copied from the shared localStorage.
     for (const [key, raw] of Object.entries(batch)) {
-      if (pending.get(key) === raw) pending.delete(key)
+      const latest = readRaw(key)
+      if (latest !== null && latest !== raw) {
+        pending.set(key, latest)
+        flushRequestedInFlight = true
+      } else if (pending.get(key) === raw) pending.delete(key)
     }
     persistPending()
   } catch (error) {
@@ -231,6 +250,19 @@ export function applyServerSettings(settings: Record<string, string>): string[] 
  * the push gate. Idempotent: after one push the server has the key.
  */
 export function seedAndMarkReady(serverSettings: Record<string, string>): void {
+  const legacyMode = readRaw(TORRENT_VIEW_MODE_KEYS.legacy)
+  const migratedModes = legacyMode
+    ? LEGACY_TORRENT_VIEW_MODES[legacyMode as keyof typeof LEGACY_TORRENT_VIEW_MODES]
+    : undefined
+  if (migratedModes) {
+    if (readRaw(TORRENT_VIEW_MODE_KEYS.mobile) === null) {
+      writeRaw(TORRENT_VIEW_MODE_KEYS.mobile, migratedModes.mobile)
+    }
+    if (readRaw(TORRENT_VIEW_MODE_KEYS.desktop) === null) {
+      writeRaw(TORRENT_VIEW_MODE_KEYS.desktop, migratedModes.desktop)
+    }
+  }
+
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)

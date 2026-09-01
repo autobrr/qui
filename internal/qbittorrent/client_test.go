@@ -15,6 +15,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/avast/retry-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -275,7 +276,7 @@ func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second)
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 
 	require.Error(t, err)
 	require.Nil(t, client)
@@ -307,11 +308,42 @@ func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second)
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 
 	require.NoError(t, err, "transient capability fetch failures must not block client creation")
 	require.NotNil(t, client)
 	require.False(t, client.IsHealthy(), "client should start unhealthy until a capability refresh succeeds")
+}
+
+// TestNewClientWithTimeoutTransportIndependentOfLoginBudget verifies that a short
+// creation budget (e.g. the 3s login warm) is not baked into the HTTP transport
+// timeout for the life of the client.
+func TestNewClientWithTimeoutTransportIndependentOfLoginBudget(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{
+				Name:     "SID",
+				Value:    "quick-login",
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, 3*time.Second, 60*time.Second)
+
+	require.NoError(t, err)
+	require.Equal(t, 60*time.Second, client.GetHTTPClient().Timeout, "transport timeout must come from the pool, not the creation budget")
 }
 
 func TestTruncateWebAPIVersion(t *testing.T) {
@@ -519,7 +551,7 @@ func TestClientHandleSyncManagerErrorIgnoresContextStopped(t *testing.T) {
 	}
 }
 
-func TestClientHandleSyncManagerErrorMarksUnhealthyForDeadline(t *testing.T) {
+func TestClientHandleSyncManagerErrorKeepsHealthyForDeadline(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -550,11 +582,78 @@ func TestClientHandleSyncManagerErrorMarksUnhealthyForDeadline(t *testing.T) {
 
 			client.handleSyncManagerError(tc.err)
 
-			require.False(t, client.IsHealthy())
-			require.Nil(t, client.GetCachedServerState())
+			// Slow, not down: health and cached state survive, but the error
+			// still dispatches so the SSE loop backs off and escalates its
+			// sync budget.
+			require.True(t, client.IsHealthy())
+			require.NotNil(t, client.GetCachedServerState())
 			require.Len(t, sink.getSyncErrorCalls(), 1)
 		})
 	}
+}
+
+func TestIsDeadlineExpired(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "deadline sentinel", err: fmt.Errorf("could not get main data: %w", context.DeadlineExceeded), want: true},
+		{name: "flattened retry text", err: errors.New("All attempts fail: #1: Get \"http://gluetun:8080/api/v2/app/webapiVersion\": context deadline exceeded"), want: true},
+		{name: "mixed retry ending in hard failure", err: retry.Error{context.DeadlineExceeded, errors.New("connection refused")}, want: false},
+		{name: "mixed retry ending in deadline", err: retry.Error{errors.New("connection refused"), context.DeadlineExceeded}, want: true},
+		{name: "net/http client timeout", err: errors.New("Get \"http://x\": net/http: request canceled (Client.Timeout exceeded while awaiting headers)"), want: true},
+		{name: "cancellation", err: context.Canceled, want: false},
+		{name: "connection refused", err: errors.New("dial tcp 127.0.0.1:1: connect: connection refused"), want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, isDeadlineExpired(tc.err))
+		})
+	}
+}
+
+// TestClientHealthCheckKeepsHealthOnDeadline verifies that a probe timing out against a
+// responding-but-saturated instance does not demote health.
+func TestClientHealthCheckKeepsHealthOnDeadline(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: 42, isHealthy: true}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err := client.HealthCheck(ctx)
+	require.Error(t, err)
+	require.True(t, client.IsHealthy(), "a timed-out probe must not demote a healthy client")
+}
+
+// TestClientHealthCheckMarksUnhealthyOnHardFailure pins that connection-level failures
+// still demote health immediately (#2096: dead instances must go red fast).
+func TestClientHealthCheckMarksUnhealthyOnHardFailure(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	srv.Close()
+
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: 42, isHealthy: true}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := client.HealthCheck(ctx)
+	require.Error(t, err)
+	require.False(t, client.IsHealthy(), "a hard connection failure must demote the client")
 }
 
 func TestClientHandleSyncManagerErrorMarksUnhealthyForRealError(t *testing.T) {

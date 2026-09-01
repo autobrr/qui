@@ -36,7 +36,8 @@ var volatileTorrentFields = map[string]bool{
 // TorrentView shadows them out of the serialized payload (issue #2328), so a
 // change to one has nothing to update client-side and must not resend a row.
 var payloadOmittedTorrentFields = map[string]bool{
-	"MagnetURI": true,
+	"MagnetURI":   true,
+	"HasMetadata": true,
 }
 
 // setSampleValue writes a non-zero value of the field's kind so a hashed field
@@ -61,6 +62,8 @@ func setSampleValue(t *testing.T, f reflect.Value) {
 		m := reflect.MakeMap(f.Type())
 		m.SetMapIndex(reflect.ValueOf("x"), reflect.New(f.Type().Elem()).Elem())
 		f.Set(m)
+	case reflect.Pointer:
+		f.Set(reflect.New(f.Type().Elem()))
 	default:
 		t.Fatalf("field kind %s not handled; extend setSampleValue", f.Kind())
 	}
@@ -99,6 +102,17 @@ func TestMagnetOnlyChangeDoesNotResendRow(t *testing.T) {
 	_, _, baseFP := computeRowDelta(before, singleRowKey, singleRowFingerprint, nil)
 	_, changed, _ := computeRowDelta(after, singleRowKey, singleRowFingerprint, baseFP)
 	require.Empty(t, changed, "magnet-only change must not resend the row")
+}
+
+func TestHasMetadataOnlyChangeDoesNotResendRow(t *testing.T) {
+	metadataUnavailable := false
+	metadataAvailable := true
+	before := []qbittorrent.TorrentView{{Torrent: &qbt.Torrent{Hash: "aaa", Name: "Alpha", HasMetadata: &metadataUnavailable}}}
+	after := []qbittorrent.TorrentView{{Torrent: &qbt.Torrent{Hash: "aaa", Name: "Alpha", HasMetadata: &metadataAvailable}}}
+
+	_, _, baseFP := computeRowDelta(before, singleRowKey, singleRowFingerprint, nil)
+	_, changed, _ := computeRowDelta(after, singleRowKey, singleRowFingerprint, baseFP)
+	require.Empty(t, changed, "has_metadata-only change must not resend the row")
 }
 
 // assertEveryFieldHashed proves fp reacts to every field of T: a fingerprint

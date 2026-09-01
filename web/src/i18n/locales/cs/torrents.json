@@ -56,6 +56,7 @@
     "searchCrossSeeds": "Hledat křížová sdílení",
     "filterCrossSeeds": "Filtrovat křížová sdílení",
     "filterCrossSeedsSingleOnly": "Filtrovat křížová sdílení (pouze jedna volba)",
+    "manualCrossSeed": "Přidat cross-seed ručně",
     "setTags": "Nastavit tagy",
     "setLocation": "Nastavit místo",
     "setShareLimits": "Nastavit limit sdílení",
@@ -719,6 +720,25 @@
     "block": "Blokovat",
     "addedToBlocklist": "Přidáno do blokovacího seznamu",
     "missingInstance": "Chybí instance pro blokovací seznam",
+    "trace": {
+      "title": "Rozpis vyhledávání",
+      "summaryBadge": "{{total}} kandidátů, {{matches}} shod",
+      "summary": "Vráceno {{total}} kandidátů. Odmítnuto: {{release}} neshoda release, {{size}} neshoda velikosti, {{late}} filtr obsahu, {{duplicates}} duplicity. Zbývá {{matches}} shod.",
+      "indexersHeading": "Indexery",
+      "status": {
+        "searched": "prohledáno",
+        "notCovered": "neúplné",
+        "error": "chyba",
+        "excluded": "vyloučeno"
+      },
+      "candidateCount": "{{count}} kandidátů",
+      "rejectionsHeading": "Odmítnutí kandidáti",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} dalších se stejným důvodem",
+      "copyReport": "Kopírovat report",
+      "copied": "Report zkopírován do schránky",
+      "copyFailed": "Report se nepodařilo zkopírovat"
+    },
     "scope": {
       "allIndexers": "Všechny indexery",
       "selectCustom": "Vybrat vlastní",
@@ -1115,7 +1135,7 @@
       "unknownClient": "Neznámý klient"
     },
     "actions": {
-      "copyIpPort": "Kopírovat IP:port",
+      "copyIpPort": "Kopírovat adresu",
       "banPeerPermanently": "Permanentně zakázat peer",
       "selectAll": "Všechny",
       "selectNone": "Žádné"
@@ -1189,7 +1209,7 @@
     "editTrackerUrl": "Upravit URL trackeru"
   },
   "peersTable": {
-    "address": "IP:Port",
+    "address": "IP/adresa",
     "client": "Klient",
     "flags": "Vlajky",
     "progress": "Postup",
@@ -1198,11 +1218,11 @@
     "downloaded": "Stáhnuto",
     "uploaded": "Odesláno",
     "relevance": "Relevance",
-    "copyIpAddress": "Kopírovat IP adresu",
+    "copyIpAddress": "Kopírovat adresu",
     "banPeer": "Zakázat peer",
     "noPeersConnected": "Žádné peerové připojení",
     "toast": {
-      "ipCopied": "IP adresa zkopírována do schránky"
+      "ipCopied": "Adresa zkopírována do schránky"
     }
   },
   "routes": {
@@ -1565,5 +1585,36 @@
     "high": "Vysoká",
     "maximum": "Maximální",
     "mixed": "Smíšené"
+  },
+  "manualCrossSeed": {
+    "title": "Ruční párování cross-seedu",
+    "description": "Vyberte existující torrent, který tato data obsahuje. qui přidá nahraný torrent na jeho umístění, znovu jej ověří a začne seedovat.",
+    "fileLabel": "Soubor torrentu",
+    "sourceSummary_one": "{{size}} · {{count}} soubor",
+    "sourceSummary_few": "{{size}} · {{count}} soubory",
+    "sourceSummary_other": "{{size}} · {{count}} souborů",
+    "loadingProposals": "Řazení cílů podle překryvu souborů...",
+    "proposalsFailed": "Nepodařilo se načíst návrhy cílů",
+    "targetLabel": "Cílový torrent",
+    "noProposals": "Nenalezeny žádné překrývající se torrenty. Vyberte cíl ručně.",
+    "overlap": "Překryv souborů {{percent}} %",
+    "pickManually": "Vybrat jiný torrent",
+    "pickerPlaceholder": "Hledat torrenty...",
+    "pickerNoResults": "Žádné torrenty neodpovídají",
+    "zeroOverlapWarning": "Vybraný torrent nesdílí s nahraným souborem žádné velikosti souborů. O výsledku rozhodne opětovné ověření; při neúspěchu zůstane torrent pozastavený.",
+    "category": "Kategorie",
+    "noCategory": "(bez kategorie)",
+    "pinnedCategory": "Nastavení cross-seedu určuje pro každou shodu kategorii „{{category}}“, proto ji zde nelze změnit.",
+    "tags": "Štítky",
+    "newTagPlaceholder": "Zadejte štítek a stiskněte Enter",
+    "savePath": "Cesta uložení (skutečné umístění)",
+    "cancel": "Zrušit",
+    "apply": "Přidat cross-seed",
+    "applying": "Přidávání...",
+    "applySuccess": "Cross-seed přidán",
+    "applyFailed": "Cross-seed selhal: {{message}}",
+    "addOptionTitle": "Přidat jako cross-seed",
+    "addOptionDescription": "Spárovat tento torrent s existujícím torrentem místo stahování.",
+    "addOptionButton": "Spárovat ručně"
   }
 }

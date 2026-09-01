@@ -3821,3 +3821,130 @@ func TestEvaluateCondition_CrossSeedTags(t *testing.T) {
 		})
 	}
 }
+
+// TestEvaluateCondition_TrackerFields_AllTrackers covers issue #2481: TRACKER and
+// TRACKERS must match every tracker a torrent announces to, not only the tracker
+// qBittorrent currently reports as working (torrent.Tracker is empty when none work).
+func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
+	deadGroupCtx := &EvalContext{
+		TrackerDisplayNameByDomain: map[string]string{
+			"tracker.dead-one.test": "dead",
+			"tracker.dead-two.test": "dead",
+		},
+	}
+
+	// Every tracker is down, so qBittorrent leaves the primary tracker field empty.
+	allDead := qbt.Torrent{
+		Tracker: "",
+		Trackers: []qbt.TorrentTracker{
+			{Url: "** [DHT] **", Status: qbt.TrackerStatusDisabled},
+			{Url: "udp://tracker.dead-one.test:1337/announce", Status: qbt.TrackerStatusNotWorking},
+			{Url: "udp://tracker.dead-two.test:1337/announce", Status: qbt.TrackerStatusNotWorking},
+		},
+	}
+
+	// A working primary plus a second tracker on another domain.
+	multiTracker := qbt.Torrent{
+		Tracker: "https://primary.test/announce",
+		Trackers: []qbt.TorrentTracker{
+			{Url: "https://primary.test/announce", Status: qbt.TrackerStatusOK},
+			{Url: "https://secondary.test/announce", Status: qbt.TrackerStatusOK},
+		},
+	}
+
+	// qBittorrent also reports a pseudo label in the primary tracker field.
+	pseudoPrimary := qbt.Torrent{Tracker: "** [DHT] **"}
+
+	pseudoOnly := qbt.Torrent{
+		Trackers: []qbt.TorrentTracker{
+			{Url: "** [DHT] **", Status: qbt.TrackerStatusDisabled},
+			{Url: "** [PeX] **", Status: qbt.TrackerStatusDisabled},
+			{Url: "** [LSD] **", Status: qbt.TrackerStatusDisabled},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{
+			name:     "tracker matches customization display name when no tracker works",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorEqual, Value: "dead"},
+			torrent:  allDead,
+			ctx:      deadGroupCtx,
+			expected: true,
+		},
+		{
+			name:     "trackers matches customization display name when no tracker works",
+			cond:     &RuleCondition{Field: FieldTrackers, Operator: OperatorEqual, Value: "dead"},
+			torrent:  allDead,
+			ctx:      deadGroupCtx,
+			expected: true,
+		},
+		{
+			name:     "tracker matches domain when no tracker works",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorEqual, Value: "tracker.dead-two.test"},
+			torrent:  allDead,
+			expected: true,
+		},
+		{
+			name:     "tracker matches a non-primary tracker",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorEqual, Value: "secondary.test"},
+			torrent:  multiTracker,
+			expected: true,
+		},
+		{
+			name:     "trackers matches a non-primary tracker",
+			cond:     &RuleCondition{Field: FieldTrackers, Operator: OperatorContains, Value: "secondary.test"},
+			torrent:  multiTracker,
+			expected: true,
+		},
+		{
+			name:     "tracker still matches the primary tracker",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorEqual, Value: "primary.test"},
+			torrent:  multiTracker,
+			expected: true,
+		},
+		{
+			name:     "tracker does not match an absent domain",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorEqual, Value: "elsewhere.test"},
+			torrent:  multiTracker,
+			expected: false,
+		},
+		{
+			name:     "not equal is false when a non-primary tracker matches",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorNotEqual, Value: "secondary.test"},
+			torrent:  multiTracker,
+			expected: false,
+		},
+		{
+			name:     "tracker ignores DHT pseudo trackers",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorContains, Value: "dht"},
+			torrent:  pseudoOnly,
+			expected: false,
+		},
+		{
+			name:     "pseudo only torrent is treated as having no tracker",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorEqual, Value: ""},
+			torrent:  pseudoOnly,
+			expected: true,
+		},
+		{
+			name:     "tracker ignores a pseudo label in the primary tracker field",
+			cond:     &RuleCondition{Field: FieldTracker, Operator: OperatorContains, Value: "dht"},
+			torrent:  pseudoPrimary,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0); got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}

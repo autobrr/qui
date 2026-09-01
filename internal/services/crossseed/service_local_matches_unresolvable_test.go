@@ -5,13 +5,14 @@ package crossseed
 
 import (
 	"context"
-	"path/filepath"
 	"strconv"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -42,6 +43,7 @@ func findLocalMatchesForFiles(t *testing.T, files qbt.TorrentFiles, strict bool)
 		syncManager:   syncManager,
 		releaseCache:  NewReleaseCache(),
 	}
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 	return service.FindLocalMatches(context.Background(), 1, source.Hash, strict)
 }
 
@@ -93,6 +95,7 @@ func TestFindLocalMatches_UnresolvableCandidateName_FailsClosedInStrictMode(t *t
 		syncManager:   syncManager,
 		releaseCache:  NewReleaseCache(),
 	}
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	_, err := service.FindLocalMatches(context.Background(), 1, source.Hash, true)
 	require.Error(t, err)
@@ -110,42 +113,4 @@ func TestFindLocalMatches_MissingLocalFile_StaysBestEffort(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, response.Matches, 1)
 	require.Equal(t, matchTypeName, response.Matches[0].MatchType)
-}
-
-func TestResolveLocalTorrentFile(t *testing.T) {
-	base := filepath.Join(t.TempDir(), "save")
-
-	tests := []struct {
-		name     string
-		fileName string
-		wantRel  string
-	}{
-		{name: "plain name", fileName: "Movie.2023.1080p.WEB.mkv", wantRel: "Movie.2023.1080p.WEB.mkv"},
-		{name: "nested name", fileName: "Season 01/Episode 01.mkv", wantRel: filepath.Join("Season 01", "Episode 01.mkv")},
-		{name: "dot segments inside base", fileName: "sub/../Movie.mkv", wantRel: "Movie.mkv"},
-		{name: "empty name"},
-		{name: "backslash in name", fileName: `AC\DC - Back In Black.mkv`},
-		{name: "windows traversal", fileName: `..\outside.bin`},
-		{name: "posix traversal", fileName: "../outside.bin"},
-		{name: "nested posix traversal", fileName: "sub/../../outside.bin"},
-		{name: "posix rooted", fileName: "/etc/passwd"},
-		{name: "windows rooted", fileName: `\Windows\System32\config`},
-		{name: "windows drive", fileName: `C:\Windows\System32\config`},
-		{name: "unc path", fileName: `\\host\share\file.mkv`},
-		{name: "parent only", fileName: ".."},
-		{name: "current dir", fileName: "."},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := resolveLocalTorrentFile(base, tt.fileName)
-			if tt.wantRel == "" {
-				require.False(t, ok)
-				require.Empty(t, got)
-				return
-			}
-			require.True(t, ok)
-			require.Equal(t, filepath.Join(base, tt.wantRel), got)
-		})
-	}
 }

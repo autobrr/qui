@@ -3,63 +3,71 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useMemo } from "react"
+import { useCallback } from "react"
 
-import { useClientSetting } from "@/lib/client-settings"
+import { TORRENT_VIEW_MODE_KEYS, useClientSetting } from "@/lib/client-settings"
 
-const STORAGE_KEY = "qui-torrent-view-mode"
-const ALL_VIEW_MODES = ["normal", "dense", "compact", "ultra-compact"] as const
+const MOBILE_VIEW_MODES = ["normal", "compact", "ultra-compact"] as const
+const DESKTOP_VIEW_MODES = ["normal", "dense", "compact"] as const
 
-export type ViewMode = typeof ALL_VIEW_MODES[number]
+export type ViewMode = typeof MOBILE_VIEW_MODES[number] | typeof DESKTOP_VIEW_MODES[number]
+export type ViewModeLayout = "mobile" | "desktop"
 
-function sanitizeAllowedModes(allowedModes?: readonly ViewMode[]): ViewMode[] {
-  if (!allowedModes || allowedModes.length === 0) {
-    return [...ALL_VIEW_MODES]
-  }
-
-  const deduped = Array.from(new Set(allowedModes))
-  const filtered = deduped.filter(mode => ALL_VIEW_MODES.includes(mode))
-
-  return filtered.length > 0 ? filtered : [...ALL_VIEW_MODES]
+interface ViewModeSettings {
+  storageKey: string
+  defaultMode: ViewMode
+  modes: readonly ViewMode[]
+  parse: (raw: string) => ViewMode
 }
 
-const parseViewMode = (raw: string): ViewMode => {
-  if (ALL_VIEW_MODES.includes(raw as ViewMode)) return raw as ViewMode
-  throw new Error("invalid view mode")
+function parseMobileViewMode(raw: string): ViewMode {
+  if (MOBILE_VIEW_MODES.includes(raw as typeof MOBILE_VIEW_MODES[number])) return raw as ViewMode
+  throw new Error("invalid mobile view mode")
 }
 
-export function usePersistedCompactViewState(
-  defaultMode: ViewMode = "normal",
-  allowedModesInput?: readonly ViewMode[]
-) {
-  const allowedModes = useMemo(() => sanitizeAllowedModes(allowedModesInput), [allowedModesInput])
-  const effectiveDefaultMode = allowedModes.includes(defaultMode) ? defaultMode : allowedModes[0]
+function parseDesktopViewMode(raw: string): ViewMode {
+  if (DESKTOP_VIEW_MODES.includes(raw as typeof DESKTOP_VIEW_MODES[number])) return raw as ViewMode
+  throw new Error("invalid desktop view mode")
+}
 
-  // The stored mode is global across every consumer; `allowedModes` only narrows what
-  // this consumer can render. Never persist the narrowing, or a mounted-but-hidden
-  // consumer (e.g. MobileFooterNav on desktop) clobbers the user's choice on reload.
-  const [storedMode, setStoredMode] = useClientSetting<ViewMode>(STORAGE_KEY, {
-    defaultValue: effectiveDefaultMode,
-    parse: parseViewMode,
+const SETTINGS: Record<ViewModeLayout, ViewModeSettings> = {
+  mobile: {
+    storageKey: TORRENT_VIEW_MODE_KEYS.mobile,
+    defaultMode: "compact",
+    modes: MOBILE_VIEW_MODES,
+    parse: parseMobileViewMode,
+  },
+  desktop: {
+    storageKey: TORRENT_VIEW_MODE_KEYS.desktop,
+    defaultMode: "normal",
+    modes: DESKTOP_VIEW_MODES,
+    parse: parseDesktopViewMode,
+  },
+}
+
+export function usePersistedCompactViewState(layout: ViewModeLayout) {
+  const { storageKey, defaultMode, modes, parse } = SETTINGS[layout]
+  const [viewMode, setStoredMode] = useClientSetting<ViewMode>(storageKey, {
+    defaultValue: defaultMode,
+    parse,
     serialize: String,
   })
 
-  const viewMode = allowedModes.includes(storedMode) ? storedMode : effectiveDefaultMode
-
   const setViewMode = useCallback(
     (requested: ViewMode) => {
-      setStoredMode(allowedModes.includes(requested) ? requested : allowedModes[0])
+      setStoredMode(modes.includes(requested) ? requested : defaultMode)
     },
-    [allowedModes, setStoredMode]
+    [defaultMode, modes, setStoredMode]
   )
 
   const cycleViewMode = useCallback(() => {
-    setViewMode(allowedModes[(allowedModes.indexOf(viewMode) + 1) % allowedModes.length])
-  }, [allowedModes, setViewMode, viewMode])
+    setViewMode(modes[(modes.indexOf(viewMode) + 1) % modes.length])
+  }, [modes, setViewMode, viewMode])
 
   return {
     viewMode,
     setViewMode,
     cycleViewMode,
+    viewModes: modes,
   } as const
 }

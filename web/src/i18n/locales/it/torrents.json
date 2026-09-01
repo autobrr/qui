@@ -56,6 +56,7 @@
     "searchCrossSeeds": "Cerca cross-seed",
     "filterCrossSeeds": "Filtra cross-seed",
     "filterCrossSeedsSingleOnly": "Filtra cross-seed (solo selezione singola)",
+    "manualCrossSeed": "Aggiungi cross-seed manualmente",
     "setTags": "Imposta tag",
     "setLocation": "Imposta posizione",
     "setShareLimits": "Imposta limiti di condivisione",
@@ -719,6 +720,25 @@
     "block": "Blocca",
     "addedToBlocklist": "Aggiunto alla lista di blocco",
     "missingInstance": "Istanza mancante per la lista di blocco",
+    "trace": {
+      "title": "Dettaglio della ricerca",
+      "summaryBadge": "{{total}} candidati, {{matches}} corrispondenze",
+      "summary": "{{total}} candidati restituiti. Rifiutati: {{release}} release non corrispondente, {{size}} dimensione non corrispondente, {{late}} filtro contenuti, {{duplicates}} duplicati. Restano {{matches}} corrispondenze.",
+      "indexersHeading": "Indexer",
+      "status": {
+        "searched": "cercato",
+        "notCovered": "incompleto",
+        "error": "errore",
+        "excluded": "escluso"
+      },
+      "candidateCount": "{{count}} candidati",
+      "rejectionsHeading": "Candidati rifiutati",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} altri con questo motivo",
+      "copyReport": "Copia report",
+      "copied": "Report copiato negli appunti",
+      "copyFailed": "Impossibile copiare il report"
+    },
     "scope": {
       "allIndexers": "Tutti gli indexer",
       "selectCustom": "Selezione personalizzata",
@@ -1115,7 +1135,7 @@
       "unknownClient": "Client sconosciuto"
     },
     "actions": {
-      "copyIpPort": "Copia IP:porta",
+      "copyIpPort": "Copia indirizzo",
       "banPeerPermanently": "Banna peer permanentemente",
       "selectAll": "Tutti",
       "selectNone": "Nessuno"
@@ -1189,7 +1209,7 @@
     "editTrackerUrl": "Modifica URL del tracker"
   },
   "peersTable": {
-    "address": "IP:Porta",
+    "address": "IP/Indirizzo",
     "client": "Client",
     "flags": "Flag",
     "progress": "Avanzamento",
@@ -1198,11 +1218,11 @@
     "downloaded": "Scaricato",
     "uploaded": "Caricato",
     "relevance": "Rilevanza",
-    "copyIpAddress": "Copia indirizzo IP",
+    "copyIpAddress": "Copia indirizzo",
     "banPeer": "Banna peer",
     "noPeersConnected": "Nessun peer connesso",
     "toast": {
-      "ipCopied": "Indirizzo IP copiato negli appunti"
+      "ipCopied": "Indirizzo copiato negli appunti"
     }
   },
   "routes": {
@@ -1565,5 +1585,35 @@
     "failedToUpdatePriorities": "Impossibile aggiornare le priorità dei file",
     "failedToRenameFile": "Impossibile rinominare il file",
     "failedToRenameFolder": "Impossibile rinominare la cartella"
+  },
+  "manualCrossSeed": {
+    "title": "Abbinamento manuale cross-seed",
+    "description": "Scegli il torrent esistente che contiene questi dati. qui aggiunge il file caricato nella sua posizione, lo riverifica e lo mette in seed.",
+    "fileLabel": "File torrent",
+    "sourceSummary_one": "{{size}} · {{count}} file",
+    "sourceSummary_other": "{{size}} · {{count}} file",
+    "loadingProposals": "Ordinamento dei target per sovrapposizione dei file...",
+    "proposalsFailed": "Impossibile caricare i target proposti",
+    "targetLabel": "Torrent di destinazione",
+    "noProposals": "Nessun torrent con sovrapposizione trovato. Scegli un target manualmente.",
+    "overlap": "{{percent}}% di sovrapposizione",
+    "pickManually": "Scegli un altro torrent",
+    "pickerPlaceholder": "Cerca torrent...",
+    "pickerNoResults": "Nessun torrent corrispondente",
+    "zeroOverlapWarning": "Il torrent selezionato non condivide alcuna dimensione di file con il caricamento. Decide la riverifica; se fallisce, il torrent resta in pausa.",
+    "category": "Categoria",
+    "noCategory": "(nessuna categoria)",
+    "pinnedCategory": "Le impostazioni di cross-seed impongono la categoria “{{category}}” per ogni corrispondenza, quindi non può essere modificata qui.",
+    "tags": "Tag",
+    "newTagPlaceholder": "Aggiungi un tag e premi Invio",
+    "savePath": "Percorso di salvataggio (destinazione effettiva)",
+    "cancel": "Annulla",
+    "apply": "Aggiungi cross-seed",
+    "applying": "Aggiunta...",
+    "applySuccess": "Cross-seed aggiunto",
+    "applyFailed": "Cross-seed non riuscito: {{message}}",
+    "addOptionTitle": "Aggiungi come cross-seed",
+    "addOptionDescription": "Abbina questo torrent a un torrent esistente invece di scaricarlo.",
+    "addOptionButton": "Abbina manualmente"
   }
 }

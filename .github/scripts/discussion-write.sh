@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Hardened write helper for the discussion triage / deduplication workflows.
+# Hardened write helper for the discussion triage workflow.
 #
 # Claude is given ONLY this script for GitHub mutations (no raw `gh api graphql`),
 # so a prompt-injection in untrusted discussion content cannot run arbitrary
@@ -16,11 +16,16 @@
 #   ./.github/scripts/discussion-write.sh add-label    <name> [<name>...]
 #   ./.github/scripts/discussion-write.sh remove-label <name> [<name>...]
 #   ./.github/scripts/discussion-write.sh comment       <body>
+#   ./.github/scripts/discussion-write.sh close         <RESOLVED|OUTDATED|DUPLICATE>
+#   ./.github/scripts/discussion-write.sh create-issue  <title> <body>
+#
+# `create-issue` opens a repository issue labelled `ready-for-agent` and appends
+# a `From discussion #N` line to the body, where N is the bound discussion.
 #
 # The calling workflow restricts which of those operations are permitted via
-# DISCUSSION_WRITE_ALLOWED_OPS (comma-separated). Triage is label-only; only the
-# dedup workflow opts into `comment`. It defaults to label operations so a
-# workflow that forgets to set it still cannot post comments.
+# DISCUSSION_WRITE_ALLOWED_OPS (comma-separated). It defaults to label
+# operations so a workflow that forgets to set it still cannot post comments,
+# close discussions, or open issues.
 #
 set -euo pipefail
 
@@ -116,7 +121,37 @@ case "$cmd" in
       -f query='mutation($id:ID!,$body:String!){addDiscussionComment(input:{discussionId:$id,body:$body}){comment{url}}}' \
       -f id="$node_id" -f body="$1" --jq '.data.addDiscussionComment.comment.url'
     ;;
+  close)
+    op_allowed close || die "close is not permitted here (allowed: $ALLOWED_OPS)"
+    [[ $# -eq 1 ]] || die "close requires exactly one reason argument"
+    case "$1" in
+      RESOLVED|OUTDATED|DUPLICATE) ;;
+      *) die "close reason must be RESOLVED, OUTDATED, or DUPLICATE" ;;
+    esac
+    node_id=$(discussion_id)
+    [[ -n "$node_id" ]] || die "could not resolve discussion #$NUMBER"
+    # shellcheck disable=SC2016 # $id/$reason are GraphQL variables, not shell vars
+    gh api graphql \
+      -f query='mutation($id:ID!,$reason:DiscussionCloseReason!){closeDiscussion(input:{discussionId:$id,reason:$reason}){discussion{url}}}' \
+      -f id="$node_id" -f reason="$1" --jq '.data.closeDiscussion.discussion.url'
+    ;;
+  create-issue)
+    op_allowed create-issue || die "create-issue is not permitted here (allowed: $ALLOWED_OPS)"
+    [[ $# -eq 2 ]] || die "create-issue requires a title and a body argument"
+    [[ -n "$1" && -n "$2" ]] || die "create-issue title and body must not be empty"
+    # A re-run on an already promoted discussion reuses its issue.
+    # ponytail: issue search is eventually consistent, so this is a backstop; the
+    # playbook's closed/label check is the real guard.
+    existing=$(gh issue list --state all --search "\"From discussion #$NUMBER\" in:body author:app/github-actions" --json url --jq '.[0].url // empty')
+    if [[ -n "$existing" ]]; then
+      echo "Issue already exists for discussion #$NUMBER: $existing" >&2
+      echo "$existing"
+      exit 0
+    fi
+    gh issue create --title "$1" --label ready-for-agent \
+      --body "$2"$'\n\n'"From discussion #$NUMBER"
+    ;;
   *)
-    die "unknown command '$cmd' (use: add-label | remove-label | comment)"
+    die "unknown command '$cmd' (use: add-label | remove-label | comment | close | create-issue)"
     ;;
 esac

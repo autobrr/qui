@@ -158,6 +158,23 @@ describe("push queue", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
   })
 
+  it("replays a newer cross-tab value after an older PUT finishes", async () => {
+    let resolvePut: (value: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { resolvePut = resolve }))
+    seedAndMarkReady({})
+    writeRaw("qui-test-bool", "true")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-test-bool": "true" })
+
+    // Another tab writes the shared cache while this tab's older PUT is slow.
+    localStorage.setItem("qui-test-bool", "false")
+    resolvePut({ ok: true, status: 200 })
+    await vi.runAllTimersAsync()
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ "qui-test-bool": "false" })
+  })
+
   // REGRESSION: a flush whose timer fired during an in-flight PUT was
   // swallowed; if that PUT then failed, the newer write stalled until the
   // next write or tab-hide.
@@ -261,15 +278,47 @@ describe("applyServerSettings", () => {
 })
 
 describe("seedAndMarkReady", () => {
+  it.each([
+    ["normal", "normal", "normal"],
+    ["dense", "compact", "dense"],
+    ["compact", "compact", "dense"],
+    ["ultra-compact", "ultra-compact", "dense"],
+  ])("migrates legacy torrent view mode %s", (legacy, mobile, desktop) => {
+    const serverSettings = { "qui-torrent-view-mode": legacy }
+    applyServerSettings(serverSettings)
+
+    seedAndMarkReady(serverSettings)
+
+    expect(localStorage.getItem("qui-torrent-mobile-view-mode")).toBe(mobile)
+    expect(localStorage.getItem("qui-torrent-desktop-view-mode")).toBe(desktop)
+  })
+
+  it("does not overwrite layout-specific torrent view modes during migration", () => {
+    const serverSettings = {
+      "qui-torrent-view-mode": "compact",
+      "qui-torrent-mobile-view-mode": "normal",
+    }
+    applyServerSettings(serverSettings)
+
+    seedAndMarkReady(serverSettings)
+
+    expect(localStorage.getItem("qui-torrent-mobile-view-mode")).toBe("normal")
+    expect(localStorage.getItem("qui-torrent-desktop-view-mode")).toBe("dense")
+  })
+
   it("pushes synced keys the server does not know, and only those", async () => {
     localStorage.setItem("qui-speed-units", "bits")
     localStorage.setItem("qui-incognito-mode", "true")
+    localStorage.setItem("qui-torrent-mobile-view-mode", "ultra-compact")
     localStorage.setItem("theme-cache", "{}") // not a synced key
 
     seedAndMarkReady({ "qui-incognito-mode": "true" })
     await vi.runAllTimersAsync()
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ "qui-speed-units": "bits" })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      "qui-speed-units": "bits",
+      "qui-torrent-mobile-view-mode": "ultra-compact",
+    })
   })
 })
