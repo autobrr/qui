@@ -1948,10 +1948,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, nil
 	}
 
-	// Pre-filter rules by interval eligibility
+	// Pre-filter rules by enablement and interval eligibility
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
 	for _, rule := range rules {
+		// A disabled rule never stamps lastRuleRun, so the interval filter below can
+		// never drop it: without this it stays eligible on every tick and pulls the
+		// data the gates further down fetch.
+		if !rule.Enabled {
+			continue
+		}
 		if !force {
 			interval := DefaultRuleInterval
 			if rule.IntervalSeconds != nil {

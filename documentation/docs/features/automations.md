@@ -140,6 +140,12 @@ If you configured [Tracker Customizations](./tracker-customizations.md) (Dashboa
 On qBittorrent versions before 5.1, qui cannot read the full tracker list. **Tracker** then sees only the tracker that qBittorrent reports as working. When qui finds no tracker at all, positive operators such as **is** and **contains** match nothing, and negative operators such as **is not** match every torrent.
 
 :::note
+Any tracker condition (**Tracker**, **Trackers (All)**, **Tracker status**, or **Tracker message**) makes qui read the tracker list of every torrent. qui sends one request for each instance and keeps the result for 5 minutes. Rules without a tracker condition, and rules that are turned off, send no extra request.
+
+On a large library, or on an instance whose qBittorrent Web UI is already slow, that request adds a delay to the automation run.
+:::
+
+:::note
 Older rules can use a second field named **Trackers (All)**. It now behaves the same as **Tracker**, so qui no longer offers it for new rules. Your existing rules keep working. To stop seeing it, change the condition to **Tracker**.
 :::
 
