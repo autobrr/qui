@@ -2500,3 +2500,167 @@ func TestFieldValuesRejectCompletionSentinels(t *testing.T) {
 	require.InDelta(t, float64(1699990000), getNumericFieldValue(completed, models.FieldCompletionOn, evalCtx), 0)
 	require.InDelta(t, float64(10000), getAgeFieldValue(evalCtx, models.FieldCompletionOnAge, completed), 0)
 }
+
+func TestProcessTorrents_SeedSizeTarget_Max(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Torrents on redacted.ch: 5 torrents of 20GB each = 100GB total seed size
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "t1", Size: 20_000_000_000, AddedOn: 1000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t1"},
+		{Hash: "b", Name: "t2", Size: 20_000_000_000, AddedOn: 2000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t2"},
+		{Hash: "c", Name: "t3", Size: 20_000_000_000, AddedOn: 3000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t3"},
+		{Hash: "d", Name: "t4", Size: 20_000_000_000, AddedOn: 4000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t4"},
+		{Hash: "e", Name: "t5", Size: 20_000_000_000, AddedOn: 5000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t5"},
+	}
+
+	maxTarget := int64(60_000_000_000) // 60GB target (delete down from 100GB to 60GB -> delete 2 oldest)
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "redacted.ch",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Delete: &models.DeleteAction{
+				Enabled:     true,
+				Mode:        "delete",
+				MaxSeedSize: &maxTarget,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThanOrEqual,
+					Value:    "0", // matches all
+				},
+			},
+		},
+	}
+
+	evalCtx := &EvalContext{
+		SeedSizeStates: map[int]*SeedSizeRuleState{
+			1: {
+				InitialSeedSize:            100_000_000_000,
+				ProjectedSeedSize:          100_000_000_000,
+				OtherInstancesContentPaths: make(map[string]struct{}),
+				InstanceContentPathCount:   map[string]int{"/data/t1": 1, "/data/t2": 1, "/data/t3": 1, "/data/t4": 1, "/data/t5": 1},
+				ClearedHashes:              make(map[string]struct{}),
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+
+	// Should delete exactly 2 torrents (t1 and t2) to bring projected seed size from 100GB to 60GB
+	require.Len(t, states, 2, "expected exactly 2 torrents to be marked for deletion")
+	require.Contains(t, states, "a")
+	require.Contains(t, states, "b")
+	require.NotContains(t, states, "c")
+	require.NotContains(t, states, "d")
+	require.NotContains(t, states, "e")
+	require.Equal(t, int64(60_000_000_000), evalCtx.SeedSizeStates[1].ProjectedSeedSize)
+}
+
+func TestProcessTorrents_SeedSizeTarget_Min(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Torrents: 3 torrents (30GB, 30GB, 30GB) = 90GB total
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "t1", Size: 30_000_000_000, AddedOn: 1000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t1"},
+		{Hash: "b", Name: "t2", Size: 30_000_000_000, AddedOn: 2000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t2"},
+		{Hash: "c", Name: "t3", Size: 30_000_000_000, AddedOn: 3000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/t3"},
+	}
+
+	minFloor := int64(50_000_000_000) // 50GB floor
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "redacted.ch",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Delete: &models.DeleteAction{
+				Enabled:     true,
+				Mode:        "delete",
+				MinSeedSize: &minFloor,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThanOrEqual,
+					Value:    "0",
+				},
+			},
+		},
+	}
+
+	evalCtx := &EvalContext{
+		SeedSizeStates: map[int]*SeedSizeRuleState{
+			1: {
+				InitialSeedSize:            90_000_000_000,
+				ProjectedSeedSize:          90_000_000_000,
+				OtherInstancesContentPaths: make(map[string]struct{}),
+				InstanceContentPathCount:   map[string]int{"/data/t1": 1, "/data/t2": 1, "/data/t3": 1},
+				ClearedHashes:              make(map[string]struct{}),
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+
+	// After t1 (30GB): 90 - 30 = 60GB >= 50GB (allowed)
+	// After t2 (30GB): 60 - 30 = 30GB < 50GB (breaches floor, skipped)
+	// After t3 (30GB): 60 - 30 = 30GB < 50GB (breaches floor, skipped)
+	require.Len(t, states, 1, "expected only 1 torrent to be deleted before hitting min floor")
+	require.Contains(t, states, "a")
+	require.Equal(t, int64(60_000_000_000), evalCtx.SeedSizeStates[1].ProjectedSeedSize)
+}
+
+func TestProcessTorrents_SeedSizeTarget_CrossInstanceDedup(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	// Instance 1 has 2 torrents:
+	// t1 (20GB, content /data/shared) - ALSO seeded on Instance 2
+	// t2 (20GB, content /data/unique) - only on Instance 1
+	torrents := []qbt.Torrent{
+		{Hash: "a", Name: "t1", Size: 20_000_000_000, AddedOn: 1000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/shared"},
+		{Hash: "b", Name: "t2", Size: 20_000_000_000, AddedOn: 2000, Tracker: "https://redacted.ch/announce", ContentPath: "/data/unique"},
+	}
+
+	maxTarget := int64(30_000_000_000) // target 30GB (initial 40GB)
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "redacted.ch",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Delete: &models.DeleteAction{
+				Enabled:     true,
+				Mode:        "delete",
+				MaxSeedSize: &maxTarget,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThanOrEqual,
+					Value:    "0",
+				},
+			},
+		},
+	}
+
+	evalCtx := &EvalContext{
+		SeedSizeStates: map[int]*SeedSizeRuleState{
+			1: {
+				InitialSeedSize:   40_000_000_000,
+				ProjectedSeedSize: 40_000_000_000,
+				// /data/shared is also seeded on Instance 2!
+				OtherInstancesContentPaths: map[string]struct{}{
+					"/data/shared": {},
+				},
+				InstanceContentPathCount: map[string]int{"/data/shared": 1, "/data/unique": 1},
+				ClearedHashes:            make(map[string]struct{}),
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, evalCtx, sm, nil, nil, nil)
+
+	// t1 is deleted on Instance 1, but does NOT reduce tracker seed size (still 40GB)
+	// so t2 must also be deleted to bring projected seed size down to 20GB <= 30GB
+	require.Len(t, states, 2, "expected both torrents to be deleted because the first did not reduce cross-instance seed size")
+	require.Contains(t, states, "a")
+	require.Contains(t, states, "b")
+	require.Equal(t, int64(20_000_000_000), evalCtx.SeedSizeStates[1].ProjectedSeedSize)
+}

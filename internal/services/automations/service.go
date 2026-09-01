@@ -975,6 +975,73 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 	return nil
 }
 
+// setupSeedSizeContext initializes tracker seed size context if needed by the rule.
+func (s *Service) setupSeedSizeContext(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+) {
+	if rule == nil || !ruleUsesSeedSizeTarget(rule) || evalCtx == nil || s.syncManager == nil {
+		return
+	}
+
+	if evalCtx.SeedSizeStates == nil {
+		evalCtx.SeedSizeStates = make(map[int]*SeedSizeRuleState)
+	}
+
+	// Calculate current cross-instance seed size for this tracker
+	currentSeedSize := s.syncManager.GetTrackerSeedSize(ctx, rule.TrackerPattern, rule.TrackerDomains)
+
+	// Build map of content paths matching this tracker on other instances
+	otherInstancesContentPaths := make(map[string]struct{})
+	if s.instanceStore != nil {
+		if instances, err := s.instanceStore.List(ctx); err == nil {
+			for _, inst := range instances {
+				if inst == nil || !inst.IsActive || inst.ID == instanceID {
+					continue
+				}
+				otherTorrents, err := s.syncManager.GetAllTorrents(ctx, inst.ID)
+				if err != nil {
+					continue
+				}
+				for i := range otherTorrents {
+					ot := &otherTorrents[i]
+					if ot.ContentPath == "" {
+						continue
+					}
+					otDomains := collectTrackerDomains(*ot, s.syncManager)
+					if matchesTracker(rule.TrackerPattern, otDomains) {
+						otherInstancesContentPaths[ot.ContentPath] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	// Count content paths matching this tracker on the current instance
+	instanceContentPathCount := make(map[string]int)
+	for i := range torrents {
+		t := &torrents[i]
+		if t.ContentPath == "" {
+			continue
+		}
+		tDomains := collectTrackerDomains(*t, s.syncManager)
+		if matchesTracker(rule.TrackerPattern, tDomains) {
+			instanceContentPathCount[t.ContentPath]++
+		}
+	}
+
+	evalCtx.SeedSizeStates[rule.ID] = &SeedSizeRuleState{
+		InitialSeedSize:            currentSeedSize,
+		ProjectedSeedSize:          currentSeedSize,
+		OtherInstancesContentPaths: otherInstancesContentPaths,
+		InstanceContentPathCount:   instanceContentPathCount,
+		ClearedHashes:              make(map[string]struct{}),
+	}
+}
+
 // getTrackerForTorrent returns the first tracker domain for a torrent.
 func getTrackerForTorrent(torrent *qbt.Torrent, sm *qbittorrent.SyncManager) string {
 	if domains := collectTrackerDomains(*torrent, sm); len(domains) > 0 {
@@ -1021,6 +1088,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
+	s.setupSeedSizeContext(ctx, instanceID, rule, torrents, evalCtx)
 
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
@@ -1315,6 +1383,10 @@ func (s *Service) previewDeleteStandard(
 			continue
 		}
 
+		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx) {
+			continue
+		}
+
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		if !eligibleMode {
@@ -1404,6 +1476,10 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		}
 
 		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx) {
+			continue
+		}
+
+		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx) {
 			continue
 		}
 
@@ -2177,6 +2253,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
 		} else {
 			evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
+		}
+	}
+
+	// Initialize tracker seed size context for rules with MinSeedSize / MaxSeedSize
+	if rulesUseSeedSizeTarget(eligibleRules) {
+		for _, rule := range eligibleRules {
+			if ruleUsesSeedSizeTarget(rule) {
+				s.setupSeedSizeContext(ctx, instanceID, rule, torrents, evalCtx)
+			}
 		}
 	}
 
@@ -6695,7 +6780,8 @@ func ruleUsesRuleScopedSortingContext(rule *models.Automation) bool {
 
 	return sortingConfigUsesField(rule.SortingConfig, FieldFreeSpace) ||
 		sortingConfigUsesField(rule.SortingConfig, FieldGroupSize) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldIsGrouped)
+		sortingConfigUsesField(rule.SortingConfig, FieldIsGrouped) ||
+		ruleUsesSeedSizeTarget(rule)
 }
 
 func sortingConfigEqual(a, b *models.SortingConfig) bool {

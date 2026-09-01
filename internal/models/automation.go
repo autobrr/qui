@@ -943,6 +943,8 @@ type DeleteAction struct {
 	IncludeHardlinks bool           `json:"includeHardlinks,omitempty"` // Only valid when mode is "deleteWithFilesIncludeCrossSeeds" and instance has local filesystem access
 	GroupID          string         `json:"groupId,omitempty"`          // Optional grouping ID for expanding/atomically applying deletes
 	Atomic           string         `json:"atomic,omitempty"`           // Optional atomic policy: "all" (apply only if all group members match)
+	MinSeedSize      *int64         `json:"minSeedSize,omitempty"`      // Optional minimum seed size target (bytes) - stop deleting if tracker seed size drops below
+	MaxSeedSize      *int64         `json:"maxSeedSize,omitempty"`      // Optional maximum seed size target (bytes) - delete until tracker seed size drops to this
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 

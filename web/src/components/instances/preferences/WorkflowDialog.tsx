@@ -436,6 +436,18 @@ function stripTrackerNegation(token: string): string {
   return token.startsWith("!") ? token.slice(1) : token
 }
 
+const MiB = 1024 * 1024
+const GiB = 1024 * 1024 * 1024
+const TiB = 1024 * 1024 * 1024 * 1024
+
+function detectBytesUnit(bytes: number): number {
+  if (bytes >= TiB && bytes % GiB === 0) return TiB
+  if (bytes >= GiB && bytes % MiB === 0) return GiB
+  if (bytes >= TiB) return TiB
+  if (bytes >= GiB) return GiB
+  return MiB
+}
+
 type FormState = {
   name: string
   trackerPattern: string
@@ -482,6 +494,10 @@ type FormState = {
   exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
   exprDeleteGroupId: string
   exprDeleteAtomic: "all" | ""
+  exprDeleteMaxSeedSizeValue?: number
+  exprDeleteMaxSeedSizeUnit: number
+  exprDeleteMinSeedSizeValue?: number
+  exprDeleteMinSeedSizeUnit: number
   // Free space source settings (for FREE_SPACE conditions)
   exprFreeSpaceSourceType: "qbittorrent" | "path"
   exprFreeSpaceSourcePath: string
@@ -554,6 +570,10 @@ const emptyFormState: FormState = {
   exprIncludeHardlinks: false,
   exprDeleteGroupId: "",
   exprDeleteAtomic: "",
+  exprDeleteMaxSeedSizeValue: undefined,
+  exprDeleteMaxSeedSizeUnit: 1024 * 1024 * 1024,
+  exprDeleteMinSeedSizeValue: undefined,
+  exprDeleteMinSeedSizeUnit: 1024 * 1024 * 1024,
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
   exprTagActions: [createDefaultTagAction()],
@@ -999,6 +1019,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprShareLimitsMode = "default"
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
         let exprIncludeHardlinks = false
+        let exprDeleteMaxSeedSizeValue: number | undefined
+        let exprDeleteMaxSeedSizeUnit = GiB
+        let exprDeleteMinSeedSizeValue: number | undefined
+        let exprDeleteMinSeedSizeUnit = GiB
         let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
         let exprFreeSpaceSourcePath = ""
         let exprTagActions: TagActionForm[] = [createDefaultTagAction()]
@@ -1122,6 +1146,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprIncludeHardlinks = conditions.delete.includeHardlinks ?? false
             exprDeleteGroupId = conditions.delete.groupId ?? ""
             exprDeleteAtomic = conditions.delete.atomic ?? ""
+            if (conditions.delete.maxSeedSize !== undefined) {
+              const unit = detectBytesUnit(conditions.delete.maxSeedSize)
+              exprDeleteMaxSeedSizeUnit = unit
+              exprDeleteMaxSeedSizeValue = Number((conditions.delete.maxSeedSize / unit).toFixed(2))
+            }
+            if (conditions.delete.minSeedSize !== undefined) {
+              const unit = detectBytesUnit(conditions.delete.minSeedSize)
+              exprDeleteMinSeedSizeUnit = unit
+              exprDeleteMinSeedSizeValue = Number((conditions.delete.minSeedSize / unit).toFixed(2))
+            }
           }
           const resolvedTagActions = (conditions.tags && conditions.tags.length > 0? conditions.tags: conditions.tag ? [conditions.tag] : [])
             .filter((action) => action && action.enabled)
@@ -1206,6 +1240,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprIncludeHardlinks,
           exprDeleteGroupId,
           exprDeleteAtomic,
+          exprDeleteMaxSeedSizeValue,
+          exprDeleteMaxSeedSizeUnit,
+          exprDeleteMinSeedSizeValue,
+          exprDeleteMinSeedSizeUnit,
           exprFreeSpaceSourceType,
           exprFreeSpaceSourcePath,
           exprTagActions,
@@ -1460,6 +1498,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         includeHardlinks: input.exprDeleteMode === "deleteWithFilesIncludeCrossSeeds" ? input.exprIncludeHardlinks : undefined,
         groupId: input.exprDeleteGroupId || undefined,
         atomic: input.exprDeleteAtomic || undefined,
+        maxSeedSize: input.exprDeleteMaxSeedSizeValue !== undefined && !isNaN(input.exprDeleteMaxSeedSizeValue) && input.exprDeleteMaxSeedSizeValue > 0
+          ? Math.round(input.exprDeleteMaxSeedSizeValue * input.exprDeleteMaxSeedSizeUnit)
+          : undefined,
+        minSeedSize: input.exprDeleteMinSeedSizeValue !== undefined && !isNaN(input.exprDeleteMinSeedSizeValue) && input.exprDeleteMinSeedSizeValue > 0
+          ? Math.round(input.exprDeleteMinSeedSizeValue * input.exprDeleteMinSeedSizeUnit)
+          : undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -3776,6 +3820,86 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </TooltipProvider>
                           </div>
                         )}
+                        {/* Seed size targets (optional) */}
+                        <div className="space-y-3 pt-2 border-t">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <Label className="text-xs">{t("preferences.workflowDialog.delete.maxSeedSize")}</Label>
+                                <FieldHelp>{t("preferences.workflowDialog.delete.maxSeedSizeHelp")}</FieldHelp>
+                              </div>
+                              <div className="flex gap-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  placeholder={t("preferences.workflowDialog.delete.noLimit")}
+                                  value={formState.exprDeleteMaxSeedSizeValue ?? ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value === "" ? undefined : parseFloat(e.target.value)
+                                    setFormState(prev => ({ ...prev, exprDeleteMaxSeedSizeValue: isNaN(val as number) ? undefined : val }))
+                                  }}
+                                  disabled={formState.applyToAllTrackers}
+                                  className="h-8 text-xs"
+                                />
+                                <Select
+                                  value={String(formState.exprDeleteMaxSeedSizeUnit)}
+                                  onValueChange={(v) => setFormState(prev => ({ ...prev, exprDeleteMaxSeedSizeUnit: parseInt(v, 10) }))}
+                                  disabled={formState.applyToAllTrackers}
+                                >
+                                  <SelectTrigger className="w-20 h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value={String(MiB)}>MiB</SelectItem>
+                                    <SelectItem value={String(GiB)}>GiB</SelectItem>
+                                    <SelectItem value={String(TiB)}>TiB</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <Label className="text-xs">{t("preferences.workflowDialog.delete.minSeedSize")}</Label>
+                                <FieldHelp>{t("preferences.workflowDialog.delete.minSeedSizeHelp")}</FieldHelp>
+                              </div>
+                              <div className="flex gap-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  placeholder={t("preferences.workflowDialog.delete.noLimit")}
+                                  value={formState.exprDeleteMinSeedSizeValue ?? ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value === "" ? undefined : parseFloat(e.target.value)
+                                    setFormState(prev => ({ ...prev, exprDeleteMinSeedSizeValue: isNaN(val as number) ? undefined : val }))
+                                  }}
+                                  disabled={formState.applyToAllTrackers}
+                                  className="h-8 text-xs"
+                                />
+                                <Select
+                                  value={String(formState.exprDeleteMinSeedSizeUnit)}
+                                  onValueChange={(v) => setFormState(prev => ({ ...prev, exprDeleteMinSeedSizeUnit: parseInt(v, 10) }))}
+                                  disabled={formState.applyToAllTrackers}
+                                >
+                                  <SelectTrigger className="w-20 h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value={String(MiB)}>MiB</SelectItem>
+                                    <SelectItem value={String(GiB)}>GiB</SelectItem>
+                                    <SelectItem value={String(TiB)}>TiB</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                          {formState.applyToAllTrackers && (
+                            <p className="text-[11px] text-muted-foreground">
+                              {t("preferences.workflowDialog.delete.seedSizeTrackersRequired")}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 

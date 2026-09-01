@@ -1389,7 +1389,13 @@
         "withFilesIncludeCrossSeeds": "移除并清除文件（包含辅种）",
         "includeHardlinkedCopies": "包含硬链接副本",
         "includeHardlinkedCopiesDescription": "同时删除通过硬链接共享相同底层文件的种子。仅包含完全在 qBittorrent 内部的硬链接；绝不跟踪外部硬链接。",
-        "localAccessRequired": "需要在实例设置中启用\"本地文件系统访问\"。"
+        "localAccessRequired": "需要在实例设置中启用\"本地文件系统访问\"。",
+        "maxSeedSize": "目标做种体积 (上限)",
+        "maxSeedSizeHelp": "删除种子（最旧优先或按规则排序），直到所有实例上对此 Tracker 可见的做种总体积降至此数值或以下。",
+        "minSeedSize": "最小做种体积 (下限)",
+        "minSeedSizeHelp": "如果所有实例上对此 Tracker 可见的做种总体积会降至此数值以下，则停止删除种子。",
+        "seedSizeTrackersRequired": "目标做种体积需要选择特定的 Tracker（启用\"应用到所有 Tracker\"时禁用）。",
+        "noLimit": "无限制"
       },
       "move": {
         "newSavePath": "新保存路径",

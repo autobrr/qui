@@ -1408,7 +1408,13 @@
         "withFilesIncludeCrossSeeds": "Remove with files (include cross-seeds)",
         "includeHardlinkedCopies": "Include hardlinked copies",
         "includeHardlinkedCopiesDescription": "Also delete torrents that share the same underlying files via hardlinks. Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.",
-        "localAccessRequired": "Requires \"Local Filesystem Access\" to be enabled in instance settings."
+        "localAccessRequired": "Requires \"Local Filesystem Access\" to be enabled in instance settings.",
+        "maxSeedSize": "Target seed size (max)",
+        "maxSeedSizeHelp": "Delete torrents (oldest first or by rule sorting) until the total seed size visible to this tracker across all instances drops to or below this amount.",
+        "minSeedSize": "Minimum seed size (floor)",
+        "minSeedSizeHelp": "Stop deleting torrents if the total seed size visible to this tracker across all instances would drop below this amount.",
+        "seedSizeTrackersRequired": "Target seed size requires specific tracker(s) to be selected (disabled when \"Apply to all trackers\" is enabled).",
+        "noLimit": "No limit"
       },
       "move": {
         "newSavePath": "New save path",

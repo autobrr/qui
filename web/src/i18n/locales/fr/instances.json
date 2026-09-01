@@ -1402,7 +1402,13 @@
         "withFilesIncludeCrossSeeds": "Supprimer avec les fichiers (inclure les cross-seeds)",
         "includeHardlinkedCopies": "Inclure les copies hardlinkées",
         "includeHardlinkedCopiesDescription": "Supprime également les torrents partageant les mêmes fichiers par des liens physiques.",
-        "localAccessRequired": "Requiert l'activation de l'accès au système de fichiers local."
+        "localAccessRequired": "Requiert l'activation de l'accès au système de fichiers local.",
+        "maxSeedSize": "Taille de seed cible (max)",
+        "maxSeedSizeHelp": "Supprime les torrents (les plus anciens d'abord ou selon le tri) jusqu'à ce que la taille totale de seed vue par ce tracker sur toutes les instances atteigne ou soit inférieure à ce montant.",
+        "minSeedSize": "Taille de seed minimale (plancher)",
+        "minSeedSizeHelp": "Arrête de supprimer les torrents si la taille totale de seed vue par ce tracker sur toutes les instances devait passer sous ce montant.",
+        "seedSizeTrackersRequired": "La taille de seed cible requiert la sélection de tracker(s) spécifique(s) (désactivé si \"Appliquer à tous les trackers\" est activé).",
+        "noLimit": "Aucune limite"
       },
       "move": {
         "newSavePath": "Nouveau chemin de sauvegarde",

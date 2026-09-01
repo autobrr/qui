@@ -1389,7 +1389,13 @@
         "withFilesIncludeCrossSeeds": "파일과 함께 제거(cross-seed 포함)",
         "includeHardlinkedCopies": "하드링크된 사본 포함",
         "includeHardlinkedCopiesDescription": "하드링크를 통해 동일한 기본 파일을 공유하는 토렌트도 삭제합니다. qBittorrent 내부의 하드링크만 포함하며, 외부 하드링크는 따르지 않습니다.",
-        "localAccessRequired": "인스턴스 설정에서 \"로컬 파일시스템 접근\"이 활성화되어 있어야 합니다."
+        "localAccessRequired": "인스턴스 설정에서 \"로컬 파일시스템 접근\"이 활성화되어 있어야 합니다.",
+        "maxSeedSize": "목표 시딩 크기 (최대)",
+        "maxSeedSizeHelp": "모든 인스턴스에서 이 트래커에 표시되는 총 시딩 크기가 이 값 이하로 떨어질 때까지 토렌트를 삭제합니다(오래된 항목 우선 또는 규칙 정렬 기준).",
+        "minSeedSize": "최소 시딩 크기 (최소)",
+        "minSeedSizeHelp": "모든 인스턴스에서 이 트래커에 표시되는 총 시딩 크기가 이 값 미만으로 떨어질 경우 토렌트 삭제를 중단합니다.",
+        "seedSizeTrackersRequired": "목표 시딩 크기를 사용하려면 특정 트래커를 선택해야 합니다(\"모든 트래커에 적용\" 활성화 시 비활성화됨).",
+        "noLimit": "제한 없음"
       },
       "move": {
         "newSavePath": "새 저장 경로",

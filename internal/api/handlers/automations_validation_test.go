@@ -614,3 +614,120 @@ func TestCollectConditionRegexErrors_AutoManagement(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePayload_SeedSizeTargets(t *testing.T) {
+	handler := &AutomationHandler{}
+	ctx := context.Background()
+
+	negVal := int64(-1)
+	minVal := int64(50_000_000_000)
+	maxVal := int64(100_000_000_000)
+	smallerMax := int64(30_000_000_000)
+
+	tests := []struct {
+		name        string
+		payload     *AutomationPayload
+		wantStatus  int
+		wantErrText string
+	}{
+		{
+			name: "negative minSeedSize rejected",
+			payload: &AutomationPayload{
+				Name:           "Rule 1",
+				TrackerPattern: "redacted.ch",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled:     true,
+						MinSeedSize: &negVal,
+						Condition:   &automations.RuleCondition{Field: automations.FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"},
+					},
+				},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrText: "minSeedSize must be non-negative",
+		},
+		{
+			name: "negative maxSeedSize rejected",
+			payload: &AutomationPayload{
+				Name:           "Rule 1",
+				TrackerPattern: "redacted.ch",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled:     true,
+						MaxSeedSize: &negVal,
+						Condition:   &automations.RuleCondition{Field: automations.FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"},
+					},
+				},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrText: "maxSeedSize must be non-negative",
+		},
+		{
+			name: "minSeedSize > maxSeedSize rejected",
+			payload: &AutomationPayload{
+				Name:           "Rule 1",
+				TrackerPattern: "redacted.ch",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled:     true,
+						MinSeedSize: &minVal,
+						MaxSeedSize: &smallerMax,
+						Condition:   &automations.RuleCondition{Field: automations.FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"},
+					},
+				},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrText: "minSeedSize cannot be greater than maxSeedSize",
+		},
+		{
+			name: "seed size target with wildcard tracker rejected",
+			payload: &AutomationPayload{
+				Name:           "Rule 1",
+				TrackerPattern: "*",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled:     true,
+						MaxSeedSize: &maxVal,
+						Condition:   &automations.RuleCondition{Field: automations.FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"},
+					},
+				},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantErrText: "Target seed size requires specific tracker(s)",
+		},
+		{
+			name: "valid seed size targets accepted",
+			payload: &AutomationPayload{
+				Name:           "Rule 1",
+				TrackerPattern: "redacted.ch",
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled:     true,
+						MinSeedSize: &minVal,
+						MaxSeedSize: &maxVal,
+						Condition:   &automations.RuleCondition{Field: automations.FieldRatio, Operator: models.OperatorGreaterThan, Value: "1"},
+					},
+				},
+			},
+			wantStatus: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, msg, err := handler.validatePayload(ctx, 1, tt.payload)
+			if tt.wantStatus == 0 {
+				if err != nil {
+					t.Fatalf("expected valid payload, got status %d, msg %q, err: %v", status, msg, err)
+				}
+			} else {
+				if status != tt.wantStatus {
+					t.Errorf("status = %d, want %d", status, tt.wantStatus)
+				}
+				if !strings.Contains(msg, tt.wantErrText) {
+					t.Errorf("msg = %q, want containing %q", msg, tt.wantErrText)
+				}
+			}
+		})
+	}
+}

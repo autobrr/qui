@@ -184,9 +184,12 @@ func isDirNotEmpty(err error) bool {
 		return false
 	}
 
-	if errors.Is(err, syscall.ENOTEMPTY) {
+	if errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.Errno(145)) {
 		return true
 	}
 
-	return strings.Contains(strings.ToLower(err.Error()), "not empty")
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "not empty") ||
+		strings.Contains(errStr, "não está vazia") ||
+		strings.Contains(errStr, "directory not empty")
 }
