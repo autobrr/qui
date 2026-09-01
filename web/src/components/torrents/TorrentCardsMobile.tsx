@@ -2305,7 +2305,7 @@ export function TorrentCardsMobile({
 
       {/* More actions sheet */}
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
-        <SheetContent side="bottom" className="h-auto pb-8">
+        <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto pb-8">
           <SheetHeader>
             <SheetTitle>
               {isAllSelected? t("mobileCards.actionsForAll", { count: effectiveSelectionCount }): t("mobileCards.actionsForCount", { count: effectiveSelectionCount })}
