@@ -2026,6 +2026,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	if rulesUseTrackerEntryData(eligibleRules) {
 		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+		if trackerDataMissing(torrents) {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Int("torrents", len(torrents)).
+				Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+		}
 	}
 
 	// Get instance for local filesystem access check
@@ -5083,10 +5089,7 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 	}
 
 	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
-	// The rule needs tracker entries. When none arrive, the tracker conditions
-	// match nothing, and the reason (a failed fetch, or qBittorrent below 5.1)
-	// is otherwise only visible at trace level with no rule context.
-	if len(hydrated) > 0 && !slices.ContainsFunc(hydrated, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 }) {
+	if trackerDataMissing(hydrated) {
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("rule", rule.Name).
@@ -5094,6 +5097,12 @@ func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID 
 			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
 	}
 	return hydrated
+}
+
+// trackerDataMissing reports that no torrent carries tracker entries. An empty
+// torrent list is not missing data: it says nothing about hydration.
+func trackerDataMissing(torrents []qbt.Torrent) bool {
+	return len(torrents) > 0 && !slices.ContainsFunc(torrents, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 })
 }
 
 // rulesUseCondition checks if any enabled rule uses the given field.

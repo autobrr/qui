@@ -2667,3 +2667,26 @@ func (r *automationRecordingNotifier) Events() []notifications.Event {
 	copy(out, r.events)
 	return out
 }
+
+func TestTrackerDataMissing(t *testing.T) {
+	withTrackers := qbt.Torrent{Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example/announce"}}}
+	withoutTrackers := qbt.Torrent{Tracker: "https://tracker.example/announce"}
+
+	tests := []struct {
+		name     string
+		torrents []qbt.Torrent
+		want     bool
+	}{
+		{name: "no torrents at all says nothing about hydration", torrents: nil, want: false},
+		{name: "hydration returned no tracker entries", torrents: []qbt.Torrent{withoutTrackers, withoutTrackers}, want: true},
+		{name: "one torrent with entries is enough", torrents: []qbt.Torrent{withoutTrackers, withTrackers}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := trackerDataMissing(tt.torrents); got != tt.want {
+				t.Errorf("trackerDataMissing() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
