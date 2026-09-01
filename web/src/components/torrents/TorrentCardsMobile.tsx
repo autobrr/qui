@@ -59,10 +59,14 @@ import { useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
   Blocks,
   CheckCircle2,
   ChevronDown,
+  ChevronsDown,
+  ChevronsUp,
   ChevronUp,
   Clock,
   Download,
@@ -2433,38 +2437,43 @@ export function TorrentCardsMobile({
                 {t("contextMenu.searchCrossSeeds")}
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.INCREASE_PRIORITY)}
-              className="justify-start"
-            >
-              <ChevronUp className="mr-2 h-4 w-4" />
-              {t("managementBar.increasePriority")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.DECREASE_PRIORITY)}
-              className="justify-start"
-            >
-              <ChevronDown className="mr-2 h-4 w-4" />
-              {t("managementBar.decreasePriority")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.TOP_PRIORITY)}
-              className="justify-start"
-            >
-              <ChevronUp className="mr-2 h-4 w-4" />
-              {t("managementBar.topPriority")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => handleBulkAction(TORRENT_ACTIONS.BOTTOM_PRIORITY)}
-              className="justify-start"
-            >
-              <ChevronDown className="mr-2 h-4 w-4" />
-              {t("managementBar.bottomPriority")}
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="flex-1 truncate text-sm text-muted-foreground">
+                {t("managementBar.queuePriority")}
+              </span>
+              <Button
+                variant="outline"
+                className="h-11 w-11"
+                aria-label={t("managementBar.topPriority")}
+                onClick={() => handleBulkAction(TORRENT_ACTIONS.TOP_PRIORITY)}
+              >
+                <ChevronsUp className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 w-11"
+                aria-label={t("managementBar.increasePriority")}
+                onClick={() => handleBulkAction(TORRENT_ACTIONS.INCREASE_PRIORITY)}
+              >
+                <ArrowUp className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 w-11"
+                aria-label={t("managementBar.decreasePriority")}
+                onClick={() => handleBulkAction(TORRENT_ACTIONS.DECREASE_PRIORITY)}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 w-11"
+                aria-label={t("managementBar.bottomPriority")}
+                onClick={() => handleBulkAction(TORRENT_ACTIONS.BOTTOM_PRIORITY)}
+              >
+                <ChevronsDown className="h-4 w-4" />
+              </Button>
+            </div>
             {(() => {
               const { allEnabled, mixed } = getToggleSelectionState(getSelectedTorrents.map(t => t.auto_tmm), stateUnknownForSelection)
 
