@@ -7910,20 +7910,13 @@ func (sm *SyncManager) matchesTargetDomains(pattern string, targetDomains map[st
 		return false
 	}
 
-	// Direct lookup in expanded target domains
-	for _, d := range torrentDomains {
-		if _, ok := targetDomains[strings.ToLower(strings.TrimSpace(d))]; ok {
-			return true
-		}
-	}
+	var includeTokens []string
+	var excludeTokens []string
 
-	// Pattern check (supports wildcards and negations)
 	if pattern != "" {
 		tokens := strings.FieldsFunc(pattern, func(r rune) bool {
 			return r == ',' || r == ';' || r == '|'
 		})
-		var includeTokens []string
-		var excludeTokens []string
 		for _, token := range tokens {
 			norm := strings.ToLower(strings.TrimSpace(token))
 			if norm == "" {
@@ -7937,31 +7930,40 @@ func (sm *SyncManager) matchesTargetDomains(pattern string, targetDomains map[st
 			}
 			includeTokens = append(includeTokens, norm)
 		}
+	}
 
-		matchesToken := func(token string) bool {
-			isGlob := strings.ContainsAny(token, "*?")
-			for _, domain := range torrentDomains {
-				d := strings.ToLower(domain)
-				if isGlob {
-					if ok, err := path.Match(token, d); err == nil && ok {
-						return true
-					}
-					continue
-				}
-				if d == token || (strings.HasPrefix(token, ".") && strings.HasSuffix(d, token)) {
+	matchesToken := func(token string) bool {
+		isGlob := strings.ContainsAny(token, "*?")
+		for _, domain := range torrentDomains {
+			d := strings.ToLower(domain)
+			if isGlob {
+				if ok, err := path.Match(token, d); err == nil && ok {
 					return true
 				}
+				continue
 			}
-			return false
+			if d == token || (strings.HasPrefix(token, ".") && strings.HasSuffix(d, token)) {
+				return true
+			}
 		}
+		return false
+	}
 
-		if slices.ContainsFunc(excludeTokens, matchesToken) {
-			return false
-		}
-		if len(includeTokens) > 0 && slices.ContainsFunc(includeTokens, matchesToken) {
+	// 1. Exclusions have highest priority: if any exclude token matches, reject immediately
+	if slices.ContainsFunc(excludeTokens, matchesToken) {
+		return false
+	}
+
+	// 2. Direct lookup in expanded target domains (from TrackerCustomization)
+	for _, d := range torrentDomains {
+		if _, ok := targetDomains[strings.ToLower(strings.TrimSpace(d))]; ok {
 			return true
 		}
 	}
 
-	return false
+	// 3. Pattern inclusion matching
+	if len(includeTokens) == 0 {
+		return len(excludeTokens) > 0
+	}
+	return slices.ContainsFunc(includeTokens, matchesToken)
 }

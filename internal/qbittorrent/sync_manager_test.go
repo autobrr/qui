@@ -3418,6 +3418,34 @@ func TestMatchesTargetDomains(t *testing.T) {
 			torrentDomains: nil,
 			expected:       false,
 		},
+		{
+			name:           "exclusion overrides target domain match",
+			pattern:        "!redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: []string{"redacted.ch"},
+			expected:       false,
+		},
+		{
+			name:           "exclusion-only pattern matches non-excluded domain",
+			pattern:        "!bad.example.org",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"good.example.org"},
+			expected:       true,
+		},
+		{
+			name:           "exclusion-only pattern rejects excluded domain",
+			pattern:        "!bad.example.org",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"bad.example.org"},
+			expected:       false,
+		},
+		{
+			name:           "empty pattern with empty target domains returns false",
+			pattern:        "",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"example.org"},
+			expected:       false,
+		},
 	}
 
 	for _, tt := range tests {
