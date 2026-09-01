@@ -18,14 +18,14 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
   useDateTimeFormatters: () => ({ formatISOTimestamp: (iso: string) => `pref:${iso}` }),
 }))
 
-const files: OrphanScanFile[] = [
-  { id: 1, runId: 1, filePath: "/data/a.mkv", fileSize: 10, status: "pending", modifiedAt: "2026-01-02T03:04:05Z" },
-  { id: 2, runId: 1, filePath: "/data/b.mkv", fileSize: 20, status: "pending" },
-]
-
 // Stable singletons: a fresh object per render would retrigger the page-merge effect forever.
-const runQuery = { data: { files } }
-const confirmMutation = { isPending: false }
+const { runQuery, confirmMutation } = vi.hoisted(() => {
+  const files: OrphanScanFile[] = [
+    { id: 1, runId: 1, filePath: "/data/a.mkv", fileSize: 10, status: "pending", modifiedAt: "2026-01-02T03:04:05Z" },
+    { id: 2, runId: 1, filePath: "/data/b.mkv", fileSize: 20, status: "pending" },
+  ]
+  return { runQuery: { data: { files } }, confirmMutation: { isPending: false } }
+})
 
 vi.mock("@/hooks/useOrphanScan", () => ({
   useOrphanScanRun: () => runQuery,
