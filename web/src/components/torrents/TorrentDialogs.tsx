@@ -529,6 +529,7 @@ export const SetLocationDialog = memo(function SetLocationDialog({
     highlightedIndex,
     showSuggestions,
     inputRef: autocompleteInputRef,
+    listRef: suggestionListRef,
   } = usePathAutocomplete(setLocation, instanceId)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -601,7 +602,7 @@ export const SetLocationDialog = memo(function SetLocationDialog({
             />
             {supportsPathAutocomplete && showSuggestions && suggestions.length > 0 && (
               <div className="relative">
-                <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                <div ref={suggestionListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
                   <div className="max-h-55 overflow-y-auto py-1">
                     {suggestions.map((entry, idx) => (
                       <button
