@@ -3038,7 +3038,12 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 			Msg("Adding season parameter to torznab search")
 	}
 
-	if req.Episode != nil {
+	// Torznab ep counts within a season. An absolute-numbered anime episode has
+	// no season, and HDBits filters its TVDb search on the bare number and
+	// returns nothing. ponytail: the ID search returns the newest page and the
+	// matcher picks the episode; map absolute to season/episode via Sonarr if
+	// old episodes of long-running shows fall off that page.
+	if req.Episode != nil && req.Season != nil && *req.Season > 0 {
 		params.Set("ep", strconv.Itoa(*req.Episode))
 		log.Debug().
 			Str("search_mode", mode).

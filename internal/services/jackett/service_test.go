@@ -1091,6 +1091,20 @@ func TestBuildSearchParams(t *testing.T) {
 			},
 		},
 		{
+			name: "seasonless absolute episode omits ep",
+			req: &TorznabSearchRequest{
+				Query:   "Re Start Isekai Life",
+				TVDbID:  "305089",
+				Episode: new(81),
+			},
+			searchMode: "tvsearch",
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Re Start Isekai Life",
+				"tvdbid": "305089",
+			},
+		},
+		{
 			name: "movie request",
 			req: &TorznabSearchRequest{
 				Query:  "The Matrix",
