@@ -7,8 +7,8 @@ import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTable
 import type { ColumnFilter } from "@/lib/column-filter-utils"
 import { makeFilters } from "@/test/mockFilters"
 import type { TorrentFilters } from "@/types"
-import { renderHook } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { cleanup, renderHook } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // Router search is the only external dependency that needs a provider; stub it.
 const hoisted = vi.hoisted(() => ({ routeSearch: {} as { q?: string } }))
@@ -28,6 +28,8 @@ function render(initialProps: Props) {
 beforeEach(() => {
   hoisted.routeSearch = {}
 })
+
+afterEach(cleanup)
 
 describe("useTorrentTableFilterExpr — search derivation", () => {
   it("trims the route search into effectiveSearch", () => {
