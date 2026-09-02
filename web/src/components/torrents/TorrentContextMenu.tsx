@@ -75,7 +75,7 @@ export interface TorrentContextMenuProps {
   onPrepareRecheck: (hashes: string[], count?: number, torrents?: Torrent[]) => void
   onPrepareReannounce: (hashes: string[], count?: number, torrents?: Torrent[]) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[], count?: number) => void
-  onPrepareTmm?: (hashes: string[], count: number, enable: boolean) => void
+  onPrepareTmm?: (hashes: string[], count: number, enable: boolean, torrents?: Torrent[]) => void
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
   availableCategories?: Record<string, Category>
   onSetCategory?: (category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => void
@@ -360,11 +360,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
   const handleTmmToggle = useCallback((enable: boolean) => {
     if (onPrepareTmm) {
-      onPrepareTmm(hashes, count, enable)
+      onPrepareTmm(hashes, count, enable, torrents)
     } else {
       onAction(TORRENT_ACTIONS.TOGGLE_AUTO_TMM, hashes, { enable, targets: actionTargets })
     }
-  }, [onPrepareTmm, onAction, hashes, count, actionTargets])
+  }, [onPrepareTmm, onAction, hashes, count, torrents, actionTargets])
 
   const handleLocationClick = useCallback(() => {
     onPrepareLocation(hashes, torrents, count)

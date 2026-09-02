@@ -525,6 +525,17 @@ describe("useTorrentActions - prepare helpers", () => {
     expect(result.current.contextTorrents).toEqual(torrents)
   })
 
+  it("prepareTmmAction stores the torrents so the confirm dialog can pin targets in the unified view", () => {
+    const { result } = renderActions({ instanceIds: [3, 4, 5] })
+    const torrents = [{ ...makeTorrent({ hash: "shared" }), instanceId: 3 }]
+
+    act(() => {
+      result.current.prepareTmmAction(["shared"], 1, true, torrents)
+    })
+    expect(result.current.showTmmDialog).toBe(true)
+    expect(result.current.contextTorrents).toEqual(torrents)
+  })
+
   it("handleSetSpeedLimits issues only one bulkAction when the download limit is negative", async () => {
     const { result } = renderActions()
 

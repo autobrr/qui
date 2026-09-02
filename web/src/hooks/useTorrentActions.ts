@@ -877,7 +877,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   const prepareDeleteAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setDeleteCrossSeeds(false) // Reset on open to avoid stale state from previous dialog
     setShowDeleteDialog(true)
   }, [])
@@ -889,25 +889,25 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   const prepareTagsAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowTagsDialog(true)
   }, [])
 
   const prepareCommentAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowCommentDialog(true)
   }, [])
 
   const prepareCategoryAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowCategoryDialog(true)
   }, [])
 
   const prepareCreateCategoryAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowCreateCategoryDialog(true)
   }, [])
 
@@ -915,7 +915,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const prepareRecheckAction = useCallback((hashes: string[], count?: number, torrents?: Torrent[]) => {
     const actualCount = count || hashes.length
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     if (actualCount > 1) {
       setShowRecheckDialog(true)
     } else {
@@ -926,7 +926,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const prepareReannounceAction = useCallback((hashes: string[], count?: number, torrents?: Torrent[]) => {
     const actualCount = count || hashes.length
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     if (actualCount > 1) {
       setShowReannounceDialog(true)
     } else {
@@ -936,12 +936,13 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowLocationWarningDialog(true)
   }, [])
 
-  const prepareTmmAction = useCallback((hashes: string[], _count?: number, enable?: boolean) => {
+  const prepareTmmAction = useCallback((hashes: string[], _count?: number, enable?: boolean, torrents?: Torrent[]) => {
     setContextHashes(hashes)
+    setContextTorrents(torrents ?? [])
     setPendingTmmEnable(enable ?? false)
     setShowTmmDialog(true)
   }, [])
@@ -981,34 +982,34 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
 
   const prepareShareLimitAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowShareLimitDialog(true)
   }, [])
 
   const prepareSpeedLimitAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowSpeedLimitDialog(true)
   }, [])
 
   const prepareRenameTorrentAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     if (hashes.length === 0) return
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowRenameTorrentDialog(true)
   }, [])
 
   const prepareRenameFileAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     if (hashes.length === 0) return
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowRenameFileDialog(true)
   }, [])
 
   const prepareRenameFolderAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     if (hashes.length === 0) return
     setContextHashes(hashes)
-    if (torrents) setContextTorrents(torrents)
+    setContextTorrents(torrents ?? [])
     setShowRenameFolderDialog(true)
   }, [])
 

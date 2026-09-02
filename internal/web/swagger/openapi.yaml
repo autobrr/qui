@@ -1594,7 +1594,7 @@ paths:
       tags:
         - Torrents
       summary: Bulk torrent action
-      description: Perform bulk actions on multiple torrents
+      description: Perform bulk actions on multiple torrents. In the unified scope (instanceID 0) a hash alone does not name an instance, so `targets` is required when addressing torrents by hash; bare `hashes` return 400.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1610,7 +1610,20 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: Specific torrent hashes to target. Required unless selectAll is true.
+                  description: Specific torrent hashes to target. Required unless selectAll is true. In the unified scope, hashes without targets are rejected.
+                targets:
+                  type: array
+                  description: Explicit instance and hash pairs. Required in the unified scope when addressing torrents by hash; authoritative over hashes there.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
                 selectAll:
                   type: boolean
                   description: Apply the action to all torrents matching the provided filters.
