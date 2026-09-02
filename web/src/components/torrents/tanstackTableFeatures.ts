@@ -17,7 +17,6 @@ import {
   filterFn_inNumberRange,
   filterFn_includesString,
   filterFn_weakEquals,
-  globalFilteringFeature,
   rowSelectionFeature,
   rowSortingFeature,
   sortFn_alphanumeric,
@@ -44,7 +43,6 @@ export const sortableDetailsTableFeatures = tableFeatures({
 
 export const torrentTableFeatures = tableFeatures({
   columnFilteringFeature,
-  globalFilteringFeature,
   columnOrderingFeature,
   columnSizingFeature,
   columnResizingFeature,

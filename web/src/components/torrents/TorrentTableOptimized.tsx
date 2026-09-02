@@ -424,8 +424,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const navigate = useNavigate()
 
   const {
-    globalFilter,
-    setGlobalFilter,
     effectiveSearch,
     columnFiltersExpr,
     combinedFiltersExpr,
@@ -807,7 +805,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // State management
     state: {
       sorting,
-      globalFilter,
       rowSelection,
       columnSizing,
       columnVisibility,
@@ -821,7 +818,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       }),
     },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
     onColumnSizingChange: setColumnSizing,
     onColumnVisibilityChange: setColumnVisibility,

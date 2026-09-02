@@ -7,7 +7,7 @@ import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTable
 import type { ColumnFilter } from "@/lib/column-filter-utils"
 import { makeFilters } from "@/test/mockFilters"
 import type { TorrentFilters } from "@/types"
-import { act, renderHook } from "@testing-library/react"
+import { renderHook } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 // Router search is the only external dependency that needs a provider; stub it.
@@ -30,27 +30,15 @@ beforeEach(() => {
 })
 
 describe("useTorrentTableFilterExpr — search derivation", () => {
-  it("prefers the trimmed route search over the debounced input", () => {
+  it("trims the route search into effectiveSearch", () => {
     hoisted.routeSearch = { q: "  fromRoute  " }
     const { result } = render({ instanceId: 1, columnFilters: [] })
     expect(result.current.effectiveSearch).toBe("fromRoute")
   })
 
-  it("debounces the global filter into effectiveSearch", () => {
-    vi.useFakeTimers()
-    try {
-      const { result } = render({ instanceId: 1, columnFilters: [] })
-      expect(result.current.effectiveSearch).toBe("")
-
-      act(() => result.current.setGlobalFilter("linux"))
-      // Not yet applied — debounce window hasn't elapsed.
-      expect(result.current.effectiveSearch).toBe("")
-
-      act(() => vi.advanceTimersByTime(200))
-      expect(result.current.effectiveSearch).toBe("linux")
-    } finally {
-      vi.useRealTimers()
-    }
+  it("is empty without a route search", () => {
+    const { result } = render({ instanceId: 1, columnFilters: [] })
+    expect(result.current.effectiveSearch).toBe("")
   })
 })
 
