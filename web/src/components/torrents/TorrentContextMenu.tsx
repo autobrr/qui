@@ -72,8 +72,8 @@ export interface TorrentContextMenuProps {
   onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareSpeedLimits: (hashes: string[], torrents?: Torrent[]) => void
-  onPrepareRecheck: (hashes: string[], count?: number) => void
-  onPrepareReannounce: (hashes: string[], count?: number) => void
+  onPrepareRecheck: (hashes: string[], count?: number, torrents?: Torrent[]) => void
+  onPrepareReannounce: (hashes: string[], count?: number, torrents?: Torrent[]) => void
   onPrepareLocation: (hashes: string[], torrents?: Torrent[], count?: number) => void
   onPrepareTmm?: (hashes: string[], count: number, enable: boolean) => void
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
@@ -452,14 +452,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               {t("contextMenu.pause")} {count > 1 ? `(${count})` : ""}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onPrepareRecheck(hashes, count)}
+              onClick={() => onPrepareRecheck(hashes, count, torrents)}
               disabled={isPending}
             >
               <CheckCircle className="mr-2 h-4 w-4" />
               {t("contextMenu.forceRecheck")} {count > 1 ? `(${count})` : ""}
             </ContextMenuItem>
             <ContextMenuItem
-              onClick={() => onPrepareReannounce(hashes, count)}
+              onClick={() => onPrepareReannounce(hashes, count, torrents)}
               disabled={isPending}
             >
               <Radio className="mr-2 h-4 w-4" />

@@ -493,6 +493,38 @@ describe("useTorrentActions - prepare helpers", () => {
     expect(mockedApi.bulkAction.mock.calls[0][1].action).toBe("recheck")
   })
 
+  it("prepareRecheckAction pins the single-torrent recheck to its instance so the unified view does not fan out by hash", async () => {
+    const { result } = renderActions({ instanceIds: [3, 4, 5] })
+    const torrent = { ...makeTorrent({ hash: "shared" }), instanceId: 3 }
+
+    await act(async () => {
+      result.current.prepareRecheckAction(["shared"], 1, [torrent])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
+    expect(mockedApi.bulkAction.mock.calls[0][1]).toMatchObject({
+      action: "recheck",
+      hashes: ["shared"],
+      targets: [{ instanceId: 3, hash: "shared" }],
+    })
+  })
+
+  it("prepareRecheckAction stores the torrents in contextTorrents for the confirm dialog", async () => {
+    const { result } = renderActions({ instanceIds: [3, 4, 5] })
+    const torrents = [
+      { ...makeTorrent({ hash: "a" }), instanceId: 3 },
+      { ...makeTorrent({ hash: "b" }), instanceId: 4 },
+    ]
+
+    act(() => {
+      result.current.prepareRecheckAction(["a", "b"], 2, torrents)
+    })
+    expect(result.current.showRecheckDialog).toBe(true)
+    expect(result.current.contextTorrents).toEqual(torrents)
+  })
+
   it("handleSetSpeedLimits issues only one bulkAction when the download limit is negative", async () => {
     const { result } = renderActions()
 
