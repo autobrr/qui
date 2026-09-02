@@ -193,7 +193,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | Hardlink Scope | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` (requires local filesystem access, see [Hardlink detection](#hardlink-detection)) |
 | Hardlink Scope (Cross-Instance) | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` across all instances (requires local filesystem access) |
 | Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access) |
-| Has Skipped Files | Boolean: one or more files are set to `Do not download`. qui reads file priorities from its files cache, so a priority change made outside qui can take up to 30 minutes to reach this field |
+| Has Skipped Files | Boolean: one or more files are set to `Do not download`. qui reads file priorities from its files cache, so a priority change made outside qui can take up to 5 minutes to reach this field |
 
 ### State values
 

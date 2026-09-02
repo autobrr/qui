@@ -5,6 +5,7 @@ package automations
 
 import (
 	"context"
+	"fmt"
 	"slices"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -20,7 +21,7 @@ func (s *Service) detectSkippedFiles(ctx context.Context, instanceID int, torren
 	}
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch torrent files: %w", err)
 	}
 	return buildSkippedFilesResult(filesByHash), nil
 }
