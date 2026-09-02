@@ -266,7 +266,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         }
         const optimisticRemoveCount = variables.clientCount ?? hashesToRemove.length
         // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
-        const targetKeys = variables.targets?.length ? new Set(variables.targets.map((t) => `${t.instanceId}:${t.hash}`)) : undefined
+        const targetKey = (t: { instanceId: number; hash: string }) => `${t.instanceId}:${t.hash}`
+        const targetKeys = variables.targets?.length ? new Set(variables.targets.map(targetKey)) : undefined
+        const excludedKeys = new Set(variables.excludeTargets?.map(targetKey))
 
         queries.forEach((query) => {
           queryClient.setQueryData(query.queryKey, (oldData: {
@@ -277,10 +279,11 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
             if (!oldData) return oldData
             return {
               ...oldData,
-              torrents: oldData.torrents?.filter((t: Torrent) => targetKeys
-                ? !targetKeys.has(`${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`)
-                : !hashesToRemove.includes(t.hash)
-              ) || [],
+              torrents: oldData.torrents?.filter((t: Torrent) => {
+                const key = `${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`
+                if (excludedKeys.has(key)) return true
+                return targetKeys ? !targetKeys.has(key) : !hashesToRemove.includes(t.hash)
+              }) || [],
               total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
               totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),
             }

@@ -6080,8 +6080,8 @@ components:
       required: true
       schema:
         type: integer
-        minimum: 1
-      description: qBittorrent instance ID
+        minimum: 0
+      description: qBittorrent instance ID. 0 is the unified scope on the endpoints that support it.
     hash:
       name: hash
       in: path
