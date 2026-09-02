@@ -7,7 +7,7 @@ import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { api } from "@/lib/api"
 import type { TagUpdatePlan } from "@/lib/tag-editor"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import { buildTorrentActionTargets, getTorrentTargetInstanceId } from "@/lib/torrent-action-targets"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
@@ -265,6 +265,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
           hashesToRemove = variables.clientHashes
         }
         const optimisticRemoveCount = variables.clientCount ?? hashesToRemove.length
+        // Cross-seeded copies share a hash, so a targeted delete removes only the addressed rows.
+        const targetKeys = variables.targets?.length ? new Set(variables.targets.map((t) => `${t.instanceId}:${t.hash}`)) : undefined
 
         queries.forEach((query) => {
           queryClient.setQueryData(query.queryKey, (oldData: {
@@ -275,8 +277,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
             if (!oldData) return oldData
             return {
               ...oldData,
-              torrents: oldData.torrents?.filter((t: Torrent) =>
-                !hashesToRemove.includes(t.hash)
+              torrents: oldData.torrents?.filter((t: Torrent) => targetKeys
+                ? !targetKeys.has(`${getTorrentTargetInstanceId(t, instanceId)}:${t.hash}`)
+                : !hashesToRemove.includes(t.hash)
               ) || [],
               total: Math.max(0, (oldData.total || 0) - optimisticRemoveCount),
               totalCount: Math.max(0, (oldData.totalCount || oldData.total || 0) - optimisticRemoveCount),

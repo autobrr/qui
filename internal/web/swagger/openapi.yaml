@@ -1610,7 +1610,7 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: Specific torrent hashes to target. Required unless selectAll is true. In the unified scope, hashes without targets are rejected.
+                  description: Specific torrent hashes to target. Optional when targets is provided; the request is rejected when hashes, targets, and selectAll are all absent. In the unified scope, hashes without targets are rejected.
                 targets:
                   type: array
                   description: Explicit instance and hash pairs. Required in the unified scope when addressing torrents by hash; authoritative over hashes there.
