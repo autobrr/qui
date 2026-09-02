@@ -29,7 +29,10 @@ function pointerDown(target: EventTarget) {
 }
 
 describe("usePathAutocomplete outside dismissal", () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    document.body.replaceChildren()
+  })
 
   it("dismisses on a pointer interaction outside the input and list, keeps the value", () => {
     const onSelect = vi.fn()
