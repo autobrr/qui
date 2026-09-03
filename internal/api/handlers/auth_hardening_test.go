@@ -127,7 +127,7 @@ func TestChangePasswordEndsEverySession(t *testing.T) {
 	// The browser that changed the password gets its cookie cleared.
 	cleared := sessionCookie(t, h, rec)
 	assert.Empty(t, cleared.Value)
-	assert.Less(t, cleared.MaxAge, 0)
+	assert.Negative(t, cleared.MaxAge)
 
 	assert.Equal(t, http.StatusOK, post(t, login, "/api/auth/login", "application/json",
 		`{"username":"alice","password":"password5678"}`).Code)
