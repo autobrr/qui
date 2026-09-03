@@ -18,6 +18,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -692,10 +693,13 @@ func (s *Service) loadFailures() error {
 		return err
 	}
 
-	if err := json.Unmarshal(data, &s.failures); err != nil {
-		clear(s.failures)
+	// Decode into a local map so a corrupt or null file leaves s.failures a
+	// usable empty map.
+	var failures map[string]failureState
+	if err := json.Unmarshal(data, &failures); err != nil {
 		return err
 	}
+	maps.Copy(s.failures, failures)
 	return nil
 }
 

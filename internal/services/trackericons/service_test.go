@@ -176,6 +176,20 @@ func TestService_FailureState_SurvivesRestart(t *testing.T) {
 	reloaded.failureMu.Unlock()
 }
 
+func TestService_LoadFailures_NullFileKeepsMapUsable(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dataDir, iconDirName), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dataDir, iconDirName, failuresFileName), []byte("null"), 0o600))
+
+	svc, err := NewService(dataDir, "qui-test")
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() { svc.recordFailure("dead.example.org") })
+	require.False(t, svc.canAttempt("dead.example.org"))
+}
+
 func TestService_GetIcon_StopsCandidateWalkWhenHostDoesNotResolve(t *testing.T) {
 	t.Parallel()
 
