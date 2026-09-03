@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"image"
@@ -17,6 +18,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,13 +42,18 @@ import (
 )
 
 const (
-	iconDirName        = "tracker-icons"
-	maxHTMLBytes int64 = 2 << 20 // 2 MiB
-	maxIconBytes int64 = 1 << 20 // 1 MiB
+	iconDirName            = "tracker-icons"
+	failuresFileName       = "fetch-failures.json"
+	maxHTMLBytes     int64 = 2 << 20 // 2 MiB
+	maxIconBytes     int64 = 1 << 20 // 1 MiB
 
-	fetchTimeout    = 15 * time.Second
-	requestTimeout  = 5 * time.Second
-	failureCooldown = 30 * time.Minute
+	fetchTimeout   = 15 * time.Second
+	requestTimeout = 5 * time.Second
+
+	// Consecutive failures double the wait between attempts, starting at
+	// baseFailureCooldown and capped at maxFailureCooldown.
+	baseFailureCooldown = 30 * time.Minute
+	maxFailureCooldown  = 24 * time.Hour
 )
 
 var (
@@ -74,10 +81,17 @@ type Service struct {
 
 	group singleflight.Group
 
-	failureMu   sync.Mutex
-	lastFailure map[string]time.Time
+	failureMu sync.Mutex
+	failures  map[string]failureState
 
 	activityPublisher activity.Publisher
+}
+
+// failureState is the per-host fetch failure record. It is persisted to
+// failuresFileName so a restart does not re-probe every known-dead host.
+type failureState struct {
+	Attempts    int       `json:"attempts"`
+	LastFailure time.Time `json:"lastFailure"`
 }
 
 // Flow overview:
@@ -111,7 +125,7 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	svc := &Service{
 		iconDir:           iconDir,
 		client:            &http.Client{Timeout: fetchTimeout},
-		lastFailure:       make(map[string]time.Time),
+		failures:          make(map[string]failureState),
 		activityPublisher: activity.NopPublisher{},
 	}
 
@@ -123,6 +137,10 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 
 	if err := svc.preloadIconsFromDisk(); err != nil {
 		return nil, err
+	}
+
+	if err := svc.loadFailures(); err != nil {
+		log.Warn().Err(err).Msg("Tracker icon fetch failures could not be loaded; starting with a clean slate")
 	}
 
 	return svc, nil
@@ -341,6 +359,9 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 
 		for _, baseURL := range baseURLs {
 			urls, err := s.discoverIcons(ctx, baseURL)
+			if isHostNotFound(err) {
+				return fmt.Errorf("%w: %w", ErrIconNotFound, err)
+			}
 			if err == nil {
 				for _, iconURL := range urls {
 					if _, ok := attempted[iconURL]; ok {
@@ -512,34 +533,27 @@ func (s *Service) writePNG(img image.Image, path string) error {
 	if err := png.Encode(&buf, img); err != nil {
 		return fmt.Errorf("encode png: %w", err)
 	}
+	return s.writeFileAtomic(path, buf.Bytes())
+}
 
-	// Create temp file for atomic write
-	tmpFile, err := os.CreateTemp(s.iconDir, "tracker-icon-*.png")
+// writeFileAtomic writes data to a temp file in the icon directory and renames
+// it over path, so readers never see a partial file.
+func (s *Service) writeFileAtomic(path string, data []byte) error {
+	tmpFile, err := os.CreateTemp(s.iconDir, "tracker-icon-*.tmp")
 	if err != nil {
 		return err
 	}
 	tmpName := tmpFile.Name()
 	tmpFile.Close()
 
-	// Cleanup on failure
-	var success bool
-	defer func() {
-		if !success {
-			os.Remove(tmpName)
-		}
-	}()
-
-	// Write complete buffer atomically
-	if err := os.WriteFile(tmpName, buf.Bytes(), 0o600); err != nil {
+	if err := os.WriteFile(tmpName, data, 0o600); err != nil {
+		os.Remove(tmpName)
 		return err
 	}
-
-	// Atomic rename to final location
 	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
 		return err
 	}
-
-	success = true
 	return nil
 }
 
@@ -609,12 +623,32 @@ func (s *Service) buildBaseCandidates(host, trackerURL string) []*url.URL {
 	return urls
 }
 
+// isHostNotFound reports whether err is a DNS lookup that found no such host.
+// NXDOMAIN on a root page ends the candidate walk; icon URLs found on a live
+// page are exempt.
+func isHostNotFound(err error) bool {
+	dnsErr, ok := errors.AsType[*net.DNSError](err)
+	return ok && dnsErr.IsNotFound
+}
+
+// failureCooldown returns how long a host waits after its n-th consecutive failure.
+func failureCooldown(attempts int) time.Duration {
+	d := baseFailureCooldown
+	for range max(attempts-1, 0) {
+		if d >= maxFailureCooldown {
+			break
+		}
+		d *= 2
+	}
+	return min(d, maxFailureCooldown)
+}
+
 func (s *Service) canAttempt(host string) bool {
 	s.failureMu.Lock()
 	defer s.failureMu.Unlock()
 
-	if ts, ok := s.lastFailure[host]; ok {
-		if time.Since(ts) < failureCooldown {
+	if f, ok := s.failures[host]; ok {
+		if time.Since(f.LastFailure) < failureCooldown(f.Attempts) {
 			return false
 		}
 	}
@@ -624,14 +658,56 @@ func (s *Service) canAttempt(host string) bool {
 
 func (s *Service) recordFailure(host string) {
 	s.failureMu.Lock()
-	s.lastFailure[host] = time.Now()
-	s.failureMu.Unlock()
+	defer s.failureMu.Unlock()
+
+	f := s.failures[host]
+	f.Attempts++
+	f.LastFailure = time.Now()
+	s.failures[host] = f
+	s.saveFailuresLocked()
 }
 
 func (s *Service) clearFailure(host string) {
 	s.failureMu.Lock()
-	delete(s.lastFailure, host)
-	s.failureMu.Unlock()
+	defer s.failureMu.Unlock()
+
+	if _, ok := s.failures[host]; !ok {
+		return
+	}
+	delete(s.failures, host)
+	s.saveFailuresLocked()
+}
+
+func (s *Service) failuresPath() string {
+	return filepath.Join(s.iconDir, failuresFileName)
+}
+
+// loadFailures runs from NewService before the service escapes, so no lock.
+func (s *Service) loadFailures() error {
+	data, err := os.ReadFile(s.failuresPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(data, &s.failures); err != nil {
+		clear(s.failures)
+		return err
+	}
+	return nil
+}
+
+// saveFailuresLocked writes the failure map to disk. Caller holds failureMu.
+func (s *Service) saveFailuresLocked() {
+	data, err := json.Marshal(s.failures)
+	if err == nil {
+		err = s.writeFileAtomic(s.failuresPath(), data)
+	}
+	if err != nil {
+		log.Warn().Err(err).Msg("Tracker icon fetch failures could not be saved")
+	}
 }
 
 func sanitizeHost(host string) string {
