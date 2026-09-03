@@ -4,7 +4,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -264,7 +263,7 @@ func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 
-		instance, createErr := instanceStore.Create(context.Background(), name, srv.URL, "user", "pass", nil, nil, false, nil)
+		instance, createErr := instanceStore.Create(t.Context(), name, srv.URL, "user", "pass", nil, nil, false, nil)
 		require.NoError(t, createErr)
 		instanceIDs[name] = instance.ID
 		clients[instance.ID] = newStaleCachedClient(t, srv.URL, shared)

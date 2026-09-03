@@ -294,7 +294,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       ...clientMeta,
       clientHashes: hashesToDelete,
       totalSelected: hashesToDelete.length,
-      actionTargets: requestTargets && crossSeedDeleteTargets,
+      actionTargets: isAllSelected ? undefined : crossSeedDeleteTargets,
     } : clientMeta
 
     await handleDelete(
@@ -316,7 +316,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     filters,
     handleDelete,
     isAllSelected,
-    requestTargets,
     search,
     selectedHashes,
     selectedTorrents,
