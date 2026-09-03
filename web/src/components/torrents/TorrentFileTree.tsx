@@ -6,10 +6,11 @@
 import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { SortIcon } from "@/components/ui/sort-icon"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
-import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FolderPriority } from "@/lib/file-priority"
+import { buildFileTree, sortFileTree, toggleFileSort, type FileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
 import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
-import { getLinuxFileName, getLinuxSavePath } from "@/lib/incognito"
+import { getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -20,6 +21,7 @@ import { toast } from "sonner"
 
 interface TorrentFileTreeProps {
   files: TorrentFile[]
+  sort: FileSort
   supportsFilePriority: boolean
   pendingFileIndices: Set<number>
   incognitoMode: boolean
@@ -36,133 +38,11 @@ interface TorrentFileTreeProps {
   onShowMediaInfo?: (file: TorrentFile) => void
 }
 
-interface FileTreeNode {
-  id: string
-  name: string
-  kind: "file" | "folder"
-  file?: TorrentFile
-  children?: FileTreeNode[]
-  totalSize: number
-  totalProgress: number
-  selectedCount: number
-  totalCount: number
-  priority: FolderPriority
-}
-
 interface FlatRow {
   node: FileTreeNode
   depth: number
   isExpanded: boolean
   hasChildren: boolean
-}
-
-function buildFileTree(
-  files: TorrentFile[],
-  incognitoMode: boolean,
-  torrentHash: string
-): { nodes: FileTreeNode[]; allFolderIds: string[] } {
-  const nodeMap = new Map<string, FileTreeNode>()
-  const roots: FileTreeNode[] = []
-  const allFolderIds: string[] = []
-
-  // Sort files by name for consistent ordering
-  const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name))
-
-  for (const file of sortedFiles) {
-    const segments = file.name.split("/").filter(Boolean)
-    let parentPath = ""
-
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i]
-      const currentPath = parentPath ? `${parentPath}/${segment}` : segment
-      const isLeaf = i === segments.length - 1
-
-      let node = nodeMap.get(currentPath)
-
-      if (!node) {
-        const displayName = incognitoMode && isLeaf? getLinuxFileName(torrentHash, file.index).split("/").pop() || segment: segment
-
-        node = {
-          id: currentPath,
-          name: displayName,
-          kind: isLeaf ? "file" : "folder",
-          file: isLeaf ? file : undefined,
-          children: isLeaf ? undefined : [],
-          totalSize: isLeaf ? file.size : 0,
-          totalProgress: isLeaf ? file.progress * file.size : 0,
-          selectedCount: isLeaf && file.priority !== 0 ? 1 : 0,
-          totalCount: isLeaf ? 1 : 0,
-          priority: isLeaf ? normalizeFilePriority(file.priority) : FILE_PRIORITY.normal,
-        }
-        nodeMap.set(currentPath, node)
-
-        if (!isLeaf) {
-          allFolderIds.push(currentPath)
-        }
-
-        if (parentPath) {
-          const parentNode = nodeMap.get(parentPath)
-          if (parentNode && parentNode.children) {
-            parentNode.children.push(node)
-          }
-        } else {
-          roots.push(node)
-        }
-      }
-
-      parentPath = currentPath
-    }
-  }
-
-  // Calculate aggregates bottom-up
-  function calculateAggregates(node: FileTreeNode): void {
-    if (node.kind === "folder" && node.children) {
-      let totalSize = 0
-      let totalProgress = 0
-      let selectedCount = 0
-      let totalCount = 0
-      let priority: FolderPriority | undefined
-
-      for (const child of node.children) {
-        calculateAggregates(child)
-        totalSize += child.totalSize
-        totalProgress += child.totalProgress
-        selectedCount += child.selectedCount
-        totalCount += child.totalCount
-        priority = priority === undefined ? child.priority : foldFolderPriority(priority, child.priority)
-      }
-
-      node.totalSize = totalSize
-      node.totalProgress = totalProgress
-      node.selectedCount = selectedCount
-      node.totalCount = totalCount
-      if (priority !== undefined) {
-        node.priority = priority
-      }
-
-      // Sort children: folders first, then files, both alphabetically
-      node.children.sort((a, b) => {
-        if (a.kind !== b.kind) {
-          return a.kind === "folder" ? -1 : 1
-        }
-        return a.name.localeCompare(b.name)
-      })
-    }
-  }
-
-  for (const root of roots) {
-    calculateAggregates(root)
-  }
-
-  // Sort roots: folders first, then files
-  roots.sort((a, b) => {
-    if (a.kind !== b.kind) {
-      return a.kind === "folder" ? -1 : 1
-    }
-    return a.name.localeCompare(b.name)
-  })
-
-  return { nodes: roots, allFolderIds }
 }
 
 function flattenTree(
@@ -186,8 +66,53 @@ function flattenTree(
   return rows
 }
 
+const SORT_COLUMNS: { column: FileSortColumn; labelKey: string }[] = [
+  { column: "name", labelKey: "fileTable.headers.name" },
+  { column: "progress", labelKey: "fileTable.headers.progress" },
+  { column: "size", labelKey: "fileTable.headers.size" },
+  { column: "priority", labelKey: "filePriority.header" },
+]
+
+// Sort control for the vertical layout, which has no header row to click.
+// Rendered by the details panel above the ScrollArea that holds the tree.
+export function TorrentFileSortBar({
+  sort,
+  supportsFilePriority,
+  onSortChange,
+}: {
+  sort: FileSort
+  supportsFilePriority: boolean
+  onSortChange: (sort: FileSort) => void
+}) {
+  const { t } = useTranslation("torrents")
+  return (
+    <div className="flex flex-wrap gap-1 px-4 sm:px-6 py-1.5 border-b">
+      {SORT_COLUMNS.filter(({ column }) => supportsFilePriority || column !== "priority").map(({ column, labelKey }) => {
+        const active = sort.column === column
+        return (
+          <button
+            key={column}
+            type="button"
+            className={cn(
+              "flex-1 h-9 flex items-center justify-center gap-1 rounded-md text-xs font-medium",
+              active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"
+            )}
+            aria-pressed={active}
+            aria-label={active ? `${t(labelKey)}, ${t(`sort.${sort.direction === "asc" ? "ascending" : "descending"}`)}` : undefined}
+            onClick={() => onSortChange(toggleFileSort(sort, column))}
+          >
+            <span className="truncate">{t(labelKey)}</span>
+            {active && <SortIcon sorted={sort.direction} />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export const TorrentFileTree = memo(function TorrentFileTree({
   files,
+  sort,
   supportsFilePriority,
   pendingFileIndices,
   incognitoMode,
@@ -206,23 +131,24 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   const { t } = useTranslation("torrents")
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const { nodes, allFolderIds } = useMemo(
+  const { nodes: unsortedNodes, folderIds } = useMemo(
     () => buildFileTree(files, incognitoMode, torrentHash),
     [files, incognitoMode, torrentHash]
   )
+  const nodes = useMemo(() => sortFileTree(unsortedNodes, sort), [unsortedNodes, sort])
 
   // Start with all folders expanded
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(allFolderIds)
+    () => new Set(folderIds)
   )
-  const [knownFolderIds, setKnownFolderIds] = useState(allFolderIds)
+  const [knownFolderIds, setKnownFolderIds] = useState(folderIds)
 
   // Keep expandedFolders in sync when folder paths change (e.g., after rename);
   // render-time adjustment so the reconciled tree commits in one pass
-  if (knownFolderIds !== allFolderIds) {
-    setKnownFolderIds(allFolderIds)
+  if (knownFolderIds !== folderIds) {
+    setKnownFolderIds(folderIds)
     setExpandedFolders(
-      reconcileExpandedFolders(expandedFolders, new Set(knownFolderIds), new Set(allFolderIds))
+      reconcileExpandedFolders(expandedFolders, knownFolderIds, folderIds)
     )
   }
 

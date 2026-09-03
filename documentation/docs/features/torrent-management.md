@@ -90,6 +90,12 @@ Up to 10 torrents download as individual files. Larger selections download as on
 
 If some torrents fail to export, the archive still downloads. An `export-errors.txt` file inside the archive lists the failures.
 
+## Content tab sorting
+
+The **Content** tab of the details panel shows the files of a torrent as a folder tree. Click a column header (**Name**, **Progress**, **Size**, or **Priority**) to sort the rows by that column. Click the same header again to reverse the direction. The narrow layout shows the same four choices as a row of buttons above the file list.
+
+Folders always stay above files. A folder sorts by the total of its files. The **Priority** column appears only when the instance supports per-file priority. The sort resets to **Name** when you reload the page.
+
 ## MediaInfo
 
 The **Content** tab of the details panel offers a **MediaInfo** action on each file. It analyzes the file on disk and opens a dialog with two tabs: **Summary** and **Raw JSON**. **Copy Summary** and **Copy JSON** copy the report to the clipboard.

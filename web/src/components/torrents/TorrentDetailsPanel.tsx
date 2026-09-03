@@ -23,6 +23,7 @@ import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { scheduleTorrentListRefetches } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { DEFAULT_FILE_SORT } from "@/lib/file-tree"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -41,7 +42,7 @@ import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
-import { TorrentFileTree } from "./TorrentFileTree"
+import { TorrentFileSortBar, TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -93,6 +94,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const displayName = incognitoMode ? getLinuxIsoName(torrent?.hash ?? "") : torrent?.name
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
+  const [fileSort, setFileSort] = useState(DEFAULT_FILE_SORT)
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
   const { data: instances } = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), staleTime: 60000 })
   const hasLocalFilesystemAccess = instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false
@@ -1674,11 +1676,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     )}
                   </div>
                 </div>
+                <TorrentFileSortBar sort={fileSort} supportsFilePriority={supportsFilePriority} onSortChange={setFileSort} />
                 <ScrollArea className="flex-1 min-h-0 w-full [&>[data-slot=scroll-area-viewport]]:!overflow-x-hidden">
                   <div className="p-4 sm:p-6 pb-8">
                     <TorrentFileTree
                       key={torrent.hash}
                       files={files}
+                      sort={fileSort}
                       supportsFilePriority={supportsFilePriority}
                       pendingFileIndices={pendingFileIndices}
                       incognitoMode={incognitoMode}
