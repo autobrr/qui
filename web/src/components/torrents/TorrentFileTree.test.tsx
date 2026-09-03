@@ -26,6 +26,11 @@ describe("TorrentFileSortBar", () => {
       "filePriority.header",
     ])
 
+    const sizeButton = getByText("fileTable.headers.size").closest("button")!
+    expect(sizeButton.getAttribute("aria-pressed")).toBe("true")
+    expect(sizeButton.getAttribute("aria-label")).toBe("fileTable.headers.size, sort.ascending")
+    expect(getByText("fileTable.headers.name").closest("button")!.getAttribute("aria-pressed")).toBe("false")
+
     fireEvent.click(getByText("fileTable.headers.size"))
     expect(onSortChange).toHaveBeenLastCalledWith({ column: "size", direction: "desc" })
 

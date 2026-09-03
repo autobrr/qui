@@ -199,16 +199,21 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     resetKey: torrentHash,
   })
 
-  const sortHeader = (column: FileSortColumn, label: string, className: string) => (
-    <button
-      type="button"
-      className={cn("flex items-center gap-1 px-2 py-1.5 font-medium text-muted-foreground select-none hover:bg-muted/50", className)}
-      onClick={() => setSort(prev => toggleFileSort(prev, column))}
-    >
-      {label}
-      <SortIcon sorted={sort.column === column ? sort.direction : false} />
-    </button>
-  )
+  const sortHeader = (column: FileSortColumn, label: string, className: string) => {
+    const active = sort.column === column
+    return (
+      <button
+        type="button"
+        className={cn("flex items-center gap-1 px-2 py-1.5 font-medium text-muted-foreground select-none hover:bg-muted/50", className)}
+        aria-pressed={active}
+        aria-label={active ? `${label}, ${t(`sort.${sort.direction === "asc" ? "ascending" : "descending"}`)}` : undefined}
+        onClick={() => setSort(prev => toggleFileSort(prev, column))}
+      >
+        {label}
+        <SortIcon sorted={active ? sort.direction : false} />
+      </button>
+    )
+  }
 
   if (loading && !files) {
     return (

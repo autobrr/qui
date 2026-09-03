@@ -87,20 +87,25 @@ export function TorrentFileSortBar({
   const { t } = useTranslation("torrents")
   return (
     <div className="flex flex-wrap gap-1 px-4 sm:px-6 py-1.5 border-b">
-      {SORT_COLUMNS.filter(({ column }) => supportsFilePriority || column !== "priority").map(({ column, labelKey }) => (
-        <button
-          key={column}
-          type="button"
-          className={cn(
-            "flex-1 h-9 flex items-center justify-center gap-1 rounded-md text-xs font-medium",
-            sort.column === column ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"
-          )}
-          onClick={() => onSortChange(toggleFileSort(sort, column))}
-        >
-          <span className="truncate">{t(labelKey)}</span>
-          {sort.column === column && <SortIcon sorted={sort.direction} />}
-        </button>
-      ))}
+      {SORT_COLUMNS.filter(({ column }) => supportsFilePriority || column !== "priority").map(({ column, labelKey }) => {
+        const active = sort.column === column
+        return (
+          <button
+            key={column}
+            type="button"
+            className={cn(
+              "flex-1 h-9 flex items-center justify-center gap-1 rounded-md text-xs font-medium",
+              active ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"
+            )}
+            aria-pressed={active}
+            aria-label={active ? `${t(labelKey)}, ${t(`sort.${sort.direction === "asc" ? "ascending" : "descending"}`)}` : undefined}
+            onClick={() => onSortChange(toggleFileSort(sort, column))}
+          >
+            <span className="truncate">{t(labelKey)}</span>
+            {active && <SortIcon sorted={sort.direction} />}
+          </button>
+        )
+      })}
     </div>
   )
 }
