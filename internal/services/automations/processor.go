@@ -64,9 +64,10 @@ type torrentDesiredState struct {
 	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
-	currentTags  map[string]struct{}
-	tagActions   map[string]string // tag -> "add" | "remove"
-	tagRuleByTag map[string]ruleRef
+	currentTags    map[string]struct{}
+	tagActions     map[string]string // tag -> "add" | "remove"
+	tagRuleByTag   map[string]ruleRef
+	tagExpandByTag map[string]tagExpandIntent // tag -> pending cross-seed expansion of a tag decision
 
 	// Category (last rule wins)
 	category                  *string
@@ -110,6 +111,16 @@ type torrentDesiredState struct {
 type ruleRef struct {
 	id   int
 	name string
+}
+
+// tagExpandIntent is a pending cross-seed expansion of a tag decision: the rule
+// that requested it, the decision to propagate ("add" or "remove"), and whether
+// the action runs in managed-reset mode (the tag is wholesale-deleted in the
+// client before matches are re-added).
+type tagExpandIntent struct {
+	rule            ruleRef
+	action          string
+	resetFromClient bool
 }
 
 type ruleRunStats struct {
@@ -761,6 +772,8 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		}
 	}
 	resetFromClient := shouldResetTagActionInClient(tagAction)
+	// Tracker-derived tags never expand: cross-seed siblings sit on other trackers.
+	expandCrossSeeds := tagAction.IncludeCrossSeeds && !tagAction.UseTrackerAsTag
 
 	for _, managedTag := range tagsToManage {
 		// Check current state AND pending changes from earlier rules
@@ -778,33 +791,63 @@ func processTagAction(rule *models.Automation, tagAction *models.TagAction, torr
 		// - FULL: add to matches, remove from non-matches
 		// - ADD: add to matches only
 		// - REMOVE: remove from matches only
+		action := ""
+		assertTag := false
 		switch tagMode {
 		case models.TagModeAdd:
 			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+				action = "add"
 			}
 		case models.TagModeRemove:
 			if hasTag && matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
-				}
+				action = "remove"
 			}
 		default: // full (incl. unknown/empty)
-			if !hasTag && matchesCondition {
-				state.tagActions[managedTag] = "add"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+			switch {
+			case !hasTag && matchesCondition:
+				action = "add"
+			case hasTag && !matchesCondition:
+				action = "remove"
+			case hasTag && matchesCondition:
+				assertTag = true
+			}
+		}
+		if action == "" {
+			// Full-mode steady state: a matching copy that already carries the
+			// tag makes no local change, but it must still assert the tag
+			// across its cross-seed siblings — otherwise a non-matching
+			// sibling's full-mode removal would strip a release that still
+			// matches (any-match-wins).
+			if assertTag && expandCrossSeeds && rule != nil {
+				if state.tagExpandByTag == nil {
+					state.tagExpandByTag = make(map[string]tagExpandIntent)
 				}
-			} else if hasTag && !matchesCondition {
-				state.tagActions[managedTag] = "remove"
-				if rule != nil {
-					state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+				state.tagExpandByTag[managedTag] = tagExpandIntent{
+					rule:            ruleRef{id: rule.ID, name: rule.Name},
+					action:          "add",
+					resetFromClient: resetFromClient,
 				}
 			}
+			continue
+		}
+		state.tagActions[managedTag] = action
+		if rule != nil {
+			state.tagRuleByTag[managedTag] = ruleRef{id: rule.ID, name: rule.Name}
+		}
+		// Cross-seed expansion propagates only decisions made on condition-matching
+		// torrents (full-mode removals happen on non-matches and stay local). A later
+		// rule's decision without expansion clears earlier intent (last rule wins).
+		if expandCrossSeeds && matchesCondition && rule != nil {
+			if state.tagExpandByTag == nil {
+				state.tagExpandByTag = make(map[string]tagExpandIntent)
+			}
+			state.tagExpandByTag[managedTag] = tagExpandIntent{
+				rule:            ruleRef{id: rule.ID, name: rule.Name},
+				action:          action,
+				resetFromClient: resetFromClient,
+			}
+		} else {
+			delete(state.tagExpandByTag, managedTag)
 		}
 	}
 
@@ -823,6 +866,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldReannounce ||
 		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
+		len(state.tagExpandByTag) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||
 		state.shouldMove ||

@@ -208,6 +208,7 @@ export interface TagAction {
   enabled: boolean
   tags: string[]
   mode: "full" | "add" | "remove"
+  includeCrossSeeds?: boolean
   deleteFromClient?: boolean
   useTrackerAsTag?: boolean
   useDisplayName?: boolean
