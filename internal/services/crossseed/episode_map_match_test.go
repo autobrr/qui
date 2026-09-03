@@ -113,6 +113,9 @@ func TestClassifySearchCandidateEpisodeMap(t *testing.T) {
 		{name: "no map is an episode mismatch", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapSeasonedName, candidateSize: episodeMapSize + 500, wantReason: episodeMismatchReason},
 		{name: "tracker disagreement is an episode mismatch", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize + 500, episodeMap: episodeMapS04E15, wantReason: episodeMismatchReason},
 		{name: "tracker disagreement passes the exact-size tier", sourceName: episodeMapAbsoluteNoCRCName, candidateName: episodeMapOffByOneName, candidateSize: episodeMapSize, episodeMap: episodeMapS04E15, wantAccepted: true, wantClass: searchCandidateClassExactSizeFallback},
+		// A special maps to season 0; without the guard the seasonless "- 15" would
+		// pose as the seasoned side and "- 81" would be rewritten onto it.
+		{name: "season-zero map never equates two seasonless episodes", sourceName: episodeMapAbsoluteNoCRCName, candidateName: "[KiraSubs] Azure Compass - 15 (1080p).mkv", candidateSize: episodeMapSize + 500, episodeMap: &models.EpisodeMap{Season: 0, Episode: 15, Absolute: 81}, wantReason: episodeMismatchReason},
 	}
 
 	for _, tt := range tests {

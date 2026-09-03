@@ -2551,7 +2551,12 @@ func (s *Service) IndexerIDsWithIDSearchCaps(ctx context.Context, req *TorznabSe
 }
 
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
-	if meta == nil || len(idx.Capabilities) == 0 || len(params) == 0 {
+	if meta == nil || len(params) == 0 {
+		return
+	}
+	if len(idx.Capabilities) == 0 {
+		// Unknown caps prune nothing, so every ID the request carries survives.
+		applyEpisodeMapParams(meta, params, hasTorznabIDParams(params))
 		return
 	}
 
@@ -2617,10 +2622,7 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 			Msg("Pruned unsupported ID parameters for indexer")
 	}
 
-	if hasIDsAfterPruning && meta.episodeMap != nil {
-		params["season"] = strconv.Itoa(meta.episodeMap.Season)
-		params["ep"] = strconv.Itoa(meta.episodeMap.Episode)
-	}
+	applyEpisodeMapParams(meta, params, hasIDsAfterPruning)
 
 	// If we had IDs but they were all pruned, restore q param for this indexer
 	if !hadIDs || hasIDsAfterPruning {
@@ -2643,6 +2645,16 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 			Str("query", restoredQuery).
 			Msg("Restored q parameter after all ID params were pruned for indexer")
 	}
+}
+
+// applyEpisodeMapParams adds the Sonarr-mapped season and ep for an indexer
+// that keeps an ID parameter. Text fallbacks never receive them.
+func applyEpisodeMapParams(meta *searchContext, params map[string]string, keepsIDs bool) {
+	if !keepsIDs || meta.episodeMap == nil {
+		return
+	}
+	params["season"] = strconv.Itoa(meta.episodeMap.Season)
+	params["ep"] = strconv.Itoa(meta.episodeMap.Episode)
 }
 
 // applyProwlarrWorkaround applies Prowlarr-specific query workarounds to search parameters.

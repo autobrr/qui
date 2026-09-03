@@ -36,8 +36,12 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
 		episodeMap *models.EpisodeMap
+		query      string
+		capsless   bool
 	}{
 		{name: "with map", episodeMap: episodeMapS04E15},
+		{name: "with map and a caller-supplied query", episodeMap: episodeMapS04E15, query: "Azure Compass"},
+		{name: "with map and an indexer without cached caps", episodeMap: episodeMapS04E15, capsless: true},
 		{name: "without map"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,6 +66,11 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 
 			ctx := context.Background()
 			instance := &models.Instance{ID: 1, Name: "Test"}
+			// An indexer whose caps were never fetched prunes nothing and keeps every ID.
+			idCapableCaps := []string{"search", "tv-search", "tv-search-tvdbid", "tv-search-season", "tv-search-ep"}
+			if tt.capsless {
+				idCapableCaps = nil
+			}
 
 			sourceTorrent := qbt.Torrent{Hash: sourceHash, Name: sourceName, Progress: 1, Size: episodeMapSize, TotalSize: episodeMapSize, Tracker: "https://example.invalid/announce"}
 			tvCategories := []models.TorznabIndexerCategory{{IndexerID: 1, CategoryID: 5000, CategoryName: "TV"}, {IndexerID: 1, CategoryID: 5070, CategoryName: "TV/Anime"}}
@@ -72,7 +81,7 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 					EpisodeMap: tt.episodeMap,
 				}},
 				jackettService: jackett.NewService(&gettableIndexerStore{failingEnabledIndexerStore{indexers: []*models.TorznabIndexer{
-					{ID: 1, Name: "ID Capable Indexer", Enabled: true, BaseURL: idCapable.URL, Backend: models.TorznabBackendNative, Capabilities: []string{"search", "tv-search", "tv-search-tvdbid", "tv-search-season", "tv-search-ep"}, Categories: tvCategories},
+					{ID: 1, Name: "ID Capable Indexer", Enabled: true, BaseURL: idCapable.URL, Backend: models.TorznabBackendNative, Capabilities: idCapableCaps, Categories: tvCategories},
 					{ID: 2, Name: "Text Indexer", Enabled: true, BaseURL: text.URL, Backend: models.TorznabBackendNative, Capabilities: []string{"search", "tv-search"}, Categories: tvCategories},
 				}}}, jackett.WithMinRequestInterval(time.Millisecond)),
 				syncManager: &gazelleSkipHashSyncManager{
@@ -86,7 +95,7 @@ func TestEpisodeMapSearchSendsSeasonedPairOnIDPath(t *testing.T) {
 				},
 			}
 
-			_, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}}, nil)
+			_, _, _, err := svc.searchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{IndexerIDs: []int{1, 2}, Query: tt.query}, nil)
 			require.NoError(t, err)
 
 			mu.Lock()

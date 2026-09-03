@@ -9150,8 +9150,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		searchReq.OmitQueryForIDs = true // Cross-seed: omit q when IDs present
 		// An absolute-numbered source has an episode but no season, and Torznab
 		// ep counts within a season. The map gives ID-capable indexers the
-		// seasoned pair; text indexers keep the title-only query.
-		if seasonPtr == nil && episodePtr != nil && episodeMap != nil && episodeMap.Absolute == *episodePtr {
+		// seasoned pair; text indexers keep the title-only query. Keyed on the
+		// parsed release, not the safe-query pointers, so a caller-supplied
+		// query still carries the map.
+		if searchRelease.Series == 0 && searchRelease.Episode > 0 && episodeMap != nil && episodeMap.Absolute == searchRelease.Episode {
 			searchReq.EpisodeMap = episodeMap
 		}
 	}

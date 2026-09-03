@@ -340,7 +340,10 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 // names the equality for the decision trace.
 func applyEpisodeMap(input searchCandidateInput) (searchCandidateInput, string) {
 	episodeMap := input.EpisodeMap
-	if episodeMap == nil || episodeMap.Absolute <= 0 || input.Source.release == nil || input.Candidate.release == nil {
+	// A special maps to season 0, which would let a seasonless episode pose as
+	// the seasoned side; only a positive triple names two distinct schemes.
+	if episodeMap == nil || episodeMap.Season <= 0 || episodeMap.Episode <= 0 || episodeMap.Absolute <= 0 ||
+		input.Source.release == nil || input.Candidate.release == nil {
 		return input, ""
 	}
 	seasonless := func(r *rls.Release) bool { return r.Series == 0 && r.Episode == episodeMap.Absolute }
