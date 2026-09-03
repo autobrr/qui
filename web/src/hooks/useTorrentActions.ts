@@ -7,6 +7,7 @@ import { usePersistedDeleteFiles } from "@/hooks/usePersistedDeleteFiles"
 import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlocklist"
 import { api } from "@/lib/api"
 import type { TagUpdatePlan } from "@/lib/tag-editor"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import type { Torrent, TorrentFilters } from "@/types"
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
@@ -768,6 +769,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     })
     setShowRecheckDialog(false)
     setContextHashes([])
+    setContextTorrents([])
   }, [mutation, instanceIds])
 
   const handleReannounce = useCallback(async (
@@ -796,6 +798,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     })
     setShowReannounceDialog(false)
     setContextHashes([])
+    setContextTorrents([])
   }, [mutation, instanceIds])
 
   const handleSetLocation = useCallback(async (
@@ -908,25 +911,28 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowCreateCategoryDialog(true)
   }, [])
 
-  const prepareRecheckAction = useCallback((hashes: string[], count?: number) => {
+  // Bare hashes fan out across every instance in the unified view, so single-row acts carry explicit targets.
+  const prepareRecheckAction = useCallback((hashes: string[], count?: number, torrents?: Torrent[]) => {
     const actualCount = count || hashes.length
     setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
     if (actualCount > 1) {
       setShowRecheckDialog(true)
     } else {
-      handleAction("recheck", hashes)
+      handleAction("recheck", hashes, torrents ? { targets: buildTorrentActionTargets(torrents, instanceId) } : undefined)
     }
-  }, [handleAction])
+  }, [handleAction, instanceId])
 
-  const prepareReannounceAction = useCallback((hashes: string[], count?: number) => {
+  const prepareReannounceAction = useCallback((hashes: string[], count?: number, torrents?: Torrent[]) => {
     const actualCount = count || hashes.length
     setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
     if (actualCount > 1) {
       setShowReannounceDialog(true)
     } else {
-      handleAction("reannounce", hashes)
+      handleAction("reannounce", hashes, torrents ? { targets: buildTorrentActionTargets(torrents, instanceId) } : undefined)
     }
-  }, [handleAction])
+  }, [handleAction, instanceId])
 
   const prepareLocationAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
