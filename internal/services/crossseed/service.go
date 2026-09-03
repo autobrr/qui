@@ -4336,7 +4336,7 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 	candidate := namedRelease{release: s.releaseCache.Parse(result.Title), rawName: result.Title}
 	// Resolve ARR aliases only when a torrent survives the exact-size gate
 	// below, so feed items with no byte-size collision never touch ARR.
-	aliasTitles := sync.OnceValue(func() []string {
+	aliasLookup := sync.OnceValues(func() ([]string, *models.EpisodeMap) {
 		return s.announceAliasTitles(ctx, result.Title, DetermineContentType(candidate.release).ContentType)
 	})
 	snapshots := (*automationSnapshots)(nil)
@@ -4371,11 +4371,13 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 				continue
 			}
 
+			aliasTitles, episodeMap := aliasLookup()
 			decision := s.classifyAnnouncementSource(ctx, snapshot.instance.ID, torrent, candidate, result.Size, announcementMatchPolicy{
 				findIndividualEpisodes: settings.FindIndividualEpisodes,
 				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
 				allowUnknownSize:       false,
-				candidateTitles:        aliasTitles(),
+				candidateTitles:        aliasTitles,
+				episodeMap:             episodeMap,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -4710,8 +4712,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 		// getMatchTypeFromTitle builds season and episode keys from the existing
 		// torrent's file names. Record only the bound source whose accepted apply-time
-		// mismatch actually changed that structure; another stored hard cause must
-		// not grant this bypass by itself.
+		// mismatch actually changed that structure, or whose episode map equated two
+		// numbering schemes; another stored hard cause must not grant this bypass by
+		// itself.
 		structureRelaxedHash := ""
 
 		// Pre-filter torrents before loading files to reduce downstream work
@@ -4771,18 +4774,26 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// evidence. File matching and later safety checks still run.
 			var candidateAliasTitles []string
 			var targetAliasTitles []string
+			var episodeMap *models.EpisodeMap
 			if isSearchSource {
 				candidateAliasTitles = searchDecision.SourceTitles
 				// Announce-origin decisions resolve aliases for the incoming
 				// release, which is the target side here.
 				targetAliasTitles = searchDecision.CandidateTitles
+				episodeMap = searchDecision.EpisodeMap
 			}
-			fallbackInput := searchCandidateInput{
+			fallbackInput, mappedEpisode := applyEpisodeMap(searchCandidateInput{
 				Source:                 targetSide,
 				Candidate:              sourceSide,
 				SourceTitles:           targetAliasTitles,
 				CandidateTitles:        candidateAliasTitles,
+				EpisodeMap:             episodeMap,
 				FindIndividualEpisodes: req.FindIndividualEpisodes,
+			})
+			if mappedEpisode != "" {
+				// The file names still carry the other scheme, so the name-derived
+				// episode keys cannot line up; file sizes decide at apply.
+				structureRelaxedHash = hashKey
 			}
 			replaysExactDecision := isSearchSource &&
 				(searchDecision.Class == searchCandidateClassExactSizeFallback ||
@@ -4796,6 +4807,7 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 					targetSide,
 					searchDecision.RelaxedDifferences,
 					slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles),
+					searchDecision.EpisodeMap,
 					req.FindIndividualEpisodes,
 				); !ok {
 					continue
@@ -5354,7 +5366,7 @@ func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName st
 
 func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedName string, actualSize int64, instances []*models.Instance, request *CrossSeedRequest, settings *models.CrossSeedAutomationSettings) []boundAnnouncementMatch {
 	candidate := namedRelease{release: s.releaseCache.Parse(announcedName), rawName: announcedName}
-	aliasTitles := s.announceAliasTitles(ctx, announcedName, DetermineContentType(candidate.release).ContentType)
+	aliasTitles, episodeMap := s.announceAliasTitles(ctx, announcedName, DetermineContentType(candidate.release).ContentType)
 	matches := make([]boundAnnouncementMatch, 0, len(instances))
 	for _, instance := range instances {
 		torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
@@ -5384,6 +5396,7 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				allowUnknownSize:       false,
 				skipRecheck:            request.SkipRecheck,
 				candidateTitles:        aliasTitles,
+				episodeMap:             episodeMap,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -8581,11 +8594,12 @@ func searchSourceSize(t *qbt.Torrent) int64 {
 // searchResultUsable reports whether the shared search classifier accepts a
 // primary-pass result. Keeping this a boolean projection prevents alternate-query
 // scheduling from drifting from the main result loop.
-func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize, candidateSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) bool {
+func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize, candidateSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
 	return s.classifySearchCandidate(searchCandidateInput{
 		Source:                 source,
 		Candidate:              candidate,
 		SourceTitles:           arrTitles,
+		EpisodeMap:             episodeMap,
 		SourceSize:             sourceSize,
 		CandidateSize:          candidateSize,
 		TolerancePercent:       tolerancePercent,
@@ -8599,11 +8613,11 @@ func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize,
 // filtering is still re-queried by the targeted retry passes, so a candidate
 // it carries under another title, spelling, or ID can surface instead of
 // being permanently suppressed.
-func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
+func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) []int {
 	usable := make([]jackett.SearchResult, 0, len(results))
 	for _, r := range results {
 		candidate := s.parseReleaseName(r.Title)
-		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes) {
 			usable = append(usable, r)
 		}
 	}
@@ -8614,10 +8628,10 @@ func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jac
 // size filtering. The retry ladder gates on this rather than on the raw result
 // count: hits that were all rejected leave the search just as empty as no hits
 // at all, so the retry that could still find the match has to run.
-func (s *Service) hasUsableSearchResult(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) bool {
+func (s *Service) hasUsableSearchResult(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
 	for _, result := range results {
 		candidate := s.parseReleaseName(result.Title)
-		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: result.Title}, sourceSize, result.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: result.Title}, sourceSize, result.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes) {
 			return true
 		}
 	}
@@ -8632,6 +8646,7 @@ func clearSearchRequestIDs(req *jackett.TorznabSearchRequest) {
 	req.TVDbID = ""
 	req.TMDbID = 0
 	req.TVMazeID = 0
+	req.EpisodeMap = nil
 	req.OmitQueryForIDs = false
 }
 
@@ -9082,12 +9097,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
 	var arrTitles []string
+	var episodeMap *models.EpisodeMap
 	arrResult, queryDegraded := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, contentInfo.ContentType)
 	if arrResult != nil {
 		if arrResult.IDs != nil && !arrResult.IDs.IsEmpty() {
 			externalIDs = arrResult.IDs
 		}
 		arrTitles = arrResult.Titles
+		episodeMap = arrResult.EpisodeMap
 	}
 
 	// When the arr path yields no ID, fall back to the external ID embedded in
@@ -9131,6 +9148,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			searchReq.TVMazeID = externalIDs.TVMazeID
 		}
 		searchReq.OmitQueryForIDs = true // Cross-seed: omit q when IDs present
+		// An absolute-numbered source has an episode but no season, and Torznab
+		// ep counts within a season. The map gives ID-capable indexers the
+		// seasoned pair; text indexers keep the title-only query. Keyed on the
+		// parsed release, not the safe-query pointers, so a caller-supplied
+		// query still carries the map.
+		if searchRelease.Series == 0 && searchRelease.Episode > 0 && episodeMap != nil && episodeMap.Absolute == searchRelease.Episode {
+			searchReq.EpisodeMap = episodeMap
+		}
 	}
 
 	if seasonPtr != nil {
@@ -9311,7 +9336,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// the first fallback to drop. This pass stays gated on the whole search:
 	// dropping the year fires on nearly every movie and has low per-indexer
 	// value, unlike the targeted passes below.
-	if !s.hasUsableSearchResult(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes) && searchReq.Year > 0 {
+	if !s.hasUsableSearchResult(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes) && searchReq.Year > 0 {
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Int("year", searchReq.Year).
@@ -9348,7 +9373,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// passes below.
 	if tagSourcedIDs {
 		idCapIndexerIDs := s.jackettService.IndexerIDsWithIDSearchCaps(waitCtx, searchReq)
-		rescueIndexerIDs := intersectInts(idCapIndexerIDs, s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes))
+		rescueIndexerIDs := intersectInts(idCapIndexerIDs, s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes))
 		if len(rescueIndexerIDs) > 0 {
 			log.Debug().
 				Str("torrentName", sourceTorrent.Name).
@@ -9392,7 +9417,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// the file, not a resolver, and the retry request drops them.
 	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
 		if altTitle, ok := AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name); ok {
-			altTitleIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+			altTitleIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altTitleIndexerIDs) > 0 {
 				log.Debug().
 					Str("torrentName", sourceTorrent.Name).
@@ -9438,7 +9463,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// primary keeps its title passes (see the alternate-title pass above).
 	if !opts.DisableTorznab && (!searchReq.OmitQueryForIDs || tagSourcedIDs) {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
-			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altIndexerIDs) > 0 {
 				altReq := *searchReq
 				clearSearchRequestIDs(&altReq)
@@ -9515,6 +9540,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Source:                 searchSource,
 			Candidate:              namedRelease{release: candidateRelease, rawName: res.Title},
 			SourceTitles:           arrTitles,
+			EpisodeMap:             episodeMap,
 			SourceSize:             sourceSizeForSearch,
 			CandidateSize:          res.Size,
 			TolerancePercent:       tolerancePercent,
@@ -13931,7 +13957,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// Describe the parsed content type for easier debugging and tuning.
 	contentInfo := DetermineContentType(incomingRelease)
 
-	aliasTitles := s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
+	aliasTitles, episodeMap := s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
 
 	log.Debug().
 		Str("source", "cross-seed.webhook").
@@ -14025,6 +14051,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				allowUnknownSize:         req.Size == 0,
 				skipRecheck:              settings.SkipRecheck,
 				candidateTitles:          aliasTitles,
+				episodeMap:               episodeMap,
 				tolerateOneSidedChecksum: true,
 			})
 			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
