@@ -37,6 +37,7 @@ vi.mock("react-i18next", () => ({
 import { api } from "@/lib/api"
 import { toast } from "sonner"
 import { resetPendingListRefetchesForTests, scheduleTorrentListRefetches, useTorrentActions } from "@/hooks/useTorrentActions"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { TorrentFilters } from "@/types"
 
@@ -523,6 +524,30 @@ describe("useTorrentActions - prepare helpers", () => {
     })
     expect(result.current.showRecheckDialog).toBe(true)
     expect(result.current.contextTorrents).toEqual(torrents)
+  })
+
+  it("prepareTmmAction stores the torrents so the confirm dialog can pin targets in the unified view", async () => {
+    const { result } = renderActions({ instanceIds: [3, 4, 5] })
+    const torrents = [{ ...makeTorrent({ hash: "shared" }), instanceId: 3 }]
+
+    act(() => {
+      result.current.prepareTmmAction(["shared"], 1, true, torrents)
+    })
+    expect(result.current.showTmmDialog).toBe(true)
+    expect(result.current.contextTorrents).toEqual(torrents)
+
+    await act(async () => {
+      result.current.handleTmmConfirm(["shared"], false, undefined, undefined, undefined, {
+        actionTargets: buildTorrentActionTargets(result.current.contextTorrents, 0),
+      })
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
+    expect(mockedApi.bulkAction.mock.calls[0][1]).toMatchObject({
+      action: "toggleAutoTMM",
+      enable: true,
+      targets: [{ instanceId: 3, hash: "shared" }],
+    })
   })
 
   it("handleSetSpeedLimits issues only one bulkAction when the download limit is negative", async () => {

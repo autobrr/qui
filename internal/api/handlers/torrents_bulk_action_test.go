@@ -4,12 +4,19 @@
 package handlers
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestValidateBulkActionRequest(t *testing.T) {
@@ -205,4 +212,76 @@ func TestParseInstanceIDsParam(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBulkAction_UnifiedScopeRejectsBareHashes pins the unified-scope contract:
+// a hash names a torrent, not an instance, so hashes without targets are a 400
+// instead of a fan-out to every instance that holds the hash (issue #2527).
+func TestBulkAction_UnifiedScopeRejectsBareHashes(t *testing.T) {
+	t.Parallel()
+
+	handler := &TorrentsHandler{}
+	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
+		"action": "recheck",
+		"hashes": []string{"shared"},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.BulkAction(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "targets")
+}
+
+// TestBulkAction_UnifiedScopeTargetsReachOneInstance is the mirror case: the same
+// payload with targets for one instance reaches only that instance, even though
+// the other instance holds the same hash.
+func TestBulkAction_UnifiedScopeTargetsReachOneInstance(t *testing.T) {
+	t.Parallel()
+
+	db := testdb.NewMigratedSQLite(t, "torrents-bulk-action")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), 60*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = clientPool.Close() })
+
+	shared := []qbt.Torrent{{Name: "Shared", Hash: "shared", AddedOn: 1}}
+	clients := make(map[int]*qbittorrent.Client, 2)
+	instanceIDs := make(map[string]int, 2)
+	recheckHits := map[string]*atomic.Int64{"alpha": {}, "beta": {}}
+	for name, hits := range recheckHits {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/v2/torrents/recheck":
+				hits.Add(1)
+			case "/api/v2/sync/maindata":
+				_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{"shared":{"name":"Shared","hash":"shared","added_on":1}}}`))
+				return
+			}
+			_, _ = w.Write([]byte("Ok."))
+		}))
+		t.Cleanup(srv.Close)
+
+		instance, createErr := instanceStore.Create(t.Context(), name, srv.URL, "user", "pass", nil, nil, false, nil)
+		require.NoError(t, createErr)
+		instanceIDs[name] = instance.ID
+		clients[instance.ID] = newStaleCachedClient(t, srv.URL, shared)
+	}
+	setUnexportedField(t, clientPool, "clients", clients)
+
+	handler := NewTorrentsHandler(qbittorrent.NewSyncManager(clientPool, nil), nil, instanceStore)
+	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
+		"action":      "recheck",
+		"hashes":      []string{"shared"},
+		"targets":     []map[string]any{{"instanceId": instanceIDs["alpha"], "hash": "shared"}},
+		"instanceIds": []int{instanceIDs["alpha"], instanceIDs["beta"]},
+	})
+
+	rec := httptest.NewRecorder()
+	handler.BulkAction(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.EqualValues(t, 1, recheckHits["alpha"].Load())
+	require.EqualValues(t, 0, recheckHits["beta"].Load())
 }
