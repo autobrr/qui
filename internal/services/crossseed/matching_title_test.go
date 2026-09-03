@@ -235,7 +235,7 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 				Group:  "GROUP",
 			},
 			wantMatch:   true,
-			description: "colon should be stripped - 'City: Downtown' matches 'City Downtown'",
+			description: "colon should read as a space - 'City: Downtown' matches 'City Downtown'",
 		},
 		{
 			name: "hyphen vs space TV",

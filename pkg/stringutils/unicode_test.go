@@ -103,6 +103,7 @@ func TestNormalizeForMatching(t *testing.T) {
 		// Colon handling
 		{"colon", "CSI: Miami", "csi miami"},
 		{"colon with space", "City: Downtown", "city downtown"},
+		{"colon without space", "Re:Start Isekai Life", "re start isekai life"},
 		{"comma", "Signal, Bloom", "signal bloom"},
 		{"comma without space", "Signal,Bloom", "signal bloom"},
 
@@ -186,6 +187,18 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"csi colon",
 			"CSI: Miami S01",
 			"CSI Miami S01",
+		},
+		{
+			// A file name cannot hold a colon, so the on-disk name spaces it.
+			"colon without space vs on-disk name",
+			"Re:Start Isekai Life S04E15",
+			"Re Start Isekai Life S04E15",
+		},
+		{
+			// Sonarr series title versus a tracker's spelling of the same title.
+			"sonarr colon space comma vs tracker colon hyphens",
+			"Re: START, Isekai Life Again",
+			"Re:START -Isekai Life Again-",
 		},
 		{
 			"comma title separator",
