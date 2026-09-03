@@ -49,6 +49,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useAuth } from "@/hooks/useAuth"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
@@ -109,13 +110,16 @@ function getApiErrorMessage(error: unknown, fallback: string) {
 
 function ChangePasswordForm() {
   const { t } = useTranslation("settings")
+  const { setIsAuthenticated } = useAuth()
   const mutation = useMutation({
     mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
       return api.changePassword(data.currentPassword, data.newPassword)
     },
     onSuccess: () => {
       toast.success(t("changePassword.toasts.success"))
-      form.reset()
+      // The server ended every session, this one included. Dropping the
+      // cached user sends the authenticated layout back to the login page.
+      setIsAuthenticated(false)
     },
     onError: () => {
       toast.error(t("changePassword.toasts.error"))

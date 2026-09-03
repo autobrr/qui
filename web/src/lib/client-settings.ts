@@ -184,7 +184,10 @@ async function flushPending(): Promise<void> {
     // flush finish, and this module must stay import-light (i18n boots on it).
     const response = await fetch(`${getApiBaseUrl()}/client-settings`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
       body: JSON.stringify(batch),
       keepalive: true,
     })

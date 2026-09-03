@@ -23,6 +23,10 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
   http://localhost:7476/api/instances
 ```
 
+## Session cookies
+
+The session cookie is for the qui web UI. Scripts should use an API key. See [Sessions](../configuration/reference.md#sessions) for the rules that apply to cookie requests.
+
 ## Security notes
 
 - qui shows an API key only once, at creation. Save it in a safe place.

@@ -834,7 +834,8 @@ func (app *Application) runServer() {
 	sessionManager.Cookie.Name = "qui_user_session"
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	sessionManager.Cookie.Secure = false // Will be set to true when HTTPS is detected
+	sessionManager.Cookie.Secure = cfg.Config.SecureSessionCookie()
+	sessionManager.Cookie.Path = cfg.Config.BaseURL
 	sessionManager.Cookie.Persist = false
 
 	// Start server in goroutine
