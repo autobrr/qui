@@ -7941,6 +7941,7 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 		Str("source", result.Source).
 		Int("titles", len(result.Titles)).
 		Strs("arrTitles", result.Titles).
+		Interface("episodeMap", result.EpisodeMap).
 		Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
 	return result, ""
 }

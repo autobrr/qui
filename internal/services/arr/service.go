@@ -47,13 +47,17 @@ const (
 
 // ExternalIDsResult contains the result of an ID lookup
 type ExternalIDsResult struct {
-	IDs           *models.ExternalIDs `json:"ids,omitempty"`
-	Titles        []string            `json:"titles,omitempty"`
-	TitlesKnown   bool                `json:"-"`
-	FromCache     bool                `json:"from_cache"`
-	ArrInstanceID *int                `json:"arr_instance_id,omitempty"`
-	ContentType   ContentType         `json:"content_type"`
-	Source        string              `json:"source,omitempty"`
+	IDs         *models.ExternalIDs `json:"ids,omitempty"`
+	Titles      []string            `json:"titles,omitempty"`
+	TitlesKnown bool                `json:"-"`
+	// EpisodeMap is set when Sonarr named exactly one absolute-numbered episode.
+	// EpisodeMapKnown reports that the map was read; a cached row without it refetches.
+	EpisodeMap      *models.EpisodeMap `json:"episode_map,omitempty"`
+	EpisodeMapKnown bool               `json:"-"`
+	FromCache       bool               `json:"from_cache"`
+	ArrInstanceID   *int               `json:"arr_instance_id,omitempty"`
+	ContentType     ContentType        `json:"content_type"`
+	Source          string             `json:"source,omitempty"`
 }
 
 // SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season,
@@ -119,7 +123,7 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 	if err != nil {
 		return nil, err
 	}
-	if cacheResult != nil && (cacheResult.IDs == nil || cacheResult.IDs.IsEmpty() || cacheResult.TitlesKnown) {
+	if cacheResult != nil && (cacheResult.IDs == nil || cacheResult.IDs.IsEmpty() || (cacheResult.TitlesKnown && cacheResult.EpisodeMapKnown)) {
 		return cacheResult, nil
 	}
 
@@ -213,16 +217,19 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 		Int("tvmazeId", cacheEntry.ExternalIDs.TVMazeID).
 		Int("titles", len(cacheEntry.Titles)).
 		Strs("arrTitles", cacheEntry.Titles).
+		Interface("episodeMap", cacheEntry.EpisodeMap).
 		Msg("[ARR-LOOKUP] Cache hit (positive)")
 
 	return &ExternalIDsResult{
-		IDs:           &cacheEntry.ExternalIDs,
-		Titles:        cacheEntry.Titles,
-		TitlesKnown:   cacheEntry.HasTitles,
-		FromCache:     true,
-		ArrInstanceID: cacheEntry.ArrInstanceID,
-		ContentType:   contentType,
-		Source:        "cache",
+		IDs:             &cacheEntry.ExternalIDs,
+		Titles:          cacheEntry.Titles,
+		TitlesKnown:     cacheEntry.HasTitles,
+		EpisodeMap:      cacheEntry.EpisodeMap,
+		EpisodeMapKnown: cacheEntry.HasEpisodeMap,
+		FromCache:       true,
+		ArrInstanceID:   cacheEntry.ArrInstanceID,
+		ContentType:     contentType,
+		Source:          "cache",
 	}, nil
 }
 
@@ -252,7 +259,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 		}
 
 		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
-			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse"), nil
+			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse", true), nil
 		}
 
 		// anyQueried gates negative caching and the total-failure error: an
@@ -272,7 +279,9 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			}
 			anyQueried = true
 			if lookupResult != nil && lookupResult.IDs != nil && !lookupResult.IDs.IsEmpty() {
-				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, lookupResult, "lookup"), nil
+				// The map is known only when parse answered: an unanswered parse
+				// must not stamp the row as "looked, found none" for the TTL.
+				return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, lookupResult, "lookup", parseAnswered), nil
 			}
 		} else if parseAnswered {
 			anyQueried = true
@@ -312,12 +321,12 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 	}, nil
 }
 
-func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string) *ExternalIDsResult {
+func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string, episodeMapKnown bool) *ExternalIDsResult {
 	instanceID := instance.ID
 	titles := append([]string{}, result.Titles...)
 	writeCtx, cancel := detachedCacheWriteContext(ctx)
 	defer cancel()
-	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, false, s.positiveTTL); err != nil {
+	if err := s.cacheStore.SetWithTitles(writeCtx, titleHash, string(contentType), &instanceID, result.IDs, titles, result.EpisodeMap, episodeMapKnown, false, s.positiveTTL); err != nil {
 		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
 	}
 
@@ -332,16 +341,19 @@ func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title stri
 		Int("tvmazeId", result.IDs.TVMazeID).
 		Int("titles", len(result.Titles)).
 		Strs("arrTitles", result.Titles).
+		Interface("episodeMap", result.EpisodeMap).
 		Msg("[ARR-LOOKUP] IDs found")
 
 	return &ExternalIDsResult{
-		IDs:           result.IDs,
-		Titles:        result.Titles,
-		TitlesKnown:   true,
-		FromCache:     false,
-		ArrInstanceID: &instanceID,
-		ContentType:   contentType,
-		Source:        source,
+		IDs:             result.IDs,
+		Titles:          result.Titles,
+		TitlesKnown:     true,
+		EpisodeMap:      result.EpisodeMap,
+		EpisodeMapKnown: episodeMapKnown,
+		FromCache:       false,
+		ArrInstanceID:   &instanceID,
+		ContentType:     contentType,
+		Source:          source,
 	}
 }
 

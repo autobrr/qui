@@ -169,3 +169,44 @@ func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
 		require.True(t, entry.IsNegative)
 	})
 }
+
+func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "arr-id-cache-episode-map")
+	store := models.NewArrIDCacheStore(db)
+	ids := &models.ExternalIDs{TVDbID: 471000}
+	episodeMap := &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
+
+	t.Run("map stored and read back", func(t *testing.T) {
+		require.NoError(t, store.SetWithTitles(ctx, "mapped", "tv", nil, ids, []string{"Solitude"}, episodeMap, true, false, time.Hour))
+		entry, err := store.Get(ctx, "mapped", "tv")
+		require.NoError(t, err)
+		require.True(t, entry.HasEpisodeMap)
+		require.Equal(t, episodeMap, entry.EpisodeMap)
+	})
+
+	t.Run("looked and found none sets the flag with nulls", func(t *testing.T) {
+		require.NoError(t, store.SetWithTitles(ctx, "unmapped", "tv", nil, ids, []string{"Solitude"}, nil, true, false, time.Hour))
+		entry, err := store.Get(ctx, "unmapped", "tv")
+		require.NoError(t, err)
+		require.True(t, entry.HasEpisodeMap)
+		require.Nil(t, entry.EpisodeMap)
+	})
+
+	t.Run("legacy positive write leaves the flag unset", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "legacy", "tv", nil, ids, false, time.Hour))
+		entry, err := store.Get(ctx, "legacy", "tv")
+		require.NoError(t, err)
+		require.False(t, entry.HasEpisodeMap)
+		require.Nil(t, entry.EpisodeMap)
+	})
+
+	t.Run("negative row carries no map", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "negative", "tv", nil, nil, true, time.Hour))
+		entry, err := store.Get(ctx, "negative", "tv")
+		require.NoError(t, err)
+		require.True(t, entry.IsNegative)
+		require.False(t, entry.HasEpisodeMap)
+		require.Nil(t, entry.EpisodeMap)
+	})
+}

@@ -8800,6 +8800,10 @@ components:
             type: string
         has_titles:
           type: boolean
+        episode_map:
+          $ref: '#/components/schemas/ArrEpisodeMap'
+        has_episode_map:
+          type: boolean
         is_negative:
           type: boolean
         cached_at:
@@ -8808,6 +8812,17 @@ components:
         expires_at:
           type: string
           format: date-time
+
+    ArrEpisodeMap:
+      type: object
+      description: Sonarr season, episode, and absolute number for the one episode a release name resolves to.
+      properties:
+        season:
+          type: integer
+        episode:
+          type: integer
+        absolute:
+          type: integer
 
     ArrInstanceResult:
       type: object
