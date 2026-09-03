@@ -6,6 +6,8 @@ package jackett
 import (
 	"slices"
 	"time"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // TorznabSearchRequest represents a general Torznab search request
@@ -30,6 +32,11 @@ type TorznabSearchRequest struct {
 	Season *int `json:"season,omitempty"`
 	// Episode for TV shows (optional)
 	Episode *int `json:"episode,omitempty"`
+	// EpisodeMap carries the Sonarr season and episode for an absolute-numbered
+	// source. It reaches only the indexers that keep an ID parameter; text
+	// indexers keep the seasonless query, because a Cardigann text search folds
+	// SxxExx into keywords and hides absolute-numbered listings.
+	EpisodeMap *models.EpisodeMap `json:"-"`
 	// Artist for music searches (optional)
 	Artist string `json:"artist,omitempty"`
 	// Album for music searches (optional)

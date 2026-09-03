@@ -104,7 +104,7 @@ If Sonarr resolves the show, qui pulls its series-wide alternate titles and uses
 
 If both sides use the same absolute numbering, qui matches absolute-numbered anime episodes (for example `Show - 1140`, with no season number) against a season pack. qui keys the local episode to the pack season and uses the absolute episode number to identify it.
 
-This feature does not translate between different numbering schemes. A pack that uses `SxxExx` numbering does not match local episodes numbered with absolute numbers, and the reverse also holds. Translation between schemes requires authoritative per-episode data from a metadata provider. In practice, releases that cross-seed cleanly already share a numbering convention.
+Season-pack matching does not translate between numbering schemes. A pack that uses `SxxExx` numbering does not match local episodes numbered with absolute numbers, and the reverse also holds. Translation needs per-episode data for every file in the pack. Single episodes are different: with Sonarr linked, qui maps one episode between schemes. See [Manual Search](./overview.md#manual-search) in the overview.
 
 A `/check` call without torrent data has no file list to determine the pack's numbering scheme. The check remains optimistic and reports ready against local episodes that use the other scheme. The `/apply` endpoint verifies the real file list of the pack and acts as the authority. A false ready result from the light check costs only one wasted `.torrent` download, and qui injects nothing.
 

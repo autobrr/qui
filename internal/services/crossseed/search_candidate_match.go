@@ -4,6 +4,7 @@
 package crossseed
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/moistari/rls"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -44,10 +46,14 @@ const (
 // searchCandidateInput contains the two release views and size evidence used by
 // search classification, alternate-query checks, and apply-time decision replay.
 type searchCandidateInput struct {
-	Source                 namedRelease
-	Candidate              namedRelease
-	SourceTitles           []string
-	CandidateTitles        []string
+	Source          namedRelease
+	Candidate       namedRelease
+	SourceTitles    []string
+	CandidateTitles []string
+	// EpisodeMap is the Sonarr triple for the release qui looked up (the search
+	// source or the announce). It equates a seasonless episode with its seasoned
+	// counterpart on the other side; see applyEpisodeMap.
+	EpisodeMap             *models.EpisodeMap
 	SourceSize             int64
 	CandidateSize          int64
 	TolerancePercent       float64
@@ -70,6 +76,7 @@ type searchCandidateDecision struct {
 	GroupFallbackIdentity string
 	SourceTitles          []string
 	CandidateTitles       []string
+	EpisodeMap            *models.EpisodeMap
 	RejectReason          string
 	StrictMismatchReason  string
 	RelaxedDifferences    []string
@@ -95,6 +102,7 @@ type searchDecisionProvenance struct {
 	GroupFallbackIdentity string
 	SourceTitles          []string
 	CandidateTitles       []string
+	EpisodeMap            *models.EpisodeMap
 }
 
 func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
@@ -107,6 +115,7 @@ func (decision searchCandidateDecision) provenance() searchDecisionProvenance {
 		GroupFallbackIdentity: decision.GroupFallbackIdentity,
 		SourceTitles:          slices.Clone(decision.SourceTitles),
 		CandidateTitles:       slices.Clone(decision.CandidateTitles),
+		EpisodeMap:            decision.EpisodeMap,
 	}
 }
 
@@ -155,6 +164,7 @@ const (
 // Apply later uses the private decision provenance to replay the release
 // prefilter; normal torrent-file validation remains authoritative.
 func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCandidateDecision {
+	input, mappedEpisode := applyEpisodeMap(input)
 	decision := searchCandidateDecision{
 		Class:               searchCandidateClassRejected,
 		SizeEvidence:        classifySearchSizeEvidence(input.SourceSize, input.CandidateSize),
@@ -280,11 +290,11 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 	decision.Class = class
 	decision.SourceTitles = slices.Clone(input.SourceTitles)
 	decision.CandidateTitles = slices.Clone(input.CandidateTitles)
+	decision.EpisodeMap = input.EpisodeMap
 	decision.Score, decision.MatchReason = evaluateReleaseMatch(input.Source.release, input.Candidate.release)
 	if decision.Score <= 0 {
 		decision.Score = 1
 	}
-
 	switch class {
 	case searchCandidateClassTitleRescue:
 		decision.MatchReason = "Title rescue · full check required"
@@ -314,8 +324,41 @@ func (s *Service) classifySearchCandidate(input searchCandidateInput) searchCand
 		}
 	case searchCandidateClassRejected:
 	}
+	if mappedEpisode != "" {
+		decision.MatchReason = mappedEpisode + "; " + decision.MatchReason
+	}
 
 	return decision
+}
+
+// applyEpisodeMap rewrites the seasonless side of a mixed-scheme pair to the
+// mapped season and episode when the map equates the two: the seasonless side
+// carries the map's absolute number and the seasoned side carries its season
+// and episode. The strict matcher then sees a same-scheme pair. Any other pair
+// is left alone, so same-scheme pairs and a tracker that numbers the episode
+// differently from Sonarr keep today's episode mismatch. The returned reason
+// names the equality for the decision trace.
+func applyEpisodeMap(input searchCandidateInput) (searchCandidateInput, string) {
+	episodeMap := input.EpisodeMap
+	if episodeMap == nil || episodeMap.Absolute <= 0 || input.Source.release == nil || input.Candidate.release == nil {
+		return input, ""
+	}
+	seasonless := func(r *rls.Release) bool { return r.Series == 0 && r.Episode == episodeMap.Absolute }
+	seasoned := func(r *rls.Release) bool { return r.Series == episodeMap.Season && r.Episode == episodeMap.Episode }
+	var side *namedRelease
+	switch {
+	case seasonless(input.Source.release) && seasoned(input.Candidate.release):
+		side = &input.Source
+	case seasonless(input.Candidate.release) && seasoned(input.Source.release):
+		side = &input.Candidate
+	default:
+		return input, ""
+	}
+	mapped := *side.release
+	mapped.Series = episodeMap.Season
+	mapped.Episode = episodeMap.Episode
+	side.release = &mapped
+	return input, fmt.Sprintf("mapped episode %d = S%02dE%02d", episodeMap.Absolute, episodeMap.Season, episodeMap.Episode)
 }
 
 func (s *Service) hasOneSidedChecksum(source, candidate *rls.Release) bool {
@@ -521,6 +564,7 @@ func (s *Service) searchCandidateMetadataConsistent(
 	actual namedRelease,
 	allowedDifferences []string,
 	actualTitles []string,
+	episodeMap *models.EpisodeMap,
 	findIndividualEpisodes bool,
 ) (bool, string) {
 	if advertisedName == "" || actual.release == nil {
@@ -560,8 +604,10 @@ func (s *Service) searchCandidateMetadataConsistent(
 			tagOrigin: actual.tagOrigin,
 		},
 		CandidateTitles:        slices.Clone(actualTitles),
+		EpisodeMap:             episodeMap,
 		FindIndividualEpisodes: findIndividualEpisodes,
 	}
+	input, _ = applyEpisodeMap(input)
 	matches, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(
 		input.Source.release,
 		input.Candidate.release,

@@ -103,6 +103,8 @@ RSS uses the same classifier with its feed title and byte count. The [autobrr in
 
 Announce matching over alternate titles, such as an anime announced under its English or romaji name, needs a [Sonarr or Radarr integration](../search.md#sonarr-and-radarr-integrations). Without one, qui matches announces on the release name only.
 
+Sonarr also maps a single anime episode between numbering schemes. When Sonarr names exactly one episode for a release, qui reads its season, episode, and absolute number, and stores the map with the cached IDs. A search for an absolute-numbered episode (`Show - 81`) then asks ID-capable indexers for the mapped `S04E15`, and a `S04E15` announce or search result matches a local `Show - 81` file as a strict match, in both directions. The map only adds matches: when a tracker numbers the episode differently from Sonarr, qui treats the pair as an episode mismatch, as before. Season packs are not mapped. See [Season Packs](./season-packs.md#anime-absolute-numbering).
+
 If autobrr has no positive size, qui uses a narrow name-only preflight. This preflight can approve one download, but it cannot approve an add.
 
 ### Manual Match
