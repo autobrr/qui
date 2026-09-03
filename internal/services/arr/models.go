@@ -21,6 +21,7 @@ type SonarrParseResponse struct {
 	Title             string                   `json:"title"`
 	ParsedEpisodeInfo *SonarrParsedEpisodeInfo `json:"parsedEpisodeInfo"`
 	Series            *SonarrSeries            `json:"series"`
+	Episodes          []SonarrEpisodeResource  `json:"episodes"`
 }
 
 // SonarrParsedEpisodeInfo contains parsed episode information from Sonarr
@@ -28,7 +29,6 @@ type SonarrParsedEpisodeInfo struct {
 	SeriesTitle       string `json:"seriesTitle"`
 	SeasonNumber      int    `json:"seasonNumber"`
 	EpisodeNumbers    []int  `json:"episodeNumbers"`
-	AbsoluteEpisode   int    `json:"absoluteEpisodeNumber"`
 	Quality           any    `json:"quality"`
 	ReleaseGroup      string `json:"releaseGroup"`
 	ReleaseHash       string `json:"releaseHash"`
@@ -49,11 +49,14 @@ type SonarrSeries struct {
 	IMDbID          string           `json:"imdbId"`
 }
 
-// SonarrEpisodeResource represents the subset of Sonarr episode fields needed for season counts.
+// SonarrEpisodeResource represents the subset of Sonarr episode fields needed for
+// season counts and the episode map. Sonarr sends absoluteEpisodeNumber as null
+// for shows without absolute numbering.
 type SonarrEpisodeResource struct {
-	ID            int `json:"id"`
-	SeasonNumber  int `json:"seasonNumber"`
-	EpisodeNumber int `json:"episodeNumber"`
+	ID                    int  `json:"id"`
+	SeasonNumber          int  `json:"seasonNumber"`
+	EpisodeNumber         int  `json:"episodeNumber"`
+	AbsoluteEpisodeNumber *int `json:"absoluteEpisodeNumber"`
 }
 
 // RadarrParseResponse represents the response from Radarr's /api/v3/parse endpoint
@@ -113,10 +116,12 @@ func (a AlternateTitle) matchesSeason(season int) bool {
 	return a.SeasonNumber != nil && *a.SeasonNumber == season
 }
 
-// ExternalIDsLookupResult contains ARR IDs plus ARR-provided titles for the same content.
+// ExternalIDsLookupResult contains ARR IDs plus ARR-provided titles for the same
+// content, and the episode map when Sonarr named exactly one absolute-numbered episode.
 type ExternalIDsLookupResult struct {
-	IDs    *models.ExternalIDs
-	Titles []string
+	IDs        *models.ExternalIDs
+	Titles     []string
+	EpisodeMap *models.EpisodeMap
 }
 
 // ExtractExternalIDs extracts external IDs from a Sonarr parse response
@@ -128,12 +133,31 @@ func (r *SonarrParseResponse) ExtractExternalIDs() *models.ExternalIDs {
 	return result.IDs
 }
 
-// ExtractLookupResult extracts external IDs and title aliases from a Sonarr parse response.
+// ExtractLookupResult extracts external IDs, title aliases, and the episode map
+// from a Sonarr parse response.
 func (r *SonarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
 	if r == nil {
 		return nil
 	}
-	return lookupResultFromSonarrSeries(r.Series)
+	result := lookupResultFromSonarrSeries(r.Series)
+	if result != nil {
+		result.EpisodeMap = r.episodeMap()
+	}
+	return result
+}
+
+// episodeMap returns the map only when Sonarr named exactly one episode and it
+// carries an absolute number. Multi-episode and pack releases have no single map.
+func (r *SonarrParseResponse) episodeMap() *models.EpisodeMap {
+	if len(r.Episodes) != 1 || r.Episodes[0].AbsoluteEpisodeNumber == nil {
+		return nil
+	}
+	episode := r.Episodes[0]
+	return &models.EpisodeMap{
+		Season:   episode.SeasonNumber,
+		Episode:  episode.EpisodeNumber,
+		Absolute: *episode.AbsoluteEpisodeNumber,
+	}
 }
 
 func externalIDsFromSonarrSeries(series *SonarrSeries) *models.ExternalIDs {
