@@ -8,11 +8,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
+import { SortIcon } from "@/components/ui/sort-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
-import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
+import type { FilePriorityValue } from "@/lib/file-priority"
+import { buildFileTree, DEFAULT_FILE_SORT, sortFileTree, toggleFileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
 import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
-import { getLinuxFileName, getLinuxFolderName, getLinuxSavePath } from "@/lib/incognito"
+import { getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -40,134 +42,12 @@ interface TorrentFileTableProps {
   onShowMediaInfo?: (file: TorrentFile) => void
 }
 
-interface FileTreeNode {
-  id: string
-  name: string
-  kind: "file" | "folder"
-  file?: TorrentFile
-  children?: FileTreeNode[]
-  totalSize: number
-  totalProgress: number
-  selectedCount: number
-  totalCount: number
-  priority: FolderPriority
-}
-
 interface FlatRow {
   node: FileTreeNode
   depth: number
   isExpanded: boolean
   hasChildren: boolean
   isVisible: boolean
-}
-
-function buildFileTree(
-  files: TorrentFile[],
-  incognitoMode: boolean,
-  torrentHash: string
-): FileTreeNode[] {
-  const nodeMap = new Map<string, FileTreeNode>()
-  const roots: FileTreeNode[] = []
-
-  const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name))
-
-  for (const file of sortedFiles) {
-    const segments = file.name.split("/").filter(Boolean)
-    let parentPath = ""
-
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i]
-      const currentPath = parentPath ? `${parentPath}/${segment}` : segment
-      const isLeaf = i === segments.length - 1
-
-      let node = nodeMap.get(currentPath)
-
-      if (!node) {
-        let displayName: string
-        if (incognitoMode) {
-          if (isLeaf) {
-            displayName = getLinuxFileName(torrentHash, file.index).split("/").pop() || segment
-          } else {
-            displayName = getLinuxFolderName(torrentHash, i)
-          }
-        } else {
-          displayName = segment
-        }
-
-        node = {
-          id: currentPath,
-          name: displayName,
-          kind: isLeaf ? "file" : "folder",
-          file: isLeaf ? file : undefined,
-          children: isLeaf ? undefined : [],
-          totalSize: isLeaf ? file.size : 0,
-          totalProgress: isLeaf ? file.progress * file.size : 0,
-          selectedCount: isLeaf && file.priority !== 0 ? 1 : 0,
-          totalCount: isLeaf ? 1 : 0,
-          priority: isLeaf ? normalizeFilePriority(file.priority) : FILE_PRIORITY.normal,
-        }
-        nodeMap.set(currentPath, node)
-
-        if (parentPath) {
-          const parentNode = nodeMap.get(parentPath)
-          if (parentNode && parentNode.children) {
-            parentNode.children.push(node)
-          }
-        } else {
-          roots.push(node)
-        }
-      }
-
-      parentPath = currentPath
-    }
-  }
-
-  // Calculate aggregates bottom-up
-  function calculateAggregates(node: FileTreeNode): void {
-    if (node.kind === "folder" && node.children) {
-      node.children.forEach(calculateAggregates)
-      node.totalSize = node.children.reduce((sum, child) => sum + child.totalSize, 0)
-      node.totalProgress = node.children.reduce((sum, child) => sum + child.totalProgress, 0)
-      node.selectedCount = node.children.reduce((sum, child) => sum + child.selectedCount, 0)
-      node.totalCount = node.children.reduce((sum, child) => sum + child.totalCount, 0)
-      if (node.children.length > 0) {
-        node.priority = node.children.map(child => child.priority).reduce(foldFolderPriority)
-      }
-    }
-  }
-
-  roots.forEach(calculateAggregates)
-
-  // Sort nodes: folders first, then alphabetically within each type (natural sort)
-  function sortNodes(nodes: FileTreeNode[]): void {
-    nodes.sort((a, b) => {
-      // Folders before files
-      if (a.kind === "folder" && b.kind === "file") return -1
-      if (a.kind === "file" && b.kind === "folder") return 1
-      // Alphabetical within same type (natural sort)
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
-    })
-    for (const node of nodes) {
-      if (node.children) sortNodes(node.children)
-    }
-  }
-  sortNodes(roots)
-
-  return roots
-}
-
-function collectFolderIds(nodes: FileTreeNode[]): Set<string> {
-  const ids = new Set<string>()
-  function walk(current: FileTreeNode[]) {
-    for (const node of current) {
-      if (node.kind === "folder") {
-        ids.add(node.id)
-        if (node.children) walk(node.children)
-      }
-    }
-  }
-  walk(nodes)
-  return ids
 }
 
 function flattenTree(
@@ -221,13 +101,14 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   const { t } = useTranslation("torrents")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
   const [searchQuery, setSearchQuery] = useState("")
+  const [sort, setSort] = useState(DEFAULT_FILE_SORT)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const tree = useMemo(
-    () => (files ? buildFileTree(files, incognitoMode, torrentHash) : []),
+  const { nodes, folderIds } = useMemo(
+    () => buildFileTree(files ?? [], incognitoMode, torrentHash),
     [files, incognitoMode, torrentHash]
   )
-  const folderIds = useMemo(() => collectFolderIds(tree), [tree])
+  const tree = useMemo(() => sortFileTree(nodes, sort), [nodes, sort])
 
   // Expand all folders by default when tree is first built for a new torrent,
   // then keep the expanded set keyed to current paths (renames change node ids);
@@ -318,6 +199,17 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     resetKey: torrentHash,
   })
 
+  const sortHeader = (column: FileSortColumn, label: string, className: string) => (
+    <button
+      type="button"
+      className={cn("flex items-center gap-1 px-2 py-1.5 font-medium text-muted-foreground select-none hover:bg-muted/50", className)}
+      onClick={() => setSort(prev => toggleFileSort(prev, column))}
+    >
+      {label}
+      <SortIcon sorted={sort.column === column ? sort.direction : false} />
+    </button>
+  )
+
   if (loading && !files) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -384,12 +276,10 @@ export const TorrentFileTable = memo(function TorrentFileTable({
             {supportsFilePriority && (
               <div className="w-8 px-2 py-1.5 text-left shrink-0"></div>
             )}
-            <div className="flex-1 px-2 py-1.5 text-left font-medium text-muted-foreground">{t("fileTable.headers.name")}</div>
-            <div className="w-28 px-2 py-1.5 text-left font-medium text-muted-foreground shrink-0">{t("fileTable.headers.progress")}</div>
-            <div className="w-24 px-2 py-1.5 text-right font-medium text-muted-foreground shrink-0">{t("fileTable.headers.size")}</div>
-            {supportsFilePriority && (
-              <div className="w-36 px-2 py-1.5 text-left font-medium text-muted-foreground shrink-0">{t("filePriority.header")}</div>
-            )}
+            {sortHeader("name", t("fileTable.headers.name"), "flex-1")}
+            {sortHeader("progress", t("fileTable.headers.progress"), "w-28 shrink-0")}
+            {sortHeader("size", t("fileTable.headers.size"), "w-24 shrink-0 justify-end")}
+            {supportsFilePriority && sortHeader("priority", t("filePriority.header"), "w-36 shrink-0")}
           </div>
           {/* Virtualized body */}
           <div
