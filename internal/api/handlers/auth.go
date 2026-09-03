@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -33,6 +34,9 @@ type AuthHandler struct {
 	clientPool     *qbittorrent.ClientPool
 	syncManager    *qbittorrent.SyncManager
 	loginLimiter   *rate.Limiter
+	// loginMu serialises password checks so parallel guesses cannot all pass the
+	// limiter before any of them consumes a token.
+	loginMu sync.Mutex
 }
 
 // newLoginLimiter allows five failed password logins per minute, process-wide:
@@ -265,6 +269,24 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 	}()
 }
 
+var errTooManyLogins = errors.New("too many failed login attempts")
+
+// checkPassword runs one password check at a time. Only a failed check
+// consumes a limiter token.
+func (h *AuthHandler) checkPassword(ctx context.Context, username, password string) (*models.User, error) {
+	h.loginMu.Lock()
+	defer h.loginMu.Unlock()
+
+	if h.loginLimiter.Tokens() < 1 {
+		return nil, errTooManyLogins
+	}
+	user, err := h.authService.Login(ctx, username, password)
+	if errors.Is(err, auth.ErrInvalidCredentials) {
+		h.loginLimiter.Allow()
+	}
+	return user, err
+}
+
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
@@ -281,16 +303,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.loginLimiter.Tokens() < 1 {
-		RespondError(w, http.StatusTooManyRequests, "Too many failed login attempts, try again later")
-		return
-	}
-
-	// Validate credentials
-	user, err := h.authService.Login(r.Context(), req.Username, req.Password)
+	user, err := h.checkPassword(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, errTooManyLogins) {
+			RespondError(w, http.StatusTooManyRequests, "Too many failed login attempts, try again later")
+			return
+		}
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			h.loginLimiter.Allow()
 			RespondError(w, http.StatusUnauthorized, "Invalid credentials")
 			return
 		}

@@ -106,6 +106,22 @@ func TestLoginLimitsFailedPasswordAttempts(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, post(t, login, "/api/auth/login", "application/json", right).Code)
 }
 
+func TestLoginLimitHoldsUnderParallelAttempts(t *testing.T) {
+	h := newPasswordAuthHandler(t)
+	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
+	wrong := `{"username":"alice","password":"wrong-password"}`
+
+	codes := make(chan int, 6)
+	for range 6 {
+		go func() { codes <- post(t, login, "/api/auth/login", "application/json", wrong).Code }()
+	}
+	got := map[int]int{}
+	for range 6 {
+		got[<-codes]++
+	}
+	assert.Equal(t, map[int]int{http.StatusUnauthorized: 5, http.StatusTooManyRequests: 1}, got)
+}
+
 func TestChangePasswordEndsEverySession(t *testing.T) {
 	h := newPasswordAuthHandler(t)
 	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
