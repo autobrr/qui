@@ -227,4 +227,6 @@ func TestIsEpisodeRange(t *testing.T) {
 	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.S01E05.E06.1080p.WEB-GRP")))
 	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.1x05.1x06.1080p.WEB-GRP")))
 	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.S01E01E02-GRP/Show.Name.Episode.1-2.mkv")))
+	// An absolute-only batch has no SxxEyy tag, so every tag counts.
+	require.True(t, IsEpisodeRange(parser.Parse("[Grp] Show Name - 01 - 12 [1080p]")))
 }

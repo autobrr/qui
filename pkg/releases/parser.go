@@ -112,16 +112,28 @@ func IsEpisodeRange(release *rls.Release) bool {
 	if release == nil {
 		return false
 	}
-	// Count distinct episodes, not entries: a file path names the same episode
-	// twice ("Show.S11E11-GRP/Show.S11E11-GRP.mkv") and that is still one episode.
-	// Only tags in the SxxEyy scheme count: "S23E19.Episode.1174" names one
-	// episode under two schemes, and rls lists both numbers as series tags.
-	// The %o verb is the tag's original capture (see rls.Tag.Format).
-	first := [2]int{-1, -1}
+	// Once a tag in the SxxEyy scheme is present, only those tags count:
+	// "S23E19.Episode.1174" names one episode under two schemes, and rls lists
+	// both numbers as series tags. An absolute-only name such as
+	// "Show - 01 - 12" keeps all its tags. The %o verb is the tag's original
+	// capture (see rls.Tag.Format).
+	var tags, scheme []rls.Tag
 	for _, tag := range release.Tags() {
-		if !tag.Is(rls.TagTypeSeries) || !seasonEpisodeScheme.MatchString(fmt.Sprintf("%o", tag)) {
+		if !tag.Is(rls.TagTypeSeries) {
 			continue
 		}
+		tags = append(tags, tag)
+		if seasonEpisodeScheme.MatchString(fmt.Sprintf("%o", tag)) {
+			scheme = append(scheme, tag)
+		}
+	}
+	if len(scheme) > 0 {
+		tags = scheme
+	}
+	// Count distinct episodes, not entries: a file path names the same episode
+	// twice ("Show.S11E11-GRP/Show.S11E11-GRP.mkv") and that is still one episode.
+	first := [2]int{-1, -1}
+	for _, tag := range tags {
 		series, _ := tag.Series()
 		for _, episode := range tag.Episodes() {
 			switch cur := [2]int{series, episode}; {
