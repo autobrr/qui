@@ -64,6 +64,8 @@ type EvalContext struct {
 	HardlinkCrossScopeByHash map[string]string
 	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
 	HasMissingFilesByHash map[string]bool
+	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
+	HasSkippedFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
@@ -612,6 +614,16 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown state - don't match
 		}
 		return compareBool(hasMissing, cond)
+
+	case FieldHasSkippedFiles:
+		if ctx == nil {
+			return false
+		}
+		hasSkipped, ok := ctx.HasSkippedFilesByHash[torrent.Hash]
+		if !ok {
+			return false // Files not fetched - don't match
+		}
+		return compareBool(hasSkipped, cond)
 
 	case FieldIsGrouped:
 		grouped := false

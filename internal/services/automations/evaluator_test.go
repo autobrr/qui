@@ -3113,6 +3113,27 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 			torrent:  qbt.Torrent{SuperSeeding: true},
 			expected: true,
 		},
+		{
+			name:     "has skipped files",
+			cond:     &RuleCondition{Field: FieldHasSkippedFiles, Operator: OperatorEqual, Value: "true"},
+			torrent:  qbt.Torrent{Hash: "abc"},
+			ctx:      &EvalContext{HasSkippedFilesByHash: map[string]bool{"abc": true}},
+			expected: true,
+		},
+		{
+			name:     "no skipped files",
+			cond:     &RuleCondition{Field: FieldHasSkippedFiles, Operator: OperatorEqual, Value: "false"},
+			torrent:  qbt.Torrent{Hash: "abc"},
+			ctx:      &EvalContext{HasSkippedFilesByHash: map[string]bool{"abc": false}},
+			expected: true,
+		},
+		{
+			name:     "skipped files unknown never matches",
+			cond:     &RuleCondition{Field: FieldHasSkippedFiles, Operator: OperatorEqual, Value: "false"},
+			torrent:  qbt.Torrent{Hash: "abc"},
+			ctx:      &EvalContext{HasSkippedFilesByHash: map[string]bool{}},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
