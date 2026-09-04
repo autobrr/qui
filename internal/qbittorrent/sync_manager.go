@@ -12,6 +12,7 @@ import (
 	"maps"
 	"net"
 	"net/url"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -7796,4 +7797,190 @@ func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) (r
 	}
 
 	return nil
+}
+
+// GetTrackerSeedSize returns the total deduplicated content size of all torrents
+// associated with the given tracker domain(s) or pattern across all active instances.
+// Domains are expanded using TrackerCustomizations (including IncludedInStats).
+// Sizes are deduplicated by ContentPath across all instances so that cross-seeds
+// spanning multiple instances are only counted once.
+// BuildTrackerTargetDomains constructs the expanded target domain set from pattern,
+// explicit domains, and TrackerCustomization aliases (e.g. IncludedInStats).
+func (sm *SyncManager) BuildTrackerTargetDomains(ctx context.Context, pattern string, domains []string) map[string]struct{} {
+	targetDomains := make(map[string]struct{})
+	for _, d := range domains {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if d != "" {
+			targetDomains[d] = struct{}{}
+		}
+	}
+	if pattern != "" && pattern != "*" {
+		parts := strings.FieldsFunc(pattern, func(r rune) bool {
+			return r == ',' || r == ';' || r == '|'
+		})
+		for _, p := range parts {
+			p = strings.ToLower(strings.TrimSpace(p))
+			if p != "" && !strings.HasPrefix(p, "!") {
+				targetDomains[p] = struct{}{}
+			}
+		}
+	}
+
+	// Expand target domains using TrackerCustomizations (e.g. IncludedInStats)
+	if sm != nil && sm.trackerCustomizationStore != nil && len(targetDomains) > 0 {
+		if customizations, err := sm.trackerCustomizationStore.List(ctx); err == nil {
+			for _, c := range customizations {
+				if c == nil {
+					continue
+				}
+				matched := false
+				for _, d := range c.Domains {
+					if _, ok := targetDomains[strings.ToLower(strings.TrimSpace(d))]; ok {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					for _, d := range c.IncludedInStats {
+						if _, ok := targetDomains[strings.ToLower(strings.TrimSpace(d))]; ok {
+							matched = true
+							break
+						}
+					}
+				}
+				if matched {
+					for _, d := range c.Domains {
+						d = strings.ToLower(strings.TrimSpace(d))
+						if d != "" {
+							targetDomains[d] = struct{}{}
+						}
+					}
+					for _, d := range c.IncludedInStats {
+						d = strings.ToLower(strings.TrimSpace(d))
+						if d != "" {
+							targetDomains[d] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return targetDomains
+}
+
+func (sm *SyncManager) GetTrackerSeedSize(ctx context.Context, pattern string, domains []string) int64 {
+	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil {
+		return 0
+	}
+
+	instances, err := sm.clientPool.instanceStore.List(ctx)
+	if err != nil || len(instances) == 0 {
+		return 0
+	}
+
+	targetDomains := sm.BuildTrackerTargetDomains(ctx, pattern, domains)
+
+	// Collect matching torrents from all active instances
+	var matchingTorrents []qbt.Torrent
+	for _, instance := range instances {
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+		torrents, err := sm.GetAllTorrents(ctx, instance.ID)
+		if err != nil || len(torrents) == 0 {
+			continue
+		}
+		for i := range torrents {
+			t := &torrents[i]
+			tDomainSet := sm.getDomainsForTorrent(t)
+			tDomains := make([]string, 0, len(tDomainSet))
+			for d := range tDomainSet {
+				tDomains = append(tDomains, d)
+			}
+			if sm.MatchesTargetDomains(pattern, targetDomains, tDomains) {
+				matchingTorrents = append(matchingTorrents, *t)
+			}
+		}
+	}
+
+	if len(matchingTorrents) == 0 {
+		return 0
+	}
+
+	// Deduplicate by ContentPath across all instances
+	sharedPaths := findSharedContentPaths(matchingTorrents)
+	var total dedupedSize
+	for i := range matchingTorrents {
+		total.add(&matchingTorrents[i], sharedPaths[i] && matchingTorrents[i].ContentPath != "")
+	}
+
+	return total.total()
+}
+
+// MatchesTargetDomains checks if a torrent's tracker domains match the target domain set or pattern.
+func (sm *SyncManager) MatchesTargetDomains(pattern string, targetDomains map[string]struct{}, torrentDomains []string) bool {
+	if pattern == "*" {
+		return true
+	}
+	if len(torrentDomains) == 0 {
+		return false
+	}
+
+	var includeTokens []string
+	var excludeTokens []string
+
+	if pattern != "" {
+		tokens := strings.FieldsFunc(pattern, func(r rune) bool {
+			return r == ',' || r == ';' || r == '|'
+		})
+		for _, token := range tokens {
+			norm := strings.ToLower(strings.TrimSpace(token))
+			if norm == "" {
+				continue
+			}
+			if after, ok := strings.CutPrefix(norm, "!"); ok {
+				if neg := strings.ToLower(strings.TrimSpace(after)); neg != "" {
+					excludeTokens = append(excludeTokens, neg)
+				}
+				continue
+			}
+			includeTokens = append(includeTokens, norm)
+		}
+	}
+
+	matchesToken := func(token string) bool {
+		isGlob := strings.ContainsAny(token, "*?")
+		for _, domain := range torrentDomains {
+			d := strings.ToLower(domain)
+			if isGlob {
+				if ok, err := path.Match(token, d); err == nil && ok {
+					return true
+				}
+				continue
+			}
+			if d == token || (strings.HasPrefix(token, ".") && strings.HasSuffix(d, token)) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// 1. Exclusions have highest priority: if any exclude token matches, reject immediately
+	if slices.ContainsFunc(excludeTokens, matchesToken) {
+		return false
+	}
+
+	// 2. Direct lookup in expanded target domains (from TrackerCustomization)
+	for _, d := range torrentDomains {
+		if _, ok := targetDomains[strings.ToLower(strings.TrimSpace(d))]; ok {
+			return true
+		}
+	}
+
+	// 3. Pattern inclusion matching
+	if len(includeTokens) == 0 {
+		return len(excludeTokens) > 0
+	}
+	return slices.ContainsFunc(includeTokens, matchesToken)
 }

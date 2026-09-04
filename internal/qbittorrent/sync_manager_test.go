@@ -3351,3 +3351,107 @@ func TestGetAuthoritativeDomainToHashesMemoizesPerGeneration(t *testing.T) {
 	require.NotContains(t, third, "tracker.example.invalid",
 		"the fresh snapshot must reflect the removal")
 }
+
+func TestMatchesTargetDomains(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	targetDomains := map[string]struct{}{
+		"redacted.ch": {},
+		"flacsfor.me": {},
+	}
+
+	tests := []struct {
+		name           string
+		pattern        string
+		targetDomains  map[string]struct{}
+		torrentDomains []string
+		expected       bool
+	}{
+		{
+			name:           "direct match in target domains",
+			pattern:        "redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: []string{"redacted.ch"},
+			expected:       true,
+		},
+		{
+			name:           "included secondary domain match",
+			pattern:        "redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: []string{"flacsfor.me"},
+			expected:       true,
+		},
+		{
+			name:           "case insensitive match",
+			pattern:        "redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: []string{"REDACTED.CH"},
+			expected:       true,
+		},
+		{
+			name:           "no match",
+			pattern:        "redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: []string{"other.tracker.org"},
+			expected:       false,
+		},
+		{
+			name:           "wildcard pattern match",
+			pattern:        "*.example.org",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"tracker.example.org"},
+			expected:       true,
+		},
+		{
+			name:           "negated pattern exclude",
+			pattern:        "*.example.org,!bad.example.org",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"bad.example.org"},
+			expected:       false,
+		},
+		{
+			name:           "empty domains",
+			pattern:        "redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: nil,
+			expected:       false,
+		},
+		{
+			name:           "exclusion overrides target domain match",
+			pattern:        "!redacted.ch",
+			targetDomains:  targetDomains,
+			torrentDomains: []string{"redacted.ch"},
+			expected:       false,
+		},
+		{
+			name:           "exclusion-only pattern matches non-excluded domain",
+			pattern:        "!bad.example.org",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"good.example.org"},
+			expected:       true,
+		},
+		{
+			name:           "exclusion-only pattern rejects excluded domain",
+			pattern:        "!bad.example.org",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"bad.example.org"},
+			expected:       false,
+		},
+		{
+			name:           "empty pattern with empty target domains returns false",
+			pattern:        "",
+			targetDomains:  map[string]struct{}{},
+			torrentDomains: []string{"example.org"},
+			expected:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sm.MatchesTargetDomains(tt.pattern, tt.targetDomains, tt.torrentDomains)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}

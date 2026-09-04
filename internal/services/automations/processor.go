@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -521,7 +522,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 		} else {
 			shouldApply := EvaluateConditionWithContext(conditions.Delete.Condition, torrent, evalCtx, 0)
-			if shouldApply {
+			if shouldApply && checkAndDeleteUnderSeedSizeTargets(rule, torrent, evalCtx, cpIndex) {
 				if stats != nil {
 					stats.DeleteApplied++
 				}
@@ -967,6 +968,134 @@ func updateCrossSeedFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, 
 	}
 
 	evalCtx.SpaceToClear += verifiedCrossSeedFileBytes(torrent, group, verifiedHashes, evalCtx.CrossSeedFilesByHash)
+}
+
+// ruleUsesSeedSizeTarget checks if the rule's delete action specifies a min or max seed size.
+func ruleUsesSeedSizeTarget(rule *models.Automation) bool {
+	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return false
+	}
+	return rule.Conditions.Delete.Enabled &&
+		(rule.Conditions.Delete.MinSeedSize != nil || rule.Conditions.Delete.MaxSeedSize != nil)
+}
+
+// rulesUseSeedSizeTarget checks if any rule in the list specifies a min or max seed size.
+func rulesUseSeedSizeTarget(rules []*models.Automation) bool {
+	return slices.ContainsFunc(rules, ruleUsesSeedSizeTarget)
+}
+
+// checkAndDeleteUnderSeedSizeTargets evaluates whether a torrent can be deleted
+// under the rule's MinSeedSize and MaxSeedSize constraints, and if so, applies the
+// seed size reduction to the projection.
+// When delete mode is include-cross-seeds, it evaluates and applies the aggregate
+// reduction for the complete verified expansion group atomically.
+// Returns true if the torrent is allowed to be deleted under the seed size constraints.
+func checkAndDeleteUnderSeedSizeTargets(
+	rule *models.Automation,
+	torrent qbt.Torrent,
+	evalCtx *EvalContext,
+	cpIndex contentPathIndex,
+) bool {
+	if rule == nil || rule.Conditions == nil || rule.Conditions.Delete == nil {
+		return true
+	}
+	del := rule.Conditions.Delete
+	if del.MinSeedSize == nil && del.MaxSeedSize == nil {
+		return true
+	}
+	if evalCtx == nil || evalCtx.SeedSizeStates == nil {
+		return true
+	}
+	state := evalCtx.SeedSizeStates[rule.ID]
+	if state == nil {
+		return true
+	}
+
+	// If already cleared (e.g. expanded as part of a previous cross-seed group), it is already accounted for
+	if _, alreadyCleared := state.ClearedHashes[torrent.Hash]; alreadyCleared {
+		return true
+	}
+
+	// 1. If MaxSeedSize is set and projected seed size is already <= MaxSeedSize,
+	// we have reached our target. Do not delete further torrents.
+	if del.MaxSeedSize != nil && state.ProjectedSeedSize <= *del.MaxSeedSize {
+		return false
+	}
+
+	deleteMode := del.Mode
+	if deleteMode == "" {
+		deleteMode = DeleteModeKeepFiles
+	}
+
+	// 2. Calculate projected reduction if this torrent (and any verified cross-seed expansion) is deleted.
+	var reduction int64
+	var hashesToClear []string
+
+	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds && len(cpIndex) > 0 {
+		group := findCrossSeedGroup(torrent, cpIndex)
+		verifiedHashes, ok := crossSeedGroupMembers(
+			torrent,
+			group,
+			state.ClearedHashes,
+			func(_ []string) (map[string]qbt.TorrentFiles, error) {
+				if evalCtx.CrossSeedFilesByHash != nil {
+					return evalCtx.CrossSeedFilesByHash, nil
+				}
+				return nil, nil
+			},
+		)
+		if !ok {
+			// If cross-seed file verification failed, this group cannot be deleted safely
+			return false
+		}
+		hashesToClear = verifiedHashes
+
+		hasOtherInstanceCopy := false
+		if torrent.ContentPath != "" && state.OtherInstancesContentPaths != nil {
+			_, hasOtherInstanceCopy = state.OtherInstancesContentPaths[torrent.ContentPath]
+		}
+
+		if hasOtherInstanceCopy {
+			// Other instances still seed this ContentPath to the tracker, so tracker seed size doesn't drop
+			reduction = 0
+		} else {
+			// All same-instance copies of this ContentPath in the group are deleted together
+			reduction = torrent.Size
+		}
+	} else {
+		hashesToClear = []string{torrent.Hash}
+
+		hasOtherInstanceCopy := false
+		if torrent.ContentPath != "" && state.OtherInstancesContentPaths != nil {
+			_, hasOtherInstanceCopy = state.OtherInstancesContentPaths[torrent.ContentPath]
+		}
+
+		if hasOtherInstanceCopy {
+			reduction = 0
+		} else if torrent.ContentPath != "" && state.InstanceContentPathCount[torrent.ContentPath] > 1 {
+			reduction = 0
+		} else {
+			reduction = torrent.Size
+		}
+	}
+
+	// 3. If MinSeedSize is set, check if removing this torrent/group would drop below the floor.
+	if del.MinSeedSize != nil && (state.ProjectedSeedSize-reduction) < *del.MinSeedSize {
+		return false
+	}
+
+	// 4. Update projection atomically for all cleared hashes in the expansion
+	for _, h := range hashesToClear {
+		if _, already := state.ClearedHashes[h]; !already {
+			state.ClearedHashes[h] = struct{}{}
+			if torrent.ContentPath != "" {
+				state.InstanceContentPathCount[torrent.ContentPath]--
+			}
+		}
+	}
+	state.ProjectedSeedSize -= reduction
+
+	return true
 }
 
 func verifiedCrossSeedFileBytes(

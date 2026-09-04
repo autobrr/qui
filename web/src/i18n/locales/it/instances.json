@@ -1408,7 +1408,13 @@
         "withFilesIncludeCrossSeeds": "Rimuovi con i file (includi i cross-seed)",
         "includeHardlinkedCopies": "Includi le copie con hardlink",
         "includeHardlinkedCopiesDescription": "Elimina anche i torrent che condividono gli stessi file sottostanti tramite hardlink. Include solo gli hardlink completamente interni a qBittorrent; non segue mai gli hardlink esterni.",
-        "localAccessRequired": "Richiede che l'\"Accesso al filesystem locale\" sia abilitato nelle impostazioni dell'istanza."
+        "localAccessRequired": "Richiede che l'\"Accesso al filesystem locale\" sia abilitato nelle impostazioni dell'istanza.",
+        "maxSeedSize": "Dimensione di seeding target (max)",
+        "maxSeedSizeHelp": "Elimina i torrent (i più vecchi prima o in base all'ordinamento della regola) finché la dimensione totale di seeding visibile a questo tracker in tutte le istanze scende a o sotto questa quantità.",
+        "minSeedSize": "Dimensione minima di seeding (soglia minima)",
+        "minSeedSizeHelp": "Interrompe l'eliminazione dei torrent se la dimensione totale di seeding visibile a questo tracker in tutte le istanze scenderebbe sotto questa quantità.",
+        "seedSizeTrackersRequired": "La dimensione di seeding target richiede la selezione di tracker specifici (disabilitato quando \"Applica a tutti i tracker\" è abilitato).",
+        "noLimit": "Nessun limite"
       },
       "move": {
         "newSavePath": "Nuovo percorso di salvataggio",

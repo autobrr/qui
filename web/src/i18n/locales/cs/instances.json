@@ -1408,7 +1408,13 @@
         "withFilesIncludeCrossSeeds": "Odebrat se soubory (zahrnout křížová sdílení)",
         "includeHardlinkedCopies": "Zahrnout hardlinkové kopie",
         "includeHardlinkedCopiesDescription": "Také smazat torrenty, které sdílí stejné podkladové soubory přes hardlinky. Zahrnuje pouze hardlinky plně uvnitř qBittorrentu; nikdy neřídí hardlinky mimo.",
-        "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance."
+        "localAccessRequired": "Vyžaduje \"Místní přístup k souborovému systému\" pro povolení v nastavení instance.",
+        "maxSeedSize": "Cílová velikost seedování (max)",
+        "maxSeedSizeHelp": "Odstraní torrenty (nejstarší nejdříve nebo podle řazení pravidla), dokud celková velikost seedování viditelná pro tento tracker napříč všemi instancemi neklesne na tuto hodnotu nebo pod ni.",
+        "minSeedSize": "Minimální velikost seedování (spodní limit)",
+        "minSeedSizeHelp": "Zastaví odstraňování torrentů, pokud by celková velikost seedování viditelná pro tento tracker napříč všemi instancemi klesla pod tuto hodnotu.",
+        "seedSizeTrackersRequired": "Cílová velikost seedování vyžaduje výběr konkrétního trackeru/trackerů (zakázáno, pokud je povoleno \"Použít pro všechny trackery\").",
+        "noLimit": "Bez limitu"
       },
       "move": {
         "newSavePath": "Nová cesta uložení",

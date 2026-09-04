@@ -136,10 +136,23 @@ type EvalContext struct {
 	// activeGroupIndex is the currently active (rule-scoped) grouping index.
 	activeGroupIndex *groupIndex
 
+	// SeedSizeStates maps rule ID to its tracker seed size projection state.
+	// Used when delete actions specify MinSeedSize or MaxSeedSize.
+	SeedSizeStates map[int]*SeedSizeRuleState
+
 	// groupIndexCache caches group indices per rule ID + group ID to avoid rebuilding.
 	groupIndexCache map[int]map[string]*groupIndex
 	// groupConditionUsageByRule caches which grouping IDs are referenced by grouped condition fields.
 	groupConditionUsageByRule map[int]groupingConditionUsage
+}
+
+// SeedSizeRuleState tracks the projected cross-instance seed size for a specific rule during evaluation.
+type SeedSizeRuleState struct {
+	InitialSeedSize            int64
+	ProjectedSeedSize          int64
+	OtherInstancesContentPaths map[string]struct{}
+	InstanceContentPathCount   map[string]int
+	ClearedHashes              map[string]struct{}
 }
 
 // separatorReplacer replaces common torrent name separators with spaces.

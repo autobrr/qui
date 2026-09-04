@@ -975,6 +975,76 @@ func (s *Service) setupFreeSpaceContext(ctx context.Context, instanceID int, rul
 	return nil
 }
 
+// setupSeedSizeContext initializes tracker seed size context if needed by the rule.
+func (s *Service) setupSeedSizeContext(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+) {
+	if rule == nil || !ruleUsesSeedSizeTarget(rule) || evalCtx == nil || s.syncManager == nil {
+		return
+	}
+
+	if evalCtx.SeedSizeStates == nil {
+		evalCtx.SeedSizeStates = make(map[int]*SeedSizeRuleState)
+	}
+
+	// Build target domain set (including TrackerDomains and TrackerCustomization aliases)
+	targetDomains := s.syncManager.BuildTrackerTargetDomains(ctx, rule.TrackerPattern, rule.TrackerDomains)
+
+	// Calculate current cross-instance seed size for this tracker
+	currentSeedSize := s.syncManager.GetTrackerSeedSize(ctx, rule.TrackerPattern, rule.TrackerDomains)
+
+	// Build map of content paths matching this tracker on other instances
+	otherInstancesContentPaths := make(map[string]struct{})
+	if s.instanceStore != nil {
+		if instances, err := s.instanceStore.List(ctx); err == nil {
+			for _, inst := range instances {
+				if inst == nil || !inst.IsActive || inst.ID == instanceID {
+					continue
+				}
+				otherTorrents, err := s.syncManager.GetAllTorrents(ctx, inst.ID)
+				if err != nil {
+					continue
+				}
+				for i := range otherTorrents {
+					ot := &otherTorrents[i]
+					if ot.ContentPath == "" {
+						continue
+					}
+					otDomains := collectTrackerDomains(*ot, s.syncManager)
+					if s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, otDomains) {
+						otherInstancesContentPaths[ot.ContentPath] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+
+	// Count content paths matching this tracker on the current instance
+	instanceContentPathCount := make(map[string]int)
+	for i := range torrents {
+		t := &torrents[i]
+		if t.ContentPath == "" {
+			continue
+		}
+		tDomains := collectTrackerDomains(*t, s.syncManager)
+		if s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, tDomains) {
+			instanceContentPathCount[t.ContentPath]++
+		}
+	}
+
+	evalCtx.SeedSizeStates[rule.ID] = &SeedSizeRuleState{
+		InitialSeedSize:            currentSeedSize,
+		ProjectedSeedSize:          currentSeedSize,
+		OtherInstancesContentPaths: otherInstancesContentPaths,
+		InstanceContentPathCount:   instanceContentPathCount,
+		ClearedHashes:              make(map[string]struct{}),
+	}
+}
+
 // getTrackerForTorrent returns the first tracker domain for a torrent.
 func getTrackerForTorrent(torrent *qbt.Torrent, sm *qbittorrent.SyncManager) string {
 	if domains := collectTrackerDomains(*torrent, sm); len(domains) > 0 {
@@ -1021,6 +1091,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
 		return nil, err
 	}
+	s.setupSeedSizeContext(ctx, instanceID, rule, torrents, evalCtx)
 
 	SortTorrentsWithFallback(torrents, rule.SortingConfig, evalCtx, instanceID, rule.Name)
 	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
@@ -1035,6 +1106,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
 		return s.previewDeleteIncludeCrossSeeds(
+			ctx,
 			rule,
 			torrents,
 			evalCtx,
@@ -1173,6 +1245,11 @@ func (s *Service) previewDeleteStandard(
 		Examples: make([]PreviewTorrent, 0, cfg.limit),
 	}
 
+	var targetDomains map[string]struct{}
+	if s.syncManager != nil && rule != nil {
+		targetDomains = s.syncManager.BuildTrackerTargetDomains(ctx, rule.TrackerPattern, rule.TrackerDomains)
+	}
+
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil &&
 		deleteMode == DeleteModeKeepFiles && strings.TrimSpace(rule.Conditions.Delete.GroupID) != "" {
 		deleteCond := rule.Conditions.Delete
@@ -1200,7 +1277,11 @@ func (s *Service) previewDeleteStandard(
 			torrent := &torrents[i]
 
 			trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-			if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+			if s.syncManager != nil {
+				if !s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, trackerDomains) {
+					continue
+				}
+			} else if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 				continue
 			}
 			if !shouldDeleteTorrent(rule, torrent, evalCtx) {
@@ -1307,11 +1388,19 @@ func (s *Service) previewDeleteStandard(
 		torrent := &torrents[i]
 
 		trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-		if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+		if s.syncManager != nil {
+			if !s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, trackerDomains) {
+				continue
+			}
+		} else if !matchesTracker(rule.TrackerPattern, trackerDomains) {
 			continue
 		}
 
 		if !shouldDeleteTorrent(rule, torrent, evalCtx) {
+			continue
+		}
+
+		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx, cpIndex) {
 			continue
 		}
 
@@ -1377,6 +1466,7 @@ func (s *crossSeedExpansionState) addHardlinkCopies(hardlinkIndex *HardlinkIndex
 // When eligibleMode is true, it shows all matching torrents without cumulative stop-when-satisfied.
 // If IncludeHardlinks is enabled, also expands with hardlink copies (same physical files).
 func (s *Service) previewDeleteIncludeCrossSeeds(
+	ctx context.Context,
 	rule *models.Automation,
 	torrents []qbt.Torrent,
 	evalCtx *EvalContext,
@@ -1395,6 +1485,11 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	deleteCond := rule.Conditions.Delete
 	includeHardlinks := deleteCond.IncludeHardlinks
 
+	var targetDomains map[string]struct{}
+	if s.syncManager != nil && rule != nil {
+		targetDomains = s.syncManager.BuildTrackerTargetDomains(ctx, rule.TrackerPattern, rule.TrackerDomains)
+	}
+
 	s.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, deleteCond.Condition, eligibleMode, includeHardlinks)
 
 	for i := range torrents {
@@ -1403,7 +1498,11 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx) {
+		if !s.torrentMatchesDeleteRule(rule, torrent, evalCtx, targetDomains) {
+			continue
+		}
+
+		if !eligibleMode && !checkAndDeleteUnderSeedSizeTargets(rule, *torrent, evalCtx, cpIndex) {
 			continue
 		}
 
@@ -1438,9 +1537,13 @@ func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIn
 }
 
 // torrentMatchesDeleteRule checks if a torrent matches the tracker pattern and delete condition.
-func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext) bool {
+func (s *Service) torrentMatchesDeleteRule(rule *models.Automation, torrent *qbt.Torrent, evalCtx *EvalContext, targetDomains map[string]struct{}) bool {
 	trackerDomains := collectTrackerDomains(*torrent, s.syncManager)
-	if !matchesTracker(rule.TrackerPattern, trackerDomains) {
+	if s.syncManager != nil && rule != nil {
+		if !s.syncManager.MatchesTargetDomains(rule.TrackerPattern, targetDomains, trackerDomains) {
+			return false
+		}
+	} else if rule != nil && !matchesTracker(rule.TrackerPattern, trackerDomains) {
 		return false
 	}
 
@@ -2189,6 +2292,15 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
 		} else {
 			evalCtx.TrackerDisplayNameByDomain = buildTrackerDisplayNameMap(customizations)
+		}
+	}
+
+	// Initialize tracker seed size context for rules with MinSeedSize / MaxSeedSize
+	if rulesUseSeedSizeTarget(eligibleRules) {
+		for _, rule := range eligibleRules {
+			if ruleUsesSeedSizeTarget(rule) {
+				s.setupSeedSizeContext(ctx, instanceID, rule, torrents, evalCtx)
+			}
 		}
 	}
 
@@ -6742,7 +6854,8 @@ func ruleUsesRuleScopedSortingContext(rule *models.Automation) bool {
 
 	return sortingConfigUsesField(rule.SortingConfig, FieldFreeSpace) ||
 		sortingConfigUsesField(rule.SortingConfig, FieldGroupSize) ||
-		sortingConfigUsesField(rule.SortingConfig, FieldIsGrouped)
+		sortingConfigUsesField(rule.SortingConfig, FieldIsGrouped) ||
+		ruleUsesSeedSizeTarget(rule)
 }
 
 func sortingConfigEqual(a, b *models.SortingConfig) bool {

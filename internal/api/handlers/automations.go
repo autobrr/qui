@@ -382,6 +382,21 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
+
+		// Validate seed size targets
+		del := payload.Conditions.Delete
+		if del.MinSeedSize != nil && *del.MinSeedSize < 0 {
+			return http.StatusBadRequest, "minSeedSize must be non-negative", errors.New("minSeedSize must be non-negative")
+		}
+		if del.MaxSeedSize != nil && *del.MaxSeedSize < 0 {
+			return http.StatusBadRequest, "maxSeedSize must be non-negative", errors.New("maxSeedSize must be non-negative")
+		}
+		if del.MinSeedSize != nil && del.MaxSeedSize != nil && *del.MinSeedSize > *del.MaxSeedSize {
+			return http.StatusBadRequest, "minSeedSize cannot be greater than maxSeedSize", errors.New("minSeedSize > maxSeedSize")
+		}
+		if (del.MinSeedSize != nil || del.MaxSeedSize != nil) && isAllTrackers {
+			return http.StatusBadRequest, "Target seed size requires specific tracker(s) and cannot be used with 'Apply to all trackers'", errors.New("tracker required for seed size target")
+		}
 	}
 
 	// Validate intervalSeconds minimum
