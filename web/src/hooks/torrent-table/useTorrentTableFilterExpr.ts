@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useDebounce } from "@/hooks/useDebounce"
 import { columnFiltersToExpr, type ColumnFilter } from "@/lib/column-filter-utils"
 import type { TorrentFilters } from "@/types"
 import { useSearch } from "@tanstack/react-router"
@@ -21,8 +20,6 @@ export interface UserAction {
 }
 
 export interface TorrentTableFilterExpr {
-  globalFilter: string
-  setGlobalFilter: Dispatch<SetStateAction<string>>
   effectiveSearch: string
   columnFiltersExpr: string | null
   combinedFiltersExpr: string | null | undefined
@@ -32,9 +29,9 @@ export interface TorrentTableFilterExpr {
 }
 
 /**
- * Owns the table's search + filter-expression derivation: the debounced/route
- * search inputs, the column-filter-to-expr conversion, the cross-seed detection,
- * and the combined backend expression.
+ * Owns the table's search + filter-expression derivation: the route search
+ * (`?q=`, already debounced by the header input), the column-filter-to-expr
+ * conversion, the cross-seed detection, and the combined backend expression.
  *
  * The `combinedFiltersExpr` cross-seed early-return is load-bearing (regression
  * #1925): in cross-seed mode the column filters are applied client-side by
@@ -47,33 +44,19 @@ export function useTorrentTableFilterExpr({
   instanceId,
   columnFilters,
 }: UseTorrentTableFilterExprParams): TorrentTableFilterExpr {
-  const [globalFilter, setGlobalFilter] = useState("")
   // Track user-initiated actions to differentiate from automatic data updates
   const [lastUserAction, setLastUserAction] = useState<UserAction | null>(null)
   const previousFiltersRef = useRef(filters)
   const previousInstanceIdRef = useRef(instanceId)
 
-  // Debounce search to prevent excessive filtering (200ms delay for faster response)
-  const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
   const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
-  const searchFromRoute = rawRouteSearch.trim()
-
-  // Use route search if present, otherwise fall back to the local debounced search
-  const effectiveSearch = (searchFromRoute || debouncedSearch).trim()
+  const effectiveSearch = rawRouteSearch.trim()
 
   // Seed with the initial effectiveSearch so a route-derived search present on
   // mount (e.g. loading a URL with ?q=) isn't mistaken for a user-initiated
   // search action and doesn't emit a spurious {type: "search"}.
   const previousSearchRef = useRef(effectiveSearch)
-
-  // Keep local input state in sync with route query so internal effects remain consistent
-  useEffect(() => {
-    if (searchFromRoute !== globalFilter) {
-      setGlobalFilter(searchFromRoute)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchFromRoute])
 
   // Convert column filters to expr format for backend
   const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
@@ -123,8 +106,6 @@ export function useTorrentTableFilterExpr({
   }, [filters, instanceId, effectiveSearch])
 
   return {
-    globalFilter,
-    setGlobalFilter,
     effectiveSearch,
     columnFiltersExpr,
     combinedFiltersExpr,
