@@ -821,27 +821,6 @@ function TorznabSearchCachePanel() {
   )
 }
 
-function formatApplicationDate(value?: string): string {
-  if (!value || value.trim() === "") {
-    return "—"
-  }
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "short",
-  })
-}
-
 function formatRelativeDate(value: string | undefined, t: (key: string, options?: Record<string, string>) => string): string {
   if (!value || value.trim() === "") {
     return "—"
@@ -963,6 +942,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
 
 function ApplicationInfoPanel() {
   const { t } = useTranslation("settings")
+  const { formatISOTimestamp, formatTimestamp } = useDateTimeFormatters()
   const appInfoQuery = useQuery({
     queryKey: ["application-info"],
     queryFn: () => api.getApplicationInfo(),
@@ -1031,14 +1011,14 @@ function ApplicationInfoPanel() {
     return { label: t("application.build.statuses.upToDate"), detail: t("application.build.statuses.upToDateDetail") }
   }, [t, info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
 
-  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString()) : t("application.build.statuses.notCheckedYet")
+  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatTimestamp(latestVersionQuery.dataUpdatedAt / 1000) : t("application.build.statuses.notCheckedYet")
 
   const buildFields: ApplicationField[] = info ? [
     { label: t("application.build.version"), value: info.version || "—", monospace: true },
     { label: t("application.build.commit"), value: info.commitShort || info.commit || "—", copyValue: info.commit || "", monospace: true },
     {
       label: t("application.build.buildDate"),
-      value: formatApplicationDate(info.buildDate),
+      value: info.buildDate?.trim() ? formatISOTimestamp(info.buildDate) : "—",
       secondary: formatRelativeDate(info.buildDate, t),
     },
     {

@@ -314,27 +314,14 @@ function parseLogLine(entry: RawLogLine): ParsedLogEntry {
   }
 }
 
-function formatTime(isoTime: string): string {
-  if (!isoTime) return ""
-  try {
-    const date = new Date(isoTime)
-    return date.toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    })
-  } catch {
-    return ""
-  }
-}
-
 function LogEntry({
   entry,
+  formatTimeOnly,
   onSelect,
   onMute,
 }: {
   entry: ParsedLogEntry
+  formatTimeOnly: (timestamp: number, includeSeconds?: boolean) => string
   onSelect?: () => void
   onMute?: () => void
 }) {
@@ -362,7 +349,7 @@ function LogEntry({
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
     >
-      <span className="shrink-0 text-muted-foreground/60">{formatTime(entry.time)}</span>
+      <span className="shrink-0 text-muted-foreground/60">{entry.time ? formatTimeOnly(Date.parse(entry.time) / 1000, true) : ""}</span>
       <button
         type="button"
         onClick={onMute ? handleMute : undefined}
@@ -459,6 +446,7 @@ function LogEntryDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation("settings")
+  const { formatISOTimestamp } = useDateTimeFormatters()
   // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
   const { prettyJson, highlightedJson } = useMemo(() => {
     if (!entry) return { prettyJson: "", highlightedJson: [] as React.ReactNode[] }
@@ -505,7 +493,7 @@ function LogEntryDialog({
             )}
           </DialogTitle>
           <DialogDescription>
-            {entry?.time ? new Date(entry.time).toLocaleString() : t("logs.entryDialog.rawLine")}
+            {entry?.time ? formatISOTimestamp(entry.time) : t("logs.entryDialog.rawLine")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[400px] overflow-auto rounded-md border bg-muted/30 p-4">
@@ -537,6 +525,7 @@ const LOG_HARD_CAP = 10000
 
 function LiveLogViewer({ configPath }: { configPath?: string }) {
   const { t } = useTranslation("settings")
+  const { formatTimeOnly } = useDateTimeFormatters()
   const [lines, setLines] = useState<RawLogLine[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
@@ -837,6 +826,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               <LogEntry
                 key={entry.id}
                 entry={entry}
+                formatTimeOnly={formatTimeOnly}
                 onSelect={() => setSelectedEntry(entry)}
                 onMute={() => handleMuteMessage(entry.message)}
               />
