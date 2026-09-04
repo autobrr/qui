@@ -878,6 +878,87 @@ func TestProcessPendingTitleRescueMonitorWaitsForFullProgress(t *testing.T) {
 	require.Empty(t, sync.bulkActions)
 }
 
+func TestProcessPendingRecheckResumeResumesFastVerificationRecheck(t *testing.T) {
+	t.Parallel()
+
+	// A 100%-overlap recheck can finish between polls, so checking is never observed.
+	// Before the minimum elapsed time the entry keeps waiting; after it, a settled 100%
+	// must auto-resume instead of waiting out the absolute timeout (issue #2554).
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	budget := int64(0)
+	settled := qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   1,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedUp,
+	}
+
+	// Too soon after queuing: the recheck may not have run, so stay paused.
+	tooSoon := &pendingResume{
+		instanceID:           1,
+		hash:                 "hash1",
+		budgetBytes:          &budget,
+		verificationRequired: true,
+		addedAt:              time.Now(),
+	}
+	keep := service.processPendingRecheckResume(1, "hash1", tooSoon, settled)
+	require.True(t, keep)
+	require.Zero(t, tooSoon.resumeAttempts, "a 100% result before the minimum elapsed time must not resume")
+	require.Empty(t, sync.bulkActions)
+
+	// Enough time has passed for the recheck to have run: resume after stable polls.
+	elapsed := &pendingResume{
+		instanceID:           1,
+		hash:                 "hash1",
+		budgetBytes:          &budget,
+		verificationRequired: true,
+		addedAt:              time.Now().Add(-2 * recheckFastCompleteMinElapsed),
+	}
+	keep = service.processPendingRecheckResume(1, "hash1", elapsed, settled)
+	require.True(t, keep)
+	require.Zero(t, elapsed.resumeAttempts, "the unobserved-checking path still waits for stable polls")
+
+	keep = service.processPendingRecheckResume(1, "hash1", elapsed, settled)
+	require.True(t, keep, "the worker keeps the entry until resume is confirmed")
+	require.Equal(t, 1, elapsed.resumeAttempts, "a settled 100% after the minimum elapsed time resumes")
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+}
+
+func TestProcessPendingRecheckResumeFastPathStaysClosedBelowFull(t *testing.T) {
+	t.Parallel()
+
+	// The fast-recheck fallback only trusts a 100% result. Below 100% with no checking
+	// observed it must still fail closed, even after the minimum elapsed time (no
+	// regression on the safety property, issue #2554).
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	budget := int64(0)
+	pending := &pendingResume{
+		instanceID:           1,
+		hash:                 "hash1",
+		budgetBytes:          &budget,
+		verificationRequired: true,
+		addedAt:              time.Now().Add(-2 * recheckFastCompleteMinElapsed),
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:       "hash1",
+		Progress:   0.99,
+		AmountLeft: 0,
+		State:      qbt.TorrentStatePausedUp,
+	})
+	require.True(t, keep, "an unverified sub-100% torrent stays queued, not resumed")
+	require.Zero(t, pending.resumeAttempts)
+	require.Empty(t, sync.bulkActions)
+}
+
 func TestProcessPendingRecheckResumeForgivenessRetriesAfterNegativeVerdict(t *testing.T) {
 	t.Parallel()
 

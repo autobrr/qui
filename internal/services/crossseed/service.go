@@ -287,7 +287,11 @@ const (
 	recheckAPITimeout                     = 30 * time.Second
 	maxRecheckResumeAttempts              = 3
 	recheckResumeStablePolls              = 2
-	maxMissingFilesResumeAttempts         = 3
+	// recheckFastCompleteMinElapsed is how long after queuing a verification-required
+	// entry may resume on a settled 100% that never showed a checking state: long enough
+	// that the recheck qui issued is treated as having run (#2554), short of the 60m timeout.
+	recheckFastCompleteMinElapsed = 30 * time.Second
+	maxMissingFilesResumeAttempts = 3
 	// Forgiveness ceiling for byte-budget auto-resume: even when every missing
 	// file is an irrelevant sidecar, never auto-resume above this much missing data.
 	irrelevantResumeForgivenessCapBytes   = int64(200) << 20
@@ -6760,7 +6764,17 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		req.forgivenessGranted = false
 	}
 	if req.verificationRequired && !req.sawChecking {
-		return true
+		// A fast (100%-overlap) recheck can finish between polls, so checking is never
+		// observed and this would wait out recheckAbsoluteTimeout. After the heuristic
+		// delay, treat a settled 100% as verified and fall through to the normal resume
+		// path (still gated by recheckResumeStablePolls); monitorOnly never resumes.
+		fastRecheckComplete := !req.monitorOnly &&
+			isPausedOrStopped(state) &&
+			torrent.Progress >= 1 && torrent.AmountLeft <= 0 &&
+			time.Since(req.addedAt) >= recheckFastCompleteMinElapsed
+		if !fastRecheckComplete {
+			return true
+		}
 	}
 	if req.monitorOnly {
 		if isChecking {
