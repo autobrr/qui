@@ -507,6 +507,31 @@
       "copyFailed": "클립보드에 복사하지 못했습니다"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "BDInfo 스캔 진행 중",
+    "actionReady": "BDInfo 보고서 준비됨",
+    "actionFailed": "BDInfo 스캔 실패",
+    "quickSummary": "빠른 요약",
+    "forum": "포럼",
+    "copyQuickSummary": "빠른 요약 복사",
+    "copyForum": "포럼 블록 복사",
+    "rescan": "다시 스캔",
+    "cancel": "스캔 취소",
+    "retry": "다시 시도",
+    "starting": "스캔 시작 중...",
+    "queued": "대기 중, 순서 {{position}}",
+    "scanning": "{{total}} 중 {{processed}} 스캔 중",
+    "scanningUnknown": "스캔 중...",
+    "failed": "스캔 실패",
+    "canceled": "스캔 취소됨",
+    "toast": {
+      "copied": "{{label}}을(를) 클립보드에 복사했습니다",
+      "copyFailed": "클립보드에 복사하지 못했습니다",
+      "completed": "BDInfo 보고서가 준비되었습니다",
+      "failed": "BDInfo 스캔 실패: {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "분류 없음",
     "expandCategory": "카테고리 펼치기",

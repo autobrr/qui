@@ -507,6 +507,31 @@
       "copyFailed": "复制到剪贴板失败"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "BDInfo 扫描进行中",
+    "actionReady": "BDInfo 报告已就绪",
+    "actionFailed": "BDInfo 扫描失败",
+    "quickSummary": "快速摘要",
+    "forum": "论坛",
+    "copyQuickSummary": "复制快速摘要",
+    "copyForum": "复制论坛代码块",
+    "rescan": "重新扫描",
+    "cancel": "取消扫描",
+    "retry": "重试",
+    "starting": "正在启动扫描…",
+    "queued": "排队中，位置 {{position}}",
+    "scanning": "正在扫描 {{processed}} / {{total}}",
+    "scanningUnknown": "正在扫描…",
+    "failed": "扫描失败",
+    "canceled": "扫描已取消",
+    "toast": {
+      "copied": "{{label}}已复制到剪贴板",
+      "copyFailed": "复制到剪贴板失败",
+      "completed": "BDInfo 报告已就绪",
+      "failed": "BDInfo 扫描失败：{{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "未分类",
     "expandCategory": "展开分类",

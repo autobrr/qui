@@ -4,6 +4,7 @@
  */
 
 import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
+import { DiscReportButton } from "@/components/torrents/TorrentDiscReportDialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { Input } from "@/components/ui/input"
@@ -12,11 +13,11 @@ import { SortIcon } from "@/components/ui/sort-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import type { FilePriorityValue } from "@/lib/file-priority"
-import { buildFileTree, DEFAULT_FILE_SORT, sortFileTree, toggleFileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
+import { buildFileTree, DEFAULT_FILE_SORT, discPathOf, sortFileTree, toggleFileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
 import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
 import { getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
-import type { TorrentFile } from "@/types"
+import type { DiscScanRun, TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronDown, ChevronRight, Copy, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -40,6 +41,8 @@ interface TorrentFileTableProps {
   onRenameFolder?: (folderPath: string) => void
   onDownloadFile?: (file: TorrentFile) => void
   onShowMediaInfo?: (file: TorrentFile) => void
+  discScans?: ReadonlyMap<string, DiscScanRun>
+  onShowDiscReport?: (discPath: string) => void
 }
 
 interface FlatRow {
@@ -97,6 +100,8 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   onRenameFolder,
   onDownloadFile,
   onShowMediaInfo,
+  discScans,
+  onShowDiscReport,
 }: TorrentFileTableProps) {
   const { t } = useTranslation("torrents")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
@@ -304,6 +309,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
               const isSelected = isFile ? (file?.priority !== 0) : (node.selectedCount === node.totalCount)
               const isIndeterminate = !isFile && node.selectedCount > 0 && node.selectedCount < node.totalCount
               const progress = node.totalSize > 0 ? (node.totalProgress / node.totalSize) * 100 : 0
+              const discPath = onShowDiscReport ? discPathOf(node) : null
 
               const rowContent = (
                 <div
@@ -369,6 +375,14 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                         <span className="text-muted-foreground ml-1 shrink-0">
                           ({node.totalCount})
                         </span>
+                      )}
+                      {onShowDiscReport && discPath !== null && (
+                        <DiscReportButton
+                          className="ml-1 shrink-0"
+                          status={discScans?.get(discPath)?.status}
+                          disabled={incognitoMode}
+                          onClick={() => onShowDiscReport(discPath)}
+                        />
                       )}
                     </div>
                   </div>
