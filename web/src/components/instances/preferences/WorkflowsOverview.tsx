@@ -515,13 +515,14 @@ export function WorkflowsOverview({
         throw error
       }
     },
-    onSuccess: (preview) => {
-      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
+    // A cancelled dialog does not cancel the request, so only apply a result to the rule it was started for.
+    onSuccess: (preview, { instanceId, rule }) => {
+      setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, preview, isInitialLoading: false } : prev)
     },
-    onError: (error) => {
+    onError: (error, { instanceId, rule }) => {
       // Keep the dialog open: the user can still enable the rule without a preview.
       const message = error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.previewFailed")
-      setEnableConfirm(prev => prev ? { ...prev, isInitialLoading: false, error: message } : prev)
+      setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, isInitialLoading: false, error: message } : prev)
     },
   })
 
