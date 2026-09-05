@@ -197,7 +197,8 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 		ProcessedAt:  now,
 	}}
 
-	updated, err := store.UpdateSearchRun(ctx, run)
+	require.NoError(t, store.UpdateSearchRun(ctx, run))
+	updated, err := store.GetSearchRun(ctx, run.ID)
 	require.NoError(t, err)
 	require.Len(t, updated.Results, 1)
 	assert.Equal(t, models.CrossSeedSearchResultStatusAdded, updated.Results[0].Status)

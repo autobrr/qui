@@ -1696,6 +1696,9 @@ type searchRunState struct {
 
 	currentCandidate *SearchCandidateStatus
 	recentResults    []models.CrossSeedSearchResult
+	// persistedResults counts the run.Results entries already written to
+	// results_json; see persistSearchRun.
+	persistedResults int
 	nextWake         time.Time
 	lastError        error
 	// lastCandidateErr remembers the most recent candidate-scoped failure so a
@@ -2849,7 +2852,7 @@ func (s *Service) updateAutomationRunWithRetry(ctx context.Context, run *models.
 }
 
 // updateSearchRunWithRetry attempts to update the search run in the database with retries
-func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) (*models.CrossSeedSearchRun, error) {
+func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) error {
 	const maxRetries = 3
 	var lastErr error
 
@@ -2858,9 +2861,9 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
 		}
 
-		updated, err := s.automationStore.UpdateSearchRun(ctx, run)
+		err := s.automationStore.UpdateSearchRun(ctx, run)
 		if err == nil {
-			return updated, nil
+			return nil
 		}
 
 		lastErr = err
@@ -2868,7 +2871,7 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 	}
 
 	log.Error().Err(lastErr).Int64("runID", run.ID).Msg("Failed to update search run after retries")
-	return run, lastErr
+	return lastErr
 }
 
 // GetAutomationStatus returns scheduler information for the API.
@@ -10778,14 +10781,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	}
 	s.searchMu.Unlock()
 
-	if updated, err := s.updateSearchRunWithRetry(context.Background(), state.run); err == nil {
-		s.searchMu.Lock()
-		if s.searchState == state {
-			state.run = updated
-			s.searchState.run = updated
-		}
-		s.searchMu.Unlock()
-	} else {
+	if err := s.updateSearchRunWithRetry(context.Background(), state.run); err != nil {
 		log.Warn().Err(err).Msg("failed to persist search run state")
 	}
 
@@ -12973,17 +12969,33 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 	})
 }
 
+// searchResultsFlushEvery bounds how many result entries a killed process can
+// lose: the results blob is rewritten once this many new entries have
+// accumulated, and on finalize. Counters are written on every call.
+// ponytail: each flush still rewrites the whole blob, so a run costs
+// O(n²/25) bytes; move results to their own table if that ever bites.
+const searchResultsFlushEvery = 25
+
 func (s *Service) persistSearchRun(state *searchRunState) {
-	updated, err := s.automationStore.UpdateSearchRun(context.Background(), state.run)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed to persist search run progress")
+	ctx := context.Background()
+	s.searchMu.Lock()
+	resultCount := len(state.run.Results)
+	s.searchMu.Unlock()
+
+	if resultCount-state.persistedResults >= searchResultsFlushEvery {
+		if err := s.automationStore.UpdateSearchRun(ctx, state.run); err != nil {
+			log.Debug().Err(err).Msg("failed to persist search run results")
+			return
+		}
+		s.searchMu.Lock()
+		state.persistedResults = resultCount
+		s.searchMu.Unlock()
 		return
 	}
-	s.searchMu.Lock()
-	if s.searchState == state {
-		state.run = updated
+
+	if err := s.automationStore.UpdateSearchRunProgress(ctx, state.run); err != nil {
+		log.Debug().Err(err).Msg("failed to persist search run progress")
 	}
-	s.searchMu.Unlock()
 }
 
 func (s *Service) setCurrentCandidate(state *searchRunState, torrent *qbt.Torrent) {
