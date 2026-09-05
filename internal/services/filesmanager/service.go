@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -29,24 +28,15 @@ type TorrentHashProvider interface {
 
 // Service manages cached torrent file information
 type Service struct {
-	db           dbinterface.Querier
-	repo         *Repository
-	mu           sync.Mutex
-	lastCacheLog map[string]time.Time
-}
-
-const cacheLogThrottle = 30 * time.Second
-
-func newCacheKey(instanceID int, hash string) string {
-	return fmt.Sprintf("%d:%s", instanceID, hash)
+	db   dbinterface.Querier
+	repo *Repository
 }
 
 // NewService creates a new files manager service
 func NewService(db dbinterface.Querier) *Service {
 	return &Service{
-		db:           db,
-		repo:         NewRepository(db),
-		lastCacheLog: make(map[string]time.Time),
+		db:   db,
+		repo: NewRepository(db),
 	}
 }
 
@@ -196,32 +186,6 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 		if err := s.repo.UpsertSyncInfoBatch(ctx, allSyncInfos); err != nil {
 			return fmt.Errorf("failed to update sync info: %w", err)
 		}
-	}
-
-	// Log each torrent individually
-	for hash, torrentFiles := range files {
-		if len(torrentFiles) == 0 {
-			continue
-		}
-
-		now := time.Now()
-		cacheKey := newCacheKey(instanceID, hash)
-		// shouldLog := false
-
-		s.mu.Lock()
-		if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
-			s.lastCacheLog[cacheKey] = now
-			// shouldLog = true
-		}
-		s.mu.Unlock()
-
-		// if shouldLog {
-		//	log.Trace().
-		//		Int("instanceID", instanceID).
-		//		Str("hash", hash).
-		//		Int("fileCount", len(torrentFiles)).
-		//		Msg("Cached torrent files")
-		//}
 	}
 
 	return nil
