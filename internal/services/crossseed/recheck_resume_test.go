@@ -878,6 +878,66 @@ func TestProcessPendingTitleRescueMonitorWaitsForFullProgress(t *testing.T) {
 	require.Empty(t, sync.bulkActions)
 }
 
+func TestProcessPendingRecheckResumeFastVerificationRecheck(t *testing.T) {
+	t.Parallel()
+
+	// A 100%-overlap recheck can finish between polls, so checking is never observed.
+	// The entry must wait out the minimum elapsed time, resume a settled 100% after it,
+	// then reach the confirm-and-drop exit rather than the absolute timeout (issue #2554).
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	budget := int64(0)
+	newPending := func(addedAt time.Time) *pendingResume {
+		return &pendingResume{
+			instanceID:           1,
+			hash:                 "hash1",
+			budgetBytes:          &budget,
+			verificationRequired: true,
+			addedAt:              addedAt,
+		}
+	}
+	settled := qbt.Torrent{Hash: "hash1", Progress: 1, AmountLeft: 0, State: qbt.TorrentStatePausedUp}
+	elapsedAgo := time.Now().Add(-2 * recheckFastCompleteMinElapsed)
+
+	// Too soon after queuing: the recheck may not have run, so stay paused.
+	tooSoon := newPending(time.Now())
+	require.True(t, service.processPendingRecheckResume(1, "hash1", tooSoon, settled))
+	require.Zero(t, tooSoon.resumeAttempts, "a 100% result before the minimum elapsed time must not resume")
+	require.Empty(t, sync.bulkActions)
+
+	// Below 100% after the elapsed gate: still fails closed, no resume.
+	belowFull := newPending(elapsedAgo)
+	underFull := settled
+	underFull.Progress = 0.99
+	require.True(t, service.processPendingRecheckResume(1, "hash1", belowFull, underFull))
+	require.Zero(t, belowFull.resumeAttempts, "an unverified sub-100% torrent stays queued, not resumed")
+	require.Empty(t, sync.bulkActions)
+
+	// Settled 100% after the elapsed gate: resume after the stable polls.
+	elapsed := newPending(elapsedAgo)
+	require.True(t, service.processPendingRecheckResume(1, "hash1", elapsed, settled))
+	require.Zero(t, elapsed.resumeAttempts, "the unobserved-checking path still waits for stable polls")
+
+	require.True(t, service.processPendingRecheckResume(1, "hash1", elapsed, settled),
+		"the worker keeps the entry until resume is confirmed")
+	require.Equal(t, 1, elapsed.resumeAttempts, "a settled 100% after the minimum elapsed time resumes")
+	require.True(t, elapsed.awaitingResumeConfirmation)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+
+	// The torrent is now running: the worker must confirm the resume and drop the entry,
+	// not poll it for the full timeout and mislog it as left paused.
+	running := settled
+	running.State = qbt.TorrentStateUploading
+	require.True(t, service.processPendingRecheckResume(1, "hash1", elapsed, running),
+		"kept for one running poll while the resume is confirmed")
+	require.False(t, service.processPendingRecheckResume(1, "hash1", elapsed, running),
+		"a stable running state confirms the resume and drops the entry")
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions, "no duplicate resume once running")
+}
+
 func TestProcessPendingRecheckResumeForgivenessRetriesAfterNegativeVerdict(t *testing.T) {
 	t.Parallel()
 

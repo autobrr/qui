@@ -288,6 +288,11 @@ const (
 	maxRecheckResumeAttempts              = 3
 	recheckResumeStablePolls              = 2
 	maxMissingFilesResumeAttempts         = 3
+	// recheckFastCompleteMinElapsed is how long after queuing a verification-required
+	// entry may resume on a settled 100% that never showed a checking state: long enough
+	// that the recheck qui issued is treated as having run (#2554), well short of
+	// recheckAbsoluteTimeout.
+	recheckFastCompleteMinElapsed = 30 * time.Second
 	// Forgiveness ceiling for byte-budget auto-resume: even when every missing
 	// file is an irrelevant sidecar, never auto-resume above this much missing data.
 	irrelevantResumeForgivenessCapBytes   = int64(200) << 20
@@ -483,8 +488,9 @@ type pendingResume struct {
 	monitorOnly bool
 	// verificationRequired marks an ambiguous search match that must not trust
 	// qBittorrent's optimistic pre-check completion state. The WebUI API exposes
-	// no recheck generation, so the worker must first observe checking, then a
-	// 100% result. A transition missed between polls fails closed and stays paused.
+	// no recheck generation, so the worker observes checking, then a 100% result.
+	// A checking transition missed between polls falls back to a settled 100% once
+	// recheckFastCompleteMinElapsed has passed since queuing; below that it stays paused.
 	verificationRequired bool
 	// threshold is the verified-progress fraction required to resume.
 	// Used by the season-pack flow, whose gate is "linked bytes verified".
@@ -6759,8 +6765,18 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		// saw; the verdict must be re-earned from post-check file progress.
 		req.forgivenessGranted = false
 	}
-	if req.verificationRequired && !req.sawChecking {
-		return true
+	if req.verificationRequired && !req.sawChecking && !req.awaitingResumeConfirmation {
+		// A fast (100%-overlap) recheck can finish between polls, so checking is never
+		// observed and this would wait out recheckAbsoluteTimeout. After the heuristic
+		// delay, treat a settled 100% as verified and fall through to the normal resume
+		// path (still gated by recheckResumeStablePolls); monitorOnly never resumes. Once
+		// resume is issued, awaitingResumeConfirmation takes over so the entry is
+		// confirmed and dropped rather than waiting out the timeout while it runs.
+		fastRecheckComplete := !req.monitorOnly && isPausedOrStopped(state) &&
+			satisfied() && time.Since(req.addedAt) >= recheckFastCompleteMinElapsed
+		if !fastRecheckComplete {
+			return true
+		}
 	}
 	if req.monitorOnly {
 		if isChecking {
