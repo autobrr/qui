@@ -899,7 +899,10 @@
       "unregistered": "Non registrato",
       "andMoreTorrents": "... e altri {{count}} torrent",
       "loadMore": "Carica altri",
-      "exportCSV": "Esporta CSV"
+      "exportCSV": "Esporta CSV",
+      "saveWithoutPreview": "Salva senza anteprima",
+      "previewFailed": "Anteprima non riuscita: {{error}}",
+      "skipPreviewHint": "La regola agirà comunque su ogni torrent corrispondente alla prossima esecuzione. Puoi salvare senza attendere l'anteprima."
     },
     "orphanScanOverview": {
       "title": "Scansione orfani",

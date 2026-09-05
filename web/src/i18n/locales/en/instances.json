@@ -899,7 +899,10 @@
       "unregistered": "Unregistered",
       "andMoreTorrents": "... and {{count}} more torrents",
       "loadMore": "Load more",
-      "exportCSV": "Export CSV"
+      "exportCSV": "Export CSV",
+      "saveWithoutPreview": "Save without preview",
+      "previewFailed": "Preview failed: {{error}}",
+      "skipPreviewHint": "The rule still acts on every matching torrent on its next run. You can save without waiting for the preview."
     },
     "orphanScanOverview": {
       "title": "Orphan Scan",

@@ -893,7 +893,10 @@
       "unregistered": "Non enregistré",
       "andMoreTorrents": "... et {{count}} autres torrents",
       "loadMore": "Charger plus",
-      "exportCSV": "Exporter CSV"
+      "exportCSV": "Exporter CSV",
+      "saveWithoutPreview": "Enregistrer sans aperçu",
+      "previewFailed": "Échec de l'aperçu : {{error}}",
+      "skipPreviewHint": "La règle agira quand même sur chaque torrent correspondant lors de sa prochaine exécution. Vous pouvez enregistrer sans attendre l'aperçu."
     },
     "orphanScanOverview": {
       "title": "Analyse d'orphelins",

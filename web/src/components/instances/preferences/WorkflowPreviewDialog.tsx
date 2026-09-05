@@ -71,6 +71,8 @@ interface WorkflowPreviewDialogProps {
   isInitialLoading?: boolean
   /** Show score column for score-based sorting previews */
   showScore?: boolean
+  /** Error message when the preview request failed; the dialog still allows saving */
+  previewError?: string | null
 }
 
 // Extract all field names from a condition tree
@@ -274,6 +276,7 @@ export function WorkflowPreviewDialog({
   isExporting = false,
   isInitialLoading = false,
   showScore = false,
+  previewError = null,
 }: WorkflowPreviewDialogProps) {
   const { t, i18n } = useTranslation(["instances", "automations"])
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -303,7 +306,10 @@ export function WorkflowPreviewDialog({
     )
   }, [condition, dynamicColumns])
 
-  // Show loading state when initial preview is being fetched
+  const confirmClassName = destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
+
+  // Show loading state when initial preview is being fetched.
+  // Save stays reachable so a slow preview never blocks enabling the rule.
   if (isInitialLoading) {
     return (
       <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -311,9 +317,14 @@ export function WorkflowPreviewDialog({
           <div className="flex flex-col items-center justify-center py-12 gap-4">
             <AnimatedLogo className="h-16 w-16" />
             <p className="text-sm text-muted-foreground">{t("preferences.workflowPreview.loadingPreview")}</p>
+            <p className="text-xs text-muted-foreground text-center">{t("preferences.workflowPreview.skipPreviewHint")}</p>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
+              {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {t("preferences.workflowPreview.saveWithoutPreview")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -327,7 +338,12 @@ export function WorkflowPreviewDialog({
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
-              {description}
+              {previewError ? (
+                <>
+                  <p className="text-destructive font-medium">{t("preferences.workflowPreview.previewFailed", { error: previewError })}</p>
+                  <p className="text-muted-foreground text-sm">{t("preferences.workflowPreview.skipPreviewHint")}</p>
+                </>
+              ) : description}
               {showPreviewViewToggle && (
                 <div className="space-y-2 pt-1">
                   <Tabs
@@ -491,13 +507,7 @@ export function WorkflowPreviewDialog({
           </div>
           <div className="flex gap-2">
             <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onConfirm}
-              disabled={isConfirming}
-              className={
-                destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
-              }
-            >
+            <AlertDialogAction onClick={onConfirm} disabled={isConfirming} className={confirmClassName}>
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {confirmLabel}
             </AlertDialogAction>
