@@ -1,8 +1,8 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import { describe, it, expect, vi } from "vitest"
-import { render } from "@testing-library/react"
+import { afterEach, describe, it, expect, vi } from "vitest"
+import { cleanup, render } from "@testing-library/react"
 import type { CrossSeedRun } from "@/types"
 
 // RSSRunItem only calls useTranslation; override it with an interpolating
@@ -38,6 +38,8 @@ function makeRun(overrides: Partial<CrossSeedRun> = {}): CrossSeedRun {
     ...overrides,
   }
 }
+
+afterEach(cleanup)
 
 describe("RSSRunItem", () => {
   it("renders the run error message with a full-text title on a failed run", () => {

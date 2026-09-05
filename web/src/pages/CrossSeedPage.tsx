@@ -308,7 +308,7 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="secondary" className="text-xs">+{run.crossSeedsAdded}</Badge>
+            <Badge variant="secondary" className="text-xs">{t("scan.crossSeedsAddedBadge", { added: run.crossSeedsAdded })}</Badge>
             {run.candidatesFailed > 0 && (
               <Badge variant="destructive" className="text-xs">{t("automation.failedCount", { count: run.candidatesFailed })}</Badge>
             )}

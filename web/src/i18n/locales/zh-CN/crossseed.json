@@ -145,7 +145,7 @@
     "progress": "进度：",
     "torrentsProgress": "{{processed}} / {{total}} 个待处理候选",
     "results": "结果：",
-    "resultsDetail": "{{added}} 有交叉做种 / {{skipped}} 已跳过 / {{failed}} 失败",
+    "resultsDetail": "{{added}} 有交叉做种；{{skipped}} 已跳过；{{failed}} 失败",
     "crossSeedsAdded": "已添加的交叉做种：",
     "crossSeedsAddedBadge": "+{{added}} 个交叉做种",
     "dueCandidatesHelp": "待处理候选是仍需搜索的种子或季组。冷却时间和按索引器的搜索历史会移除候选，因此相同筛选条件在之后的每次运行中总数都会变小。",
