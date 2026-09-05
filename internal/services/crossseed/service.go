@@ -4014,7 +4014,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 
 		if allExist && len(existingResults) > 0 {
-			run.CandidatesSkipped += len(existingResults)
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, existingResults...)
 
 			log.Debug().
@@ -4071,7 +4071,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 
 		if allExist && len(existingResults) > 0 {
-			run.CandidatesSkipped += len(existingResults)
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, existingResults...)
 
 			log.Debug().
@@ -4157,33 +4157,33 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 		run.Results = append(run.Results, mapped)
 
-		if instanceResult.Success {
+		switch {
+		case instanceResult.Success:
 			itemHasSuccess = true
 			run.CrossSeedsAdded++
-			continue
-		}
-
-		switch {
 		case instanceResult.Status == "exists":
 			itemHadExisting = true
-			run.CandidatesSkipped++
 		case isSkippedCrossSeedResultStatus(instanceResult.Status):
-			run.CandidatesSkipped++
 		default:
 			itemHasFailure = true
-			run.CandidatesFailed++
 		}
 	}
 
+	// One feed item is one candidate: it lands in one bucket no matter how
+	// many instances it was applied to. A candidate with one add and one
+	// failed instance counts as added; the failure stays in run.Results.
 	switch {
 	case itemHasSuccess:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
 	case itemHasFailure:
 		itemStatus = models.CrossSeedFeedItemStatusFailed
+		run.CandidatesFailed++
 	case itemHadExisting:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
+		run.CandidatesSkipped++
 	default:
 		itemStatus = models.CrossSeedFeedItemStatusSkipped
+		run.CandidatesSkipped++
 	}
 
 	return itemStatus, infoHash, invokeErr

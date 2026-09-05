@@ -7274,8 +7274,10 @@ components:
           description: Successful applies into the client.
         candidatesFailed:
           type: integer
+          description: Feed candidates with no add and at least one failed instance. Counted once per candidate, whatever the instance count.
         candidatesSkipped:
           type: integer
+          description: Feed candidates with no add and no failed instance. Counted once per candidate, whatever the instance count.
         message:
           type: string
           nullable: true

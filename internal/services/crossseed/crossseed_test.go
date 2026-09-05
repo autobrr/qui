@@ -2768,7 +2768,8 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	assert.NotNil(t, returnedHash)
 	assert.Equal(t, testHash, *returnedHash)
-	assert.Equal(t, 2, run.CandidatesSkipped, "should skip for both instances")
+	assert.Equal(t, 1, run.CandidatesSkipped, "one candidate skipped, whatever the instance count")
+	assert.Len(t, run.Results, 2, "one exists result per instance")
 	assert.False(t, downloadCalled, "should NOT download torrent when it exists on all instances")
 }
 
