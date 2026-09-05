@@ -316,6 +316,11 @@ export interface TorrentStreamMeta {
   streamKey?: string
 }
 
+export interface TorrentStreamVersion {
+  major: number
+  minor: number
+}
+
 // TorrentStreamDelta reconciles a delta frame's page-0 window against the previous
 // frame. The added/changed rows ride in the frame's `data.torrents` (or
 // `cross_instance_torrents`); `order` is the full page key sequence, present only
@@ -324,6 +329,7 @@ export interface TorrentStreamMeta {
 // cross-instance streams.
 export interface TorrentStreamDelta {
   order?: string[]
+  baseVersion: TorrentStreamVersion
 }
 
 export interface TorrentStreamPayload {
@@ -331,6 +337,7 @@ export interface TorrentStreamPayload {
   data?: TorrentResponse
   delta?: TorrentStreamDelta
   meta?: TorrentStreamMeta
+  version?: TorrentStreamVersion
   error?: string
 }
 
