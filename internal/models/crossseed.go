@@ -1472,26 +1472,27 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	return s.GetSearchRun(ctx, insertedID)
 }
 
-// UpdateSearchRun updates persisted metadata for a search run.
-func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSearchRun) (*CrossSeedSearchRun, error) {
+// UpdateSearchRun persists the full row of a search run, results blob included.
+// UpdateSearchRunProgress is the cheap per-candidate write.
+func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSearchRun) error {
 	if run == nil {
-		return nil, errors.New("run cannot be nil")
+		return errors.New("run cannot be nil")
 	}
 	if run.ID == 0 {
-		return nil, errors.New("run ID cannot be zero")
+		return errors.New("run ID cannot be zero")
 	}
 
 	resultsJSON, err := encodeSearchResults(run.Results)
 	if err != nil {
-		return nil, fmt.Errorf("encode results: %w", err)
+		return fmt.Errorf("encode results: %w", err)
 	}
 	filtersJSON, err := encodeSearchFilters(run.Filters)
 	if err != nil {
-		return nil, fmt.Errorf("encode filters: %w", err)
+		return fmt.Errorf("encode filters: %w", err)
 	}
 	indexersJSON, err := encodeIntSlice(run.IndexerIDs)
 	if err != nil {
-		return nil, fmt.Errorf("encode indexers: %w", err)
+		return fmt.Errorf("encode indexers: %w", err)
 	}
 
 	const query = `
@@ -1537,10 +1538,40 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 		resultsJSON,
 		run.ID,
 	); err != nil {
-		return nil, fmt.Errorf("update search run: %w", err)
+		return fmt.Errorf("update search run: %w", err)
 	}
 
-	return s.GetSearchRun(ctx, run.ID)
+	return nil
+}
+
+// UpdateSearchRunProgress writes the live counters of a search run and leaves
+// results_json alone. The hot per-candidate path uses it so the bytes written
+// per candidate stay constant; UpdateSearchRun persists the full row.
+func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *CrossSeedSearchRun) error {
+	const query = `
+		UPDATE cross_seed_search_runs SET
+			status = ?,
+			total_torrents = ?,
+			processed = ?,
+			torrents_added = ?,
+			torrents_failed = ?,
+			torrents_skipped = ?
+		WHERE id = ?
+	`
+
+	if _, err := s.db.ExecContext(ctx, query,
+		run.Status,
+		run.TotalTorrents,
+		run.Processed,
+		run.TorrentsAdded,
+		run.TorrentsFailed,
+		run.TorrentsSkipped,
+		run.ID,
+	); err != nil {
+		return fmt.Errorf("update search run progress: %w", err)
+	}
+
+	return nil
 }
 
 // GetSearchRun loads a specific search run by ID.
