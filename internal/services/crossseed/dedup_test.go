@@ -87,3 +87,45 @@ func TestService_deduplicateSourceTorrents_PrefersRootFolders(t *testing.T) {
 	require.Len(t, deduped, 1)
 	require.Equal(t, "hash-root", deduped[0].Hash, "prefer torrent with root folder")
 }
+
+// countingFilesSyncManager records which hashes the deduplication pass asks
+// file lists for.
+type countingFilesSyncManager struct {
+	fakeSyncManager
+	requested []string
+}
+
+func (c *countingFilesSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	c.requested = append(c.requested, hashes...)
+	return c.fakeSyncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+}
+
+// Regression: deduplication used to fetch a file list for every torrent in the
+// library before a search run logged anything. Only the members of a group that
+// holds more than one torrent need one, so unique content costs no file request
+// at all. Discord report: cross-seed scans take an absurd amount of time to
+// start, with nothing in the log until the enumeration finishes.
+func TestService_deduplicateSourceTorrents_FetchesFilesForGroupMembersOnly(t *testing.T) {
+	files := map[string]qbt.TorrentFiles{
+		"hash-flat":  {{Name: "Show.S01E01.mkv", Size: 1 << 20}},
+		"hash-root":  {{Name: "Show.S01/Show.S01E01.mkv", Size: 1 << 20}},
+		"hash-other": {{Name: "Other.S01E01.mkv", Size: 1 << 20}},
+	}
+
+	sync := &countingFilesSyncManager{files: files}
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		syncManager:      sync,
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash-flat", Name: "Generic.Show.2025.S01E01.1080p.WEB-DL", AddedOn: 1},
+		{Hash: "hash-other", Name: "Second.Show.2024.S03E07.1080p.WEB-DL", AddedOn: 2},
+		{Hash: "hash-root", Name: "Generic.Show.2025.S01E01.1080p.WEB-DL", AddedOn: 3},
+	}
+
+	deduped, _ := svc.deduplicateSourceTorrents(context.Background(), 1, torrents)
+	require.Len(t, deduped, 2)
+	require.ElementsMatch(t, []string{"hash-flat", "hash-root"}, sync.requested)
+}
