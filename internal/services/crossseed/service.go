@@ -10896,49 +10896,15 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	// Group torrents by matching content
 	// We'll track the preferred torrent (folder-aware, then oldest) for each unique content group
 	type contentGroup struct {
-		representativeIdx int // index into parsed slice
-		addedOn           int64
+		representativeIdx int      // index into parsed slice
 		duplicates        []string // Track duplicate names for logging
-		hasRootFolder     bool
-		rootFolderKnown   bool
+		members           []int    // parsed indices in encounter order; members[0] seeds the fold
 	}
 
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
 	releasesMatchCache := make(map[string]bool) // cache releasesMatch results
-
-	// Pre-populate hasRootCache for all torrents to avoid individual fetches
-	torrentHashes := make([]string, 0, len(parsed))
-	for _, item := range parsed {
-		torrentHashes = append(torrentHashes, item.torrent.Hash)
-	}
-
-	if len(torrentHashes) > 0 && s.syncManager != nil {
-		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, torrentHashes)
-		if err == nil {
-			for _, item := range parsed {
-				normHash := normalizeHash(item.torrent.Hash)
-				if files, exists := filesMap[normHash]; exists && len(files) > 0 {
-					hasRoot := detectCommonRoot(files) != ""
-					hasRootCache[normHash] = hasRoot
-				} else {
-					hasRootCache[normHash] = false
-				}
-			}
-		} else {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
-			// Pre-populate cache with false for all torrents
-			for _, item := range parsed {
-				hasRootCache[normalizeHash(item.torrent.Hash)] = false
-			}
-		}
-	} else {
-		// No sync manager, pre-populate cache with false
-		for _, item := range parsed {
-			hasRootCache[normalizeHash(item.torrent.Hash)] = false
-		}
-	}
 
 	// Helper to get cache key for releasesMatch
 	getMatchCacheKey := func(idx1, idx2 int) string {
@@ -10948,6 +10914,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		return fmt.Sprintf("%d:%d", idx2, idx1)
 	}
 
+	// First pass: assign every torrent to a content group. Group membership
+	// depends only on the parsed release, never on the root folder, so this
+	// runs before any file list is fetched.
 	for i := range parsed {
 		current := &parsed[i]
 
@@ -10978,48 +10947,61 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 
 		if foundGroup == -1 {
-			// Create new group with this torrent as the first member
-			group := &contentGroup{
+			groups = append(groups, &contentGroup{
 				representativeIdx: i,
-				addedOn:           current.torrent.AddedOn,
-				duplicates:        []string{},
-			}
-			groups = append(groups, group)
+				members:           []int{i},
+			})
 			groupMap[current.torrent.Hash] = len(groups) - 1
 			continue
 		}
 
-		group := groups[foundGroup]
-		currentHasRoot := s.torrentHasTopLevelFolderCached(current.torrent.Hash, hasRootCache)
-		groupHasRoot := group.hasRootFolder
-		if !group.rootFolderKnown {
-			rep := &parsed[group.representativeIdx]
-			groupHasRoot = s.torrentHasTopLevelFolderCached(rep.torrent.Hash, hasRootCache)
-			group.hasRootFolder = groupHasRoot
-			group.rootFolderKnown = true
-		}
+		groups[foundGroup].members = append(groups[foundGroup].members, i)
+		groupMap[current.torrent.Hash] = foundGroup
+	}
 
-		promoteCurrent := false
-		switch {
-		case currentHasRoot && !groupHasRoot:
-			promoteCurrent = true
-		case currentHasRoot == groupHasRoot:
-			if current.torrent.AddedOn < group.addedOn {
-				promoteCurrent = true
+	// Only a group with more than one member has a representative to choose, so
+	// only those torrents need a root-folder answer. A library of unique content
+	// costs no file requests here, instead of one per torrent.
+	var contested []string
+	for _, group := range groups {
+		if len(group.members) < 2 {
+			continue
+		}
+		for _, idx := range group.members {
+			contested = append(contested, parsed[idx].torrent.Hash)
+		}
+	}
+
+	if len(contested) > 0 && s.syncManager != nil {
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, contested)
+		if err != nil {
+			// Partial results still improve the choice, so keep whatever came back.
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
+		}
+		for _, hash := range contested {
+			normHash := normalizeHash(hash)
+			hasRootCache[normHash] = detectCommonRoot(filesMap[normHash]) != ""
+		}
+	}
+
+	// Second pass: fold each contested group down to one representative. A top-level
+	// folder wins first, and the oldest torrent breaks the tie.
+	for _, group := range groups {
+		for _, idx := range group.members[1:] {
+			rep, current := &parsed[group.representativeIdx], &parsed[idx]
+			repHasRoot := hasRootCache[normalizeHash(rep.torrent.Hash)]
+			currentHasRoot := hasRootCache[normalizeHash(current.torrent.Hash)]
+
+			promoteCurrent := (currentHasRoot && !repHasRoot) ||
+				(currentHasRoot == repHasRoot && current.torrent.AddedOn < rep.torrent.AddedOn)
+
+			if promoteCurrent {
+				group.duplicates = append(group.duplicates, rep.torrent.Hash)
+				group.representativeIdx = idx
+			} else {
+				group.duplicates = append(group.duplicates, current.torrent.Hash)
 			}
 		}
-
-		if promoteCurrent {
-			rep := &parsed[group.representativeIdx]
-			group.duplicates = append(group.duplicates, rep.torrent.Hash)
-			group.representativeIdx = i
-			group.addedOn = current.torrent.AddedOn
-			group.hasRootFolder = currentHasRoot
-			group.rootFolderKnown = true
-		} else {
-			group.duplicates = append(group.duplicates, current.torrent.Hash)
-		}
-		groupMap[current.torrent.Hash] = foundGroup
 	}
 
 	// Build deduplicated list from group representatives
@@ -11036,7 +11018,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 				Str("representativeHash", rep.torrent.Hash).
 				// A top-level folder wins first, and the oldest torrent breaks
 				// the tie. Both fields are here so the entry explains its choice.
-				Bool("representativeHasRootFolder", group.hasRootFolder).
+				Bool("representativeHasRootFolder", hasRootCache[normalizeHash(rep.torrent.Hash)]).
 				Int64("addedOn", rep.torrent.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
 				Strs("duplicateHashes", group.duplicates).
@@ -11069,12 +11051,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	}
 
 	return deduplicated, duplicateMap
-}
-
-// torrentHasTopLevelFolderCached checks if a torrent has a top-level folder from pre-populated cache
-func (s *Service) torrentHasTopLevelFolderCached(hash string, cache map[string]bool) bool {
-	normHash := normalizeHash(hash)
-	return cache[normHash] // Cache is pre-populated, so this should always exist
 }
 
 func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time, coveredIndexerIDs []int, gazelleStamped bool) {
@@ -11112,6 +11088,10 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 }
 
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
+	// A big instance spends a while here, so the run does not look hung.
+	queueStart := time.Now()
+	log.Info().Int("instanceID", state.opts.InstanceID).Msg("[CROSSSEED-SEARCH] Building search queue")
+
 	filterOpts := qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}
 
 	// Apply category filter if only one category is specified
@@ -11224,6 +11204,13 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	state.run.TotalTorrents = totalEligible
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
+
+	log.Info().
+		Int("instanceID", state.opts.InstanceID).
+		Int("queued", len(state.queue)).
+		Int("due", totalEligible).
+		Dur("took", time.Since(queueStart)).
+		Msg("[CROSSSEED-SEARCH] Search queue ready")
 
 	return nil
 }
