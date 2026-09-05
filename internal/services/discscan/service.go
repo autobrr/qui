@@ -229,9 +229,6 @@ func (s *Service) emit(instanceID int, runID int64) {
 // runBDInfo is the one call into go-bdinfo: main playlist only, stream
 // diagnostics on, extended HEVC diagnostics off, no version block. A remote
 // scan (SSH, #1917) replaces this call.
-//
-// ponytail: go-bdinfo v0.4.2 checks ctx only between stages, so a cancel stops
-// disk reads at the next stage boundary, not at once. Fix upstream in Run.
 func runBDInfo(ctx context.Context, path string, onProgress func(processed, total int64)) (bdinfo.Result, error) {
 	settings := bdinfo.DefaultSettings("")
 	settings.MainPlaylistOnly = true
