@@ -93,7 +93,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 - Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- One feature is one branch and one PR. Do not stack PRs or split a feature across PRs. When a feature spans schema, backend service, and web UI, keep the layers as separate commits on the one branch, each commit a working slice: backend end to end first, then UI. A dependency in another repo is its own PR there.
+- One feature is one branch and one PR. Do not stack PRs or split a feature across PRs. When a feature spans schema, backend service, and web UI, keep the layers as separate commits on the one branch, each commit a working slice: backend end-to-end work first, then UI. A dependency in another repo is its own PR there.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
