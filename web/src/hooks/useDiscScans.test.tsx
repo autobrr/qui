@@ -65,7 +65,7 @@ describe("useDiscScans list writes", () => {
     expect(hook.result.current.runsByPath.has("Movie")).toBe(false)
 
     await act(() => hook.result.current.cancel.mutateAsync(9))
-    await waitFor(() => expect(hook.result.current.cancel.isSuccess).toBe(true))
+    await waitFor(() => expect(hook.result.current.runFor("Movie")?.status).toBe("canceled"))
     expect(hook.result.current.runsByPath.has("Movie")).toBe(false)
   })
 })

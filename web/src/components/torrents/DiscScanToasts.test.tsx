@@ -7,24 +7,25 @@ import type { ActivityEvent, DiscScanRun } from "@/types"
 import { act, cleanup, render, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const { getDiscScan, toast, listeners } = vi.hoisted(() => ({
-  getDiscScan: vi.fn(),
-  toast: { success: vi.fn(), error: vi.fn() },
-  listeners: new Set<(event: ActivityEvent) => void>(),
-}))
+const { getDiscScan, toast, listeners, translation, syncStreamManager } = vi.hoisted(() => {
+  const listeners = new Set<(event: ActivityEvent) => void>()
+  return {
+    getDiscScan: vi.fn(),
+    toast: { success: vi.fn(), error: vi.fn() },
+    listeners,
+    translation: { t: (key: string, options?: { error?: string }) => options?.error ? `${key}:${options.error}` : key },
+    syncStreamManager: {
+      subscribeActivity: (listener: (event: ActivityEvent) => void) => {
+        listeners.add(listener)
+        return () => listeners.delete(listener)
+      },
+    },
+  }
+})
 vi.mock("@/lib/api", () => ({ api: { getDiscScan } }))
 vi.mock("sonner", () => ({ toast }))
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string, options?: { error?: string }) => options?.error ? `${key}:${options.error}` : key }),
-}))
-vi.mock("@/contexts/SyncStreamContext", () => ({
-  useSyncStreamManager: () => ({
-    subscribeActivity: (listener: (event: ActivityEvent) => void) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-  }),
-}))
+vi.mock("react-i18next", () => ({ useTranslation: () => translation }))
+vi.mock("@/contexts/SyncStreamContext", () => ({ useSyncStreamManager: () => syncStreamManager }))
 
 import { DiscScanToasts } from "./DiscScanToasts"
 

@@ -43,9 +43,12 @@ export function useDiscScans(instanceId: number, torrentHash: string, files: Tor
   })
 
   // runFor picks the row the dialog shows: the list row of this torrent, else
-  // the cached row of another torrent that the start of this Disc returned.
-  const runFor = (discPath: string): DiscScanRun | undefined =>
-    runsByPath.get(discPath) ?? (start.variables?.discPath === discPath ? start.data : undefined)
+  // the row of another torrent that the start of this Disc returned, updated
+  // by its cancel when the user canceled that shared run from here.
+  const runFor = (discPath: string): DiscScanRun | undefined => {
+    const started = start.variables?.discPath === discPath ? start.data : undefined
+    return runsByPath.get(discPath) ?? (cancel.data && cancel.data.id === started?.id ? cancel.data : started)
+  }
 
   return { runsByPath, runFor, start, cancel }
 }
