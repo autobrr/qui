@@ -190,8 +190,8 @@ function ReportBlock({
   }
 
   return (
-    <Tabs value={tab} onValueChange={(value) => onTabChange(value as typeof tab)} className="w-full">
-      <div className="flex items-center justify-between gap-2 min-w-0 mb-4">
+    <Tabs value={tab} onValueChange={(value) => onTabChange(value as typeof tab)} className="w-full min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <TabsList className="min-w-0">
           <TabsTrigger value="summary">{t("discScan.quickSummary")}</TabsTrigger>
           <TabsTrigger value="forum">{t("discScan.forum")}</TabsTrigger>
@@ -209,7 +209,14 @@ function ReportBlock({
       </div>
       <TabsContent value={tab} className="m-0">
         <div className="max-h-[65vh] overflow-y-auto pr-4">
-          <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">{copyText}</pre>
+          <pre
+            className={cn(
+              "rounded-md border bg-muted/30 p-3 text-xs font-mono",
+              tab === "summary" ? "whitespace-pre-wrap break-all" : "whitespace-pre overflow-x-auto"
+            )}
+          >
+            {copyText}
+          </pre>
         </div>
       </TabsContent>
     </Tabs>
