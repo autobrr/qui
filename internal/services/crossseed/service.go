@@ -1078,12 +1078,14 @@ func (m *localMatchContext) getSourceFileIDs() map[hardlink.FileID]struct{} {
 	}
 
 	ids := make(map[hardlink.FileID]struct{})
-	forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
+	if err := forEachLocalFileID(m.ctx, backend, m.sourceSavePath, m.sourceFiles, func(id hardlink.FileID, nlink uint64) bool {
 		if nlink > 1 {
 			ids[id] = struct{}{}
 		}
 		return true
-	})
+	}); err != nil && m.verificationErr == nil {
+		m.verificationErr = err
+	}
 	m.sourceFileIDs = ids
 	return m.sourceFileIDs
 }
@@ -1094,16 +1096,19 @@ func candidateSharesSourceFileID(
 	sourceIDs map[hardlink.FileID]struct{},
 	candidateSavePath string,
 	candidateFiles qbt.TorrentFiles,
-) bool {
+) (bool, error) {
 	shared := false
-	forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
+	err := forEachLocalFileID(ctx, backend, candidateSavePath, candidateFiles, func(id hardlink.FileID, _ uint64) bool {
 		if _, ok := sourceIDs[id]; ok {
 			shared = true
 			return false
 		}
 		return true
 	})
-	return shared
+	if shared {
+		return true, nil
+	}
+	return false, err
 }
 
 func (s *Service) localLinkedMatchType(
@@ -1144,8 +1149,12 @@ func (s *Service) localLinkedMatchType(
 		return ""
 	}
 
-	if candidateSharesSourceFileID(matchCtx.ctx, candidateBackend, sourceIDs, candidate.SavePath, candidateFiles) {
+	shared, err := candidateSharesSourceFileID(matchCtx.ctx, candidateBackend, sourceIDs, candidate.SavePath, candidateFiles)
+	if shared {
 		return matchTypeHardlink
+	}
+	if err != nil && matchCtx.verificationErr == nil {
+		matchCtx.verificationErr = err
 	}
 
 	if filesShareAllocation == nil {
@@ -1206,11 +1215,12 @@ func (s *Service) getLocalMatchCandidateFiles(
 
 // forEachLocalFileID stats each torrent file under savePath through the instance's
 // filesystem backend and invokes fn with its FileID and link count until fn returns
-// false. The save path must be absolute; file names that escape it and files that
-// cannot be statted are skipped so malicious torrent metadata cannot probe arbitrary
-// filesystem locations.
-func forEachLocalFileID(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) {
-	forEachLocalTorrentFile(ctx, backend, savePath, files, func(_ qbt.TorrentFile, _ string, info *fsops.LstatInfo) bool {
+// false. The save path must be absolute; file names that escape it are refused so
+// malicious torrent metadata cannot probe arbitrary filesystem locations, and
+// refusals are returned as an error because a name that resolves to nothing carries
+// no evidence either way. Files that cannot be statted are skipped.
+func forEachLocalFileID(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles, fn func(id hardlink.FileID, nlink uint64) bool) error {
+	return forEachLocalTorrentFile(ctx, backend, savePath, files, func(_ qbt.TorrentFile, _ string, info *fsops.LstatInfo) bool {
 		if info.FileID.IsZero() {
 			return true
 		}
@@ -1304,7 +1314,9 @@ func pairLocalTorrentFiles(
 
 func collectLocalTorrentFiles(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) []localTorrentFile {
 	localFiles := make([]localTorrentFile, 0, len(files))
-	forEachLocalTorrentFile(ctx, backend, savePath, files, func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool {
+	// Unresolvable names are already recorded by the FileID pass over both torrents
+	// in localLinkedMatchType, which runs before any pairing.
+	_ = forEachLocalTorrentFile(ctx, backend, savePath, files, func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool {
 		if file.Size == 0 {
 			return true
 		}
@@ -1343,21 +1355,31 @@ func normalizeTorrentRelativePath(name string) string {
 	return strings.ToLower(path.Clean(strings.ReplaceAll(name, `\`, "/")))
 }
 
+// forEachLocalTorrentFile resolves each torrent file under savePath and invokes fn
+// until fn returns false. It returns the first name that cannot be mapped to a path
+// under savePath at all: such a file can never yield link evidence, so callers with a
+// localMatchContext must fail closed instead of reporting "not linked". A resolved
+// path that is missing or not a regular file stays a silent skip, because partially
+// downloaded torrents are normal.
 func forEachLocalTorrentFile(
 	ctx context.Context,
 	backend fsops.Backend,
 	savePath string,
 	files qbt.TorrentFiles,
 	fn func(file qbt.TorrentFile, fullPath string, info *fsops.LstatInfo) bool,
-) {
+) error {
 	base := filepath.Clean(filepath.FromSlash(savePath))
 	if !filepath.IsAbs(base) {
-		return
+		return nil
 	}
 
+	var unresolvedErr error
 	for _, file := range files {
 		fullPath, ok := resolveLocalTorrentFile(base, file.Name)
 		if !ok {
+			if unresolvedErr == nil {
+				unresolvedErr = fmt.Errorf("torrent file name %q cannot be resolved under the save path", file.Name)
+			}
 			continue
 		}
 		info, err := backend.Lstat(ctx, fullPath)
@@ -1365,9 +1387,10 @@ func forEachLocalTorrentFile(
 			continue
 		}
 		if !fn(file, fullPath, info) {
-			return
+			return unresolvedErr
 		}
 	}
+	return unresolvedErr
 }
 
 func resolveLocalTorrentFile(base, name string) (string, bool) {

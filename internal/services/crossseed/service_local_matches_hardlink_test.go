@@ -403,21 +403,22 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 	}
 
 	var visited int
-	forEachLocalFileID(context.Background(), local.NewBackend(), sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
+	err := forEachLocalFileID(context.Background(), local.NewBackend(), sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})
 	require.Equal(t, 1, visited, "only the in-base file should be statted")
+	require.Error(t, err, "escaping names must be reported, not silently skipped")
 
 	// Relative or empty save paths are refused outright.
 	visited = 0
-	forEachLocalFileID(context.Background(), local.NewBackend(), "relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
+	require.NoError(t, forEachLocalFileID(context.Background(), local.NewBackend(), "relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
-	})
-	forEachLocalFileID(context.Background(), local.NewBackend(), "", files, func(_ hardlink.FileID, _ uint64) bool {
+	}))
+	require.NoError(t, forEachLocalFileID(context.Background(), local.NewBackend(), "", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
-	})
+	}))
 	require.Zero(t, visited)
 }
