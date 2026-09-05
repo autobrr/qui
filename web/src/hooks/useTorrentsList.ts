@@ -345,6 +345,11 @@ export function useTorrentsList(
     }
   }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, order, pageSize, search, sort])
 
+  const listQueryKey = useMemo(
+    () => ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
+    [instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
+  )
+
   const handleStreamPayload = useCallback(
     (payload: TorrentStreamPayload) => {
       if (!payload?.data) {
@@ -387,6 +392,11 @@ export function useTorrentsList(
       } else {
         data = normalizeStreamedSnapshot(payload.data)
       }
+
+      // REST owns the list until this listener has a usable stream baseline. Once
+      // a frame arrives, abort any in-flight fallback before committing the frame
+      // so a slower REST response cannot overwrite the newer stream snapshot.
+      void queryClient.cancelQueries({ queryKey: streamQueryKey, exact: true })
 
       // Publish through the query cache FIRST and adopt its structurally-shared
       // result as the single object lineage for every sink. setQueryData applies
@@ -463,7 +473,15 @@ export function useTorrentsList(
     onMessage: handleStreamPayload,
   })
 
-  const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
+  const hasBaselineForCurrentView =
+    lastStreamSnapshotScopeRef.current === viewScopeKey &&
+    lastFullSnapshotRef.current !== null
+  const shouldDisablePolling =
+    Boolean(streamParams) &&
+    streamState.connected &&
+    streamState.initialized &&
+    !streamState.error &&
+    hasBaselineForCurrentView
   const preferCachedQuery = currentPage === 0 && shouldDisablePolling
   // Polls the scrolled-in window while a recheck/move is in progress anywhere
   // in it; stops on its own once every row settles. Not gated on the stream:
@@ -477,9 +495,7 @@ export function useTorrentsList(
   // still connecting (e.g. behind a buffering reverse proxy that delays the init
   // event) streamState.error is null but no data is arriving, so gating on error
   // alone would disable REST entirely and the first page would never load.
-  const queryEnabled =
-    enabled &&
-    (currentPage > 0 || !streamParams || !streamState.connected || Boolean(streamState.error))
+  const queryEnabled = enabled && (currentPage > 0 || !shouldDisablePolling)
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
@@ -507,11 +523,6 @@ export function useTorrentsList(
       return previous === next ? previous : next
     })
   }, [allTorrents.length, lastKnownTotal])
-
-  const listQueryKey = useMemo(
-    () => ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
-    [instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
-  )
 
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({

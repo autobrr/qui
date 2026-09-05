@@ -6,6 +6,7 @@ package sse
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"hash/fnv"
 	"maps"
 	"math"
@@ -32,11 +33,10 @@ import (
 //
 // There is intentionally no periodic full keyframe: a recurring full page re-send is
 // hundreds of KB and, over an HTTP/2 proxy, head-of-line-blocks every other request
-// on the shared connection each time it fires. Correctness instead rests on
-// init-seeds-baseline (the client's init equals the server baseline) plus a fresh
-// init on every reconnect; the only drift window is the sub-millisecond gap between
-// subscription registration and go-sse subscribe, which self-heals on the next
-// reconnect.
+// on the shared connection each time it fires. Instead, every frame advances an
+// explicit sequence and the complete reconstructed snapshot is retained for new
+// subscribers. Clients can therefore detect a missed delta and reconnect for an
+// exact init without periodically paying for a full page.
 //
 // The caller holds no lock; the group's single-processor invariant (the sending
 // flag) already serializes ticks, and baselineMu guards the baseline against the
@@ -58,27 +58,42 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		order, changedIdx, newFP = computeRowDelta(resp.Torrents, singleRowKey, singleRowFingerprint, g.baselineFP)
 	}
 
-	forceFull := !g.baselineSeeded
+	forceFull := g.baselineSnapshot == nil
+	baseVersion := g.version
 
-	countsFP := countsFingerprint(resp.Counts)
+	// Nil edge-triggered fields mean "no update", not "clear". Reconstruct the
+	// complete snapshot represented by this frame before retaining it for joiners.
+	// Explicit JSON null remains non-nil and therefore still clears preferences.
+	snapshot := *resp
+	if g.baselineSnapshot != nil {
+		if snapshot.AppPreferences == nil {
+			snapshot.AppPreferences = g.baselineSnapshot.AppPreferences
+		}
+		if snapshot.Counts == nil {
+			snapshot.Counts = g.baselineSnapshot.Counts
+		}
+	}
 
 	// Advance the baseline before returning so the next tick diffs against this page.
 	prevOrder := g.baselineOrder
-	prevPrefs := g.baselinePrefs
-	prevCounts := g.baselineCounts
+	var prevPrefs json.RawMessage
+	var prevCounts *qbittorrent.TorrentCounts
+	if g.baselineSnapshot != nil {
+		prevPrefs = g.baselineSnapshot.AppPreferences
+		prevCounts = g.baselineSnapshot.Counts
+	}
 	g.baselineFP = newFP
 	g.baselineOrder = order
-	g.baselinePrefs = resp.AppPreferences
-	g.baselineCounts = countsFP
-	// A tick without counts (a cross-instance page where no member contributed
-	// any) must not wipe the snapshot reconcileInitWithBaseline hands to joiners.
-	if resp.Counts != nil {
-		g.baselineCountsData = resp.Counts
-	}
-	g.baselineSeeded = true
+	g.baselineSnapshot = &snapshot
+	g.version.Minor++
 
 	if forceFull {
-		return &StreamPayload{Type: streamEventUpdate, Data: resp, Meta: meta}
+		return &StreamPayload{
+			Type:    streamEventUpdate,
+			Data:    &snapshot,
+			Meta:    meta,
+			Version: new(g.version),
+		}
 	}
 
 	// Shallow-copy the response so the delta frame keeps every aggregate field but
@@ -87,14 +102,18 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	deltaResp := *resp
 
 	// ~4.7 KB and edited rarely; the client keeps its cached copy when the field is absent.
-	if bytes.Equal(resp.AppPreferences, prevPrefs) {
+	if bytes.Equal(snapshot.AppPreferences, prevPrefs) {
 		deltaResp.AppPreferences = nil
+	} else {
+		deltaResp.AppPreferences = snapshot.AppPreferences
 	}
 
 	// Several KB per tick on an instance with many categories, tags and trackers,
 	// and unchanged whenever the library is; the client keeps its cached copy.
-	if countsFP == prevCounts {
+	if countsEqual(snapshot.Counts, prevCounts) {
 		deltaResp.Counts = nil
+	} else {
+		deltaResp.Counts = snapshot.Counts
 	}
 
 	if isCross {
@@ -105,7 +124,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		deltaResp.CrossInstanceTorrents = nil
 	}
 
-	delta := &StreamDelta{}
+	delta := &StreamDelta{BaseVersion: baseVersion}
 	if !slices.Equal(order, prevOrder) {
 		// Send the order even when empty (the page drained to zero rows): a pointer
 		// keeps a present-but-empty order distinct from an absent one on the wire, so
@@ -113,42 +132,34 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 		delta.Order = &order
 	}
 
-	return &StreamPayload{Type: streamEventDelta, Data: &deltaResp, Delta: delta, Meta: meta}
+	return &StreamPayload{
+		Type:    streamEventDelta,
+		Data:    &deltaResp,
+		Delta:   delta,
+		Meta:    meta,
+		Version: new(g.version),
+	}
 }
 
-// reconcileInitWithBaseline makes a freshly built init snapshot and the group
-// baseline agree, in whichever direction is available.
-//
-// With no baseline yet, the snapshot seeds it, so the client's init and the server
-// baseline are identical and the very next tick is a clean delta the client applies
-// without drift.
-//
-// A later joiner to an already-seeded group must not re-seed (that would desync
-// existing subscribers), so the snapshot takes the edge-triggered fields from the
-// baseline instead. Its rows may still differ slightly from the shared baseline
-// until it reconnects.
-func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *qbittorrent.TorrentResponse) {
-	if resp == nil {
-		return
-	}
-
+// buildInitPayload returns the exact complete snapshot represented by the group's
+// current baseline. The first init seeds that baseline from resp; later callers
+// ignore independently materialized rows so they cannot join halfway through a
+// delta sequence with a different page. A nil result means the group is unseeded
+// and no candidate snapshot was supplied.
+func (g *subscriptionGroup) buildInitPayload(opts StreamOptions, resp *qbittorrent.TorrentResponse, meta *StreamMeta) *StreamPayload {
 	g.baselineMu.Lock()
 	defer g.baselineMu.Unlock()
 
-	if g.baselineSeeded {
-		// Preferences are edge-triggered and there is no periodic keyframe, so an
-		// init built while the preferences cache was empty would leave this joiner
-		// without them until it reconnects. It inherits the baseline instead.
-		if resp.AppPreferences == nil {
-			resp.AppPreferences = g.baselinePrefs
+	if g.baselineSnapshot != nil {
+		return &StreamPayload{
+			Type:    streamEventInit,
+			Data:    g.baselineSnapshot,
+			Meta:    meta,
+			Version: new(g.version),
 		}
-		// Counts are edge-triggered the same way: init metas never set
-		// IncludeCounts, so without this backfill a joiner whose REST bootstrap
-		// failed would show zero sidebar counts until the library next changes.
-		if resp.Counts == nil {
-			resp.Counts = g.baselineCountsData
-		}
-		return
+	}
+	if resp == nil {
+		return nil
 	}
 
 	var (
@@ -163,10 +174,15 @@ func (g *subscriptionGroup) reconcileInitWithBaseline(opts StreamOptions, resp *
 
 	g.baselineFP = fp
 	g.baselineOrder = order
-	g.baselinePrefs = resp.AppPreferences
-	g.baselineCounts = countsFingerprint(resp.Counts)
-	g.baselineCountsData = resp.Counts
-	g.baselineSeeded = true
+	g.baselineSnapshot = resp
+	g.version.Minor++
+
+	return &StreamPayload{
+		Type:    streamEventInit,
+		Data:    g.baselineSnapshot,
+		Meta:    meta,
+		Version: new(g.version),
+	}
 }
 
 // computeRowDelta walks the freshly materialized rows in display order, producing
@@ -315,42 +331,22 @@ func crossRowFingerprint(b *fpBuf, c qbittorrent.CrossInstanceTorrentView) uint6
 	return b.sum()
 }
 
-// fpSortedMap appends a map in key order so the hash does not follow Go's
-// randomized map iteration order.
-func fpSortedMap[V any](b *fpBuf, m map[string]V, appendValue func(*fpBuf, V)) {
-	b.i64(int64(len(m)))
-	for _, k := range slices.Sorted(maps.Keys(m)) {
-		b.str(k)
-		appendValue(b, m[k])
+// countsEqual compares read-only snapshots without allocating or sorting map keys.
+func countsEqual(a, b *qbittorrent.TorrentCounts) bool {
+	if a == b {
+		return true
 	}
-}
-
-// countsFingerprint hashes the sidebar counts aggregate. Counts are several KB of
-// JSON on an instance with many categories, tags and trackers, and they only move
-// when the library does, so a tick that leaves them unchanged omits the field the
-// same way it already omits preferences. The client reuses its last same-scope
-// counts snapshot when the field is absent.
-func countsFingerprint(c *qbittorrent.TorrentCounts) uint64 {
-	if c == nil {
-		return 0
+	if a == nil || b == nil {
+		return false
 	}
-	b := make(fpBuf, 0, fpBufSize)
-	b.i64(int64(c.Total))
-	fpSortedMap(&b, c.Status, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.Categories, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.CategorySizes, func(b *fpBuf, v int64) { b.i64(v) })
-	fpSortedMap(&b, c.Tags, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.TagSizes, func(b *fpBuf, v int64) { b.i64(v) })
-	fpSortedMap(&b, c.Trackers, func(b *fpBuf, v int) { b.i64(int64(v)) })
-	fpSortedMap(&b, c.TrackerTransfers, func(b *fpBuf, v qbittorrent.TrackerTransferStats) {
-		b.i64(v.Uploaded)
-		b.i64(v.Downloaded)
-		b.i64(v.UploadedSession)
-		b.i64(v.DownloadedSession)
-		b.i64(v.TotalSize)
-		b.i64(int64(v.Count))
-	})
-	return b.sum()
+	return a.Total == b.Total &&
+		maps.Equal(a.Status, b.Status) &&
+		maps.Equal(a.Categories, b.Categories) &&
+		maps.Equal(a.CategorySizes, b.CategorySizes) &&
+		maps.Equal(a.Tags, b.Tags) &&
+		maps.Equal(a.TagSizes, b.TagSizes) &&
+		maps.Equal(a.Trackers, b.Trackers) &&
+		maps.Equal(a.TrackerTransfers, b.TrackerTransfers)
 }
 
 // subsetRows returns the rows at the given indices, preserving order.
