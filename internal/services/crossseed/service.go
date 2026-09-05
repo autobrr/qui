@@ -11630,7 +11630,8 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	attemptMatch := func(match TorrentSearchResult, normalCandidate bool) {
 		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
 		if attemptResult != nil {
-			if attemptResult.Status == models.CrossSeedSearchResultStatusAdded {
+			switch attemptResult.Status {
+			case models.CrossSeedSearchResultStatusAdded:
 				s.searchMu.Lock()
 				state.run.CrossSeedsAdded++
 				s.searchMu.Unlock()
@@ -11639,7 +11640,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				if normalCandidate {
 					addTorrentSearchResultHashes(normalAddedHashes, match)
 				}
-			} else if attemptResult.Status == models.CrossSeedSearchResultStatusFailed {
+			case models.CrossSeedSearchResultStatusFailed:
 				failedAttempt = true
 				message := strings.TrimSpace(attemptResult.Message)
 				if message == "" {
@@ -11647,6 +11648,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				}
 				classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
 				indexerFails[match.IndexerID]++
+			case models.CrossSeedSearchResultStatusSkipped:
 			}
 			s.appendSearchResult(state, *attemptResult)
 		}
