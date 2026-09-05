@@ -142,6 +142,7 @@ export function applyStreamDelta(
 
     return {
       data: {
+        ...prev,
         ...frame,
         crossInstanceTorrents: rows,
         cross_instance_torrents: rows,
@@ -156,6 +157,7 @@ export function applyStreamDelta(
 
   return {
     data: {
+      ...prev,
       ...frame,
       torrents: rows,
     },

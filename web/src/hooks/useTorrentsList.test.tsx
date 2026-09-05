@@ -76,7 +76,13 @@ import { api } from "@/lib/api"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
-import { STREAM_HIDDEN_PAUSE_DELAY_MS, TORRENT_STREAM_POLL_INTERVAL_MS, useTorrentsList } from "@/hooks/useTorrentsList"
+import {
+  STREAM_HIDDEN_PAUSE_DELAY_MS,
+  TORRENT_STREAM_POLL_INTERVAL_MS,
+  useTorrentsList
+} from "@/hooks/useTorrentsList"
+
+const LOADED_WINDOW_POLL_INTERVAL_MS = 10_000
 
 const mockedApi = vi.mocked(api, true)
 const mockedUseInstances = vi.mocked(useInstances)
@@ -84,6 +90,8 @@ const mockedUseCapabilities = vi.mocked(useInstanceCapabilities)
 
 const DISCONNECTED: StreamState = {
   connected: false,
+  initialized: false,
+  dataStalled: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -238,6 +246,94 @@ describe("useTorrentsList", () => {
     expect(mockedApi.getTorrents).toHaveBeenCalled()
     expect(result.current.torrents).toEqual([])
     expect(result.current.hasLoadedAll).toBe(true)
+    expect(result.current.isLoadingMore).toBe(false)
+  })
+
+  it("does not retain pagination loading across a view change", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.search === "new") {
+        return new Promise(() => undefined)
+      }
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({ torrents: [makeTorrent({ hash: "old" })], total: 3, hasMore: true }))
+      }
+      return new Promise(() => undefined)
+    })
+    const { result, rerender } = renderHook(
+      ({ search }) => useTorrentsList(1, { search, pollingEnabled: false }),
+      { wrapper: makeWrapper(), initialProps: { search: "old" } }
+    )
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+    expect(result.current.isLoadingMore).toBe(true)
+    rerender({ search: "new" })
+    await flush()
+    expect(result.current.isLoadingMore).toBe(false)
+    act(() => capturedOnMessage?.({
+      type: "init",
+      data: makeResponse({ torrents: [makeTorrent({ hash: "new" })], total: 3, hasMore: true }),
+    }))
+    await flush()
+    expect(result.current.isLoadingMore).toBe(false)
+    mockedApi.getTorrents.mockClear()
+    act(() => result.current.loadMore())
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1, search: "new" }), expect.any(AbortSignal))
+  })
+
+  it.each([0, 1])("allows pagination during a background refresh of page %i", async currentPage => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let refreshing = false
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (refreshing && (params.page ?? 0) <= currentPage) {
+        return new Promise(() => undefined)
+      }
+      return Promise.resolve(makeResponse({ torrents: [makeTorrent({ hash: `page-${params.page}` })], total: 5, hasMore: true }))
+    })
+    const { result } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+    await flush()
+    if (currentPage > 0) {
+      act(() => result.current.loadMore())
+      await flush()
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(600))
+    refreshing = true
+    act(() => { void queryClient.refetchQueries({ queryKey: ["torrents-list"], type: "active" }) })
+    await flush()
+    expect(result.current.isFetching).toBe(true)
+    expect(result.current.isLoadingMore).toBe(false)
+    act(() => result.current.loadMore())
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenLastCalledWith(1, expect.objectContaining({ page: currentPage + 1 }), expect.any(AbortSignal))
+    expect(result.current.torrents.at(-1)?.hash).toBe(`page-${currentPage + 1}`)
+  })
+
+  it("waits for the initial page before allowing pagination", async () => {
+    mockedApi.getTorrents.mockReturnValue(new Promise(() => undefined))
+    const { result } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper() })
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(1)
+    expect(mockedApi.getTorrents).toHaveBeenCalledWith(1, expect.objectContaining({ page: 0 }), expect.any(AbortSignal))
+  })
+
+  it("retries a failed page without skipping it or sticking in loading", async () => {
+    mockedApi.getTorrents.mockResolvedValueOnce(makeResponse({
+      torrents: [makeTorrent({ hash: "a" })], total: 3, hasMore: true,
+    })).mockRejectedValueOnce(new Error("offline"))
+    const { result } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper() })
+    await flush()
+    act(() => result.current.loadMore())
+    await flush()
+    expect(result.current.isLoadingMore).toBe(false)
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({ torrents: [makeTorrent({ hash: "b" })], total: 3, hasMore: true }))
+    await act(async () => vi.advanceTimersByTimeAsync(600))
+    act(() => result.current.loadMore())
+    await flush()
+    expect(mockedApi.getTorrents).toHaveBeenLastCalledWith(1, expect.objectContaining({ page: 1 }), expect.any(AbortSignal))
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b"])
     expect(result.current.isLoadingMore).toBe(false)
   })
 
@@ -561,23 +657,21 @@ describe("useTorrentsList", () => {
     expect(pageCalls().filter(page => page === 2).length).toBe(1)
   })
 
-  it("keeps polling the loaded window while a scrolled-in row is checking, and stops when it settles", async () => {
-    // A recheck holds a row in checkingUP for minutes. Rows past the stream
-    // window get no live updates, so the window query must poll while any
-    // loaded row is in a self-resolving state instead of reading it twice
-    // and freezing mid-progress.
-    let checkingState = "checkingUP"
+  it("polls every loaded page regardless of row state", async () => {
+    let refreshed = false
     mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
       if (params.page === 0) {
         return Promise.resolve(makeResponse({
           torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
-          total: 4,
+          total: refreshed ? 3 : 4,
           hasMore: true,
         }))
       }
       return Promise.resolve(makeResponse({
-        torrents: [makeTorrent({ hash: "c", state: checkingState as Torrent["state"] }), makeTorrent({ hash: "d" })],
-        total: 4,
+        torrents: refreshed
+          ? [makeTorrent({ hash: "c", state: "uploading", progress: 1, dlspeed: 0 })]
+          : [makeTorrent({ hash: "c", state: "downloading", progress: 0.99, dlspeed: 1024 }), makeTorrent({ hash: "d" })],
+        total: refreshed ? 3 : 4,
         hasMore: false,
       }))
     })
@@ -598,31 +692,127 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
 
     const pageCalls = () => mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)
+    const page0CallsAfterLoad = pageCalls().filter(page => page === 0).length
     const page1CallsAfterLoad = pageCalls().filter(page => page === 1).length
 
-    // The checking row keeps the window polling: one interval tick refetches it.
+    // No checking/moving row is present. The later-page torrent completes and a
+    // neighboring row is deleted outside QUI; the interval still refreshes the
+    // complete loaded window because page one is outside stream coverage.
+    refreshed = true
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
+      await vi.advanceTimersByTimeAsync(LOADED_WINDOW_POLL_INTERVAL_MS)
     })
     await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    await flush()
+    expect(pageCalls().filter(page => page === 0).length).toBe(page0CallsAfterLoad + 1)
     expect(pageCalls().filter(page => page === 1).length).toBe(page1CallsAfterLoad + 1)
-
-    // The recheck finishes: the next tick delivers the settled state...
-    checkingState = "uploading"
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
-    })
-    await flush()
-    const callsAfterSettle = pageCalls().filter(page => page === 1).length
-    expect(callsAfterSettle).toBe(page1CallsAfterLoad + 2)
     expect(result.current.torrents.find(t => t.hash === "c")?.state).toBe("uploading")
+    expect(result.current.torrents.find(t => t.hash === "c")?.progress).toBe(1)
+    expect(result.current.torrents.some(t => t.hash === "d")).toBe(false)
+  })
 
-    // ...and polling stops.
+  it("does not let an older loaded-window response overwrite a streamed completion", async () => {
+    const oldPageZero = makeResponse({
+      torrents: [
+        makeTorrent({ hash: "a", state: "downloading", progress: 0.99, dlspeed: 1024 }),
+        makeTorrent({ hash: "b" }),
+      ],
+      total: 4,
+      hasMore: true,
+    })
+    const pageOne = makeResponse({
+      torrents: [makeTorrent({ hash: "c" }), makeTorrent({ hash: "d" })],
+      total: 4,
+      hasMore: false,
+    })
+    let delayWindowRefresh = false
+    let resolvePageZero: (response: TorrentResponse) => void = () => undefined
+
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        if (delayWindowRefresh) {
+          return new Promise<TorrentResponse>(resolve => {
+            resolvePageZero = resolve
+          })
+        }
+        return Promise.resolve(oldPageZero)
+      }
+      return Promise.resolve(pageOne)
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { result, rerender } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await flush()
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS * 3)
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
     })
     await flush()
-    expect(pageCalls().filter(page => page === 1).length).toBe(callsAfterSettle)
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b", "c", "d"])
+
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    rerender()
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: oldPageZero,
+      })
+    })
+    await flush()
+
+    delayWindowRefresh = true
+    let refresh: Promise<void>
+    act(() => {
+      refresh = queryClient.refetchQueries({
+        queryKey: ["torrents-list", 1],
+        exact: false,
+        type: "active",
+      })
+    })
+    await flush()
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({
+          torrents: [
+            makeTorrent({ hash: "a", state: "uploading", progress: 1, dlspeed: 0 }),
+            makeTorrent({ hash: "b" }),
+          ],
+          total: 4,
+          hasMore: true,
+        }),
+      })
+    })
+    expect(result.current.torrents.find(torrent => torrent.hash === "a")?.state).toBe("uploading")
+
+    act(() => {
+      resolvePageZero(oldPageZero)
+    })
+    await act(async () => {
+      await refresh!
+    })
+    await flush()
+
+    const completed = result.current.torrents.find(torrent => torrent.hash === "a")
+    expect(completed?.state).toBe("uploading")
+    expect(completed?.progress).toBe(1)
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b", "c", "d"])
+
+    const refreshCalls = mockedApi.getTorrents.mock.calls.slice(-2)
+    expect(refreshCalls).toHaveLength(2)
+    expect(refreshCalls.every(([, params]) => params.preferCached)).toBe(true)
   })
 
   it("keeps a row that reflows across a page boundary mid-fetch as a single entry", async () => {
@@ -752,6 +942,74 @@ describe("useTorrentsList", () => {
     )
   })
 
+  it("keeps pagination alive without replacing newer streamed rows or metadata", async () => {
+    let pageOneSignal: AbortSignal | undefined
+    let resolvePageOne: ((response: TorrentResponse) => void) | undefined
+    const pageOneRequest = new Promise<TorrentResponse>(resolve => {
+      resolvePageOne = resolve
+    })
+
+    mockedApi.getTorrents.mockImplementation((_instanceId, params, signal) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" })],
+          total: 2,
+          hasMore: true,
+        }))
+      }
+
+      pageOneSignal = signal
+      return pageOneRequest
+    })
+
+    const { result } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper() }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+
+    expect(pageOneSignal).toBeInstanceOf(AbortSignal)
+    expect(result.current.isLoadingMore).toBe(true)
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({
+          torrents: [makeTorrent({ hash: "a", name: "streamed-a" }), makeTorrent({ hash: "b", progress: 1, state: "uploading" })],
+          total: 3,
+          hasMore: true,
+        }),
+      })
+    })
+    await flush()
+
+    expect(pageOneSignal?.aborted).toBe(false)
+
+    act(() => {
+      resolvePageOne?.(makeResponse({
+        torrents: [makeTorrent({ hash: "b" })],
+        total: 2,
+        hasMore: false,
+      }))
+    })
+    await flush()
+
+    expect(result.current.isLoadingMore).toBe(false)
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["a", "b"])
+    expect(result.current.totalCount).toBe(3)
+    expect(result.current.hasLoadedAll).toBe(false)
+    expect(result.current.torrents.find(torrent => torrent.hash === "b")?.progress).toBe(1)
+    expect(result.current.torrents.find(torrent => torrent.hash === "b")?.state).toBe("uploading")
+  })
+
   it("resets pagination state and re-fetches page 0 when filters change", async () => {
     const initial = [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })]
     const filtered = [makeTorrent({ hash: "z" })]
@@ -849,7 +1107,7 @@ describe("useTorrentsList", () => {
     ]
 
     // Stream is connected: REST page-0 query should be gated off.
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
     const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
 
@@ -870,12 +1128,97 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(t => t.hash)).toEqual(["s1", "s2"])
     expect(result.current.totalCount).toBe(2)
     expect(result.current.isStreaming).toBe(true)
-    // Connected stream disables the page-0 REST fetch entirely.
-    expect(mockedApi.getTorrents).not.toHaveBeenCalled()
+    // REST remains eligible until this listener owns a baseline. The init aborts
+    // that in-flight fallback and takes ownership without allowing it to overwrite.
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(1)
+    expect(mockedApi.getTorrents.mock.calls[0]?.[2]?.aborted).toBe(true)
+  })
+
+  it("keeps the accepted stream cache successful and idle after cancelling REST", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    let resolveRequest!: (response: TorrentResponse) => void
+    mockedApi.getTorrents.mockReturnValue(new Promise(resolve => { resolveRequest = resolve }))
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper(queryClient) })
+    await flush()
+    const snapshot = makeResponse({ torrents: [makeTorrent({ hash: "stream" })], total: 1, hasMore: false })
+    act(() => capturedOnMessage?.({ type: "init", data: snapshot }))
+    await flush()
+    // Even an API mock that ignores abort cannot overwrite the stream's cache.
+    act(() => resolveRequest(makeResponse({ torrents: [makeTorrent({ hash: "rest" })] })))
+    await flush()
+    const query = queryClient.getQueryCache().findAll({ queryKey: ["torrents-list"] })[0]
+    expect(query.state.data).toMatchObject({ torrents: [{ hash: "stream" }] })
+    expect(query.state.status).toBe("success")
+    expect(query.state.fetchStatus).toBe("idle")
+    expect(query.state.error).toBeNull()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["stream"])
+  })
+
+  it("keeps REST enabled when a shared stream has no baseline for this listener", async () => {
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
+    mockedApi.getTorrents.mockResolvedValue(
+      makeResponse({
+        torrents: [makeTorrent({ hash: "rest" })],
+        total: 1,
+        hasMore: false,
+      })
+    )
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+
+    expect(mockedApi.getTorrents).toHaveBeenCalled()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["rest"])
+    expect(result.current.isStreaming).toBe(false)
+  })
+
+  it("uses REST fallback while retained stream data is stalled", async () => {
+    streamState = {
+      ...DISCONNECTED,
+      connected: true,
+      initialized: true,
+    }
+    let request = 0
+    mockedApi.getTorrents.mockImplementation(() => {
+      request += 1
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({
+          hash: request === 1 ? "initial-rest" : "fallback-rest",
+          name: request === 1 ? "initial REST" : "REST fallback",
+        })],
+        total: 1,
+        hasMore: false,
+      }))
+    })
+
+    const { result, rerender } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+    await flush()
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({
+          torrents: [makeTorrent({ hash: "stream", name: "retained stream row" })],
+          total: 1,
+          hasMore: false,
+        }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["stream"])
+
+    streamState = { ...streamState, dataStalled: true }
+    rerender()
+    await flush()
+
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(2)
+    expect(result.current.torrents.map(torrent => torrent.hash)).toEqual(["fallback-rest"])
+    expect(result.current.isStreaming).toBe(false)
   })
 
   it("preserves last stream counts when a connected stream snapshot omits counts", async () => {
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
     const counts = makeCounts()
 
     const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
@@ -898,11 +1241,12 @@ describe("useTorrentsList", () => {
     await flush()
 
     expect(result.current.counts).toBe(counts)
-    expect(mockedApi.getTorrents).not.toHaveBeenCalled()
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(1)
+    expect(mockedApi.getTorrents.mock.calls[0]?.[2]?.aborted).toBe(true)
   })
 
   it("keeps explicit zero stream counts authoritative over preserved counts", async () => {
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
     const previousCounts = makeCounts()
     const zeroCounts = makeCounts({
       status: { all: 0 },
@@ -936,7 +1280,7 @@ describe("useTorrentsList", () => {
   })
 
   it("does not preserve stream counts across filter scope changes", async () => {
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
     const counts = makeCounts()
     const downloadingFilter = { status: ["downloading"] } as TorrentFilters
 
@@ -968,7 +1312,7 @@ describe("useTorrentsList", () => {
   })
 
   it("ignores full stream frames from a previous scope after search changes", async () => {
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
     const { result, rerender } = renderHook(
       ({ search }: { search?: string }) => useTorrentsList(1, { pollingEnabled: false, search }),
@@ -1013,7 +1357,7 @@ describe("useTorrentsList", () => {
   })
 
   it("keeps the committed stream callback active when a scope render is abandoned", async () => {
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
     const pending = new Promise<never>(() => undefined)
     let committedList: ReturnType<typeof useTorrentsList> | undefined
 
@@ -1074,7 +1418,7 @@ describe("useTorrentsList", () => {
   })
 
   it("does not publish counts from an abandoned stream render", async () => {
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
     const committedCounts = makeCounts({ status: { all: 1 }, total: 1 })
     const abandonedCounts = makeCounts({ status: { all: 2 }, total: 2 })
     const pending = new Promise<never>(() => undefined)
@@ -1139,7 +1483,7 @@ describe("useTorrentsList", () => {
     // All-instances view with a connected stream routes through the cross-instance
     // STREAM merge branch (mergeStreamedCrossInstanceFirstPage), keyed on
     // instanceId+hash. Distinct rows that share a hash across instances stay separate.
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
     // page-0 stream rows: same hash "x" on two instances are two distinct rows.
     const page0Rows = [
@@ -1266,7 +1610,7 @@ describe("useTorrentsList", () => {
 
   it("does not poll page 0 once the stream is connected", async () => {
     // Connected stream gates the page-0 REST query off entirely; no poll ever fires.
-    streamState = { ...DISCONNECTED, connected: true }
+    streamState = { ...DISCONNECTED, connected: true, initialized: true }
 
     const { result } = renderHook(
       () => useTorrentsList(1, { pollingEnabled: true }),
@@ -1281,6 +1625,7 @@ describe("useTorrentsList", () => {
     })
     await flush()
     expect(result.current.torrents).toHaveLength(1)
+    const callsAfterInit = mockedApi.getTorrents.mock.calls.length
 
     // Advancing well past the poll interval must not produce any getTorrents call.
     await act(async () => {
@@ -1288,7 +1633,7 @@ describe("useTorrentsList", () => {
     })
     await flush()
 
-    expect(mockedApi.getTorrents).not.toHaveBeenCalled()
+    expect(mockedApi.getTorrents).toHaveBeenCalledTimes(callsAfterInit)
   })
 
   it("ERROR PATH: a rejected getTorrents settles loading false and keeps the list empty", async () => {

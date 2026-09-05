@@ -72,10 +72,11 @@ export function resolveDashboardDataStatusKind({
     return "error"
   }
 
+  if (cacheMetadata?.isStale || cacheMetadata?.source === "cache") {
+    return "cached"
+  }
+
   if (fallbackActive) {
-    if (cacheMetadata?.source === "cache") {
-      return "cached"
-    }
     if (!isFirstLoad) {
       return "fallback"
     }
@@ -84,10 +85,6 @@ export function resolveDashboardDataStatusKind({
 
   if (streamConnected) {
     return "live"
-  }
-
-  if (cacheMetadata?.source === "cache") {
-    return "cached"
   }
 
   if (!isFirstLoad) {
