@@ -31,9 +31,9 @@ function makeRun(overrides: Partial<CrossSeedRun> = {}): CrossSeedRun {
     startedAt: "2026-01-01T00:00:00Z",
     totalFeedItems: 0,
     candidatesFound: 0,
-    torrentsAdded: 0,
-    torrentsFailed: 0,
-    torrentsSkipped: 0,
+    crossSeedsAdded: 0,
+    candidatesFailed: 0,
+    candidatesSkipped: 0,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,
   }

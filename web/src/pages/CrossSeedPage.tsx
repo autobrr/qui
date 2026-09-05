@@ -308,9 +308,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-            {run.torrentsFailed > 0 && (
-              <Badge variant="destructive" className="text-xs">{t("automation.failedCount", { count: run.torrentsFailed })}</Badge>
+            <Badge variant="secondary" className="text-xs">+{run.crossSeedsAdded}</Badge>
+            {run.candidatesFailed > 0 && (
+              <Badge variant="destructive" className="text-xs">{t("automation.failedCount", { count: run.candidatesFailed })}</Badge>
             )}
             <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
             {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -1975,8 +1975,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
     }
     return {
-      totalAdded: runs.reduce((sum, run) => sum + run.torrentsAdded, 0),
-      totalFailed: runs.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalAdded: runs.reduce((sum, run) => sum + run.crossSeedsAdded, 0),
+      totalFailed: runs.reduce((sum, run) => sum + run.candidatesFailed, 0),
       totalRuns: runs.length,
     }
   }, [runs])
@@ -1986,7 +1986,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
     }
     return {
-      totalAdded: searchRuns.reduce((sum, run) => sum + run.torrentsAdded, 0),
+      totalAdded: searchRuns.reduce((sum, run) => sum + run.crossSeedsAdded, 0),
       totalFailed: searchRuns.reduce((sum, run) => sum + run.torrentsFailed, 0),
       totalRuns: searchRuns.length,
     }
@@ -2070,7 +2070,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("overview.seededSearch.recentRuns")}</span>
-              <span className="font-medium">{t("overview.seededSearch.runsCount", { count: searchRuns?.length ?? 0 })} • +{searchRuns?.reduce((sum, run) => sum + run.torrentsAdded, 0) ?? 0}</span>
+              <span className="font-medium">{t("scan.runSummary", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded })}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("overview.seededSearch.now")}</span>
@@ -2716,14 +2716,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   )}
                   <div className="grid gap-2 text-xs">
                     <div className="flex items-center gap-4">
-                      <span className="text-muted-foreground">{t("scan.progress")}</span>
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        {t("scan.progress")}
+                        <FieldHelp>{t("scan.dueCandidatesHelp")}</FieldHelp>
+                      </span>
                       <span className="font-medium">{t("scan.torrentsProgress", { processed: activeSearchRun.processed, total: activeSearchRun.totalTorrents || "?" })}</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-muted-foreground">{t("scan.results")}</span>
                       <span className="font-medium">
-                        {t("scan.resultsDetail", { added: activeSearchRun.torrentsAdded, skipped: activeSearchRun.torrentsSkipped, failed: activeSearchRun.torrentsFailed })}
+                        {t("scan.resultsDetail", { added: activeSearchRun.torrentsWithCrossSeeds, skipped: activeSearchRun.torrentsSkipped, failed: activeSearchRun.torrentsFailed })}
                       </span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-muted-foreground">{t("scan.crossSeedsAdded")}</span>
+                      <span className="font-medium">{activeSearchRun.crossSeedsAdded}</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-muted-foreground">{t("scan.started")}</span>
@@ -2789,7 +2796,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                      <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                      <Badge variant="secondary" className="text-xs">{t("scan.crossSeedsAddedBadge", { added: run.crossSeedsAdded })}</Badge>
                                       {run.torrentsFailed > 0 && (
                                         <Badge variant="destructive" className="text-xs">{t("scan.failedCount", { count: run.torrentsFailed })}</Badge>
                                       )}
