@@ -6,7 +6,6 @@
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { DiscScans } from "@/hooks/useDiscScans"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
@@ -209,9 +208,9 @@ function ReportBlock({
         </div>
       </div>
       <TabsContent value={tab} className="m-0">
-        <ScrollArea className="h-[65vh] pr-4">
+        <div className="max-h-[65vh] overflow-y-auto pr-4">
           <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">{copyText}</pre>
-        </ScrollArea>
+        </div>
       </TabsContent>
     </Tabs>
   )
