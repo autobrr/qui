@@ -861,6 +861,10 @@ class ApiClient {
     })
   }
 
+  async getDiscScan(instanceId: number, runId: number): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}`)
+  }
+
   async cancelDiscScan(instanceId: number, runId: number): Promise<DiscScanRun> {
     return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}/cancel`, { method: "POST" })
   }

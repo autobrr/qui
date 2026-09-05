@@ -224,11 +224,11 @@ func (s *Service) process(ctx context.Context, run *models.DiscScanRun) error {
 }
 
 func (s *Service) emit(instanceID int, runID int64) {
-	ev := activity.Event{Kind: activity.KindDiscScanRun, InstanceID: instanceID}
-	if runID != 0 {
-		ev.ResourceID = strconv.FormatInt(runID, 10)
-	}
-	s.activityPublisher.Publish(ev)
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindDiscScanRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.FormatInt(runID, 10),
+	})
 }
 
 // runBDInfo is the one call into go-bdinfo: main playlist only, stream

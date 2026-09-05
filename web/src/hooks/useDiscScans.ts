@@ -4,11 +4,9 @@
  */
 
 import { api } from "@/lib/api"
-import type { DiscScanRun, DiscScanStatus, TorrentFile } from "@/types"
+import type { DiscScanRun, TorrentFile } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useMemo, useRef } from "react"
-import { useTranslation } from "react-i18next"
-import { toast } from "sonner"
+import { useMemo } from "react"
 
 // useDiscScans holds the Disc scans of one torrent for the Content tab: the
 // newest run per Disc path, and the start and cancel calls. The list refetches
@@ -17,7 +15,8 @@ import { toast } from "sonner"
 //
 // A start on a Disc another torrent already scanned returns that torrent's
 // cached row. The list of this torrent never carries it, so it is not written
-// into the list; the dialog reads it from start.data instead.
+// into the list; the dialog reads it from start.data instead. The completion
+// toast lives in DiscScanToasts, which stays mounted when this hook is not.
 export function useDiscScans(instanceId: number, torrentHash: string, files: TorrentFile[] | undefined, enabled: boolean) {
   const queryClient = useQueryClient()
   const queryKey = ["disc-scans", instanceId, torrentHash]
@@ -30,29 +29,13 @@ export function useDiscScans(instanceId: number, torrentHash: string, files: Tor
   })
   const runsByPath = useMemo(() => new Map(runs?.map(run => [run.discPath, run])), [runs])
 
-  // The completion toast fires when a refetch shows a run this hook already
-  // knew move to completed or failed. A row that is already finished when the
-  // list first loads stays silent, and so does a cancel.
-  const { t } = useTranslation("torrents")
-  const knownStatus = useRef(new Map<number, DiscScanStatus>())
-  useEffect(() => {
-    for (const run of runs ?? []) {
-      const previous = knownStatus.current.get(run.id)
-      knownStatus.current.set(run.id, run.status)
-      if (previous === undefined || previous === run.status) continue
-      if (run.status === "completed") toast.success(t("discScan.toast.completed"))
-      if (run.status === "failed") toast.error(t("discScan.toast.failed", { error: run.errorMessage ?? "" }))
-    }
-  }, [runs, t])
-
   const replaceRun = (run: DiscScanRun) => {
+    if (run.torrentHash !== torrentHash) return
     queryClient.setQueryData<DiscScanRun[]>(queryKey, old => [...(old ?? []).filter(r => r.discPath !== run.discPath), run])
   }
   const start = useMutation({
     mutationFn: ({ discPath, force }: { discPath: string; force: boolean }) => api.startDiscScan(instanceId, torrentHash, discPath, force),
-    onSuccess: (run) => {
-      if (run.torrentHash === torrentHash) replaceRun(run)
-    },
+    onSuccess: replaceRun,
   })
   const cancel = useMutation({
     mutationFn: (runId: number) => api.cancelDiscScan(instanceId, runId),
