@@ -27,3 +27,6 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Disc**: A Blu-ray as one unit: the folder that holds `BDMV`, or one `.iso`. The unit a BDInfo scan reads. One torrent can hold several Discs. _Avoid_: Blu-ray folder, disc torrent.
 - **Disc scan**: One queued or running BDInfo job on one Disc. _Avoid_: BDInfo job, bdinfo run.
 - **Disc report**: The cached BDInfo text for one Disc on one instance. _Avoid_: disc info, BDInfo output.
+- **Search candidate**: The unit of work in a seeded search run: a source torrent, or a season group formed by season pack automation. A run counts candidates, not torrents. _Avoid_: Torrent (when the count is meant), item.
+- **Cross-seed added**: One successful apply into the client. One Search candidate can produce several. _Avoid_: Match, torrent added.
+- **Due candidate**: A Search candidate that still needs a search. _Avoid_: Total torrents, pending, remaining.
