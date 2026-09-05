@@ -8,13 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/time/rate"
 
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/domain"
@@ -30,6 +33,27 @@ type AuthHandler struct {
 	instanceStore  *models.InstanceStore
 	clientPool     *qbittorrent.ClientPool
 	syncManager    *qbittorrent.SyncManager
+	loginLimiter   *rate.Limiter
+	// loginMu serialises password checks so parallel guesses cannot all pass the
+	// limiter before any of them consumes a token.
+	loginMu sync.Mutex
+}
+
+// newLoginLimiter allows five failed password logins per minute, process-wide:
+// qui has one user, so a per-IP limiter would only let an attacker rotate addresses.
+func newLoginLimiter() *rate.Limiter {
+	return rate.NewLimiter(rate.Every(time.Minute/5), 5)
+}
+
+// requireJSON rejects credential posts that do not declare a JSON body. A
+// browser form can post text/plain cross-site without a preflight; JSON cannot.
+func requireJSON(w http.ResponseWriter, r *http.Request) bool {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		RespondError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		return false
+	}
+	return true
 }
 
 func NewAuthHandler(
@@ -46,6 +70,7 @@ func NewAuthHandler(
 		clientPool:     clientPool,
 		syncManager:    syncManager,
 		config:         config,
+		loginLimiter:   newLoginLimiter(),
 	}
 
 	// Initialize OIDC handler if enabled
@@ -105,6 +130,10 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !requireJSON(w, r) {
+		return
+	}
+
 	// Check if setup is already complete
 	complete, err := h.authService.IsSetupComplete(r.Context())
 	if err != nil {
@@ -142,6 +171,8 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 	// Renew token to prevent session fixation attacks
 	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
+		RespondError(w, http.StatusInternalServerError, "Failed to create session")
+		return
 	}
 
 	h.sessionManager.Put(r.Context(), "authenticated", true)
@@ -238,9 +269,31 @@ func (h *AuthHandler) warmSession(ctx context.Context) {
 	}()
 }
 
+var errTooManyLogins = errors.New("too many failed login attempts")
+
+// checkPassword runs one password check at a time. Only a failed check
+// consumes a limiter token.
+func (h *AuthHandler) checkPassword(ctx context.Context, username, password string) (*models.User, error) {
+	h.loginMu.Lock()
+	defer h.loginMu.Unlock()
+
+	if h.loginLimiter.Tokens() < 1 {
+		return nil, errTooManyLogins
+	}
+	user, err := h.authService.Login(ctx, username, password)
+	if errors.Is(err, auth.ErrInvalidCredentials) {
+		h.loginLimiter.Allow()
+	}
+	return user, err
+}
+
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.rejectIfAuthDisabled(w) {
+		return
+	}
+
+	if !requireJSON(w, r) {
 		return
 	}
 
@@ -250,9 +303,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate credentials
-	user, err := h.authService.Login(r.Context(), req.Username, req.Password)
+	user, err := h.checkPassword(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, errTooManyLogins) {
+			RespondError(w, http.StatusTooManyRequests, "Too many failed login attempts, try again later")
+			return
+		}
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			RespondError(w, http.StatusUnauthorized, "Invalid credentials")
 			return
@@ -270,6 +326,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Renew token to prevent session fixation attacks
 	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
+		RespondError(w, http.StatusInternalServerError, "Failed to create session")
+		return
 	}
 
 	h.sessionManager.Put(r.Context(), "authenticated", true)
@@ -425,6 +483,20 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Error().Err(err).Msg("Failed to change password")
 		RespondError(w, http.StatusInternalServerError, "Failed to change password")
+		return
+	}
+
+	// A stolen or forgotten session must not outlive the password it was
+	// created with. Every stored session goes, then the caller's own cookie.
+	err := h.sessionManager.Iterate(r.Context(), func(ctx context.Context) error {
+		return h.sessionManager.Destroy(ctx)
+	})
+	if err == nil {
+		err = h.sessionManager.Destroy(r.Context())
+	}
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to end sessions after password change")
+		RespondError(w, http.StatusInternalServerError, "Password changed, but ending sessions failed")
 		return
 	}
 

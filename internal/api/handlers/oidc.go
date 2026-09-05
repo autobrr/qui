@@ -362,20 +362,6 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set cookie options
-	h.sessionManager.Cookie.HttpOnly = true
-	h.sessionManager.Cookie.SameSite = http.SameSiteLaxMode
-	h.sessionManager.Cookie.Path = h.config.BaseURL
-	if h.sessionManager.Cookie.Path == "" {
-		h.sessionManager.Cookie.Path = "/"
-	}
-
-	// If forwarded protocol is https then set cookie secure.
-	// Keep SameSite=Lax so the session survives the IdP -> callback cross-site redirect.
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		h.sessionManager.Cookie.Secure = true
-	}
-
 	// Set session values using sessionManager
 	h.sessionManager.Put(r.Context(), "authenticated", true)
 	h.sessionManager.Put(r.Context(), "username", username)

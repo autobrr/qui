@@ -57,6 +57,8 @@ paths:
                     $ref: '#/components/schemas/User'
         '400':
           description: Setup already completed
+        '415':
+          description: Content-Type is not application/json
 
   /api/auth/login:
     post:
@@ -95,6 +97,10 @@ paths:
                     $ref: '#/components/schemas/User'
         '401':
           description: Invalid credentials
+        '415':
+          description: Content-Type is not application/json
+        '429':
+          description: Too many failed login attempts (5 per minute, process-wide)
 
   /api/auth/check-setup:
     get:
@@ -165,9 +171,34 @@ paths:
                   description: New password will be hashed and never returned in responses
       responses:
         '200':
-          description: Password changed successfully
+          description: Password changed. Every session is ended, including the caller's.
         '401':
           description: Invalid current password
+
+  /api/auth/validate:
+    get:
+      tags:
+        - Authentication
+      summary: Validate session
+      description: Return the session's username, auth method, and profile picture. Used after the OIDC callback.
+      security:
+        - SessionAuth: []
+      responses:
+        '200':
+          description: Session is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  username:
+                    type: string
+                  auth_method:
+                    type: string
+                  profile_picture:
+                    type: string
+        '401':
+          description: Not authenticated
 
   /api/api-keys:
     get:
@@ -6070,8 +6101,11 @@ components:
     SessionAuth:
       type: apiKey
       in: cookie
-      name: user_session
-      description: Session cookie authentication
+      name: qui_user_session
+      description: |
+        Browser session cookie set by the qui web UI. POST, PUT, PATCH, and DELETE
+        requests authenticated by this cookie must also send an `X-Requested-With`
+        header. Other clients should use an API key.
 
   parameters:
     instanceID:
