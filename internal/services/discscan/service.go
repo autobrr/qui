@@ -88,6 +88,11 @@ func (s *Service) Start(ctx context.Context) {
 // Enqueue returns the cached or active run for the Disc, or queues a new one.
 // force skips the cache but never queues a second scan while one is active.
 func (s *Service) Enqueue(ctx context.Context, instanceID int, torrentHash, discPath, resolvedPath string, force bool) (*models.DiscScanRun, error) {
+	// The lookup and the insert must not interleave with another Enqueue, or
+	// two clicks in flight together queue the same Disc twice.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	latest, err := s.store.Latest(ctx, instanceID, resolvedPath)
 	if err != nil {
 		return nil, err
