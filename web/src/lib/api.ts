@@ -36,6 +36,7 @@ import type {
   CrossSeedSearchSettings,
   CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
+  DiscScanRun,
   ManualCrossSeedApplyResponse,
   ManualCrossSeedProposal,
   ManualCrossSeedProposalsResponse,
@@ -846,6 +847,26 @@ class ApiClient {
     return this.request<TorrentFileMediaInfoResponse>(
       `/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/mediainfo`
     )
+  }
+
+  // Disc scan (BDInfo) endpoints
+  async listDiscScans(instanceId: number, hash: string): Promise<DiscScanRun[]> {
+    return this.request<DiscScanRun[]>(`/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/disc-scans`)
+  }
+
+  async startDiscScan(instanceId: number, hash: string, discPath: string, force = false): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/disc-scans`, {
+      method: "POST",
+      body: JSON.stringify({ discPath, force }),
+    })
+  }
+
+  async getDiscScan(instanceId: number, runId: number): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}`)
+  }
+
+  async cancelDiscScan(instanceId: number, runId: number): Promise<DiscScanRun> {
+    return this.request<DiscScanRun>(`/instances/${instanceId}/disc-scans/${runId}/cancel`, { method: "POST" })
   }
 
   // Torrent endpoints

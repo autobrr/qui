@@ -651,6 +651,31 @@
       "copyFailed": "Не вдалося скопіювати в буфер обміну"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "Триває сканування BDInfo",
+    "actionReady": "Звіт BDInfo готовий",
+    "actionFailed": "Сканування BDInfo не вдалося",
+    "quickSummary": "Короткий підсумок",
+    "forum": "Форум",
+    "copyQuickSummary": "Копіювати короткий підсумок",
+    "copyForum": "Копіювати блок для форуму",
+    "rescan": "Сканувати повторно",
+    "cancel": "Скасувати сканування",
+    "retry": "Повторити",
+    "starting": "Запуск сканування...",
+    "queued": "У черзі, позиція {{position}}",
+    "scanning": "Сканування {{processed}} з {{total}}",
+    "scanningUnknown": "Сканування...",
+    "failed": "Сканування не вдалося",
+    "canceled": "Сканування скасовано",
+    "toast": {
+      "copied": "{{label}} скопійовано в буфер обміну",
+      "copyFailed": "Не вдалося скопіювати в буфер обміну",
+      "completed": "Звіт BDInfo готовий",
+      "failed": "Сканування BDInfo не вдалося: {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Без категорії",
     "expandCategory": "Розгорнути категорію",

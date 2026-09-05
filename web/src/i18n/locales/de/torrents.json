@@ -555,6 +555,31 @@
       "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "BDInfo-Scan läuft",
+    "actionReady": "BDInfo-Bericht bereit",
+    "actionFailed": "BDInfo-Scan fehlgeschlagen",
+    "quickSummary": "Kurzübersicht",
+    "forum": "Forum",
+    "copyQuickSummary": "Kurzübersicht kopieren",
+    "copyForum": "Forum-Block kopieren",
+    "rescan": "Erneut scannen",
+    "cancel": "Scan abbrechen",
+    "retry": "Erneut versuchen",
+    "starting": "Scan wird gestartet...",
+    "queued": "In der Warteschlange, Position {{position}}",
+    "scanning": "Scanne {{processed}} von {{total}}",
+    "scanningUnknown": "Scanne...",
+    "failed": "Scan fehlgeschlagen",
+    "canceled": "Scan abgebrochen",
+    "toast": {
+      "copied": "{{label}} in die Zwischenablage kopiert",
+      "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
+      "completed": "BDInfo-Bericht bereit",
+      "failed": "BDInfo-Scan fehlgeschlagen: {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Ohne Kategorie",
     "expandCategory": "Kategorie ausklappen",

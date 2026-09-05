@@ -425,3 +425,25 @@ export interface SortedPeersResponse extends TorrentPeersResponse {
 export interface WebSeed {
   url: string
 }
+
+export type DiscScanStatus = "pending" | "scanning" | "completed" | "failed" | "canceled"
+
+// DiscScanRun mirrors models.DiscScanRun: one queued or running BDInfo job on
+// one Disc, and after completion its cached Disc report.
+export interface DiscScanRun {
+  id: number
+  instanceId: number
+  torrentHash: string
+  discPath: string
+  resolvedPath: string
+  status: DiscScanStatus
+  errorMessage?: string
+  processedBytes: number
+  totalBytes: number
+  queuePosition?: number
+  quickSummary?: string
+  forumsBlock?: string
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+}
