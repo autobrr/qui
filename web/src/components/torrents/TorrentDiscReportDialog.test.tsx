@@ -92,6 +92,24 @@ describe("TorrentDiscReportDialog", () => {
     await waitFor(() => expect(copyTextToClipboard).toHaveBeenCalledWith("[b]FORUM[/b]"))
   })
 
+  it("shows only the Quick Summary on a phone and copies the Forum block from a button", async () => {
+    copyTextToClipboard.mockResolvedValue(undefined)
+    const matchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+    try {
+      const current = run({ quickSummary: "QUICK", forumsBlock: "[b]FORUM[/b]" })
+      const { getByText, queryByRole, queryByText } = render(<TorrentDiscReportDialog discPath={current.discPath} onClose={() => {}} scans={scansWith(current)} />)
+
+      expect(getByText("QUICK").tagName).toBe("PRE")
+      expect(queryByText("[b]FORUM[/b]")).toBeNull()
+      expect(queryByRole("tab")).toBeNull()
+      fireEvent.click(getByText("discScan.copyForum"))
+      await waitFor(() => expect(copyTextToClipboard).toHaveBeenCalledWith("[b]FORUM[/b]"))
+    } finally {
+      window.matchMedia = matchMedia
+    }
+  })
+
   it("shows the cached report of another torrent from the start response when the list has no row", () => {
     const shared = run({ torrentHash: "other", discPath: "Movie-GRP", quickSummary: "SHARED" })
     const scans = scansWith(undefined, { data: shared, variables: { discPath: "Movie-OTHER", force: false } } as Partial<DiscScans["start"]>)

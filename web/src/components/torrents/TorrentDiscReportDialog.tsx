@@ -6,8 +6,10 @@
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { DiscScans } from "@/hooks/useDiscScans"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { DiscScanRun, DiscScanStatus } from "@/types"
 import { Copy, Disc3, Loader2, RotateCw, X } from "lucide-react"
@@ -66,9 +68,12 @@ interface TorrentDiscReportDialogProps {
 // TorrentDiscReportDialog shows one Disc scan: its place in the queue, its
 // progress, its error, or the cached Disc report with a Quick Summary tab and a
 // Forum tab. The run comes from the scans of the torrent, so activity refetches
-// move the dialog from state to state without a query of its own.
+// move the dialog from state to state without a query of its own. On a phone
+// it is a bottom sheet that shows only the Quick Summary; the Forum block is a
+// fixed-width table that no phone can show, so it is copy-only there.
 export function TorrentDiscReportDialog({ discPath, onClose, scans }: TorrentDiscReportDialogProps) {
   const { t } = useTranslation("torrents")
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState<"summary" | "forum">("summary")
   const run = discPath !== null ? scans.runFor(discPath) : undefined
   const discName = discPath === null || discPath === "." ? "" : discPath.slice(discPath.lastIndexOf("/") + 1)
@@ -111,14 +116,35 @@ export function TorrentDiscReportDialog({ discPath, onClose, scans }: TorrentDis
           </StatusBlock>
         )
       default:
-        return <ReportBlock run={run} tab={tab} onTabChange={setTab} onRescan={() => rescan(true)} />
+        return <ReportBlock run={run} tab={tab} onTabChange={setTab} onRescan={() => rescan(true)} mobile={isMobile} />
     }
   }
 
+  const onOpenChange = (open: boolean) => {
+    if (!open) {
+      setTab("summary")
+      onClose()
+    }
+  }
+
+  if (isMobile) {
+    return (
+      <Sheet open={discPath !== null} onOpenChange={onOpenChange}>
+        <SheetContent side="bottom" className="max-h-[85dvh] pb-8">
+          <SheetHeader className="min-w-0 pb-0">
+            <SheetTitle>{t("discScan.action")}</SheetTitle>
+            {discName && <SheetDescription className="font-mono truncate">{discName}</SheetDescription>}
+          </SheetHeader>
+          <div className="min-h-0 overflow-y-auto px-4">{body()}</div>
+        </SheetContent>
+      </Sheet>
+    )
+  }
+
   return (
-    <Dialog open={discPath !== null} onOpenChange={(open) => { if (!open) { setTab("summary"); onClose() } }}>
+    <Dialog open={discPath !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg md:max-w-4xl max-h-[85vh] overflow-hidden">
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <DialogTitle>{t("discScan.action")}</DialogTitle>
           {discName && <DialogDescription className="font-mono truncate">{discName}</DialogDescription>}
         </DialogHeader>
@@ -170,24 +196,55 @@ function ReportBlock({
   tab,
   onTabChange,
   onRescan,
+  mobile,
 }: {
   run: DiscScanRun
   tab: "summary" | "forum"
   onTabChange: (tab: "summary" | "forum") => void
   onRescan: () => void
+  mobile: boolean
 }) {
   const { t } = useTranslation("torrents")
-  const copyLabel = tab === "summary" ? t("discScan.copyQuickSummary") : t("discScan.copyForum")
-  const copyText = (tab === "summary" ? run.quickSummary : run.forumsBlock) ?? ""
+  const quickSummary = run.quickSummary ?? ""
+  const forumsBlock = run.forumsBlock ?? ""
 
-  const copy = async () => {
+  const copy = async (text: string, label: string) => {
     try {
-      await copyTextToClipboard(copyText)
-      toast.success(t("discScan.toast.copied", { label: copyLabel }))
+      await copyTextToClipboard(text)
+      toast.success(t("discScan.toast.copied", { label }))
     } catch {
       toast.error(t("discScan.toast.copyFailed"))
     }
   }
+
+  const rescanButton = (
+    <Button variant="outline" size="sm" onClick={onRescan}>
+      <RotateCw className="h-4 w-4 mr-2" />
+      {t("discScan.rescan")}
+    </Button>
+  )
+  const copyButton = (text: string, label: string) => (
+    <Button variant="outline" size="sm" onClick={() => copy(text, label)} disabled={!text}>
+      <Copy className="h-4 w-4 mr-2" />
+      {label}
+    </Button>
+  )
+
+  if (mobile) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          {rescanButton}
+          {copyButton(quickSummary, t("discScan.copyQuickSummary"))}
+          {copyButton(forumsBlock, t("discScan.copyForum"))}
+        </div>
+        <pre className="rounded-md border bg-muted/30 p-3 text-xs font-mono whitespace-pre-wrap break-all">{quickSummary}</pre>
+      </div>
+    )
+  }
+
+  const copyLabel = tab === "summary" ? t("discScan.copyQuickSummary") : t("discScan.copyForum")
+  const copyText = tab === "summary" ? quickSummary : forumsBlock
 
   return (
     <Tabs value={tab} onValueChange={(value) => onTabChange(value as typeof tab)} className="w-full min-w-0">
@@ -197,14 +254,8 @@ function ReportBlock({
           <TabsTrigger value="forum">{t("discScan.forum")}</TabsTrigger>
         </TabsList>
         <div className="flex shrink-0 gap-2">
-          <Button variant="outline" size="sm" onClick={onRescan}>
-            <RotateCw className="h-4 w-4 mr-2" />
-            {t("discScan.rescan")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={copy} disabled={!copyText}>
-            <Copy className="h-4 w-4 mr-2" />
-            {copyLabel}
-          </Button>
+          {rescanButton}
+          {copyButton(copyText, copyLabel)}
         </div>
       </div>
       <TabsContent value={tab} className="m-0">
