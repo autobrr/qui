@@ -627,7 +627,7 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	require.Equal(t, 1, downloadCalls)
 	require.Equal(t, []string{high.Hash, lower.Hash}, sourceHashes)
-	require.Equal(t, 1, run.TorrentsAdded)
+	require.Equal(t, 1, run.CrossSeedsAdded)
 	require.Len(t, run.Results, 1)
 	require.True(t, run.Results[0].Success)
 }
@@ -695,8 +695,8 @@ func TestProcessAutomationCandidateExactSizeRetainsSuccessWhenAnotherInstanceErr
 
 	require.Error(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Equal(t, 1, run.TorrentsAdded)
-	require.Equal(t, 1, run.TorrentsFailed)
+	require.Equal(t, 1, run.CrossSeedsAdded)
+	require.Equal(t, 1, run.CandidatesFailed)
 	require.Len(t, run.Results, 2)
 	require.True(t, run.Results[0].Success)
 	require.Equal(t, "error", run.Results[1].Status)
@@ -860,7 +860,7 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 
 	require.Error(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
-	require.Equal(t, 1, run.TorrentsFailed)
+	require.Equal(t, 1, run.CandidatesFailed)
 	require.Len(t, run.Results, 1)
 	require.Equal(t, "error", run.Results[0].Status)
 }

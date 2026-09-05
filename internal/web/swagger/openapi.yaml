@@ -7269,11 +7269,12 @@ components:
           type: integer
         candidatesFound:
           type: integer
-        torrentsAdded:
+        crossSeedsAdded:
           type: integer
-        torrentsFailed:
+          description: Successful applies into the client.
+        candidatesFailed:
           type: integer
-        torrentsSkipped:
+        candidatesSkipped:
           type: integer
         message:
           type: string
@@ -8018,10 +8019,16 @@ components:
           nullable: true
         totalTorrents:
           type: integer
+          description: Due candidates at the start of the run. Per-indexer search history, cooldown, and the age cutoff retire candidates, so identical filters report a smaller total on each later run.
         processed:
           type: integer
-        torrentsAdded:
+          description: Candidates the run has started. Equals torrentsWithCrossSeeds + torrentsFailed + torrentsSkipped once the run completes.
+        torrentsWithCrossSeeds:
           type: integer
+          description: Candidates that produced at least one cross-seed.
+        crossSeedsAdded:
+          type: integer
+          description: Successful applies into the client. One candidate can produce several, so this can exceed the candidate count.
         torrentsFailed:
           type: integer
         torrentsSkipped:
