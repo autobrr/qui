@@ -63,14 +63,15 @@ interface PathSuggestionsProps {
   suggestions: string[]
   highlightedIndex: number
   onSelect: (entry: string) => void
+  listRef: React.RefObject<HTMLDivElement | null>
 }
 
-function PathSuggestions({ suggestions, highlightedIndex, onSelect }: PathSuggestionsProps): React.ReactNode {
+function PathSuggestions({ suggestions, highlightedIndex, onSelect, listRef }: PathSuggestionsProps): React.ReactNode {
   if (suggestions.length === 0) return null
 
   return (
     <div className="relative">
-      <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+      <div ref={listRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
         <div className="max-h-55 overflow-y-auto py-1">
           {suggestions.map((entry, idx) => (
             <button
@@ -189,6 +190,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     highlightedIndex: sourcePathHighlightedIndex,
     showSuggestions: showSourcePathSuggestions,
     inputRef: sourcePathInputRef,
+    listRef: sourcePathListRef,
   } = usePathAutocomplete(setSourcePath, instanceId)
 
   const {
@@ -199,6 +201,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     highlightedIndex: torrentFilePathHighlightedIndex,
     showSuggestions: showTorrentFilePathSuggestions,
     inputRef: torrentFilePathInputRef,
+    listRef: torrentFilePathListRef,
   } = usePathAutocomplete(setTorrentFilePath, instanceId)
 
   useEffect(() => {
@@ -273,6 +276,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       suggestions={sourcePathSuggestions}
                       highlightedIndex={sourcePathHighlightedIndex}
                       onSelect={handleSourcePathSelect}
+                      listRef={sourcePathListRef}
                     />
                   )}
 
@@ -529,6 +533,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                           suggestions={torrentFilePathSuggestions}
                           highlightedIndex={torrentFilePathHighlightedIndex}
                           onSelect={handleTorrentFilePathSelect}
+                          listRef={torrentFilePathListRef}
                         />
                       )}
 
