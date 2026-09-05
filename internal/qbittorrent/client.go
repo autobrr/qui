@@ -182,25 +182,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		addedState:        make(map[string]struct{}),
 	}
 
-	if err := client.RefreshCapabilities(ctx); err != nil {
-		if errors.Is(err, errInvalidWebAPIVersion) {
-			client.updateHealthStatus(false)
-			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
-		}
-		// A transient fetch failure (e.g. timeout against a saturated-but-alive
-		// WebUI) must not block client creation; capabilities refresh on the next
-		// health check. Only a positively invalid session is terminal.
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("host", instanceHost).
-			Msg("Failed to refresh qBittorrent capabilities during client creation")
-		client.updateHealthStatus(false)
-	} else {
-		client.updateHealthStatus(true)
-	}
-
-	// Initialize sync manager with default options
+	// Create the sync manager before the first capability refresh so its
+	// tracker manager picks up the include-trackers flag.
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
 
@@ -219,6 +202,24 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.OnError = client.handleSyncManagerError
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
+
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		if errors.Is(err, errInvalidWebAPIVersion) {
+			client.updateHealthStatus(false)
+			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
+		}
+		// A transient fetch failure (e.g. timeout against a saturated-but-alive
+		// WebUI) must not block client creation; capabilities refresh on the next
+		// health check. Only a positively invalid session is terminal.
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("host", instanceHost).
+			Msg("Failed to refresh qBittorrent capabilities during client creation")
+		client.updateHealthStatus(false)
+	} else {
+		client.updateHealthStatus(true)
+	}
 
 	log.Debug().
 		Int("instanceID", instanceID).

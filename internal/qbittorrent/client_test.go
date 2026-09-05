@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -759,6 +760,75 @@ func TestSplitHostUserinfo(t *testing.T) {
 			require.Equal(t, tt.wantHost, gotHost)
 			require.Equal(t, tt.wantUser, gotUser)
 			require.Equal(t, tt.wantPass, gotPass)
+		})
+	}
+}
+
+// TestNewClientWithTimeoutEnablesBulkTrackerFetch pins the tracker manager to
+// the include-trackers capability at construction. The sync manager must exist
+// before the first capability refresh, or the flag never reaches it.
+func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		version      string
+		wantBulk     bool
+		wantInfo     int
+		wantTrackers int
+	}{
+		{version: "2.11.3", wantBulk: false, wantInfo: 0, wantTrackers: 3},
+		{version: "2.11.4", wantBulk: true, wantInfo: 1, wantTrackers: 0},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			t.Parallel()
+
+			var mu sync.Mutex
+			hits := map[string]int{}
+			srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				hits[r.URL.Path]++
+				mu.Unlock()
+				switch r.URL.Path {
+				case "/api/v2/auth/login":
+					http.SetCookie(w, &http.Cookie{
+						Name:     "SID",
+						Value:    "bulk-trackers",
+						Secure:   true,
+						HttpOnly: true,
+						SameSite: http.SameSiteStrictMode,
+					})
+					_, _ = w.Write([]byte("Ok."))
+				case "/api/v2/app/webapiVersion":
+					_, _ = w.Write([]byte(tc.version))
+				case "/api/v2/torrents/info":
+					var out []qbt.Torrent
+					for hash := range strings.SplitSeq(r.URL.Query().Get("hashes"), "|") {
+						out = append(out, qbt.Torrent{Hash: hash, Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example.invalid/announce", Status: 2}}})
+					}
+					_ = json.MarshalWrite(w, out)
+				case "/api/v2/torrents/trackers":
+					_, _ = w.Write([]byte(`[{"url":"https://tracker.example.invalid/announce","status":2}]`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+
+			client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantBulk, client.trackerManager().SupportsIncludeTrackers(), "tracker manager must mirror the include capability at construction")
+
+			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
+			enriched, _, _, err := client.hydrateTorrentsWithTrackers(t.Context(), torrents)
+			require.NoError(t, err)
+			for _, torrent := range enriched {
+				require.Len(t, torrent.Trackers, 1, "hash %s should be hydrated", torrent.Hash)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			require.Equal(t, tc.wantInfo, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
+			require.Equal(t, tc.wantTrackers, hits["/api/v2/torrents/trackers"], "per-hash torrents/trackers requests")
 		})
 	}
 }
