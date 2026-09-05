@@ -28,6 +28,7 @@ const (
 	KindBackupRun          Kind = "backup.run"
 	KindDirScanRun         Kind = "dirscan.run"
 	KindOrphanScanRun      Kind = "orphanscan.run"
+	KindDiscScanRun        Kind = "discscan.run"
 	KindCrossSeedStatus    Kind = "crossseed.status"
 	KindCrossSeedSearch    Kind = "crossseed.search"
 	KindReannounceActivity Kind = "reannounce.activity"

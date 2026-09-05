@@ -17,6 +17,8 @@ github.com/andybalholm/brotli v1.2.3 h1:8H1qwOkl2LPfjf3YezB90JnCliZb6SInJ/OJkEbA
 github.com/andybalholm/brotli v1.2.3/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/autobrr/autobrr v1.85.0 h1:VwPob7J8ZRHcKggL6+VNTMiQgFJq5gPFfjxGJYOj0LU=
 github.com/autobrr/autobrr v1.85.0/go.mod h1:G0g9AN/A512KYmV7iQwCxhZybfY9gxZoHxd+kMvMiJ4=
+github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72 h1:fQnXBwvj6HC4ahCgBNDn178ywMMlqD1oEcnrV8Lw7dI=
+github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72/go.mod h1:OjpQR7TPcP7fBTo4GW1Yz1+biQG7YTo1OZH7KXX5gS0=
 github.com/autobrr/go-mediainfo v0.8.0 h1:XzsjHvBOlGx2BnwYCqwCOIJsmrFy4BJb0jgoB2qKuR0=
 github.com/autobrr/go-mediainfo v0.8.0/go.mod h1:P3LGxIPznO2TLKV/e58YgN0/ozP5pLCAncFzsdxMDcY=
 github.com/autobrr/go-qbittorrent v1.18.1-0.20260825200055-b0abc1c0134d h1:oWXjEZZrc74m0/Cbmy7Yyeim97VjFUTekotsAC6v7uU=

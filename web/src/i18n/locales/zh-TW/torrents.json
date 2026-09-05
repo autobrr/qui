@@ -507,6 +507,31 @@
       "copyFailed": "複製到剪貼簿失敗"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "BDInfo 掃描進行中",
+    "actionReady": "BDInfo 報告已就緒",
+    "actionFailed": "BDInfo 掃描失敗",
+    "quickSummary": "快速摘要",
+    "forum": "論壇",
+    "copyQuickSummary": "複製快速摘要",
+    "copyForum": "複製論壇程式碼區塊",
+    "rescan": "重新掃描",
+    "cancel": "取消掃描",
+    "retry": "重試",
+    "starting": "正在啟動掃描…",
+    "queued": "排隊中，位置 {{position}}",
+    "scanning": "正在掃描 {{processed}} / {{total}}",
+    "scanningUnknown": "正在掃描…",
+    "failed": "掃描失敗",
+    "canceled": "掃描已取消",
+    "toast": {
+      "copied": "{{label}}已複製到剪貼簿",
+      "copyFailed": "複製到剪貼簿失敗",
+      "completed": "BDInfo 報告已就緒",
+      "failed": "BDInfo 掃描失敗：{{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "未分類",
     "expandCategory": "展開分類",

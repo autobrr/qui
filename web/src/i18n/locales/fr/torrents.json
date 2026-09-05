@@ -555,6 +555,31 @@
       "copyFailed": "Échec de la copie"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "Analyse BDInfo en cours",
+    "actionReady": "Rapport BDInfo prêt",
+    "actionFailed": "Échec de l'analyse BDInfo",
+    "quickSummary": "Résumé rapide",
+    "forum": "Forum",
+    "copyQuickSummary": "Copier le résumé rapide",
+    "copyForum": "Copier le bloc forum",
+    "rescan": "Relancer l'analyse",
+    "cancel": "Annuler l'analyse",
+    "retry": "Réessayer",
+    "starting": "Démarrage de l'analyse...",
+    "queued": "En file d'attente, position {{position}}",
+    "scanning": "Analyse de {{processed}} sur {{total}}",
+    "scanningUnknown": "Analyse...",
+    "failed": "Échec de l'analyse",
+    "canceled": "Analyse annulée",
+    "toast": {
+      "copied": "{{label}} copié dans le presse-papiers",
+      "copyFailed": "Échec de la copie dans le presse-papiers",
+      "completed": "Rapport BDInfo prêt",
+      "failed": "Échec de l'analyse BDInfo : {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Non catégorisé",
     "expandCategory": "Développer la catégorie",

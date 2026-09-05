@@ -4,6 +4,7 @@
  */
 
 import { BuiltinThemesLoader } from "@/components/themes/BuiltinThemesLoader"
+import { DiscScanToasts } from "@/components/torrents/DiscScanToasts"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SyncStreamProvider } from "@/contexts/SyncStreamContext"
@@ -42,6 +43,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <SyncStreamProvider>
         <BuiltinThemesLoader />
+        <DiscScanToasts />
         <TooltipProvider>
           <RouterProvider router={router} />
           <Toaster />

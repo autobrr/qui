@@ -555,6 +555,31 @@
       "copyFailed": "Copia negli appunti non riuscita"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "Scansione BDInfo in corso",
+    "actionReady": "Report BDInfo pronto",
+    "actionFailed": "Scansione BDInfo non riuscita",
+    "quickSummary": "Riepilogo rapido",
+    "forum": "Forum",
+    "copyQuickSummary": "Copia riepilogo rapido",
+    "copyForum": "Copia blocco forum",
+    "rescan": "Ripeti scansione",
+    "cancel": "Annulla scansione",
+    "retry": "Riprova",
+    "starting": "Avvio scansione...",
+    "queued": "In coda, posizione {{position}}",
+    "scanning": "Scansione di {{processed}} su {{total}}",
+    "scanningUnknown": "Scansione...",
+    "failed": "Scansione non riuscita",
+    "canceled": "Scansione annullata",
+    "toast": {
+      "copied": "{{label}} copiato negli appunti",
+      "copyFailed": "Impossibile copiare negli appunti",
+      "completed": "Report BDInfo pronto",
+      "failed": "Scansione BDInfo non riuscita: {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Senza categoria",
     "expandCategory": "Espandi categoria",

@@ -555,6 +555,31 @@
       "copyFailed": "Nepodařilo se zkopírovat do schránky"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "Probíhá skenování BDInfo",
+    "actionReady": "Zpráva BDInfo je připravena",
+    "actionFailed": "Skenování BDInfo se nezdařilo",
+    "quickSummary": "Rychlý přehled",
+    "forum": "Fórum",
+    "copyQuickSummary": "Kopírovat rychlý přehled",
+    "copyForum": "Kopírovat blok pro fórum",
+    "rescan": "Skenovat znovu",
+    "cancel": "Zrušit skenování",
+    "retry": "Zkusit znovu",
+    "starting": "Spouštění skenování...",
+    "queued": "Ve frontě, pozice {{position}}",
+    "scanning": "Skenování {{processed}} z {{total}}",
+    "scanningUnknown": "Skenování...",
+    "failed": "Skenování se nezdařilo",
+    "canceled": "Skenování zrušeno",
+    "toast": {
+      "copied": "{{label}} zkopírováno do schránky",
+      "copyFailed": "Kopírování do schránky se nezdařilo",
+      "completed": "Zpráva BDInfo je připravena",
+      "failed": "Skenování BDInfo se nezdařilo: {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Nekategorizovaný",
     "expandCategory": "Rozbalit kategorii",

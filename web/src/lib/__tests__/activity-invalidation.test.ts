@@ -21,6 +21,7 @@ const ALL_KINDS_MAP = {
   "backup.run": true,
   "dirscan.run": true,
   "orphanscan.run": true,
+  "discscan.run": true,
   "crossseed.status": true,
   "crossseed.search": true,
   "reannounce.activity": true,
@@ -46,6 +47,7 @@ describe("activityQueryKeys", () => {
   it("scopes instance-keyed feeds by instanceId when present", () => {
     expect(activityQueryKeys(ev({ kind: "backup.run", instanceId: 5 }))).toEqual([["instance-backups", 5]])
     expect(activityQueryKeys(ev({ kind: "orphanscan.run", instanceId: 3 }))).toEqual([["orphan-scan", 3]])
+    expect(activityQueryKeys(ev({ kind: "discscan.run", instanceId: 3, resourceId: "7" }))).toEqual([["disc-scans", 3]])
     expect(activityQueryKeys(ev({ kind: "reannounce.activity", instanceId: 9 }))).toEqual([["instance-reannounce-activity", 9]])
     expect(activityQueryKeys(ev({ kind: "automation.activity", instanceId: 2 }))).toEqual([["automation-activity", 2]])
   })
