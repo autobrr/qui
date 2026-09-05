@@ -51,9 +51,18 @@ describe("DiscScanToasts", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("discScan.toast.completed"))
     expect(getDiscScan).toHaveBeenCalledWith(1, 7)
 
-    getDiscScan.mockResolvedValueOnce(run("failed", "interrupted by qui restart"))
-    await emit({})
+    getDiscScan.mockResolvedValueOnce({ ...run("failed", "interrupted by qui restart"), id: 8 })
+    await emit({ resourceId: "8" })
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("discScan.toast.failed:interrupted by qui restart"))
+  })
+
+  it("toasts once when a progress read lands after completion and the completion event follows", async () => {
+    render(<DiscScanToasts />)
+    getDiscScan.mockResolvedValue(run("completed"))
+    await emit({})
+    await emit({})
+    await waitFor(() => expect(getDiscScan).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
   })
 
   it("stays silent for progress, cancel, and other event kinds", async () => {
