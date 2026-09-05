@@ -881,7 +881,10 @@
       "unregistered": "未注册",
       "andMoreTorrents": "... 还有 {{count}} 个种子",
       "loadMore": "加载更多",
-      "exportCSV": "导出 CSV"
+      "exportCSV": "导出 CSV",
+      "saveWithoutPreview": "跳过预览并保存",
+      "previewFailed": "预览失败：{{error}}",
+      "skipPreviewHint": "规则在下次运行时仍会作用于每个匹配的种子。您可以不等待预览直接保存。"
     },
     "orphanScanOverview": {
       "title": "孤立文件扫描",

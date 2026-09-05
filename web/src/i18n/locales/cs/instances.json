@@ -899,7 +899,10 @@
       "unregistered": "Neregistrovaný",
       "andMoreTorrents": "... a {{count}} dalších torrentů",
       "loadMore": "Načíst více",
-      "exportCSV": "Exportovat CSV"
+      "exportCSV": "Exportovat CSV",
+      "saveWithoutPreview": "Uložit bez náhledu",
+      "previewFailed": "Náhled se nezdařil: {{error}}",
+      "skipPreviewHint": "Pravidlo se při dalším spuštění stejně použije na každý odpovídající torrent. Můžete uložit bez čekání na náhled."
     },
     "orphanScanOverview": {
       "title": "Vyhledání nepárových souborů",
