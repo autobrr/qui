@@ -2265,6 +2265,116 @@ paths:
         '500':
           description: Internal server error
 
+  /api/instances/{instanceID}/torrents/{hash}/disc-scans:
+    get:
+      tags:
+        - Disc Scans
+      summary: List Disc scans for a torrent
+      description: Returns the newest Disc scan per Disc path of the torrent, so the Content tab can render one BDInfo button state per Disc.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Newest Disc scan per Disc path
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DiscScanRun'
+        '400':
+          description: Invalid instance ID or hash
+    post:
+      tags:
+        - Disc Scans
+      summary: Start a Disc scan or return the cached report
+      description: |
+        Queues a BDInfo scan of one Disc in the torrent: a folder that holds a BDMV folder, or an .iso file. Scans run one at a time.
+        If the Disc already has a completed report, the cached run is returned unless `force` is true. A queued or running scan on the same Disc is always returned.
+        Requires filesystem access on the instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [discPath]
+              properties:
+                discPath:
+                  type: string
+                  description: Torrent-relative, slash-delimited path of the Disc. "." is the torrent root.
+                  example: "Box Set/Disc 1"
+                force:
+                  type: boolean
+                  default: false
+                  description: Skip the cached report and queue a new scan (Rescan)
+      responses:
+        '200':
+          description: The queued, running, or cached Disc scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscScanRun'
+        '400':
+          description: Invalid request body, or the path is not a Disc in this torrent
+        '403':
+          description: Instance does not have filesystem access
+        '404':
+          description: Instance, torrent, or Disc not found on disk
+
+  /api/instances/{instanceID}/disc-scans/{runID}:
+    get:
+      tags:
+        - Disc Scans
+      summary: Get a Disc scan
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Disc scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscScanRun'
+        '404':
+          description: Disc scan not found
+
+  /api/instances/{instanceID}/disc-scans/{runID}/cancel:
+    post:
+      tags:
+        - Disc Scans
+      summary: Cancel a Disc scan
+      description: Cancels a pending or scanning Disc scan. A running scan stops through its context and stores no report.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The canceled Disc scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscScanRun'
+        '404':
+          description: Disc scan not found
+        '409':
+          description: Disc scan already finished
+
   /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
       tags:
@@ -8588,6 +8698,56 @@ components:
           format: date-time
           nullable: true
 
+    DiscScanRun:
+      type: object
+      description: One queued or running BDInfo scan of one Disc, and after completion its cached Disc report.
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        torrentHash:
+          type: string
+        discPath:
+          type: string
+          description: Torrent-relative, slash-delimited path of the Disc
+        resolvedPath:
+          type: string
+          description: On-disk path of the Disc; the cache key together with instanceId
+        status:
+          type: string
+          enum: ["pending", "scanning", "completed", "failed", "canceled"]
+        errorMessage:
+          type: string
+        processedBytes:
+          type: integer
+          format: int64
+        totalBytes:
+          type: integer
+          format: int64
+        queuePosition:
+          type: integer
+          description: 1-based position in the queue while pending; omitted otherwise
+        report:
+          type: string
+          description: Full BDInfo report, set when completed
+        quickSummary:
+          type: string
+          description: BDInfo quick summary block, set when completed
+        forumsBlock:
+          type: string
+          description: BDInfo forum paste block (BBCode), set when completed
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
     OrphanScanFile:
       type: object
       properties:
@@ -9457,6 +9617,8 @@ tags:
     description: Directory scanner operations for data-based matching and injection
   - name: Orphan Scan
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
+  - name: Disc Scans
+    description: BDInfo scans of Blu-ray Discs (BDMV folders and .iso files) in torrents
   - name: RSS
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
