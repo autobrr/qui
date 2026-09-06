@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { getToggleSelectionState } from "./torrent-utils"
+import type { Torrent } from "@/types"
+import { getToggleSelectionState, resolveStreamRow } from "./torrent-utils"
 
 describe("getToggleSelectionState", () => {
   const cases: Array<{ name: string; values: boolean[]; stateUnknown: boolean; allEnabled: boolean; mixed: boolean }> = [
@@ -22,6 +23,23 @@ describe("getToggleSelectionState", () => {
   for (const { name, values, stateUnknown, allEnabled, mixed } of cases) {
     it(name, () => {
       expect(getToggleSelectionState(values, stateUnknown)).toEqual({ allEnabled, mixed })
+    })
+  }
+})
+
+describe("resolveStreamRow", () => {
+  const previous = { hash: "aa11", name: "Hybrid.Release.S02E03.2160p.WEB-GRPB" } as Torrent
+  const cases: Array<{ name: string; data: { torrents: Torrent[]; total: number }; want: Torrent | null }> = [
+    { name: "a changed row replaces the previous one", data: { torrents: [{ ...previous, progress: 1 }], total: 1 }, want: { ...previous, progress: 1 } },
+    // The panel asked for the v2 hash; the server answered with the v1-keyed row.
+    { name: "a row keyed by another hash still lands", data: { torrents: [{ ...previous, hash: "aa11" }], total: 1 }, want: previous },
+    { name: "an unchanged delta keeps the previous row", data: { torrents: [], total: 1 }, want: previous },
+    { name: "a removed torrent drops the row", data: { torrents: [], total: 0 }, want: null },
+  ]
+
+  for (const { name, data, want } of cases) {
+    it(name, () => {
+      expect(resolveStreamRow(previous, data)).toEqual(want)
     })
   }
 })

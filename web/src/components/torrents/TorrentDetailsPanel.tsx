@@ -31,7 +31,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { resolveStreamRow, resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeer, SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker } from "@/types"
@@ -174,14 +174,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         return
       }
 
-      // The stream is filtered to this hash with limit 1. A delta whose row did
-      // not change carries no rows but total 1, so only total 0 clears the row.
-      const nextTorrent = payload.data.torrents?.[0]
-      if (nextTorrent) {
-        setStreamTorrent(nextTorrent)
-      } else if (payload.data.total === 0) {
-        setStreamTorrent(null)
-      }
+      const data = payload.data
+      setStreamTorrent(previous => resolveStreamRow(previous, data))
     },
     [torrent?.hash]
   )
