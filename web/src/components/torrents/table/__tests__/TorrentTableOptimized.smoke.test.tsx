@@ -259,7 +259,7 @@ describe("TorrentTableOptimized smoke", () => {
   // already narrowed rows on the backend (every word must appear somewhere in
   // the name), so the table must not re-apply it as a literal substring.
   it("keeps backend-matched rows when a multi-word search meets the cross-seed filter", () => {
-    scenario.routeSearch = "release alpha"
+    scenario.routeSearch = "release a"
     scenario.isCrossSeedFiltering = true
     const { container } = renderTable()
     expect(container.textContent).toContain("Alpha Release")
