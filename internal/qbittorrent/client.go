@@ -21,6 +21,7 @@ import (
 	"github.com/avast/retry-go"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/singleflight"
 )
 
 var (
@@ -98,6 +99,7 @@ type Client struct {
 	serverStateMu        sync.RWMutex
 	healthMu             sync.RWMutex
 	appInfoMu            sync.RWMutex
+	appInfoGroup         singleflight.Group
 	preferencesCache     *qbt.AppPreferences
 	preferencesJSON      json.RawMessage
 	preferencesFetchedAt time.Time
