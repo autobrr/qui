@@ -584,7 +584,7 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 
 func (c *Client) HealthCheck(ctx context.Context) error {
 	// Empty version means capabilities never loaded; sync updates stamp health, so keep probing.
-	if c.GetWebAPIVersion() != "" && c.IsHealthy() && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+	if c.GetWebAPIVersion() != "" && c.IsHealthy() && time.Since(c.GetLastHealthCheck()) < minHealthCheckInterval {
 		return nil
 	}
 
