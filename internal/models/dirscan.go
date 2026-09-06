@@ -1618,6 +1618,12 @@ func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (
 		return 0, err
 	}
 
+	// An empty grace window means recent scans refreshed nothing at all. A directory
+	// whose files were all deleted and a directory whose filesystem is mounted but
+	// empty produce that identically, down to files_found, so nothing in the stored
+	// state separates them. Keep the rows: the cost of guessing wrong is deleting a
+	// live directory's entire history during an outage, and a genuinely emptied
+	// directory can be cleared with Reset Scan Progress.
 	if inGrace == 0 || refreshed*100 < inGrace*dirScanPruneMinRefreshPercent {
 		log.Warn().
 			Int("directoryID", directoryID).
@@ -1669,6 +1675,8 @@ func (s *DirScanStore) successfulRunStartedAt(ctx context.Context, directoryID, 
 	return &startedAt.Time, nil
 }
 
+// countFilesProcessedSince counts a directory's tracked files whose last scan visit
+// is at or after the given time.
 func (s *DirScanStore) countFilesProcessedSince(ctx context.Context, directoryID int, since time.Time) (int64, error) {
 	var count int64
 	if err := s.db.QueryRowContext(ctx, `

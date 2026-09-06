@@ -140,6 +140,25 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 2)
 	})
 
+	// When nothing at all was refreshed, a directory whose files were all deleted and
+	// a directory whose filesystem is mounted but empty look identical in the stored
+	// state. Keeping the rows is the deliberate choice: guessing wrong would wipe a
+	// live directory during an outage, and Reset Scan Progress clears a real one.
+	t.Run("keeps rows when no file was refreshed at all", func(t *testing.T) {
+		dirID := newDirectory(t, "/data/allstale")
+		for _, d := range []int{3, 2, 1} {
+			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
+		}
+
+		trackFile(t, dirID, "/data/allstale/one.mkv", daysAgo(10))
+		trackFile(t, dirID, "/data/allstale/two.mkv", daysAgo(10))
+
+		removed, err := store.PruneMissingFiles(ctx, dirID)
+		require.NoError(t, err)
+		require.Zero(t, removed)
+		require.Len(t, trackedPaths(t, dirID), 2)
+	})
+
 	// A mount that is present but empty walks cleanly and completes, so run status
 	// alone is not evidence that the scan saw real data.
 	t.Run("skips when the latest scan refreshed too few rows", func(t *testing.T) {
