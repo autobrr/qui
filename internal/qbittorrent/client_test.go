@@ -765,20 +765,21 @@ func TestSplitHostUserinfo(t *testing.T) {
 	}
 }
 
-// TestNewClientWithTimeoutEnablesBulkTrackerFetch pins the tracker manager to
-// the include-trackers capability at construction. The sync manager is created
-// after the first capability refresh, so the flag has to be applied to it.
+// TestNewClientWithTimeoutEnablesBulkTrackerFetch pins list hydration to never
+// issue per-hash torrents/trackers requests. Two flags guard this: the client
+// capability gate in enrichTorrentsWithTrackerData, and the tracker manager's
+// include flag that picks bulk torrents/info over the per-hash fallback. The
+// sync manager is created after the first capability refresh, so a missed
+// mirror between the two used to route qBittorrent 5.1+ into the fallback.
 func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		version      string
-		wantBulk     bool
-		wantInfo     int
-		wantTrackers int
+		version  string
+		wantBulk bool
 	}{
-		{version: "2.11.3", wantBulk: false, wantInfo: 0, wantTrackers: 3},
-		{version: "2.11.4", wantBulk: true, wantInfo: 1, wantTrackers: 0},
+		{version: "2.11.3", wantBulk: false},
+		{version: "2.11.4", wantBulk: true},
 	} {
 		t.Run(tc.version, func(t *testing.T) {
 			t.Parallel()
@@ -807,8 +808,6 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 						out = append(out, qbt.Torrent{Hash: hash, Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example.invalid/announce", Status: 2}}})
 					}
 					_ = json.MarshalWrite(w, out)
-				case "/api/v2/torrents/trackers":
-					_, _ = w.Write([]byte(`[{"url":"https://tracker.example.invalid/announce","status":2}]`))
 				default:
 					http.NotFound(w, r)
 				}
@@ -820,16 +819,23 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			require.Equal(t, tc.wantBulk, client.trackerManager().SupportsIncludeTrackers(), "tracker manager must mirror the include capability at construction")
 
 			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
-			enriched, _, _, err := client.hydrateTorrentsWithTrackers(t.Context(), torrents)
-			require.NoError(t, err)
+			enriched, _, _ := (&SyncManager{}).enrichTorrentsWithTrackerData(t.Context(), client, torrents, nil)
+			wantInfo := 0
+			if tc.wantBulk {
+				wantInfo = 1
+			}
 			for _, torrent := range enriched {
-				require.Len(t, torrent.Trackers, 1, "hash %s should be hydrated", torrent.Hash)
+				if tc.wantBulk {
+					require.Len(t, torrent.Trackers, 1, "hash %s should be hydrated", torrent.Hash)
+				} else {
+					require.Empty(t, torrent.Trackers, "hash %s must stay unhydrated below 5.1", torrent.Hash)
+				}
 			}
 
 			mu.Lock()
 			defer mu.Unlock()
-			require.Equal(t, tc.wantInfo, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
-			require.Equal(t, tc.wantTrackers, hits["/api/v2/torrents/trackers"], "per-hash torrents/trackers requests")
+			require.Equal(t, wantInfo, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
+			require.Zero(t, hits["/api/v2/torrents/trackers"], "list hydration must never fall back to per-hash torrents/trackers")
 		})
 	}
 }
