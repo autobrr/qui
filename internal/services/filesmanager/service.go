@@ -37,6 +37,27 @@ type Service struct {
 
 const cacheLogThrottle = 30 * time.Second
 
+// anyCacheAgeKey marks a context whose reads accept cached rows of any age.
+type anyCacheAgeKey struct{}
+
+// WithAnyCacheAge returns a context under which GetCachedFilesBatch serves every
+// cached row regardless of its age. Only hashes without a row are reported missing.
+// Use it for readers that re-check the disk themselves and only need the file
+// names. A file list changes on renames and priority edits, and the ones made
+// through qui invalidate the row.
+//
+// ponytail: a rename made in qBittorrent's own WebUI leaves the row stale until a
+// fresh read rewrites it, such as the files tab in the UI. Widen to a bounded age
+// if that ever matters.
+func WithAnyCacheAge(ctx context.Context) context.Context {
+	return context.WithValue(ctx, anyCacheAgeKey{}, true)
+}
+
+func anyCacheAge(ctx context.Context) bool {
+	value, ok := ctx.Value(anyCacheAgeKey{}).(bool)
+	return ok && value
+}
+
 func newCacheKey(instanceID int, hash string) string {
 	return fmt.Sprintf("%d:%s", instanceID, hash)
 }
@@ -94,6 +115,7 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 
 	freshHashes := make([]string, 0, len(unique))
 	missing := make([]string, 0, len(unique))
+	anyAge := anyCacheAge(ctx)
 
 	for _, hash := range unique {
 		info := syncInfoMap[hash]
@@ -102,7 +124,7 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 			continue
 		}
 
-		if !cacheIsFresh(info) {
+		if !anyAge && !cacheIsFresh(info) {
 			missing = append(missing, hash)
 			continue
 		}

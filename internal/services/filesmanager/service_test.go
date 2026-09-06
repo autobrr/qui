@@ -6,6 +6,7 @@ package filesmanager
 import (
 	"context"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -100,4 +101,28 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 			require.Equalf(t, names[hash], cached[0].Name, "attempt %d hash %s", attempt, hash)
 		}
 	}
+}
+
+func TestGetCachedFilesBatch_AnyCacheAgeServesAgedRows(t *testing.T) {
+	t.Parallel()
+
+	db, ctx := setupFilesManagerDB(t)
+	svc := NewService(db)
+
+	files := qbt.TorrentFiles{{Name: "aged.mkv", Size: 1, Priority: 1}}
+	require.NoError(t, svc.CacheFiles(ctx, 1, "aged", files))
+
+	_, err := db.ExecContext(ctx, "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+
+	cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"})
+	require.NoError(t, err)
+	require.Empty(t, cached)
+	require.ElementsMatch(t, []string{"aged", "absent"}, missing)
+
+	cached, missing, err = svc.GetCachedFilesBatch(WithAnyCacheAge(ctx), 1, []string{"aged", "absent"})
+	require.NoError(t, err)
+	require.Len(t, cached, 1)
+	require.Equal(t, "aged.mkv", cached["aged"][0].Name)
+	require.Equal(t, []string{"absent"}, missing)
 }
