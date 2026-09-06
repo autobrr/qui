@@ -513,8 +513,10 @@ type pendingResume struct {
 	resumeAttempts             int
 	awaitingResumeConfirmation bool
 	sawChecking                bool
-	readyPolls                 int
-	resumeConfirmedPolls       int
+	// recheckInterrupted disables the timed fallback after resume-data validation.
+	recheckInterrupted   bool
+	readyPolls           int
+	resumeConfirmedPolls int
 }
 
 type cachedTorrentSearchResults struct {
@@ -6758,6 +6760,8 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			req.sawChecking = true
 		} else if req.verificationRequired {
 			req.sawChecking = false
+			req.recheckInterrupted = true
+			req.awaitingResumeConfirmation = false
 		}
 		req.readyPolls = 0
 		req.resumeConfirmedPolls = 0
@@ -6772,7 +6776,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		// path (still gated by recheckResumeStablePolls); monitorOnly never resumes. Once
 		// resume is issued, awaitingResumeConfirmation takes over so the entry is
 		// confirmed and dropped rather than waiting out the timeout while it runs.
-		fastRecheckComplete := !req.monitorOnly && isPausedOrStopped(state) &&
+		fastRecheckComplete := !req.monitorOnly && !req.recheckInterrupted && isPausedOrStopped(state) &&
 			satisfied() && time.Since(req.addedAt) >= recheckFastCompleteMinElapsed
 		if !fastRecheckComplete {
 			return true

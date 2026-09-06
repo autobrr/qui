@@ -938,6 +938,55 @@ func TestProcessPendingRecheckResumeFastVerificationRecheck(t *testing.T) {
 	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions, "no duplicate resume once running")
 }
 
+func TestProcessPendingRecheckResumeInterruptedVerification(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name                       string
+		awaitingResumeConfirmation bool
+	}{
+		{name: "waiting for verification"},
+		{name: "waiting for resume confirmation", awaitingResumeConfirmation: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sync := &recheckResumeSyncManager{}
+			service := &Service{syncManager: sync}
+			pending := &pendingResume{
+				instanceID:                 1,
+				hash:                       "hash1",
+				budgetBytes:                new(int64),
+				verificationRequired:       true,
+				addedAt:                    time.Now().Add(-2 * recheckFastCompleteMinElapsed),
+				awaitingResumeConfirmation: tt.awaitingResumeConfirmation,
+			}
+			checking := qbt.Torrent{Hash: "hash1", Progress: 0.5, State: qbt.TorrentStateCheckingUp}
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, checking))
+			require.True(t, pending.sawChecking)
+
+			// A restart invalidates the piece check and any pending resume confirmation.
+			restarted := qbt.Torrent{Hash: "hash1", Progress: 1, AmountLeft: 0, State: qbt.TorrentStateCheckingResumeData}
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, restarted))
+			require.False(t, pending.sawChecking)
+			require.False(t, pending.awaitingResumeConfirmation)
+
+			// The old queue timestamp must not permit resume from saved completion data.
+			settled := restarted
+			settled.State = qbt.TorrentStatePausedUp
+			for range recheckResumeStablePolls {
+				require.True(t, service.processPendingRecheckResume(1, "hash1", pending, settled))
+			}
+			require.Empty(t, sync.bulkActions)
+
+			// A new observed piece check can still permit resume after completion.
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, checking))
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, settled))
+			require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+		})
+	}
+}
+
 func TestProcessPendingRecheckResumeForgivenessRetriesAfterNegativeVerdict(t *testing.T) {
 	t.Parallel()
 
