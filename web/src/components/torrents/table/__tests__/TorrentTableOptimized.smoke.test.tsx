@@ -9,10 +9,12 @@
  *
  * It mounts the REAL component with the network/router/stream boundaries
  * mocked and a deterministic virtualizer, then asserts the behaviours most
- * likely to break while extracting seams: rows render, and the header
- * select-all toggles row selection. The external data/action hooks mocked
- * here are NOT what the decomposition refactors, so this harness stays stable
- * across the 10 PRs it guards. Real virtualized scrolling and column-filter
+ * likely to break while extracting seams: rows render, the header
+ * select-all toggles row selection, and cross-seed mode keeps the rows the
+ * backend matched for a multi-word search (#2525). The external data/action
+ * hooks mocked here are NOT what the decomposition refactors, so this harness
+ * stays stable across the 10 PRs it guards; `scenario` is the only per-test
+ * knob they read. Real virtualized scrolling and column-filter
  * UI are intentionally left to per-seam unit tests + the manual smoke per PR.
  *
  * IMPORTANT: every mocked hook returns a STABLE singleton reference. Returning
@@ -29,6 +31,9 @@ import type { ComponentProps, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeTorrent } from "@/test/mockTorrent"
 import { makeFilters } from "@/test/mockFilters"
+
+// Per-test knobs read by the hoisted mocks below. Reset in beforeEach.
+const scenario = vi.hoisted(() => ({ routeSearch: "", isCrossSeedFiltering: false }))
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -51,7 +56,7 @@ vi.mock("react-i18next", async (importOriginal) => {
 
 // Router: avoid needing a real router tree.
 vi.mock("@tanstack/react-router", async (importOriginal) => {
-  const search = {}
+  const search = { get q() { return scenario.routeSearch || undefined } }
   const navigate = vi.fn()
   return {
     ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -157,7 +162,7 @@ vi.mock("@/hooks/useTorrentsList", () => {
         streamRetrying: false,
         streamNextRetryAt: undefined,
         streamRetryAttempt: 0,
-        isCrossSeedFiltering: false,
+        get isCrossSeedFiltering() { return scenario.isCrossSeedFiltering },
         isCrossInstanceEndpoint: false,
       }
       return result
@@ -209,6 +214,8 @@ function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>
 describe("TorrentTableOptimized smoke", () => {
   beforeEach(() => {
     localStorage.clear()
+    scenario.routeSearch = ""
+    scenario.isCrossSeedFiltering = false
   })
 
   it("renders a row for each torrent", () => {
@@ -246,5 +253,16 @@ describe("TorrentTableOptimized smoke", () => {
     expect(columns.result.current[0]).toEqual([])
     expect(sorting.result.current[0]).toEqual([{ id: "added_on", desc: true }])
     expect(onFilterChange).not.toHaveBeenCalled()
+  })
+
+  // Issue #2525: in cross-seed mode the table filters client-side. The search
+  // already narrowed rows on the backend (every word must appear somewhere in
+  // the name), so the table must not re-apply it as a literal substring.
+  it("keeps backend-matched rows when a multi-word search meets the cross-seed filter", () => {
+    scenario.routeSearch = "release alpha"
+    scenario.isCrossSeedFiltering = true
+    const { container } = renderTable()
+    expect(container.textContent).toContain("Alpha Release")
+    expect(container.textContent).toContain("Bravo Release")
   })
 })
