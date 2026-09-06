@@ -31,10 +31,17 @@ import (
 // hardlinkIndexTTL bounds how long an index survives without a full rebuild.
 // Torrent set changes are folded in incrementally and do not wait for it, so this
 // only has to catch link counts that changed on disk without any torrent being
-// added or removed: a manual rm or ln, or a script moving data. Delete decisions
-// do not rely on it either, because verifyDeleteCandidates re-reads the disk for
-// the candidates before a rule deletes anything.
+// added or removed: a manual rm or ln, or a script moving data. That needs a disk
+// re-stat, not new file lists, so rebuilds and updates read file lists from the
+// files cache up to hardlinkFilesCacheMaxAge old and ask qBittorrent only for the
+// rest. Delete decisions do not rely on it either, because verifyDeleteCandidates
+// re-reads the disk for the candidates before a rule deletes anything.
 const hardlinkIndexTTL = 10 * time.Minute
+
+// hardlinkFilesCacheMaxAge bounds how long the index trusts a cached file list.
+// A rename or priority edit made outside qui leaves the row stale, and the torrent
+// scope unknown, until the bound refetches it.
+const hardlinkFilesCacheMaxAge = time.Hour
 
 // hardlinkIncrementalChangeRatio is the share of the torrent set that may change
 // before an incremental update stops being worthwhile. Past it, the update would
@@ -154,16 +161,20 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 		return cached
 	}
 
+	// A build only has to re-stat the disk, so it reads file lists from the cache
+	// and refetches each one once per hardlinkFilesCacheMaxAge.
+	buildCtx := qbittorrent.WithFilesCacheMaxAge(ctx, hardlinkFilesCacheMaxAge)
+
 	// Build index with singleflight to prevent duplicate builds. The digest keys the
 	// call so concurrent callers looking at the same torrent set share one build.
 	key := strconv.Itoa(instanceID) + ":" + currentDigest
 	result, err, _ := globalHardlinkIndexCache.sf.Do(key, func() (any, error) {
 		if fresh {
-			if updated := s.updateHardlinkIndex(ctx, instanceID, cached, torrents, currentDigest); updated != nil {
+			if updated := s.updateHardlinkIndex(buildCtx, instanceID, cached, torrents, currentDigest); updated != nil {
 				return updated, nil
 			}
 		}
-		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest), nil
+		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest), nil
 	})
 	if err != nil {
 		return nil
@@ -177,7 +188,7 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	// Validate digest matches (paranoid check for edge cases)
 	if idx.digest != currentDigest {
 		// Rebuild with correct digest
-		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest)
+		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest)
 	}
 	return idx
 }

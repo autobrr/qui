@@ -48,9 +48,10 @@ type backendPoolGetter interface {
 type FilesManager interface {
 	GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error)
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
+	// A row older than maxAge is stale; zero maxAge means the implementation's default freshness.
 	// Callers must pass hashes already trimmed/normalized (e.g. uppercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
-	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error)
+	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, maxAge time.Duration) (map[string]qbt.TorrentFiles, []string, error)
 	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
 	CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
@@ -75,6 +76,7 @@ type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.T
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
 type filesCacheContextKey struct{}
+type filesCacheMaxAgeContextKey struct{}
 type postAddBulkActionRetryContextKey struct{}
 type postAddFileFetchRetryContextKey struct{}
 
@@ -110,6 +112,16 @@ func WithForceFilesRefresh(ctx context.Context) context.Context {
 	return context.WithValue(ctx, filesCacheContextKey{}, true)
 }
 
+// WithFilesCacheMaxAge returns a context under which [SyncManager.GetTorrentFilesBatch]
+// serves cached file lists up to maxAge old instead of the files manager's default
+// freshness window. Use it for readers that re-check the disk themselves and only
+// need the file names. A file list changes on renames and priority edits, and the
+// ones made through qui invalidate the row. [WithForceFilesRefresh] wins when both
+// are set.
+func WithFilesCacheMaxAge(ctx context.Context, maxAge time.Duration) context.Context {
+	return context.WithValue(ctx, filesCacheMaxAgeContextKey{}, maxAge)
+}
+
 // WithPostAddBulkActionRetry lets a bulk action wait longer for a torrent that
 // was just added and may not be visible in qBittorrent sync data yet.
 func WithPostAddBulkActionRetry(ctx context.Context) context.Context {
@@ -127,6 +139,11 @@ func WithPostAddFileFetchRetry(ctx context.Context) context.Context {
 func forceFilesRefresh(ctx context.Context) bool {
 	value, ok := ctx.Value(filesCacheContextKey{}).(bool)
 	return ok && value
+}
+
+func filesCacheMaxAge(ctx context.Context) time.Duration {
+	value, _ := ctx.Value(filesCacheMaxAgeContextKey{}).(time.Duration)
+	return value
 }
 
 func postAddBulkActionRetry(ctx context.Context) bool {
@@ -3018,7 +3035,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	forceRefresh := forceFilesRefresh(ctx)
 
 	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
-		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical); cacheErr != nil {
+		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, filesCacheMaxAge(ctx)); cacheErr != nil {
 			log.Warn().
 				Err(cacheErr).
 				Int("instanceID", instanceID).
