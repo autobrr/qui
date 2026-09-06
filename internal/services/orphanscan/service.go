@@ -169,6 +169,8 @@ func (s *Service) getLastCompletedRun(ctx context.Context, instanceID int) (*mod
 	return s.store.GetLastCompletedRun(ctx, instanceID)
 }
 
+// getAppPreferences returns an instance's qBittorrent preferences, using the
+// provider if set.
 func (s *Service) getAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
 	if s.getAppPreferencesProvider != nil {
 		return s.getAppPreferencesProvider(ctx, instanceID)
@@ -179,6 +181,8 @@ func (s *Service) getAppPreferences(ctx context.Context, instanceID int) (qbt.Ap
 	return s.syncManager.GetAppPreferences(ctx, instanceID)
 }
 
+// getCategories returns an instance's qBittorrent categories keyed by name,
+// using the provider if set.
 func (s *Service) getCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error) {
 	if s.getCategoriesProvider != nil {
 		return s.getCategoriesProvider(ctx, instanceID)

@@ -23,6 +23,9 @@ type scanScope struct {
 	AbandonedDirs bool
 }
 
+// scopeFromSettings reads the scope out of an instance's settings. Nil settings
+// mean the instance has never been configured, which is the same as every
+// option being off.
 func scopeFromSettings(settings *models.OrphanScanSettings) scanScope {
 	if settings == nil {
 		return scanScope{}
@@ -40,6 +43,8 @@ func (s scanScope) needsCategories() bool {
 	return s.CategoryPaths || s.AbandonedDirs
 }
 
+// isZero reports whether the scope asks for nothing beyond the torrent-derived
+// roots, in which case no qBittorrent lookup is needed to resolve it.
 func (s scanScope) isZero() bool {
 	return !s.DefaultSavePath && !s.CategoryPaths && !s.AbandonedDirs
 }
