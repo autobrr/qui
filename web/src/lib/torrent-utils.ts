@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { Torrent } from "@/types"
+import type { Torrent, TorrentResponse } from "@/types"
 
 type HashSource = {
   hash?: string | null
@@ -211,4 +211,19 @@ export function getToggleSelectionState(values: boolean[], stateUnknown: boolean
     allEnabled: values.length > 0 && values.every(Boolean),
     mixed: stateUnknown || values.some(value => value !== values[0]),
   }
+}
+
+/**
+ * Pick the details panel's live row from one stream frame. The stream is
+ * filtered to one hash with limit 1, so the row is whatever the server picked,
+ * not a row whose `hash` equals the requested one: a hybrid torrent looked up by
+ * its v2 infohash comes back keyed by v1. A delta whose row did not change
+ * carries no rows and the previous total, so only total 0 drops the row.
+ */
+export function resolveStreamRow(previous: Torrent | null, data: Pick<TorrentResponse, "torrents" | "total">): Torrent | null {
+  const next = data.torrents?.[0]
+  if (next) {
+    return next
+  }
+  return data.total === 0 ? null : previous
 }
