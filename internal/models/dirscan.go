@@ -1550,10 +1550,15 @@ func scanFilesFromRows(rows *sql.Rows) ([]*DirScanFile, error) {
 
 // RequeueNoMatchFiles resets no_match rows for a directory to pending so the
 // next scan searches them again. Matched and already-seeding rows are kept.
+//
+// It deliberately leaves last_processed_at alone: that column records when a scan
+// last saw the file on disk, and a requeue never visits the filesystem. Writing it
+// here would let a requeue racing a scan pass off untouched rows as freshly seen,
+// which is what PruneMissingFiles reads to judge whether a scan had real coverage.
 func (s *DirScanStore) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE dir_scan_files
-		SET status = ?, searched_indexer_ids = NULL, last_processed_at = CURRENT_TIMESTAMP
+		SET status = ?, searched_indexer_ids = NULL
 		WHERE directory_id = ? AND status = ?
 	`, DirScanFileStatusPending, directoryID, DirScanFileStatusNoMatch)
 	if err != nil {

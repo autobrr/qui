@@ -140,6 +140,43 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		require.Len(t, trackedPaths(t, dirID), 2)
 	})
 
+	// A requeue can land between a run's started_at and its prune. It never visits the
+	// filesystem, so it must not make untouched rows look freshly seen and talk the
+	// coverage guard into a delete the scan itself did not justify.
+	t.Run("a concurrent requeue does not inflate scan coverage", func(t *testing.T) {
+		dirID := newDirectory(t, "/data/requeue")
+		for _, d := range []int{3, 2, 1} {
+			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
+		}
+
+		// Ten no_match rows sit inside the grace window; the latest scan saw one file.
+		for i := range 10 {
+			path := fmt.Sprintf("/data/requeue/in-grace-%d.mkv", i)
+			require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
+				DirectoryID: dirID,
+				FilePath:    path,
+				FileSize:    1,
+				FileModTime: daysAgo(2),
+				Status:      models.DirScanFileStatusNoMatch,
+			}))
+			_, err := db.ExecContext(ctx, `
+				UPDATE dir_scan_files SET last_processed_at = ? WHERE directory_id = ? AND file_path = ?
+			`, daysAgo(2), dirID, path)
+			require.NoError(t, err)
+		}
+		trackFile(t, dirID, "/data/requeue/refreshed.mkv", daysAgo(1))
+		trackFile(t, dirID, "/data/requeue/deleted.mkv", daysAgo(10))
+
+		requeued, err := store.RequeueNoMatchFiles(ctx, dirID)
+		require.NoError(t, err)
+		require.Equal(t, int64(10), requeued)
+
+		removed, err := store.PruneMissingFiles(ctx, dirID)
+		require.NoError(t, err)
+		require.Zero(t, removed)
+		require.Len(t, trackedPaths(t, dirID), 12)
+	})
+
 	// When nothing at all was refreshed, a directory whose files were all deleted and
 	// a directory whose filesystem is mounted but empty look identical in the stored
 	// state. Keeping the rows is the deliberate choice: guessing wrong would wipe a
