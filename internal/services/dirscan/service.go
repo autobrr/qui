@@ -654,7 +654,9 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	}
 
 	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
-	s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
+	if s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l) {
+		s.pruneMissingFilesBestEffort(dir.ID, &l)
+	}
 }
 
 // enabledIndexerIDSet returns the IDs of all enabled indexers as a set.
@@ -729,9 +731,10 @@ func matchModeFromSettings(settings *models.DirScanSettings) MatchMode {
 	return MatchModeStrict
 }
 
-func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, filesSkipped, matchesFound, torrentsAdded int, instanceID int, l *zerolog.Logger) {
+// finalizeRun reports whether the run reached the success state.
+func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, filesSkipped, matchesFound, torrentsAdded int, instanceID int, l *zerolog.Logger) bool {
 	if s == nil || s.store == nil || runID <= 0 {
-		return
+		return false
 	}
 
 	if ctx.Err() != nil {
@@ -743,14 +746,14 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, file
 			l.Info().Msg("dirscan: scan canceled during search/inject")
 		}
 		s.markRunCanceled(context.Background(), runID, l, "canceled during search/inject")
-		return
+		return false
 	}
 
 	if err := s.store.UpdateRunCompleted(context.Background(), runID, matchesFound, torrentsAdded); err != nil {
 		if l != nil {
 			l.Error().Err(err).Msg("dirscan: failed to mark run as completed")
 		}
-		return
+		return false
 	}
 
 	// Run completed successfully.
@@ -772,6 +775,29 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, file
 			Int("matchesFound", matchesFound).
 			Int("torrentsAdded", torrentsAdded).
 			Msg("dirscan: scan completed")
+	}
+
+	return true
+}
+
+// pruneMissingFilesBestEffort drops tracked rows for files that successive scans no
+// longer find. It runs only after a successful scan, so a failed walk over an
+// unavailable filesystem never removes rows.
+func (s *Service) pruneMissingFilesBestEffort(directoryID int, l *zerolog.Logger) {
+	if s == nil || s.store == nil || directoryID <= 0 {
+		return
+	}
+
+	removed, err := s.store.PruneMissingFiles(context.Background(), directoryID)
+	if err != nil {
+		if l != nil {
+			l.Warn().Err(err).Msg("dirscan: failed to prune tracked files that no longer exist")
+		}
+		return
+	}
+
+	if removed > 0 && l != nil {
+		l.Info().Int64("removed", removed).Msg("dirscan: pruned tracked files that no longer exist")
 	}
 }
 

@@ -1574,3 +1574,110 @@ func (s *DirScanStore) DeleteFilesForDirectory(ctx context.Context, directoryID 
 	}
 	return nil
 }
+
+// dirScanPruneGraceRuns is how many consecutive successful scans must miss a tracked
+// file before its row is removed. A scan does not always reach every live file, so a
+// single miss is not evidence the file is gone.
+const dirScanPruneGraceRuns = 3
+
+// dirScanPruneMinRefreshPercent blocks the prune when the latest scan refreshed too
+// small a share of the rows still inside the grace window. A filesystem that is
+// mounted but empty walks cleanly and completes, so run status alone is not evidence
+// that a scan saw real data.
+const dirScanPruneMinRefreshPercent = 50
+
+// PruneMissingFiles removes rows whose file was absent from the last
+// dirScanPruneGraceRuns successful scans of the directory and returns how many it
+// removed. It removes nothing when the directory has too little successful scan
+// history to judge, or when the latest scan refreshed too few rows to be trusted.
+func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (int64, error) {
+	if s == nil || s.db == nil || directoryID <= 0 {
+		return 0, nil
+	}
+
+	cutoff, err := s.successfulRunStartedAt(ctx, directoryID, dirScanPruneGraceRuns-1)
+	if err != nil || cutoff == nil {
+		return 0, err
+	}
+
+	latest, err := s.successfulRunStartedAt(ctx, directoryID, 0)
+	if err != nil || latest == nil {
+		return 0, err
+	}
+
+	// Rows already past the grace window are left out of the denominator so a
+	// directory that genuinely loses most of its files still prunes once the window
+	// passes, instead of blocking itself forever.
+	inGrace, err := s.countFilesProcessedSince(ctx, directoryID, *cutoff)
+	if err != nil {
+		return 0, err
+	}
+
+	refreshed, err := s.countFilesProcessedSince(ctx, directoryID, *latest)
+	if err != nil {
+		return 0, err
+	}
+
+	if inGrace == 0 || refreshed*100 < inGrace*dirScanPruneMinRefreshPercent {
+		log.Warn().
+			Int("directoryID", directoryID).
+			Int64("refreshed", refreshed).
+			Int64("inGrace", inGrace).
+			Msg("dirscan: skipped stale file prune, latest scan refreshed too few tracked files")
+		return 0, nil
+	}
+
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM dir_scan_files
+		WHERE directory_id = ?
+		  AND last_processed_at IS NOT NULL
+		  AND last_processed_at < ?
+	`, directoryID, *cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("prune missing files: %w", err)
+	}
+
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+
+	return removed, nil
+}
+
+// successfulRunStartedAt returns the start time of the offset-th most recent
+// successful run for a directory, or nil when that many successful runs do not exist.
+func (s *DirScanStore) successfulRunStartedAt(ctx context.Context, directoryID, offset int) (*time.Time, error) {
+	var startedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `
+		SELECT started_at
+		FROM dir_scan_runs
+		WHERE directory_id = ? AND status = ?
+		ORDER BY started_at DESC, id DESC
+		LIMIT 1 OFFSET ?
+	`, directoryID, DirScanRunStatusSuccess, offset).Scan(&startedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("select successful run start: %w", err)
+	}
+	if !startedAt.Valid {
+		return nil, nil
+	}
+
+	return &startedAt.Time, nil
+}
+
+func (s *DirScanStore) countFilesProcessedSince(ctx context.Context, directoryID int, since time.Time) (int64, error) {
+	var count int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM dir_scan_files
+		WHERE directory_id = ? AND last_processed_at IS NOT NULL AND last_processed_at >= ?
+	`, directoryID, since).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count processed files: %w", err)
+	}
+
+	return count, nil
+}
