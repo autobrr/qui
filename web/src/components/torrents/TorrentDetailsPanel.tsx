@@ -174,9 +174,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         return
       }
 
-      // The stream is filtered to this hash with limit 1, so the row is either
-      // the first entry or gone (total 0 after removal).
-      setStreamTorrent(payload.data.torrents?.[0] ?? null)
+      // The stream is filtered to this hash with limit 1. A delta whose row did
+      // not change carries no rows but total 1, so only total 0 clears the row.
+      const nextTorrent = payload.data.torrents?.[0]
+      if (nextTorrent) {
+        setStreamTorrent(nextTorrent)
+      } else if (payload.data.total === 0) {
+        setStreamTorrent(null)
+      }
     },
     [torrent?.hash]
   )
