@@ -147,7 +147,8 @@
     "results": "Ergebnisse:",
     "resultsDetail": "{{added}} mit Cross-Seeds / {{skipped}} übersprungen / {{failed}} fehlgeschlagen",
     "crossSeedsAdded": "Cross-Seeds hinzugefügt:",
-    "crossSeedsAddedBadge": "+{{added}} Cross-Seeds",
+    "crossSeedsAddedBadge_one": "+{{count}} Cross-Seed",
+    "crossSeedsAddedBadge_other": "+{{count}} Cross-Seeds",
     "dueCandidatesHelp": "Ein fälliger Kandidat ist ein Torrent oder eine Staffelgruppe, die noch eine Suche braucht. Cooldown und der Suchverlauf pro Indexer nehmen Kandidaten heraus, daher liefern dieselben Filter bei jedem späteren Lauf eine kleinere Gesamtzahl.",
     "started": "Gestartet:",
     "estCompletion": "Voraussichtl. Abschluss:",
@@ -165,7 +166,7 @@
     "runSummaryWithFailures": "{{runs}} Läufe • +{{added}} Cross-Seeds • {{failed}} fehlgeschlagen",
     "searchNeedsTorznabUnlessGazelle": "Die Suche in geseedeten Torrents benötigt Torznab-Indexer (es sei denn, du scannst nur OPS/RED über Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} gescannt",
-    "torrentsCount": "{{count}} fällige Kandidaten",
+    "torrentsCount": "{{count}} Kandidaten",
     "failedCount": "{{count}} fehlgeschlagen",
     "runError": "Fehler: {{message}}",
     "indexers": {

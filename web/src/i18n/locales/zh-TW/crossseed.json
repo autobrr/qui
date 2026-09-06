@@ -147,7 +147,7 @@
     "results": "結果：",
     "resultsDetail": "{{added}} 有交叉做種；{{skipped}} 已跳過；{{failed}} 失敗",
     "crossSeedsAdded": "已新增的交叉做種：",
-    "crossSeedsAddedBadge": "+{{added}} 個交叉做種",
+    "crossSeedsAddedBadge_other": "+{{count}} 個交叉做種",
     "dueCandidatesHelp": "待處理候選是仍需搜尋的種子或季組。冷卻時間和依索引器的搜尋歷史會移除候選，因此相同篩選條件在之後的每次執行中總數都會變小。",
     "started": "開始時間：",
     "estCompletion": "預計完成：",
@@ -165,7 +165,7 @@
     "runSummaryWithFailures": "{{runs}} 次執行 • +{{added}} 個交叉做種 • {{failed}} 失敗",
     "searchNeedsTorznabUnlessGazelle": "做種搜尋需要 Torznab 索引器（除非您僅透過 Gazelle 掃描 OPS/RED）。",
     "scannedProgress": "已掃描 {{processed}}/{{total}}",
-    "torrentsCount": "{{count}} 個待處理候選",
+    "torrentsCount": "{{count}} 個候選",
     "failedCount": "{{count}} 個失敗",
     "runError": "錯誤：{{message}}",
     "indexers": {

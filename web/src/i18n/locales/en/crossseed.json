@@ -147,7 +147,8 @@
     "results": "Results:",
     "resultsDetail": "{{added}} with cross-seeds / {{skipped}} skipped / {{failed}} failed",
     "crossSeedsAdded": "Cross-seeds added:",
-    "crossSeedsAddedBadge": "+{{added}} cross-seeds",
+    "crossSeedsAddedBadge_one": "+{{count}} cross-seed",
+    "crossSeedsAddedBadge_other": "+{{count}} cross-seeds",
     "dueCandidatesHelp": "A due candidate is a torrent, or a season group, that still needs a search. Cooldown and per-indexer search history retire candidates, so the same filters give a smaller total on each later run.",
     "started": "Started:",
     "estCompletion": "Est. completion:",
@@ -165,7 +166,7 @@
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} cross-seeds • {{failed}} failed",
     "searchNeedsTorznabUnlessGazelle": "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} scanned",
-    "torrentsCount": "{{count}} due candidates",
+    "torrentsCount": "{{count}} candidates",
     "failedCount": "{{count}} failed",
     "runError": "Error: {{message}}",
     "indexers": {

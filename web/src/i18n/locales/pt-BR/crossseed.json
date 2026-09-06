@@ -147,7 +147,8 @@
     "results": "Resultados:",
     "resultsDetail": "{{added}} com cross-seeds / {{skipped}} ignorados / {{failed}} falharam",
     "crossSeedsAdded": "Cross-seeds adicionados:",
-    "crossSeedsAddedBadge": "+{{added}} cross-seeds",
+    "crossSeedsAddedBadge_one": "+{{count}} cross-seed",
+    "crossSeedsAddedBadge_other": "+{{count}} cross-seeds",
     "dueCandidatesHelp": "Um candidato pendente é um torrent, ou um grupo de temporada, que ainda precisa de uma busca. O cooldown e o histórico de busca por indexer retiram candidatos, então os mesmos filtros dão um total menor em cada execução seguinte.",
     "started": "Iniciado:",
     "estCompletion": "Conclusão est.:",
@@ -165,7 +166,7 @@
     "runSummaryWithFailures": "{{runs}} execuções • +{{added}} cross-seeds • {{failed}} falharam",
     "searchNeedsTorznabUnlessGazelle": "A Busca de Torrents Semeados precisa de indexadores Torznab (a menos que você esteja apenas varrendo OPS/RED via Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} varridos",
-    "torrentsCount": "{{count}} candidatos pendentes",
+    "torrentsCount": "{{count}} candidatos",
     "failedCount": "{{count}} falharam",
     "runError": "Erro: {{message}}",
     "indexers": {
