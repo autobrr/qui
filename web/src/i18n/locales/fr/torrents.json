@@ -881,7 +881,10 @@
       }
     },
     "title": "Filtres",
-    "clearAll": "Tout effacer",
+    "clearOptions": "Options de suppression des filtres",
+    "clearSidebarFilters": "Effacer les filtres de la barre latérale",
+    "clearColumnFilters": "Effacer les filtres des colonnes",
+    "clearFiltersAndSearch": "Effacer les filtres et la recherche",
     "loading": "Chargement...",
     "customFilter": "Filtre personnalisé",
     "customFilterHelp": "Filtre d'expression personnalisé actif (ex. résultats cross-seed)",
