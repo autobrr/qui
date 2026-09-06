@@ -534,7 +534,7 @@ func TestApplyEnsembleSearchResults(t *testing.T) {
 			service.applyEnsembleSearchResults(ctx, state, groupTorrent, tt.key, "query", &jackett.SearchResponse{Results: tt.results}, time.Now().UTC())
 
 			require.Equal(t, tt.wantDownloads, downloads, "downloaded candidates mismatch")
-			require.Equal(t, tt.wantAdded, state.run.TorrentsAdded)
+			require.Equal(t, tt.wantAdded, state.run.CrossSeedsAdded)
 			require.Equal(t, tt.wantFailed, state.run.TorrentsFailed)
 			require.Equal(t, tt.wantSkipped, state.run.TorrentsSkipped)
 			if tt.wantMessage != "" {
