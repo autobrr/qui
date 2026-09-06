@@ -904,7 +904,8 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 		fileRequests.Add(1)
 		_, _ = fmt.Fprintf(w, `[{"name":"%.1s.mkv","priority":1}]`, r.URL.Query().Get("hash"))
 	})
-	torrents := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}}
+	all := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}, {Hash: hashC, SavePath: dir}, {Hash: hashD, SavePath: dir}}
+	torrents := all[:2]
 
 	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
@@ -924,7 +925,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 
 	// A torrent with no cached row is still fetched on an expired rebuild.
 	expireHardlinkIndex(t, rig.instanceID)
-	torrents = append(torrents, qbt.Torrent{Hash: hashC, SavePath: dir})
+	torrents = all[:3]
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(3), fileRequests.Load())
@@ -935,7 +936,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	require.NoError(t, os.Link(filepath.Join(dir, "a.mkv"), filepath.Join(dir, "d.mkv")))
 	_, err = rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
-	torrents = append(torrents, qbt.Torrent{Hash: hashD, SavePath: dir})
+	torrents = all
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(4), fileRequests.Load())
