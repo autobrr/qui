@@ -759,8 +759,7 @@ func newHardlinkIndexRig(t *testing.T, name string, backend fsops.Backend, files
 	db := testdb.NewMigratedSQLite(t, name)
 	instanceStore, err := models.NewInstanceStore(db, make([]byte, 32))
 	require.NoError(t, err)
-	localAccess := true
-	instance, err := instanceStore.Create(t.Context(), name, server.URL, "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(t.Context(), name, server.URL, "", "", nil, nil, false, new(true))
 	require.NoError(t, err)
 
 	clientPool, err := qbittorrent.NewClientPool(instanceStore, models.NewInstanceErrorStore(db), time.Second)
