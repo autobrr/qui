@@ -943,6 +943,53 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	require.Equal(t, HardlinkScopeBoth, index.GetHardlinkScope(hashD))
 }
 
+func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
+	const (
+		hashA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		hashB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	)
+
+	dir := t.TempDir()
+	createFile(t, filepath.Join(dir, "a.mkv"))
+	createFile(t, filepath.Join(dir, "b.mkv"))
+
+	var fileRequests atomic.Int32
+	names := map[string]string{hashA: "a.mkv", hashB: "b.mkv"}
+	rig := newHardlinkIndexRig(t, "hardlink-index-stale-name", localbackend.NewBackend(), func(w http.ResponseWriter, r *http.Request) {
+		fileRequests.Add(1)
+		_, _ = fmt.Fprintf(w, `[{"name":%q,"priority":1}]`, names[r.URL.Query().Get("hash")])
+	})
+	torrents := []qbt.Torrent{{Hash: hashA, SavePath: dir}, {Hash: hashB, SavePath: dir}}
+
+	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(2), fileRequests.Load())
+	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashA))
+
+	// The file is renamed in qBittorrent's own WebUI: the disk and qBittorrent
+	// agree on the new name, the cached row still holds the old one. The expired
+	// rebuild trusts the row, cannot stat the file, and leaves the scope unknown
+	// rather than guessing. The other torrent is unaffected.
+	require.NoError(t, os.Rename(filepath.Join(dir, "a.mkv"), filepath.Join(dir, "a-renamed.mkv")))
+	names[hashA] = "a-renamed.mkv"
+	expireHardlinkIndex(t, rig.instanceID)
+	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(2), fileRequests.Load())
+	require.Empty(t, index.GetHardlinkScope(hashA))
+	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashB))
+
+	// The first build after a restart fetches every list and recovers.
+	globalHardlinkIndexCache.mu.Lock()
+	delete(globalHardlinkIndexCache.indices, rig.instanceID)
+	globalHardlinkIndexCache.mu.Unlock()
+
+	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
+	require.Equal(t, int32(4), fileRequests.Load())
+	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashA))
+}
+
 func expireHardlinkIndex(t *testing.T, instanceID int) {
 	t.Helper()
 	globalHardlinkIndexCache.mu.Lock()
