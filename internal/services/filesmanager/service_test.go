@@ -103,7 +103,7 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 	}
 }
 
-func TestGetCachedFilesBatch_AnyCacheAgeServesAgedRows(t *testing.T) {
+func TestGetCachedFilesBatch_MaxAgeServesAgedRows(t *testing.T) {
 	t.Parallel()
 
 	db, ctx := setupFilesManagerDB(t)
@@ -115,12 +115,12 @@ func TestGetCachedFilesBatch_AnyCacheAgeServesAgedRows(t *testing.T) {
 	_, err := db.ExecContext(ctx, "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
 
-	cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"}, false)
+	cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"}, 0)
 	require.NoError(t, err)
 	require.Empty(t, cached)
 	require.ElementsMatch(t, []string{"aged", "absent"}, missing)
 
-	cached, missing, err = svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"}, true)
+	cached, missing, err = svc.GetCachedFilesBatch(ctx, 1, []string{"aged", "absent"}, 2*time.Hour)
 	require.NoError(t, err)
 	require.Len(t, cached, 1)
 	require.Equal(t, "aged.mkv", cached["aged"][0].Name)

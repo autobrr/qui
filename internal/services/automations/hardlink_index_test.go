@@ -911,11 +911,12 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashA))
 
 	// A link appears outside the torrent set, the index ages past its TTL, and the
-	// files cache ages past its freshness window: the rebuild must still see the
-	// new link without asking qBittorrent for a single file list.
+	// files cache ages past its freshness window but not past the index's bound:
+	// the rebuild must still see the new link without asking qBittorrent for a
+	// single file list.
 	require.NoError(t, os.Link(filepath.Join(dir, "a.mkv"), filepath.Join(t.TempDir(), "a-copy.mkv")))
 	expireHardlinkIndex(t, rig.instanceID)
-	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
+	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-hardlinkFilesCacheMaxAge/2))
 	require.NoError(t, err)
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
@@ -933,7 +934,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 	// An incremental update re-reads the torrents that share files with the new
 	// one. Their lists are cached too, so only the new torrent is fetched.
 	require.NoError(t, os.Link(filepath.Join(dir, "a.mkv"), filepath.Join(dir, "d.mkv")))
-	_, err = rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
+	_, err = rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-hardlinkFilesCacheMaxAge/2))
 	require.NoError(t, err)
 	torrents = all
 
@@ -972,7 +973,7 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 	require.NoError(t, os.Rename(filepath.Join(dir, "a.mkv"), filepath.Join(dir, "a-renamed.mkv")))
 	names[hashA] = "a-renamed.mkv"
 	expireHardlinkIndex(t, rig.instanceID)
-	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-time.Hour))
+	_, err := rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-hardlinkFilesCacheMaxAge/2))
 	require.NoError(t, err)
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
@@ -980,10 +981,10 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 	require.Empty(t, index.GetHardlinkScope(hashA))
 	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashB))
 
-	// The first build after a restart fetches every list and recovers.
-	globalHardlinkIndexCache.mu.Lock()
-	delete(globalHardlinkIndexCache.indices, rig.instanceID)
-	globalHardlinkIndexCache.mu.Unlock()
+	// Once the rows age past the bound, the next rebuild refetches and recovers.
+	expireHardlinkIndex(t, rig.instanceID)
+	_, err = rig.db.ExecContext(t.Context(), "UPDATE torrent_files_sync SET last_synced_at = ?", time.Now().Add(-2*hardlinkFilesCacheMaxAge))
+	require.NoError(t, err)
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(4), fileRequests.Load())

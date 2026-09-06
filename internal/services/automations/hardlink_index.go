@@ -33,10 +33,15 @@ import (
 // only has to catch link counts that changed on disk without any torrent being
 // added or removed: a manual rm or ln, or a script moving data. That needs a disk
 // re-stat, not new file lists, so rebuilds and updates read file lists from the
-// files cache at any age and ask qBittorrent only for torrents with no row. Delete
-// decisions do not rely on it either, because verifyDeleteCandidates re-reads the
-// disk for the candidates before a rule deletes anything.
+// files cache up to hardlinkFilesCacheMaxAge old and ask qBittorrent only for the
+// rest. Delete decisions do not rely on it either, because verifyDeleteCandidates
+// re-reads the disk for the candidates before a rule deletes anything.
 const hardlinkIndexTTL = 10 * time.Minute
+
+// hardlinkFilesCacheMaxAge bounds how long the index trusts a cached file list.
+// A rename or priority edit made outside qui leaves the row stale, and the torrent
+// scope unknown, until the bound refetches it.
+const hardlinkFilesCacheMaxAge = time.Hour
 
 // hardlinkIncrementalChangeRatio is the share of the torrent set that may change
 // before an incremental update stops being worthwhile. Past it, the update would
@@ -156,13 +161,9 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 		return cached
 	}
 
-	// A rebuild or an update that replaces an index only has to re-stat the disk.
-	// The first build after boot still fetches every file list, which also
-	// refreshes rows that went stale while qui was down.
-	buildCtx := ctx
-	if cached != nil {
-		buildCtx = qbittorrent.WithAnyCacheAge(ctx)
-	}
+	// A build only has to re-stat the disk, so it reads file lists from the cache
+	// and refetches each one once per hardlinkFilesCacheMaxAge.
+	buildCtx := qbittorrent.WithFilesCacheMaxAge(ctx, hardlinkFilesCacheMaxAge)
 
 	// Build index with singleflight to prevent duplicate builds. The digest keys the
 	// call so concurrent callers looking at the same torrent set share one build.
