@@ -101,7 +101,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -294,7 +294,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -354,7 +354,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -452,7 +452,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -584,7 +584,7 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
+	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend(), scanScope{})
 	if err == nil {
 		t.Fatalf("expected error")
 	}

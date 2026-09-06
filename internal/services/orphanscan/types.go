@@ -63,6 +63,15 @@ type OrphanFile struct {
 	ModifiedAt   time.Time
 	Status       FileStatus
 	ErrorMessage string
+	IsDir        bool
+}
+
+// AbandonedDir is a directory that holds no files at any depth. Whether it may
+// be removed is decided later, against the scan roots, ignore paths, category
+// destinations and the grace period.
+type AbandonedDir struct {
+	Path    string
+	ModTime time.Time
 }
 
 // Settings represents orphan scan settings for an instance.
@@ -77,6 +86,9 @@ type Settings struct {
 	MaxFilesPerRun      int
 	AutoCleanupEnabled  bool
 	AutoCleanupMaxFiles int
+	ScanDefaultSavePath bool
+	ScanCategoryPaths   bool
+	DeleteAbandonedDirs bool
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

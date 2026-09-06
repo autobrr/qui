@@ -8623,6 +8623,15 @@ components:
         maxFilesPerRun:
           type: integer
           description: Maximum orphan files to record per run (prevents DB bloat)
+        scanDefaultSavePath:
+          type: boolean
+          description: Also scan qBittorrent's default save path, even when no torrent points into it
+        scanCategoryPaths:
+          type: boolean
+          description: Also scan every qBittorrent category destination, explicit or implicit
+        deleteAbandonedDirs:
+          type: boolean
+          description: Report directories that hold no files at any depth so they can be removed
         createdAt:
           type: string
           format: date-time
@@ -8651,6 +8660,12 @@ components:
         maxFilesPerRun:
           type: integer
           minimum: 1
+        scanDefaultSavePath:
+          type: boolean
+        scanCategoryPaths:
+          type: boolean
+        deleteAbandonedDirs:
+          type: boolean
 
     OrphanScanRun:
       type: object
@@ -8763,7 +8778,10 @@ components:
         fileSize:
           type: integer
           format: int64
-          description: File size in bytes
+          description: File size in bytes; always 0 for a directory
+        isDir:
+          type: boolean
+          description: True when the entry is an abandoned directory rather than a file
         modifiedAt:
           type: string
           format: date-time

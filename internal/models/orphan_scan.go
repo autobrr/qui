@@ -29,6 +29,9 @@ type OrphanScanSettings struct {
 	MaxFilesPerRun      int       `json:"maxFilesPerRun"`
 	AutoCleanupEnabled  bool      `json:"autoCleanupEnabled"`
 	AutoCleanupMaxFiles int       `json:"autoCleanupMaxFiles"`
+	ScanDefaultSavePath bool      `json:"scanDefaultSavePath"`
+	ScanCategoryPaths   bool      `json:"scanCategoryPaths"`
+	DeleteAbandonedDirs bool      `json:"deleteAbandonedDirs"`
 	CreatedAt           time.Time `json:"createdAt"`
 	UpdatedAt           time.Time `json:"updatedAt"`
 }
@@ -56,6 +59,7 @@ type OrphanScanFile struct {
 	RunID        int64      `json:"runId"`
 	FilePath     string     `json:"filePath"`
 	FileSize     int64      `json:"fileSize"`
+	IsDir        bool       `json:"isDir"`
 	ModifiedAt   *time.Time `json:"modifiedAt,omitempty"`
 	Status       string     `json:"status"` // pending, deleted, skipped, failed
 	ErrorMessage string     `json:"errorMessage,omitempty"`
@@ -77,14 +81,15 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, enabled, grace_period_minutes, ignore_paths,
 		       scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled,
-		       auto_cleanup_max_files, created_at, updated_at
+		       auto_cleanup_max_files, scan_default_save_path, scan_category_paths,
+		       delete_abandoned_dirs, created_at, updated_at
 		FROM orphan_scan_settings
 		WHERE instance_id = ?
 	`, instanceID)
 
 	var settings OrphanScanSettings
 	var ignorePathsJSON sql.NullString
-	var enabled, autoCleanupEnabled int
+	var enabled, autoCleanupEnabled, scanDefaultSavePath, scanCategoryPaths, deleteAbandonedDirs int
 
 	err := row.Scan(
 		&settings.ID,
@@ -97,6 +102,9 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 		&settings.MaxFilesPerRun,
 		&autoCleanupEnabled,
 		&settings.AutoCleanupMaxFiles,
+		&scanDefaultSavePath,
+		&scanCategoryPaths,
+		&deleteAbandonedDirs,
 		&settings.CreatedAt,
 		&settings.UpdatedAt,
 	)
@@ -117,6 +125,9 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	}
 	settings.Enabled = SQLiteIntToBool(enabled)
 	settings.AutoCleanupEnabled = SQLiteIntToBool(autoCleanupEnabled)
+	settings.ScanDefaultSavePath = SQLiteIntToBool(scanDefaultSavePath)
+	settings.ScanCategoryPaths = SQLiteIntToBool(scanCategoryPaths)
+	settings.DeleteAbandonedDirs = SQLiteIntToBool(deleteAbandonedDirs)
 
 	return &settings, nil
 }
@@ -135,8 +146,9 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO orphan_scan_settings
 				(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours,
-				 preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files,
+				 scan_default_save_path, scan_category_paths, delete_abandoned_dirs)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id) DO UPDATE SET
 			enabled = excluded.enabled,
 			grace_period_minutes = excluded.grace_period_minutes,
@@ -145,10 +157,15 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 			preview_sort = excluded.preview_sort,
 			max_files_per_run = excluded.max_files_per_run,
 			auto_cleanup_enabled = excluded.auto_cleanup_enabled,
-			auto_cleanup_max_files = excluded.auto_cleanup_max_files
+			auto_cleanup_max_files = excluded.auto_cleanup_max_files,
+			scan_default_save_path = excluded.scan_default_save_path,
+			scan_category_paths = excluded.scan_category_paths,
+			delete_abandoned_dirs = excluded.delete_abandoned_dirs
 	`, settings.InstanceID, boolToInt(settings.Enabled), settings.GracePeriodMinutes,
 		string(ignorePathsJSON), settings.ScanIntervalHours, settings.PreviewSort, settings.MaxFilesPerRun,
-		boolToInt(settings.AutoCleanupEnabled), settings.AutoCleanupMaxFiles)
+		boolToInt(settings.AutoCleanupEnabled), settings.AutoCleanupMaxFiles,
+		boolToInt(settings.ScanDefaultSavePath), boolToInt(settings.ScanCategoryPaths),
+		boolToInt(settings.DeleteAbandonedDirs))
 	if err != nil {
 		return nil, err
 	}
@@ -554,18 +571,18 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 		batch := files[i:end]
 
 		var query strings.Builder
-		query.WriteString(`INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status) VALUES `)
-		args := make([]any, 0, len(batch)*5)
+		query.WriteString(`INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status, is_dir) VALUES `)
+		args := make([]any, 0, len(batch)*6)
 		for j, f := range batch {
 			if j > 0 {
 				query.WriteString(", ")
 			}
-			query.WriteString("(?, ?, ?, ?, ?)")
+			query.WriteString("(?, ?, ?, ?, ?, ?)")
 			var modifiedAt any
 			if f.ModifiedAt != nil {
 				modifiedAt = *f.ModifiedAt
 			}
-			args = append(args, runID, f.FilePath, f.FileSize, modifiedAt, f.Status)
+			args = append(args, runID, f.FilePath, f.FileSize, modifiedAt, f.Status, boolToInt(f.IsDir))
 		}
 
 		if _, err := s.db.ExecContext(ctx, query.String(), args...); err != nil {
@@ -583,10 +600,12 @@ func scanOrphanScanFile(rows *sql.Rows) (*OrphanScanFile, error) {
 	var f OrphanScanFile
 	var modifiedAt sql.NullTime
 	var errorMessage sql.NullString
+	var isDir int
 
-	if err := rows.Scan(&f.ID, &f.RunID, &f.FilePath, &f.FileSize, &modifiedAt, &f.Status, &errorMessage); err != nil {
+	if err := rows.Scan(&f.ID, &f.RunID, &f.FilePath, &f.FileSize, &modifiedAt, &f.Status, &errorMessage, &isDir); err != nil {
 		return nil, fmt.Errorf("scan orphan file row: %w", err)
 	}
+	f.IsDir = SQLiteIntToBool(isDir)
 	if modifiedAt.Valid {
 		f.ModifiedAt = &modifiedAt.Time
 	}
@@ -615,7 +634,7 @@ func collectOrphanScanFiles(rows *sql.Rows) ([]*OrphanScanFile, error) {
 // listFilesDirectorySorted loads all files and sorts by directory then size (in-memory).
 func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_dir
 		FROM orphan_scan_files
 		WHERE run_id = ?
 	`, runID)
@@ -658,7 +677,7 @@ func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID in
 // listFilesSizeSorted uses SQL ordering for efficiency.
 func (s *OrphanScanStore) listFilesSizeSorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_dir
 		FROM orphan_scan_files
 		WHERE run_id = ?
 		ORDER BY file_size DESC, file_path ASC
@@ -690,7 +709,7 @@ func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, off
 // large orphan sets, consider adding batched retrieval here.
 func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_dir
 		FROM orphan_scan_files
 		WHERE run_id = ? AND status = 'pending'
 		ORDER BY file_path
@@ -705,6 +724,7 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 		var f OrphanScanFile
 		var modifiedAt sql.NullTime
 		var errorMessage sql.NullString
+		var isDir int
 
 		if err := rows.Scan(
 			&f.ID,
@@ -714,9 +734,11 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 			&modifiedAt,
 			&f.Status,
 			&errorMessage,
+			&isDir,
 		); err != nil {
 			return nil, err
 		}
+		f.IsDir = SQLiteIntToBool(isDir)
 
 		if modifiedAt.Valid {
 			f.ModifiedAt = &modifiedAt.Time
