@@ -182,8 +182,24 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		addedState:        make(map[string]struct{}),
 	}
 
-	// Create the sync manager before the first capability refresh so its
-	// tracker manager picks up the include-trackers flag.
+	if err := client.RefreshCapabilities(ctx); err != nil {
+		if errors.Is(err, errInvalidWebAPIVersion) {
+			client.updateHealthStatus(false)
+			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
+		}
+		// A transient fetch failure (e.g. timeout against a saturated-but-alive
+		// WebUI) must not block client creation; capabilities refresh on the next
+		// health check. Only a positively invalid session is terminal.
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("host", instanceHost).
+			Msg("Failed to refresh qBittorrent capabilities during client creation")
+		client.updateHealthStatus(false)
+	} else {
+		client.updateHealthStatus(true)
+	}
+
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
 
@@ -202,24 +218,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.OnError = client.handleSyncManagerError
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
-
-	if err := client.RefreshCapabilities(ctx); err != nil {
-		if errors.Is(err, errInvalidWebAPIVersion) {
-			client.updateHealthStatus(false)
-			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
-		}
-		// A transient fetch failure (e.g. timeout against a saturated-but-alive
-		// WebUI) must not block client creation; capabilities refresh on the next
-		// health check. Only a positively invalid session is terminal.
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("host", instanceHost).
-			Msg("Failed to refresh qBittorrent capabilities during client creation")
-		client.updateHealthStatus(false)
-	} else {
-		client.updateHealthStatus(true)
-	}
+	// The tracker manager did not exist during the capability refresh above.
+	client.syncManager.Trackers().SetUseIncludeTrackers(client.supportsTrackerInclude())
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -583,7 +583,8 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	if c.IsHealthy() && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+	// Empty version means capabilities never loaded; sync updates stamp health, so keep probing.
+	if c.GetWebAPIVersion() != "" && c.IsHealthy() && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
 		return nil
 	}
 

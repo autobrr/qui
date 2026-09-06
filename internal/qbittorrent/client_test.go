@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -765,8 +766,8 @@ func TestSplitHostUserinfo(t *testing.T) {
 }
 
 // TestNewClientWithTimeoutEnablesBulkTrackerFetch pins the tracker manager to
-// the include-trackers capability at construction. The sync manager must exist
-// before the first capability refresh, or the flag never reaches it.
+// the include-trackers capability at construction. The sync manager is created
+// after the first capability refresh, so the flag has to be applied to it.
 func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 	t.Parallel()
 
@@ -831,4 +832,43 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 			require.Equal(t, tc.wantTrackers, hits["/api/v2/torrents/trackers"], "per-hash torrents/trackers requests")
 		})
 	}
+}
+
+// TestHealthCheckRetriesCapabilitiesUntilLoaded covers a transient capability
+// failure at construction. Sync updates stamp the client healthy, which used to
+// let HealthCheck skip the probe forever and leave bulk tracker fetching off.
+func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
+	t.Parallel()
+
+	var versionFails atomic.Bool
+	versionFails.Store(true)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{Name: "SID", Value: "retry-caps", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			if versionFails.Load() {
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
+			_, _ = w.Write([]byte("2.11.4"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
+	require.NoError(t, err, "a transient capability failure must not block client creation")
+	require.Empty(t, client.GetWebAPIVersion())
+	require.False(t, client.trackerManager().SupportsIncludeTrackers())
+
+	// A successful sync stamps the client healthy and fresh.
+	client.updateHealthStatus(true)
+	versionFails.Store(false)
+
+	require.NoError(t, client.HealthCheck(t.Context()))
+	require.Equal(t, "2.11.4", client.GetWebAPIVersion())
+	require.True(t, client.trackerManager().SupportsIncludeTrackers(), "the health check must apply the capability to the tracker manager")
 }
