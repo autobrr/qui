@@ -142,7 +142,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
 
     return {
-      expr: `Hash == "${torrent.hash}"`,
+      hashes: [torrent.hash],
       status: [],
       excludeStatus: [],
       categories: [],
@@ -174,14 +174,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         return
       }
 
-      const nextTorrent = payload.data.torrents?.find(item => item.hash === torrent.hash) ?? null
-      if (!nextTorrent && payload.data.total === 0) {
-        setStreamTorrent(null)
-        return
-      }
-      if (nextTorrent) {
-        setStreamTorrent(nextTorrent)
-      }
+      // The stream is filtered to this hash with limit 1, so the row is either
+      // the first entry or gone (total 0 after removal).
+      setStreamTorrent(payload.data.torrents?.[0] ?? null)
     },
     [torrent?.hash]
   )
