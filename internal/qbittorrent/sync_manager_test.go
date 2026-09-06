@@ -1841,7 +1841,7 @@ func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.To
 	return nil, nil
 }
 
-func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ bool) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))
@@ -1887,7 +1887,7 @@ func (fm *aliasingFilesManager) GetCachedFiles(context.Context, int, string) (qb
 	return nil, nil
 }
 
-func (fm *aliasingFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+func (fm *aliasingFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ bool) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))

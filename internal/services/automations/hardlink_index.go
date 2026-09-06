@@ -25,7 +25,6 @@ import (
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
-	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -162,7 +161,7 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	// refreshes rows that went stale while qui was down.
 	buildCtx := ctx
 	if cached != nil {
-		buildCtx = filesmanager.WithAnyCacheAge(ctx)
+		buildCtx = qbittorrent.WithAnyCacheAge(ctx)
 	}
 
 	// Build index with singleflight to prevent duplicate builds. The digest keys the

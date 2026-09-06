@@ -32,27 +32,6 @@ type Service struct {
 	repo *Repository
 }
 
-// anyCacheAgeKey marks a context whose reads accept cached rows of any age.
-type anyCacheAgeKey struct{}
-
-// WithAnyCacheAge returns a context under which GetCachedFilesBatch serves every
-// cached row regardless of its age. Only hashes without a row are reported missing.
-// Use it for readers that re-check the disk themselves and only need the file
-// names. A file list changes on renames and priority edits, and the ones made
-// through qui invalidate the row.
-//
-// ponytail: a rename made in qBittorrent's own WebUI leaves the row stale until a
-// fresh read rewrites it, such as the files tab in the UI. Widen to a bounded age
-// if that ever matters.
-func WithAnyCacheAge(ctx context.Context) context.Context {
-	return context.WithValue(ctx, anyCacheAgeKey{}, true)
-}
-
-func anyCacheAge(ctx context.Context) bool {
-	value, ok := ctx.Value(anyCacheAgeKey{}).(bool)
-	return ok && value
-}
-
 // NewService creates a new files manager service
 func NewService(db dbinterface.Querier) *Service {
 	return &Service{
@@ -75,7 +54,7 @@ func NewService(db dbinterface.Querier) *Service {
 // If absolute consistency is required, the caller should invalidate the cache
 // before calling this method, or use the qBittorrent API directly.
 func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error) {
-	results, missing, err := s.GetCachedFilesBatch(ctx, instanceID, []string{hash})
+	results, missing, err := s.GetCachedFilesBatch(ctx, instanceID, []string{hash}, false)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +71,7 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 
 // GetCachedFilesBatch retrieves cached file information for multiple torrents.
 // Missing or stale entries are returned in the second slice so callers can decide what to refresh.
-func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, anyAge bool) (map[string]qbt.TorrentFiles, []string, error) {
 	unique := dedupeHashes(hashes)
 	if len(unique) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil, nil
@@ -105,7 +84,6 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 
 	freshHashes := make([]string, 0, len(unique))
 	missing := make([]string, 0, len(unique))
-	anyAge := anyCacheAge(ctx)
 
 	for _, hash := range unique {
 		info := syncInfoMap[hash]

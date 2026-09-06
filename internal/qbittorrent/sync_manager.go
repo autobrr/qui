@@ -50,7 +50,7 @@ type FilesManager interface {
 	// GetCachedFilesBatch returns cached files for a set of torrents and the hashes that were missing/stale.
 	// Callers must pass hashes already trimmed/normalized (e.g. uppercase hex)
 	// because implementations treat the provided keys as-is when populating lookups and cache metadata.
-	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error)
+	GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, anyAge bool) (map[string]qbt.TorrentFiles, []string, error)
 	CacheFiles(ctx context.Context, instanceID int, hash string, files qbt.TorrentFiles) error
 	CacheFilesBatch(ctx context.Context, instanceID int, files map[string]qbt.TorrentFiles) error
 	InvalidateCache(ctx context.Context, instanceID int, hash string) error
@@ -75,6 +75,7 @@ type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.T
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
 type filesCacheContextKey struct{}
+type anyCacheAgeContextKey struct{}
 type postAddBulkActionRetryContextKey struct{}
 type postAddFileFetchRetryContextKey struct{}
 
@@ -110,6 +111,20 @@ func WithForceFilesRefresh(ctx context.Context) context.Context {
 	return context.WithValue(ctx, filesCacheContextKey{}, true)
 }
 
+// WithAnyCacheAge returns a context under which [SyncManager.GetTorrentFilesBatch]
+// serves every cached file list regardless of its age. Only hashes without a
+// cached row are fetched from qBittorrent. Use it for readers that re-check the
+// disk themselves and only need the file names. A file list changes on renames
+// and priority edits, and the ones made through qui invalidate the row.
+// [WithForceFilesRefresh] wins when both are set.
+//
+// ponytail: a rename made in qBittorrent's own WebUI leaves the row stale until a
+// fresh read rewrites it, such as the files tab in the UI. Widen to a bounded age
+// if that ever matters.
+func WithAnyCacheAge(ctx context.Context) context.Context {
+	return context.WithValue(ctx, anyCacheAgeContextKey{}, true)
+}
+
 // WithPostAddBulkActionRetry lets a bulk action wait longer for a torrent that
 // was just added and may not be visible in qBittorrent sync data yet.
 func WithPostAddBulkActionRetry(ctx context.Context) context.Context {
@@ -126,6 +141,11 @@ func WithPostAddFileFetchRetry(ctx context.Context) context.Context {
 
 func forceFilesRefresh(ctx context.Context) bool {
 	value, ok := ctx.Value(filesCacheContextKey{}).(bool)
+	return ok && value
+}
+
+func anyCacheAge(ctx context.Context) bool {
+	value, ok := ctx.Value(anyCacheAgeContextKey{}).(bool)
 	return ok && value
 }
 
@@ -3018,7 +3038,7 @@ func (sm *SyncManager) getTorrentFilesBatch(ctx context.Context, instanceID int,
 	forceRefresh := forceFilesRefresh(ctx)
 
 	if fm := sm.getFilesManager(); fm != nil && !forceRefresh {
-		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical); cacheErr != nil {
+		if cached, missing, cacheErr := fm.GetCachedFilesBatch(ctx, instanceID, normalized.canonical, anyCacheAge(ctx)); cacheErr != nil {
 			log.Warn().
 				Err(cacheErr).
 				Int("instanceID", instanceID).
