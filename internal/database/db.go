@@ -588,6 +588,9 @@ func secureDatabaseFiles(databasePath string) error {
 	return nil
 }
 
+// New opens the SQLite database at databasePath, creating the parent directory
+// and applying any pending migrations. The returned DB routes writes through a
+// single serialized connection and reads through a read-only pool.
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
