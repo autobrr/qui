@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -768,9 +769,9 @@ func TestServiceEnqueue_BoundsWorkersAndCancelsQueue(t *testing.T) {
 		require.Zero(t, active.Load())
 		require.Empty(t, svc.queues)
 		require.Len(t, started, 2*maxConcurrentJobsPerInstance+1, "canceled queued jobs must not run")
-		for _, jobs := range svc.j {
+		for jobs := range maps.Values(svc.j) {
 			require.NotContains(t, jobs, "HASH19", "queued jobs must not acquire a cooldown on cancellation")
-			for _, job := range jobs {
+			for job := range maps.Values(jobs) {
 				require.False(t, job.isRunning)
 			}
 		}
@@ -825,7 +826,7 @@ func TestServiceEnqueue_RechecksScopeAfterQueueWait(t *testing.T) {
 			svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: true, MonitorAll: true})
 			var workers []func()
 			svc.spawn = func(fn func()) { workers = append(workers, fn) }
-			for hash := range torrents {
+			for hash := range maps.Keys(torrents) {
 				require.True(t, svc.enqueue(instanceID, strings.ToUpper(hash), "Synthetic seed", "tracker.test"))
 			}
 			svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: enabled, Categories: []string{"missing"}})
