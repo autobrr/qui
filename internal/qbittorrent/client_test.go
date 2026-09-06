@@ -765,20 +765,18 @@ func TestSplitHostUserinfo(t *testing.T) {
 	}
 }
 
-// TestNewClientWithTimeoutEnablesBulkTrackerFetch pins the tracker manager to
-// the include-trackers capability at construction. The sync manager is created
-// after the first capability refresh, so the flag has to be applied to it.
+// TestNewClientWithTimeoutEnablesBulkTrackerFetch pins list hydration to the
+// bulk torrents/info request on qBittorrent 5.1+ and to no request at all below
+// it. The per-hash torrents/trackers fallback must never fire from qui.
 func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		version      string
-		wantBulk     bool
-		wantInfo     int
-		wantTrackers int
+		bulkRequests int
 	}{
-		{version: "2.11.3", wantBulk: false, wantInfo: 0, wantTrackers: 3},
-		{version: "2.11.4", wantBulk: true, wantInfo: 1, wantTrackers: 0},
+		{version: "2.11.3", bulkRequests: 0}, // highest version below the gate
+		{version: "2.11.4", bulkRequests: 1}, // lowest version at the gate
 	} {
 		t.Run(tc.version, func(t *testing.T) {
 			t.Parallel()
@@ -807,8 +805,6 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 						out = append(out, qbt.Torrent{Hash: hash, Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example.invalid/announce", Status: 2}}})
 					}
 					_ = json.MarshalWrite(w, out)
-				case "/api/v2/torrents/trackers":
-					_, _ = w.Write([]byte(`[{"url":"https://tracker.example.invalid/announce","status":2}]`))
 				default:
 					http.NotFound(w, r)
 				}
@@ -817,19 +813,18 @@ func TestNewClientWithTimeoutEnablesBulkTrackerFetch(t *testing.T) {
 
 			client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second, 60*time.Second)
 			require.NoError(t, err)
-			require.Equal(t, tc.wantBulk, client.trackerManager().SupportsIncludeTrackers(), "tracker manager must mirror the include capability at construction")
 
 			torrents := []qbt.Torrent{{Hash: "aaa"}, {Hash: "bbb"}, {Hash: "ccc"}}
-			enriched, _, _, err := client.hydrateTorrentsWithTrackers(t.Context(), torrents)
-			require.NoError(t, err)
-			for _, torrent := range enriched {
-				require.Len(t, torrent.Trackers, 1, "hash %s should be hydrated", torrent.Hash)
-			}
+			enriched, _, _ := (&SyncManager{}).enrichTorrentsWithTrackerData(t.Context(), client, torrents, nil)
 
 			mu.Lock()
 			defer mu.Unlock()
-			require.Equal(t, tc.wantInfo, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
-			require.Equal(t, tc.wantTrackers, hits["/api/v2/torrents/trackers"], "per-hash torrents/trackers requests")
+			require.Zero(t, hits["/api/v2/torrents/trackers"], "list hydration must never use per-hash torrents/trackers; use torrents/info?includeTrackers on 5.1+ and skip hydration below it")
+			require.Equal(t, tc.bulkRequests, hits["/api/v2/torrents/info"], "bulk torrents/info requests")
+			for _, torrent := range enriched {
+				// One tracker per torrent when hydrated, none when the gate skips hydration.
+				require.Len(t, torrent.Trackers, tc.bulkRequests, "hash %s", torrent.Hash)
+			}
 		})
 	}
 }
