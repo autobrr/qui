@@ -28,11 +28,12 @@ describe("getToggleSelectionState", () => {
 })
 
 describe("resolveStreamRow", () => {
-  const previous = { hash: "aa11", name: "Hybrid.Release.S02E03.2160p.WEB-GRPB" } as Torrent
+  // The panel selected the hybrid torrent by its v2 hash; the server keys the row by v1.
+  const previous = { hash: "bb22bb22", name: "Hybrid.Release.S02E03.2160p.WEB-GRPB" } as Torrent
+  const v1Row = { ...previous, hash: "aa11" }
   const cases: Array<{ name: string; data: { torrents: Torrent[]; total: number }; want: Torrent | null }> = [
     { name: "a changed row replaces the previous one", data: { torrents: [{ ...previous, progress: 1 }], total: 1 }, want: { ...previous, progress: 1 } },
-    // The panel asked for the v2 hash; the server answered with the v1-keyed row.
-    { name: "a row keyed by another hash still lands", data: { torrents: [{ ...previous, hash: "aa11" }], total: 1 }, want: previous },
+    { name: "a row keyed by another hash still lands", data: { torrents: [v1Row], total: 1 }, want: v1Row },
     { name: "an unchanged delta keeps the previous row", data: { torrents: [], total: 1 }, want: previous },
     { name: "a removed torrent drops the row", data: { torrents: [], total: 0 }, want: null },
   ]
