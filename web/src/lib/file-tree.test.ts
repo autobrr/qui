@@ -5,7 +5,7 @@
 
 import type { TorrentFile } from "@/types"
 import { describe, expect, it } from "vitest"
-import { buildFileTree, DEFAULT_FILE_SORT, sortFileTree, type FileSort } from "./file-tree"
+import { buildFileTree, DEFAULT_FILE_SORT, discPathOf, sortFileTree, type FileSort } from "./file-tree"
 
 function file(index: number, name: string, size: number, progress = 0, priority = 1): TorrentFile {
   return { index, name, size, progress, priority, is_seed: false, piece_range: [0, 0], availability: 1 }
@@ -92,5 +92,44 @@ describe("sortFileTree", () => {
     expect(sub.children?.map(n => n.id)).toEqual(["Sub/y.srt", "Sub/z.srt"])
     const asc = sorted({ column: "size", direction: "asc" }).find(n => n.id === "Sub")!
     expect(asc.children?.map(n => n.id)).toEqual(["Sub/z.srt", "Sub/y.srt"])
+  })
+})
+
+describe("discPathOf", () => {
+  const disc = (files: string[]) => buildFileTree(files.map((name, index) => file(index, name, 1)), false, "hash").nodes
+
+  it("marks the folder that holds BDMV as a Disc", () => {
+    const [root] = disc(["Movie.2020.BluRay/BDMV/index.bdmv", "Movie.2020.BluRay/CERTIFICATE/id.bdmv"])
+    expect(discPathOf(root)).toBe("Movie.2020.BluRay")
+    expect(discPathOf(root.children![0])).toBeNull()
+  })
+
+  it("marks an .iso file as a Disc regardless of extension case", () => {
+    const [root] = disc(["Movie.2020.BluRay/Movie.2020.ISO"])
+    expect(discPathOf(root)).toBeNull()
+    expect(discPathOf(root.children![0])).toBe("Movie.2020.BluRay/Movie.2020.ISO")
+  })
+
+  it("ignores folders and files that are not a Disc", () => {
+    const [root] = disc(["Show.S01/Show.S01E01.mkv", "Show.S01/VIDEO_TS/VTS_01_0.IFO"])
+    expect(discPathOf(root)).toBeNull()
+    expect(discPathOf(root.children![0])).toBeNull()
+    expect(discPathOf(root.children![1])).toBeNull()
+  })
+
+  it("gives a box set one Disc per BDMV folder", () => {
+    const [root] = disc(["Set/Disc 1/BDMV/index.bdmv", "Set/Disc 2/BDMV/index.bdmv", "Set/Extras/BDMV/index.bdmv"])
+    expect(discPathOf(root)).toBeNull()
+    expect(root.children!.map(discPathOf)).toEqual(["Set/Disc 1", "Set/Disc 2", "Set/Extras"])
+  })
+
+  it("addresses a bare BDMV torrent as the torrent root", () => {
+    const [bdmv] = disc(["BDMV/index.bdmv"])
+    expect(discPathOf(bdmv)).toBe(".")
+  })
+
+  it("uses real ids, so incognito display names do not hide a Disc", () => {
+    const [root] = buildFileTree([file(0, "Movie/BDMV/index.bdmv", 1)], true, "hash").nodes
+    expect(discPathOf(root)).toBe("Movie")
   })
 })

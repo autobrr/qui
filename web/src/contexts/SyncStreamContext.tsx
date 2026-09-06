@@ -5,7 +5,7 @@
 
 import { api } from "@/lib/api"
 import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
-import type { ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
+import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
@@ -102,6 +102,10 @@ interface SyncStreamContextValue {
   // server activity events even when no torrent view is mounted. Returns an
   // unsubscribe that releases that interest.
   registerActivity: () => () => void
+  // subscribeActivity delivers every server activity event to the listener, for
+  // reactions that are not a query refetch (a toast, for example). Returns an
+  // unsubscribe.
+  subscribeActivity: (listener: (event: ActivityEvent) => void) => () => void
 }
 
 interface StreamEntry {
@@ -177,6 +181,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   // reconcile every activity-backed query. Reset when activity interest drops to 0
   // so the next fresh session's first open doesn't redundantly refetch.
   const activityReconnectArmedRef = useRef(false)
+  const activityListenersRef = useRef(new Set<(event: ActivityEvent) => void>())
   const queryClient = useQueryClient()
   const queryClientRef = useRef(queryClient)
   useEffect(() => {
@@ -613,6 +618,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
 
         invalidateForActivity(queryClientRef.current, payload.activity)
+        for (const listener of activityListenersRef.current) {
+          listener(payload.activity)
+        }
       }
 
       const source = new EventSource(url, { withCredentials: true })
@@ -894,14 +902,22 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }
   }, [queueConnectionUpdate])
 
+  const subscribeActivity = useCallback((listener: (event: ActivityEvent) => void) => {
+    activityListenersRef.current.add(listener)
+    return () => {
+      activityListenersRef.current.delete(listener)
+    }
+  }, [])
+
   const contextValue = useMemo<SyncStreamContextValue>(
     () => ({
       connect,
       getState,
       subscribe: subscribeToState,
       registerActivity,
+      subscribeActivity,
     }),
-    [connect, getState, subscribeToState, registerActivity]
+    [connect, getState, subscribeToState, registerActivity, subscribeActivity]
   )
 
   useEffect(() => {

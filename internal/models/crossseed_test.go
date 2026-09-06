@@ -138,7 +138,7 @@ func TestCrossSeedStore_RunLifecycle(t *testing.T) {
 	run.CompletedAt = &completed
 	run.TotalFeedItems = 5
 	run.CandidatesFound = 3
-	run.TorrentsAdded = 2
+	run.CrossSeedsAdded = 2
 	run.Results = []models.CrossSeedRunResult{{
 		InstanceID:   1,
 		InstanceName: "Test",
@@ -186,7 +186,8 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 
 	run.Status = models.CrossSeedSearchRunStatusSuccess
 	run.Processed = 1
-	run.TorrentsAdded = 1
+	run.TorrentsWithCrossSeeds = 1
+	run.CrossSeedsAdded = 1
 	run.Results = []models.CrossSeedSearchResult{{
 		TorrentHash:  "abc123",
 		TorrentName:  "Source.Release",
@@ -197,7 +198,8 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 		ProcessedAt:  now,
 	}}
 
-	updated, err := store.UpdateSearchRun(ctx, run)
+	require.NoError(t, store.UpdateSearchRun(ctx, run))
+	updated, err := store.GetSearchRun(ctx, run.ID)
 	require.NoError(t, err)
 	require.Len(t, updated.Results, 1)
 	assert.Equal(t, models.CrossSeedSearchResultStatusAdded, updated.Results[0].Status)
@@ -283,7 +285,7 @@ func TestCrossSeedStore_SearchRunResultDecodeLegacyAdded(t *testing.T) {
 
 	_, err = db.ExecContext(ctx, `
 		UPDATE cross_seed_search_runs
-		SET status = ?, completed_at = ?, processed = ?, torrents_added = ?, torrents_skipped = ?, torrents_failed = ?, results_json = ?
+		SET status = ?, completed_at = ?, processed = ?, torrents_with_cross_seeds = ?, torrents_skipped = ?, torrents_failed = ?, results_json = ?
 		WHERE id = ?
 	`, models.CrossSeedSearchRunStatusSuccess, now, 3, 1, 1, 1, string(legacyResults), run.ID)
 	require.NoError(t, err)

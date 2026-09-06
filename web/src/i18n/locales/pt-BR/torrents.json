@@ -555,6 +555,31 @@
       "copyFailed": "Falha ao copiar para a área de transferência"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "Varredura BDInfo em andamento",
+    "actionReady": "Relatório BDInfo pronto",
+    "actionFailed": "Falha na varredura BDInfo",
+    "quickSummary": "Resumo rápido",
+    "forum": "Fórum",
+    "copyQuickSummary": "Copiar resumo rápido",
+    "copyForum": "Copiar bloco do fórum",
+    "rescan": "Varrer novamente",
+    "cancel": "Cancelar varredura",
+    "retry": "Tentar novamente",
+    "starting": "Iniciando varredura...",
+    "queued": "Na fila, posição {{position}}",
+    "scanning": "Varrendo {{processed}} de {{total}}",
+    "scanningUnknown": "Varrendo...",
+    "failed": "Falha na varredura",
+    "canceled": "Varredura cancelada",
+    "toast": {
+      "copied": "{{label}} copiado para a área de transferência",
+      "copyFailed": "Falha ao copiar para a área de transferência",
+      "completed": "Relatório BDInfo pronto",
+      "failed": "Falha na varredura BDInfo: {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Sem categoria",
     "expandCategory": "Expandir categoria",

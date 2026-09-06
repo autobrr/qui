@@ -12,13 +12,14 @@ import {
   SyncStreamProvider,
   useActivityStream,
   useSyncStream,
+  useSyncStreamManager,
   type StreamParams,
   type StreamState
 } from "@/contexts/SyncStreamContext"
 import type { TorrentStreamPayload } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, render } from "@testing-library/react"
-import { useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // SyncStreamProvider now reads a QueryClient (to invalidate queries on activity
@@ -949,9 +950,12 @@ describe("SyncStreamContext activity channel", () => {
   it("opens an activity-only connection (no streams) and invalidates on activity events", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+    const listener = vi.fn()
 
     function ActivityConsumer() {
       useActivityStream()
+      const { subscribeActivity } = useSyncStreamManager()
+      useEffect(() => subscribeActivity(listener), [subscribeActivity])
       return null
     }
 
@@ -982,6 +986,7 @@ describe("SyncStreamContext activity channel", () => {
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["instance-backups", 7] })
+    expect(listener).toHaveBeenCalledWith({ kind: "backup.run", instanceId: 7, timestamp: "now" })
   })
 
   it("keeps the connection alive on activity heartbeats and ignores malformed activity payloads", () => {

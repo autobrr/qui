@@ -4,15 +4,16 @@
  */
 
 import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
+import { DiscReportButton } from "@/components/torrents/TorrentDiscReportDialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { SortIcon } from "@/components/ui/sort-icon"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
-import { buildFileTree, sortFileTree, toggleFileSort, type FileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
+import { buildFileTree, discPathOf, sortFileTree, toggleFileSort, type FileSort, type FileSortColumn, type FileTreeNode } from "@/lib/file-tree"
 import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
 import { getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
-import type { TorrentFile } from "@/types"
+import type { DiscScanRun, TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronRight, Copy, Download, FilePen, FolderPen, Info, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -36,6 +37,8 @@ interface TorrentFileTreeProps {
   onRenameFolder: (folderPath: string) => void
   onDownloadFile?: (file: TorrentFile) => void
   onShowMediaInfo?: (file: TorrentFile) => void
+  discScans?: ReadonlyMap<string, DiscScanRun>
+  onShowDiscReport?: (discPath: string) => void
 }
 
 interface FlatRow {
@@ -127,6 +130,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   onRenameFolder,
   onDownloadFile,
   onShowMediaInfo,
+  discScans,
+  onShowDiscReport,
 }: TorrentFileTreeProps) {
   const { t } = useTranslation("torrents")
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -219,6 +224,14 @@ export const TorrentFileTree = memo(function TorrentFileTree({
           const isFile = node.kind === "file"
           const file = node.file
           const isPending = file && pendingFileIndices.has(file.index)
+          const discPath = onShowDiscReport ? discPathOf(node) : null
+          const discReportButton = onShowDiscReport && discPath !== null && (
+            <DiscReportButton
+              status={discScans?.get(discPath)?.status}
+              disabled={incognitoMode}
+              onClick={() => onShowDiscReport(discPath)}
+            />
+          )
 
           if (isFile && file) {
             // File row
@@ -297,6 +310,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       >
                         <FilePen className="h-3 w-3" />
                       </button>
+                      {discReportButton}
                     </div>
                   </div>
                 </ContextMenuTrigger>
@@ -424,6 +438,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     >
                       <FolderPen className="h-3 w-3" />
                     </button>
+                    {discReportButton}
                   </div>
                 </div>
               </ContextMenuTrigger>

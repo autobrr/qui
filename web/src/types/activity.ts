@@ -9,6 +9,7 @@ export type ActivityEventKind =
   | "backup.run"
   | "dirscan.run"
   | "orphanscan.run"
+  | "discscan.run"
   | "crossseed.status"
   | "crossseed.search"
   | "reannounce.activity"

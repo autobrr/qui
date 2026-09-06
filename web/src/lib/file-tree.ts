@@ -135,3 +135,15 @@ export function buildFileTree(
 
   return { nodes: roots, folderIds }
 }
+
+// discPathOf returns the torrent-relative path a BDInfo scan takes for a Disc
+// node, or null when the node is not a Disc. A Disc is a folder with a direct
+// BDMV child, or an .iso file; VIDEO_TS is not one. A BDMV folder at the top
+// level means the torrent is one bare Disc, which the backend addresses as ".".
+// Detection reads node ids (real paths), so incognito display names do not
+// affect it.
+export function discPathOf(node: FileTreeNode): string | null {
+  if (node.kind === "file") return /\.iso$/i.test(node.id) ? node.id : null
+  if (node.children?.some(child => child.kind === "folder" && child.id === `${node.id}/BDMV`)) return node.id
+  return node.id === "BDMV" ? "." : null
+}

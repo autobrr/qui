@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
+import { useDiscScans } from "@/hooks/useDiscScans"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
@@ -30,7 +31,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { resolveStreamRow, resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeer, SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker } from "@/types"
@@ -41,6 +42,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { TorrentDiscReportDialog } from "./TorrentDiscReportDialog"
 import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
 import { TorrentFileSortBar, TorrentFileTree } from "./TorrentFileTree"
 
@@ -140,7 +142,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
 
     return {
-      expr: `Hash == "${torrent.hash}"`,
+      hashes: [torrent.hash],
       status: [],
       excludeStatus: [],
       categories: [],
@@ -172,14 +174,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         return
       }
 
-      const nextTorrent = payload.data.torrents?.find(item => item.hash === torrent.hash) ?? null
-      if (!nextTorrent && payload.data.total === 0) {
-        setStreamTorrent(null)
-        return
-      }
-      if (nextTorrent) {
-        setStreamTorrent(nextTorrent)
-      }
+      const data = payload.data
+      setStreamTorrent(previous => resolveStreamRow(previous, data))
     },
     [torrent?.hash]
   )
@@ -807,6 +803,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setMediaInfoTorrentHash(null)
     }
   }, [])
+
+  const discScans = useDiscScans(instanceId, torrent?.hash ?? "", files, hasLocalFilesystemAccess)
+  const [discReportPath, setDiscReportPath] = useState<string | null>(null)
+  const { runsByPath: discRuns, start: { mutate: startDiscScan, reset: resetDiscScan } } = discScans
+  const handleShowDiscReport = useCallback((discPath: string) => {
+    // A Disc with no run, or with a canceled one, starts its scan on the click.
+    // A finished or failed run opens as it is, and the dialog offers Rescan.
+    resetDiscScan()
+    const status = discRuns.get(discPath)?.status
+    if (status === undefined || status === "canceled") startDiscScan({ discPath, force: false })
+    setDiscReportPath(discPath)
+  }, [discRuns, startDiscScan, resetDiscScan])
 
   // Handle rename folder
   const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
@@ -1637,6 +1645,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
                 onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
                 onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
+                discScans={discScans.runsByPath}
+                onShowDiscReport={hasLocalFilesystemAccess ? handleShowDiscReport : undefined}
               />
             ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
@@ -1697,6 +1707,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
                       onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
                       onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
+                      discScans={discScans.runsByPath}
+                      onShowDiscReport={hasLocalFilesystemAccess ? handleShowDiscReport : undefined}
                     />
                   </div>
                 </ScrollArea>
@@ -2188,6 +2200,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         instanceId={instanceId}
         torrentHash={mediaInfoTorrentHash ?? ""}
         file={mediaInfoFile}
+      />
+
+      <TorrentDiscReportDialog
+        discPath={discReportPath}
+        onClose={() => setDiscReportPath(null)}
+        scans={discScans}
       />
     </div>
   )
