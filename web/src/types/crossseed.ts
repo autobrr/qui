@@ -196,9 +196,9 @@ export interface CrossSeedRun {
   completedAt?: string
   totalFeedItems: number
   candidatesFound: number
-  torrentsAdded: number
-  torrentsFailed: number
-  torrentsSkipped: number
+  crossSeedsAdded: number
+  candidatesFailed: number
+  candidatesSkipped: number
   message?: string
   errorMessage?: string
   results?: CrossSeedRunResult[]
@@ -402,7 +402,8 @@ export interface CrossSeedSearchRun {
   completedAt?: string
   totalTorrents: number
   processed: number
-  torrentsAdded: number
+  torrentsWithCrossSeeds: number
+  crossSeedsAdded: number
   torrentsFailed: number
   torrentsSkipped: number
   message?: string

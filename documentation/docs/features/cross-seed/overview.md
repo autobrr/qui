@@ -68,6 +68,14 @@ Library Scan searches other trackers for torrents you already seed. Configure it
 - **Cooldown**: qui skips torrents that it searched within this window (minimum 12 hours). qui records a Torznab cooldown after an indexer completes its search. If you enable Gazelle, qui records a cooldown when it sends a lookup or local checks find nothing to look up. If the search fails before a lookup, qui can try the torrent in the next run.
 - **Skip individual episodes**: The run does not search single TV episodes. If [automatic assembly](./season-packs.md#automatic-assembly) is on, groups of episodes still start season pack searches.
 
+#### What the scan card counts
+
+The unit of a run is a search candidate: one source torrent, or one season group that season pack automation formed from episodes you seed.
+
+- **Progress**: Processed candidates out of the due candidates. A due candidate still needs a search. Cooldown and per-indexer search history retire candidates, so the same filters give a smaller total on each later run. The total is not the size of your library.
+- **Results**: Each processed candidate lands in one bucket: with cross-seeds, skipped, or failed. The three buckets add up to the processed count when the run completes. A candidate with one added cross-seed and one failed apply counts as with cross-seeds. The failed apply stays in the run details.
+- **Cross-seeds added**: Successful adds into the client. One candidate can add several cross-seeds, so this number can be larger than the candidate count.
+
 :::warning
 Run this sparingly. The scan touches every matching torrent and queries Torznab and/or Gazelle for each one. Use RSS automation or autobrr for routine coverage. Reserve Library Scan for occasional catch-up passes.
 :::
