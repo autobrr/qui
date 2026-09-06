@@ -6,9 +6,13 @@ description: Schedule and restore qBittorrent instance backups.
 
 # Backups and restore
 
-qui creates scheduled and manual snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories with their save paths, and cached `.torrent` blobs. You can restore the original state from a snapshot at any time.
+qui creates scheduled and manual snapshots of a qBittorrent instance. Each snapshot includes the torrent archive, tags, categories with their save paths, and cached `.torrent` blobs. You can restore the torrents, categories, and tags from a snapshot at any time.
 
 If you manage multiple instances, the Backups page provides **Save changes to all instances**. This action copies the current backup schedule and settings to every compatible instance in one step.
+
+## Counters and limits that a snapshot does not contain
+
+A snapshot does not store upload totals, ratio, or seed time. It also does not store share limits or speed limits. A restore adds a missing torrent through the qBittorrent API, and the API cannot set those counters. Torrents that a restore adds start at zero. Torrents that already exist on the instance keep their counters. A restore does not change the ratio and the seed time on the tracker, because the tracker keeps its own counts. To keep the counters in qBittorrent, make a backup of the qBittorrent data directory, which holds the fastresume files in `BT_backup`.
 
 ## Backup storage
 

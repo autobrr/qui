@@ -200,7 +200,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		client.updateHealthStatus(true)
 	}
 
-	// Initialize sync manager with default options
 	syncOpts := qbt.DefaultSyncOptions()
 	syncOpts.DynamicSync = true
 
@@ -219,6 +218,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	syncOpts.OnError = client.handleSyncManagerError
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
+	// The tracker manager did not exist during the capability refresh above.
+	client.syncManager.Trackers().SetUseIncludeTrackers(client.supportsTrackerInclude())
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -582,7 +583,8 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	if c.IsHealthy() && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+	// Empty version means capabilities never loaded; sync updates stamp health, so keep probing.
+	if c.GetWebAPIVersion() != "" && c.IsHealthy() && time.Since(c.GetLastHealthCheck()) < minHealthCheckInterval {
 		return nil
 	}
 

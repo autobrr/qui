@@ -3807,15 +3807,15 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	run.CompletedAt = &completed
 
 	switch {
-	case run.TorrentsFailed > 0 && run.TorrentsAdded > 0:
+	case run.CandidatesFailed > 0 && run.CrossSeedsAdded > 0:
 		run.Status = models.CrossSeedRunStatusPartial
-	case run.TorrentsFailed > 0 && run.TorrentsAdded == 0:
+	case run.CandidatesFailed > 0 && run.CrossSeedsAdded == 0:
 		run.Status = models.CrossSeedRunStatusFailed
 	default:
 		run.Status = models.CrossSeedRunStatusSuccess
 	}
 
-	summary := fmt.Sprintf("processed=%d candidates=%d added=%d skipped=%d failed=%d", processed, run.CandidatesFound, run.TorrentsAdded, run.TorrentsSkipped, run.TorrentsFailed)
+	summary := fmt.Sprintf("processed=%d candidates=%d added=%d skipped=%d failed=%d", processed, run.CandidatesFound, run.CrossSeedsAdded, run.CandidatesSkipped, run.CandidatesFailed)
 	run.Message = &summary
 
 	// Use context.WithoutCancel to ensure DB update succeeds even on cancellation
@@ -3880,7 +3880,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	candidatesResp, err := s.findCandidatesWithAutomationContext(ctx, findReq, autoCtx)
 	if err != nil {
-		run.TorrentsFailed++
+		run.CandidatesFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("find candidates: %w", err)
 	}
 
@@ -3895,7 +3895,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	// cooldown lapses. Feed items marked skipped are re-evaluated every run, so
 	// the item retries once the cooldown expires.
 	if candidateCount == 0 && seasonPackDivertible && s.seasonPackFailCooldownActive(ctx, result.Title, minSearchCooldownMinutes*time.Minute) {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -3908,13 +3908,13 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if candidateCount == 0 && !seasonPackDivertible {
 		boundMatches, err = s.findRSSAnnouncementMatches(ctx, result, settings, autoCtx)
 		if err != nil {
-			run.TorrentsFailed++
+			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("find RSS announcement matches: %w", err)
 		}
 		candidateCount = len(boundMatches)
 	}
 	if candidateCount == 0 && !seasonPackDivertible {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -3934,7 +3934,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		boundMatches = allowed
 		candidateCount = len(boundMatches)
 		if candidateCount == 0 {
-			run.TorrentsSkipped++
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, models.CrossSeedRunResult{
 				InstanceName: result.Indexer,
 				IndexerName:  result.Indexer,
@@ -3949,7 +3949,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	run.CandidatesFound++
 
 	if opts.DryRun {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		dryRunMessage := fmt.Sprintf("Dry run: %d viable candidates", candidateCount)
 		if candidateCount == 0 && seasonPackDivertible {
 			dryRunMessage = "Dry run: season pack could be assembled from local episodes"
@@ -3982,7 +3982,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 			if hashErr != nil {
 				// Context cancellation should propagate, not trigger fallback
 				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
-					run.TorrentsFailed++
+					run.CandidatesFailed++
 					return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("hash check canceled: %w", hashErr)
 				}
 				log.Warn().
@@ -4014,7 +4014,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 
 		if allExist && len(existingResults) > 0 {
-			run.TorrentsSkipped += len(existingResults)
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, existingResults...)
 
 			log.Debug().
@@ -4037,7 +4037,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		for _, candidate := range precheckCandidates {
 			// Check for context cancellation before processing each candidate
 			if ctx.Err() != nil {
-				run.TorrentsFailed++
+				run.CandidatesFailed++
 				return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("comment URL pre-check canceled: %w", ctx.Err())
 			}
 
@@ -4071,7 +4071,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 
 		if allExist && len(existingResults) > 0 {
-			run.TorrentsSkipped += len(existingResults)
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, existingResults...)
 
 			log.Debug().
@@ -4092,7 +4092,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		Size:        result.Size,
 	})
 	if err != nil {
-		run.TorrentsFailed++
+		run.CandidatesFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("download torrent: %w", err)
 	}
 
@@ -4104,7 +4104,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if len(boundMatches) == 0 {
 		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings))
 		if invokeErr != nil {
-			run.TorrentsFailed++
+			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", invokeErr)
 		}
 	} else {
@@ -4128,7 +4128,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	itemHadExisting := false
 
 	if len(resp.Results) == 0 {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -4157,33 +4157,33 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 		run.Results = append(run.Results, mapped)
 
-		if instanceResult.Success {
-			itemHasSuccess = true
-			run.TorrentsAdded++
-			continue
-		}
-
 		switch {
+		case instanceResult.Success:
+			itemHasSuccess = true
+			run.CrossSeedsAdded++
 		case instanceResult.Status == "exists":
 			itemHadExisting = true
-			run.TorrentsSkipped++
 		case isSkippedCrossSeedResultStatus(instanceResult.Status):
-			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
-			run.TorrentsFailed++
 		}
 	}
 
+	// One feed item is one candidate: it lands in one bucket no matter how
+	// many instances it was applied to. A candidate with one add and one
+	// failed instance counts as added; the failure stays in run.Results.
 	switch {
 	case itemHasSuccess:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
 	case itemHasFailure:
 		itemStatus = models.CrossSeedFeedItemStatusFailed
+		run.CandidatesFailed++
 	case itemHadExisting:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
+		run.CandidatesSkipped++
 	default:
 		itemStatus = models.CrossSeedFeedItemStatusSkipped
+		run.CandidatesSkipped++
 	}
 
 	return itemStatus, infoHash, invokeErr
@@ -11402,9 +11402,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	if !state.opts.DisableTorznab && state.resolvedTorznabIndexerErr != nil {
 		state.lastError = state.resolvedTorznabIndexerErr
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11414,7 +11411,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      fmt.Sprintf("search failed: %v", state.resolvedTorznabIndexerErr),
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, true)
 		return false, state.resolvedTorznabIndexerErr
 	}
 
@@ -11424,9 +11421,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		// Use async filtering for better performance - capability filtering returns immediately.
 		asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, state.opts.InstanceID, torrent.Hash, true)
 		if err != nil {
-			s.searchMu.Lock()
-			state.run.TorrentsFailed++
-			s.searchMu.Unlock()
 			s.appendSearchResult(state, models.CrossSeedSearchResult{
 				TorrentHash:  torrent.Hash,
 				TorrentName:  torrent.Name,
@@ -11436,7 +11430,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				Message:      fmt.Sprintf("analyze torrent: %v", err),
 				ProcessedAt:  processedAt,
 			})
-			s.persistSearchRun(state)
+			s.finishSearchCandidate(state, 0, true)
 			return false, err
 		}
 
@@ -11516,9 +11510,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		if skipReasonForNoIndexers == "" {
 			skipReasonForNoIndexers = "no eligible indexers"
 		}
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11528,7 +11519,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      skipReasonForNoIndexers,
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, false)
 		return false, nil
 	}
 
@@ -11577,9 +11568,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			if timeoutDisplay <= 0 {
 				timeoutDisplay = timeouts.DefaultSearchTimeout
 			}
-			s.searchMu.Lock()
-			state.run.TorrentsSkipped++
-			s.searchMu.Unlock()
 			s.appendSearchResult(state, models.CrossSeedSearchResult{
 				TorrentHash:  torrent.Hash,
 				TorrentName:  torrent.Name,
@@ -11589,12 +11577,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
 				ProcessedAt:  processedAt,
 			})
-			s.persistSearchRun(state)
+			s.finishSearchCandidate(state, 0, false)
 			return delayAfterCandidate, nil
 		}
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11604,14 +11589,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      fmt.Sprintf("search failed: %v", err),
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, true)
 		return delayAfterCandidate, err
 	}
 
 	if len(searchResp.Results) == 0 {
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11621,7 +11603,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      "no matches returned",
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, false)
 		return delayAfterCandidate, nil
 	}
 
@@ -11637,7 +11619,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	successCount := 0
 	failedAttempt := false
-	nonSuccessAttempt := false
 	var classifiedFailures []string
 	var attemptErrors []string
 
@@ -11649,26 +11630,25 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	attemptMatch := func(match TorrentSearchResult, normalCandidate bool) {
 		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
 		if attemptResult != nil {
-			if attemptResult.Status == models.CrossSeedSearchResultStatusAdded {
+			switch attemptResult.Status {
+			case models.CrossSeedSearchResultStatusAdded:
 				s.searchMu.Lock()
-				state.run.TorrentsAdded++
+				state.run.CrossSeedsAdded++
 				s.searchMu.Unlock()
 				successCount++
 				indexerAdds[match.IndexerID]++
 				if normalCandidate {
 					addTorrentSearchResultHashes(normalAddedHashes, match)
 				}
-			} else {
-				nonSuccessAttempt = true
-				if attemptResult.Status == models.CrossSeedSearchResultStatusFailed {
-					failedAttempt = true
-					message := strings.TrimSpace(attemptResult.Message)
-					if message == "" {
-						message = "classified apply failure"
-					}
-					classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
-					indexerFails[match.IndexerID]++
+			case models.CrossSeedSearchResultStatusFailed:
+				failedAttempt = true
+				message := strings.TrimSpace(attemptResult.Message)
+				if message == "" {
+					message = "classified apply failure"
 				}
+				classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
+				indexerFails[match.IndexerID]++
+			case models.CrossSeedSearchResultStatusSkipped:
 			}
 			s.appendSearchResult(state, *attemptResult)
 		}
@@ -11695,39 +11675,33 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	// Report outcomes to jackett service for search history
 	s.reportIndexerOutcomes(searchResp.JobID, indexerAdds, indexerFails)
 
-	if successCount > 0 {
-		s.persistSearchRun(state)
+	failed := len(attemptErrors) > 0 || failedAttempt
+	s.finishSearchCandidate(state, successCount, failed)
+	if successCount > 0 || !failed {
 		return delayAfterCandidate, nil
 	}
-
-	if len(attemptErrors) > 0 || failedAttempt {
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
-		s.persistSearchRun(state)
-		if len(attemptErrors) > 0 {
-			return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
-		}
-		if len(classifiedFailures) > 0 {
-			return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", classifiedFailures[0])
-		}
-		return delayAfterCandidate, errors.New("cross-seed matches failed: classified apply failures")
+	if len(attemptErrors) > 0 {
+		return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
 	}
+	return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", classifiedFailures[0])
+}
 
-	if nonSuccessAttempt {
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
-		s.persistSearchRun(state)
-		return delayAfterCandidate, nil
-	}
-
-	// Fallback: treat as skipped if no attempts recorded for some reason
+// finishSearchCandidate puts one completed search candidate into exactly one
+// bucket, so torrentsWithCrossSeeds + torrentsFailed + torrentsSkipped stays
+// equal to processed. A candidate with one add and later apply failures counts
+// as added; the failures stay visible in run.Results.
+func (s *Service) finishSearchCandidate(state *searchRunState, crossSeedsAdded int, failed bool) {
 	s.searchMu.Lock()
-	state.run.TorrentsSkipped++
+	switch {
+	case crossSeedsAdded > 0:
+		state.run.TorrentsWithCrossSeeds++
+	case failed:
+		state.run.TorrentsFailed++
+	default:
+		state.run.TorrentsSkipped++
+	}
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
-	return delayAfterCandidate, nil
 }
 
 // reportIndexerOutcomes reports cross-seed outcomes to the jackett service for search history tracking.
@@ -12572,15 +12546,15 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 	eventType := notifications.EventCrossSeedAutomationSucceeded
 	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
 		eventType = notifications.EventCrossSeedAutomationFailed
-	} else if run.TorrentsAdded == 0 && run.TorrentsFailed == 0 {
+	} else if run.CrossSeedsAdded == 0 && run.CandidatesFailed == 0 {
 		log.Info().
 			Int64("runID", run.ID).
 			Str("status", string(run.Status)).
 			Int("feedItems", run.TotalFeedItems).
 			Int("candidates", run.CandidatesFound).
-			Int("added", run.TorrentsAdded).
-			Int("failed", run.TorrentsFailed).
-			Int("skipped", run.TorrentsSkipped).
+			Int("added", run.CrossSeedsAdded).
+			Int("failed", run.CandidatesFailed).
+			Int("skipped", run.CandidatesSkipped).
 			Msg("Skipping cross-seed RSS success notification")
 		return
 	}
@@ -12601,9 +12575,9 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 		fmt.Sprintf("Status: %s", run.Status),
 		fmt.Sprintf("Feed items: %d", run.TotalFeedItems),
 		fmt.Sprintf("Candidates: %d", run.CandidatesFound),
-		fmt.Sprintf("Added: %d", run.TorrentsAdded),
-		fmt.Sprintf("Failed: %d", run.TorrentsFailed),
-		fmt.Sprintf("Skipped: %d", run.TorrentsSkipped),
+		fmt.Sprintf("Added: %d", run.CrossSeedsAdded),
+		fmt.Sprintf("Failed: %d", run.CandidatesFailed),
+		fmt.Sprintf("Skipped: %d", run.CandidatesSkipped),
 	}
 	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
 		lines = append(lines, "Message: "+strings.TrimSpace(*run.Message))
@@ -12628,9 +12602,9 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 			Status:     string(run.Status),
 			FeedItems:  run.TotalFeedItems,
 			Candidates: run.CandidatesFound,
-			Added:      run.TorrentsAdded,
-			Failed:     run.TorrentsFailed,
-			Skipped:    run.TorrentsSkipped,
+			Added:      run.CrossSeedsAdded,
+			Failed:     run.CandidatesFailed,
+			Skipped:    run.CandidatesSkipped,
 			Samples:    samples,
 		},
 		ErrorMessage: errorMessage,
@@ -12669,7 +12643,8 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 		fmt.Sprintf("Run: %d", state.run.ID),
 		fmt.Sprintf("Status: %s", state.run.Status),
 		fmt.Sprintf("Processed: %d/%d", state.run.Processed, state.run.TotalTorrents),
-		fmt.Sprintf("Added: %d", state.run.TorrentsAdded),
+		fmt.Sprintf("Cross-seeds added: %d", state.run.CrossSeedsAdded),
+		fmt.Sprintf("Torrents with cross-seeds: %d", state.run.TorrentsWithCrossSeeds),
 		fmt.Sprintf("Failed: %d", state.run.TorrentsFailed),
 		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
 	}
@@ -12693,14 +12668,15 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 		InstanceID: state.run.InstanceID,
 		Message:    strings.Join(lines, "\n"),
 		CrossSeed: &notifications.CrossSeedEventData{
-			RunID:     state.run.ID,
-			Status:    string(state.run.Status),
-			Processed: state.run.Processed,
-			Total:     state.run.TotalTorrents,
-			Added:     state.run.TorrentsAdded,
-			Failed:    state.run.TorrentsFailed,
-			Skipped:   state.run.TorrentsSkipped,
-			Samples:   samples,
+			RunID:                  state.run.ID,
+			Status:                 string(state.run.Status),
+			Processed:              state.run.Processed,
+			Total:                  state.run.TotalTorrents,
+			Added:                  state.run.CrossSeedsAdded,
+			TorrentsWithCrossSeeds: state.run.TorrentsWithCrossSeeds,
+			Failed:                 state.run.TorrentsFailed,
+			Skipped:                state.run.TorrentsSkipped,
+			Samples:                samples,
 		},
 		ErrorMessage: errorMessage,
 		ErrorMessages: func() []string {
