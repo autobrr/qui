@@ -963,7 +963,8 @@
         "deletionFailed": "啟動刪除失敗",
         "exportedFiles": "已匯出 {{count}} 個檔案到 CSV",
         "exportFailed": "匯出檔案失敗"
-      }
+      },
+      "emptyDirectory": "空目錄"
     },
     "orphanScanSettings": {
       "settingsTitle": "設定",
@@ -999,6 +1000,13 @@
       "maxFilesThreshold": "最大檔案閾值",
       "maxFilesThresholdTooltip": "安全限制：如果掃描發現的檔案數超過此閾值，將跳過自動清理並要求人工審核。這可以捕獲忽略路徑配置錯誤等異常情況。",
       "files": "個檔案",
+      "scanScope": "掃描範圍",
+      "scanDefaultSavePathLabel": "掃描預設儲存路徑",
+      "scanDefaultSavePathTooltip": "預設情況下，掃描只會走訪已有種子指向的目錄，因此直接放在預設儲存路徑下的零散檔案永遠不會被發現。開啟此選項後，也會走訪該執行個體的預設儲存路徑，包括沒有任何種子使用的子目錄。",
+      "scanCategoryPathsLabel": "包含分類路徑",
+      "scanCategoryPathsTooltip": "同時走訪每個分類的目標位置：分類自行設定的儲存路徑，或在繼承時為預設儲存路徑 / 分類名稱。當分類指向預設儲存路徑之外時很有用。",
+      "deleteAbandonedDirsLabel": "刪除廢棄目錄",
+      "deleteAbandonedDirsTooltip": "回報在任何層級都不含檔案的目錄，以便清除搬移後殘留的空目錄。掃描根目錄與分類目標位置即使為空也永不刪除。",
       "exclusions": "排除項",
       "ignorePaths": "忽略路徑",
       "ignorePathsTooltip": "從掃描中排除的路徑。這些目錄中的檔案永遠不會被標記為孤立檔案。每行輸入一個路徑。",

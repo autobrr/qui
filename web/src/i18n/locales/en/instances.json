@@ -981,7 +981,8 @@
         "deletionFailed": "Failed to start deletion",
         "exportedFiles": "Exported {{count}} files to CSV",
         "exportFailed": "Failed to export files"
-      }
+      },
+      "emptyDirectory": "Empty directory"
     },
     "orphanScanSettings": {
       "settingsTitle": "Settings",
@@ -1017,6 +1018,13 @@
       "maxFilesThreshold": "Max Files Threshold",
       "maxFilesThresholdTooltip": "Safety limit: if a scan finds more files than this threshold, it will skip auto-cleanup and require manual review. This catches anomalies like misconfigured ignore paths.",
       "files": "files",
+      "scanScope": "Scan Scope",
+      "scanDefaultSavePathLabel": "Scan Default Save Path",
+      "scanDefaultSavePathTooltip": "By default the scan only walks directories that a torrent already points at, so a stray file sitting directly in the default save path is never seen. Turn this on to also walk the instance's default save path, including subdirectories no torrent uses.",
+      "scanCategoryPathsLabel": "Including Category Paths",
+      "scanCategoryPathsTooltip": "Also walk every category destination: the save path a category sets, or default save path / category name when it inherits. Useful when a category points somewhere outside the default save path.",
+      "deleteAbandonedDirsLabel": "Delete Abandoned Directories",
+      "deleteAbandonedDirsTooltip": "Report directories that hold no files at any depth, so leftovers from moves can be removed. Scan roots and category destinations are never removed, even when empty.",
       "exclusions": "Exclusions",
       "ignorePaths": "Ignore Paths",
       "ignorePathsTooltip": "Paths to exclude from scanning. Files in these directories will never be flagged as orphans. Enter one path per line. Paths are matched as prefixes.",

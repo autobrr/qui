@@ -12,7 +12,7 @@ import { api } from "@/lib/api"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { formatBytes } from "@/lib/utils"
 import type { OrphanScanFile } from "@/types"
-import { Download, Loader2, Trash2 } from "lucide-react"
+import { Download, Folder, Loader2, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -97,8 +97,9 @@ export function OrphanScanPreviewDialog({
   // CSV columns for orphan files export
   const csvColumns: CsvColumn<OrphanScanFile>[] = [
     { header: "Path", accessor: f => f.filePath },
-    { header: "Size", accessor: f => formatBytes(f.fileSize) },
-    { header: "Size (bytes)", accessor: f => f.fileSize },
+    { header: "Type", accessor: f => f.isDir ? "directory" : "file" },
+    { header: "Size", accessor: f => f.isDir ? "" : formatBytes(f.fileSize) },
+    { header: "Size (bytes)", accessor: f => f.isDir ? "" : f.fileSize },
     { header: "Modified", accessor: f => f.modifiedAt ?? "" },
   ]
 
@@ -163,10 +164,18 @@ export function OrphanScanPreviewDialog({
                 {files.map((f) => (
                   <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="p-2 max-w-[520px]">
-                      <PathCell path={f.filePath} />
+                      <div className="flex items-center gap-1.5">
+                        {f.isDir && (
+                          <Folder
+                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                            aria-label={t("preferences.orphanScanPreview.emptyDirectory")}
+                          />
+                        )}
+                        <PathCell path={f.filePath} />
+                      </div>
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                      {formatBytes(f.fileSize)}
+                      {f.isDir ? "-" : formatBytes(f.fileSize)}
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                       {f.modifiedAt ? formatISOTimestamp(f.modifiedAt) : "-"}

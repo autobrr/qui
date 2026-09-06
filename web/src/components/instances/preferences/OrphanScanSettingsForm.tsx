@@ -35,6 +35,9 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
   ignorePaths: [],
   autoCleanupEnabled: false,
   autoCleanupMaxFiles: 100,
+  scanDefaultSavePath: false,
+  scanCategoryPaths: false,
+  deleteAbandonedDirs: false,
 }
 
 export function OrphanScanSettingsForm({
@@ -67,6 +70,9 @@ export function OrphanScanSettingsForm({
         ignorePaths: [...settingsQuery.data.ignorePaths],
         autoCleanupEnabled: settingsQuery.data.autoCleanupEnabled,
         autoCleanupMaxFiles: settingsQuery.data.autoCleanupMaxFiles,
+        scanDefaultSavePath: settingsQuery.data.scanDefaultSavePath ?? false,
+        scanCategoryPaths: settingsQuery.data.scanCategoryPaths ?? false,
+        deleteAbandonedDirs: settingsQuery.data.deleteAbandonedDirs ?? false,
       })
       setIgnorePathsText(settingsQuery.data.ignorePaths.join("\n"))
       setInitialAutoCleanupEnabled(settingsQuery.data.autoCleanupEnabled)
@@ -97,6 +103,11 @@ export function OrphanScanSettingsForm({
       ignorePaths: nextSettings.ignorePaths.map(p => p.trim()).filter(Boolean),
       autoCleanupEnabled: nextSettings.autoCleanupEnabled,
       autoCleanupMaxFiles: Math.max(1, nextSettings.autoCleanupMaxFiles),
+      scanDefaultSavePath: nextSettings.scanDefaultSavePath,
+      // Categories are a refinement of the default save path; persisting them
+      // as enabled while that is off would scan a subset of what the label says.
+      scanCategoryPaths: nextSettings.scanDefaultSavePath && nextSettings.scanCategoryPaths,
+      deleteAbandonedDirs: nextSettings.deleteAbandonedDirs,
     }
 
     updateMutation.mutate(payload, {
@@ -282,6 +293,82 @@ export function OrphanScanSettingsForm({
               <SelectItem value="directory_size_desc">{t("preferences.orphanScanSettings.directorySizeThenSize")}</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("preferences.orphanScanSettings.scanScope")}</h3>
+          <Separator className="flex-1" />
+        </div>
+
+        <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="scan-default-save-path" className="text-sm font-medium cursor-pointer">
+              {t("preferences.orphanScanSettings.scanDefaultSavePathLabel")}
+            </Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">
+                <p>{t("preferences.orphanScanSettings.scanDefaultSavePathTooltip")}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Switch
+            id="scan-default-save-path"
+            checked={settings.scanDefaultSavePath}
+            onCheckedChange={(checked) => setSettings(prev => ({ ...prev, scanDefaultSavePath: checked }))}
+          />
+        </div>
+
+        <div className="pl-3 border-l-2 border-muted space-y-4">
+          <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <Label
+                htmlFor="scan-category-paths"
+                className={`text-sm font-medium ${settings.scanDefaultSavePath ? "cursor-pointer" : "text-muted-foreground"}`}
+              >
+                {t("preferences.orphanScanSettings.scanCategoryPathsLabel")}
+              </Label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[300px]">
+                  <p>{t("preferences.orphanScanSettings.scanCategoryPathsTooltip")}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+            <Switch
+              id="scan-category-paths"
+              checked={settings.scanDefaultSavePath && settings.scanCategoryPaths}
+              disabled={!settings.scanDefaultSavePath}
+              onCheckedChange={(checked) => setSettings(prev => ({ ...prev, scanCategoryPaths: checked }))}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="delete-abandoned-dirs" className="text-sm font-medium cursor-pointer">
+              {t("preferences.orphanScanSettings.deleteAbandonedDirsLabel")}
+            </Label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">
+                <p>{t("preferences.orphanScanSettings.deleteAbandonedDirsTooltip")}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <Switch
+            id="delete-abandoned-dirs"
+            checked={settings.deleteAbandonedDirs}
+            onCheckedChange={(checked) => setSettings(prev => ({ ...prev, deleteAbandonedDirs: checked }))}
+          />
         </div>
       </div>
 
