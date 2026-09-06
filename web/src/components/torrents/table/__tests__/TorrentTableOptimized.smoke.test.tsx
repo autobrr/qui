@@ -21,11 +21,14 @@
 
 import { TorrentTableOptimized } from "@/components/torrents/TorrentTableOptimized"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
+import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, fireEvent, render, within } from "@testing-library/react"
-import type { ReactNode } from "react"
+import { cleanup, fireEvent, render, renderHook, within } from "@testing-library/react"
+import type { ComponentProps, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { makeTorrent } from "@/test/mockTorrent"
+import { makeFilters } from "@/test/mockFilters"
 
 const torrents = [
   makeTorrent({ hash: "hash-aaa", name: "Alpha Release", state: "downloading", progress: 0.5 }),
@@ -193,14 +196,14 @@ vi.mock("@/hooks/useTorrentActions", () => {
 
 afterEach(cleanup)
 
-function renderTable() {
+function renderTable(props: Partial<ComponentProps<typeof TorrentTableOptimized>> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>{children}</TooltipProvider>
     </QueryClientProvider>
   )
-  return render(<TorrentTableOptimized instanceId={1} />, { wrapper })
+  return render(<TorrentTableOptimized instanceId={1} {...props} />, { wrapper })
 }
 
 describe("TorrentTableOptimized smoke", () => {
@@ -228,5 +231,20 @@ describe("TorrentTableOptimized smoke", () => {
       (cb) => cb !== header && cb.getAttribute("aria-checked") === "true"
     )
     expect(checkedRowsAfter.length).toBeGreaterThan(0)
+  })
+
+  it("clears column filters without clearing sidebar filters or sorting", () => {
+    localStorage.setItem("qui-column-filters-1", JSON.stringify([{ columnId: "ratio", operation: "lt", value: "1" }]))
+    localStorage.setItem("qui-column-sorting:1", JSON.stringify([{ id: "added_on", desc: true }]))
+    const columns = renderHook(() => usePersistedColumnFilters(1))
+    const sorting = renderHook(() => usePersistedColumnSorting([], 1))
+    const onFilterChange = vi.fn()
+    const { getByRole } = renderTable({ filters: makeFilters({ categories: ["Movies"] }), onFilterChange })
+
+    fireEvent.click(getByRole("button", { name: "tableView.clearAllColumnFilters" }))
+
+    expect(columns.result.current[0]).toEqual([])
+    expect(sorting.result.current[0]).toEqual([{ id: "added_on", desc: true }])
+    expect(onFilterChange).not.toHaveBeenCalled()
   })
 })

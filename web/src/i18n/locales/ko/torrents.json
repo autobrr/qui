@@ -833,7 +833,10 @@
       }
     },
     "title": "필터",
-    "clearAll": "모두 지우기",
+    "clearOptions": "필터 지우기 옵션",
+    "clearSidebarFilters": "사이드바 필터 지우기",
+    "clearColumnFilters": "열 필터 지우기",
+    "clearFiltersAndSearch": "필터 및 검색 지우기",
     "loading": "불러오는 중...",
     "customFilter": "사용자 지정 필터",
     "customFilterHelp": "활성 사용자 지정 표현식 필터(예: cross-seed 결과)",

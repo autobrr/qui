@@ -1037,7 +1037,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     sortedTorrentsLength: sortedTorrents.length,
     onFilterChange,
     setColumnFilters,
-    setSorting,
     setLoadedRows,
     isCrossSeedFiltering,
     columnFiltersLength: columnFilters.length,
@@ -1426,15 +1425,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             variant="outline"
                             size="icon"
                             className="relative mr-1"
-                            onClick={() => {
-                              // Use atomic filter clearing to avoid race conditions
-                              // Only clear column filters in cross-seed mode, clear all filters otherwise
-                              const clearingMode = isCrossSeedFiltering ? "columns-only" : "all"
-                              clearFiltersAtomically(clearingMode)
-                            }}
+                            onClick={() => clearFiltersAtomically("columns-only")}
                           >
                             <X className="h-4 w-4" />
-                            <span className="sr-only">{t("columnFilter.clearFilters")}</span>
+                            <span className="sr-only">{t("tableView.clearAllColumnFilters", { count: columnFilters.length })}</span>
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>{t("tableView.clearAllColumnFilters", { count: columnFilters.length })}</TooltipContent>

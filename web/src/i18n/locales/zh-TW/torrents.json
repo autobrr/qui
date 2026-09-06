@@ -833,7 +833,10 @@
       }
     },
     "title": "篩選器",
-    "clearAll": "全部清除",
+    "clearOptions": "篩選清除選項",
+    "clearSidebarFilters": "清除側邊欄篩選",
+    "clearColumnFilters": "清除欄位篩選",
+    "clearFiltersAndSearch": "清除篩選與搜尋",
     "loading": "載入中...",
     "customFilter": "自訂篩選器",
     "customFilterHelp": "活躍的自訂表示式篩選器（例如輔種結果）",

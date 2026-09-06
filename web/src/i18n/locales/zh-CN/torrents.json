@@ -833,7 +833,10 @@
       }
     },
     "title": "筛选器",
-    "clearAll": "全部清除",
+    "clearOptions": "筛选清除选项",
+    "clearSidebarFilters": "清除侧边栏筛选",
+    "clearColumnFilters": "清除列筛选",
+    "clearFiltersAndSearch": "清除筛选和搜索",
     "loading": "加载中...",
     "customFilter": "自定义筛选器",
     "customFilterHelp": "活跃的自定义表达式筛选器（例如辅种结果）",
