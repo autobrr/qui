@@ -12,7 +12,7 @@ If you manage multiple instances, the Backups page provides **Save changes to al
 
 ## Counters and limits that a snapshot does not contain
 
-A snapshot does not store upload totals, ratio, or seed time. It also does not store share limits, speed limits, or the download path. A restore adds a missing torrent through the qBittorrent API, and the API cannot set those counters. Torrents that a restore adds start at zero. Torrents that already exist on the instance keep their counters. A restore does not change the ratio and the seed time on the tracker, because the tracker keeps its own counts. To keep the counters in qBittorrent, make a backup of the qBittorrent data directory, which holds the fastresume files in `BT_backup`.
+A snapshot does not store upload totals, ratio, or seed time. It also does not store share limits or speed limits. A restore adds a missing torrent through the qBittorrent API, and the API cannot set those counters. Torrents that a restore adds start at zero. Torrents that already exist on the instance keep their counters. A restore does not change the ratio and the seed time on the tracker, because the tracker keeps its own counts. To keep the counters in qBittorrent, make a backup of the qBittorrent data directory, which holds the fastresume files in `BT_backup`.
 
 ## Backup storage
 
