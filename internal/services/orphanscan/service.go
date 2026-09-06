@@ -951,32 +951,17 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
-	// Load settings before the file map: the default-save-path root has to be in
-	// place before cross-instance overlap detection decides whose torrents to
-	// merge into the protection map.
+	// Settings drive both the ignore paths and the scan scope, and a thinner
+	// scope means a thinner protection map. Guessing at defaults here would
+	// quietly widen what this run may delete, so a failed read stops it.
 	settings, err := s.store.GetSettings(ctx, instanceID)
 	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for deletion")
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to load settings for deletion: %v", err))
+		return
 	}
 	var configuredIgnorePaths []string
 	if settings != nil {
 		configuredIgnorePaths = settings.IgnorePaths
-	}
-
-	// Build fresh file map for re-checking
-	fileMapResult, err := s.buildFileMap(ctx, instanceID, deleteBackend, scopeFromSettings(settings))
-	if err != nil {
-		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
-		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
-		return
-	}
-	tfm := fileMapResult.fileMap
-
-	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend)
-	ignorePaths, err := NormalizeIgnorePaths(rawIgnorePaths)
-	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
-		ignorePaths = rawIgnorePaths // Fall back to unnormalized to preserve protection
 	}
 
 	// Get files for deletion
@@ -1000,6 +985,32 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	sort.Slice(dirEntries, func(i, j int) bool {
 		return len(dirEntries[i].FilePath) > len(dirEntries[j].FilePath)
 	})
+
+	// The declared roots have to be in place before cross-instance overlap
+	// detection decides whose torrents to merge into the protection map. A run
+	// with directories still pending also needs the category destinations, even
+	// if the operator has since turned the option off: those directories were
+	// judged against a category list and must be judged against it again.
+	scope := scopeFromSettings(settings)
+	if len(dirEntries) > 0 {
+		scope.AbandonedDirs = true
+	}
+
+	// Build fresh file map for re-checking
+	fileMapResult, err := s.buildFileMap(ctx, instanceID, deleteBackend, scope)
+	if err != nil {
+		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
+		return
+	}
+	tfm := fileMapResult.fileMap
+
+	rawIgnorePaths := scanIgnorePaths(ctx, configuredIgnorePaths, run.ScanPaths, fileMapResult, deleteBackend)
+	ignorePaths, err := NormalizeIgnorePaths(rawIgnorePaths)
+	if err != nil {
+		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
+		ignorePaths = rawIgnorePaths // Fall back to unnormalized to preserve protection
+	}
 
 	var filesDeleted int
 	var bytesReclaimed int64
@@ -1078,6 +1089,17 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 		if isIgnoredPath(d.FilePath, ignorePaths) {
 			s.updateFileStatus(ctx, d.ID, "skipped", "path is protected by ignore paths")
+			continue
+		}
+		// Re-check against the roots and categories as they stand now, not as
+		// the preview saw them: a category created or repointed since then makes
+		// an already-listed directory a live destination again.
+		if isScanRoot(d.FilePath, fileMapResult.scanRoots) {
+			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now a scan root")
+			continue
+		}
+		if isCategoryDestination(d.FilePath, fileMapResult.categoryPaths) {
+			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now a category destination")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save
