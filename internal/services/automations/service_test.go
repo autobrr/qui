@@ -1932,30 +1932,6 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
 }
 
-func TestUpdateCumulativeFreeSpaceCleared_EligibleView(t *testing.T) {
-	// Test that "eligible" mode does NOT update cumulative space tracking
-	// (simulated by not calling updateCumulativeFreeSpaceCleared)
-	// This is the expected behavior in eligible mode - we skip the update
-	allTorrents := []qbt.Torrent{
-		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1"}, // 100 GB
-		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2"},  // 50 GB
-	}
-
-	evalCtx := &EvalContext{
-		SpaceToClear: 0,
-	}
-
-	// In "eligible" mode, we don't call updateCumulativeFreeSpaceCleared
-	// SpaceToClear should remain 0, so all torrents continue to match FREE_SPACE conditions
-
-	// Verify SpaceToClear stays at 0 when we don't update it
-	assert.Equal(t, int64(0), evalCtx.SpaceToClear)
-
-	// In eligible mode the condition would continue matching all torrents
-	// because SpaceToClear is never incremented
-	_ = allTorrents // Used in actual preview logic
-}
-
 func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	// Test that cross-seed expansion works the same way in both views
 	// Only deleteWithFilesIncludeCrossSeeds mode expands cross-seeds
