@@ -10,20 +10,7 @@ on:
 jobs:
   test-postgres:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: qui
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d qui"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -34,10 +21,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Create placeholder web dist for embed
+        run: mkdir -p web/dist && touch web/dist/.gitkeep
+
       - name: Run tests (Postgres integration)
-        env:
-          QUI_TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/qui?sslmode=disable
-        run: go test -race -count=1 -v -timeout 20m ./internal/database -run Postgres
+        run: make test-postgres
 
   migration-parity:
     runs-on: ubuntu-latest
