@@ -56,14 +56,14 @@ const (
 
 // OrphanFile represents a file found during an orphan scan.
 type OrphanFile struct {
-	ID           int64
-	RunID        int64
-	Path         string
-	Size         int64
-	ModifiedAt   time.Time
-	Status       FileStatus
-	ErrorMessage string
-	IsDir        bool
+	ID             int64
+	RunID          int64
+	Path           string
+	Size           int64
+	ModifiedAt     time.Time
+	Status         FileStatus
+	ErrorMessage   string
+	IsAbandonedDir bool
 }
 
 // AbandonedDir is a directory that holds no files at any depth. Whether it may

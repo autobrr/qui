@@ -10,4 +10,4 @@ ALTER TABLE orphan_scan_settings ADD COLUMN scan_category_paths INTEGER NOT NULL
 ALTER TABLE orphan_scan_settings ADD COLUMN delete_abandoned_dirs INTEGER NOT NULL DEFAULT 0;
 
 -- Abandoned directories share the run's preview table with orphan files.
-ALTER TABLE orphan_scan_files ADD COLUMN is_dir INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE orphan_scan_files ADD COLUMN is_abandoned_dir INTEGER NOT NULL DEFAULT 0;

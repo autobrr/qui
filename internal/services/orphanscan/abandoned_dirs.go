@@ -131,10 +131,10 @@ func abandonedDirCandidates(
 
 		kept[dir.Path] = struct{}{}
 		out = append(out, OrphanFile{
-			Path:       dir.Path,
-			IsDir:      true,
-			ModifiedAt: dir.ModTime,
-			Status:     FileStatusPending,
+			Path:           dir.Path,
+			IsAbandonedDir: true,
+			ModifiedAt:     dir.ModTime,
+			Status:         FileStatusPending,
 		})
 	}
 

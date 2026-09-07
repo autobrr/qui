@@ -797,11 +797,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	for i, o := range allOrphans {
 		modTime := o.ModifiedAt
 		modelFiles[i] = models.OrphanScanFile{
-			FilePath:   o.Path,
-			FileSize:   o.Size,
-			IsDir:      o.IsDir,
-			ModifiedAt: &modTime,
-			Status:     "pending",
+			FilePath:       o.Path,
+			FileSize:       o.Size,
+			IsAbandonedDir: o.IsAbandonedDir,
+			ModifiedAt:     &modTime,
+			Status:         "pending",
 		}
 	}
 
@@ -992,7 +992,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var dirEntries []*models.OrphanScanFile
 	fileEntries := make([]*models.OrphanScanFile, 0, len(files))
 	for _, f := range files {
-		if f.IsDir {
+		if f.IsAbandonedDir {
 			dirEntries = append(dirEntries, f)
 			continue
 		}

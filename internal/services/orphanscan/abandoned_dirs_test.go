@@ -49,7 +49,7 @@ func abandonedPaths(t *testing.T, root string, categoryPaths []string, ignorePat
 	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), []string{root}, ignorePaths, categoryPaths, 0, backend)
 	paths := make([]string, 0, len(candidates))
 	for _, c := range candidates {
-		if !c.IsDir {
+		if !c.IsAbandonedDir {
 			t.Fatalf("candidate %q is not marked as a directory", c.Path)
 		}
 		paths = append(paths, c.Path)

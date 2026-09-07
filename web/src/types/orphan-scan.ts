@@ -72,7 +72,7 @@ export interface OrphanScanFile {
   runId: number
   filePath: string
   fileSize: number
-  isDir: boolean
+  isAbandonedDir: boolean
   modifiedAt?: string | null
   status: OrphanScanFileStatus
   errorMessage?: string | null

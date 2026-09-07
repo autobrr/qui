@@ -8836,7 +8836,7 @@ components:
           type: integer
           format: int64
           description: File size in bytes; always 0 for a directory
-        isDir:
+        isAbandonedDir:
           type: boolean
           description: >-
             True only for an abandoned directory, which holds no files and is

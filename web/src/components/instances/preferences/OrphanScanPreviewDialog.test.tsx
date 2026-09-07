@@ -21,9 +21,9 @@ vi.mock("@/hooks/useDateTimeFormatters", () => ({
 // Stable singletons: a fresh object per render would retrigger the page-merge effect forever.
 const { runQuery, confirmMutation } = vi.hoisted(() => {
   const files: OrphanScanFile[] = [
-    { id: 1, runId: 1, filePath: "/data/a.mkv", fileSize: 10, isDir: false, status: "pending", modifiedAt: "2026-01-02T03:04:05Z" },
-    { id: 2, runId: 1, filePath: "/data/b.mkv", fileSize: 20, isDir: false, status: "pending" },
-    { id: 3, runId: 1, filePath: "/data/leftover", fileSize: 0, isDir: true, status: "pending" },
+    { id: 1, runId: 1, filePath: "/data/a.mkv", fileSize: 10, isAbandonedDir: false, status: "pending", modifiedAt: "2026-01-02T03:04:05Z" },
+    { id: 2, runId: 1, filePath: "/data/b.mkv", fileSize: 20, isAbandonedDir: false, status: "pending" },
+    { id: 3, runId: 1, filePath: "/data/leftover", fileSize: 0, isAbandonedDir: true, status: "pending" },
   ]
   return { runQuery: { data: { files } }, confirmMutation: { isPending: false } }
 })

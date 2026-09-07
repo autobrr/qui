@@ -96,16 +96,16 @@ func TestExecuteScan_AbandonedDirsSurviveTheRoundTrip(t *testing.T) {
 
 	found := make(map[string]bool, len(files))
 	for _, f := range files {
-		found[f.FilePath] = f.IsDir
+		found[f.FilePath] = f.IsAbandonedDir
 	}
 
-	isDir, ok := found[abandoned]
+	isAbandonedDir, ok := found[abandoned]
 	require.True(t, ok, "abandoned directory not reported: %v", found)
-	require.True(t, isDir, "abandoned directory lost its is_dir flag on the round trip")
+	require.True(t, isAbandonedDir, "abandoned directory lost its is_abandoned_dir flag on the round trip")
 
-	isDir, ok = found[filepath.Join(defaultSavePath, "stray.txt")]
+	isAbandonedDir, ok = found[filepath.Join(defaultSavePath, "stray.txt")]
 	require.True(t, ok, "orphan file in the default save path not reported: %v", found)
-	require.False(t, isDir, "an orphan file must not be marked as a directory")
+	require.False(t, isAbandonedDir, "an orphan file must not be marked as an abandoned directory")
 
 	require.NotContains(t, found, categoryPath, "empty category destination must never be reported")
 	require.NotContains(t, found, inheritedCategoryPath, "a category inheriting the default save path must be protected too")

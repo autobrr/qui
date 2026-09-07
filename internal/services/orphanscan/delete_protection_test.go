@@ -408,7 +408,7 @@ func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t 
 	files, err := store.GetFilesForDeletion(t.Context(), runID)
 	require.NoError(t, err)
 	require.Len(t, files, 1, "only the orphan file should be previewed")
-	require.False(t, files[0].IsDir)
+	require.False(t, files[0].IsAbandonedDir)
 
 	svc.executeDeletion(context.Background(), 1, runID)
 

@@ -55,14 +55,14 @@ type OrphanScanRun struct {
 
 // OrphanScanFile represents an orphan file found in a scan.
 type OrphanScanFile struct {
-	ID           int64      `json:"id"`
-	RunID        int64      `json:"runId"`
-	FilePath     string     `json:"filePath"`
-	FileSize     int64      `json:"fileSize"`
-	IsDir        bool       `json:"isDir"`
-	ModifiedAt   *time.Time `json:"modifiedAt,omitempty"`
-	Status       string     `json:"status"` // pending, deleted, skipped, failed
-	ErrorMessage string     `json:"errorMessage,omitempty"`
+	ID             int64      `json:"id"`
+	RunID          int64      `json:"runId"`
+	FilePath       string     `json:"filePath"`
+	FileSize       int64      `json:"fileSize"`
+	IsAbandonedDir bool       `json:"isAbandonedDir"`
+	ModifiedAt     *time.Time `json:"modifiedAt,omitempty"`
+	Status         string     `json:"status"` // pending, deleted, skipped, failed
+	ErrorMessage   string     `json:"errorMessage,omitempty"`
 }
 
 // OrphanScanStore handles database operations for orphan scan.
@@ -571,7 +571,7 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 		batch := files[i:end]
 
 		var query strings.Builder
-		query.WriteString(`INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status, is_dir) VALUES `)
+		query.WriteString(`INSERT INTO orphan_scan_files (run_id, file_path, file_size, modified_at, status, is_abandoned_dir) VALUES `)
 		args := make([]any, 0, len(batch)*6)
 		for j, f := range batch {
 			if j > 0 {
@@ -582,7 +582,7 @@ func (s *OrphanScanStore) InsertFiles(ctx context.Context, runID int64, files []
 			if f.ModifiedAt != nil {
 				modifiedAt = *f.ModifiedAt
 			}
-			args = append(args, runID, f.FilePath, f.FileSize, modifiedAt, f.Status, boolToInt(f.IsDir))
+			args = append(args, runID, f.FilePath, f.FileSize, modifiedAt, f.Status, boolToInt(f.IsAbandonedDir))
 		}
 
 		if _, err := s.db.ExecContext(ctx, query.String(), args...); err != nil {
@@ -600,12 +600,12 @@ func scanOrphanScanFile(rows *sql.Rows) (*OrphanScanFile, error) {
 	var f OrphanScanFile
 	var modifiedAt sql.NullTime
 	var errorMessage sql.NullString
-	var isDir int
+	var isAbandonedDir int
 
-	if err := rows.Scan(&f.ID, &f.RunID, &f.FilePath, &f.FileSize, &modifiedAt, &f.Status, &errorMessage, &isDir); err != nil {
+	if err := rows.Scan(&f.ID, &f.RunID, &f.FilePath, &f.FileSize, &modifiedAt, &f.Status, &errorMessage, &isAbandonedDir); err != nil {
 		return nil, fmt.Errorf("scan orphan file row: %w", err)
 	}
-	f.IsDir = SQLiteIntToBool(isDir)
+	f.IsAbandonedDir = SQLiteIntToBool(isAbandonedDir)
 	if modifiedAt.Valid {
 		f.ModifiedAt = &modifiedAt.Time
 	}
@@ -634,7 +634,7 @@ func collectOrphanScanFiles(rows *sql.Rows) ([]*OrphanScanFile, error) {
 // listFilesDirectorySorted loads all files and sorts by directory then size (in-memory).
 func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_dir
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_abandoned_dir
 		FROM orphan_scan_files
 		WHERE run_id = ?
 	`, runID)
@@ -677,7 +677,7 @@ func (s *OrphanScanStore) listFilesDirectorySorted(ctx context.Context, runID in
 // listFilesSizeSorted uses SQL ordering for efficiency.
 func (s *OrphanScanStore) listFilesSizeSorted(ctx context.Context, runID int64, limit, offset int) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_dir
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_abandoned_dir
 		FROM orphan_scan_files
 		WHERE run_id = ?
 		ORDER BY file_size DESC, file_path ASC
@@ -709,7 +709,7 @@ func (s *OrphanScanStore) ListFiles(ctx context.Context, runID int64, limit, off
 // large orphan sets, consider adding batched retrieval here.
 func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) ([]*OrphanScanFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_dir
+		SELECT id, run_id, file_path, file_size, modified_at, status, error_message, is_abandoned_dir
 		FROM orphan_scan_files
 		WHERE run_id = ? AND status = 'pending'
 		ORDER BY file_path
@@ -724,7 +724,7 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 		var f OrphanScanFile
 		var modifiedAt sql.NullTime
 		var errorMessage sql.NullString
-		var isDir int
+		var isAbandonedDir int
 
 		if err := rows.Scan(
 			&f.ID,
@@ -734,11 +734,11 @@ func (s *OrphanScanStore) GetFilesForDeletion(ctx context.Context, runID int64) 
 			&modifiedAt,
 			&f.Status,
 			&errorMessage,
-			&isDir,
+			&isAbandonedDir,
 		); err != nil {
 			return nil, err
 		}
-		f.IsDir = SQLiteIntToBool(isDir)
+		f.IsAbandonedDir = SQLiteIntToBool(isAbandonedDir)
 
 		if modifiedAt.Valid {
 			f.ModifiedAt = &modifiedAt.Time

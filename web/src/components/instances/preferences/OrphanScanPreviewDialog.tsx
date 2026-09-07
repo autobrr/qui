@@ -97,9 +97,9 @@ export function OrphanScanPreviewDialog({
   // CSV columns for orphan files export
   const csvColumns: CsvColumn<OrphanScanFile>[] = [
     { header: "Path", accessor: f => f.filePath },
-    { header: "Type", accessor: f => f.isDir ? "directory" : "file" },
-    { header: "Size", accessor: f => f.isDir ? "" : formatBytes(f.fileSize) },
-    { header: "Size (bytes)", accessor: f => f.isDir ? "" : f.fileSize },
+    { header: "Type", accessor: f => f.isAbandonedDir ? "directory" : "file" },
+    { header: "Size", accessor: f => f.isAbandonedDir ? "" : formatBytes(f.fileSize) },
+    { header: "Size (bytes)", accessor: f => f.isAbandonedDir ? "" : f.fileSize },
     { header: "Modified", accessor: f => f.modifiedAt ?? "" },
   ]
 
@@ -165,7 +165,7 @@ export function OrphanScanPreviewDialog({
                   <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="p-2 max-w-[520px]">
                       <div className="flex items-center gap-1.5">
-                        {f.isDir && (
+                        {f.isAbandonedDir && (
                           <Folder
                             className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
                             aria-label={t("preferences.orphanScanPreview.emptyDirectory")}
@@ -175,7 +175,7 @@ export function OrphanScanPreviewDialog({
                       </div>
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                      {f.isDir ? "-" : formatBytes(f.fileSize)}
+                      {f.isAbandonedDir ? "-" : formatBytes(f.fileSize)}
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                       {f.modifiedAt ? formatISOTimestamp(f.modifiedAt) : "-"}
