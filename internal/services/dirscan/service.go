@@ -654,7 +654,11 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 	}
 
 	matchesFound, torrentsAdded := s.runSearchAndInjectPhase(ctx, dir, workSelection, fileIDIndex, trackedFiles, settings, matcher, runID, enabledIndexerIDs, &l)
-	if s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l) {
+	completed := s.finalizeRun(ctx, runID, workSelection.eligibleFiles, workSelection.skippedFiles, matchesFound, torrentsAdded, dir.TargetInstanceID, &l)
+	// Only a run that walked the whole directory can judge what is missing from it.
+	// A webhook or manual run narrowed to a subfolder refreshes just that subfolder's
+	// rows, so pruning on it would delete every live row outside the subroot.
+	if completed && scanRoot == dir.Path {
 		s.pruneMissingFilesBestEffort(dir.ID, &l)
 	}
 }

@@ -1600,36 +1600,37 @@ func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (
 		return 0, nil
 	}
 
-	cutoff, err := s.successfulRunStartedAt(ctx, directoryID, dirScanPruneGraceRuns-1)
-	if err != nil || cutoff == nil {
-		return 0, err
-	}
-
-	latest, err := s.successfulRunStartedAt(ctx, directoryID, 0)
-	if err != nil || latest == nil {
-		return 0, err
-	}
+	const (
+		latestRun        = 0
+		graceBoundaryRun = dirScanPruneGraceRuns - 1
+	)
 
 	// Rows already past the grace window are left out of the denominator so a
 	// directory that genuinely loses most of its files still prunes once the window
-	// passes, instead of blocking itself forever.
-	inGrace, err := s.countFilesProcessedSince(ctx, directoryID, *cutoff)
+	// passes, instead of blocking itself forever. A directory without enough full
+	// scans to judge yields no boundary, which counts nothing and prunes nothing.
+	inGrace, err := s.countFilesProcessedSinceFullScan(ctx, directoryID, graceBoundaryRun)
 	if err != nil {
 		return 0, err
 	}
 
-	refreshed, err := s.countFilesProcessedSince(ctx, directoryID, *latest)
+	refreshed, err := s.countFilesProcessedSinceFullScan(ctx, directoryID, latestRun)
 	if err != nil {
 		return 0, err
 	}
 
 	// An empty grace window means recent scans refreshed nothing at all. A directory
-	// whose files were all deleted and a directory whose filesystem is mounted but
-	// empty produce that identically, down to files_found, so nothing in the stored
-	// state separates them. Keep the rows: the cost of guessing wrong is deleting a
-	// live directory's entire history during an outage, and a genuinely emptied
-	// directory can be cleared with Reset Scan Progress.
-	if inGrace == 0 || refreshed*100 < inGrace*dirScanPruneMinRefreshPercent {
+	// whose files were all deleted, a directory whose filesystem is mounted but empty,
+	// and a directory that simply tracks no files produce that identically, down to
+	// files_found, so nothing in the stored state separates them. Keep the rows: the
+	// cost of guessing wrong is deleting a live directory's entire history during an
+	// outage, and a genuinely emptied directory can be cleared with Reset Scan
+	// Progress. Nothing is wrong here, so say nothing.
+	if inGrace == 0 {
+		return 0, nil
+	}
+
+	if refreshed*100 < inGrace*dirScanPruneMinRefreshPercent {
 		log.Warn().
 			Int("directoryID", directoryID).
 			Int64("refreshed", refreshed).
@@ -1642,8 +1643,8 @@ func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (
 		DELETE FROM dir_scan_files
 		WHERE directory_id = ?
 		  AND last_processed_at IS NOT NULL
-		  AND last_processed_at < ?
-	`, directoryID, *cutoff)
+		  AND last_processed_at < (`+fullScanStartedAtQuery+`)
+	`, directoryID, directoryID, DirScanRunStatusSuccess, graceBoundaryRun)
 	if err != nil {
 		return 0, fmt.Errorf("prune missing files: %w", err)
 	}
@@ -1656,39 +1657,40 @@ func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (
 	return removed, nil
 }
 
-// successfulRunStartedAt returns the start time of the offset-th most recent
-// successful run for a directory, or nil when that many successful runs do not exist.
-func (s *DirScanStore) successfulRunStartedAt(ctx context.Context, directoryID, offset int) (*time.Time, error) {
-	var startedAt sql.NullTime
-	err := s.db.QueryRowContext(ctx, `
-		SELECT started_at
-		FROM dir_scan_runs
-		WHERE directory_id = ? AND status = ?
-		ORDER BY started_at DESC, id DESC
-		LIMIT 1 OFFSET ?
-	`, directoryID, DirScanRunStatusSuccess, offset).Scan(&startedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("select successful run start: %w", err)
-	}
-	if !startedAt.Valid {
-		return nil, nil
-	}
+// fullScanStartedAtQuery selects the start time of the offset-th most recent
+// successful run that covered a whole directory. Parameters: directory id, run
+// status, offset.
+//
+// Webhook and manual runs can carry a scan_root that narrows the walk to a subfolder
+// (executeScan resolves it), and such a run only refreshes the rows beneath that
+// subfolder. Letting one define the prune window would make a run over one subfolder
+// look like evidence about the entire directory, and delete every live row outside it.
+//
+// It stays a subquery rather than a value read into Go on purpose. Both engines write
+// these columns with CURRENT_TIMESTAMP, and SQLite compares timestamps as text: a
+// value read out and rebound arrives as time.Time.String(), which no longer matches
+// the stored 19-character form, and comparisons against it quietly fail.
+const fullScanStartedAtQuery = `
+		SELECT run.started_at
+		FROM dir_scan_runs run
+		JOIN dir_scan_directories dir ON dir.id = run.directory_id
+		WHERE run.directory_id = ? AND run.status = ?
+		  AND (run.scan_root IS NULL OR run.scan_root = dir.path)
+		ORDER BY run.started_at DESC, run.id DESC
+		LIMIT 1 OFFSET ?`
 
-	return &startedAt.Time, nil
-}
-
-// countFilesProcessedSince counts a directory's tracked files whose last scan visit
-// is at or after the given time.
-func (s *DirScanStore) countFilesProcessedSince(ctx context.Context, directoryID int, since time.Time) (int64, error) {
+// countFilesProcessedSinceFullScan counts a directory's tracked files whose last scan
+// visit is at or after the offset-th most recent full scan of it. A directory with
+// fewer full scans than that yields no boundary, and so counts nothing.
+func (s *DirScanStore) countFilesProcessedSinceFullScan(ctx context.Context, directoryID, offset int) (int64, error) {
 	var count int64
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT count(*)
 		FROM dir_scan_files
-		WHERE directory_id = ? AND last_processed_at IS NOT NULL AND last_processed_at >= ?
-	`, directoryID, since).Scan(&count); err != nil {
+		WHERE directory_id = ?
+		  AND last_processed_at IS NOT NULL
+		  AND last_processed_at >= (`+fullScanStartedAtQuery+`)
+	`, directoryID, directoryID, DirScanRunStatusSuccess, offset).Scan(&count); err != nil {
 		return 0, fmt.Errorf("count processed files: %w", err)
 	}
 

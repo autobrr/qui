@@ -15,6 +15,21 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
+// sqliteTimestampLayout is the shape CURRENT_TIMESTAMP writes on SQLite. Production
+// fills these columns with that function, and SQLite compares timestamps as text, so
+// a fixture binding a Go time.Time would store the 30-character time.Time.String()
+// form and never exercise the comparison production actually performs.
+const sqliteTimestampLayout = "2006-01-02 15:04:05"
+
+// storedTimestamp renders a time the way the running engine stores it: text on
+// SQLite, a real timestamp on PostgreSQL.
+func storedTimestamp(db *database.DB, at time.Time) any {
+	if db.Dialect() == string(database.DialectSQLite) {
+		return at.Format(sqliteTimestampLayout)
+	}
+	return at
+}
+
 func TestDirScanStorePruneMissingFilesSQLite(t *testing.T) {
 	t.Parallel()
 	runDirScanPruneTests(t, testdb.NewMigratedSQLite(t, "dirscan-prune"))
@@ -49,30 +64,42 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		return dir.ID
 	}
 
-	insertRun := func(t *testing.T, directoryID int, status models.DirScanRunStatus, startedAt time.Time) {
+	insertRunWithRoot := func(t *testing.T, directoryID int, status models.DirScanRunStatus, startedAt time.Time, scanRoot any) {
 		t.Helper()
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO dir_scan_runs (directory_id, status, triggered_by, scan_root, started_at)
 			VALUES (?, ?, ?, ?, ?)
-		`, directoryID, status, "test", "/data", startedAt)
+		`, directoryID, status, "test", scanRoot, storedTimestamp(db, startedAt))
 		require.NoError(t, err)
+	}
+
+	// A full-directory run leaves scan_root NULL, as CreateRunIfNoActive does for a
+	// scheduled scan.
+	insertRun := func(t *testing.T, directoryID int, status models.DirScanRunStatus, startedAt time.Time) {
+		t.Helper()
+		insertRunWithRoot(t, directoryID, status, startedAt, nil)
 	}
 
 	// trackFile records a file and forces its last_processed_at, standing in for the
 	// scan that would have refreshed it.
-	trackFile := func(t *testing.T, directoryID int, path string, processedAt time.Time) {
+	trackFile := func(t *testing.T, directoryID int, path string, processedAt time.Time, status models.DirScanFileStatus) {
 		t.Helper()
 		require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
 			DirectoryID: directoryID,
 			FilePath:    path,
 			FileSize:    1,
 			FileModTime: processedAt,
-			Status:      models.DirScanFileStatusAlreadySeeding,
+			Status:      status,
 		}))
 		_, err := db.ExecContext(ctx, `
 			UPDATE dir_scan_files SET last_processed_at = ? WHERE directory_id = ? AND file_path = ?
-		`, processedAt, directoryID, path)
+		`, storedTimestamp(db, processedAt), directoryID, path)
 		require.NoError(t, err)
+	}
+
+	trackSeedingFile := func(t *testing.T, directoryID int, path string, processedAt time.Time) {
+		t.Helper()
+		trackFile(t, directoryID, path, processedAt, models.DirScanFileStatusAlreadySeeding)
 	}
 
 	trackedPaths := func(t *testing.T, directoryID int) []string {
@@ -94,8 +121,8 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
 		}
 
-		trackFile(t, dirID, "/data/grace/live.mkv", daysAgo(1))
-		trackFile(t, dirID, "/data/grace/deleted.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/grace/live.mkv", daysAgo(1))
+		trackSeedingFile(t, dirID, "/data/grace/deleted.mkv", daysAgo(10))
 
 		removed, err := store.PruneMissingFiles(ctx, dirID)
 		require.NoError(t, err)
@@ -110,8 +137,8 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
 		}
 
-		trackFile(t, dirID, "/data/tooyoung/live.mkv", daysAgo(1))
-		trackFile(t, dirID, "/data/tooyoung/deleted.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/tooyoung/live.mkv", daysAgo(1))
+		trackSeedingFile(t, dirID, "/data/tooyoung/deleted.mkv", daysAgo(10))
 
 		removed, err := store.PruneMissingFiles(ctx, dirID)
 		require.NoError(t, err)
@@ -131,13 +158,35 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 		}
 
 		// Every file was last seen by the most recent successful scan.
-		trackFile(t, dirID, "/data/outage/one.mkv", daysAgo(3))
-		trackFile(t, dirID, "/data/outage/two.mkv", daysAgo(3))
+		trackSeedingFile(t, dirID, "/data/outage/one.mkv", daysAgo(3))
+		trackSeedingFile(t, dirID, "/data/outage/two.mkv", daysAgo(3))
 
 		removed, err := store.PruneMissingFiles(ctx, dirID)
 		require.NoError(t, err)
 		require.Zero(t, removed)
 		require.Len(t, trackedPaths(t, dirID), 2)
+	})
+
+	// A webhook or manual run can carry a scan_root that narrows the walk to one
+	// subfolder, refreshing only that subfolder's rows. Such a run must not define the
+	// prune window, or three of them in a row would delete every live row outside it.
+	t.Run("subroot runs do not justify a directory-wide prune", func(t *testing.T) {
+		dirID := newDirectory(t, "/data/webhook")
+		insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(10))
+		for _, d := range []int{3, 2, 1} {
+			insertRunWithRoot(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d), "/data/webhook/show")
+		}
+
+		// The subfolder refreshes on every webhook run; the rest of the directory was
+		// last seen by the full scan and is still very much alive on disk.
+		trackSeedingFile(t, dirID, "/data/webhook/show/ep.mkv", daysAgo(1))
+		trackSeedingFile(t, dirID, "/data/webhook/other/a.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/webhook/other/b.mkv", daysAgo(10))
+
+		removed, err := store.PruneMissingFiles(ctx, dirID)
+		require.NoError(t, err)
+		require.Zero(t, removed)
+		require.Len(t, trackedPaths(t, dirID), 3)
 	})
 
 	// A requeue can land between a run's started_at and its prune. It never visits the
@@ -151,21 +200,10 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 
 		// Ten no_match rows sit inside the grace window; the latest scan saw one file.
 		for i := range 10 {
-			path := fmt.Sprintf("/data/requeue/in-grace-%d.mkv", i)
-			require.NoError(t, store.UpsertFile(ctx, &models.DirScanFile{
-				DirectoryID: dirID,
-				FilePath:    path,
-				FileSize:    1,
-				FileModTime: daysAgo(2),
-				Status:      models.DirScanFileStatusNoMatch,
-			}))
-			_, err := db.ExecContext(ctx, `
-				UPDATE dir_scan_files SET last_processed_at = ? WHERE directory_id = ? AND file_path = ?
-			`, daysAgo(2), dirID, path)
-			require.NoError(t, err)
+			trackFile(t, dirID, fmt.Sprintf("/data/requeue/in-grace-%d.mkv", i), daysAgo(2), models.DirScanFileStatusNoMatch)
 		}
-		trackFile(t, dirID, "/data/requeue/refreshed.mkv", daysAgo(1))
-		trackFile(t, dirID, "/data/requeue/deleted.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/requeue/refreshed.mkv", daysAgo(1))
+		trackSeedingFile(t, dirID, "/data/requeue/deleted.mkv", daysAgo(10))
 
 		requeued, err := store.RequeueNoMatchFiles(ctx, dirID)
 		require.NoError(t, err)
@@ -187,8 +225,8 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 			insertRun(t, dirID, models.DirScanRunStatusSuccess, daysAgo(d))
 		}
 
-		trackFile(t, dirID, "/data/allstale/one.mkv", daysAgo(10))
-		trackFile(t, dirID, "/data/allstale/two.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/allstale/one.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/allstale/two.mkv", daysAgo(10))
 
 		removed, err := store.PruneMissingFiles(ctx, dirID)
 		require.NoError(t, err)
@@ -206,10 +244,10 @@ func runDirScanPruneTests(t *testing.T, db *database.DB) {
 
 		// Ten rows sit inside the grace window but the latest scan refreshed one.
 		for i := range 10 {
-			trackFile(t, dirID, fmt.Sprintf("/data/emptymount/in-grace-%d.mkv", i), daysAgo(2))
+			trackSeedingFile(t, dirID, fmt.Sprintf("/data/emptymount/in-grace-%d.mkv", i), daysAgo(2))
 		}
-		trackFile(t, dirID, "/data/emptymount/refreshed.mkv", daysAgo(1))
-		trackFile(t, dirID, "/data/emptymount/deleted.mkv", daysAgo(10))
+		trackSeedingFile(t, dirID, "/data/emptymount/refreshed.mkv", daysAgo(1))
+		trackSeedingFile(t, dirID, "/data/emptymount/deleted.mkv", daysAgo(10))
 
 		removed, err := store.PruneMissingFiles(ctx, dirID)
 		require.NoError(t, err)

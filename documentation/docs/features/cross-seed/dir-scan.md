@@ -263,17 +263,11 @@ This behavior functions as a **restart with preserved progress** rather than con
 
 ### Deleted files leave the file list
 
-When a file disappears from disk, its entry stays in the file list until three scans
-in a row have run without finding it. Dir Scan then drops the entry.
+When a file disappears from disk, its entry stays in the file list until three scans in a row have run without finding it. Dir Scan then drops the entry.
 
-Only scans that finish count. A scan that fails partway, and a scan that cannot reach
-the directory at all, both leave every entry in place. Dir Scan also skips the cleanup
-when a scan finds far fewer of its tracked files than the previous scans did, so an
-unmounted or half-mounted network share does not empty the list.
+Only full scans that finish count. A scan that fails partway, and a scan that cannot reach the directory at all, both leave every entry in place. A webhook or manual scan of a single subfolder does not count either, because it only looks at part of the directory and cannot tell you anything about the rest. Dir Scan also skips the cleanup when a scan finds far fewer of its tracked files than previous scans did, so an unmounted or half-mounted network share does not empty the list.
 
-Because the cleanup needs three completed scans, a deleted file stays listed for
-roughly three scan intervals. At the default of one scan per day, that is about three
-days.
+Because the cleanup needs three completed full scans, a deleted file stays listed for roughly three scan intervals. At the default of one scan per day, that is about three days.
 
 ### New indexers reopen "no match" files
 
