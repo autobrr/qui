@@ -1226,6 +1226,37 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/free-space:
+    get:
+      tags:
+        - Instances
+      summary: Get free space at a path
+      description: >-
+        Ask qBittorrent how much free space a path on its own host has. Requires
+        qBittorrent 5.3 (WebAPI 2.15.2+). The path uses the qBittorrent host's own
+        path syntax; qui forwards it unchanged.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - in: query
+          name: path
+          required: true
+          schema:
+            type: string
+          description: Path on the qBittorrent host
+      responses:
+        '200':
+          description: Free space at the path
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceFreeSpace'
+        '400':
+          description: Invalid instance ID or missing path
+        '409':
+          description: Instance is disabled
+        '501':
+          description: Instance does not support free space at a path
+
   /api/instances/{instanceID}/getDirectoryContent:
     get:
       tags:
@@ -6677,10 +6708,28 @@ components:
         supportsShareLimitsMode:
           type: boolean
           description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
+        supportsFreeSpaceAtPath:
+          type: boolean
+          description: Whether the instance reports free space at a given path (requires Web API 2.15.2+, qBittorrent 5.3+).
         webAPIVersion:
           type: string
           nullable: true
           description: Reported qBittorrent Web API version for the instance.
+
+    InstanceFreeSpace:
+      type: object
+      properties:
+        path:
+          type: string
+          description: The path that was queried on the qBittorrent host.
+        bytes:
+          type: integer
+          format: int64
+          nullable: true
+          description: Free bytes at the path. Null when qBittorrent could not measure it. Zero is a real answer.
+      required:
+        - path
+        - bytes
 
     TransferInfo:
       type: object

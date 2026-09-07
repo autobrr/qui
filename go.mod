@@ -11,7 +11,7 @@ require (
 	github.com/autobrr/autobrr v1.85.0
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
 	github.com/autobrr/go-mediainfo v0.8.0
-	github.com/autobrr/go-qbittorrent v1.18.1-0.20260825200055-b0abc1c0134d
+	github.com/autobrr/go-qbittorrent v1.18.1-0.20260907064303-cfab012d7f1d
 	github.com/autobrr/go-torrent v1.1.1
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0

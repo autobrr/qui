@@ -7662,6 +7662,36 @@ func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64,
 	return state.FreeSpaceOnDisk, nil
 }
 
+// ErrFreeSpaceAtPathUnsupported reports that the instance predates the
+// app/getFreeSpaceAtPath endpoint (qBittorrent 5.3 / Web API 2.15.2).
+var ErrFreeSpaceAtPathUnsupported = errors.New("qBittorrent instance does not support free space at a path")
+
+// GetFreeSpaceAtPath returns the free bytes qBittorrent reports for path on its own host.
+// The path uses the qBittorrent host's semantics; qui never touches its local filesystem here.
+// Zero is a real answer; qBittorrent's negative answer becomes ErrFreeSpaceAtPathUnavailable.
+func (sm *SyncManager) GetFreeSpaceAtPath(ctx context.Context, instanceID int, path string) (int64, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if !client.SupportsFreeSpaceAtPath() {
+		return 0, ErrFreeSpaceAtPathUnsupported
+	}
+
+	freeSpace, err := client.GetFreeSpaceAtPathCtx(ctx, path)
+	if err != nil {
+		return 0, err
+	}
+	// A negative answer means qBittorrent could not measure the path. Report it as a
+	// failed read so no caller can mistake it for zero free space.
+	if freeSpace < 0 {
+		return 0, fmt.Errorf("qBittorrent reports free space at %s as unavailable", path)
+	}
+
+	return freeSpace, nil
+}
+
 // RSS Methods - thin proxies to qBittorrent RSS API
 
 // GetRSSItems retrieves all RSS feeds and folders for an instance

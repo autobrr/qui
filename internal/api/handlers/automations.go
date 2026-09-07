@@ -781,7 +781,8 @@ func (h *AutomationHandler) validateFreeSpaceSourcePayload(ctx context.Context, 
 
 	usesFreeSpace := conditionsUseFreeSpace(conditions)
 
-	// Only fetch instance when FREE_SPACE is actually used and path type is selected
+	// Only fetch instance when FREE_SPACE is actually used and the local path type is
+	// selected; the qBittorrent path source reads on the server, not on this host.
 	needsInstance := usesFreeSpace && source.Type == models.FreeSpaceSourcePath
 	if !needsInstance {
 		return validateFreeSpaceSource(source, nil, usesFreeSpace)
@@ -819,8 +820,16 @@ func validateFreeSpaceSource(source *models.FreeSpaceSource, instance *models.In
 	switch source.Type {
 	case models.FreeSpaceSourcePath:
 		return validateFreeSpacePathSource(source, instance)
+	case models.FreeSpaceSourceQbitPath:
+		// qBittorrent resolves this path on its own host, so qui neither needs local
+		// filesystem access nor knows the server's path syntax. Unsupported servers
+		// surface at read time as a failed source read, never as zero free space.
+		if strings.TrimSpace(source.Path) == "" {
+			return http.StatusBadRequest, "Free space path source requires a path", errors.New("path required")
+		}
+		return 0, "", nil
 	default:
-		return http.StatusBadRequest, "Invalid free space source type. Use 'qbittorrent' or 'path'.", errors.New("invalid source type")
+		return http.StatusBadRequest, "Invalid free space source type. Use 'qbittorrent', 'path' or 'qbitPath'.", errors.New("invalid source type")
 	}
 }
 
