@@ -867,3 +867,128 @@ func TestHealthCheckRetriesCapabilitiesUntilLoaded(t *testing.T) {
 	require.Equal(t, "2.11.4", client.GetWebAPIVersion())
 	require.True(t, client.trackerManager().SupportsIncludeTrackers(), "the health check must apply the capability to the tracker manager")
 }
+
+// TestSyncPeersSerializesConcurrentReaders pins the ordering guarantee that the
+// race detector cannot see: every peer fetch must carry the rid the previous
+// merge produced, so an older snapshot can never merge on top of a newer one.
+func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
+	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const stalePeer = "192.0.2.9:9"
+
+	var mu sync.Mutex
+	ridsSent := make(map[string]int)
+	requests := 0
+	newestRid := int64(0)
+	secondRequest := make(chan struct{})
+
+	// served records the newest response the server produced. The merged state
+	// must end up matching it, whatever order the fetches ran in. Only the rid 1
+	// response carries the stale peer, so the rid alone says what to expect.
+	served := func(rid int64) {
+		mu.Lock()
+		defer mu.Unlock()
+		newestRid = max(newestRid, rid)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rid := r.URL.Query().Get("rid")
+
+		mu.Lock()
+		ridsSent[rid]++
+		requests++
+		first := requests == 1
+		if requests == 2 {
+			close(secondRequest)
+		}
+		mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+
+		if first {
+			// Hold the oldest snapshot open long enough for an unserialized
+			// reader to overtake it. Nothing overtakes it once fetch and merge
+			// are serialized, so fall through on the timeout instead.
+			select {
+			case <-secondRequest:
+			case <-time.After(200 * time.Millisecond):
+			}
+			served(1)
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"},"` + stalePeer + `":{"ip":"192.0.2.9"}}}`))
+			return
+		}
+
+		served(2)
+		if rid == "0" {
+			// A reader that never saw the first merge asks for a full snapshot.
+			_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"peers":{"192.0.2.1:1":{"ip":"192.0.2.1"}}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"rid":2,"peers_removed":["` + stalePeer + `"]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := &Client{
+		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+		peerSyncManager: make(map[string]*qbt.PeerSyncManager),
+	}
+
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Go(func() {
+			_, err := client.SyncPeers(t.Context(), hash)
+			require.NoError(t, err)
+		})
+	}
+	wg.Wait()
+
+	mu.Lock()
+	wantRid := newestRid
+	wantStalePeer := wantRid == 1
+	for rid, count := range ridsSent {
+		require.Equalf(t, 1, count, "rid %s was sent by %d fetches; concurrent readers shared a rid", rid, count)
+	}
+	mu.Unlock()
+
+	// The merged state must match the newest response the server produced, not
+	// whichever fetch happened to return last.
+	peers := client.GetOrCreatePeerSyncManager(hash).GetPeers()
+	require.Equal(t, wantRid, peers.Rid, "rid regressed to an older snapshot")
+	if wantStalePeer {
+		require.Contains(t, peers.Peers, stalePeer)
+	} else {
+		require.NotContains(t, peers.Peers, stalePeer, "an older snapshot restored a removed peer")
+	}
+
+	// The next reader carries the rid the last merge produced, so the server can
+	// answer with a removal and the removal sticks.
+	peers, err := client.SyncPeers(t.Context(), hash)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), peers.Rid)
+	require.NotContains(t, peers.Peers, stalePeer, "a removal from an incremental update was lost")
+}
+
+// TestSyncPeersLeavesWhenCallerGoesAway keeps a reader whose request was
+// cancelled from waiting out a slow qBittorrent.
+func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
+	const hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	client := &Client{
+		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
+		peerSyncManager: make(map[string]*qbt.PeerSyncManager),
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := client.SyncPeers(ctx, hash)
+	require.ErrorIs(t, err, context.Canceled)
+}

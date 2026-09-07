@@ -2990,16 +2990,14 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	// Get or create peer sync manager for this torrent
-	peerSync := clientWrapper.GetOrCreatePeerSyncManager(hash)
-
-	// Sync to get latest peer data
-	if err := peerSync.Sync(ctx); err != nil {
+	// Fetch and merge the latest peer data. Concurrent readers of one hash share
+	// the fetch, which keeps the merges in order.
+	peers, err := clientWrapper.SyncPeers(ctx, hash)
+	if err != nil {
 		return nil, fmt.Errorf("failed to sync torrent peers: %w", err)
 	}
 
-	// Return the current peer data (already merged with incremental updates)
-	return peerSync.GetPeers(), nil
+	return peers, nil
 }
 
 // GetTorrentPieceStates returns the download state of each piece for a torrent.

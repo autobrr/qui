@@ -100,6 +100,7 @@ type Client struct {
 	healthMu             sync.RWMutex
 	appInfoMu            sync.RWMutex
 	appInfoGroup         singleflight.Group
+	peerSyncGroup        singleflight.Group
 	preferencesCache     *qbt.AppPreferences
 	preferencesJSON      json.RawMessage
 	preferencesFetchedAt time.Time
@@ -499,16 +500,10 @@ func (c *Client) GetCachedServerState() *qbt.ServerState {
 // UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
 // This ensures our local peer state stays synchronized with the proxy client's view
 func (c *Client) UpdateWithPeersData(hash string, data *qbt.TorrentPeersResponse) {
-	// Get or create the peer sync manager for this torrent
-	peerSync := c.GetOrCreatePeerSyncManager(hash)
-
 	// Trigger a background sync to refresh the peer state
 	// We can't directly inject the data, but we can trigger a sync to keep the cache warm
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := peerSync.Sync(ctx); err != nil {
+		if _, err := c.SyncPeers(context.Background(), hash); err != nil {
 			log.Error().
 				Err(err).
 				Int("instanceID", c.instanceID).
@@ -935,6 +930,42 @@ func isStoppedOrErrorState(state qbt.TorrentState) bool {
 		state == qbt.TorrentStateStoppedUp ||
 		state == qbt.TorrentStateMissingFiles ||
 		state == qbt.TorrentStateError
+}
+
+// peerSyncFetchTimeout bounds a peer fetch that outlives the reader which started it.
+const peerSyncFetchTimeout = 30 * time.Second
+
+// SyncPeers fetches peer updates for a torrent, merges them and returns the merged
+// list. Readers of the same hash share one fetch, so the rid a request carries is
+// always the rid the previous merge produced: an older snapshot can no longer land
+// on top of a newer one and restore a peer the server already removed.
+// Callers must not mutate the returned response, it is shared by every reader that
+// joined the same fetch.
+func (c *Client) SyncPeers(ctx context.Context, hash string) (*qbt.TorrentPeersResponse, error) {
+	peerSync := c.GetOrCreatePeerSyncManager(hash)
+
+	// Joiners share the leader's result, so the fetch must not die with the
+	// leader's context; peerSyncFetchTimeout still bounds it. DoChan lets a
+	// caller whose own request went away leave without waiting for the fetch.
+	ch := c.peerSyncGroup.DoChan(hash, func() (any, error) {
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), peerSyncFetchTimeout)
+		defer cancel()
+
+		if err := peerSync.Sync(fetchCtx); err != nil {
+			return nil, err
+		}
+		return peerSync.GetPeers(), nil
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		return result.Val.(*qbt.TorrentPeersResponse), nil
+	}
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent
