@@ -1065,21 +1065,26 @@ After qui removes files, it waits about 5 minutes before running Free Space dele
 
 #### Free Space source
 
-By default, Free Space uses qBittorrent's reported free space, based on its default download location. If you want to manage a specific mount point, select "Path on server" and enter the path to that disk.
+By default, Free Space uses qBittorrent's reported free space, based on its default download location. If you want to manage a specific mount point, pick one of the path sources and enter the path to that disk.
 
 | Source | Description |
 | --- | --- |
-| Default (qBittorrent) | Uses qBittorrent's reported free space |
-| Path on server | Reads free space from a specific filesystem path |
+| Default (qBittorrent) | Uses qBittorrent's reported free space for its default download location |
+| Path on server | qui reads free space from a path on the qui host |
+| Path on the qBittorrent host | qBittorrent measures free space at a path on its own host |
 
 :::note
-Path on server requires "Local Filesystem Access" enabled on the instance.
+Path on server requires "Local Filesystem Access" enabled on the instance. Path on the qBittorrent host does not: qBittorrent does the measurement, so the disk only has to exist on the qBittorrent host. It needs qBittorrent 5.3 (WebAPI 2.15.2) or later, and the UI disables the option on older instances.
 :::
 
-If you want to manage multiple disks, create one workflow per disk and set a different Path on server for each workflow.
+Enter the path the way the qBittorrent host writes it. A qBittorrent on Windows takes `D:\downloads`, one on Linux takes `/downloads`.
+
+If you want to manage multiple disks, create one workflow per disk and set a different path for each workflow.
+
+If qBittorrent cannot measure the path, qui treats the read as failed. Free Space never falls back to zero, so an unreadable path cannot trigger a delete.
 
 :::note
-qui does not support Path on server on Windows, and Free Space always uses qBittorrent's reported free space there. The UI disables the option and switches legacy workflows back to the default when you open them.
+qui does not support Path on server on Windows. The UI disables the option and switches legacy workflows back to the default when you open them. Path on the qBittorrent host works on every qui host.
 :::
 
 ### Batching

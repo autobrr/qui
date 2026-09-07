@@ -53,7 +53,7 @@ If enabled, qui reads the same filesystem as qBittorrent. This setting turns on 
 - **Content file download**: Download single files from a torrent through the browser. Right-click a file in the Content tab.
 - **Hardlink detection**: Automations detect whether torrent files have hardlinks into your media library.
 - **Orphan scan**: Find files on disk that no torrent references.
-- **Free space (path)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports.
+- **Free space (path on the qui host)**: Automation rules check free space on a specific mount point instead of the value that qBittorrent reports. On qBittorrent 5.3 and later you can instead read a path on the qBittorrent host, which needs no local access.
 - **Has Missing Files condition**: Automation rules check whether a completed torrent has files missing on disk.
 - **MediaInfo**: Show MediaInfo for a file in the Content tab.
 - **Cross-seed hardlink and reflink mode**: Create links instead of a second copy.
