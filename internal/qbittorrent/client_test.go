@@ -1075,9 +1075,12 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for range 2 {
+	// One caller spells the hash in upper case. The API takes the hash straight
+	// from the URL, so both spellings reach SyncPeers, and both must land on the
+	// same fetch: a second spelling must not open a second rid on one manager.
+	for _, callerHash := range []string{hash, strings.ToUpper(hash)} {
 		wg.Go(func() {
-			_, err := client.SyncPeers(t.Context(), hash)
+			_, err := client.SyncPeers(t.Context(), callerHash)
 			require.NoError(t, err)
 		})
 	}
