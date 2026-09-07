@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -102,17 +103,23 @@ func abandonedDirCandidates(
 	gracePeriod time.Duration,
 	backend fsops.Backend,
 ) []OrphanFile {
+	// The protected sets are the same for every candidate, so normalize them
+	// once rather than once per directory.
+	normRoots := normalizePaths(scanRoots)
+	normCategories := normalizePaths(categoryPaths)
+
 	kept := make(map[string]struct{}, len(dirs))
 	out := make([]OrphanFile, 0, len(dirs))
 
 	for _, dir := range dirs {
-		if isScanRoot(dir.Path, scanRoots) {
+		normDir := normalizePath(dir.Path)
+		if slices.Contains(normRoots, normDir) {
 			continue
 		}
 		if isIgnoredPath(dir.Path, ignorePaths) {
 			continue
 		}
-		if isCategoryDestination(dir.Path, categoryPaths) {
+		if isCategoryDestinationNormalized(normDir, normCategories) {
 			continue
 		}
 		if !dir.ModTime.IsZero() && time.Since(dir.ModTime) < gracePeriod {
@@ -155,25 +162,30 @@ func childrenAllKept(ctx context.Context, dir string, kept map[string]struct{}, 
 	return true
 }
 
+// normalizePaths normalizes a whole list once, for repeated membership tests.
+func normalizePaths(paths []string) []string {
+	normalized := make([]string, len(paths))
+	for i, p := range paths {
+		normalized[i] = normalizePath(p)
+	}
+	return normalized
+}
+
 // isScanRoot reports whether path is one of the roots the run walks. A scan root
 // is a configured destination, so it stays even when empty.
 func isScanRoot(path string, scanRoots []string) bool {
-	nPath := normalizePath(path)
-	for _, root := range scanRoots {
-		if nPath == normalizePath(root) {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(normalizePaths(scanRoots), normalizePath(path))
 }
 
 // isCategoryDestination reports whether path is a category destination or holds
 // one below it. Both stay: qBittorrent will save into them again.
 func isCategoryDestination(path string, categoryPaths []string) bool {
-	nPath := normalizePath(path)
-	for _, categoryPath := range categoryPaths {
-		nCategory := normalizePath(categoryPath)
-		if nPath == nCategory || isPathUnderNormalized(nCategory, nPath) {
+	return isCategoryDestinationNormalized(normalizePath(path), normalizePaths(categoryPaths))
+}
+
+func isCategoryDestinationNormalized(normPath string, normCategories []string) bool {
+	for _, nCategory := range normCategories {
+		if normPath == nCategory || isPathUnderNormalized(nCategory, normPath) {
 			return true
 		}
 	}

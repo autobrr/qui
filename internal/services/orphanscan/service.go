@@ -211,18 +211,35 @@ func validDefaultSavePath(reported string) (string, error) {
 	return savePath, nil
 }
 
+// walkForScope walks one root, collecting file-free directories only when the
+// run will actually use them.
+func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignorePaths []string,
+	gracePeriod time.Duration, backend fsops.Backend, collectDirs bool,
+) ([]OrphanFile, []AbandonedDir, error) {
+	if !collectDirs {
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
+		return orphans, nil, err
+	}
+	orphans, dirs, _, err := walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
+	return orphans, dirs, err
+}
+
 // pruneNestedScanRoots drops roots already covered by another root in the set so
 // an ancestor and its descendants are not walked twice. Callers keep the full
 // set for run.ScanPaths; only the walk is narrowed.
 func pruneNestedScanRoots(roots []string) []string {
+	normalized := make([]string, len(roots))
+	for i, root := range roots {
+		normalized[i] = normalizePath(root)
+	}
+
 	pruned := make([]string, 0, len(roots))
-	for _, root := range roots {
-		nRoot := normalizePath(root)
+	for i, root := range roots {
 		covered := false
-		for _, other := range roots {
+		for j := range roots {
 			// Strict ancestors only, so two spellings of the same directory
 			// never prune each other and leave nothing behind.
-			if isPathUnderNormalized(nRoot, normalizePath(other)) {
+			if isPathUnderNormalized(normalized[i], normalized[j]) {
 				covered = true
 				break
 			}
@@ -693,7 +710,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, dirs, _, err := walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
+		orphans, dirs, err := walkForScope(ctx, root, tfm, ignorePaths, gracePeriod, backend, scope.AbandonedDirs)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)

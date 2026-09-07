@@ -79,7 +79,7 @@ type discUnitDecision struct {
 // Only files are returned as orphans - directories are cleaned up separately after file deletion.
 func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend) ([]OrphanFile, bool, error) {
-	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend)
+	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, false)
 	return orphans, truncated, err
 }
 
@@ -95,7 +95,11 @@ type scanWalker struct {
 
 	// seenDirs records every directory the walk visited with its mtime;
 	// dirsWithFiles marks a directory when any file exists at or below it, so
-	// the difference is the set of file-free subtrees (#1400).
+	// the difference is the set of file-free subtrees (#1400). Both are only
+	// filled when the caller asked for directories, so a scan that does not use
+	// them pays nothing per file.
+	collectDirs   bool
+	normRoot      string
 	seenDirs      map[string]time.Time
 	dirsWithFiles map[string]struct{}
 
@@ -111,7 +115,7 @@ func newScanWalker(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend,
+	backend fsops.Backend, collectDirs bool,
 ) *scanWalker {
 	return &scanWalker{
 		ctx:            ctx,
@@ -127,6 +131,8 @@ func newScanWalker(
 		discUnitCache:  make(map[string]discUnitDecision),
 		discUnitPaths:  make(map[string]struct{}),
 		seenFileIDs:    make(map[hardlink.FileID]struct{}),
+		collectDirs:    collectDirs,
+		normRoot:       normalizePath(root),
 		seenDirs:       make(map[string]time.Time),
 		dirsWithFiles:  make(map[string]struct{}),
 	}
@@ -135,14 +141,13 @@ func newScanWalker(
 // markDirsWithFile records every ancestor of path, up to and including the scan
 // root, as holding a file.
 func (w *scanWalker) markDirsWithFile(path string) {
-	normRoot := normalizePath(w.root)
 	dir := filepath.Dir(path)
 	for {
 		if _, done := w.dirsWithFiles[dir]; done {
 			return
 		}
 		w.dirsWithFiles[dir] = struct{}{}
-		if normalizePath(dir) == normRoot {
+		if normalizePath(dir) == w.normRoot {
 			return
 		}
 		parent := filepath.Dir(dir)
@@ -255,16 +260,16 @@ func (w *scanWalker) orphans() []OrphanFile {
 func walkScanRootCollectingDirs(ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend,
 ) ([]OrphanFile, []AbandonedDir, bool, error) {
-	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend)
+	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, true)
 }
 
 func walkScanRootWithUnitFilter(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
-	backend fsops.Backend,
+	backend fsops.Backend, collectDirs bool,
 ) ([]OrphanFile, []AbandonedDir, bool, error) {
-	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend)
+	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend, collectDirs)
 
 	walkCtx, cancelWalk := context.WithCancel(ctx)
 	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
@@ -307,7 +312,7 @@ func walkScanRootWithUnitFilter(
 			// but orphanscan has its own ignore logic that runs at the walker level.
 			// Directories are never orphan files; they feed disc-unit detection and
 			// the abandoned-directory candidates.
-			if entry.Path != w.root {
+			if w.collectDirs && entry.Path != w.root {
 				w.seenDirs[entry.Path] = entry.ModTime
 			}
 			continue
@@ -318,7 +323,9 @@ func walkScanRootWithUnitFilter(
 
 		// Any file at all keeps its ancestors out of the abandoned set, before
 		// ignore rules and the grace period narrow what counts as an orphan.
-		w.markDirsWithFile(path)
+		if w.collectDirs {
+			w.markDirsWithFile(path)
+		}
 		if isIgnoredPath(path, w.ignorePaths) {
 			continue
 		}
