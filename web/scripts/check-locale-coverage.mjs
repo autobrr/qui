@@ -4,7 +4,13 @@ import path from "node:path"
 const webRoot = path.resolve(import.meta.dirname, "..")
 const localesRoot = path.join(webRoot, "src", "i18n", "locales")
 const enRoot = path.join(localesRoot, "en")
-const deRoot = path.join(localesRoot, "de")
+const supportedLocales = ["fr", "de", "it", "ko", "pt-BR"]
+const locale = process.argv[2]
+if (!supportedLocales.includes(locale)) {
+  console.error(`Unknown locale "${locale}". Use one of: ${supportedLocales.join(", ")}`)
+  process.exit(1)
+}
+const localeRoot = path.join(localesRoot, locale)
 
 const namespaces = [
   "common",
@@ -19,8 +25,7 @@ const namespaces = [
   "automations",
 ]
 
-// Technical terms, brand names, and abbreviations that are acceptable
-// to leave untranslated in de.
+// These technical terms, brand names, and abbreviations can stay untranslated.
 const passthroughTerms = new Set([
   "qBittorrent", "BitTorrent", "autobrr", "qui", "GitHub",
   "Prowlarr", "Jackett", "Sonarr", "Radarr", "Shoutrrr",
@@ -37,9 +42,6 @@ const passthroughTerms = new Set([
   "AM", "PM", "N/A", "I/O",
   "GPL-2.0-or-later",
 ])
-
-// i18next v4 CLDR plural suffixes.
-const pluralSuffixes = ["_zero", "_one", "_two", "_few", "_many", "_other"]
 
 // ---------------------------------------------------------------------------
 // Utility functions
@@ -79,29 +81,6 @@ function extractHtmlTags(str) {
   return tags
 }
 
-function getPluralSuffix(key) {
-  for (const suffix of pluralSuffixes) {
-    if (key.endsWith(suffix)) {
-      return suffix
-    }
-  }
-
-  if (key.endsWith("_plural")) {
-    return "_plural"
-  }
-
-  return null
-}
-
-
-function stripInterpolation(str) {
-  return str.replace(/\{\{[^}]+\}\}/g, "")
-}
-
-function stripHtmlTags(str) {
-  return str.replace(/<\/?[^>]+>/g, "")
-}
-
 function isPassthroughValue(value) {
   if (value.length <= 4) return true
   if (passthroughTerms.has(value)) return true
@@ -132,12 +111,10 @@ function hasBOM(buffer) {
 // Check functions
 // ---------------------------------------------------------------------------
 
-function checkMissingKeys(enFlat, deFlat, namespace) {
+function checkMissingKeys(enFlat, localeFlat, namespace) {
   const errors = []
 
-  // Build set of en plural bases that have _one/_other pairs (v4 CLDR style).
-  // German uses the same one/other split as English, so _one IS expected --
-  // but we tolerate locales that collapse to _other only (i18next falls back).
+  // Find English plural bases with both _one and _other forms.
   const v4PluralBases = new Set()
   for (const key of enFlat.keys()) {
     if (key.endsWith("_one")) {
@@ -149,12 +126,12 @@ function checkMissingKeys(enFlat, deFlat, namespace) {
   }
 
   for (const [key, value] of enFlat) {
-    // Skip _one keys for v4 plural pairs -- a locale providing only _other is valid.
+    // Permit a locale to omit _one when English also has _other.
     if (key.endsWith("_one") && v4PluralBases.has(key.slice(0, -4))) {
       continue
     }
 
-    if (!deFlat.has(key)) {
+    if (!localeFlat.has(key)) {
       const truncated = value.length > 80 ? `${value.slice(0, 77)}...` : value
       errors.push(`${namespace}.${key}: ${JSON.stringify(truncated)}`)
     }
@@ -163,12 +140,12 @@ function checkMissingKeys(enFlat, deFlat, namespace) {
   return errors
 }
 
-function checkExtraKeys(enFlat, deFlat, namespace) {
+function checkExtraKeys(enFlat, localeFlat, namespace) {
   const errors = []
 
-  for (const key of deFlat.keys()) {
+  for (const key of localeFlat.keys()) {
     if (!enFlat.has(key)) {
-      // If de has _other and en has _one/_other pair, that is fine.
+      // Permit an extra _other when English has _one.
       if (key.endsWith("_other") && enFlat.has(`${key.slice(0, -6)}_one`)) {
         continue
       }
@@ -180,24 +157,23 @@ function checkExtraKeys(enFlat, deFlat, namespace) {
   return errors
 }
 
-// Interpolation variables that exist only for English grammar (e.g. appending "s")
-// and can be safely omitted in languages that do not use suffix-based pluralization.
+// Permit translations to omit placeholders used only for English grammar.
 const localeSpecificVars = new Set(["plural"])
 
-function checkInterpolation(enFlat, deFlat, namespace) {
+function checkInterpolation(enFlat, localeFlat, namespace) {
   const errors = []
 
   for (const [key, enValue] of enFlat) {
-    const deValue = deFlat.get(key)
-    if (!deValue) continue
+    const localeValue = localeFlat.get(key)
+    if (!localeValue) continue
 
     const enVars = extractInterpolationVars(enValue)
-    const deVars = extractInterpolationVars(deValue)
+    const localeVars = extractInterpolationVars(localeValue)
 
     for (const v of enVars) {
       if (localeSpecificVars.has(v)) continue
-      if (!deVars.has(v)) {
-        errors.push(`${namespace}.${key}: missing {{${v}}} in de`)
+      if (!localeVars.has(v)) {
+        errors.push(`${namespace}.${key}: missing {{${v}}} in ${locale}`)
       }
     }
   }
@@ -205,19 +181,19 @@ function checkInterpolation(enFlat, deFlat, namespace) {
   return errors
 }
 
-function checkHtmlTags(enFlat, deFlat, namespace) {
+function checkHtmlTags(enFlat, localeFlat, namespace) {
   const errors = []
 
   for (const [key, enValue] of enFlat) {
-    const deValue = deFlat.get(key)
-    if (!deValue) continue
+    const localeValue = localeFlat.get(key)
+    if (!localeValue) continue
 
     const enTags = extractHtmlTags(enValue).sort()
-    const deTags = extractHtmlTags(deValue).sort()
+    const localeTags = extractHtmlTags(localeValue).sort()
 
-    if (enTags.join(",") !== deTags.join(",")) {
-      const missing = enTags.filter((t) => !deTags.includes(t))
-      const extra = deTags.filter((t) => !enTags.includes(t))
+    if (enTags.join(",") !== localeTags.join(",")) {
+      const missing = enTags.filter((t) => !localeTags.includes(t))
+      const extra = localeTags.filter((t) => !enTags.includes(t))
       const parts = []
       if (missing.length) parts.push(`missing <${missing.join(">, <")}>`)
       if (extra.length) parts.push(`extra <${extra.join(">, <")}>`)
@@ -228,10 +204,10 @@ function checkHtmlTags(enFlat, deFlat, namespace) {
   return errors
 }
 
-function checkEmptyStrings(deFlat, namespace) {
+function checkEmptyStrings(localeFlat, namespace) {
   const errors = []
 
-  for (const [key, value] of deFlat) {
+  for (const [key, value] of localeFlat) {
     if (value === "") {
       errors.push(`${namespace}.${key}`)
     }
@@ -280,14 +256,14 @@ const untranslatedReasons = {
   technical: "technical term",
 }
 
-function checkUntranslated(enFlat, deFlat, namespace) {
+function checkUntranslated(enFlat, localeFlat, namespace) {
   const explained = []
   const unexplained = []
 
   for (const [key, enValue] of enFlat) {
-    const deValue = deFlat.get(key)
-    if (!deValue) continue
-    if (deValue !== enValue) continue
+    const localeValue = localeFlat.get(key)
+    if (!localeValue) continue
+    if (localeValue !== enValue) continue
     if (isPassthroughValue(enValue)) continue
 
     const truncated = enValue.length > 60 ? `${enValue.slice(0, 57)}...` : enValue
@@ -303,14 +279,12 @@ function checkUntranslated(enFlat, deFlat, namespace) {
   return { explained, unexplained }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
-if (!fs.existsSync(deRoot)) {
-  console.log("de locale directory not found, skipping coverage check.")
+if (!fs.existsSync(localeRoot)) {
+  console.log(`${locale} locale directory not found, skipping coverage check.`)
   process.exit(0)
 }
 
@@ -330,39 +304,39 @@ const warnings = {
 
 for (const ns of namespaces) {
   const enPath = path.join(enRoot, `${ns}.json`)
-  const dePath = path.join(deRoot, `${ns}.json`)
+  const localePath = path.join(localeRoot, `${ns}.json`)
 
   if (!fs.existsSync(enPath)) {
     errors.missingKeys.push(`${ns}: English locale file missing`)
     continue
   }
 
-  if (!fs.existsSync(dePath)) {
-    errors.missingKeys.push(`${ns}: de locale file missing`)
+  if (!fs.existsSync(localePath)) {
+    errors.missingKeys.push(`${ns}: ${locale} locale file missing`)
     continue
   }
 
-  errors.encoding.push(...checkEncoding(dePath))
+  errors.encoding.push(...checkEncoding(localePath))
 
-  let enData, deData
+  let enData, localeData
   try {
     enData = JSON.parse(fs.readFileSync(enPath, "utf8"))
-    deData = JSON.parse(fs.readFileSync(dePath, "utf8"))
+    localeData = JSON.parse(fs.readFileSync(localePath, "utf8"))
   } catch {
     errors.encoding.push(`${ns}: failed to parse JSON, skipping checks`)
     continue
   }
 
   const enFlat = flattenKeys(enData)
-  const deFlat = flattenKeys(deData)
+  const localeFlat = flattenKeys(localeData)
 
-  errors.missingKeys.push(...checkMissingKeys(enFlat, deFlat, ns))
-  errors.extraKeys.push(...checkExtraKeys(enFlat, deFlat, ns))
-  errors.interpolation.push(...checkInterpolation(enFlat, deFlat, ns))
-  errors.htmlTags.push(...checkHtmlTags(enFlat, deFlat, ns))
-  errors.emptyStrings.push(...checkEmptyStrings(deFlat, ns))
+  errors.missingKeys.push(...checkMissingKeys(enFlat, localeFlat, ns))
+  errors.extraKeys.push(...checkExtraKeys(enFlat, localeFlat, ns))
+  errors.interpolation.push(...checkInterpolation(enFlat, localeFlat, ns))
+  errors.htmlTags.push(...checkHtmlTags(enFlat, localeFlat, ns))
+  errors.emptyStrings.push(...checkEmptyStrings(localeFlat, ns))
 
-  const untranslated = checkUntranslated(enFlat, deFlat, ns)
+  const untranslated = checkUntranslated(enFlat, localeFlat, ns)
   warnings.untranslatedUnexplained.push(...untranslated.unexplained)
   warnings.untranslatedExplained.push(...untranslated.explained)
 }
@@ -375,11 +349,11 @@ const totalErrors = Object.values(errors).reduce((sum, arr) => sum + arr.length,
 const totalWarnings = Object.values(warnings).reduce((sum, arr) => sum + arr.length, 0)
 
 if (totalErrors === 0 && totalWarnings === 0) {
-  console.log("de translation coverage: all checks passed.")
+  console.log(`${locale} translation coverage: all checks passed.`)
   process.exit(0)
 }
 
-console.log("=== de Translation Coverage Report ===\n")
+console.log(`=== ${locale} Translation Coverage Report ===\n`)
 
 function printSection(label, items, severity) {
   if (items.length === 0) return
