@@ -277,7 +277,12 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		}
 	}
 
-	// Pre-build the full query for full batches
+	// Pre-build the full query for full batches.
+	//
+	// The guard on DO UPDATE keeps unchanged rows from being rewritten: most torrents are
+	// complete and seeding, so every sync would rewrite their file rows for nothing
+	// (discussion #2374). cached_at is outside the guard and nothing reads it; freshness
+	// comes from torrent_files_sync.last_synced_at, which cacheIsFresh reads.
 	queryTemplate := `
 			INSERT INTO torrent_files_cache
 			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority,
@@ -293,6 +298,14 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				piece_range_end = excluded.piece_range_end,
 				availability = excluded.availability,
 				cached_at = excluded.cached_at
+			WHERE torrent_files_cache.name_id IS DISTINCT FROM excluded.name_id
+				OR torrent_files_cache.size IS DISTINCT FROM excluded.size
+				OR torrent_files_cache.progress IS DISTINCT FROM excluded.progress
+				OR torrent_files_cache.priority IS DISTINCT FROM excluded.priority
+				OR torrent_files_cache.is_seed IS DISTINCT FROM excluded.is_seed
+				OR torrent_files_cache.piece_range_start IS DISTINCT FROM excluded.piece_range_start
+				OR torrent_files_cache.piece_range_end IS DISTINCT FROM excluded.piece_range_end
+				OR torrent_files_cache.availability IS DISTINCT FROM excluded.availability
 		`
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 12, fileBatchSize)
 	t := time.Now()
