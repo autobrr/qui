@@ -428,7 +428,7 @@ func TestResolveCategoryPath_DeepInheritanceIsNotDropped(t *testing.T) {
 	categories := map[string]qbt.Category{"top": {Name: "top", SavePath: root}}
 	name := "top"
 	want := root
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		segment := fmt.Sprintf("s%d", i)
 		name += "/" + segment
 		want = filepath.Join(want, segment)
