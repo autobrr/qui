@@ -126,6 +126,8 @@ Two entry points open the same flow:
 
 qui ranks torrents from the same instance by file-size overlap with the uploaded file. You can also pick any other torrent. A pick with no file overlap shows a warning, but you can proceed.
 
+You select one target torrent, not several. To cross-seed a season pack against the episodes that you seed, use [Season Pack Assembly](#season-pack-assembly), which is automatic. A manual match of a pack against one episode pairs the data of that episode only. The other episodes stay unlinked, and the recheck leaves the torrent paused.
+
 A manual selection bypasses candidate discovery and the category and content-type gates. Link mode per instance settings and tag and category treatment stay the same as the automatic pipeline. Every manual match runs a full recheck before it seeds; you cannot skip it, and it decides a wrong pick. A failed recheck leaves the torrent paused for manual review.
 
 The dialog prefills the category from the target torrent and the tags from the cross-seed tag settings. You can edit both. If **Use Custom Category** is on, every cross-seed goes to that one category. The dialog then shows the category and locks it. The save path shows the effective destination and is read-only. With **By Tracker** directory organization, the tracker folder comes from the announce URL in the uploaded file. The tracker does not need a configured indexer.
