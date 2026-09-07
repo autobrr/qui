@@ -34,6 +34,15 @@ qui detects the features that each qBittorrent instance supports and adjusts the
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. If a build links against libtorrent 1.x, it ignores the `format` parameter.
 :::
 
+## qBittorrent 5.3 compatibility
+
+qui supports the API changes in qBittorrent 5.3 build `55d169a94` and keeps support for older versions, including 5.2.2.
+Torrent adds keep the same skip-checking behavior after an upgrade.
+RSS rule edits retain seed mode and share-limit mode, and torrent creation dates keep the same display format.
+
+The preferences API includes the new mail-encryption and torrent-file backup fields.
+Configure these options in qBittorrent. qui does not add controls for them.
+
 ## Authentication compatibility
 
 ### API key auth with reverse-proxy Basic Auth
