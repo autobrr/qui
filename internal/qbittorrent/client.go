@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"slices"
@@ -64,6 +65,14 @@ func splitHostUserinfo(host string) (cleanHost, user, pass string) {
 // fetch failure against a real qBittorrent.
 var errInvalidWebAPIVersion = errors.New("invalid qBittorrent WebAPI version")
 
+const peerSyncIdleTimeout = 5 * time.Minute
+
+type peerSyncEntry struct {
+	manager  *qbt.PeerSyncManager
+	lastUsed time.Time
+	timer    *time.Timer
+}
+
 type Client struct {
 	*qbt.Client
 	instanceID                 int
@@ -88,7 +97,7 @@ type Client struct {
 	lastHealthCheck            time.Time
 	isHealthy                  bool
 	syncManager                *qbt.SyncManager
-	peerSyncManager            map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
+	peerSyncManager            map[string]*peerSyncEntry
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates    *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions    map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
@@ -100,6 +109,7 @@ type Client struct {
 	healthMu             sync.RWMutex
 	appInfoMu            sync.RWMutex
 	appInfoGroup         singleflight.Group
+	peerSyncGroup        singleflight.Group
 	preferencesCache     *qbt.AppPreferences
 	preferencesJSON      json.RawMessage
 	preferencesFetchedAt time.Time
@@ -179,7 +189,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
-		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
+		peerSyncManager:   make(map[string]*peerSyncEntry),
 		completionState:   make(map[string]bool),
 		addedState:        make(map[string]struct{}),
 	}
@@ -207,6 +217,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
+		client.prunePeerSyncManagers(data)
 		client.countsGen.Add(1)
 		client.updateHealthStatus(true)
 		client.updateServerState(data)
@@ -494,36 +505,6 @@ func (c *Client) GetCachedServerState() *qbt.ServerState {
 
 	stateCopy := *c.lastServerState
 	return &stateCopy
-}
-
-// UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
-// This ensures our local peer state stays synchronized with the proxy client's view
-func (c *Client) UpdateWithPeersData(hash string, data *qbt.TorrentPeersResponse) {
-	// Get or create the peer sync manager for this torrent
-	peerSync := c.GetOrCreatePeerSyncManager(hash)
-
-	// Trigger a background sync to refresh the peer state
-	// We can't directly inject the data, but we can trigger a sync to keep the cache warm
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := peerSync.Sync(ctx); err != nil {
-			log.Error().
-				Err(err).
-				Int("instanceID", c.instanceID).
-				Str("hash", hash).
-				Msg("Failed to sync peer manager after intercepted peer data")
-			return
-		}
-
-		log.Debug().
-			Int("instanceID", c.instanceID).
-			Str("hash", hash).
-			Int("peerCount", len(data.Peers)).
-			Int64("rid", data.Rid).
-			Msg("Updated peer state with fresh data from intercepted request")
-	}()
 }
 
 func (c *Client) SupportsRenameTorrent() bool {
@@ -937,23 +918,87 @@ func isStoppedOrErrorState(state qbt.TorrentState) bool {
 		state == qbt.TorrentStateError
 }
 
+// peerSyncFetchTimeout bounds a peer fetch that outlives the reader which started it.
+const peerSyncFetchTimeout = 30 * time.Second
+
+// SyncPeers fetches peer updates for a torrent, merges them and returns the merged
+// list. Readers of the same hash share one fetch, so the rid a request carries is
+// always the rid the previous merge produced: an older snapshot can no longer land
+// on top of a newer one and restore a peer the server already removed.
+// Callers must not mutate the returned response, it is shared by every reader that
+// joined the same fetch.
+func (c *Client) SyncPeers(ctx context.Context, hash string) (*qbt.TorrentPeersResponse, error) {
+	// The manager is keyed on the lowered hash, so the fetch must be too:
+	// otherwise two spellings of one hash share a manager but not a fetch.
+	hash = strings.ToLower(hash)
+	peerSync := c.GetOrCreatePeerSyncManager(hash)
+
+	// Joiners share the leader's result, so the fetch must not die with the
+	// leader's context; peerSyncFetchTimeout still bounds it. DoChan lets a
+	// caller whose own request went away leave without waiting for the fetch.
+	ch := c.peerSyncGroup.DoChan(hash, func() (any, error) {
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), peerSyncFetchTimeout)
+		defer cancel()
+
+		if err := peerSync.Sync(fetchCtx); err != nil {
+			return nil, err
+		}
+		return peerSync.GetPeers(), nil
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		return result.Val.(*qbt.TorrentPeersResponse), nil
+	}
+}
+
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent
 func (c *Client) GetOrCreatePeerSyncManager(hash string) *qbt.PeerSyncManager {
+	hash = strings.ToLower(hash)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Check if we already have a sync manager for this torrent
-	if peerSync, exists := c.peerSyncManager[hash]; exists {
-		return peerSync
+	if entry, exists := c.peerSyncManager[hash]; exists {
+		entry.lastUsed = time.Now()
+		entry.timer.Reset(peerSyncIdleTimeout)
+		return entry.manager
 	}
 
-	// Create a new peer sync manager for this torrent
 	peerSyncOpts := qbt.DefaultPeerSyncOptions()
 	peerSyncOpts.AutoSync = false // We'll sync manually when requested
-	peerSync := c.NewPeerSyncManager(hash, peerSyncOpts)
-	c.peerSyncManager[hash] = peerSync
+	entry := &peerSyncEntry{
+		manager:  c.NewPeerSyncManager(hash, peerSyncOpts),
+		lastUsed: time.Now(),
+	}
+	entry.timer = time.AfterFunc(peerSyncIdleTimeout, func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		// A callback queued before Reset must not remove a renewed or replaced entry.
+		if c.peerSyncManager[hash] == entry && time.Since(entry.lastUsed) >= peerSyncIdleTimeout {
+			delete(c.peerSyncManager, hash)
+		}
+	})
+	c.peerSyncManager[hash] = entry
 
-	return peerSync
+	return entry.manager
+}
+
+func (c *Client) prunePeerSyncManagers(data *qbt.MainData) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// OnUpdate supplies the complete merged torrent map, including after a delta.
+	maps.DeleteFunc(c.peerSyncManager, func(hash string, entry *peerSyncEntry) bool {
+		if _, exists := data.Torrents[hash]; exists {
+			return false
+		}
+		entry.timer.Stop()
+		return true
+	})
 }
 
 // applyOptimisticCacheUpdate applies optimistic updates for the given hashes and action
