@@ -205,6 +205,7 @@
       "SUPER_SEEDING": "Super Seeding",
       "IS_UNREGISTERED": "Unregistriert",
       "HAS_MISSING_FILES": "Hat fehlende Dateien",
+      "HAS_SKIPPED_FILES": "Hat übersprungene Dateien",
       "IS_GROUPED": "Ist gruppiert",
       "EXISTS_ON_OTHER_INSTANCE": "Existiert auf anderer Instanz",
       "SEEDING_ON_OTHER_INSTANCE": "Seeding auf anderer Instanz",

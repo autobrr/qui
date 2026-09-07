@@ -1016,6 +1016,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
+	s.setupSkippedFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1109,6 +1110,30 @@ func (s *Service) setupMissingFilesContext(
 		return
 	}
 	evalCtx.HasMissingFilesByHash = missing
+}
+
+// setupSkippedFilesContext sets up skipped files detection if needed for preview sorting/conditions.
+func (s *Service) setupSkippedFilesContext(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	cond *RuleCondition,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+) {
+	if rule == nil {
+		return
+	}
+	if !ConditionUsesField(cond, FieldHasSkippedFiles) && !sortingConfigUsesField(rule.SortingConfig, FieldHasSkippedFiles) {
+		return
+	}
+
+	skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
+		return
+	}
+	evalCtx.HasSkippedFilesByHash = skipped
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -1557,6 +1582,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
+	s.setupSkippedFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -2099,6 +2125,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
 		} else {
 			evalCtx.HasMissingFilesByHash = missing
+		}
+	}
+
+	// On-demand skipped files detection (only if rules use HAS_SKIPPED_FILES)
+	if rulesUseCondition(eligibleRules, FieldHasSkippedFiles) {
+		skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
+		} else {
+			evalCtx.HasSkippedFilesByHash = skipped
 		}
 	}
 

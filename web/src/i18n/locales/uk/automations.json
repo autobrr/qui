@@ -201,6 +201,7 @@
       "SUPER_SEEDING": "Суперроздавання",
       "IS_UNREGISTERED": "Незареєстрований",
       "HAS_MISSING_FILES": "Є відсутні файли",
+      "HAS_SKIPPED_FILES": "Є пропущені файли",
       "IS_GROUPED": "Згруповано",
       "EXISTS_ON_OTHER_INSTANCE": "Існує в іншому екземплярі",
       "SEEDING_ON_OTHER_INSTANCE": "Роздається в іншому екземплярі",
