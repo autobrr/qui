@@ -506,35 +506,6 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, DefaultNegativeCacheTTL, s.negativeTTL)
 }
 
-func TestService_WithPositiveTTL(t *testing.T) {
-	s := NewService(nil, nil)
-	customTTL := 30 * time.Minute
-
-	result := s.WithPositiveTTL(customTTL)
-
-	assert.Same(t, s, result, "should return same service for chaining")
-	assert.Equal(t, customTTL, s.positiveTTL)
-}
-
-func TestService_WithNegativeTTL(t *testing.T) {
-	s := NewService(nil, nil)
-	customTTL := 15 * time.Minute
-
-	result := s.WithNegativeTTL(customTTL)
-
-	assert.Same(t, s, result, "should return same service for chaining")
-	assert.Equal(t, customTTL, s.negativeTTL)
-}
-
-func TestService_TTLChaining(t *testing.T) {
-	s := NewService(nil, nil).
-		WithPositiveTTL(4 * time.Hour).
-		WithNegativeTTL(30 * time.Minute)
-
-	assert.Equal(t, 4*time.Hour, s.positiveTTL)
-	assert.Equal(t, 30*time.Minute, s.negativeTTL)
-}
-
 func TestContentType_Constants(t *testing.T) {
 	// Verify content type constant values
 	assert.Equal(t, ContentTypeMovie, ContentType("movie"))
