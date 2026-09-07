@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,11 +48,6 @@ func NewRepository(db dbinterface.Querier) *Repository {
 	return &Repository{db: db}
 }
 
-// GetFiles retrieves all cached files for a torrent
-func (r *Repository) GetFiles(ctx context.Context, instanceID int, hash string) ([]CachedFile, error) {
-	return r.getFiles(ctx, r.db, instanceID, hash)
-}
-
 // GetFilesBatch retrieves cached files for multiple torrents at once.
 func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string][]CachedFile, error) {
 	cleaned := dedupeHashes(hashes)
@@ -60,7 +56,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 	}
 
 	results := make(map[string][]CachedFile, len(cleaned))
-	for _, batch := range chunkHashes(cleaned, maxBatchItems) {
+	for batch := range slices.Chunk(cleaned, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
 		args = append(args, instanceID)
 		for _, h := range batch {
@@ -118,65 +114,6 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 	}
 
 	return results, nil
-}
-
-// GetFilesTx retrieves all cached files for a torrent within a transaction
-func (r *Repository) GetFilesTx(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, hash string) ([]CachedFile, error) {
-	return r.getFiles(ctx, tx, instanceID, hash)
-}
-
-// getFiles is the internal implementation that works with any querier (db or tx)
-func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, hash string) ([]CachedFile, error) {
-	query := `
-		SELECT id, instance_id, torrent_hash, file_index, name, size, progress,
-		       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
-		FROM torrent_files_cache_view
-		WHERE instance_id = ? AND torrent_hash = ?
-		ORDER BY file_index ASC
-	`
-
-	rows, err := q.QueryContext(ctx, query, instanceID, hash)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var files []CachedFile
-	for rows.Next() {
-		var f CachedFile
-		var isSeed sql.NullInt64
-		err := rows.Scan(
-			&f.ID,
-			&f.InstanceID,
-			&f.TorrentHash,
-			&f.FileIndex,
-			&f.Name,
-			&f.Size,
-			&f.Progress,
-			&f.Priority,
-			&isSeed,
-			&f.PieceRangeStart,
-			&f.PieceRangeEnd,
-			&f.Availability,
-			&f.CachedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		f.IsSeed = decodeNullableBoolFromInt(isSeed)
-
-		files = append(files, f)
-	}
-
-	return files, rows.Err()
-}
-
-// querier interface for methods that accept db or tx
-type querier interface {
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
 // UpsertFiles inserts or updates cached file information.
@@ -361,8 +298,6 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 // DeleteFiles removes all cached files for a torrent.
 // Returns nil if successful or if no cache existed for the given torrent.
-// To distinguish between "deleted" vs "nothing to delete", check the logs or
-// use GetFiles before calling this method.
 func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash string) error {
 	// Start a transaction
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -419,11 +354,6 @@ func decodeNullableBoolFromInt(value sql.NullInt64) *bool {
 	return &result
 }
 
-// GetSyncInfo retrieves sync metadata for a torrent
-func (r *Repository) GetSyncInfo(ctx context.Context, instanceID int, hash string) (*SyncInfo, error) {
-	return r.getSyncInfo(ctx, r.db, instanceID, hash)
-}
-
 // GetSyncInfoBatch retrieves sync metadata for multiple torrents in a single query.
 func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashes []string) (map[string]*SyncInfo, error) {
 	cleaned := dedupeHashes(hashes)
@@ -432,7 +362,7 @@ func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashe
 	}
 
 	results := make(map[string]*SyncInfo, len(cleaned))
-	for _, batch := range chunkHashes(cleaned, maxBatchItems) {
+	for batch := range slices.Chunk(cleaned, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
 		args = append(args, instanceID)
 		for _, h := range batch {
@@ -475,74 +405,6 @@ func (r *Repository) GetSyncInfoBatch(ctx context.Context, instanceID int, hashe
 	}
 
 	return results, nil
-}
-
-// GetSyncInfoTx retrieves sync metadata for a torrent within a transaction
-func (r *Repository) GetSyncInfoTx(ctx context.Context, tx dbinterface.TxQuerier, instanceID int, hash string) (*SyncInfo, error) {
-	return r.getSyncInfo(ctx, tx, instanceID, hash)
-}
-
-// getSyncInfo is the internal implementation that works with any querier (db or tx)
-func (r *Repository) getSyncInfo(ctx context.Context, q querier, instanceID int, hash string) (*SyncInfo, error) {
-	query := `
-		SELECT instance_id, torrent_hash, last_synced_at, torrent_progress, file_count
-		FROM torrent_files_sync_view
-		WHERE instance_id = ? AND torrent_hash = ?
-	`
-
-	var info SyncInfo
-	err := q.QueryRowContext(ctx, query, instanceID, hash).Scan(
-		&info.InstanceID,
-		&info.TorrentHash,
-		&info.LastSyncedAt,
-		&info.TorrentProgress,
-		&info.FileCount,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &info, nil
-}
-
-// UpsertSyncInfo inserts or updates sync metadata
-func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
-	// Start a transaction
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	// Intern the torrent hash
-	ids, err := dbinterface.InternStrings(ctx, tx, info.TorrentHash)
-	if err != nil {
-		return fmt.Errorf("failed to intern torrent_hash: %w", err)
-	}
-	hashID := ids[0]
-
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO torrent_files_sync
-		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
-			last_synced_at = excluded.last_synced_at,
-			torrent_progress = excluded.torrent_progress,
-			file_count = excluded.file_count
-	`,
-		info.InstanceID,
-		hashID,
-		info.LastSyncedAt,
-		info.TorrentProgress,
-		info.FileCount,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
 }
 
 // UpsertSyncInfoBatch inserts or updates sync metadata for multiple torrents
@@ -670,7 +532,7 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 	}
 
 	// Delete files for all valid hashes
-	for _, batch := range chunkInts(validHashIDs, maxBatchItems) {
+	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
 		args = append(args, instanceID)
 		for _, id := range batch {
@@ -684,7 +546,7 @@ func (r *Repository) DeleteTorrentCache(ctx context.Context, instanceID int, has
 	}
 
 	// Delete sync info for all valid hashes
-	for _, batch := range chunkInts(validHashIDs, maxBatchItems) {
+	for batch := range slices.Chunk(validHashIDs, maxBatchItems) {
 		args := make([]any, 0, len(batch)+1)
 		args = append(args, instanceID)
 		for _, id := range batch {
@@ -881,30 +743,6 @@ func dedupeHashes(hashes []string) []string {
 		unique = append(unique, h)
 	}
 	return unique
-}
-
-func chunkHashes(hashes []string, size int) [][]string {
-	if size <= 0 || len(hashes) == 0 {
-		return nil
-	}
-	var chunks [][]string
-	for start := 0; start < len(hashes); start += size {
-		end := min(start+size, len(hashes))
-		chunks = append(chunks, hashes[start:end])
-	}
-	return chunks
-}
-
-func chunkInts(ints []int64, size int) [][]int64 {
-	if size <= 0 || len(ints) == 0 {
-		return nil
-	}
-	var chunks [][]int64
-	for start := 0; start < len(ints); start += size {
-		end := min(start+size, len(ints))
-		chunks = append(chunks, ints[start:end])
-	}
-	return chunks
 }
 
 func buildPlaceholders(count int) string {
