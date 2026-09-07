@@ -240,14 +240,6 @@ export const TORRENT_STATES = [
   { value: "missingFiles", label: "Missing Files" },
 ];
 
-// Delete mode options
-export const DELETE_MODES = [
-  { value: "delete", label: "Remove from client" },
-  { value: "deleteWithFiles", label: "Remove with files" },
-  { value: "deleteWithFilesPreserveCrossSeeds", label: "Remove with files (preserve cross-seeds)" },
-  { value: "deleteWithFilesIncludeCrossSeeds", label: "Remove with files (include cross-seeds)" },
-];
-
 // Field groups for organized selection
 export const FIELD_GROUPS = [
   {
@@ -332,15 +324,6 @@ export function getOperatorsForField(field: string) {
 
   return baseOperators;
 }
-
-// Unit conversion helpers for display
-export const BYTE_UNITS = [
-  { value: 1, label: "B" },
-  { value: 1024, label: "KiB" },
-  { value: 1024 * 1024, label: "MiB" },
-  { value: 1024 * 1024 * 1024, label: "GiB" },
-  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
-];
 
 export const DURATION_UNITS = [
   { value: 1, label: "seconds" },
@@ -472,13 +455,5 @@ export function getTranslatedHardlinkScopes(t: TFunction): { value: string; labe
   return HARDLINK_SCOPE_VALUES.map((scope) => ({
     value: scope.value,
     label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
-  }));
-}
-
-/** Get translated delete modes */
-export function getTranslatedDeleteModes(t: TFunction): { value: string; label: string }[] {
-  return DELETE_MODES.map((mode) => ({
-    value: mode.value,
-    label: t(`queryBuilder.deleteModes.${mode.value}`, { defaultValue: mode.label }),
   }));
 }

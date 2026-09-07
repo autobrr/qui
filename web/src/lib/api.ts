@@ -34,7 +34,6 @@ import type {
   CrossSeedRun,
   CrossSeedSearchRun,
   CrossSeedSearchSettings,
-  CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
   DiscScanRun,
   ManualCrossSeedApplyResponse,
@@ -50,7 +49,6 @@ import type {
   DirScanDirectoryCreate,
   DirScanTriggerResponse,
   DirScanDirectoryUpdate,
-  DirScanFile,
   DirScanRequeueResponse,
   DirScanRun,
   DirScanRunInjection,
@@ -71,7 +69,6 @@ import type {
   InstanceCrossSeedCompletionSettings,
   InstanceFormData,
   InstanceReannounceActivity,
-  InstanceReannounceCandidate,
   InstanceResponse,
   LocalCrossSeedMatch,
   LogExclusions,
@@ -93,7 +90,6 @@ import type {
   RefreshRSSItemRequest,
   RegexValidationResult,
   RemoveRSSItemRequest,
-  RenameRSSRuleRequest,
   RestoreMode,
   RestorePlan,
   RestoreResult,
@@ -114,10 +110,7 @@ import type {
   TorrentResponse,
   TorrentTracker,
   TorznabIndexer,
-  TorznabIndexerError,
   TorznabIndexerFormData,
-  TorznabIndexerHealth,
-  TorznabIndexerLatencyStats,
   TorznabRecentSearch,
   TorznabSearchCacheMetadata,
   TorznabSearchCacheStats,
@@ -137,8 +130,6 @@ import type {
   ArrInstance,
   ArrInstanceFormData,
   ArrInstanceUpdateData,
-  ArrResolveRequest,
-  ArrResolveResponse,
   ArrTestConnectionRequest,
   ArrTestResponse
 } from "@/types/arr"
@@ -698,12 +689,6 @@ class ApiClient {
   ): Promise<InstanceReannounceActivity[]> {
     const query = typeof limit === "number" ? `?limit=${limit}` : ""
     return this.request<InstanceReannounceActivity[]>(`/instances/${instanceId}/reannounce/activity${query}`)
-  }
-
-  async getInstanceReannounceCandidates(
-    instanceId: number
-  ): Promise<InstanceReannounceCandidate[]> {
-    return this.request<InstanceReannounceCandidate[]>(`/instances/${instanceId}/reannounce/candidates`)
   }
 
   async reorderInstances(instanceIds: number[]): Promise<InstanceResponse[]> {
@@ -1580,13 +1565,6 @@ class ApiClient {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings")
   }
 
-  async updateCrossSeedSettings(payload: CrossSeedAutomationSettings): Promise<CrossSeedAutomationSettings> {
-    return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    })
-  }
-
   async patchCrossSeedSettings(payload: CrossSeedAutomationSettingsPatch): Promise<CrossSeedAutomationSettings> {
     return this.request<CrossSeedAutomationSettings>("/cross-seed/settings", {
       method: "PATCH",
@@ -1631,13 +1609,6 @@ class ApiClient {
 
   async getCrossSeedSearchSettings(): Promise<CrossSeedSearchSettings> {
     return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings")
-  }
-
-  async patchCrossSeedSearchSettings(payload: CrossSeedSearchSettingsPatch): Promise<CrossSeedSearchSettings> {
-    return this.request<CrossSeedSearchSettings>("/cross-seed/search/settings", {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    })
   }
 
   async getCrossSeedStatus(): Promise<CrossSeedAutomationStatus> {
@@ -1711,27 +1682,6 @@ class ApiClient {
 
   async getTorrentTrackers(instanceId: number, hash: string): Promise<TorrentTracker[]> {
     return this.request<TorrentTracker[]>(`/instances/${instanceId}/torrents/${hash}/trackers`)
-  }
-
-  async editTorrentTracker(instanceId: number, hash: string, oldURL: string, newURL: string): Promise<void> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`, {
-      method: "PUT",
-      body: JSON.stringify({ oldURL, newURL }),
-    })
-  }
-
-  async addTorrentTrackers(instanceId: number, hash: string, urls: string): Promise<void> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`, {
-      method: "POST",
-      body: JSON.stringify({ urls }),
-    })
-  }
-
-  async removeTorrentTrackers(instanceId: number, hash: string, urls: string): Promise<void> {
-    return this.request(`/instances/${instanceId}/torrents/${hash}/trackers`, {
-      method: "DELETE",
-      body: JSON.stringify({ urls }),
-    })
   }
 
   async renameTorrent(instanceId: number, hash: string, name: string): Promise<void> {
@@ -1984,12 +1934,6 @@ class ApiClient {
     })
   }
 
-  async applyAutomations(instanceId: number): Promise<void> {
-    return this.request(`/instances/${instanceId}/automations/apply`, {
-      method: "POST",
-    })
-  }
-
   async dryRunAutomation(instanceId: number, payload: AutomationInput): Promise<AutomationDryRunResult> {
     return this.request<AutomationDryRunResult>(`/instances/${instanceId}/automations/dry-run`, {
       method: "POST",
@@ -2125,19 +2069,6 @@ class ApiClient {
     })
   }
 
-  async validateLicense(licenseKey: string): Promise<{
-    valid: boolean
-    productName?: string
-    expiresAt?: string
-    message?: string
-    error?: string
-  }> {
-    return this.request("/license/validate", {
-      method: "POST",
-      body: JSON.stringify({ licenseKey }),
-    })
-  }
-
   async getLicensedThemes(): Promise<{ hasPremiumAccess: boolean }> {
     return this.request("/license/licensed")
   }
@@ -2154,10 +2085,6 @@ class ApiClient {
 
   async deleteLicense(licenseKey: string): Promise<{ message: string }> {
     return this.request(`/license/${licenseKey}`, { method: "DELETE" })
-  }
-
-  async refreshLicenses(): Promise<{ message: string }> {
-    return this.request("/license/refresh", { method: "POST" })
   }
 
   // Built-in themes (public; premium CSS license-gated server-side)
@@ -2204,10 +2131,6 @@ class ApiClient {
       method: "PATCH",
       body: JSON.stringify(preferences),
     })
-  }
-
-  async getAlternativeSpeedLimitsMode(instanceId: number): Promise<{ enabled: boolean }> {
-    return this.request<{ enabled: boolean }>(`/instances/${instanceId}/alternative-speed-limits`)
   }
 
   async toggleAlternativeSpeedLimits(instanceId: number): Promise<{ enabled: boolean }> {
@@ -2404,10 +2327,6 @@ class ApiClient {
     return this.request<string[]>("/torznab/indexers/tracker-domains")
   }
 
-  async getTorznabIndexer(id: number): Promise<TorznabIndexer> {
-    return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
-  }
-
   async createTorznabIndexer(data: TorznabIndexerFormData): Promise<IndexerResponse> {
     return this.request<IndexerResponse>("/torznab/indexers", {
       method: "POST",
@@ -2544,23 +2463,6 @@ class ApiClient {
     })
   }
 
-  async getAllIndexerHealth(): Promise<TorznabIndexerHealth[]> {
-    return this.request<TorznabIndexerHealth[]>("/torznab/indexers/health")
-  }
-
-  async getIndexerHealth(id: number): Promise<TorznabIndexerHealth> {
-    return this.request<TorznabIndexerHealth>(`/torznab/indexers/${id}/health`)
-  }
-
-  async getIndexerErrors(id: number, limit?: number): Promise<TorznabIndexerError[]> {
-    const params = limit ? `?limit=${limit}` : ""
-    return this.request<TorznabIndexerError[]>(`/torznab/indexers/${id}/errors${params}`)
-  }
-
-  async getIndexerStats(id: number): Promise<TorznabIndexerLatencyStats[]> {
-    return this.request<TorznabIndexerLatencyStats[]>(`/torznab/indexers/${id}/stats`)
-  }
-
   // Orphan Scan endpoints
   async getOrphanScanSettings(instanceId: number): Promise<OrphanScanSettings> {
     return this.request<OrphanScanSettings>(`/instances/${instanceId}/orphan-scan/settings`)
@@ -2635,10 +2537,6 @@ class ApiClient {
     return this.request<ArrInstance[]>("/arr/instances")
   }
 
-  async getArrInstance(id: number): Promise<ArrInstance> {
-    return this.request<ArrInstance>(`/arr/instances/${id}`)
-  }
-
   async createArrInstance(data: ArrInstanceFormData): Promise<ArrInstance> {
     return this.request<ArrInstance>("/arr/instances", {
       method: "POST",
@@ -2665,13 +2563,6 @@ class ApiClient {
 
   async testArrConnection(data: ArrTestConnectionRequest): Promise<ArrTestResponse> {
     return this.request<ArrTestResponse>("/arr/test", {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
-  }
-
-  async resolveArrTitle(data: ArrResolveRequest): Promise<ArrResolveResponse> {
-    return this.request<ArrResolveResponse>("/arr/resolve", {
       method: "POST",
       body: JSON.stringify(data),
     })
@@ -2730,10 +2621,6 @@ class ApiClient {
 
   async listDirScanDirectories(): Promise<DirScanDirectory[]> {
     return this.request<DirScanDirectory[]>("/dir-scan/directories")
-  }
-
-  async getDirScanDirectory(directoryId: number): Promise<DirScanDirectory> {
-    return this.request<DirScanDirectory>(`/dir-scan/directories/${directoryId}`)
   }
 
   async createDirScanDirectory(data: DirScanDirectoryCreate): Promise<DirScanDirectory> {
@@ -2813,24 +2700,6 @@ class ApiClient {
     )
   }
 
-  async listDirScanFiles(
-    directoryId: number,
-    options?: { limit?: number; offset?: number; status?: string }
-  ): Promise<DirScanFile[]> {
-    const params = new URLSearchParams()
-    if (options?.limit) {
-      params.set("limit", String(options.limit))
-    }
-    if (options?.offset) {
-      params.set("offset", String(options.offset))
-    }
-    if (options?.status) {
-      params.set("status", options.status)
-    }
-    const suffix = params.toString() ? `?${params.toString()}` : ""
-    return this.request<DirScanFile[]>(`/dir-scan/directories/${directoryId}/files${suffix}`)
-  }
-
   // RSS Feed Management
 
   async getRSSItems(instanceId: number, withData = true): Promise<RSSItems> {
@@ -2895,13 +2764,6 @@ class ApiClient {
   async setRSSRule(instanceId: number, data: SetRSSRuleRequest): Promise<void> {
     return this.request<void>(`/instances/${instanceId}/rss/rules`, {
       method: "POST",
-      body: JSON.stringify(data),
-    })
-  }
-
-  async renameRSSRule(instanceId: number, ruleName: string, data: RenameRSSRuleRequest): Promise<void> {
-    return this.request<void>(`/instances/${instanceId}/rss/rules/${encodeURIComponent(ruleName)}/rename`, {
-      method: "PUT",
       body: JSON.stringify(data),
     })
   }

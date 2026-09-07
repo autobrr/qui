@@ -7,7 +7,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
-import { formatAddedOn, formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
+import { formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
 
 /**
  * Hook that provides date/time formatting functions that automatically use current user preferences
@@ -54,14 +54,6 @@ export function useDateTimeFormatters() {
       formatDate: (date: Date) => {
         void activeLocale
         return formatDate(date, preferences)
-      },
-
-      /**
-       * Format the "Added On" date for compatibility with existing components
-       */
-      formatAddedOn: (addedOn: number) => {
-        void activeLocale
-        return formatAddedOn(addedOn, preferences)
       },
 
       /**

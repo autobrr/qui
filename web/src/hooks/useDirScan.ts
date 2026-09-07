@@ -53,17 +53,6 @@ export function useDirScanDirectories(options?: { enabled?: boolean }) {
   })
 }
 
-export function useDirScanDirectory(directoryId: number, options?: { enabled?: boolean }) {
-  const shouldEnable = (options?.enabled ?? true) && directoryId > 0
-
-  return useQuery({
-    queryKey: ["dir-scan", "directory", directoryId],
-    queryFn: () => api.getDirScanDirectory(directoryId),
-    enabled: shouldEnable,
-    staleTime: 30_000,
-  })
-}
-
 export function useCreateDirScanDirectory() {
   const queryClient = useQueryClient()
 
@@ -190,26 +179,6 @@ export function useDirScanRuns(
       }
       return runs.some(isRunActive) ? 1_000 : false
     },
-  })
-}
-
-export function useDirScanFiles(
-  directoryId: number,
-  options?: { limit?: number; offset?: number; status?: string; enabled?: boolean }
-) {
-  const { limit, offset, status, enabled } = options ?? {}
-  const shouldEnable = (enabled ?? true) && directoryId > 0
-
-  return useQuery({
-    queryKey: ["dir-scan", "directory", directoryId, "files", { limit, offset, status }],
-    queryFn: () =>
-      api.listDirScanFiles(directoryId, {
-        ...(limit !== undefined ? { limit } : {}),
-        ...(offset !== undefined ? { offset } : {}),
-        ...(status !== undefined ? { status } : {}),
-      }),
-    enabled: shouldEnable,
-    staleTime: 30_000,
   })
 }
 

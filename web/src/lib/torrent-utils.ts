@@ -74,61 +74,6 @@ export function getTorrentDisplayHash(primary?: HashSource | null, fallback?: Ha
   return resolveTorrentHashes(primary, fallback).canonicalHash
 }
 
-/**
- * Get common tags from selected torrents (tags that ALL selected torrents have)
- */
-export function getCommonTags(torrents: Torrent[]): string[] {
-  if (torrents.length === 0) return []
-
-  // Fast path for single torrent
-  if (torrents.length === 1) {
-    const tags = torrents[0].tags
-    return tags ? tags.split(",").map(t => t.trim()).filter(Boolean) : []
-  }
-
-  // Initialize with first torrent's tags
-  const firstTorrent = torrents[0]
-  if (!firstTorrent.tags) return []
-
-  // Use a Set for O(1) lookups
-  const firstTorrentTagsSet = new Set(
-    firstTorrent.tags.split(",").map(t => t.trim()).filter(Boolean)
-  )
-
-  // If first torrent has no tags, no common tags exist
-  if (firstTorrentTagsSet.size === 0) return []
-
-  // Convert to array once for iteration
-  const firstTorrentTags = Array.from(firstTorrentTagsSet)
-
-  // Use Object as a counter map for better performance with large datasets
-  const tagCounts: Record<string, number> = {}
-  for (const tag of firstTorrentTags) {
-    tagCounts[tag] = 1 // First torrent has this tag
-  }
-
-  // Count occurrences of each tag across all torrents
-  for (let i = 1; i < torrents.length; i++) {
-    const torrent = torrents[i]
-    if (!torrent.tags) continue
-
-    // Create a Set of this torrent's tags for O(1) lookups
-    const currentTags = new Set(
-      torrent.tags.split(",").map(t => t.trim()).filter(Boolean)
-    )
-
-    // Only increment count for tags that this torrent has
-    for (const tag in tagCounts) {
-      if (currentTags.has(tag)) {
-        tagCounts[tag]++
-      }
-    }
-  }
-
-  // Return tags that appear in all torrents
-  return Object.keys(tagCounts).filter(tag => tagCounts[tag] === torrents.length)
-}
-
 export function parseTorrentTags(tags?: string | null): string[] {
   if (!tags) return []
   return tags.split(",").map(tag => tag.trim()).filter(Boolean)
