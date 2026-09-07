@@ -415,7 +415,6 @@ export interface TorrentPeersResponse {
   peers?: Record<string, TorrentPeer>
   peers_removed?: string[]
   rid: number
-  full_update: boolean
   show_flags?: boolean
 }
 
