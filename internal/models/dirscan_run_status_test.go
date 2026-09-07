@@ -23,7 +23,7 @@ func setupDirScanTestDB(t *testing.T) *database.DB {
 }
 
 func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	db := setupDirScanTestDB(t)
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -49,10 +49,6 @@ func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, run)
 	require.Equal(t, models.DirScanRunStatusQueued, run.Status)
-
-	active, err := store.HasActiveRun(ctx, dir.ID)
-	require.NoError(t, err)
-	require.True(t, active)
 
 	activeRun, err := store.GetActiveRun(ctx, dir.ID)
 	require.NoError(t, err)

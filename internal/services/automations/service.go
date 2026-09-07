@@ -4689,15 +4689,6 @@ func cachedTorrentFilesFetcher(filesByHash map[string]qbt.TorrentFiles) torrentF
 	}
 }
 
-// isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
-// files unique to this torrent. This happens when ContentPath == SavePath, meaning
-// the torrent uses the SavePath directly (common for shared download directories).
-func isContentPathAmbiguous(t qbt.Torrent) bool {
-	contentPath := normalizePath(t.ContentPath)
-	savePath := normalizePath(t.SavePath)
-	return contentPath == savePath
-}
-
 // findCrossSeedGroup returns all torrents (including the target) that share
 // the same normalized ContentPath. Returns nil if ContentPath is empty.
 func findCrossSeedGroup(target qbt.Torrent, idx contentPathIndex) []qbt.Torrent {
