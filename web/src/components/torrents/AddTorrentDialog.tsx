@@ -643,6 +643,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     highlightedIndex: saveHighlightedIndex,
     showSuggestions: showSaveSuggestions,
     inputRef: savePathInputRef,
+    listRef: savePathListRef,
   } = usePathAutocomplete(setSavePath, instanceId);
 
   const {
@@ -653,6 +654,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     highlightedIndex: tempHighlightedIndex,
     showSuggestions: showTempSuggestions,
     inputRef: tempPathInputRef,
+    listRef: tempPathListRef,
   } = usePathAutocomplete(setTempPath, instanceId);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -1368,7 +1370,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
                                 {supportsPathAutocomplete && showSaveSuggestions && saveSuggestions.length > 0 && (
                                   <div className="relative">
-                                    <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                                    <div ref={savePathListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
                                       <div className="max-h-55 overflow-y-auto py-1">
                                         {saveSuggestions.map((entry, idx) => (
                                           <button
@@ -1443,7 +1445,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
                                           {supportsPathAutocomplete && showTempSuggestions && tempSuggestions.length > 0 && (
                                             <div className="relative">
-                                              <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                                              <div ref={tempPathListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
                                                 <div className="max-h-55 overflow-y-auto py-1">
                                                   {tempSuggestions.map((entry, idx) => (
                                                     <button

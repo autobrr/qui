@@ -774,6 +774,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     highlightedIndex: freeSpaceHighlightedIndex,
     showSuggestions: showFreeSpaceSuggestions,
     inputRef: freeSpacePathInputRef,
+    listRef: freeSpaceListRef,
   } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
 
   // Container and position for autocomplete dropdown portal (inside dialog, outside scroll)
@@ -3922,6 +3923,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         {dropdownRect && dropdownContainerRef.current && createPortal(
                           <div
+                            ref={freeSpaceListRef}
                             className="absolute rounded-md border bg-popover text-popover-foreground shadow-md pointer-events-auto"
                             style={{
                               top: dropdownRect.top,
