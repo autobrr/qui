@@ -928,6 +928,9 @@ const peerSyncFetchTimeout = 30 * time.Second
 // Callers must not mutate the returned response, it is shared by every reader that
 // joined the same fetch.
 func (c *Client) SyncPeers(ctx context.Context, hash string) (*qbt.TorrentPeersResponse, error) {
+	// The manager is keyed on the lowered hash, so the fetch must be too:
+	// otherwise two spellings of one hash share a manager but not a fetch.
+	hash = strings.ToLower(hash)
 	peerSync := c.GetOrCreatePeerSyncManager(hash)
 
 	// Joiners share the leader's result, so the fetch must not die with the
