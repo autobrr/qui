@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -341,4 +342,99 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	svc.executeDeletion(context.Background(), 1, runID)
 
 	require.FileExists(t, stray, "a file another local instance now seeds must not be deleted")
+}
+
+// TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs
+// covers a run that previewed no directories at all, with abandoned-directory
+// cleanup off. Deleting the orphan still empties the category folder, and the
+// follow-up cleanup must not remove it.
+func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t *testing.T) {
+	base := t.TempDir()
+	defaultSavePath := filepath.Join(base, "torrents")
+	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
+	categoryFolder := filepath.Join(defaultSavePath, "movies")
+	orphan := filepath.Join(categoryFolder, "junk.txt")
+
+	require.NoError(t, os.MkdirAll(torrentSavePath, 0o750))
+	require.NoError(t, os.MkdirAll(categoryFolder, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(torrentSavePath, "owned.mkv"), []byte("x"), 0o600))
+	require.NoError(t, os.WriteFile(orphan, []byte("junk"), 0o600))
+
+	db := testdb.NewMigratedSQLite(t, "orphanscan-followup-categories")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	_, err = instanceStore.Create(t.Context(), "test", "http://127.0.0.1:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewOrphanScanStore(db)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
+	}
+	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
+	}
+	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
+	}
+	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
+	}
+	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
+	}
+	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: categoryFolder}}, nil
+	}
+
+	// Abandoned-directory cleanup is off, so the run previews the orphan only.
+	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID:          1,
+		GracePeriodMinutes:  0,
+		IgnorePaths:         []string{},
+		ScanIntervalHours:   24,
+		PreviewSort:         "size_desc",
+		MaxFilesPerRun:      1000,
+		AutoCleanupMaxFiles: 100,
+		ScanDefaultSavePath: true,
+		DeleteAbandonedDirs: false,
+	})
+	require.NoError(t, err)
+
+	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
+	require.NoError(t, err)
+	svc.executeScan(context.Background(), 1, runID)
+
+	files, err := store.GetFilesForDeletion(t.Context(), runID)
+	require.NoError(t, err)
+	require.Len(t, files, 1, "only the orphan file should be previewed")
+	require.False(t, files[0].IsDir)
+
+	svc.executeDeletion(context.Background(), 1, runID)
+
+	require.NoFileExists(t, orphan, "the orphan should be deleted")
+	require.DirExists(t, categoryFolder, "the follow-up cleanup must not remove a category destination")
+}
+
+// TestResolveCategoryPath_DeepInheritanceIsNotDropped guards the parent walk
+// against a depth cap: a deeply nested category that resolves to "" would lose
+// both its scan root and its protection.
+func TestResolveCategoryPath_DeepInheritanceIsNotDropped(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := filepath.Join(base, "archive")
+
+	categories := map[string]qbt.Category{"top": {Name: "top", SavePath: root}}
+	name := "top"
+	want := root
+	for i := 0; i < 40; i++ {
+		segment := fmt.Sprintf("s%d", i)
+		name += "/" + segment
+		want = filepath.Join(want, segment)
+		categories[name] = qbt.Category{Name: name}
+	}
+
+	got := resolveCategoryPath(name, categories, filepath.Join(base, "torrents"), true)
+	require.Equal(t, want, got, "a deeply nested category must still resolve to its parent chain")
 }

@@ -990,10 +990,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// with directories still pending also needs the category destinations, even
 	// if the operator has since turned the option off: those directories were
 	// judged against a category list and must be judged against it again.
+	// Category destinations are needed for every path that removes a directory,
+	// not just the abandoned-directory pass: deleting an orphan out of a category
+	// folder empties it, and the follow-up cleanup would then remove it.
 	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
-	if len(dirEntries) > 0 {
-		scope.AbandonedDirs = true
-	}
+	scope.AbandonedDirs = true
 
 	// Build fresh file map for re-checking
 	fileMapResult, err := s.buildFileMap(ctx, instanceID, deleteBackend, scope)

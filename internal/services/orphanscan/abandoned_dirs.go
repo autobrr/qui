@@ -27,16 +27,11 @@ func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSave
 
 	seen := make(map[string]struct{}, len(categories))
 	for name := range categories {
-		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories, 0))
+		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories))
 	}
 
 	return sortedRoots(seen), nil
 }
-
-// maxCategoryDepth bounds the parent walk. Category names nest by "/" so a
-// parent is always shorter than its child and this cannot loop, but a malformed
-// name should not be able to recurse without end either.
-const maxCategoryDepth = 16
 
 // resolveCategoryPath mirrors qBittorrent's own resolution:
 //
@@ -48,11 +43,10 @@ const maxCategoryDepth = 16
 //
 // Returns "" when the destination cannot be determined, which callers treat as
 // "no such destination" rather than as a path.
-func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool, depth int) string {
-	if depth > maxCategoryDepth {
-		return ""
-	}
-
+// The parent walk terminates on its own: each step drops a "/" segment, so the
+// recursion is bounded by the name itself. Capping it would silently drop
+// protection for a deeply nested category, which is the dangerous direction.
+func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
 	savePath := filepath.Clean(strings.TrimSpace(categories[name].SavePath))
 	if savePath != "." && savePath != "" {
 		if filepath.IsAbs(savePath) {
@@ -67,7 +61,7 @@ func resolveCategoryPath(name string, categories map[string]qbt.Category, defaul
 	// Category names are slash-delimited whatever the host separator is.
 	if useSubcategories {
 		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories, depth+1)
+			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories)
 			if parent == "" {
 				return ""
 			}
