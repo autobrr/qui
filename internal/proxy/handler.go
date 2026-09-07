@@ -407,7 +407,6 @@ func (h *Handler) Routes(r chi.Router) {
 		// Register intercepted endpoints (these use qui's sync manager or special handling)
 		pr.Post("/api/v2/auth/login", h.handleAuthLogin)
 		pr.Get("/api/v2/sync/maindata", h.handleSyncMainData)
-		pr.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
 		pr.Get("/api/v2/torrents/info", h.handleTorrentsInfo)
 		pr.Get("/api/v2/torrents/categories", h.handleCategories)
 		pr.Get("/api/v2/torrents/tags", h.handleTags)
@@ -1532,23 +1531,6 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 			Int("instanceId", instanceID).
 			Msg("Failed to encode trackers response")
 	}
-}
-
-// handleTorrentPeers handles /api/v2/sync/torrentPeers requests
-func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	hash := r.URL.Query().Get("hash")
-
-	log.Trace().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Proxying sync/torrentPeers request")
-
-	h.proxy.ServeHTTP(w, r)
 }
 
 // handleTorrentFiles handles /api/v2/torrents/files requests

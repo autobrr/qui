@@ -193,7 +193,7 @@ func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	require.Equal(t, payload, rec.Body.Bytes())
 }
 
-func TestHandleTorrentPeersPassesThroughWithoutCacheWarming(t *testing.T) {
+func TestProxyTorrentPeersPassesThroughWithoutCacheWarming(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		status int
@@ -231,7 +231,7 @@ func TestHandleTorrentPeersPassesThroughWithoutCacheWarming(t *testing.T) {
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/proxy/test-key/api/v2/sync/torrentPeers?hash=abc123&rid=6", nil)
 			rec := httptest.NewRecorder()
 
-			handler.handleTorrentPeers(rec, req)
+			handler.ServeHTTP(rec, req)
 
 			require.Equal(t, int64(1), requests.Load())
 			require.Equal(t, tc.status, rec.Code)
