@@ -75,6 +75,52 @@ func (m *mockSyncEventSink) getTrackerHealthUpdates() []int {
 	return append([]int(nil), m.trackerHealthUpdates...)
 }
 
+func TestGetTorrentPeersSyncsAndMergesWithoutProxyWarmup(t *testing.T) {
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.Query().Get("hash") != "abc123" {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+			return
+		}
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("rid") {
+		case "0":
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{"keep":{"client":"test","dl_speed":10},"remove":{"client":"test"}}}`))
+		case "1":
+			_, _ = w.Write([]byte(`{"rid":2,"full_update":false,"peers":{"keep":{"dl_speed":20},"add":{"client":"new"}},"peers_removed":["remove"]}`))
+		default:
+			t.Errorf("unexpected rid: %s", r.URL.Query().Get("rid"))
+			http.Error(w, "unexpected rid", http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	client := &Client{
+		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, APIKey: "test-key"}),
+		isHealthy:       true,
+		peerSyncManager: make(map[string]*qbt.PeerSyncManager),
+	}
+	sm := &SyncManager{clientPool: &ClientPool{clients: map[int]*Client{1: client}}}
+
+	full, err := sm.GetTorrentPeers(t.Context(), 1, "abc123")
+	require.NoError(t, err)
+	require.Equal(t, int64(1), full.Rid)
+	require.Len(t, full.Peers, 2)
+	require.Contains(t, full.Peers, "remove")
+
+	merged, err := sm.GetTorrentPeers(t.Context(), 1, "abc123")
+	require.NoError(t, err)
+	require.Equal(t, int64(2), merged.Rid)
+	require.Len(t, merged.Peers, 2)
+	require.NotContains(t, merged.Peers, "remove")
+	require.Equal(t, "new", merged.Peers["add"].Client)
+	require.Equal(t, "test", merged.Peers["keep"].Client)
+	require.Equal(t, int64(20), merged.Peers["keep"].DownSpeed)
+	require.Equal(t, int64(2), requests.Load())
+}
+
 func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
 	t.Parallel()
 
