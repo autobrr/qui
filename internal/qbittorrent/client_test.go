@@ -972,14 +972,18 @@ func TestSyncPeersSerializesConcurrentReaders(t *testing.T) {
 func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 	const hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
+	fetchStarted := make(chan struct{})
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(fetchStarted)
 		<-release
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"peers":{}}`))
 	}))
 	t.Cleanup(srv.Close)
+	// Cleanups run last registered first, so the handler is released before the
+	// server shuts down and waits for it.
+	t.Cleanup(func() { close(release) })
 
 	client := &Client{
 		Client:          qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
@@ -987,8 +991,20 @@ func TestSyncPeersLeavesWhenCallerGoesAway(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
+	errs := make(chan error, 1)
+	go func() {
+		_, err := client.SyncPeers(ctx, hash)
+		errs <- err
+	}()
+
+	// Cancel while the fetch is in flight, which is what a closed tab does.
+	<-fetchStarted
 	cancel()
 
-	_, err := client.SyncPeers(ctx, hash)
-	require.ErrorIs(t, err, context.Canceled)
+	select {
+	case err := <-errs:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("SyncPeers kept waiting for a fetch after its caller went away")
+	}
 }
