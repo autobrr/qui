@@ -45,7 +45,7 @@ func TestRSSRuleEditPreservesSeedAndShareLimitsMode(t *testing.T) {
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch r.URL.Path {
 					case "/api/v2/rss/rules":
-						_, _ = fmt.Fprintf(w, `{"Synthetic":{"mustContain":"Before","torrentParams":{"%s":%t,"share_limits_mode":"All"}}}`, field, seedMode)
+						_, _ = fmt.Fprintf(w, `{"Synthetic":{"mustContain":"Before","torrentParams":{"%s":%t,"share_limits_mode":"MatchAll"}}}`, field, seedMode)
 					case "/api/v2/rss/setRule":
 						if err := r.ParseForm(); err != nil {
 							http.Error(w, err.Error(), http.StatusBadRequest)
@@ -65,7 +65,7 @@ func TestRSSRuleEditPreservesSeedAndShareLimitsMode(t *testing.T) {
 				router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 				require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 				require.Contains(t, rec.Body.String(), fmt.Sprintf(`"seed_mode":%t`, seedMode))
-				require.Contains(t, rec.Body.String(), `"share_limits_mode":"All"`)
+				require.Contains(t, rec.Body.String(), `"share_limits_mode":"MatchAll"`)
 
 				var rules qbt.RSSRules
 				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &rules))
@@ -81,7 +81,7 @@ func TestRSSRuleEditPreservesSeedAndShareLimitsMode(t *testing.T) {
 					require.Contains(t, raw, `"mustContain":"After"`)
 					require.Contains(t, raw, fmt.Sprintf(`"seed_mode":%t`, seedMode))
 					require.Contains(t, raw, fmt.Sprintf(`"skip_checking":%t`, seedMode))
-					require.Contains(t, raw, `"share_limits_mode":"All"`)
+					require.Contains(t, raw, `"share_limits_mode":"MatchAll"`)
 				default:
 					t.Fatal("RSS edit did not reach qBittorrent")
 				}

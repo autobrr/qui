@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ArticlesPanel, EditRuleDialog } from "@/pages/RSSPage"
 import type { RSSArticle, RSSAutoDownloadRule } from "@/types"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -82,19 +83,21 @@ describe("EditRuleDialog", () => {
       affectedFeeds: [],
       ignoreDays: 0,
       smartFilter: false,
-      torrentParams: { seed_mode: seedMode, skip_checking: seedMode, share_limits_mode: "All" },
+      torrentParams: { seed_mode: seedMode, skip_checking: seedMode, share_limits_mode: "MatchAll" },
     }
     render(
-      <EditRuleDialog
-        instanceId={1}
-        open
-        onOpenChange={() => {}}
-        ruleName="Synthetic"
-        rule={rule}
-        feedsData={{}}
-        categories={{}}
-        tags={[]}
-      />
+      <TooltipProvider>
+        <EditRuleDialog
+          instanceId={1}
+          open
+          onOpenChange={() => {}}
+          ruleName="Synthetic"
+          rule={rule}
+          feedsData={{}}
+          categories={{}}
+          tags={[]}
+        />
+      </TooltipProvider>
     )
 
     fireEvent.change(screen.getByLabelText("ruleForm.mustContain"), { target: { value: "After" } })
@@ -104,7 +107,7 @@ describe("EditRuleDialog", () => {
       name: "Synthetic",
       rule: expect.objectContaining({
         mustContain: "After",
-        torrentParams: expect.objectContaining({ seed_mode: seedMode, skip_checking: seedMode, share_limits_mode: "All" }),
+        torrentParams: expect.objectContaining({ seed_mode: seedMode, skip_checking: seedMode, share_limits_mode: "MatchAll" }),
       }),
     }))
   })
