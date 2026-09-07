@@ -309,7 +309,7 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 			switch attemptResult.Status {
 			case models.CrossSeedSearchResultStatusAdded:
 				s.searchMu.Lock()
-				state.run.TorrentsAdded++
+				state.run.CrossSeedsAdded++
 				s.searchMu.Unlock()
 				successCount++
 				indexerAdds[match.IndexerID]++
@@ -341,34 +341,16 @@ func (s *Service) applyEnsembleSearchResults(ctx context.Context, state *searchR
 		Int("added", successCount).
 		Msg("[CROSSSEED-ENSEMBLE] Season pack search completed")
 
-	switch {
-	case successCount > 0:
-		s.persistSearchRun(state)
-	case admitted == 0:
+	if admitted == 0 {
 		s.recordEnsembleOutcome(state, torrent, processedAt, models.CrossSeedSearchResultStatusSkipped, "no season pack candidates")
-	case failedAttempt:
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
-		s.persistSearchRun(state)
-	default:
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
-		s.persistSearchRun(state)
+		return
 	}
+	s.finishSearchCandidate(state, successCount, failedAttempt)
 }
 
 // recordEnsembleOutcome appends a summary result row for an ensemble candidate
 // that produced no per-attempt rows, bumping the matching run counter.
 func (s *Service) recordEnsembleOutcome(state *searchRunState, torrent *qbt.Torrent, processedAt time.Time, status models.CrossSeedSearchResultStatus, message string) {
-	s.searchMu.Lock()
-	if status == models.CrossSeedSearchResultStatusFailed {
-		state.run.TorrentsFailed++
-	} else {
-		state.run.TorrentsSkipped++
-	}
-	s.searchMu.Unlock()
 	s.appendSearchResult(state, models.CrossSeedSearchResult{
 		TorrentHash: torrent.Hash,
 		TorrentName: torrent.Name,
@@ -376,5 +358,5 @@ func (s *Service) recordEnsembleOutcome(state *searchRunState, torrent *qbt.Torr
 		Message:     message,
 		ProcessedAt: processedAt,
 	})
-	s.persistSearchRun(state)
+	s.finishSearchCandidate(state, 0, status == models.CrossSeedSearchResultStatusFailed)
 }

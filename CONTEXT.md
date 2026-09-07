@@ -9,6 +9,12 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Admitted Execution**: An Execution Request accepted for future execution. It does not mean the program started. _Avoid_: Successful execution, started execution.
 - **Running Execution**: An Admitted Execution whose External Program has started and has not exited. _Avoid_: Queued execution.
 
+## Torrent filtering
+
+- **Sidebar filters**: Torrent conditions shown in the filter sidebar, including status, category, tag, tracker, and custom expression filters. _Avoid_: All filters when referring only to sidebar filters.
+- **Column filters**: Torrent conditions set through table column controls, such as a ratio below 1. _Avoid_: Column sorting.
+- **Torrent search**: A query entered in the torrent search box to select matching torrents. _Avoid_: Global filter.
+
 ## Cross-seed search
 
 - **Usable result**: A search hit that survives release and size filtering. Retry passes gate on usable results, never on raw hit counts. _Avoid_: Hit, raw result (when gating is meant).

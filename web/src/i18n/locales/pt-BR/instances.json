@@ -899,7 +899,10 @@
       "unregistered": "Não Registrado",
       "andMoreTorrents": "... e mais {{count}} torrents",
       "loadMore": "Carregar mais",
-      "exportCSV": "Exportar CSV"
+      "exportCSV": "Exportar CSV",
+      "saveWithoutPreview": "Salvar sem pré-visualização",
+      "previewFailed": "Falha na pré-visualização: {{error}}",
+      "skipPreviewHint": "A regra ainda age em todos os torrents correspondentes na próxima execução. Você pode salvar sem esperar pela pré-visualização."
     },
     "orphanScanOverview": {
       "title": "Arquivos Órfãos",

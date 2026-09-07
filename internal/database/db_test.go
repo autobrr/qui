@@ -147,6 +147,23 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	verifyPragmas(ctx, t, conn2)
 }
 
+// TestConnectionPragmasApplyWithoutNew pins the pragma hook to package init:
+// qui db migrate opens the source database with a bare sql.Open, never New.
+//
+// ponytail: only proves the regression in isolation, with
+// `go test -run TestConnectionPragmasApplyWithoutNew ./internal/database/`.
+// A full-suite run may call New first, which was enough to register the hook
+// under the old lazy path.
+func TestConnectionPragmasApplyWithoutNew(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+
+	verifyPragmas(t.Context(), t, sqlDB)
+}
+
 func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
 	log.Output(io.Discard)
 	ctx := t.Context()

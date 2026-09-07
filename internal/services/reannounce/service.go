@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ type Service struct {
 	clientPool    *qbittorrent.ClientPool
 	syncManager   *qbittorrent.SyncManager
 	j             map[int]map[string]*reannounceJob
+	queues        map[int]*reannounceQueue
 	jobsMu        sync.Mutex
 	ctxMu         sync.RWMutex
 	baseCtx       context.Context
@@ -56,6 +58,11 @@ type reannounceJob struct {
 	lastRequested time.Time
 	isRunning     bool
 	lastCompleted time.Time
+}
+
+type reannounceQueue struct {
+	active  int
+	pending []func()
 }
 
 // ActivityOutcome describes a high-level outcome for a reannounce attempt.
@@ -80,6 +87,11 @@ type ActivityEvent struct {
 }
 
 const defaultHistorySize = 50
+
+const maxConcurrentJobsPerInstance = 4
+
+// Keep hash lists below common proxy URL limits, including 64-character hashes.
+const trackerFetchBatchSize = 100
 
 // MonitoredTorrentState describes the current monitoring state for a torrent.
 type MonitoredTorrentState string
@@ -133,6 +145,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, settingsStore *
 		clientPool:        clientPool,
 		syncManager:       syncManager,
 		j:                 make(map[int]map[string]*reannounceJob),
+		queues:            make(map[int]*reannounceQueue),
 		historySucceeded:  make(map[int][]ActivityEvent),
 		historyFailed:     make(map[int][]ActivityEvent),
 		historySkipped:    make(map[int][]ActivityEvent),
@@ -240,24 +253,42 @@ func (s *Service) scanInstance(ctx context.Context, instanceID int, settings *mo
 		return
 	}
 
-	var torrents []qbt.Torrent
-
-	// For qBittorrent 5.1+ (WebAPI >= 2.11.4), fetch torrents with tracker data in one call.
-	// For older versions, use the sync manager cache (trackers fetched separately in executeJob).
-	if client.SupportsTrackerHealth() {
-		torrents, err = client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
-			Filter:          qbt.TorrentFilterStalled,
-			IncludeTrackers: true,
-		})
-	} else {
-		// Older qBittorrent - use cached torrents; executeJob will fetch fresh trackers
-		torrents, err = s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
-			Filter: qbt.TorrentFilterStalled,
-		})
-	}
+	torrents, err := s.syncManager.GetTorrents(ctx, instanceID, qbt.TorrentFilterOptions{
+		Filter: qbt.TorrentFilterStalled,
+	})
 	if err != nil {
-		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch torrents")
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch cached torrents")
 		return
+	}
+
+	if client.SupportsTrackerHealth() {
+		// Cached torrents can lack tracker lists. Keep possible tracker matches
+		// and apply tracker rules to the fresh response below.
+		prefilter := *settings
+		prefilter.Trackers = nil
+		prefilter.MonitorAll = settings.MonitorAll || (!settings.ExcludeTrackers && len(settings.Trackers) > 0)
+		var hashes []string
+		for _, torrent := range torrents {
+			if s.torrentMeetsCriteria(torrent, &prefilter) {
+				hashes = append(hashes, torrent.Hash)
+			}
+		}
+		if len(hashes) == 0 {
+			return
+		}
+		torrents = nil
+		for batch := range slices.Chunk(hashes, trackerFetchBatchSize) {
+			fresh, err := client.GetTorrentsCtx(ctx, qbt.TorrentFilterOptions{
+				Filter:          qbt.TorrentFilterStalled,
+				Hashes:          batch,
+				IncludeTrackers: true,
+			})
+			if err != nil {
+				log.Debug().Err(err).Int("instanceID", instanceID).Msg("reannounce: failed to fetch trackers for candidates")
+				return
+			}
+			torrents = append(torrents, fresh...)
+		}
 	}
 
 	for _, torrent := range torrents {
@@ -373,9 +404,11 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
 		return false
 	}
+	if baseCtx.Err() != nil {
+		return false
+	}
 
 	s.jobsMu.Lock()
-	defer s.jobsMu.Unlock()
 	instJobs, ok := s.j[instanceID]
 	if !ok {
 		instJobs = make(map[string]*reannounceJob)
@@ -394,6 +427,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	debounceWindow := s.effectiveDebounceWindow(settings)
 
 	if job.isRunning {
+		s.jobsMu.Unlock()
 		return true
 	}
 
@@ -406,6 +440,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 				reason = "debounced during cooldown window"
 			}
 			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
+			s.jobsMu.Unlock()
 			return true
 		}
 	}
@@ -416,23 +451,69 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	if runner == nil {
 		runner = s.executeJob
 	}
+	queue := s.queues[instanceID]
+	if queue == nil {
+		queue = &reannounceQueue{}
+		s.queues[instanceID] = queue
+	}
+	queue.pending = append(queue.pending, func() {
+		s.jobsMu.Lock()
+		if baseCtx.Err() != nil {
+			delete(instJobs, hash)
+			if len(instJobs) == 0 {
+				delete(s.j, instanceID)
+			}
+			s.jobsMu.Unlock()
+			return
+		}
+		// Queue time must not expire the cooldown record before the job runs.
+		job.lastRequested = s.currentTime()
+		s.jobsMu.Unlock()
+		defer s.finishJob(instanceID, hash)
+		runner(baseCtx, instanceID, hash, torrentName, trackers)
+	})
+	if queue.active >= maxConcurrentJobsPerInstance {
+		s.jobsMu.Unlock()
+		return true
+	}
+	queue.active++
+	s.jobsMu.Unlock()
+
 	spawn := s.spawn
 	if spawn == nil {
 		spawn = func(fn func()) { go fn() }
 	}
 	spawn(func() {
-		runner(baseCtx, instanceID, hash, torrentName, trackers)
+		for {
+			s.jobsMu.Lock()
+			if len(queue.pending) == 0 {
+				queue.active--
+				if queue.active == 0 {
+					delete(s.queues, instanceID)
+				}
+				s.jobsMu.Unlock()
+				return
+			}
+			next := queue.pending[0]
+			queue.pending[0] = nil
+			queue.pending = queue.pending[1:]
+			s.jobsMu.Unlock()
+			next()
+		}
 	})
 	return true
 }
 
 func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash string, torrentName string, initialTrackers string) {
-	defer s.finishJob(instanceID, hash)
 	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
 	defer cancel()
 	settings := s.getSettings(ctx, instanceID)
 	if settings == nil {
 		settings = models.DefaultInstanceReannounceSettings(instanceID)
+	}
+	if !settings.CanMatchTorrents() {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "monitoring disabled or no matching scope")
+		return
 	}
 	client, err := s.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
@@ -444,6 +525,19 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to load trackers")
 		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
+		return
+	}
+	// A queued torrent can leave the monitoring scope before a worker is free.
+	torrent, ok, err := s.syncManager.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
+	if err != nil {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load torrent: %v", err))
+		return
+	}
+	if ok {
+		torrent.Trackers = trackerList
+	}
+	if !ok || !s.torrentMeetsCriteria(*torrent, settings) {
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeSkipped, "torrent no longer matches monitoring scope")
 		return
 	}
 	if s.hasHealthyTracker(trackerList) {

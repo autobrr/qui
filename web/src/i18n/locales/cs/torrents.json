@@ -881,7 +881,10 @@
       }
     },
     "title": "Filtry",
-    "clearAll": "Vymazat vše",
+    "clearOptions": "Možnosti vymazání filtrů",
+    "clearSidebarFilters": "Vymazat filtry postranního panelu",
+    "clearColumnFilters": "Vymazat filtry sloupců",
+    "clearFiltersAndSearch": "Vymazat filtry a hledání",
     "loading": "Načítání...",
     "customFilter": "Vlastní filtr",
     "customFilterHelp": "Aktivní vlastní výrazový filtr (např. výsledky křížového sdílení)",

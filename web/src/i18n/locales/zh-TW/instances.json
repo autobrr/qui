@@ -881,7 +881,10 @@
       "unregistered": "未註冊",
       "andMoreTorrents": "... 還有 {{count}} 個種子",
       "loadMore": "載入更多",
-      "exportCSV": "匯出 CSV"
+      "exportCSV": "匯出 CSV",
+      "saveWithoutPreview": "跳過預覽並儲存",
+      "previewFailed": "預覽失敗：{{error}}",
+      "skipPreviewHint": "規則在下次執行時仍會作用於每個符合的種子。您可以不等待預覽直接儲存。"
     },
     "orphanScanOverview": {
       "title": "孤立檔案掃描",

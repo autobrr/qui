@@ -110,6 +110,7 @@ export const CONDITION_FIELDS = {
   SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const, description: "Super-seeding mode enabled" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
+  HAS_SKIPPED_FILES: { label: "Has Skipped Files", type: "boolean" as const, description: "Some files are set to Do not download" },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
   EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
   SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
@@ -303,7 +304,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
+    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES", "HAS_SKIPPED_FILES"],
   },
 ];
 

@@ -16,6 +16,7 @@ export function usePathAutocomplete(
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
   const [dismissed, setDismissed] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const skipHighlightResetRef = useRef(false);
 
   const getParentPath = useCallback((path: string) => {
@@ -164,6 +165,20 @@ export function usePathAutocomplete(
     !(suggestions.length === 1 && suggestions[0] === inputValue) &&
     !(inputValue.endsWith("/") && suggestions.some((s) => s === inputValue));
 
+  // Dismiss on any pointer interaction outside the input and the list. Blur
+  // cannot do this because the suggestion buttons prevent it. A pointerdown on
+  // the list itself (for example its scrollbar) keeps it open.
+  useEffect(() => {
+    if (!showSuggestions) return;
+    const onPointerDown = (e: Event) => {
+      const target = e.target as Node;
+      if (inputRef.current?.contains(target) || listRef.current?.contains(target)) return;
+      setDismissed(true);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [showSuggestions]);
+
   return {
     suggestions,
     inputValue,
@@ -174,5 +189,6 @@ export function usePathAutocomplete(
     highlightedIndex,
     showSuggestions,
     inputRef,
+    listRef,
   };
 }

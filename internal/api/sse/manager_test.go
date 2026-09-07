@@ -855,49 +855,6 @@ func TestStreamManager_ShutdownDuringActiveOperations(t *testing.T) {
 	require.True(t, manager.closing.Load(), "manager should be marked as closing")
 }
 
-func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
-	// Test the coalescing behavior of enqueueGroup
-	// Multiple rapid enqueues should coalesce into pending state
-
-	group := &subscriptionGroup{
-		key:     "test-group",
-		options: StreamOptions{InstanceID: 1, Page: 0, Limit: 50},
-		subs:    make(map[string]*subscriptionState),
-	}
-
-	// Simulate rapid enqueues without starting the processGroup goroutine
-	// by directly testing the pending state coalescing
-
-	// First enqueue sets hasPending and sends
-	group.mu.Lock()
-	group.pendingMeta = &StreamMeta{InstanceID: 1, Timestamp: time.Now()}
-	group.hasPending = true
-	group.sending = true // Simulate that processGroup is already running
-	group.mu.Unlock()
-
-	// Second enqueue should just update pending state, not spawn new goroutine
-	newMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(time.Second)}
-	group.mu.Lock()
-	group.pendingMeta = newMeta
-	group.hasPending = true
-	// sending stays true - no new goroutine needed
-	group.mu.Unlock()
-
-	// Third enqueue - same behavior
-	finalMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(2 * time.Second)}
-	group.mu.Lock()
-	group.pendingMeta = finalMeta
-	group.hasPending = true
-	group.mu.Unlock()
-
-	// Verify the coalescing - only the final meta should be present
-	group.mu.Lock()
-	require.True(t, group.hasPending, "should have pending update")
-	require.True(t, group.sending, "should still be marked as sending")
-	require.Equal(t, finalMeta, group.pendingMeta, "should have coalesced to final meta")
-	group.mu.Unlock()
-}
-
 func TestUnregister_MultipleSubscribersInSameGroup(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 	provider := newRecordingProvider()

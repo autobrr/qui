@@ -500,26 +500,26 @@ const (
 	connectionSetupTimeout   = 5 * time.Second
 )
 
-var driverInit sync.Once
-
 type pragmaExecFn func(ctx context.Context, stmt string) error
 
-func registerConnectionHook() {
-	driverInit.Do(func() {
-		sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
-			defer cancel()
+// init registers the pragma hook while this package is still initializing, so
+// it is in place before anything can open a connection. modernc.org/sqlite
+// appends to an unsynchronized hook slice that every Open reads, so
+// registering it lazily races with connections that are already in flight.
+func init() {
+	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+		defer cancel()
 
-			readOnly := isReadOnlyDSN(dsn)
+		readOnly := isReadOnlyDSN(dsn)
 
-			return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
-				_, err := conn.ExecContext(ctx, stmt, nil)
-				if err != nil {
-					return fmt.Errorf("connection hook exec %q: %w", stmt, err)
-				}
-				return nil
-			}, readOnly)
-		})
+		return applyConnectionPragmas(ctx, func(ctx context.Context, stmt string) error {
+			_, err := conn.ExecContext(ctx, stmt, nil)
+			if err != nil {
+				return fmt.Errorf("connection hook exec %q: %w", stmt, err)
+			}
+			return nil
+		}, readOnly)
 	})
 }
 
@@ -588,6 +588,9 @@ func secureDatabaseFiles(databasePath string) error {
 	return nil
 }
 
+// New opens the SQLite database at databasePath, creating the parent directory
+// and applying any pending migrations. The returned DB routes writes through a
+// single serialized connection and reads through a read-only pool.
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
@@ -603,8 +606,6 @@ func New(databasePath string) (*DB, error) {
 	if err := secureDatabaseFiles(databasePath); err != nil {
 		return nil, err
 	}
-
-	registerConnectionHook()
 
 	// Open writer connection (single connection for all writes)
 	writerConn, err := sql.Open("sqlite", databasePath)

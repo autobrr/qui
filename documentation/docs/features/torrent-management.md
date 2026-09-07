@@ -25,6 +25,18 @@ Manage tags and categories from the **Tags** and **Categories** sections in the 
 
 qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. qui shows the categories as a collapsible tree sorted by name when the instance supports subcategories (qBittorrent WebUI API 2.9.0 or newer). The qBittorrent preference **Enable Subcategories** (Instance Preferences > Files) must also be on. From WebUI API 2.15.0, subcategories are always on. In other cases, qui shows a flat list.
 
+## Clear filters
+
+Click **Clear filters** at the top of the filter sidebar to remove sidebar and column filters. The button appears when either group has active filters. Search text and sorting stay unchanged.
+
+Open the arrow menu beside the button for these actions:
+
+- **Clear sidebar filters** keeps column filters and search text.
+- **Clear column filters** keeps sidebar filters and search text.
+- **Clear filters and search** removes both filter groups and search text.
+
+Each action keeps the current sort order. The table toolbar's clear button removes column filters only.
+
 ## Saved filter views
 
 The **Views** section in the filter sidebar saves the current filter selection as a named view.
