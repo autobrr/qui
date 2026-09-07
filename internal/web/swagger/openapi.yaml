@@ -2475,44 +2475,47 @@ paths:
       tags:
         - Torrent Details
       summary: Get torrent peers
-      description: Get list of peers for a torrent
+      description: Get the current merged peer list for a torrent. The response omits full_update.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
-          description: List of peers
+          description: Current peers and sorted peer list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    ip:
+                type: object
+                required:
+                  - rid
+                properties:
+                  peers:
+                    type: object
+                    description: Peers keyed by canonical peer address.
+                    additionalProperties:
+                      $ref: '#/components/schemas/TorrentPeer'
+                  peers_removed:
+                    type: array
+                    items:
                       type: string
-                    port:
-                      type: integer
-                    client:
-                      type: string
-                    progress:
-                      type: number
-                    dlSpeed:
-                      type: integer
-                    upSpeed:
-                      type: integer
-                    downloaded:
-                      type: integer
-                    uploaded:
-                      type: integer
-                    connection:
-                      type: string
-                    flags:
-                      type: string
-                    flagsDesc:
-                      type: string
-                    relevance:
-                      type: number
+                  rid:
+                    type: integer
+                    format: int64
+                  show_flags:
+                    type: boolean
+                  sorted_peers:
+                    type: array
+                    description: Seeders first, then descending progress, download speed and upload speed. Canonical peer address breaks ties.
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/TorrentPeer'
+                        - type: object
+                          required:
+                            - key
+                          properties:
+                            key:
+                              type: string
+                              description: Canonical peer address.
 
   /api/instances/{instanceID}/torrents/add-peers:
     post:
@@ -6811,6 +6814,48 @@ components:
         url:
           type: string
           description: HTTP source URL for the torrent
+
+    TorrentPeer:
+      type: object
+      required:
+        - progress
+      properties:
+        ip:
+          type: string
+        port:
+          type: integer
+        connection:
+          type: string
+        flags:
+          type: string
+        flags_desc:
+          type: string
+        client:
+          type: string
+        progress:
+          type: number
+        dl_speed:
+          type: integer
+          format: int64
+        up_speed:
+          type: integer
+          format: int64
+        downloaded:
+          type: integer
+          format: int64
+        uploaded:
+          type: integer
+          format: int64
+        relevance:
+          type: number
+        files:
+          type: string
+        country:
+          type: string
+        country_code:
+          type: string
+        peer_id_client:
+          type: string
 
     TorrentFile:
       type: object
