@@ -4,6 +4,7 @@
  */
 
 import { Button } from "@/components/ui/button"
+import { FieldHelp } from "@/components/ui/field-help"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -307,14 +308,7 @@ export function OrphanScanSettingsForm({
             <Label htmlFor="scan-default-save-path" className="text-sm font-medium cursor-pointer">
               {t("preferences.orphanScanSettings.scanDefaultSavePathLabel")}
             </Label>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-[300px]">
-                <p>{t("preferences.orphanScanSettings.scanDefaultSavePathTooltip")}</p>
-              </TooltipContent>
-            </Tooltip>
+            <FieldHelp>{t("preferences.orphanScanSettings.scanDefaultSavePathTooltip")}</FieldHelp>
           </div>
           <Switch
             id="scan-default-save-path"
@@ -332,14 +326,7 @@ export function OrphanScanSettingsForm({
               >
                 {t("preferences.orphanScanSettings.scanCategoryPathsLabel")}
               </Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[300px]">
-                  <p>{t("preferences.orphanScanSettings.scanCategoryPathsTooltip")}</p>
-                </TooltipContent>
-              </Tooltip>
+              <FieldHelp>{t("preferences.orphanScanSettings.scanCategoryPathsTooltip")}</FieldHelp>
             </div>
             <Switch
               id="scan-category-paths"
@@ -355,14 +342,7 @@ export function OrphanScanSettingsForm({
             <Label htmlFor="delete-abandoned-dirs" className="text-sm font-medium cursor-pointer">
               {t("preferences.orphanScanSettings.deleteAbandonedDirsLabel")}
             </Label>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-              </TooltipTrigger>
-              <TooltipContent className="max-w-[300px]">
-                <p>{t("preferences.orphanScanSettings.deleteAbandonedDirsTooltip")}</p>
-              </TooltipContent>
-            </Tooltip>
+            <FieldHelp>{t("preferences.orphanScanSettings.deleteAbandonedDirsTooltip")}</FieldHelp>
           </div>
           <Switch
             id="delete-abandoned-dirs"

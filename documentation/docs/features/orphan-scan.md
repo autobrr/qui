@@ -71,12 +71,12 @@ Turn on **Delete Abandoned Directories** to include them. qui reports a director
 These are never reported, even when empty:
 
 - A scan root itself.
-- A category destination, or any directory above one. qBittorrent will save into it again.
+- A category destination, or any directory above one. qBittorrent will save into it again. Destinations are resolved the way qBittorrent resolves them: an absolute save path as-is, a relative one against the default save path, and a category that sets none inherits from its parent category when subcategories are enabled, or from the default save path otherwise.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
 
-Directories are removed after the files, deepest first, so a tree that this run empties collapses in one pass. Removal only ever succeeds on an already-empty directory, so a directory that gained content between the preview and your confirmation is reported rather than removed. A directory that a torrent has claimed but not yet written to is skipped for the same reason.
+Directories are removed after the files, deepest first, so a tree that this run empties collapses in one pass. Removal only ever succeeds on an already-empty directory, so a directory that gained content between the preview and your confirmation is reported rather than removed. If something replaced the directory with a file in the meantime, that file is left alone. A directory that a torrent has claimed but not yet written to is skipped for the same reason, and so is one that became a category destination after the preview.
 
 ## Settings
 

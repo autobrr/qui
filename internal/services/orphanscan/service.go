@@ -193,20 +193,15 @@ func (s *Service) getCategories(ctx context.Context, instanceID int) (map[string
 	return s.syncManager.GetCategories(ctx, instanceID)
 }
 
-// defaultSavePathRoot resolves qBittorrent's configured default save path so it
-// can be scanned even when no torrent points into it. Files sitting directly in
-// the default save path are invisible to a torrent-derived root set.
+// validDefaultSavePath checks the default save path qBittorrent reported so it
+// can serve as a scan root. Files sitting directly in it are invisible to a
+// torrent-derived root set.
 //
-// Failure to resolve is returned as an error rather than an empty root: silently
+// A path that cannot be used is an error rather than an empty root: silently
 // falling back to torrent-derived roots would report a clean scan over a
 // narrower tree than the user asked for (discussion #2365).
-func (s *Service) defaultSavePathRoot(ctx context.Context, instanceID int) (string, error) {
-	prefs, err := s.getAppPreferences(ctx, instanceID)
-	if err != nil {
-		return "", fmt.Errorf("failed to read qBittorrent preferences for default save path: %w", err)
-	}
-
-	savePath := filepath.Clean(strings.TrimSpace(prefs.SavePath))
+func validDefaultSavePath(reported string) (string, error) {
+	savePath := filepath.Clean(strings.TrimSpace(reported))
 	if savePath == "." {
 		return "", errors.New("qBittorrent reported an empty default save path")
 	}
@@ -995,7 +990,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// with directories still pending also needs the category destinations, even
 	// if the operator has since turned the option off: those directories were
 	// judged against a category list and must be judged against it again.
-	scope := scopeFromSettings(settings)
+	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
 	if len(dirEntries) > 0 {
 		scope.AbandonedDirs = true
 	}
@@ -1132,6 +1127,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 		scanRoot := findScanRoot(dir, run.ScanPaths)
 		if scanRoot == "" {
+			continue
+		}
+		// Emptying a category folder by deleting an orphan inside it must not
+		// remove the folder either.
+		if isScanRoot(dir, fileMapResult.scanRoots) || isCategoryDestination(dir, fileMapResult.categoryPaths) {
 			continue
 		}
 
@@ -1690,6 +1690,11 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsop
 		return nil, err
 	}
 	result.categoryPaths = categoryPaths
+	// Deletion stays bounded by the roots the run recorded, so those roots must
+	// take part in overlap detection even when the settings behind them have
+	// since changed. Without this a file another local instance picked up after
+	// the preview would be missing from the protection map.
+	extraRoots = append(extraRoots, scope.PersistedRoots...)
 	if len(extraRoots) > 0 {
 		result.scanRoots = dedupeCaseVariantRoots(ctx, append(result.scanRoots, extraRoots...), backend)
 	}

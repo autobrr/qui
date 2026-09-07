@@ -178,31 +178,85 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	}
 }
 
-func TestCategoryPaths_ExplicitAndImplicitDestinations(t *testing.T) {
+func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 	t.Parallel()
 
-	defaultSavePath := filepath.Join(string(filepath.Separator), "data", "torrents")
-	explicit := filepath.Join(string(filepath.Separator), "mnt", "elsewhere", "films")
+	base := t.TempDir()
+	defaultSavePath := filepath.Join(base, "torrents")
+	archive := filepath.Join(base, "archive")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{
-			"movies": {Name: "movies", SavePath: explicit},
-			// qBittorrent reports an empty save path for a category that
-			// inherits the default; it still lands in defaultSavePath/<name>.
-			"tv": {Name: "tv", SavePath: ""},
-		}, nil
+	tests := []struct {
+		name             string
+		useSubcategories bool
+		categories       map[string]qbt.Category
+		want             []string
+	}{
+		{
+			name:       "absolute save path is used as-is",
+			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: archive}},
+			want:       []string{archive},
+		},
+		{
+			name: "a category with no save path lands under the default save path",
+			// qBittorrent reports an empty savePath for a category that inherits.
+			categories: map[string]qbt.Category{"tv": {Name: "tv", SavePath: ""}},
+			want:       []string{filepath.Join(defaultSavePath, "tv")},
+		},
+		{
+			name:       "a relative save path is taken against the default save path",
+			categories: map[string]qbt.Category{"music": {Name: "music", SavePath: filepath.Join("sorted", "audio")}},
+			want:       []string{filepath.Join(defaultSavePath, "sorted", "audio")},
+		},
+		{
+			name:             "an inheriting subcategory follows its parent, not the default save path",
+			useSubcategories: true,
+			categories: map[string]qbt.Category{
+				"movies":    {Name: "movies", SavePath: archive},
+				"movies/hd": {Name: "movies/hd", SavePath: ""},
+			},
+			want: []string{archive, filepath.Join(archive, "hd")},
+		},
+		{
+			name:             "nested inheritance walks the whole parent chain",
+			useSubcategories: true,
+			categories: map[string]qbt.Category{
+				"a":     {Name: "a", SavePath: archive},
+				"a/b":   {Name: "a/b", SavePath: ""},
+				"a/b/c": {Name: "a/b/c", SavePath: ""},
+			},
+			want: []string{archive, filepath.Join(archive, "b"), filepath.Join(archive, "b", "c")},
+		},
+		{
+			name:             "with subcategories off the whole name is a path under the default save path",
+			useSubcategories: false,
+			categories: map[string]qbt.Category{
+				"movies":    {Name: "movies", SavePath: archive},
+				"movies/hd": {Name: "movies/hd", SavePath: ""},
+			},
+			want: []string{archive, filepath.Join(defaultSavePath, "movies", "hd")},
+		},
 	}
 
-	got, err := svc.categoryPaths(context.Background(), 1, defaultSavePath)
-	if err != nil {
-		t.Fatalf("categoryPaths: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	want := []string{explicit, filepath.Join(defaultSavePath, "tv")}
-	slices.Sort(want)
-	slices.Sort(got)
-	if !slices.Equal(got, want) {
-		t.Fatalf("categoryPaths = %v, want %v", got, want)
+			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+			svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+				return tt.categories, nil
+			}
+
+			got, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, tt.useSubcategories)
+			if err != nil {
+				t.Fatalf("categoryPaths: %v", err)
+			}
+
+			want := slices.Clone(tt.want)
+			slices.Sort(want)
+			slices.Sort(got)
+			if !slices.Equal(got, want) {
+				t.Fatalf("categoryPaths = %v, want %v", got, want)
+			}
+		})
 	}
 }

@@ -6,6 +6,7 @@ package orphanscan
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -15,6 +16,27 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 )
+
+// data builds an absolute path that is absolute on Windows too, where a bare
+// leading separator has no drive and fails filepath.IsAbs.
+func data(parts ...string) string {
+	return filepath.Join(append([]string{absTestRoot()}, parts...)...)
+}
+
+func absTestRoot() string {
+	if vol := filepath.VolumeName(mustCwd()); vol != "" {
+		return vol + string(filepath.Separator) + "data"
+	}
+	return string(filepath.Separator) + "data"
+}
+
+func mustCwd() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return cwd
+}
 
 func TestPruneNestedScanRoots(t *testing.T) {
 	t.Parallel()
@@ -26,23 +48,23 @@ func TestPruneNestedScanRoots(t *testing.T) {
 	}{
 		{
 			name:  "descendants of the default save path are dropped",
-			roots: []string{filepath.Join("/data", "torrents"), filepath.Join("/data", "torrents", "movies"), filepath.Join("/data", "torrents", "tv", "season")},
-			want:  []string{filepath.Join("/data", "torrents")},
+			roots: []string{data("torrents"), data("torrents", "movies"), data("torrents", "tv", "season")},
+			want:  []string{data("torrents")},
 		},
 		{
 			name:  "sibling roots are all kept",
-			roots: []string{filepath.Join("/data", "torrents"), filepath.Join("/mnt", "other")},
-			want:  []string{filepath.Join("/data", "torrents"), filepath.Join("/mnt", "other")},
+			roots: []string{data("torrents"), data("other")},
+			want:  []string{data("torrents"), data("other")},
 		},
 		{
 			name:  "a prefix that is not a path boundary is not an ancestor",
-			roots: []string{filepath.Join("/data", "torrents"), filepath.Join("/data", "torrents-old")},
-			want:  []string{filepath.Join("/data", "torrents"), filepath.Join("/data", "torrents-old")},
+			roots: []string{data("torrents"), data("torrents-old")},
+			want:  []string{data("torrents"), data("torrents-old")},
 		},
 		{
 			name:  "duplicate spellings never prune each other away",
-			roots: []string{filepath.Join("/data", "Torrents"), filepath.Join("/data", "torrents")},
-			want:  []string{filepath.Join("/data", "Torrents"), filepath.Join("/data", "torrents")},
+			roots: []string{data("Torrents"), data("torrents")},
+			want:  []string{data("Torrents"), data("torrents")},
 		},
 		{
 			name:  "empty input",
@@ -63,39 +85,29 @@ func TestPruneNestedScanRoots(t *testing.T) {
 	}
 }
 
-func TestDefaultSavePathRoot(t *testing.T) {
+func TestValidDefaultSavePath(t *testing.T) {
 	t.Parallel()
 
-	absRoot := filepath.Join(string(filepath.Separator), "data", "torrents")
+	absRoot := data("torrents")
 
 	tests := []struct {
 		name     string
 		savePath string
-		prefsErr error
 		want     string
 		wantErr  bool
 	}{
 		{name: "absolute path is used as a scan root", savePath: absRoot, want: absRoot},
 		{name: "trailing separator is cleaned", savePath: absRoot + string(filepath.Separator), want: absRoot},
 		{name: "surrounding whitespace is trimmed", savePath: "  " + absRoot + "  ", want: absRoot},
-		{name: "empty save path fails the run", savePath: "", wantErr: true},
-		{name: "relative save path fails the run", savePath: filepath.Join("relative", "path"), wantErr: true},
-		{name: "unreachable qBittorrent fails the run", prefsErr: errors.New("boom"), wantErr: true},
+		{name: "empty save path is rejected", savePath: "", wantErr: true},
+		{name: "relative save path is rejected", savePath: filepath.Join("relative", "path"), wantErr: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-				if tt.prefsErr != nil {
-					return qbt.AppPreferences{}, tt.prefsErr
-				}
-				return qbt.AppPreferences{SavePath: tt.savePath}, nil
-			}
-
-			got, err := svc.defaultSavePathRoot(context.Background(), 1)
+			got, err := validDefaultSavePath(tt.savePath)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected an error, got root %q", got)
@@ -103,12 +115,25 @@ func TestDefaultSavePathRoot(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("defaultSavePathRoot: %v", err)
+				t.Fatalf("validDefaultSavePath: %v", err)
 			}
 			if got != tt.want {
-				t.Fatalf("defaultSavePathRoot = %q, want %q", got, tt.want)
+				t.Fatalf("validDefaultSavePath = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDeclaredScanRoots_FailsWhenPreferencesAreUnreachable(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{}, errors.New("boom")
+	}
+
+	if _, _, err := svc.declaredScanRoots(context.Background(), 1, scanScope{DefaultSavePath: true}); err == nil {
+		t.Fatal("expected an error when qBittorrent preferences cannot be read")
 	}
 }
 

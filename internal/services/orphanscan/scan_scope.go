@@ -5,6 +5,7 @@ package orphanscan
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -21,6 +22,10 @@ type scanScope struct {
 	// destinations are resolved for it too, so a category folder is never
 	// removed just because it is empty right now.
 	AbandonedDirs bool
+	// PersistedRoots are the roots a previous run recorded. Deletion is still
+	// bounded by them, so they must take part in cross-instance overlap
+	// detection even when the settings behind them have since been turned off.
+	PersistedRoots []string
 }
 
 // scopeFromSettings reads the scope out of an instance's settings. Nil settings
@@ -49,6 +54,12 @@ func (s scanScope) isZero() bool {
 	return !s.DefaultSavePath && !s.CategoryPaths && !s.AbandonedDirs
 }
 
+// withPersistedRoots returns the scope with the roots a previous run recorded.
+func (s scanScope) withPersistedRoots(roots []string) scanScope {
+	s.PersistedRoots = roots
+	return s
+}
+
 // declaredScanRoots resolves the extra roots a scope asks for, along with the
 // category destinations the abandoned-directory pass must protect.
 //
@@ -60,9 +71,13 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 		return nil, nil, nil
 	}
 
-	// Implicit category destinations are defaultSavePath/<name>, so the default
-	// save path is needed whenever categories are.
-	defaultSavePath, err := s.defaultSavePathRoot(ctx, instanceID)
+	// Categories inherit from the default save path, so it is needed whenever
+	// they are. One preferences read covers both.
+	prefs, err := s.getAppPreferences(ctx, instanceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to read qBittorrent preferences: %w", err)
+	}
+	defaultSavePath, err := validDefaultSavePath(prefs.SavePath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,7 +87,7 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 	}
 
 	if scope.needsCategories() {
-		categoryPaths, err = s.categoryPaths(ctx, instanceID, defaultSavePath)
+		categoryPaths, err = s.categoryPaths(ctx, instanceID, defaultSavePath, prefs.UseSubcategories)
 		if err != nil {
 			return nil, nil, err
 		}

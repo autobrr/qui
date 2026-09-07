@@ -11,36 +11,74 @@ import (
 	"strings"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/fsops"
 )
 
-// categoryPaths returns the destinations qBittorrent categories resolve to: the
-// explicit save path where a category sets one, and defaultSavePath/<name>
-// otherwise. defaultSavePath may be empty, in which case implicit destinations
-// are unknown and only explicit ones are returned.
-func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string) ([]string, error) {
+// categoryPaths returns the on-disk destination of every qBittorrent category,
+// resolved the way qBittorrent resolves it.
+func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
 	categories, err := s.getCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
 	}
 
 	seen := make(map[string]struct{}, len(categories))
-	for name, category := range categories {
-		savePath := filepath.Clean(strings.TrimSpace(category.SavePath))
-		if savePath != "." && filepath.IsAbs(savePath) {
-			addAbsoluteScanRoot(seen, savePath)
-			continue
-		}
-		// qBittorrent leaves savePath empty for a category that inherits the
-		// default; the payload still lands in defaultSavePath/<name>.
-		if defaultSavePath != "" {
-			addAbsoluteScanRoot(seen, filepath.Join(defaultSavePath, name))
-		}
+	for name := range categories {
+		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories, 0))
 	}
 
 	return sortedRoots(seen), nil
+}
+
+// maxCategoryDepth bounds the parent walk. Category names nest by "/" so a
+// parent is always shorter than its child and this cannot loop, but a malformed
+// name should not be able to recurse without end either.
+const maxCategoryDepth = 16
+
+// resolveCategoryPath mirrors qBittorrent's own resolution:
+//
+//   - an absolute save path is used as-is;
+//   - a relative save path is taken against the default save path;
+//   - a category with no save path of its own inherits, which with subcategories
+//     enabled means its parent's destination plus the last name segment, and
+//     otherwise the default save path plus the whole name.
+//
+// Returns "" when the destination cannot be determined, which callers treat as
+// "no such destination" rather than as a path.
+func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool, depth int) string {
+	if depth > maxCategoryDepth {
+		return ""
+	}
+
+	savePath := filepath.Clean(strings.TrimSpace(categories[name].SavePath))
+	if savePath != "." && savePath != "" {
+		if filepath.IsAbs(savePath) {
+			return savePath
+		}
+		if defaultSavePath == "" {
+			return ""
+		}
+		return filepath.Join(defaultSavePath, savePath)
+	}
+
+	// Category names are slash-delimited whatever the host separator is.
+	if useSubcategories {
+		if i := strings.LastIndex(name, "/"); i > 0 {
+			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories, depth+1)
+			if parent == "" {
+				return ""
+			}
+			return filepath.Join(parent, filepath.FromSlash(name[i+1:]))
+		}
+	}
+
+	if defaultSavePath == "" {
+		return ""
+	}
+	return filepath.Join(defaultSavePath, filepath.FromSlash(name))
 }
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,
