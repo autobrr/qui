@@ -504,7 +504,7 @@ type pragmaExecFn func(ctx context.Context, stmt string) error
 
 // init registers the pragma hook while this package is still initializing, so
 // it is in place before anything can open a connection. modernc.org/sqlite
-// appends to an unsynchronized package-level slice that every Open reads, so
+// appends to an unsynchronized hook slice that every Open reads, so
 // registering it lazily races with connections that are already in flight.
 func init() {
 	sqlite.RegisterConnectionHook(func(conn sqlite.ExecQuerierContext, dsn string) error {
