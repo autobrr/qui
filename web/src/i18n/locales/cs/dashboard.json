@@ -48,7 +48,7 @@
     "upload": "Nahrávání",
     "totalSize": "Celková velikost",
     "totalSizeTooltip": "Celková velikost všech torrentů, včetně křížově sdílených",
-    "freeSpace": "Volné místo",
+    "freeSpace": "Volné místo (výchozí složka)",
     "showMore": "Zobrazit více",
     "showLess": "Zobrazit méně",
     "uptime": "Doba provozu",

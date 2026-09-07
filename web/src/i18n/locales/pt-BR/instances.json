@@ -1423,17 +1423,21 @@
       "freeSpace": {
         "title": "Fonte de espaço livre",
         "aria": "Monitoração do Espaço",
-        "description": "Selecione o HD/Mount Point. Se o 'Espaço' estiver baixo, a regra de deleção ativará.",
+        "description": "Selecione o HD/Mount Point. Se o 'Espaço' estiver baixo, a regra de deleção ativará. \"Caminho no host do qBittorrent\" pergunta ao próprio qBittorrent e requer qBittorrent 5.3.",
         "selectSource": "Montagem / Fonte",
         "defaultSource": "Pegar pelo próprio qBittorrent",
         "pathSource": "Localização Manual Exata",
         "pathSourceWindowsUnsupported": "Indisponível (Em Windows você deve usar pelo qBittorrent)",
         "pathSourceLocalAccessRequired": "Localização Manual (Requer que o Acesso Local esteja ativado)",
+        "qbitPathSource": "Caminho no host do qBittorrent",
+        "qbitPathSourceUnsupported": "Caminho no host do qBittorrent (requer qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/hd1",
         "pathHelp": "Defina onde rastrear",
+        "qbitPathHelp": "Informe um caminho no host do qBittorrent. O qBittorrent mede o espaço livre, então o qui não precisa de acesso a esse disco.",
         "errors": {
           "unsupportedWindows": "Função não existe se instalada em Windows.",
           "localAccessRequired": "Ligue Acesso Local do qBittorrent para varrer discos.",
+          "qbitPathUnsupported": "Esta instância é anterior ao qBittorrent 5.3 e não informa o espaço livre de um caminho.",
           "pathRequired": "Você escolheu modo Manual, portanto escreva o caminho do HD."
         }
       },
@@ -1622,6 +1626,7 @@
         "switchedDeleteModeForFreeSpace": "Alterado para \"Remover com arquivos\" pois a condição de Espaço Livre requer liberação real de disco",
         "switchedIntervalForFreeSpace": "Foi trocado seu Intervalo para ~5m, pois é o tempo de recarga que a libtorrent exige.",
         "pathSourceUnsupportedWindows": "Voltamos a opção de Verificação de HD para (Pegar pelo próprio qB). Windows é incompatível.",
+        "qbitPathSourceUnsupported": "Esta instância não informa o espaço livre de um caminho. Alterado para a origem padrão.",
         "switchFreeSpaceSourceDefault": "Ajustado ao original (qB).",
         "enableLocalAccessOrDefault": "Nas Configurações Globais ligue o Acesso a Arquivos (Filesystem Local).",
         "enterPathOrDefault": "Você precisa de um caminho na caixa para usar esta opção.",

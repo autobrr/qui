@@ -1423,17 +1423,21 @@
       "freeSpace": {
         "title": "Free space source",
         "aria": "About free space source",
-        "description": "Choose where to read free space from. Default uses qBittorrent's reported free space. Use \"Path on server\" to check free space on a specific disk or mount point.",
+        "description": "Choose where to read free space from. Default uses qBittorrent's reported free space. Use \"Path on server\" to check free space on a specific disk or mount point. \"Path on the qBittorrent host\" asks qBittorrent itself and needs qBittorrent 5.3.",
         "selectSource": "Select source",
         "defaultSource": "Default (qBittorrent)",
         "pathSource": "Path on server",
         "pathSourceWindowsUnsupported": "Path on server (not supported on Windows)",
         "pathSourceLocalAccessRequired": "Path on server (requires Local Access)",
+        "qbitPathSource": "Path on the qBittorrent host",
+        "qbitPathSourceUnsupported": "Path on the qBittorrent host (needs qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Enter the path to check free space on (e.g., a mount point)",
+        "qbitPathHelp": "Enter a path on the qBittorrent host. qBittorrent measures the free space, so qui needs no access to that disk.",
         "errors": {
           "unsupportedWindows": "Path-based free space source is not supported on Windows.",
           "localAccessRequired": "Path-based free space source requires Local Filesystem Access.",
+          "qbitPathUnsupported": "This instance is older than qBittorrent 5.3 and cannot report free space at a path.",
           "pathRequired": "Path is required when using \"Path on server\"."
         }
       },
@@ -1622,6 +1626,7 @@
         "switchedDeleteModeForFreeSpace": "Switched to \"Remove with files\" because Free Space condition requires actual disk space to be freed",
         "switchedIntervalForFreeSpace": "Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown",
         "pathSourceUnsupportedWindows": "Path-based free space source is not supported on Windows. Switched to qBittorrent default.",
+        "qbitPathSourceUnsupported": "This instance cannot report free space at a path. Switched to the default source.",
         "switchFreeSpaceSourceDefault": "Switch Free space source to Default (qBittorrent)",
         "enableLocalAccessOrDefault": "Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)",
         "enterPathOrDefault": "Enter a path or switch Free space source back to Default (qBittorrent)",

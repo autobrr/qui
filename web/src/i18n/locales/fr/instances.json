@@ -1417,17 +1417,21 @@
       "freeSpace": {
         "title": "Source d'espace libre",
         "aria": "À propos de la source d'espace libre",
-        "description": "Choisissez la source d'espace libre. Le chemin sur le serveur permet de cibler un disque précis.",
+        "description": "Choisissez la source d'espace libre. Le chemin sur le serveur permet de cibler un disque précis. « Chemin sur l'hôte qBittorrent » interroge qBittorrent lui-même et nécessite qBittorrent 5.3.",
         "selectSource": "Sélectionner la source",
         "defaultSource": "Par défaut (qBittorrent)",
         "pathSource": "Chemin sur le serveur",
         "pathSourceWindowsUnsupported": "Chemin sur le serveur (non supporté sur Windows)",
         "pathSourceLocalAccessRequired": "Chemin sur le serveur (requiert Accès local)",
+        "qbitPathSource": "Chemin sur l'hôte qBittorrent",
+        "qbitPathSourceUnsupported": "Chemin sur l'hôte qBittorrent (nécessite qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Entrez le chemin pour vérifier l'espace libre",
+        "qbitPathHelp": "Indiquez un chemin sur l'hôte qBittorrent. qBittorrent mesure l'espace libre, donc qui n'a pas besoin d'accéder à ce disque.",
         "errors": {
           "unsupportedWindows": "Source d'espace basée sur un chemin non supportée sur Windows.",
           "localAccessRequired": "Source d'espace basée sur un chemin requiert l'accès local.",
+          "qbitPathUnsupported": "Cette instance est antérieure à qBittorrent 5.3 et ne peut pas indiquer l'espace libre d'un chemin.",
           "pathRequired": "Le chemin est requis avec 'Chemin sur le serveur'."
         }
       },
@@ -1616,6 +1620,7 @@
         "switchedDeleteModeForFreeSpace": "Basculé sur 'Supprimer avec les fichiers' car l'Espace libre nécessite de libérer de l'espace",
         "switchedIntervalForFreeSpace": "Basculé sur un intervalle de 5m en raison du délai de nettoyage de l'Espace libre",
         "pathSourceUnsupportedWindows": "Source basée sur un chemin non supportée sur Windows. Basculement sur qBittorrent par défaut.",
+        "qbitPathSourceUnsupported": "Cette instance ne peut pas indiquer l'espace libre d'un chemin. Source par défaut sélectionnée.",
         "switchFreeSpaceSourceDefault": "Basculer la source d'espace libre sur Défaut (qBittorrent)",
         "enableLocalAccessOrDefault": "Activer l'accès local dans les paramètres de l'instance, ou utiliser Défaut (qBittorrent)",
         "enterPathOrDefault": "Entrez un chemin ou basculez la source d'espace sur Défaut (qBittorrent)",

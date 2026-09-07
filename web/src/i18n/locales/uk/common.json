@@ -115,6 +115,7 @@
     "updating": "Оновлення",
     "error": "Помилка",
     "unknown": "Невідомо",
+    "unavailable": "Недоступно",
     "trackerError": "Помилка трекера",
     "unreachable": "Недоступний"
   },

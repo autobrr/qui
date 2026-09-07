@@ -692,6 +692,13 @@ class ApiClient {
     return this.request<TransferInfo>(`/instances/${id}/transfer-info`)
   }
 
+  // bytes is null when qBittorrent cannot measure the path.
+  async getFreeSpaceAtPath(id: number, path: string): Promise<{ path: string; bytes: number | null }> {
+    return this.request<{ path: string; bytes: number | null }>(
+      `/instances/${id}/free-space?path=${encodeURIComponent(path)}`
+    )
+  }
+
   async getInstanceReannounceActivity(
     instanceId: number,
     limit?: number

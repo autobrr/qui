@@ -1423,17 +1423,21 @@
       "freeSpace": {
         "title": "Origine dello spazio libero",
         "aria": "Informazioni sull'origine dello spazio libero",
-        "description": "Scegli da dove leggere lo spazio libero. L'opzione predefinita usa lo spazio libero riportato da qBittorrent. Usa \"Percorso sul server\" per controllare lo spazio libero su un disco o punto di montaggio specifico.",
+        "description": "Scegli da dove leggere lo spazio libero. L'opzione predefinita usa lo spazio libero riportato da qBittorrent. Usa \"Percorso sul server\" per controllare lo spazio libero su un disco o punto di montaggio specifico. \"Percorso sull'host qBittorrent\" interroga qBittorrent stesso e richiede qBittorrent 5.3.",
         "selectSource": "Seleziona l'origine",
         "defaultSource": "Predefinito (qBittorrent)",
         "pathSource": "Percorso sul server",
         "pathSourceWindowsUnsupported": "Percorso sul server (non supportato su Windows)",
         "pathSourceLocalAccessRequired": "Percorso sul server (richiede l'Accesso locale)",
+        "qbitPathSource": "Percorso sull'host qBittorrent",
+        "qbitPathSourceUnsupported": "Percorso sull'host qBittorrent (richiede qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Inserisci il percorso su cui controllare lo spazio libero (es., un punto di montaggio)",
+        "qbitPathHelp": "Inserisci un percorso sull'host qBittorrent. Lo spazio libero lo misura qBittorrent, quindi qui non deve accedere a quel disco.",
         "errors": {
           "unsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows.",
           "localAccessRequired": "L'origine dello spazio libero basata sul percorso richiede l'Accesso al filesystem locale.",
+          "qbitPathUnsupported": "Questa istanza è precedente a qBittorrent 5.3 e non può riportare lo spazio libero di un percorso.",
           "pathRequired": "Il percorso è obbligatorio quando si usa \"Percorso sul server\"."
         }
       },
@@ -1622,6 +1626,7 @@
         "switchedDeleteModeForFreeSpace": "Passato a \"Rimuovi con i file\" perché la condizione Spazio libero richiede che venga effettivamente liberato spazio su disco",
         "switchedIntervalForFreeSpace": "Passato all'intervallo di 5 minuti perché le eliminazioni per Spazio libero hanno un'attesa di circa 5 minuti",
         "pathSourceUnsupportedWindows": "L'origine dello spazio libero basata sul percorso non è supportata su Windows. Passato al valore predefinito di qBittorrent.",
+        "qbitPathSourceUnsupported": "Questa istanza non può riportare lo spazio libero di un percorso. Passato all'origine predefinita.",
         "switchFreeSpaceSourceDefault": "Cambia l'origine dello spazio libero in Predefinito (qBittorrent)",
         "enableLocalAccessOrDefault": "Abilita l'accesso al filesystem locale nelle impostazioni dell'istanza, oppure usa Predefinito (qBittorrent)",
         "enterPathOrDefault": "Inserisci un percorso o riporta l'origine dello spazio libero su Predefinito (qBittorrent)",

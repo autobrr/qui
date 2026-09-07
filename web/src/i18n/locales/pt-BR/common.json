@@ -115,6 +115,7 @@
     "updating": "Atualizando",
     "error": "Erro",
     "unknown": "Desconhecido",
+    "unavailable": "Indisponível",
     "trackerError": "Erro no tracker",
     "unreachable": "Inacessível"
   },

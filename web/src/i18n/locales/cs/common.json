@@ -115,6 +115,7 @@
     "updating": "Aktualizace",
     "error": "Chyba",
     "unknown": "Neznámé",
+    "unavailable": "Nedostupné",
     "trackerError": "Chyba trackeru",
     "unreachable": "Nedostupné"
   },

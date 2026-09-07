@@ -115,6 +115,7 @@
     "updating": "更新中",
     "error": "錯誤",
     "unknown": "未知",
+    "unavailable": "無法取得",
     "trackerError": "Tracker 錯誤",
     "unreachable": "無法連線"
   },
