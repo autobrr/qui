@@ -5,7 +5,7 @@
 
 import { api } from "@/lib/api"
 import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
-import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
+import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload, TorrentStreamVersion } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
@@ -79,10 +79,25 @@ function normalizeInstanceIds(instanceIds?: number[]): number[] | undefined {
   return normalized.length > 0 ? normalized : undefined
 }
 
+function isStreamVersion(value: TorrentStreamVersion | undefined): value is TorrentStreamVersion {
+  return Boolean(
+    value &&
+    Number.isSafeInteger(value.major) &&
+    value.major > 0 &&
+    Number.isSafeInteger(value.minor) &&
+    value.minor > 0
+  )
+}
+
+function sameStreamVersion(a: TorrentStreamVersion | undefined, b: TorrentStreamVersion | undefined) {
+  return Boolean(a && b && a.major === b.major && a.minor === b.minor)
+}
+
 type StreamListener = (payload: TorrentStreamPayload) => void
 
 export interface StreamState {
   connected: boolean
+  initialized: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
   retrying: boolean
@@ -113,8 +128,10 @@ interface StreamEntry {
   params: StreamParams
   listeners: Set<StreamListener>
   connected: boolean
+  initialized: boolean
   error: string | null
   lastMeta?: TorrentStreamMeta
+  version?: TorrentStreamVersion
   handoffTimer?: number
   handoffPending?: boolean
   // Set once the replacement connection's socket has demonstrably opened during a
@@ -126,6 +143,7 @@ interface StreamEntry {
 }
 
 interface StreamConnection {
+  recovering?: boolean
   source?: EventSource
   handlers?: {
     payload: (event: MessageEvent | Event) => void
@@ -149,12 +167,14 @@ interface PendingConnectionUpdate {
   timer?: number
   preserveState?: boolean
   resetRetry?: boolean
+  force?: boolean
 }
 
 const SyncStreamContext = createContext<SyncStreamContextValue | null>(null)
 
 const DEFAULT_STREAM_STATE: StreamState = {
   connected: false,
+  initialized: false,
   error: null,
   retrying: false,
   retryAttempt: 0,
@@ -166,6 +186,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
+  const requestRecoveryRef = useRef<(key: string) => void>(() => {})
   // Re-armable handle to the live connection's stale watchdog. openConnection owns
   // resetStaleTimer (it closes over that connection's handlers); we mirror it here so
   // the visibility effect can re-arm a FRESH timer on tab refocus without reaching
@@ -214,6 +235,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       return {
         connected: entry.connected,
+        initialized: entry.initialized,
         error: entry.error,
         lastMeta: entry.lastMeta,
         retrying: connection.retryTimer !== undefined,
@@ -290,6 +312,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.retryTimer = undefined
     }
     connection.retryAttempt = 0
+    connection.recovering = false
     connection.nextRetryAt = undefined
   }, [])
 
@@ -370,7 +393,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const openConnection = useCallback(
     (
       entries: StreamEntry[],
-      options: { preserveState?: boolean; resetRetry?: boolean } = {}
+      options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}
     ) => {
       const normalized = buildStreamPayload(entries)
       const connection = connectionRef.current
@@ -384,6 +407,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (entry.connected) {
             entry.connected = false
           }
+          entry.initialized = false
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
         })
@@ -393,7 +417,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       const signature = JSON.stringify({ streams: normalized, activity: wantActivity })
 
-      if (connection.signature === signature && connection.source) {
+      // The scheduled recovery owns the next connection attempt. It reads live
+      // subscriptions when it fires, so intervening mounts and view changes coalesce.
+      if (connection.recovering && connection.retryTimer !== undefined) {
+        return
+      }
+
+      if (!options.force && connection.signature === signature && connection.source) {
         return
       }
 
@@ -403,6 +433,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       if (typeof window === "undefined" || typeof EventSource === "undefined") {
         entries.forEach(entry => {
           entry.connected = false
+          entry.initialized = false
           entry.error = STREAM_ERROR_UNSUPPORTED
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
@@ -451,6 +482,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             }
             entry.handoffPending = false
             entry.connected = false
+            entry.initialized = false
             notifyStateSubscribers(entry.key)
           }, HANDOFF_GRACE_PERIOD_MS)
           entry.handoffTimer = timer
@@ -458,6 +490,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       } else {
         entries.forEach(entry => {
           entry.connected = false
+          entry.initialized = false
           clearHandoffState(entry)
           notifyStateSubscribers(entry.key)
         })
@@ -475,6 +508,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             entry.error = STREAM_ERROR_DISCONNECTED
           }
           entry.connected = false
+          entry.initialized = false
           notifyStateSubscribers(entry.key)
         })
 
@@ -563,9 +597,43 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (payload.type === "stream-error" && payload.error) {
           entry.error = payload.error
           entry.connected = false
-        } else {
+          entry.initialized = false
+        } else if (payload.type === "init" || payload.type === "update" || payload.type === "delta") {
+          const nextVersion = payload.version
+          const baseVersion = payload.delta?.baseVersion
+          const validFullFrame =
+            payload.type !== "delta" &&
+            isStreamVersion(nextVersion)
+          const validDeltaFrame =
+            payload.type === "delta" &&
+            isStreamVersion(nextVersion) &&
+            isStreamVersion(baseVersion) &&
+            entry.initialized &&
+            sameStreamVersion(entry.version, baseVersion) &&
+            nextVersion.major === baseVersion.major &&
+            nextVersion.minor === baseVersion.minor + 1
+
+          if (!validFullFrame && !validDeltaFrame) {
+            entry.error = null
+            entry.connected = true
+            entry.initialized = false
+            entry.version = undefined
+            clearHandoffState(entry)
+            notifyStateSubscribers(streamKey)
+            requestRecoveryRef.current(streamKey)
+            return
+          }
+
           entry.error = null
           entry.connected = true
+          entry.initialized = true
+          entry.version = nextVersion
+          if (connection.recovering && normalized.every(({ key }) => {
+            const candidate = streamsRef.current[key]
+            return !candidate || candidate.initialized
+          })) {
+            clearConnectionRetryState()
+          }
         }
 
         clearHandoffState(entry)
@@ -636,9 +704,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         // reconcile even on the first successful open, not just on later reconnects.
         const openedAfterFailures = connection.retryAttempt > 0
         resetStaleTimer()
-        clearConnectionRetryState()
-        connection.retryAttempt = 0
-        connection.nextRetryAt = undefined
+        // An open socket does not prove that rejected frames have recovered.
+        // Keep the retry budget until every subscription accepts a baseline.
+        if (!connection.recovering) {
+          clearConnectionRetryState()
+        }
         if (activityCountRef.current > 0) {
           if (activityReconnectArmedRef.current || openedAfterFailures) {
             // Reconnect (or a first open that followed failures): the previous
@@ -703,7 +773,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   )
 
   const ensureConnection = useCallback(
-    (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
+    (options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}) => {
       const entries = Object.values(streamsRef.current)
       if (entries.length === 0 && activityCountRef.current === 0) {
         closeConnection()
@@ -718,25 +788,28 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   )
 
   const queueConnectionUpdate = useCallback(
-    (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
+    (options: { preserveState?: boolean; resetRetry?: boolean; force?: boolean } = {}) => {
       const pending: PendingConnectionUpdate =
         pendingConnectionUpdateRef.current ?? {
           timer: undefined,
           preserveState: undefined,
           resetRetry: undefined,
+          force: undefined,
         }
       pending.preserveState = pending.preserveState || options.preserveState
       pending.resetRetry = pending.resetRetry || options.resetRetry
+      pending.force = pending.force || options.force
 
       if (pending.timer === undefined) {
         const schedule =
           typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         pending.timer = schedule(() => {
-          const { preserveState, resetRetry } = pendingConnectionUpdateRef.current ?? {}
+          const { preserveState, resetRetry, force } = pendingConnectionUpdateRef.current ?? {}
           pendingConnectionUpdateRef.current = null
           ensureConnection({
             preserveState,
             resetRetry,
+            force,
           })
         }, 0)
       }
@@ -745,6 +818,28 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     },
     [ensureConnection]
   )
+
+  const requestRecovery = useCallback(
+    (key: string) => {
+      if (!streamsRef.current[key]) {
+        return
+      }
+      connectionRef.current.recovering = true
+      closeConnection({ preserveRetry: true })
+      // Recovery stops the shared source, so no subscription has a live
+      // baseline during backoff, including those that accepted their last frame.
+      Object.values(streamsRef.current).forEach(entry => {
+        entry.connected = false
+        entry.initialized = false
+        entry.version = undefined
+        clearHandoffState(entry)
+      })
+      notifyAllStateSubscribers()
+      scheduleReconnectRef.current()
+    },
+    [clearHandoffState, closeConnection, notifyAllStateSubscribers]
+  )
+  requestRecoveryRef.current = requestRecovery
 
   const scheduleReconnect = useCallback(() => {
     const connection = connectionRef.current
@@ -798,6 +893,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           params,
           listeners: new Set(),
           connected: options.preserveConnected ?? false,
+          initialized: false,
           error: null,
         }
         streamsRef.current[key] = entry
@@ -805,6 +901,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       } else if (!isSameParams(entry.params, params)) {
         entry.params = params
         entry.error = null
+        entry.initialized = false
+        entry.version = undefined
         queueConnectionUpdate({ preserveState: true, resetRetry: true })
       } else {
         queueConnectionUpdate({ preserveState: true })
@@ -827,6 +925,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         delete streamsRef.current[entry.key]
         clearHandoffState(entry)
         entry.connected = false
+        entry.initialized = false
+        entry.version = undefined
         entry.error = null
         notifyStateSubscribers(entry.key)
         queueConnectionUpdate({ preserveState: true })
@@ -843,7 +943,13 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       options: { preserveConnected?: boolean } = {}
     ) => {
       const entry = ensureStream(params, options)
+      const needsInit = entry.connected || entry.initialized
       entry.listeners.add(listener)
+      if (needsInit) {
+        entry.initialized = false
+        entry.version = undefined
+        queueConnectionUpdate({ preserveState: true, force: true })
+      }
       notifyStateSubscribers(entry.key)
 
       return () => {
@@ -855,7 +961,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         }
       }
     },
-    [ensureStream, notifyStateSubscribers, scheduleEntryRemoval]
+    [ensureStream, notifyStateSubscribers, queueConnectionUpdate, scheduleEntryRemoval]
   )
 
   const getState = useCallback(
@@ -872,6 +978,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const connection = connectionRef.current
       return {
         connected: entry.connected,
+        initialized: entry.initialized,
         error: entry.error,
         lastMeta: entry.lastMeta,
         retrying: connection.retryTimer !== undefined,
@@ -970,7 +1077,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       if (isDisconnected) {
         // Dead/closed source: reset retry state and force an immediate reconnection.
-        clearConnectionRetryState()
         ensureConnection({ preserveState: false, resetRetry: true })
         return
       }
@@ -984,7 +1090,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [clearConnectionRetryState, ensureConnection])
+  }, [ensureConnection])
 
   useEffect(() => {
     return () => {

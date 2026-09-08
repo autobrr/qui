@@ -1643,6 +1643,39 @@
     "applyFailed": "Cross-seed selhal: {{message}}",
     "addOptionTitle": "Přidat jako cross-seed",
     "addOptionDescription": "Spárovat tento torrent s existujícím torrentem místo stahování.",
-    "addOptionButton": "Spárovat ručně"
+    "addOptionButton": "Spárovat ručně",
+    "pack": {
+      "description": "Vyberte jeden torrent pro ruční párování nebo několik epizod pro sestavení této série.",
+      "targetLabel": "Cílové torrenty",
+      "checking": "Kontrola vybraných epizod...",
+      "checkFailed": "Tento výběr nelze zkontrolovat.",
+      "coverage": "{{matched}} z {{total}} epizod · pokrytí {{percent}}%",
+      "missing": "Chybí {{size}}",
+      "recheck": "Balíček se přidá pozastavený a zkontroluje se. Obnoví se, když kontrola dosáhne podílu propojených bajtů.",
+      "reviewRules": "Zkontrolovat ochranu v Cross-seed → Pravidla",
+      "proposalLimit": "Balíček obsahuje {{count}} epizod. Návrhy jsou omezeny na {{limit}} torrentů. Chybějící cíle vyberte pomocí hledání.",
+      "dropped": "Balíček přidán. Vynechané cíle: {{names}}",
+      "rejected": "{{name}}: {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "Tato instance potřebuje přístup k místnímu souborovému systému pro sestavení balíčku.",
+        "no_link_mode": "Pro výběr více cílů povolte v této instanci pevné odkazy nebo reflinky.",
+        "no_base_directory": "Nastavte základní adresář odkazů této instance.",
+        "no_episode_files": "V balíčku nebyly nalezeny přehratelné soubory epizod.",
+        "target_not_found": "Cíl nebyl v této instanci nalezen.",
+        "incomplete": "Stahování cíle není dokončeno.",
+        "no_episode_identity": "Číslo epizody nelze rozpoznat.",
+        "file_list_unavailable": "Seznam souborů cíle není dostupný.",
+        "episode_file_invalid": "Cíl musí obsahovat jeden přehratelný soubor s identitou vybrané epizody.",
+        "size_mismatch": "Velikost místního souboru se liší od souboru v balíčku.",
+        "release_mismatch": "Vydání neodpovídá balíčku.",
+        "local_file_unavailable": "Místní soubor chybí nebo není dostupný.",
+        "not_paired": "Tento cíl neposkytuje epizodu balíčku nebo ji již pokrývá jiný vybraný cíl.",
+        "layout_mismatch": "Z vybraných souborů nelze bezpečně vytvořit odkazy.",
+        "unsafe_piece_boundary": "Ochrana hranic dílů zablokovala tento balíček, protože vybrané a chybějící soubory sdílejí datový blok. Stažení tohoto bloku může přes pevné odkazy změnit původní soubory. Práh pokrytí se na ruční sestavení nevztahuje.",
+        "already_exists": "Tento torrent již existuje.",
+        "link_failed": "Odkazy nelze vytvořit.",
+        "add_failed": "Torrent nelze přidat."
+      }
+    }
   }
 }

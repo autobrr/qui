@@ -33,6 +33,36 @@ type ManualMatchApplyRequest struct {
 	Tags        []string `json:"tags,omitempty"`
 }
 
+// ManualAssembleCheck previews a season pack without writing a link tree.
+func (h *CrossSeedHandler) ManualAssembleCheck(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.ManualAssembleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	resp, err := h.service.CheckManualAssemble(r.Context(), &req)
+	if err != nil {
+		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
+		return
+	}
+	RespondJSON(w, http.StatusOK, resp)
+}
+
+// ManualAssembleApply adds a selected season pack paused and queues a recheck.
+func (h *CrossSeedHandler) ManualAssembleApply(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.ManualAssembleRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	resp, err := h.service.ApplyManualAssemble(context.WithoutCancel(r.Context()), &req)
+	if err != nil {
+		RespondError(w, mapCrossSeedErrorStatus(err), err.Error())
+		return
+	}
+	RespondJSON(w, http.StatusOK, resp)
+}
+
 // ManualMatchProposals godoc
 // @Summary Rank Manual match target proposals for an uploaded torrent
 // @Description Ranks same-instance torrents by file-size overlap with the uploaded torrent and returns dialog prefill values.

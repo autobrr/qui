@@ -591,6 +591,8 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 		r.With(authMiddleware).Route("/manual", func(r chi.Router) {
 			r.Post("/proposals", h.ManualMatchProposals)
 			r.Post("/apply", h.ManualMatchApply)
+			r.Post("/assemble/check", h.ManualAssembleCheck)
+			r.Post("/assemble", h.ManualAssembleApply)
 		})
 		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
