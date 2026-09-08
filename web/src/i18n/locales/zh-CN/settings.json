@@ -433,8 +433,6 @@
       "lock": "锁定"
     },
     "toasts": {
-      "verifyFailed": "许可证验证不可用",
-      "verifyFailedDescription": "高级主题切换暂时禁用。",
       "premiumRequired": "需要高级许可证",
       "premiumRequiredDescription": "添加有效的高级许可证以解锁高级主题。"
     },

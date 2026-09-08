@@ -33,7 +33,7 @@ func (s *UserStore) Create(ctx context.Context, username, passwordHash string) (
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `
 		INSERT INTO "user" (id, username, password_hash)
@@ -116,7 +116,7 @@ func (s *UserStore) UpdatePassword(ctx context.Context, passwordHash string) err
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `
 		UPDATE "user"

@@ -3,50 +3,20 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useState, type Dispatch, type SetStateAction } from "react"
+
+import { parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
 
 export function usePersistedCrossSeedBlocklist(instanceId: number, defaultValue: boolean = false) {
-  const readStoredPreference = useCallback(() => {
-    if (instanceId <= 0) return undefined
-
-    try {
-      const storageKey = `qui-cross-seed-blocklist-${instanceId}`
-      const existingPreference = localStorage.getItem(storageKey)
-      if (existingPreference) {
-        const parsedPreference = JSON.parse(existingPreference)
-        if (typeof parsedPreference === "boolean") {
-          return parsedPreference
-        }
-      }
-    } catch (error) {
-      console.error("Failed to read cross-seed blocklist preference from localStorage:", error)
-    }
-
-    return undefined
-  }, [instanceId])
-
-  const [blockCrossSeeds, setBlockCrossSeeds] = useState<boolean>(() => readStoredPreference() ?? defaultValue)
-
-  useEffect(() => {
-    const storedPreference = readStoredPreference()
-    if (typeof storedPreference === "boolean") {
-      setBlockCrossSeeds(storedPreference)
-      return
-    }
-
-    setBlockCrossSeeds(defaultValue)
-  }, [defaultValue, readStoredPreference])
-
-  useEffect(() => {
-    if (instanceId <= 0) return
-
-    try {
-      const storageKey = `qui-cross-seed-blocklist-${instanceId}`
-      localStorage.setItem(storageKey, JSON.stringify(blockCrossSeeds))
-    } catch (error) {
-      console.error("Failed to save cross-seed blocklist preference to localStorage:", error)
-    }
-  }, [blockCrossSeeds, instanceId])
+  const persisted = useClientSetting<boolean>(`qui-cross-seed-blocklist-${instanceId}`, {
+    defaultValue,
+    parse: parseJsonBoolean,
+  })
+  // Non-positive ids (the all-instances view passes -1) never persisted this
+  // choice; keep it session-local there.
+  const local = useState<boolean>(defaultValue)
+  const blockCrossSeeds = instanceId > 0 ? persisted[0] : local[0]
+  const setBlockCrossSeeds: Dispatch<SetStateAction<boolean>> = instanceId > 0 ? persisted[1] : local[1]
 
   return {
     blockCrossSeeds,

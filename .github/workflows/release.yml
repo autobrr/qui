@@ -69,21 +69,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
-      - name: Fetch premium themes
-        run: |
-          if [ -n "${{ secrets.THEMES_REPO_TOKEN }}" ]; then
-            rm -rf .themes-temp
-            git clone --depth=1 --filter=blob:none --sparse \
-              https://${{ secrets.THEMES_REPO_TOKEN }}@github.com/autobrr/qui-premium-themes.git .themes-temp
-            cd .themes-temp && git sparse-checkout set --cone themes && cd ..
-            mkdir -p web/src/themes/premium
-            cp .themes-temp/themes/*.css web/src/themes/premium/
-            rm -rf .themes-temp
-            echo "Premium themes fetched successfully"
-          else
-            echo "THEMES_REPO_TOKEN not set, skipping premium themes"
-          fi
-
       - name: Install dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
@@ -127,6 +112,11 @@ jobs:
 
       - name: Create web dist tarball
         run: tar -czf web-dist.tar.gz -C . web/dist
+
+      - name: Fetch premium themes
+        run: make themes-fetch
+        env:
+          THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
 
       - name: Set up Go
         uses: actions/setup-go@v7.0.0
@@ -238,6 +228,11 @@ jobs:
           name: web-dist
           path: web/dist
 
+      - name: Fetch premium themes
+        run: make themes-fetch
+        env:
+          THEMES_REPO_TOKEN: ${{ secrets.THEMES_REPO_TOKEN }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v6.2.0
@@ -255,7 +250,7 @@ jobs:
         uses: docker/setup-qemu-action@v4.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.2.0
+        uses: docker/setup-buildx-action@v4.3.0
 
       - name: Build and publish image
         id: docker_build
@@ -306,7 +301,7 @@ jobs:
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.2.0
+        uses: docker/setup-buildx-action@v4.3.0
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v4.6.0

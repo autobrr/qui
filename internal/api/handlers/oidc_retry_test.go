@@ -16,7 +16,6 @@ import (
 )
 
 func TestDiscoverOIDCProviderRetriesUntilSuccess(t *testing.T) {
-
 	originalProvider := oidcNewProvider
 	originalSleep := oidcSleep
 	defer func() {
@@ -47,7 +46,6 @@ func TestDiscoverOIDCProviderRetriesUntilSuccess(t *testing.T) {
 }
 
 func TestDiscoverOIDCProviderFailsAfterMaxAttempts(t *testing.T) {
-
 	originalProvider := oidcNewProvider
 	originalSleep := oidcSleep
 	defer func() {
@@ -70,7 +68,7 @@ func TestDiscoverOIDCProviderFailsAfterMaxAttempts(t *testing.T) {
 	provider, usedIssuer, err := discoverOIDCProvider(context.Background(), issuer)
 	require.Error(t, err)
 	assert.Nil(t, provider)
-	assert.Equal(t, "", usedIssuer)
+	assert.Empty(t, usedIssuer)
 
 	expectedCalls := oidcInitMaxAttempts * 2
 	assert.Equalf(t, expectedCalls, calls, "issuers tried: %v", issuersTried)
@@ -80,7 +78,6 @@ func TestDiscoverOIDCProviderFailsAfterMaxAttempts(t *testing.T) {
 }
 
 func TestDiscoverOIDCProviderTrimsTrailingSlash(t *testing.T) {
-
 	originalProvider := oidcNewProvider
 	originalSleep := oidcSleep
 	defer func() {

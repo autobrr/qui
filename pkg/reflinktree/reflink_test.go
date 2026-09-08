@@ -83,7 +83,7 @@ func TestCreate_Success(t *testing.T) {
 
 	srcFile := filepath.Join(srcDir, "test.txt")
 	testContent := "test content for reflink"
-	if err := os.WriteFile(srcFile, []byte(testContent), 0o644); err != nil {
+	if err := os.WriteFile(srcFile, []byte(testContent), 0o600); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
@@ -131,7 +131,7 @@ func TestRollback(t *testing.T) {
 	}
 
 	srcFile := filepath.Join(srcDir, "test.txt")
-	if err := os.WriteFile(srcFile, []byte("test"), 0o644); err != nil {
+	if err := os.WriteFile(srcFile, []byte("test"), 0o600); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 

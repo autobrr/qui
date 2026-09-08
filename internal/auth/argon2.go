@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -80,11 +81,11 @@ func VerifyPassword(password, encodedHash string) (bool, error) {
 func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 {
-		return nil, nil, nil, fmt.Errorf("invalid hash format")
+		return nil, nil, nil, errors.New("invalid hash format")
 	}
 
 	if parts[1] != "argon2id" {
-		return nil, nil, nil, fmt.Errorf("incompatible hash algorithm")
+		return nil, nil, nil, errors.New("incompatible hash algorithm")
 	}
 
 	var version int
@@ -93,7 +94,7 @@ func decodeHash(encodedHash string) (*Argon2Params, []byte, []byte, error) {
 	}
 
 	if version != argon2.Version {
-		return nil, nil, nil, fmt.Errorf("incompatible argon2 version")
+		return nil, nil, nil, errors.New("incompatible argon2 version")
 	}
 
 	params := &Argon2Params{}

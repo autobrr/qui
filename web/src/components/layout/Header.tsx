@@ -284,7 +284,7 @@ export function Header({
     [shouldShowInstanceControls]
   )
   const { theme } = useTheme()
-  const { viewMode } = usePersistedCompactViewState("normal")
+  const { viewMode } = usePersistedCompactViewState("desktop")
   const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
 
   useEffect(() => {

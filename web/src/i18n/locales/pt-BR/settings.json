@@ -435,8 +435,6 @@
       "lock": "Bloquear"
     },
     "toasts": {
-      "verifyFailed": "Verificação de licença indisponível",
-      "verifyFailedDescription": "A troca de tema premium está temporariamente desativada.",
       "premiumRequired": "Licença Premium necessária",
       "premiumRequiredDescription": "Desbloqueie temas premium adicionando uma licença premium válida."
     },

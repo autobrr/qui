@@ -47,7 +47,7 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern the client name
 	ids, err := dbinterface.InternStringNullable(ctx, tx, &clientName)
@@ -163,7 +163,7 @@ func (s *ClientAPIKeyStore) UpdateLastUsed(ctx context.Context, keyHash string) 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `UPDATE client_api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE key_hash = ?`
 	result, err := tx.ExecContext(ctx, query, keyHash)
@@ -192,7 +192,7 @@ func (s *ClientAPIKeyStore) Delete(ctx context.Context, id int) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `DELETE FROM client_api_keys WHERE id = ?`
 	result, err := tx.ExecContext(ctx, query, id)

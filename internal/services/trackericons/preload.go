@@ -147,16 +147,16 @@ var trailingCommaRE = regexp.MustCompile(`,\s*}`)
 
 func parseDataURL(raw string) ([]byte, string, error) {
 	if raw == "" {
-		return nil, "", fmt.Errorf("empty data URL")
+		return nil, "", errors.New("empty data URL")
 	}
 
 	if !strings.HasPrefix(strings.ToLower(raw), "data:") {
-		return nil, "", fmt.Errorf("data URL must start with 'data:'")
+		return nil, "", errors.New("data URL must start with 'data:'")
 	}
 
 	idx := strings.Index(raw, ",")
 	if idx < 0 {
-		return nil, "", fmt.Errorf("invalid data URL")
+		return nil, "", errors.New("invalid data URL")
 	}
 
 	meta := raw[len("data:"):idx]
@@ -181,7 +181,7 @@ func parseDataURL(raw string) ([]byte, string, error) {
 
 	payload = strings.TrimSpace(payload)
 	if payload == "" {
-		return nil, "", fmt.Errorf("empty data payload")
+		return nil, "", errors.New("empty data payload")
 	}
 
 	payload = strings.Map(func(r rune) rune {

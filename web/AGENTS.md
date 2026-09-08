@@ -11,6 +11,7 @@ Frontend and i18n rules for work under `web/`.
 - File names should be descriptive, e.g. `torrent-table.tsx`.
 - Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
 - Frontend tests: Vitest + React Testing Library, colocated as `*.test.tsx` near the component.
+- Theme fonts: every font family a theme names in `--font-sans/serif/mono` needs a `FONT_MAP` entry in `web/src/utils/fontLoader.ts` (Google Fonts spec, or `""` for a system font), or the browser silently falls back. `fontLoader.test.ts` enforces this for bundled themes; sideloaded community themes are best-effort.
 - Field help goes in a tooltip on the field label. Use `FieldHelp` from `@/components/ui/field-help`. Do not add a help paragraph under the control.
 - Keep this text inline, never in a tooltip: error and validation messages, warnings about data loss or actions the user cannot undo, and text the user must read before they choose.
 - Per-option text in a radio group or a checkbox list stays inline. The user compares the options side by side and cannot do that through hovers.
@@ -84,3 +85,5 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 ## Torrent Details Note
 
 `web/src/components/torrents/TorrentDetailsPanel.tsx` live row state is stream-backed via `useSyncStream`; polling is fallback while stream unavailable. Content/files and Peers tabs still poll on interval, but polling is tab-scoped and visibility-gated.
+
+`useSyncStream` listeners receive raw frames. A delta for unchanged rows carries an empty `torrents` list and the previous `total`, so a handler clears its row only on `total === 0` and keeps the previous row on an empty list.

@@ -28,6 +28,7 @@ const (
 	KindBackupRun          Kind = "backup.run"
 	KindDirScanRun         Kind = "dirscan.run"
 	KindOrphanScanRun      Kind = "orphanscan.run"
+	KindDiscScanRun        Kind = "discscan.run"
 	KindCrossSeedStatus    Kind = "crossseed.status"
 	KindCrossSeedSearch    Kind = "crossseed.search"
 	KindReannounceActivity Kind = "reannounce.activity"
@@ -35,6 +36,8 @@ const (
 	KindIndexerActivity    Kind = "indexer.activity"
 	KindSearchHistory      Kind = "search.history"
 	KindTrackerIcons       Kind = "tracker.icons"
+	KindThemeSettings      Kind = "theme.settings"
+	KindClientSettings     Kind = "client.settings"
 )
 
 // Event is a small, JSON-serializable signal that some qui-owned state changed.

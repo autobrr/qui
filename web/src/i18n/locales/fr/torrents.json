@@ -56,6 +56,7 @@
     "searchCrossSeeds": "Chercher des Cross-Seeds",
     "filterCrossSeeds": "Filtrer les Cross-Seeds",
     "filterCrossSeedsSingleOnly": "Filtrer les Cross-Seeds (sélection unique uniquement)",
+    "manualCrossSeed": "Ajouter un cross-seed manuellement",
     "setTags": "Définir les tags",
     "setLocation": "Définir l'emplacement",
     "setShareLimits": "Définir les limites de partage",
@@ -554,6 +555,31 @@
       "copyFailed": "Échec de la copie"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "Analyse BDInfo en cours",
+    "actionReady": "Rapport BDInfo prêt",
+    "actionFailed": "Échec de l'analyse BDInfo",
+    "quickSummary": "Résumé rapide",
+    "forum": "Forum",
+    "copyQuickSummary": "Copier le résumé rapide",
+    "copyForum": "Copier le bloc forum",
+    "rescan": "Relancer l'analyse",
+    "cancel": "Annuler l'analyse",
+    "retry": "Réessayer",
+    "starting": "Démarrage de l'analyse...",
+    "queued": "En file d'attente, position {{position}}",
+    "scanning": "Analyse de {{processed}} sur {{total}}",
+    "scanningUnknown": "Analyse...",
+    "failed": "Échec de l'analyse",
+    "canceled": "Analyse annulée",
+    "toast": {
+      "copied": "{{label}} copié dans le presse-papiers",
+      "copyFailed": "Échec de la copie dans le presse-papiers",
+      "completed": "Rapport BDInfo prêt",
+      "failed": "Échec de l'analyse BDInfo : {{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "Non catégorisé",
     "expandCategory": "Développer la catégorie",
@@ -719,6 +745,25 @@
     "block": "Bloquer",
     "addedToBlocklist": "Ajouté à la liste de blocage",
     "missingInstance": "Instance manquante pour la liste de blocage",
+    "trace": {
+      "title": "Détail de la recherche",
+      "summaryBadge": "{{total}} candidats, {{matches}} correspondances",
+      "summary": "{{total}} candidats renvoyés. Rejetés : {{release}} release non conforme, {{size}} taille non conforme, {{late}} filtre de contenu, {{duplicates}} doublons. {{matches}} correspondances restantes.",
+      "indexersHeading": "Indexeurs",
+      "status": {
+        "searched": "interrogé",
+        "notCovered": "incomplet",
+        "error": "erreur",
+        "excluded": "exclu"
+      },
+      "candidateCount": "{{count}} candidats",
+      "rejectionsHeading": "Candidats rejetés",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "+{{count}} autres pour cette raison",
+      "copyReport": "Copier le rapport",
+      "copied": "Rapport copié dans le presse-papiers",
+      "copyFailed": "Impossible de copier le rapport"
+    },
     "scope": {
       "allIndexers": "Tous les indexeurs",
       "selectCustom": "Sélection personnalisée",
@@ -836,7 +881,10 @@
       }
     },
     "title": "Filtres",
-    "clearAll": "Tout effacer",
+    "clearOptions": "Options de suppression des filtres",
+    "clearSidebarFilters": "Effacer les filtres de la barre latérale",
+    "clearColumnFilters": "Effacer les filtres des colonnes",
+    "clearFiltersAndSearch": "Effacer les filtres et la recherche",
     "loading": "Chargement...",
     "customFilter": "Filtre personnalisé",
     "customFilterHelp": "Filtre d'expression personnalisé actif (ex. résultats cross-seed)",
@@ -1115,7 +1163,7 @@
       "unknownClient": "Client inconnu"
     },
     "actions": {
-      "copyIpPort": "Copier IP:port",
+      "copyIpPort": "Copier l’adresse",
       "banPeerPermanently": "Bannir définitivement",
       "selectAll": "Tout",
       "selectNone": "Aucun"
@@ -1189,7 +1237,7 @@
     "editTrackerUrl": "Modifier l'URL du Tracker"
   },
   "peersTable": {
-    "address": "IP:Port",
+    "address": "IP/Adresse",
     "client": "Client",
     "flags": "Drapeaux",
     "progress": "Progression",
@@ -1198,11 +1246,11 @@
     "downloaded": "Téléchargé",
     "uploaded": "Envoyé",
     "relevance": "Pertinence",
-    "copyIpAddress": "Copier l'adresse IP",
+    "copyIpAddress": "Copier l’adresse",
     "banPeer": "Bannir le pair",
     "noPeersConnected": "Aucun pair connecté",
     "toast": {
-      "ipCopied": "Adresse IP copiée dans le presse-papiers"
+      "ipCopied": "Adresse copiée dans le presse-papiers"
     }
   },
   "routes": {
@@ -1565,5 +1613,68 @@
     "failedToUpdatePriorities": "Échec de la mise à jour des priorités des fichiers",
     "failedToRenameFile": "Échec du renommage du fichier",
     "failedToRenameFolder": "Échec du renommage du dossier"
+  },
+  "manualCrossSeed": {
+    "title": "Correspondance manuelle de cross-seed",
+    "description": "Choisissez le torrent existant qui contient ces données. qui ajoute le fichier envoyé à son emplacement, le revérifie, puis le met en seed.",
+    "fileLabel": "Fichier torrent",
+    "sourceSummary_one": "{{size}} · {{count}} fichier",
+    "sourceSummary_other": "{{size}} · {{count}} fichiers",
+    "loadingProposals": "Classement des cibles par recouvrement de fichiers...",
+    "proposalsFailed": "Échec du chargement des cibles proposées",
+    "targetLabel": "Torrent cible",
+    "noProposals": "Aucun torrent avec recouvrement trouvé. Choisissez une cible manuellement.",
+    "overlap": "{{percent}} % de recouvrement",
+    "pickManually": "Choisir un autre torrent",
+    "pickerPlaceholder": "Rechercher des torrents...",
+    "pickerNoResults": "Aucun torrent ne correspond",
+    "zeroOverlapWarning": "Le torrent sélectionné ne partage aucune taille de fichier avec l'envoi. La revérification décide du résultat ; en cas d'échec, le torrent reste en pause.",
+    "category": "Catégorie",
+    "noCategory": "(aucune catégorie)",
+    "pinnedCategory": "Les paramètres de cross-seed imposent la catégorie « {{category}} » pour chaque correspondance, elle ne peut pas être modifiée ici.",
+    "tags": "Tags",
+    "newTagPlaceholder": "Ajoutez un tag et appuyez sur Entrée",
+    "savePath": "Chemin de sauvegarde (destination effective)",
+    "cancel": "Annuler",
+    "apply": "Ajouter le cross-seed",
+    "applying": "Ajout...",
+    "applySuccess": "Cross-seed ajouté",
+    "applyFailed": "Échec du cross-seed : {{message}}",
+    "addOptionTitle": "Ajouter comme cross-seed",
+    "addOptionDescription": "Associer ce torrent à un torrent existant au lieu de le télécharger.",
+    "addOptionButton": "Associer manuellement",
+    "pack": {
+      "description": "Sélectionnez un torrent pour une correspondance manuelle, ou plusieurs épisodes pour assembler cette saison.",
+      "targetLabel": "Torrents cibles",
+      "checking": "Vérification des épisodes sélectionnés...",
+      "checkFailed": "Impossible de vérifier cette sélection.",
+      "coverage": "{{matched}} épisodes sur {{total}} · {{percent}}% de couverture",
+      "missing": "{{size}} manquants",
+      "recheck": "Le pack est ajouté en pause et vérifié. Il reprend lorsque la vérification atteint la proportion des octets liés.",
+      "reviewRules": "Consulter la protection dans Cross-seed → Règles",
+      "proposalLimit": "Ce pack contient {{count}} épisodes. Les propositions sont limitées à {{limit}} torrents. Utilisez la recherche pour ajouter les cibles manquantes.",
+      "dropped": "Pack ajouté. Cibles écartées : {{names}}",
+      "rejected": "{{name}} : {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "Cette instance nécessite un accès au système de fichiers local pour assembler un pack.",
+        "no_link_mode": "Activez les liens physiques ou les reflinks sur cette instance pour sélectionner plusieurs cibles.",
+        "no_base_directory": "Configurez un répertoire de base pour les liens sur cette instance.",
+        "no_episode_files": "Aucun fichier vidéo d’épisode trouvé dans ce pack.",
+        "target_not_found": "Cible introuvable dans cette instance.",
+        "incomplete": "Le téléchargement de la cible est incomplet.",
+        "no_episode_identity": "Le numéro d’épisode est illisible.",
+        "file_list_unavailable": "La liste des fichiers de la cible est indisponible.",
+        "episode_file_invalid": "La cible doit contenir un seul fichier vidéo correspondant à cet épisode.",
+        "size_mismatch": "La taille du fichier local diffère de celle du pack.",
+        "release_mismatch": "La version ne correspond pas au pack.",
+        "local_file_unavailable": "Le fichier local est absent ou indisponible.",
+        "not_paired": "Cette cible ne fournit aucun épisode du pack, ou une autre cible sélectionnée le couvre déjà.",
+        "layout_mismatch": "Les fichiers sélectionnés ne permettent pas de créer des liens sûrs.",
+        "unsafe_piece_boundary": "La protection des limites de pièces a bloqué ce pack car les fichiers sélectionnés et manquants partagent un bloc de données. Le téléchargement de ce bloc peut modifier vos fichiers originaux via les liens physiques. Le seuil de couverture ne concerne pas l’assemblage manuel.",
+        "already_exists": "Ce torrent existe déjà.",
+        "link_failed": "Impossible de créer les liens.",
+        "add_failed": "Impossible d’ajouter le torrent."
+      }
+    }
   }
 }

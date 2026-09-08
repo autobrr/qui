@@ -105,6 +105,9 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 
 		entryPath := filepath.Join(rootPath, entry.Name)
 		s.processRootEntry(ctx, entry, entryPath, result)
+		if err := ctx.Err(); err != nil {
+			return result, fmt.Errorf("scan directory: %w", err)
+		}
 	}
 
 	return result, nil
@@ -219,6 +222,9 @@ func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*S
 			LinkCount: entry.Nlinks,
 			HasLinks:  entry.Nlinks > 1,
 		})
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("walk directory %s: %w", dirPath, err)
 	}
 
 	return searchee, nil

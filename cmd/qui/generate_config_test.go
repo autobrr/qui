@@ -58,7 +58,7 @@ func TestGenerateConfigSkipsExistingFile(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(configDir, 0o755))
 	original := []byte("custom configuration")
-	require.NoError(t, os.WriteFile(configPath, original, 0o644))
+	require.NoError(t, os.WriteFile(configPath, original, 0o600))
 
 	output := runGenerateConfigCommand(t, "--config-dir", configDir)
 

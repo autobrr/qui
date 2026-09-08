@@ -551,7 +551,7 @@ func (s *AutomationStore) Reorder(ctx context.Context, instanceID int, orderedID
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for idx, id := range orderedIDs {
 		if _, err := tx.ExecContext(ctx, `UPDATE automations SET sort_order = ? WHERE id = ? AND instance_id = ?`, idx+1, id, instanceID); err != nil {
@@ -749,6 +749,7 @@ const (
 	FieldSuperSeeding           ConditionField = "SUPER_SEEDING"
 	FieldIsUnregistered         ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles        ConditionField = "HAS_MISSING_FILES"
+	FieldHasSkippedFiles        ConditionField = "HAS_SKIPPED_FILES"
 	FieldIsGrouped              ConditionField = "IS_GROUPED"
 	FieldExistsOnOtherInstance  ConditionField = "EXISTS_ON_OTHER_INSTANCE"
 	FieldSeedingOnOtherInstance ConditionField = "SEEDING_ON_OTHER_INSTANCE"

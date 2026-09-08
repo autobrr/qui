@@ -4,8 +4,8 @@
 package releases
 
 import (
+	"fmt"
 	"regexp"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -112,16 +112,44 @@ func IsEpisodeRange(release *rls.Release) bool {
 	if release == nil {
 		return false
 	}
+	// Once a tag in the SxxEyy scheme is present, only those tags count:
+	// "S23E19.Episode.1174" names one episode under two schemes, and rls lists
+	// both numbers as series tags. An absolute-only name such as
+	// "Show - 01 - 12" keeps all its tags. The %o verb is the tag's original
+	// capture (see rls.Tag.Format).
+	var tags, scheme []rls.Tag
+	for _, tag := range release.Tags() {
+		if !tag.Is(rls.TagTypeSeries) {
+			continue
+		}
+		tags = append(tags, tag)
+		if seasonEpisodeScheme.MatchString(fmt.Sprintf("%o", tag)) {
+			scheme = append(scheme, tag)
+		}
+	}
+	if len(scheme) > 0 {
+		tags = scheme
+	}
 	// Count distinct episodes, not entries: a file path names the same episode
 	// twice ("Show.S11E11-GRP/Show.S11E11-GRP.mkv") and that is still one episode.
-	episodes := release.SeriesEpisodes()
-	if len(episodes) < 2 {
-		return false
+	first := [2]int{-1, -1}
+	for _, tag := range tags {
+		series, _ := tag.Series()
+		for _, episode := range tag.Episodes() {
+			switch cur := [2]int{series, episode}; {
+			case first[0] < 0:
+				first = cur
+			case cur != first:
+				return true
+			}
+		}
 	}
-	return slices.ContainsFunc(episodes, func(e []int) bool {
-		return !slices.Equal(e, episodes[0])
-	})
+	return false
 }
+
+// seasonEpisodeScheme matches the original capture of a series tag written as
+// S01E05, S01E05E06, 1x05, or a bare E06 continuation, and not as "Episode 6".
+var seasonEpisodeScheme = regexp.MustCompile(`(?i)^(?:[se]|\d+x)\d`)
 
 func enrichReleaseHDR(rawName string, release *rls.Release) {
 	if release == nil {

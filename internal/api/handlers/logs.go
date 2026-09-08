@@ -237,7 +237,7 @@ func (h *LogsHandler) StreamLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.streamLoop(w, flusher, r.Context(), sub)
+	h.streamLoop(r.Context(), w, flusher, sub)
 }
 
 func (h *LogsHandler) parseLimit(r *http.Request) int {
@@ -286,11 +286,11 @@ func (h *LogsHandler) sendHistory(w http.ResponseWriter, flusher http.Flusher, h
 }
 
 func writeSSEData(w http.ResponseWriter, data string) error {
-	_, err := fmt.Fprintf(w, "data: %s\n\n", data)
-	return err //nolint:wrapcheck // SSE write errors are terminal; wrapping adds no value
+	_, err := fmt.Fprintf(w, "data: %s\n\n", data) //nolint:gosec // G705: an SSE stream is text/event-stream, never rendered as HTML
+	return err                                     //nolint:wrapcheck // SSE write errors are terminal; wrapping adds no value
 }
 
-func (h *LogsHandler) streamLoop(w http.ResponseWriter, flusher http.Flusher, ctx context.Context, sub *logstream.Subscriber) {
+func (h *LogsHandler) streamLoop(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, sub *logstream.Subscriber) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 

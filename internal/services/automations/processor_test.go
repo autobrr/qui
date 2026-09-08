@@ -707,7 +707,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeWithFiles, nil)
 
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FilesToClear, 0) // Not tracked as cross-seed
+		require.Empty(t, evalCtx.FilesToClear) // Not tracked as cross-seed
 	})
 
 	t.Run("adds size for first torrent with valid cross-seed key", func(t *testing.T) {
@@ -817,7 +817,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		updateCumulativeFreeSpaceCleared(torrent, evalCtx, DeleteModeKeepFiles, nil)
 
 		require.Equal(t, int64(0), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FilesToClear, 0)
+		require.Empty(t, evalCtx.FilesToClear)
 	})
 
 	t.Run("does not add size for preserve-cross-seeds mode when cross-seeds exist", func(t *testing.T) {
@@ -852,7 +852,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		updateCumulativeFreeSpaceCleared(torrent1, evalCtx, DeleteModeWithFilesPreserveCrossSeeds, buildContentPathIndex(allTorrents))
 
 		require.Equal(t, int64(0), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.FilesToClear, 0)
+		require.Empty(t, evalCtx.FilesToClear)
 	})
 
 	t.Run("adds size for preserve-cross-seeds mode when no cross-seeds exist", func(t *testing.T) {
@@ -942,7 +942,7 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 		require.Equal(t, int64(50000000000), evalCtx.SpaceToClear)
 		// Should track via signature, not cross-seed key
 		require.Len(t, evalCtx.HardlinkSignaturesToClear, 1)
-		require.Len(t, evalCtx.FilesToClear, 0) // Not tracked as cross-seed
+		require.Empty(t, evalCtx.FilesToClear) // Not tracked as cross-seed
 	})
 
 	t.Run("torrents without hardlink signature fall back to cross-seed dedupe", func(t *testing.T) {
@@ -1017,8 +1017,8 @@ func TestUpdateCumulativeFreeSpaceCleared(t *testing.T) {
 
 		// Both should count because different ContentPaths and hardlink dedupe not applied
 		require.Equal(t, int64(100000000000), evalCtx.SpaceToClear)
-		require.Len(t, evalCtx.HardlinkSignaturesToClear, 0) // Not used
-		require.Len(t, evalCtx.FilesToClear, 2)              // Both tracked as separate cross-seed keys
+		require.Empty(t, evalCtx.HardlinkSignaturesToClear) // Not used
+		require.Len(t, evalCtx.FilesToClear, 2)             // Both tracked as separate cross-seed keys
 	})
 
 	t.Run("grouping signatures remain available while delete-safe dedupe runs", func(t *testing.T) {

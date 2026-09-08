@@ -9,6 +9,7 @@ export type ActivityEventKind =
   | "backup.run"
   | "dirscan.run"
   | "orphanscan.run"
+  | "discscan.run"
   | "crossseed.status"
   | "crossseed.search"
   | "reannounce.activity"
@@ -16,6 +17,8 @@ export type ActivityEventKind =
   | "indexer.activity"
   | "search.history"
   | "tracker.icons"
+  | "theme.settings"
+  | "client.settings"
 
 // ActivityEvent is a small qui-owned server signal. It carries identifiers only
 // (never payload data); the frontend reacts by invalidating the matching query.

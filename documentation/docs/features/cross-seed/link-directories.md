@@ -6,58 +6,59 @@ description: How qui lays out hardlink/reflink trees on disk.
 
 # Link Directories
 
-When **Hardlink mode** or **Reflink mode** is enabled for a qBittorrent instance, qui creates a directory tree that matches the incoming torrent’s expected layout, then adds the torrent pointing at that tree.
+If you enable **Hardlink mode** or **Reflink mode** for a qBittorrent instance, qui creates a directory tree that matches the expected layout of the incoming torrent. qui then adds the torrent and points it at that tree.
 
-Because these modes add torrents with an explicit `savepath` (the link-tree root), AutoTMM is always disabled for torrents added via hardlink/reflink mode.
+Because these modes set an explicit `savepath` (the link-tree root), qui always disables AutoTMM for torrents added in hardlink or reflink mode.
 
 This applies to:
 - Cross-seed searches (RSS, completion, manual, scan)
 - Directory scan (dirscan) injections
+- Season pack webhook injections (see [Season Packs](./season-packs.md))
 
 ## Settings
 
-Configured per qBittorrent instance in **Cross-Seed → Hardlink Mode**:
+Configure these options per qBittorrent instance in **Cross-Seed > Rules > Hardlink / Reflink Mode**:
 
-- **Base directory** (`HardlinkBaseDir`): root path where link trees are created.
-- **Directory preset** (`HardlinkDirPreset`): controls how trees are grouped below the base directory.
-- **Fallback to regular mode** (`FallbackToRegularMode`): if link-tree creation fails, qui can fall back to “regular mode” instead of skipping/failing.
+- **Base directories** (`HardlinkBaseDir`): root paths where qui creates link trees. Separate several paths with commas. qui uses the first path that is on the same filesystem as the matched source files.
+- **Directory organization** (`HardlinkDirPreset`): controls how qui groups trees below the base directory.
+- **Fallback to regular mode on error** (`FallbackToRegularMode`): if link-tree creation fails, qui falls back to regular mode instead of failing.
 
-## Directory Presets
+## Directory presets
 
 qui supports three presets:
 
 - `flat`: one folder per torrent under the base directory
   - Example: `base/Torrent.Name--abcdef12/...`
-- `by-tracker`: groups by tracker display name, then optional isolation folder
+- `by-tracker`: groups by tracker display name, then an optional isolation folder
   - Example: `base/TrackerName/Torrent.Name--abcdef12/...`
-- `by-instance`: groups by instance name, then optional isolation folder
+- `by-instance`: groups by instance name, then an optional isolation folder
   - Example: `base/MyInstance/Torrent.Name--abcdef12/...`
 
-### Tracker Names (by-tracker)
+### Tracker names (by-tracker)
 
-For `by-tracker`, qui resolves the folder name using the same fallback chain as cross-seed statistics:
+If you use `by-tracker`, qui resolves the folder name with the same fallback chain as cross-seed statistics:
 
 1. **Tracker customization display name** ([Tracker Customizations](../tracker-customizations.md), on the Dashboard under **Tracker Breakdown**)
 2. Indexer name (from Prowlarr/Jackett)
 3. Raw announce domain
 
-Folder names are sanitized to be filesystem-safe.
+qui sanitizes folder names to make them filesystem-safe.
 
-### Isolation Folders
+### Isolation folders
 
-For `by-tracker` and `by-instance`, qui adds an isolation folder only when needed:
+If you use `by-tracker` or `by-instance`, qui adds an isolation folder only when needed:
 
-- Torrents with a common root folder don’t need isolation.
-- “Rootless” torrents (top-level files) use an isolation folder to avoid collisions.
+- Torrents with a common root folder do not need isolation.
+- "Rootless" torrents (top-level files) use an isolation folder to avoid collisions.
 
-For `flat`, an isolation folder is always used.
+If you use `flat`, qui always uses an isolation folder.
 
-## Fallback to Regular Mode
+## Fallback to regular mode
 
-If **Fallback to regular mode** is enabled, qui will fall back to adding the torrent with a normal `savepath` (pointing at the matched source files) when link-tree creation fails.
+If you enable **Fallback to regular mode** and link-tree creation fails, qui adds the torrent with a standard `savepath` that points at the matched source files.
 
-This is particularly useful when hardlinking can intermittently fail due to filesystem/device boundaries (for example: pooled mounts where two paths look the same but resolve to different underlying devices).
+If hardlinks fail across filesystem or device boundaries, this fallback prevents injection errors. For example, a pooled mount presents paths that look identical but resolve to different underlying devices.
 
-Because this fallback uses regular source-file paths instead of the link-tree directory, qui adds the torrent paused, rechecks it, and only auto-resumes after qBittorrent reports 100% complete. If **Skip recheck** is enabled, these fallback candidates are skipped.
+If no base directory shares a filesystem with the source files, or link creation failed, qui adds the torrent paused and rechecks it. qui starts the torrent after qBittorrent reports 100% complete. For Cross-Seed, **Skip recheck** skips these candidates. Dir Scan runs the recheck even when **Skip recheck** is on. Fallbacks for configuration problems (an empty base directory, or no local filesystem access) add the torrent in regular mode with the normal regular-mode rules.
 
-If fallback is disabled, qui skips/fails the candidate when link-tree creation fails.
+If you disable fallback and link-tree creation fails, qui skips or fails the candidate.

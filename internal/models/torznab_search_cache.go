@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -79,7 +80,7 @@ func NewTorznabSearchCacheStore(db dbinterface.Querier) *TorznabSearchCacheStore
 // Fetch returns a cached search response by cache key.
 func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*TorznabSearchCacheEntry, bool, error) {
 	if strings.TrimSpace(cacheKey) == "" {
-		return nil, false, fmt.Errorf("cache key cannot be empty")
+		return nil, false, errors.New("cache key cannot be empty")
 	}
 
 	const fetchQuery = `
@@ -154,19 +155,19 @@ func (s *TorznabSearchCacheStore) Fetch(ctx context.Context, cacheKey string) (*
 // Store inserts or updates a cached search response.
 func (s *TorznabSearchCacheStore) Store(ctx context.Context, entry *TorznabSearchCacheEntry) error {
 	if entry == nil {
-		return fmt.Errorf("entry cannot be nil")
+		return errors.New("entry cannot be nil")
 	}
 	if strings.TrimSpace(entry.CacheKey) == "" {
-		return fmt.Errorf("cache key cannot be empty")
+		return errors.New("cache key cannot be empty")
 	}
 	if strings.TrimSpace(entry.RequestFingerprint) == "" {
-		return fmt.Errorf("request fingerprint cannot be empty")
+		return errors.New("request fingerprint cannot be empty")
 	}
 	if len(entry.ResponseData) == 0 {
-		return fmt.Errorf("response data cannot be empty")
+		return errors.New("response data cannot be empty")
 	}
 	if entry.ExpiresAt.Before(entry.CachedAt) {
-		return fmt.Errorf("expiresAt must be after cachedAt")
+		return errors.New("expiresAt must be after cachedAt")
 	}
 
 	categoriesJSON, err := json.Marshal(entry.Categories)
@@ -443,7 +444,7 @@ func (s *TorznabSearchCacheStore) InvalidateByIndexerIDs(ctx context.Context, in
 		return 0, nil
 	}
 
-	query := fmt.Sprintf("DELETE FROM torznab_search_cache WHERE %s", strings.Join(conditions, " OR "))
+	query := "DELETE FROM torznab_search_cache WHERE " + strings.Join(conditions, " OR ")
 	res, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("invalidate torznab search cache: %w", err)
@@ -537,7 +538,7 @@ func (s *TorznabSearchCacheStore) GetSettings(ctx context.Context) (*TorznabSear
 // UpdateSettings persists TTL minutes and returns the updated settings.
 func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes int) (*TorznabSearchCacheSettings, error) {
 	if ttlMinutes <= 0 {
-		return nil, fmt.Errorf("ttlMinutes must be positive")
+		return nil, errors.New("ttlMinutes must be positive")
 	}
 
 	const query = `
@@ -556,7 +557,7 @@ func (s *TorznabSearchCacheStore) UpdateSettings(ctx context.Context, ttlMinutes
 // RebaseTTL recalculates expires_at for all cached entries using the provided TTL minutes.
 func (s *TorznabSearchCacheStore) RebaseTTL(ctx context.Context, ttlMinutes int) (int64, error) {
 	if ttlMinutes <= 0 {
-		return 0, fmt.Errorf("ttlMinutes must be positive")
+		return 0, errors.New("ttlMinutes must be positive")
 	}
 
 	rows, err := s.db.QueryContext(ctx, `SELECT cache_key, cached_at FROM torznab_search_cache`)
@@ -689,7 +690,7 @@ func buildIndexerMatcher(ids []int) string {
 	parts := make([]string, 0, len(ids)+2)
 	parts = append(parts, "")
 	for _, id := range ids {
-		parts = append(parts, fmt.Sprintf("%d", id))
+		parts = append(parts, strconv.Itoa(id))
 	}
 	parts = append(parts, "")
 	return strings.Join(parts, "|")

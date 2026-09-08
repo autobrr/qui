@@ -1416,6 +1416,86 @@ paths:
         '500':
           description: Failed to get cross-seed status
 
+  /api/stream:
+    get:
+      tags:
+        - Torrents
+      summary: Stream torrent updates
+      description: |
+        Subscribe to torrent views through Server-Sent Events. Each named event
+        contains a JSON payload. `meta.streamKey` identifies the requested view.
+
+        `init` and `update` contain a full snapshot in `data`. All torrent data
+        events include `version`, an object with positive integer `major` and
+        `minor` fields. `major` changes when the server recreates a stream group.
+        `minor` advances with each data update in that group.
+
+        `delta` contains changed rows and requires `delta.baseVersion`, with the
+        same fields as `version`. Apply a delta only when `baseVersion` equals
+        the last applied version, `major` is unchanged, and `minor` advances by one.
+        If any check fails, reconnect for a fresh `init` and use REST polling
+        until a valid full snapshot arrives.
+
+        `delta.order`, when present, replaces the row order and membership.
+        An empty array clears the page. Row keys are torrent hashes for a single
+        instance and `instanceId:hash` for a cross-instance view. Changed rows
+        are in `data.torrents` or `data.cross_instance_torrents`, respectively.
+        The other `data` fields follow the torrent list response.
+
+        In a delta, omitted `counts` and `preferences` retain their previous
+        values. Explicit `preferences: null` clears preferences. Omitted
+        `categories` and `tags` mean empty collections and clear previous values.
+
+        `stream-error` contains an `error` message and optional retry metadata.
+        `heartbeat` keeps the connection alive. Neither advances the data version.
+        With `activity=1`, separate `activity` events report qui background changes.
+      parameters:
+        - name: streams
+          in: query
+          description: |
+            JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
+            Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
+            `sort`, `order`, `search`, and `filters`. Use a positive `instanceId`
+            or 1 to 64 positive `instanceIds` for a cross-instance view.
+            `key` is returned as `meta.streamKey`. `page` starts at 0.
+            `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
+            `added_on` and `order` to `desc`. `filters` is a JSON object with the
+            same fields as the torrent list filters.
+          schema:
+            type: string
+          example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
+        - name: activity
+          in: query
+          description: Set to 1 to include activity events, with or without torrent subscriptions.
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+      responses:
+        '200':
+          description: Stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: init
+                data: {"type":"init","version":{"major":1,"minor":1},"meta":{"streamKey":"main","instanceId":1,"timestamp":"2026-09-08T12:00:00Z"},"data":{"torrents":[],"total":0}}
+
+                event: delta
+                data: {"type":"delta","version":{"major":1,"minor":2},"delta":{"baseVersion":{"major":1,"minor":1}},"meta":{"streamKey":"main","instanceId":1,"timestamp":"2026-09-08T12:00:02Z"},"data":{"torrents":[],"total":0}}
+
+        '400':
+          description: Missing or invalid subscriptions
+        '401':
+          description: Authentication required
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to prepare the stream
+        '503':
+          description: Server is shutting down
+
   /api/instances/{instanceID}/torrents:
     get:
       tags:
@@ -1594,7 +1674,7 @@ paths:
       tags:
         - Torrents
       summary: Bulk torrent action
-      description: Perform bulk actions on multiple torrents
+      description: Perform bulk actions on multiple torrents. In the unified scope (instanceID 0) a hash alone does not name an instance, so `targets` is required when addressing torrents by hash; bare `hashes` return 400.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1610,7 +1690,20 @@ paths:
                   type: array
                   items:
                     type: string
-                  description: Specific torrent hashes to target. Required unless selectAll is true.
+                  description: Specific torrent hashes to target. Optional when targets is provided; the request is rejected when hashes, targets, and selectAll are all absent. In the unified scope, hashes without targets are rejected.
+                targets:
+                  type: array
+                  description: Explicit instance and hash pairs. Required in the unified scope when addressing torrents by hash; authoritative over hashes there.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
                 selectAll:
                   type: boolean
                   description: Apply the action to all torrents matching the provided filters.
@@ -2252,6 +2345,116 @@ paths:
         '500':
           description: Internal server error
 
+  /api/instances/{instanceID}/torrents/{hash}/disc-scans:
+    get:
+      tags:
+        - Disc Scans
+      summary: List Disc scans for a torrent
+      description: Returns the newest Disc scan per Disc path of the torrent, so the Content tab can render one BDInfo button state per Disc.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      responses:
+        '200':
+          description: Newest Disc scan per Disc path
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DiscScanRun'
+        '400':
+          description: Invalid instance ID or hash
+    post:
+      tags:
+        - Disc Scans
+      summary: Start a Disc scan or return the cached report
+      description: |
+        Queues a BDInfo scan of one Disc in the torrent: a folder that holds a BDMV folder, or an .iso file. Scans run one at a time.
+        If the Disc already has a completed report, the cached run is returned unless `force` is true. A queued or running scan on the same Disc is always returned.
+        Requires filesystem access on the instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [discPath]
+              properties:
+                discPath:
+                  type: string
+                  description: Torrent-relative, slash-delimited path of the Disc. "." is the torrent root.
+                  example: "Box Set/Disc 1"
+                force:
+                  type: boolean
+                  default: false
+                  description: Skip the cached report and queue a new scan (Rescan)
+      responses:
+        '200':
+          description: The queued, running, or cached Disc scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscScanRun'
+        '400':
+          description: Invalid request body, or the path is not a Disc in this torrent
+        '403':
+          description: Instance does not have filesystem access
+        '404':
+          description: Instance, torrent, or Disc not found on disk
+
+  /api/instances/{instanceID}/disc-scans/{runID}:
+    get:
+      tags:
+        - Disc Scans
+      summary: Get a Disc scan
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Disc scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscScanRun'
+        '404':
+          description: Disc scan not found
+
+  /api/instances/{instanceID}/disc-scans/{runID}/cancel:
+    post:
+      tags:
+        - Disc Scans
+      summary: Cancel a Disc scan
+      description: Cancels a pending or scanning Disc scan. A running scan stops through its context and stores no report.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: runID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The canceled Disc scan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiscScanRun'
+        '404':
+          description: Disc scan not found
+        '409':
+          description: Disc scan already finished
+
   /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
       tags:
@@ -2352,44 +2555,47 @@ paths:
       tags:
         - Torrent Details
       summary: Get torrent peers
-      description: Get list of peers for a torrent
+      description: Get the current merged peer list for a torrent. The response omits full_update.
       parameters:
         - $ref: '#/components/parameters/instanceID'
         - $ref: '#/components/parameters/hash'
       responses:
         '200':
-          description: List of peers
+          description: Current peers and sorted peer list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    ip:
+                type: object
+                required:
+                  - rid
+                properties:
+                  peers:
+                    type: object
+                    description: Peers keyed by canonical peer address.
+                    additionalProperties:
+                      $ref: '#/components/schemas/TorrentPeer'
+                  peers_removed:
+                    type: array
+                    items:
                       type: string
-                    port:
-                      type: integer
-                    client:
-                      type: string
-                    progress:
-                      type: number
-                    dlSpeed:
-                      type: integer
-                    upSpeed:
-                      type: integer
-                    downloaded:
-                      type: integer
-                    uploaded:
-                      type: integer
-                    connection:
-                      type: string
-                    flags:
-                      type: string
-                    flagsDesc:
-                      type: string
-                    relevance:
-                      type: number
+                  rid:
+                    type: integer
+                    format: int64
+                  show_flags:
+                    type: boolean
+                  sorted_peers:
+                    type: array
+                    description: Seeders first, then descending progress, download speed and upload speed. Canonical peer address breaks ties.
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/TorrentPeer'
+                        - type: object
+                          required:
+                            - key
+                          properties:
+                            key:
+                              type: string
+                              description: Canonical peer address.
 
   /api/instances/{instanceID}/torrents/add-peers:
     post:
@@ -3071,6 +3277,50 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/themes:
+    get:
+      tags:
+        - Themes
+      summary: List built-in themes
+      description: List every built-in theme. Free themes always include their CSS. On a licensed instance, premium themes include CSS for an authenticated caller; an unauthenticated caller only receives the selected theme's CSS so the login page can paint, and every other premium theme is a locked stub with preview colors. Without a license every premium theme is a locked stub. Public endpoint, no authentication required.
+      security: []
+      responses:
+        '200':
+          description: Built-in themes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        premium:
+                          type: boolean
+                        css:
+                          type: string
+                          description: Full theme CSS. Absent on locked premium entries.
+                        preview:
+                          type: object
+                          description: Swatch colors for locked premium entries.
+                          properties:
+                            light:
+                              type: object
+                              additionalProperties:
+                                type: string
+                            dark:
+                              type: object
+                              additionalProperties:
+                                type: string
+
   /api/themes/custom:
     get:
       tags:
@@ -3102,6 +3352,90 @@ paths:
           description: Premium access required
         '500':
           description: Failed to check premium access or read the custom themes directory
+
+  /api/themes/settings:
+    get:
+      tags:
+        - Themes
+      summary: Get stored theme selection
+      description: Get the theme selection stored in the database. Returns null when no selection is stored. Public endpoint, no authentication required, so the login page can apply the selected theme.
+      security: []
+      responses:
+        '200':
+          description: Stored theme selection, or null when none is stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeSettings'
+                nullable: true
+        '500':
+          description: Failed to load theme settings
+    put:
+      tags:
+        - Themes
+      summary: Store theme selection
+      description: Store the theme selection in the database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ThemeSettings'
+      responses:
+        '200':
+          description: Theme selection stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeSettings'
+        '400':
+          description: Invalid payload, missing themeId, or invalid mode
+        '500':
+          description: Failed to save theme settings
+
+  /api/client-settings:
+    get:
+      tags:
+        - Client Settings
+      summary: Get stored client settings
+      description: Get every stored frontend user setting as a key-value map of raw strings. The backend does not parse values.
+      responses:
+        '200':
+          description: All stored client settings
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '500':
+          description: Failed to load client settings
+    put:
+      tags:
+        - Client Settings
+      summary: Store client settings
+      description: Upsert the submitted settings. The payload is a partial key-value map; keys not present stay untouched.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        '200':
+          description: Settings stored; echoes the submitted map
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+        '400':
+          description: Invalid payload, empty map, empty key, or body over 1 MiB
+        '500':
+          description: Failed to save client settings
 
   /api/torrents/export:
     post:
@@ -3258,6 +3592,105 @@ paths:
                   description: Base64-encoded PNG data URL for the tracker favicon
         '500':
           description: Failed to list tracker icons
+
+  /api/torznab/search:
+    post:
+      tags:
+        - Torznab
+      summary: Search configured Torznab indexers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TorznabSearchRequest'
+      responses:
+        '200':
+          description: Search results, possibly partial when some indexers were unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorznabSearchResponse'
+        '400':
+          description: Invalid search request
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Search failed
+
+  /api/torznab/cross-seed/search:
+    post:
+      tags:
+        - Torznab
+      summary: Search configured Torznab indexers for cross-seeds
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TorznabSearchRequest'
+      responses:
+        '200':
+          description: Search results, possibly partial when some indexers were unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorznabSearchResponse'
+        '400':
+          description: Invalid search request
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Search failed
+
+  /api/torznab/indexers/{indexerID}/test:
+    post:
+      tags:
+        - Torznab
+      summary: Test a Torznab indexer connection
+      parameters:
+        - name: indexerID
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Indexer connection succeeded
+        '400':
+          description: Invalid indexer ID
+        '404':
+          description: Indexer not found
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Indexer connection failed
+
+  /api/torznab/indexers/{indexerID}/caps/sync:
+    post:
+      tags:
+        - Torznab
+      summary: Refresh stored Torznab capabilities
+      parameters:
+        - name: indexerID
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Capabilities refreshed
+        '400':
+          description: Invalid indexer ID or configuration
+        '404':
+          description: Indexer not found
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
+        '500':
+          description: Capabilities refresh failed
+
   /api/cross-seed/settings:
     get:
       tags:
@@ -4422,6 +4855,201 @@ paths:
         '500':
           description: Failed to process autobrr apply request
 
+  /api/cross-seed/manual/proposals:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Rank Manual match target proposals for an uploaded torrent
+      description: |
+        Ranks complete torrents in one instance by file-size overlap with the uploaded torrent file.
+        When `target_hash` is set, that torrent is always included in the proposals with its computed overlap, even at zero overlap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instance_id
+                - torrent_data
+              properties:
+                instance_id:
+                  type: integer
+                torrent_data:
+                  type: string
+                  description: Base64-encoded .torrent file
+                target_hash:
+                  type: string
+                  description: Optional torrent hash to always include in the proposals
+      responses:
+        '200':
+          description: Ranked proposals and dialog prefill values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack_mode:
+                    type: boolean
+                    description: True when the uploaded name parses as a season pack.
+                  pack_episode_count:
+                    type: integer
+                  assembly_unavailable_reason:
+                    type: string
+                    enum: ['', no_filesystem_access, no_link_mode, no_base_directory, no_episode_files]
+                  proposal_limit:
+                    type: integer
+                    description: Pack episode count plus ten, capped at the coarse limit of sixty.
+                  proposals_truncated:
+                    type: boolean
+                    description: More proposals or pack episodes exist than the proposal limit supports.
+                  source_name:
+                    type: string
+                  source_size:
+                    type: integer
+                    format: int64
+                  source_file_count:
+                    type: integer
+                  default_tags:
+                    type: array
+                    items:
+                      type: string
+                  pinned_category:
+                    type: string
+                    description: Category the apply pins every cross-seed to; empty when unset.
+                  proposals:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        hash:
+                          type: string
+                        name:
+                          type: string
+                        size:
+                          type: integer
+                          format: int64
+                        category:
+                          type: string
+                        effective_save_path:
+                          type: string
+                          description: Where a Manual match apply would land the torrent (target save path, or the link-mode destination)
+                        overlap_bytes:
+                          type: integer
+                          format: int64
+                        overlap_fraction:
+                          type: number
+                          format: double
+        '400':
+          description: Invalid request
+        '500':
+          description: Failed to build proposals
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/assemble/check:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Preview manual season pack assembly
+      description: Resolves selected episode files without creating links or adding torrents. An empty target list suggests a full pack alone or the episodes that automatic discovery pairs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualAssembleRequest'
+      responses:
+        '200':
+          description: Resolved selection and assembly result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualAssembleResponse'
+        '400':
+          description: Invalid instance, torrent data, or selection
+        '500':
+          description: Failed to load or apply the selection
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/assemble:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Assemble a season pack from selected torrents
+      description: Requires at least two distinct target hashes from the chosen instance. Adds paused, rechecks, and resumes against the linked byte fraction. Rejects unusable targets and assembles the remaining files. Category and tags come from the request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualAssembleRequest'
+      responses:
+        '200':
+          description: Resolved selection and assembly result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualAssembleResponse'
+        '400':
+          description: Invalid instance, torrent data, or selection
+        '500':
+          description: Failed to load or apply the selection
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Apply a Manual match cross-seed against a chosen target torrent
+      description: |
+        Adds the uploaded torrent through the cross-seed pipeline, pinned to the user-chosen target torrent.
+        Candidate discovery and the category and content-type gates are bypassed. Every Manual match runs a full recheck before it seeds; the recheck is the arbiter of a wrong pick and cannot be skipped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - instance_id
+                - torrent_data
+                - target_hash
+              properties:
+                instance_id:
+                  type: integer
+                torrent_data:
+                  type: string
+                  description: Base64-encoded .torrent file
+                target_hash:
+                  type: string
+                  description: Hash of the existing torrent that holds the data
+                category:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedResponse'
+        '400':
+          description: Invalid request, target not found, or target not complete
+        '500':
+          description: Failed to apply the cross-seed
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
   /api/cross-seed/torrents/{instanceID}/{hash}/analyze:
     get:
       tags:
@@ -4497,6 +5125,8 @@ paths:
                 $ref: '#/components/schemas/CrossSeedTorrentSearchResponse'
         '400':
           description: Invalid request parameters
+        '429':
+          $ref: '#/components/responses/TorznabRateLimited'
         '500':
           description: Failed to search indexers
 
@@ -5711,8 +6341,8 @@ components:
       required: true
       schema:
         type: integer
-        minimum: 1
-      description: qBittorrent instance ID
+        minimum: 0
+      description: qBittorrent instance ID. 0 is the unified scope on the endpoints that support it.
     hash:
       name: hash
       in: path
@@ -5743,7 +6373,106 @@ components:
         type: integer
       description: Directory scan run ID
 
+  responses:
+    TorznabRateLimited:
+      description: An upstream indexer requested a retry after its cooldown
+      headers:
+        Retry-After:
+          description: Seconds until the request may be retried
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
   schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
+    TorznabSearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        release_name:
+          type: string
+        categories:
+          type: array
+          items:
+            type: integer
+        imdb_id:
+          type: string
+        tvdb_id:
+          type: string
+        tmdb_id:
+          type: integer
+        tvmaze_id:
+          type: integer
+        year:
+          type: integer
+        season:
+          type: integer
+        episode:
+          type: integer
+        artist:
+          type: string
+        album:
+          type: string
+        limit:
+          type: integer
+        offset:
+          type: integer
+        indexer_ids:
+          type: array
+          items:
+            type: integer
+        cache_mode:
+          type: string
+          enum: ['', bypass]
+
+    TorznabSearchResponse:
+      type: object
+      required:
+        - results
+        - total
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        total:
+          type: integer
+        partial:
+          type: boolean
+        jobId:
+          type: integer
+          format: uint64
+        cache:
+          type: object
+          additionalProperties: true
+
+    ThemeSettings:
+      type: object
+      required:
+        - themeId
+      properties:
+        themeId:
+          type: string
+        mode:
+          type: string
+          enum: [auto, light, dark]
+          default: auto
+        variation:
+          type: string
+
     User:
       type: object
       properties:
@@ -6234,6 +6963,48 @@ components:
           type: string
           description: HTTP source URL for the torrent
 
+    TorrentPeer:
+      type: object
+      required:
+        - progress
+      properties:
+        ip:
+          type: string
+        port:
+          type: integer
+        connection:
+          type: string
+        flags:
+          type: string
+        flags_desc:
+          type: string
+        client:
+          type: string
+        progress:
+          type: number
+        dl_speed:
+          type: integer
+          format: int64
+        up_speed:
+          type: integer
+          format: int64
+        downloaded:
+          type: integer
+          format: int64
+        uploaded:
+          type: integer
+          format: int64
+        relevance:
+          type: number
+        files:
+          type: string
+        country:
+          type: string
+        country_code:
+          type: string
+        peer_id_client:
+          type: string
+
     TorrentFile:
       type: object
       properties:
@@ -6691,12 +7462,15 @@ components:
           type: integer
         candidatesFound:
           type: integer
-        torrentsAdded:
+        crossSeedsAdded:
           type: integer
-        torrentsFailed:
+          description: Successful applies into the client.
+        candidatesFailed:
           type: integer
-        torrentsSkipped:
+          description: Feed candidates with no add and at least one failed instance. Counted once per candidate, whatever the instance count.
+        candidatesSkipped:
           type: integer
+          description: Feed candidates with no add and no failed instance. Counted once per candidate, whatever the instance count.
         message:
           type: string
           nullable: true
@@ -6911,7 +7685,10 @@ components:
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
-          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
+        pooledPartialCompletionEnabled:
+          type: boolean
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -6955,7 +7732,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           description: Try up to three exact-size results per source search, total across all indexers. qui checks all data before it starts the torrent. Skip recheck turns this off.
@@ -7056,7 +7833,11 @@ components:
         autoResumeMaxDownloadMb:
           type: integer
           minimum: 0
-          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck. 0 means only fully complete torrents auto-resume. Default 50.
+          description: Max missing data (MiB) a new cross-seed may auto-resume with after its recheck; also gates pooled partial acquisition. 0 means only fully complete torrents auto-resume. Default 50.
+        pooledPartialCompletionEnabled:
+          type: boolean
+          default: false
+          description: Use the maximum auto-start download value and coordinate one downloader per related cross-seed pool for handling extra files in hardlink and reflink cross-seeds.
         useCategoryFromIndexer:
           type: boolean
         useCrossCategoryAffix:
@@ -7100,7 +7881,7 @@ components:
           description: Skip torrents with any of these tags when processing webhook requests
         skipRecheck:
           type: boolean
-          description: Skip cross-seed matches that need a recheck because of renamed paths, extra files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
+          description: Skip cross-seed matches that need a recheck because of renamed paths, extra or missing files, link-mode fallback, disc layouts, or an exact-size match with different season, episode, title, or release-group details
         rescueTitleMismatches:
           type: boolean
           default: false
@@ -7180,6 +7961,79 @@ components:
           nullable: true
         running:
           type: boolean
+
+    ManualAssembleRequest:
+      type: object
+      required: [instance_id, torrent_data, target_hashes]
+      properties:
+        instance_id:
+          type: integer
+          minimum: 1
+        torrent_data:
+          type: string
+          description: Base64-encoded season pack torrent.
+        target_hashes:
+          type: array
+          items:
+            type: string
+          description: Same-instance target hashes. Empty suggests targets at check. Apply requires at least two distinct hashes.
+        category:
+          type: string
+          description: Category to apply. Empty means no category. Automatic routing only prefills the dialog.
+        tags:
+          type: array
+          items:
+            type: string
+          description: Exact tags to apply. Season pack tags are not added.
+    ManualAssembleResponse:
+      type: object
+      required: [ready, applied, reason, message, targets, matched_episodes, total_episodes, coverage, linked_bytes, missing_bytes, destination, default_category, link_mode]
+      properties:
+        ready:
+          type: boolean
+          description: The selected episodes can form a safe link tree. A suggested whole pack uses manual match instead.
+        applied:
+          type: boolean
+        reason:
+          type: string
+          description: Empty when ready. unsafe_piece_boundary means hardlink piece boundary protection blocked the pack. Other file layout failures use layout_mismatch.
+        message:
+          type: string
+        targets:
+          type: array
+          items:
+            type: object
+            required: [hash, name, reason]
+            properties:
+              hash:
+                type: string
+              name:
+                type: string
+              reason:
+                type: string
+                description: Empty for a paired target. Otherwise names why the target was rejected or dropped at apply.
+                enum: ['', target_not_found, incomplete, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
+        matched_episodes:
+          type: integer
+        total_episodes:
+          type: integer
+          description: Episode count from the uploaded pack files, without an external metadata lookup.
+        coverage:
+          type: number
+          description: Matched episode count divided by uploaded episode count. No manual coverage threshold applies.
+        linked_bytes:
+          type: integer
+          format: int64
+        missing_bytes:
+          type: integer
+          format: int64
+        destination:
+          type: string
+          description: Resolved save directory under the instance link directory preset.
+        default_category:
+          type: string
+        link_mode:
+          type: string
 
     SeasonPackCheckRequest:
       type: object
@@ -7433,10 +8287,16 @@ components:
           nullable: true
         totalTorrents:
           type: integer
+          description: Due candidates at the start of the run. Per-indexer search history, cooldown, and the age cutoff retire candidates, so identical filters report a smaller total on each later run.
         processed:
           type: integer
-        torrentsAdded:
+          description: Candidates the run has started. Equals torrentsWithCrossSeeds + torrentsFailed + torrentsSkipped once the run completes.
+        torrentsWithCrossSeeds:
           type: integer
+          description: Candidates that produced at least one cross-seed.
+        crossSeedsAdded:
+          type: integer
+          description: Successful applies into the client. One candidate can produce several, so this can exceed the candidate count.
         torrentsFailed:
           type: integer
         torrentsSkipped:
@@ -7698,6 +8558,76 @@ components:
           enum:
             - arr_lookup_failed
             - arr_no_ids
+        decisionTrace:
+          $ref: '#/components/schemas/CrossSeedSearchDecisionTrace'
+
+    CrossSeedSearchDecisionTrace:
+      type: object
+      description: Explains why the Torznab passes accepted or rejected candidates. Absent when no Torznab search ran.
+      properties:
+        sourceSize:
+          type: integer
+          format: int64
+        tolerancePercent:
+          type: number
+        totalResults:
+          type: integer
+        sizeFiltered:
+          type: integer
+        releaseFiltered:
+          type: integer
+        lateContentFiltered:
+          type: integer
+        duplicateFiltered:
+          type: integer
+        finalMatches:
+          type: integer
+        rejectionCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        rejectedCandidates:
+          type: array
+          description: Capped at 5 candidates per rejection reason; rejectionCounts holds the full totals.
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchRejectedCandidate'
+        indexers:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchIndexerOutcome'
+
+    CrossSeedSearchRejectedCandidate:
+      type: object
+      properties:
+        indexer:
+          type: string
+        indexerId:
+          type: integer
+        title:
+          type: string
+        size:
+          type: integer
+          format: int64
+        reason:
+          type: string
+
+    CrossSeedSearchIndexerOutcome:
+      type: object
+      properties:
+        indexerId:
+          type: integer
+        status:
+          type: string
+          enum:
+            - searched
+            - not_covered
+            - error
+            - excluded
+        detail:
+          type: string
+        candidates:
+          type: integer
+          description: Raw results this indexer contributed before filtering.
 
     CrossSeedApplySelection:
       type: object
@@ -8043,6 +8973,56 @@ components:
           format: date-time
           nullable: true
 
+    DiscScanRun:
+      type: object
+      description: One queued or running BDInfo scan of one Disc, and after completion its cached Disc report.
+      properties:
+        id:
+          type: integer
+          format: int64
+        instanceId:
+          type: integer
+        torrentHash:
+          type: string
+        discPath:
+          type: string
+          description: Torrent-relative, slash-delimited path of the Disc
+        resolvedPath:
+          type: string
+          description: On-disk path of the Disc; the cache key together with instanceId
+        status:
+          type: string
+          enum: ["pending", "scanning", "completed", "failed", "canceled"]
+        errorMessage:
+          type: string
+        processedBytes:
+          type: integer
+          format: int64
+        totalBytes:
+          type: integer
+          format: int64
+        queuePosition:
+          type: integer
+          description: 1-based position in the queue while pending; omitted otherwise
+        report:
+          type: string
+          description: Full BDInfo report, set when completed
+        quickSummary:
+          type: string
+          description: BDInfo quick summary block, set when completed
+        forumsBlock:
+          type: string
+          description: BDInfo forum paste block (BBCode), set when completed
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
     OrphanScanFile:
       type: object
       properties:
@@ -8255,6 +9235,10 @@ components:
             type: string
         has_titles:
           type: boolean
+        episode_map:
+          $ref: '#/components/schemas/ArrEpisodeMap'
+        has_episode_map:
+          type: boolean
         is_negative:
           type: boolean
         cached_at:
@@ -8263,6 +9247,17 @@ components:
         expires_at:
           type: string
           format: date-time
+
+    ArrEpisodeMap:
+      type: object
+      description: Sonarr season, episode, and absolute number for the one episode a release name resolves to.
+      properties:
+        season:
+          type: integer
+        episode:
+          type: integer
+        absolute:
+          type: integer
 
     ArrInstanceResult:
       type: object
@@ -8897,6 +9892,8 @@ tags:
     description: Directory scanner operations for data-based matching and injection
   - name: Orphan Scan
     description: Orphan file scanning and cleanup (files on disk not associated with any torrent)
+  - name: Disc Scans
+    description: BDInfo scans of Blu-ray Discs (BDMV folders and .iso files) in torrents
   - name: RSS
     description: RSS feed and auto-download rule management
   - name: Theme Licenses

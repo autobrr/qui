@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -626,7 +627,7 @@ func TestProcessAutomationCandidateExactSizeTriesLowerRankedSourceAfterNoMatch(t
 	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	require.Equal(t, 1, downloadCalls)
 	require.Equal(t, []string{high.Hash, lower.Hash}, sourceHashes)
-	require.Equal(t, 1, run.TorrentsAdded)
+	require.Equal(t, 1, run.CrossSeedsAdded)
 	require.Len(t, run.Results, 1)
 	require.True(t, run.Results[0].Success)
 }
@@ -656,7 +657,7 @@ func TestInvokeBoundAnnouncementMatchesStopsOnTopLevelSuccess(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
-func TestProcessAutomationCandidateExactSizeRetainsSuccessWhenAnotherInstanceErrors(t *testing.T) {
+func TestProcessAutomationCandidateExactSizeBucketsOncePerCandidate(t *testing.T) {
 	const (
 		firstInstanceID  = 21
 		secondInstanceID = 22
@@ -680,25 +681,60 @@ func TestProcessAutomationCandidateExactSizeRetainsSuccessWhenAnotherInstanceErr
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	service.torrentDownloadFunc = func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil }
-	service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
-		if req.TargetInstanceIDs[0] == firstInstanceID {
-			return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: firstInstanceID, InstanceName: firstInstance.Name, Success: true, Status: "added"}}}, nil
-		}
-		return nil, errors.New("second instance unavailable")
+
+	added := func(id int, name string) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: id, InstanceName: name, Success: true, Status: "added"}}}, nil
 	}
-	run := &models.CrossSeedRun{}
+	exists := func(id int, name string) (*CrossSeedResponse, error) {
+		return &CrossSeedResponse{Results: []InstanceCrossSeedResult{{InstanceID: id, InstanceName: name, Status: "exists"}}}, nil
+	}
+	unavailable := func(int, string) (*CrossSeedResponse, error) { return nil, errors.New("instance unavailable") }
 
-	status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
-		TargetInstanceIDs: []int{firstInstanceID, secondInstanceID},
-	}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+	// One feed item is one candidate, whatever the instance count.
+	tests := []struct {
+		name        string
+		first       func(int, string) (*CrossSeedResponse, error)
+		second      func(int, string) (*CrossSeedResponse, error)
+		wantErr     bool
+		wantStatus  models.CrossSeedFeedItemStatus
+		wantAdded   int
+		wantFailed  int
+		wantSkipped int
+	}{
+		{name: "one add and one error counts as added", first: added, second: unavailable, wantErr: true, wantStatus: models.CrossSeedFeedItemStatusProcessed, wantAdded: 1},
+		{name: "two errors count as one failed candidate", first: unavailable, second: unavailable, wantErr: true, wantStatus: models.CrossSeedFeedItemStatusFailed, wantFailed: 1},
+		{name: "two exists count as one skipped candidate", first: exists, second: exists, wantStatus: models.CrossSeedFeedItemStatusProcessed, wantSkipped: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service.crossSeedInvoker = func(_ context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
+				if req.TargetInstanceIDs[0] == firstInstanceID {
+					return tt.first(firstInstanceID, firstInstance.Name)
+				}
+				return tt.second(secondInstanceID, secondInstance.Name)
+			}
+			run := &models.CrossSeedRun{}
 
-	require.Error(t, err)
-	require.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
-	require.Equal(t, 1, run.TorrentsAdded)
-	require.Equal(t, 1, run.TorrentsFailed)
-	require.Len(t, run.Results, 2)
-	require.True(t, run.Results[0].Success)
-	require.Equal(t, "error", run.Results[1].Status)
+			status, _, err := service.processAutomationCandidate(context.Background(), run, &models.CrossSeedAutomationSettings{
+				TargetInstanceIDs: []int{firstInstanceID, secondInstanceID},
+			}, nil, jackett.SearchResult{Indexer: "synthetic", Title: resultName, Size: size}, AutomationRunOptions{}, nil)
+
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.wantStatus, status)
+			require.Equal(t, tt.wantAdded, run.CrossSeedsAdded)
+			require.Equal(t, tt.wantFailed, run.CandidatesFailed)
+			require.Equal(t, tt.wantSkipped, run.CandidatesSkipped)
+			require.Len(t, run.Results, 2, "one result row per instance")
+			if tt.wantAdded > 0 {
+				require.True(t, run.Results[0].Success)
+				require.Equal(t, "error", run.Results[1].Status, "the failed instance stays visible in the results")
+			}
+		})
+	}
 }
 
 func TestProcessAutomationCandidateExactSizeSkipRecheckKeepsSafeInstances(t *testing.T) {
@@ -859,7 +895,7 @@ func TestProcessAutomationCandidateExactSizeNoMatchThenErrorFailsInstance(t *tes
 
 	require.Error(t, err)
 	require.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
-	require.Equal(t, 1, run.TorrentsFailed)
+	require.Equal(t, 1, run.CandidatesFailed)
 	require.Len(t, run.Results, 1)
 	require.Equal(t, "error", run.Results[0].Status)
 }
@@ -872,4 +908,71 @@ func TestMergeCrossSeedResponsesPreservesAggregateSuccess(t *testing.T) {
 
 	require.True(t, destination.Success)
 	require.True(t, destination.titleRescueUsed)
+}
+
+// TestFindRSSAnnouncementMatchesARRAlternateTitles catches an RSS fallback that
+// ignores ARR alternate titles the webhook and autobrr paths already use, and
+// an eager lookup that touches ARR for feed items with no byte-size collision.
+func TestFindRSSAnnouncementMatchesARRAlternateTitles(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 17
+		sourceName   = "[KiraSubs] Frieren S2 - 10 (1080p) [ABCD1234].mkv"
+		announceName = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+		size         = int64(1_500_000_000)
+	)
+	aliasResult := &arr.ExternalIDsResult{
+		Titles:      []string{"Frieren: Beyond Journey's End", "Sousou no Frieren", "Frieren"},
+		TitlesKnown: true,
+	}
+
+	tests := []struct {
+		name       string
+		spy        *spyARRLookupService
+		sourceSize int64
+		wantMatch  bool
+		wantCalls  int
+	}{
+		{name: "aliases recover the match with one lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size, wantMatch: true, wantCalls: 1},
+		{name: "no size collision skips the lookup", spy: &spyARRLookupService{result: aliasResult}, sourceSize: size + 1},
+		{name: "no arr service keeps rejecting", sourceSize: size},
+		{name: "lookup error keeps rejecting", spy: &spyARRLookupService{err: errors.New("arr down")}, sourceSize: size, wantCalls: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := qbt.Torrent{Hash: "frieren-source", Name: sourceName, TotalSize: tt.sourceSize, Progress: 1}
+			unrelated := qbt.Torrent{Hash: "unrelated-source", Name: "Quiet.Signal.2025.1080p.WEB-DL.H.264-LUMA", TotalSize: tt.sourceSize, Progress: 1}
+			instance := &models.Instance{ID: instanceID, Name: "main"}
+			service := &Service{
+				instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+				syncManager: newFakeSyncManager(instance, []qbt.Torrent{source, unrelated}, map[string]qbt.TorrentFiles{
+					source.Hash:    {{Name: source.Name, Size: tt.sourceSize}},
+					unrelated.Hash: {{Name: unrelated.Name + ".mkv", Size: tt.sourceSize}},
+				}),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+			}
+			if tt.spy != nil {
+				service.arrService = tt.spy
+			}
+
+			matches, err := service.findRSSAnnouncementMatches(context.Background(), jackett.SearchResult{Title: announceName, Size: size}, &models.CrossSeedAutomationSettings{
+				TargetInstanceIDs: []int{instanceID},
+			}, nil)
+			require.NoError(t, err)
+			if tt.spy != nil {
+				require.Equal(t, tt.wantCalls, tt.spy.calls)
+			}
+			if tt.wantMatch {
+				require.Len(t, matches, 1)
+				// The decision must carry the aliases so the apply-time
+				// revalidation inside CrossSeed accepts the same pair.
+				require.Equal(t, aliasResult.Titles, matches[0].decision.CandidateTitles)
+			} else {
+				require.Empty(t, matches)
+			}
+		})
+	}
 }

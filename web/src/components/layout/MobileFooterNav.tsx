@@ -27,15 +27,15 @@ import { getThemeById, isThemePremium, themes } from "@/config/themes"
 import { useMobileScroll } from "@/contexts/MobileScrollContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useIsMobile } from "@/hooks/useMediaQuery"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useCustomThemes } from "@/hooks/useCustomThemes"
-import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
-import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
 import { buildThemeCatalog } from "@/lib/theme-catalog"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -80,10 +80,6 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
-
-
-const MOBILE_VIEW_MODES = ["normal", "compact", "ultra-compact"] as const
-
 // Custom hook for theme change detection
 const useThemeChange = () => {
   const [currentMode, setCurrentMode] = useState<ThemeMode>(getCurrentThemeMode())
@@ -117,12 +113,13 @@ export function MobileFooterNav() {
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { isFooterVisible } = useMobileScroll()
-  const { viewMode, setViewMode } = usePersistedCompactViewState("compact", MOBILE_VIEW_MODES)
+  const isMobile = useIsMobile()
+  const { viewMode, setViewMode, viewModes } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
   const { currentMode, currentTheme } = useThemeChange()
-  const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
-  const canSwitchPremium = canSwitchToPremiumTheme({ hasPremiumAccess, isLoading, isError })
   const { customThemes } = useCustomThemes()
-  const themeCatalog = useMemo(() => buildThemeCatalog(themes, customThemes), [customThemes])
+  // Subscribe so the list re-renders when the async theme registry lands.
+  useBuiltinThemes()
+  const themeCatalog = buildThemeCatalog(themes, customThemes)
   const [showThemeDialog, setShowThemeDialog] = useState(false)
   const appVersion = getAppVersion()
 
@@ -198,33 +195,21 @@ export function MobileFooterNav() {
   }, [t])
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
-    const isPremium = isThemePremium(themeId)
-    if (isPremium && !canSwitchPremium) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        })
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"))
-      }
+    // The server is the authority: a premium theme without a license arrives
+    // as a locked stub with no CSS, so the locked flag is the gate.
+    if (getThemeById(themeId)?.locked) {
+      toast.error(t("themeToggle.premiumThemeError"))
       return
     }
 
     await setTheme(themeId)
     const theme = getThemeById(themeId)
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }))
-  }, [canSwitchPremium, isError, t])
+  }, [t])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
-    const isPremium = isThemePremium(themeId)
-    if (isPremium && !canSwitchPremium) {
-      if (isError) {
-        toast.error(t("themeToggle.unableToVerifyLicense"), {
-          description: t("themeToggle.licenseCheckFailed"),
-        })
-      } else {
-        toast.error(t("themeToggle.premiumThemeError"))
-      }
+    if (getThemeById(themeId)?.locked) {
+      toast.error(t("themeToggle.premiumThemeError"))
       return false
     }
 
@@ -233,7 +218,7 @@ export function MobileFooterNav() {
     const theme = getThemeById(themeId)
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }))
     return true
-  }, [canSwitchPremium, isError, t])
+  }, [t])
 
   if (isSelectionMode) {
     return null
@@ -642,7 +627,7 @@ export function MobileFooterNav() {
             <div>
               <div className="text-sm font-medium mb-2">{tTorrents("filterSidebar.viewMode")}</div>
               <div className="grid grid-cols-3 gap-1">
-                {MOBILE_VIEW_MODES.map((mode) => (
+                {viewModes.map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
@@ -651,7 +636,9 @@ export function MobileFooterNav() {
                       viewMode === mode ? "bg-accent" : "hover:bg-accent/50"
                     )}
                   >
-                    {mode === "normal"? tTorrents("filterSidebar.viewModeNormal"): mode === "compact"? tTorrents("filterSidebar.viewModeCompact"): tTorrents("filterSidebar.viewModeUltra")}
+                    {isMobile
+                      ? mode === "normal"? tTorrents("filterSidebar.viewModeNormal"): mode === "compact"? tTorrents("filterSidebar.viewModeCompact"): tTorrents("filterSidebar.viewModeUltra")
+                      : mode === "normal"? tTorrents("statusBar.viewModes.table"): mode === "dense"? tTorrents("statusBar.viewModes.dense"): tTorrents("statusBar.viewModes.stacked")}
                   </button>
                 ))}
               </div>
@@ -663,7 +650,7 @@ export function MobileFooterNav() {
               <div className="space-y-1">
                 {themeCatalog.map((theme) => {
                   const isPremium = isThemePremium(theme.id)
-                  const isLocked = isPremium && !hasPremiumAccess
+                  const isLocked = !!theme.locked
                   const colors = getThemeColors(theme)
                   const currentVariation = getThemeVariation(theme.id)
 

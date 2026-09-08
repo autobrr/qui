@@ -6,6 +6,8 @@ package jackett
 import (
 	"slices"
 	"time"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // TorznabSearchRequest represents a general Torznab search request
@@ -30,6 +32,11 @@ type TorznabSearchRequest struct {
 	Season *int `json:"season,omitempty"`
 	// Episode for TV shows (optional)
 	Episode *int `json:"episode,omitempty"`
+	// EpisodeMap carries the Sonarr season and episode for an absolute-numbered
+	// source. It reaches only the indexers that keep an ID parameter; text
+	// indexers keep the seasonless query, because a Cardigann text search folds
+	// SxxExx into keywords and hides absolute-numbered listings.
+	EpisodeMap *models.EpisodeMap `json:"-"`
 	// Artist for music searches (optional)
 	Artist string `json:"artist,omitempty"`
 	// Album for music searches (optional)
@@ -42,7 +49,9 @@ type TorznabSearchRequest struct {
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
 	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
-	// OmitQueryForIDs when true, omits the q parameter if IDs are present (for cross-seed ID-driven searches)
+	// OmitQueryForIDs when true, omits q from a movie or TV search that carries IDs, and
+	// omits cat from every indexer that keeps a usable ID (for cross-seed ID-driven
+	// searches). An indexer that falls back to the title query keeps its category.
 	OmitQueryForIDs bool `json:"-"`
 	// SkipHistory prevents recording this search in the history buffer. It does NOT
 	// gate cache persistence; that concern is governed separately by SkipCachePersist.
@@ -55,6 +64,8 @@ type TorznabSearchRequest struct {
 	SkipCachePersist bool `json:"-"`
 	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
 	ReturnAllResults bool `json:"-"`
+	// MinimumExecutionTimeout raises the adaptive per-indexer execution budget for internal callers.
+	MinimumExecutionTimeout time.Duration `json:"-"`
 	// OnComplete is called when a search job for an indexer completes
 	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
 	// OnAllComplete is called when all search jobs complete with the final results

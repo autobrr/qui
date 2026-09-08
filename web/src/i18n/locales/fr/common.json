@@ -130,8 +130,6 @@
     "switchedToMode": "Passé en mode {{mode}}",
     "switchedToTheme": "Passé au thème {{theme}}",
     "switchedToThemeVariation": "Passé au thème {{theme}} ({{variation}})",
-    "unableToVerifyLicense": "Impossible de vérifier la licence",
-    "licenseCheckFailed": "Échec de la vérification de la licence. Le changement de thème Premium est temporairement indisponible.",
     "premiumThemeError": "Ceci est un thème premium. Ouvrez Paramètres → Thèmes pour activer une licence.",
     "custom": "Personnalisé"
   },

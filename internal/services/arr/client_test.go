@@ -729,3 +729,74 @@ func TestNewClient_DefaultTimeout(t *testing.T) {
 	// Default timeout should be 15 seconds
 	assert.Equal(t, defaultTimeout, client.timeout)
 }
+
+func TestClient_ParseTitleLookupResult_SonarrEpisodeMap(t *testing.T) {
+	tests := []struct {
+		name     string
+		title    string
+		episodes string
+		want     *models.EpisodeMap
+	}{
+		{
+			name:     "absolute name with one mapped episode",
+			title:    "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv",
+			episodes: `[{"seasonNumber": 4, "episodeNumber": 15, "absoluteEpisodeNumber": 81}]`,
+			want:     &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81},
+		},
+		{
+			name:     "seasoned name with one mapped episode",
+			title:    "Solitude.S04E15.1080p.WEB.H264-KAIZOKU",
+			episodes: `[{"seasonNumber": 4, "episodeNumber": 15, "absoluteEpisodeNumber": 81}]`,
+			want:     &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81},
+		},
+		{
+			name:     "one episode without absolute number",
+			title:    "Solitude.S04E15.1080p.WEB.H264-KAIZOKU",
+			episodes: `[{"seasonNumber": 4, "episodeNumber": 15, "absoluteEpisodeNumber": null}]`,
+			want:     nil,
+		},
+		{
+			name:     "two episodes",
+			title:    "Solitude.S04E15E16.1080p.WEB.H264-KAIZOKU",
+			episodes: `[{"seasonNumber": 4, "episodeNumber": 15, "absoluteEpisodeNumber": 81}, {"seasonNumber": 4, "episodeNumber": 16, "absoluteEpisodeNumber": 82}]`,
+			want:     nil,
+		},
+		{
+			name:     "no episodes",
+			title:    "Solitude.S04.1080p.WEB.H264-KAIZOKU",
+			episodes: `[]`,
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v3/parse":
+					assert.Equal(t, tt.title, r.URL.Query().Get("title"))
+					_, _ = w.Write([]byte(`{
+						"title": "` + tt.title + `",
+						"series": {"id": 42, "title": "Solitude", "tvdbId": 471000},
+						"episodes": ` + tt.episodes + `
+					}`))
+				case "/api/v3/series/42":
+					_, _ = w.Write([]byte(`{"id": 42, "title": "Solitude", "tvdbId": 471000, "alternateTitles": [{"title": "Kodoku no Solitude"}]}`))
+				default:
+					t.Errorf("unexpected request path: %s", r.URL.Path)
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			result, err := client.ParseTitleLookupResult(context.Background(), tt.title)
+
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, &models.ExternalIDs{TVDbID: 471000}, result.IDs)
+			assert.Contains(t, result.Titles, "Kodoku no Solitude")
+			assert.Equal(t, tt.want, result.EpisodeMap)
+		})
+	}
+}

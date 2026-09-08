@@ -61,7 +61,7 @@ func (h *Handler) ServeSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	html := strings.ReplaceAll(swaggerHTML, "{{OPENAPI_URL}}", openAPIPath)
 	html = strings.ReplaceAll(html, "{{FAVICON_URL}}", faviconPath)
 
-	w.Write([]byte(html))
+	_, _ = w.Write([]byte(html))
 }
 
 // GetOpenAPISpec returns the embedded OpenAPI spec for testing
@@ -105,5 +105,5 @@ func (h *Handler) ServeOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		spec["servers"] = servers
 	}
 
-	json.NewEncoder(w).Encode(spec)
+	_ = json.NewEncoder(w).Encode(spec)
 }

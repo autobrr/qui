@@ -10,9 +10,10 @@ import (
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *testing.T) {
@@ -46,7 +47,7 @@ func TestDetermineLocalMatchType_DoesNotTreatRootlessStorageDirAsCrossSeed(t *te
 		nil,
 	)
 
-	require.Equal(t, "", matchType)
+	require.Empty(t, matchType)
 }
 
 // A title-rescued cross-seed keeps the retitled name and lands in its own
@@ -276,7 +277,7 @@ func TestDetermineLocalMatchType_AmbiguousDir_DifferentFiles_NoMatch(t *testing.
 		matchCtx,
 	)
 
-	require.Equal(t, "", matchType, "Different file lists should not match as content_path")
+	require.Empty(t, matchType, "Different file lists should not match as content_path")
 }
 
 func TestDetermineLocalMatchType_AmbiguousDir_OverlappingFiles_Match(t *testing.T) {
@@ -400,7 +401,7 @@ func TestDetermineLocalMatchType_AmbiguousDir_PartialOverlap_BelowThreshold(t *t
 	)
 
 	// 10% overlap is below 90% threshold
-	require.Equal(t, "", matchType, "10% file overlap should not match as content_path")
+	require.Empty(t, matchType, "10% file overlap should not match as content_path")
 }
 
 func TestCandidateSharesSourceFiles_ExactMatch(t *testing.T) {

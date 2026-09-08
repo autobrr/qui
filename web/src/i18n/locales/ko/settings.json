@@ -433,8 +433,6 @@
       "lock": "잠금"
     },
     "toasts": {
-      "verifyFailed": "라이선스 확인을 사용할 수 없습니다",
-      "verifyFailedDescription": "프리미엄 테마 전환이 일시적으로 비활성화되었습니다.",
       "premiumRequired": "프리미엄 라이선스가 필요합니다",
       "premiumRequiredDescription": "유효한 프리미엄 라이선스를 추가하여 프리미엄 테마를 잠금 해제하세요."
     },

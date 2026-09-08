@@ -4,79 +4,52 @@
  */
 
 import type { ColumnSizingState } from "@tanstack/react-table"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
+
+import { readRaw, useClientSetting, writeRaw } from "@/lib/client-settings"
+
+const BASE_STORAGE_KEY = "qui-column-sizing"
+
+function parseSizing(value: unknown): ColumnSizingState | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const entries = Object.values(value as Record<string, unknown>)
+    if (entries.every(entry => typeof entry === "number")) {
+      return value as ColumnSizingState
+    }
+  }
+
+  return undefined
+}
 
 export function usePersistedColumnSizing(
   defaultSizing: ColumnSizingState = {},
   instanceKey?: string | number
 ) {
-  const baseStorageKey = "qui-column-sizing"
   const hasInstanceKey = instanceKey !== undefined && instanceKey !== null
-  const storageKey = hasInstanceKey ? `${baseStorageKey}:${instanceKey}` : baseStorageKey
+  const storageKey = hasInstanceKey ? `${BASE_STORAGE_KEY}:${instanceKey}` : BASE_STORAGE_KEY
 
-  const parseSizing = (value: unknown): ColumnSizingState | undefined => {
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      const entries = Object.values(value as Record<string, unknown>)
-      if (entries.every(entry => typeof entry === "number")) {
-        return value as ColumnSizingState
-      }
-    }
-
-    return undefined
-  }
-
-  const loadSizing = (): ColumnSizingState => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = parseSizing(JSON.parse(stored))
-        if (parsed) {
-          return parsed
-        }
-      }
-
-      if (hasInstanceKey) {
-        const legacyStored = localStorage.getItem(baseStorageKey)
-        if (legacyStored) {
-          const parsedLegacy = parseSizing(JSON.parse(legacyStored))
-          if (parsedLegacy) {
-            return parsedLegacy
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load column sizing from localStorage:", error)
-    }
-
-    return { ...defaultSizing }
-  }
-
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>(() => loadSizing())
-
+  // Migrate the pre-instance-scoping shared key into the instance key once,
+  // then drop it.
   useEffect(() => {
-    if (!hasInstanceKey) {
-      return
-    }
-
+    if (!hasInstanceKey) return
     try {
-      localStorage.removeItem(baseStorageKey)
+      const legacy = localStorage.getItem(BASE_STORAGE_KEY)
+      if (legacy && readRaw(storageKey) == null) {
+        if (parseSizing(JSON.parse(legacy))) writeRaw(storageKey, legacy)
+      }
+      localStorage.removeItem(BASE_STORAGE_KEY)
     } catch (error) {
-      console.error("Failed to clear legacy column sizing state:", error)
+      console.error("Failed to migrate legacy column sizing state:", error)
     }
-  }, [hasInstanceKey, baseStorageKey])
+  }, [hasInstanceKey, storageKey])
 
-  useEffect(() => {
-    setColumnSizing(loadSizing())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey])
+  const defaultsJson = JSON.stringify(defaultSizing)
+  const defaultValue = useMemo<ColumnSizingState>(() => JSON.parse(defaultsJson), [defaultsJson])
+  const parse = useCallback((raw: string): ColumnSizingState => {
+    const parsed = parseSizing(JSON.parse(raw))
+    if (!parsed) throw new Error("invalid column sizing state")
+    return parsed
+  }, [])
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(columnSizing))
-    } catch (error) {
-      console.error("Failed to save column sizing to localStorage:", error)
-    }
-  }, [columnSizing, storageKey])
-
-  return [columnSizing, setColumnSizing] as const
+  return useClientSetting<ColumnSizingState>(storageKey, { defaultValue, parse })
 }

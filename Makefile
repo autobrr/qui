@@ -19,7 +19,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
 GIT_TAG := $(shell git describe --abbrev=0 --tags)
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-BINARY_NAME = qui
+BINARY_NAME = qui$(if $(filter Windows_NT,$(OS)),.exe)
 BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
@@ -27,7 +27,7 @@ INTERNAL_WEB_DIR = internal/web
 # Go build flags with Polar credentials
 LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test test-postgres test-frontend help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -50,8 +50,8 @@ themes-fetch:
 		git clone --depth=1 --filter=blob:none --sparse \
 			https://$$THEMES_REPO_TOKEN@github.com/autobrr/qui-premium-themes.git .themes-temp && \
 		cd .themes-temp && git sparse-checkout set --cone themes && cd .. && \
-		mkdir -p $(WEB_DIR)/src/themes/premium && \
-		cp .themes-temp/themes/*.css $(WEB_DIR)/src/themes/premium/ && \
+		mkdir -p internal/themes/assets/premium && \
+		cp .themes-temp/themes/*.css internal/themes/assets/premium/ && \
 		rm -rf .themes-temp && \
 		echo "Premium themes fetched successfully"; \
 	else \
@@ -61,10 +61,10 @@ themes-fetch:
 # Clean premium themes
 themes-clean:
 	@echo "Cleaning premium themes..."
-	rm -rf $(WEB_DIR)/src/themes/premium
+	rm -f internal/themes/assets/premium/*.css
 
 # Build frontend
-frontend: themes-fetch
+frontend:
 	@echo "Building frontend..."
 	cd $(WEB_DIR) && pnpm install && pnpm build
 	@echo "Copying frontend assets..."
@@ -72,7 +72,7 @@ frontend: themes-fetch
 	cp -r $(WEB_DIR)/dist $(INTERNAL_WEB_DIR)/
 
 # Build backend
-backend:
+backend: themes-fetch
 	@echo "Building backend..."
 	go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/qui
 
@@ -110,6 +110,10 @@ clean: themes-clean
 test:
 	@echo "Running tests..."
 	go test -race -v ./...
+
+# Run all backend tests with a temporary Postgres server.
+test-postgres:
+	go run ./internal/testutil/postgres
 
 # Run frontend tests (vitest)
 test-frontend:
@@ -247,6 +251,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test           - Run all Go tests with race detection"
+	@echo "  make test-postgres  - Run all Go tests with a temporary Postgres server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo ""

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -242,7 +243,7 @@ func ensureSameVolume(src, dst string) (string, error) {
 	}
 
 	if !sameVolume {
-		return "", errors.New("source and destination must be on the same volume")
+		return "", fmt.Errorf("%w: source and destination must be on the same volume", syscall.EXDEV)
 	}
 
 	return srcRoot, nil

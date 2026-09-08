@@ -64,7 +64,8 @@ export function useCustomThemes() {
         // Apply the stored custom theme: it wasn't resolvable during the initial
         // pre-fetch init, or its file was edited and refreshed (CSS changed).
         registerCustomThemes(parsed.themes)
-        void setTheme(storedThemeId!)
+        // System change: restoring existing state must not be pushed.
+        void setTheme(storedThemeId!, undefined, undefined, true)
         break
       case "register-and-downgrade":
         // The selected custom theme's file was removed/renamed - fall back.

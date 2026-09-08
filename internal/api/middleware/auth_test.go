@@ -32,7 +32,7 @@ func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 
 	okHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	authMiddleware := IsAuthenticated(authService, sessionManager, nil)
@@ -132,6 +132,24 @@ func TestRequireSetup_AuthDisabled(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, resp.Code)
 	assert.Equal(t, "OK", resp.Body.String())
+}
+
+func TestRequireSetup_ThemeCatalogAllowedBeforeSetup(t *testing.T) {
+	// A non-default status proves the inner handler ran: a bare recorder
+	// already reports 200.
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+
+	// A nil auth service proves the allow-list short-circuits before the
+	// setup check: any fall-through would panic.
+	handler := RequireSetup(nil, &domain.Config{})(inner)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/themes", nil)
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusTeapot, resp.Code)
 }
 
 func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {

@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +36,23 @@ type Config struct {
 type TorznabError struct {
 	Code    string `xml:"code,attr"`
 	Message string `xml:",chardata"`
+}
+
+type responseError struct {
+	StatusCode int
+	RetryAfter string
+}
+
+func (e *responseError) Error() string {
+	return fmt.Sprintf("prowlarr returned status %d", e.StatusCode)
+}
+
+func (e *responseError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
+func (e *responseError) RetryAfterHeader() string {
+	return e.RetryAfter
 }
 
 // Client provides a minimal Prowlarr API wrapper suitable for Torznab-style access.
@@ -116,10 +135,10 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	var rss gojackett.Rss
 
 	if strings.TrimSpace(indexerID) == "" {
-		return rss, fmt.Errorf("prowlarr indexer ID is required")
+		return rss, errors.New("prowlarr indexer ID is required")
 	}
 	if c.httpClient == nil {
-		return rss, fmt.Errorf("prowlarr HTTP client is not configured")
+		return rss, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -162,7 +181,10 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return rss, fmt.Errorf("prowlarr returned status %d", resp.StatusCode)
+		return rss, &responseError{
+			StatusCode: resp.StatusCode,
+			RetryAfter: resp.Header.Get("Retry-After"),
+		}
 	}
 
 	// Read the response body
@@ -174,6 +196,9 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 	// Check if the response is an error
 	bodyStr := strings.TrimSpace(string(body))
 	if strings.HasPrefix(bodyStr, "<error") {
+		// Prowlarr records upstream Torznab body errors as indexer failures, then
+		// returns the post-search failure as HTTP 429 with Retry-After:
+		// https://github.com/Prowlarr/Prowlarr/blob/50f3e7d33068e362fcd4e51f78ea6990f92623c9/src/Prowlarr.Api.V1/Indexers/NewznabController.cs#L180-L188
 		var torznabErr TorznabError
 		if err := xml.Unmarshal(body, &torznabErr); err != nil {
 			return rss, fmt.Errorf("failed to decode torznab error response: %w", err)
@@ -192,7 +217,7 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 // GetIndexers retrieves all configured indexers from the Prowlarr instance.
 func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+		return nil, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -225,7 +250,7 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	case http.StatusOK:
 		// continue
 	case http.StatusNotFound:
-		return nil, fmt.Errorf("prowlarr endpoint not found (404)")
+		return nil, errors.New("prowlarr endpoint not found (404)")
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return nil, fmt.Errorf("prowlarr returned %d (unauthorized)", resp.StatusCode)
 	default:
@@ -243,13 +268,13 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 // GetIndexer retrieves detailed information about a specific indexer from Prowlarr
 func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail, error) {
 	if c.httpClient == nil {
-		return nil, fmt.Errorf("prowlarr HTTP client is not configured")
+		return nil, errors.New("prowlarr HTTP client is not configured")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	endpoint, err := url.JoinPath(c.host, "api", "v1", "indexer", fmt.Sprintf("%d", indexerID))
+	endpoint, err := url.JoinPath(c.host, "api", "v1", "indexer", strconv.Itoa(indexerID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build prowlarr endpoint: %w", err)
 	}

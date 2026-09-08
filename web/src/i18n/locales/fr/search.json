@@ -1,6 +1,6 @@
 {
   "pageTitle": "Indexeurs de Recherche",
-  "pageDescription": "Recherchez parmi tous les indexeurs activés. Choisissez un type de requête ou laissez sur Auto pour une détection automatique des catégories.",
+  "pageDescription": "Recherchez parmi tous les indexeurs activés. Choisissez un type de recherche.",
   "indexerSummary": {
     "label": "Indexeurs",
     "noEnabled": "Aucun indexeur activé",
@@ -44,11 +44,6 @@
     "indexersPage": "Indexeurs"
   },
   "searchTypes": {
-    "auto": {
-      "label": "Détection auto",
-      "description": "Déduire automatiquement les bonnes catégories",
-      "placeholder": "Essayez : \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\" ou \"Artiste Exemple - Album Exemple\""
-    },
     "movies": {
       "label": "Films",
       "placeholder": "ex : \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""

@@ -25,6 +25,9 @@ export function useAuth() {
       api.login(username, password, rememberMe),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
+      // Refetch the theme catalog now that the session can unlock the full
+      // premium CSS: the pre-login fetch only carried the selected theme.
+      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
       navigateAfterAuth(navigate)
     },
   })
@@ -34,6 +37,7 @@ export function useAuth() {
       api.setup(username, password),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
+      queryClient.invalidateQueries({ queryKey: ["builtin-themes"] })
       navigateAfterAuth(navigate)
     },
   })

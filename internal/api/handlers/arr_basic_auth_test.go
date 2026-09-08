@@ -26,12 +26,12 @@ func TestNormalizeBasicAuthFromURL_RespectsExplicitClear(t *testing.T) {
 
 	require.Equal(t, "http://example.com", baseURL)
 	require.NotNil(t, user)
-	require.Equal(t, "", *user)
+	require.Empty(t, *user)
 	require.Nil(t, pass)
 
 	normUser, normPass := normalizeBasicAuthForUpdate(user, pass)
 	require.NotNil(t, normUser)
 	require.NotNil(t, normPass)
-	require.Equal(t, "", *normUser)
-	require.Equal(t, "", *normPass)
+	require.Empty(t, *normUser)
+	require.Empty(t, *normPass)
 }

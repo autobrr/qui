@@ -44,7 +44,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := map[string]any{
-		"data": map[string]string{"token": "test-jwt-token"}, //nolint:gosec // test value
+		"data": map[string]string{"token": "test-jwt-token"},
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }

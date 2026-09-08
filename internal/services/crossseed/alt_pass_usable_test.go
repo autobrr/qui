@@ -106,7 +106,7 @@ func TestSearchResultUsable(t *testing.T) {
 			got := s.searchResultUsable(
 				namedRelease{release: &source, rawName: tt.sourceName},
 				namedRelease{release: &candidate, rawName: tt.candidateName},
-				tt.sourceSize, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes,
+				tt.sourceSize, tt.candidateSize, nil, nil, tt.tolerance, tt.findIndividualEpisodes,
 			)
 			require.Equal(t, tt.want, got)
 		})
@@ -140,7 +140,7 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 	got := s.indexersWithoutUsableResults(
 		[]int{1, 2, 3}, results,
 		namedRelease{release: &source, rawName: sourceName},
-		size, nil, 5, false,
+		size, nil, nil, 5, false,
 	)
 	require.Equal(t, []int{1, 3}, got)
 
@@ -148,25 +148,40 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 	require.Equal(t, []int{3}, indexersWithoutResults([]int{1, 2, 3}, results))
 }
 
-func TestShouldRunTitleFallbackForRescueOnly(t *testing.T) {
+// TestHasUsableSearchResult pins the retry-ladder gate. The yearless and
+// alternate-title passes run whenever nothing usable came back, which includes
+// the case that blocked them before: hits arrived but release and size
+// filtering rejected every one.
+func TestHasUsableSearchResult(t *testing.T) {
 	service := &Service{
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
 	const (
 		sourceName = "Original.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
-		rescueName = "Renamed.Show.S01E01.1080p.WEB-DL.H.264-GROUP"
 		size       = int64(4_000_000_000)
 	)
 	source := rls.ParseString(sourceName)
-	rescue := jackett.SearchResult{Title: rescueName, Size: size}
-	normal := jackett.SearchResult{Title: sourceName, Size: size}
-	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
-
 	sourceView := namedRelease{release: &source, rawName: sourceName}
-	require.True(t, service.shouldRunTitleFallback(nil, sourceView, size, nil, 5, false, false))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, sourceView, size, nil, 5, false, false))
-	require.True(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue}, sourceView, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{junk}, sourceView, size, nil, 5, false, true))
-	require.False(t, service.shouldRunTitleFallback([]jackett.SearchResult{rescue, normal}, sourceView, size, nil, 5, false, true))
+
+	match := jackett.SearchResult{Title: sourceName, Size: size}
+	junk := jackett.SearchResult{Title: "Other.Show.S02E02.720p.WEB-DL.H.264-OTHER", Size: size}
+	wrongSize := jackett.SearchResult{Title: sourceName, Size: size * 2}
+
+	tests := []struct {
+		name    string
+		results []jackett.SearchResult
+		want    bool
+	}{
+		{name: "no results", results: nil, want: false},
+		{name: "junk only", results: []jackett.SearchResult{junk}, want: false},
+		{name: "junk and wrong size", results: []jackett.SearchResult{junk, wrongSize}, want: false},
+		{name: "usable match", results: []jackett.SearchResult{match}, want: true},
+		{name: "junk plus usable match", results: []jackett.SearchResult{junk, match}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, service.hasUsableSearchResult(tt.results, sourceView, size, nil, nil, 5, false))
+		})
+	}
 }

@@ -53,6 +53,7 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
+import { writeRaw } from "@/lib/client-settings"
 import {
   DASHBOARD_STATS_FALLBACK_ORDER,
   DASHBOARD_STATS_FALLBACK_SORT,
@@ -192,10 +193,6 @@ function recordsShallowEqual(
   return true
 }
 
-function hasDashboardInstanceData(data: InstanceStreamData | null | undefined) {
-  return hasDashboardStatsPayload(data)
-}
-
 function instanceStreamDataFromResponse(
   response: TorrentResponse | undefined,
   current?: InstanceStreamData
@@ -238,7 +235,7 @@ function mergeCachedInstanceData(
     torrentCounts: resolveDashboardTorrentCounts(current.torrentCounts, cached.torrentCounts),
     appInfo: current.appInfo ?? cached.appInfo,
     altSpeedEnabled: current.serverState?.use_alt_speed_limits ?? cached.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
-    isLoading: current.isLoading && !hasDashboardInstanceData(cached),
+    isLoading: current.isLoading && !hasDashboardStatsPayload(cached),
     error: current.error,
     hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload,
     cacheMetadata: current.cacheMetadata ?? cached.cacheMetadata,
@@ -1053,14 +1050,10 @@ function InstanceCard({
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
                     onClick={() => {
-                      try {
-                        localStorage.setItem("qui-filters-global", JSON.stringify({
-                          status: ["unregistered"],
-                          excludeStatus: [],
-                        }))
-                      } catch (error) {
-                        console.error("Failed to set filter state:", error)
-                      }
+                      writeRaw("qui-filters-global", JSON.stringify({
+                        status: ["unregistered"],
+                        excludeStatus: [],
+                      }))
                     }}
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
                   >
@@ -1074,14 +1067,10 @@ function InstanceCard({
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
                     onClick={() => {
-                      try {
-                        localStorage.setItem("qui-filters-global", JSON.stringify({
-                          status: ["tracker_down"],
-                          excludeStatus: [],
-                        }))
-                      } catch (error) {
-                        console.error("Failed to set filter state:", error)
-                      }
+                      writeRaw("qui-filters-global", JSON.stringify({
+                        status: ["tracker_down"],
+                        excludeStatus: [],
+                      }))
                     }}
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
                   >
@@ -1095,14 +1084,10 @@ function InstanceCard({
                     to="/instances/$instanceId"
                     params={{ instanceId: instance.id.toString() }}
                     onClick={() => {
-                      try {
-                        localStorage.setItem("qui-filters-global", JSON.stringify({
-                          status: ["errored"],
-                          excludeStatus: [],
-                        }))
-                      } catch (error) {
-                        console.error("Failed to set filter state:", error)
-                      }
+                      writeRaw("qui-filters-global", JSON.stringify({
+                        status: ["errored"],
+                        excludeStatus: [],
+                      }))
                     }}
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
                   >

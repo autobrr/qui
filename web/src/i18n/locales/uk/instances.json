@@ -319,6 +319,12 @@
       "maxActiveTorrentsDescription": "Загальна максимальна кількість активних торентів",
       "maxCheckingTorrents": "Максимальна перевірка торентів",
       "maxCheckingTorrentsDescription": "Одночасна перевірка максимальної кількості торентів",
+      "dontCountSlowTorrents": "Не рахувати повільні торенти",
+      "dontCountSlowTorrentsDescription": "Повільні торенти не враховуються в наведених вище лімітах активних торентів",
+      "slowTorrentDlRateThreshold": "Поріг швидкості завантаження (KiB/s)",
+      "slowTorrentUlRateThreshold": "Поріг швидкості вивантаження (KiB/s)",
+      "slowTorrentInactiveTimer": "Таймер неактивності торента (секунди)",
+      "slowTorrentInactiveTimerDescription": "Як довго обидві швидкості мають залишатися нижче порогів, перш ніж торент вважатиметься повільним",
       "validation": {
         "maxActiveDownloads": "Максимальна кількість активних завантажень має бути більше -1",
         "maxActiveUploads": "Максимальна кількість активних вивантажень має бути більше -1",
@@ -929,7 +935,10 @@
       "unregistered": "Незареєстрований",
       "andMoreTorrents": "... і ще {{count}} торентів",
       "loadMore": "Завантажити більше",
-      "exportCSV": "Експортувати CSV"
+      "exportCSV": "Експортувати CSV",
+      "saveWithoutPreview": "Зберегти без попереднього перегляду",
+      "previewFailed": "Не вдалося створити попередній перегляд: {{error}}",
+      "skipPreviewHint": "Правило все одно застосується до кожного відповідного торента під час наступного запуску. Ви можете зберегти, не чекаючи на попередній перегляд."
     },
     "orphanScanOverview": {
       "title": "Орфанне сканування",

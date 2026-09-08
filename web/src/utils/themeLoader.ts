@@ -3,113 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { parseThemeCSS, generateThemeId } from "./themeParser";
 import type { Theme } from "@/config/themes";
 
-// Import all theme CSS files from the themes directory
-const freeThemes = import.meta.glob("/src/themes/*.css", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
-// Import premium theme CSS files (may not exist in development)
-const premiumThemes = import.meta.glob("/src/themes/premium/*.css", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
 /**
- * Load all themes from the themes directory
+ * The single bundled fallback theme, painted until the registry arrives from
+ * GET /api/themes (see useBuiltinThemes). Shares the "minimal" id so the
+ * registry entry replaces it seamlessly and fallback writes to localStorage
+ * never store an id that stops resolving.
  */
-export function loadThemes(): Theme[] {
-  const themes: Theme[] = [];
+export const FALLBACK_THEME: Theme = getFallbackTheme();
 
-  // Process free theme files
-  for (const [path, cssContent] of Object.entries(freeThemes)) {
-    if (typeof cssContent !== "string") {
-      console.warn(`Invalid theme file: ${path}`);
-      continue;
-    }
-
-    const parsedTheme = parseThemeCSS(cssContent);
-    if (!parsedTheme) {
-      console.warn(`Failed to parse theme: ${path}`);
-      continue;
-    }
-
-    // Extract filename without extension for fallback ID
-    const filename = path.split("/").pop()?.replace(".css", "") || "unknown";
-
-    const theme: Theme = {
-      id: generateThemeId(parsedTheme.metadata.name) || filename,
-      name: parsedTheme.metadata.name,
-      description: parsedTheme.metadata.description,
-      isPremium: parsedTheme.metadata.isPremium,
-      lightOnly: parsedTheme.metadata.lightOnly,
-      variations: parsedTheme.variations,
-      cssVars: parsedTheme.cssVars,
-    };
-
-    themes.push(theme);
-  }
-
-  // Process premium theme files (if available)
-  for (const [path, cssContent] of Object.entries(premiumThemes)) {
-    if (typeof cssContent !== "string") {
-      console.warn(`Invalid premium theme file: ${path}`);
-      continue;
-    }
-
-    const parsedTheme = parseThemeCSS(cssContent);
-    if (!parsedTheme) {
-      console.warn(`Failed to parse premium theme: ${path}`);
-      continue;
-    }
-
-    // Extract filename without extension for fallback ID
-    const filename = path.split("/").pop()?.replace(".css", "") || "unknown";
-
-    const theme: Theme = {
-      id: generateThemeId(parsedTheme.metadata.name) || filename,
-      name: parsedTheme.metadata.name,
-      description: parsedTheme.metadata.description,
-      isPremium: parsedTheme.metadata.isPremium ?? true, // Default to premium for premium directory
-      lightOnly: parsedTheme.metadata.lightOnly,
-      variations: parsedTheme.variations,
-      cssVars: parsedTheme.cssVars,
-    };
-
-    themes.push(theme);
-  }
-
-  // Add default theme if no themes are loaded
-  if (themes.length === 0) {
-    themes.push(getDefaultTheme());
-  }
-
-  // Sort themes to ensure "minimal" is first
-  themes.sort((a, b) => {
-    if (a.id === "minimal") return -1;
-    if (b.id === "minimal") return 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  // Debug log in development
-  if (import.meta.env.DEV) {
-    console.log("Loaded themes:", themes.map(t => ({ id: t.id, name: t.name, isPremium: t.isPremium })));
-  }
-
-  return themes;
-}
-
-/**
- * Get default theme (fallback)
- */
-function getDefaultTheme(): Theme {
+function getFallbackTheme(): Theme {
   return {
-    id: "default",
+    id: "minimal",
     name: "Minimal",
     description: "Clean and minimal theme with neutral colors",
     cssVars: {

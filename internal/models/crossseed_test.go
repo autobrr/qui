@@ -72,22 +72,24 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.False(t, defaults.Enabled)
 	assert.Equal(t, 120, defaults.RunIntervalMinutes)
 	assert.False(t, defaults.RescueTitleMismatches)
+	assert.False(t, defaults.PooledPartialCompletionEnabled)
 
 	category := "TV"
 
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
-		Enabled:               true,
-		RunIntervalMinutes:    30,
-		StartPaused:           false,
-		Category:              &category,
-		RSSAutomationTags:     []string{"cross-seed", "automation"},
-		SeededSearchTags:      []string{"seeded"},
-		CompletionSearchTags:  []string{"completion"},
-		WebhookTags:           []string{"webhook"},
-		TargetInstanceIDs:     []int{1, 2},
-		TargetIndexerIDs:      []int{11, 42},
-		MaxResultsPerRun:      25,
-		RescueTitleMismatches: true,
+		Enabled:                        true,
+		RunIntervalMinutes:             30,
+		StartPaused:                    false,
+		Category:                       &category,
+		RSSAutomationTags:              []string{"cross-seed", "automation"},
+		SeededSearchTags:               []string{"seeded"},
+		CompletionSearchTags:           []string{"completion"},
+		WebhookTags:                    []string{"webhook"},
+		TargetInstanceIDs:              []int{1, 2},
+		TargetIndexerIDs:               []int{11, 42},
+		MaxResultsPerRun:               25,
+		RescueTitleMismatches:          true,
+		PooledPartialCompletionEnabled: true,
 	})
 	require.NoError(t, err)
 
@@ -104,6 +106,7 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, []int{11, 42}, updated.TargetIndexerIDs)
 	assert.Equal(t, 25, updated.MaxResultsPerRun)
 	assert.True(t, updated.RescueTitleMismatches)
+	assert.True(t, updated.PooledPartialCompletionEnabled)
 
 	reloaded, err := store.GetSettings(ctx)
 	require.NoError(t, err)
@@ -135,7 +138,7 @@ func TestCrossSeedStore_RunLifecycle(t *testing.T) {
 	run.CompletedAt = &completed
 	run.TotalFeedItems = 5
 	run.CandidatesFound = 3
-	run.TorrentsAdded = 2
+	run.CrossSeedsAdded = 2
 	run.Results = []models.CrossSeedRunResult{{
 		InstanceID:   1,
 		InstanceName: "Test",
@@ -183,7 +186,8 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 
 	run.Status = models.CrossSeedSearchRunStatusSuccess
 	run.Processed = 1
-	run.TorrentsAdded = 1
+	run.TorrentsWithCrossSeeds = 1
+	run.CrossSeedsAdded = 1
 	run.Results = []models.CrossSeedSearchResult{{
 		TorrentHash:  "abc123",
 		TorrentName:  "Source.Release",
@@ -194,7 +198,8 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 		ProcessedAt:  now,
 	}}
 
-	updated, err := store.UpdateSearchRun(ctx, run)
+	require.NoError(t, store.UpdateSearchRun(ctx, run))
+	updated, err := store.GetSearchRun(ctx, run.ID)
 	require.NoError(t, err)
 	require.Len(t, updated.Results, 1)
 	assert.Equal(t, models.CrossSeedSearchResultStatusAdded, updated.Results[0].Status)
@@ -280,7 +285,7 @@ func TestCrossSeedStore_SearchRunResultDecodeLegacyAdded(t *testing.T) {
 
 	_, err = db.ExecContext(ctx, `
 		UPDATE cross_seed_search_runs
-		SET status = ?, completed_at = ?, processed = ?, torrents_added = ?, torrents_skipped = ?, torrents_failed = ?, results_json = ?
+		SET status = ?, completed_at = ?, processed = ?, torrents_with_cross_seeds = ?, torrents_skipped = ?, torrents_failed = ?, results_json = ?
 		WHERE id = ?
 	`, models.CrossSeedSearchRunStatusSuccess, now, 3, 1, 1, 1, string(legacyResults), run.ID)
 	require.NoError(t, err)
@@ -342,6 +347,69 @@ func TestCrossSeedStore_FeedItems(t *testing.T) {
 	removed, err := store.PruneFeedItems(ctx, cutoff)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), removed)
+}
+
+// Regression test for discussion #2375: MarkFeedItem used to rewrite
+// last_seen_at with a fresh, millisecond-precision timestamp on every poll,
+// which defeats Postgres HOT updates on an indexed column that changes on
+// every write. Truncating to day precision means same-day polls write an
+// identical value, so only the first poll of a new day touches the index.
+func TestCrossSeedStore_MarkFeedItemTruncatesLastSeenToDayPrecision(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	indexerID := insertTestTorznabIndexer(t, db, "Test Indexer", "https://example.com")
+	guid := "truncation-guid"
+
+	readLastSeen := func() time.Time {
+		var ts time.Time
+		err := db.QueryRowContext(ctx, "SELECT last_seen_at FROM cross_seed_feed_items WHERE guid = ? AND indexer_id = ?", guid, indexerID).Scan(&ts)
+		require.NoError(t, err)
+		return ts
+	}
+
+	base := time.Date(2026, 8, 27, 3, 15, 0, 0, time.UTC)
+	require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{
+		GUID:       guid,
+		IndexerID:  indexerID,
+		Title:      "Example",
+		LastStatus: models.CrossSeedFeedItemStatusPending,
+		LastSeenAt: base,
+	}))
+
+	first := readLastSeen()
+	assert.True(t, first.Equal(base.Truncate(24*time.Hour)), "expected last_seen_at truncated to day precision, got %v", first)
+
+	// A second poll later the same UTC day must write the identical value so
+	// Postgres can treat the update as HOT-eligible.
+	require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{
+		GUID:       guid,
+		IndexerID:  indexerID,
+		Title:      "Example",
+		LastStatus: models.CrossSeedFeedItemStatusPending,
+		LastSeenAt: base.Add(6 * time.Hour),
+	}))
+
+	second := readLastSeen()
+	assert.True(t, second.Equal(first), "expected same-day poll to leave last_seen_at unchanged, got %v vs %v", second, first)
+
+	// A poll on the next day must advance last_seen_at.
+	require.NoError(t, store.MarkFeedItem(ctx, &models.CrossSeedFeedItem{
+		GUID:       guid,
+		IndexerID:  indexerID,
+		Title:      "Example",
+		LastStatus: models.CrossSeedFeedItemStatusPending,
+		LastSeenAt: base.Add(24 * time.Hour),
+	}))
+
+	third := readLastSeen()
+	assert.True(t, third.After(second), "expected next-day poll to advance last_seen_at, got %v vs %v", third, second)
 }
 
 // A rule stored before a rule could carry several categories decodes with none.

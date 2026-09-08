@@ -83,7 +83,7 @@ func TestMigrationIdempotency(t *testing.T) {
 	var count2 int
 	require.NoError(t, db2.Conn().QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count2))
 	require.Equal(t, count1, count2, "Migration count should be the same after re-initialization")
-	require.Greater(t, count2, 0, "Should have at least one migration applied")
+	require.Positive(t, count2, "Should have at least one migration applied")
 
 	files := listMigrationFiles(t)
 	require.Equal(t, len(files), count2, "Applied migration count should match number of migration files")
@@ -105,19 +105,19 @@ func TestMigrationsApplyFullSchema(t *testing.T) {
 	require.Equal(t, len(files), applied, "All migrations should be recorded as applied")
 
 	t.Run("pragma settings", func(t *testing.T) {
-		verifyPragmas(t, t.Context(), conn)
+		verifyPragmas(t.Context(), t, conn)
 	})
 
 	t.Run("schema", func(t *testing.T) {
-		verifySchema(t, t.Context(), conn)
+		verifySchema(t.Context(), t, conn)
 	})
 
 	t.Run("indexes", func(t *testing.T) {
-		verifyIndexes(t, t.Context(), conn)
+		verifyIndexes(t.Context(), t, conn)
 	})
 
 	t.Run("triggers", func(t *testing.T) {
-		verifyTriggers(t, t.Context(), conn)
+		verifyTriggers(t.Context(), t, conn)
 	})
 }
 
@@ -143,8 +143,25 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 		require.NoError(t, conn2.Close())
 	})
 
-	verifyPragmas(t, ctx, conn1)
-	verifyPragmas(t, ctx, conn2)
+	verifyPragmas(ctx, t, conn1)
+	verifyPragmas(ctx, t, conn2)
+}
+
+// TestConnectionPragmasApplyWithoutNew pins the pragma hook to package init:
+// qui db migrate opens the source database with a bare sql.Open, never New.
+//
+// ponytail: only proves the regression in isolation, with
+// `go test -run TestConnectionPragmasApplyWithoutNew ./internal/database/`.
+// A full-suite run may call New first, which was enough to register the hook
+// under the old lazy path.
+func TestConnectionPragmasApplyWithoutNew(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+
+	verifyPragmas(t.Context(), t, sqlDB)
 }
 
 func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
@@ -312,8 +329,7 @@ var expectedIndexes = map[string][]string{
 	"client_api_keys":     {"idx_client_api_keys_instance_id"},
 	"instance_errors":     {"idx_instance_errors_lookup"},
 	"sessions":            {"sessions_expiry_idx"},
-	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
-	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup"},
 	"automations":         {"idx_automations_instance"},
 	"automation_activity": {"idx_automation_activity_instance_created"},
 }
@@ -372,7 +388,7 @@ type pragmaQuerier interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 }
 
-func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
+func verifyPragmas(ctx context.Context, t *testing.T, q pragmaQuerier) {
 	t.Helper()
 
 	var journalMode string
@@ -400,7 +416,7 @@ func verifyPragmas(t *testing.T, ctx context.Context, q pragmaQuerier) {
 	require.Equal(t, "ok", strings.ToLower(integrity))
 }
 
-func verifySchema(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifySchema(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	actualTables := make(map[string]struct{})
@@ -458,7 +474,7 @@ func verifySchema(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 }
 
-func verifyIndexes(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifyIndexes(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	for table, indexes := range expectedIndexes {
@@ -471,7 +487,7 @@ func verifyIndexes(t *testing.T, ctx context.Context, conn *sql.DB) {
 	}
 }
 
-func verifyTriggers(t *testing.T, ctx context.Context, conn *sql.DB) {
+func verifyTriggers(ctx context.Context, t *testing.T, conn *sql.DB) {
 	t.Helper()
 
 	for _, trigger := range expectedTriggers {
@@ -510,7 +526,7 @@ func TestCleanupUnusedStrings(t *testing.T) {
 	// Run cleanup
 	deleted, err := db.CleanupUnusedStrings(ctx)
 	require.NoError(t, err)
-	require.Greater(t, deleted, int64(0)) // Should delete some orphaned strings
+	require.Positive(t, deleted) // Should delete some orphaned strings
 
 	// Verify our referenced string still exists
 	var exists bool
@@ -840,7 +856,7 @@ func TestTransactionSerialization(t *testing.T) {
 			t.Errorf("Failed to begin first transaction: %v", err)
 			return
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Signal that we started
 		started <- true

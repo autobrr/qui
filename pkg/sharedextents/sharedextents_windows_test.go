@@ -122,7 +122,7 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 
 	cleanRoot, err := filepath.Abs(root)
 	require.NoError(t, err)
-	dir, err := os.MkdirTemp(cleanRoot, "qui-sharedextents-") //nolint:gosec // Opt-in test root; containment is verified below.
+	dir, err := os.MkdirTemp(cleanRoot, "qui-sharedextents-")
 	require.NoError(t, err)
 	dir, err = filepath.Abs(dir)
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	require.NotEqual(t, "..", relativeDir)
 	require.False(t, strings.HasPrefix(relativeDir, ".."+string(filepath.Separator)))
 	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(dir)) //nolint:gosec // Verified test temp directory under cleanRoot.
+		require.NoError(t, os.RemoveAll(dir))
 	})
 
 	source := filepath.Join(dir, "source.bin")
@@ -140,8 +140,8 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	data := make([]byte, 3*64*1024)
 	_, err = rand.Read(data)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(source, data, 0o600))   //nolint:gosec // Path is under verified test temp directory.
-	require.NoError(t, os.WriteFile(copyPath, data, 0o600)) //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, os.WriteFile(source, data, 0o600))
+	require.NoError(t, os.WriteFile(copyPath, data, 0o600))
 	_, err = reflinktree.Create(&hardlinktree.TreePlan{
 		RootDir: dir,
 		Files: []hardlinktree.FilePlan{{
@@ -159,7 +159,7 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, shared)
 
-	cloneFile, err := os.OpenFile(clone, os.O_WRONLY, 0) //nolint:gosec // Path is under verified test temp directory.
+	cloneFile, err := os.OpenFile(clone, os.O_WRONLY, 0)
 	require.NoError(t, err)
 	_, err = cloneFile.WriteAt([]byte{0xff}, 0)
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	replacement := make([]byte, len(data))
 	_, err = rand.Read(replacement)
 	require.NoError(t, err)
-	cloneFile, err = os.OpenFile(clone, os.O_WRONLY, 0) //nolint:gosec // Path is under verified test temp directory.
+	cloneFile, err = os.OpenFile(clone, os.O_WRONLY, 0)
 	require.NoError(t, err)
 	_, err = cloneFile.WriteAt(replacement, 0)
 	require.NoError(t, err)
@@ -182,8 +182,8 @@ func TestFilesShareAllocationReFS(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, shared)
 
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty-a"), nil, 0o600)) //nolint:gosec // Path is under verified test temp directory.
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty-b"), nil, 0o600)) //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty-a"), nil, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty-b"), nil, 0o600))
 	shared, err = FilesShareAllocation(filepath.Join(dir, "empty-a"), filepath.Join(dir, "empty-b"))
 	require.NoError(t, err)
 	require.False(t, shared)

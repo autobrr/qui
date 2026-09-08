@@ -5,8 +5,15 @@ package reannounce
 
 import (
 	"context"
+	"encoding/json/v2"
 	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -14,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestTorrentMeetsCriteria_MonitorAllAndAge(t *testing.T) {
@@ -376,15 +385,19 @@ func TestServiceEnqueue_DebouncesWhileRunning(t *testing.T) {
 	now := time.Unix(0, 0)
 	svc := newTestServiceForDebounce(time.Minute, func() time.Time { return now })
 	started := 0
+	var workers []func()
+	svc.spawn = func(fn func()) { workers = append(workers, fn) }
 	svc.runJob = func(ctx context.Context, instanceID int, hash string, torrentName string, trackers string) {
 		started++
 	}
 
 	require.True(t, svc.enqueue(1, "ABC", "Test Torrent", "tracker.example.com"))
-	require.Equal(t, 1, started, "expected first enqueue to start job")
+	require.Len(t, workers, 1)
 
 	require.True(t, svc.enqueue(1, "ABC", "Test Torrent", "tracker.example.com"))
-	require.Equal(t, 1, started, "expected duplicate enqueue while running to be debounced")
+	require.Len(t, workers, 1, "expected duplicate enqueue to use the same worker")
+	workers[0]()
+	require.Equal(t, 1, started)
 }
 
 func TestServiceEnqueue_RespectsCooldownAfterCompletion(t *testing.T) {
@@ -397,8 +410,6 @@ func TestServiceEnqueue_RespectsCooldownAfterCompletion(t *testing.T) {
 
 	require.True(t, svc.enqueue(1, "ABC", "Test Torrent", "tracker.example.com"))
 	require.Equal(t, 1, started, "expected first enqueue to start job")
-
-	svc.finishJob(1, "ABC")
 
 	now = now.Add(30 * time.Second)
 	require.True(t, svc.enqueue(1, "ABC", "Test Torrent", "tracker.example.com"))
@@ -423,8 +434,6 @@ func TestServiceEnqueue_AggressiveModeSkipsDebounce(t *testing.T) {
 	// 1. Run initial job
 	require.True(t, svc.enqueue(1, "ABC", "Test", "tracker"))
 	require.Equal(t, 1, started)
-	svc.finishJob(1, "ABC")
-
 	// 2. Advance time slightly (still inside debounce window)
 	now = now.Add(5 * time.Second)
 
@@ -451,20 +460,11 @@ func newTestServiceForDebounce(window time.Duration, now func() time.Time) *Serv
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{
-		cfg: Config{
-			DebounceWindow: window,
-			ScanInterval:   time.Second,
-		},
-		j:                make(map[int]map[string]*reannounceJob),
-		now:              now,
-		spawn:            func(fn func()) { fn() },
-		historySucceeded: make(map[int][]ActivityEvent),
-		historyFailed:    make(map[int][]ActivityEvent),
-		historySkipped:   make(map[int][]ActivityEvent),
-		historyCap:       defaultHistorySize,
-		baseCtx:          context.Background(),
-	}
+	svc := NewService(Config{DebounceWindow: window, ScanInterval: time.Second}, nil, nil, nil, nil, nil)
+	svc.now = now
+	svc.spawn = func(fn func()) { fn() }
+	svc.baseCtx = context.Background()
+	return svc
 }
 
 func TestServiceRecordActivityLimit(t *testing.T) {
@@ -525,4 +525,335 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 		}
 	}
 	require.Equal(t, 4, failedCount)
+}
+
+// A scope that cannot match any torrent must not reach the client. The service
+// here has no client pool, so a fetch attempt would panic: returning cleanly
+// proves the scan short-circuited before the request.
+func TestScanInstance_SkipsFetchWhenScopeCannotMatch(t *testing.T) {
+	svc := &Service{}
+
+	require.NotPanics(t, func() {
+		svc.scanInstance(context.Background(), 1, &models.InstanceReannounceSettings{Enabled: true})
+	})
+}
+
+func TestScanInstance_FetchesOnlyCandidates(t *testing.T) {
+	now := time.Now()
+	torrents := map[string]qbt.Torrent{}
+	for _, hash := range []string{"eligible", "other", "old", "young", "category", "tag", "healthy", "active"} {
+		torrents[hash] = qbt.Torrent{
+			Hash: hash, Name: "Synthetic " + hash, AddedOn: now.Unix() - 60,
+			State: qbt.TorrentStateStalledUp, Category: hash, Tags: hash,
+			Trackers: []qbt.TorrentTracker{{Url: "https://" + hash + ".test/announce", Status: qbt.TrackerStatusNotWorking}},
+		}
+	}
+	old := torrents["old"]
+	old.AddedOn = now.Unix() - 601
+	torrents["old"] = old
+	young := torrents["young"]
+	young.AddedOn = now.Unix()
+	torrents["young"] = young
+	healthy := torrents["healthy"]
+	healthy.Trackers[0].Status = qbt.TrackerStatusOK
+	torrents["healthy"] = healthy
+	active := torrents["active"]
+	active.State = qbt.TorrentStateUploading
+	torrents["active"] = active
+
+	for _, tc := range []struct {
+		name       string
+		settings   models.InstanceReannounceSettings
+		wantHashes []string
+		wantJobs   []string
+	}{
+		{
+			name: "age and exclusions",
+			settings: models.InstanceReannounceSettings{
+				MonitorAll: true, ExcludeCategories: true, Categories: []string{"category"},
+				ExcludeTags: true, Tags: []string{"tag"},
+			},
+			wantHashes: []string{"eligible", "other", "healthy"},
+			wantJobs:   []string{"ELIGIBLE", "OTHER"},
+		},
+		{
+			name:       "category or tag inclusion",
+			settings:   models.InstanceReannounceSettings{Categories: []string{"eligible"}, Tags: []string{"tag"}},
+			wantHashes: []string{"eligible", "tag"},
+			wantJobs:   []string{"ELIGIBLE", "TAG"},
+		},
+		{
+			name:       "empty candidates",
+			settings:   models.InstanceReannounceSettings{Categories: []string{"missing"}},
+			wantHashes: nil,
+			wantJobs:   nil,
+		},
+		{
+			name:       "tracker inclusion with empty cache lists",
+			settings:   models.InstanceReannounceSettings{Trackers: []string{"eligible.test"}},
+			wantHashes: []string{"eligible", "other", "category", "tag", "healthy"},
+			wantJobs:   []string{"ELIGIBLE"},
+		},
+		{
+			name: "tracker inclusion or category with tag exclusion",
+			settings: models.InstanceReannounceSettings{
+				Categories: []string{"category"}, Trackers: []string{"eligible.test", "tag.test"},
+				ExcludeTags: true, Tags: []string{"tag"},
+			},
+			wantHashes: []string{"eligible", "other", "category", "healthy"},
+			wantJobs:   []string{"ELIGIBLE", "CATEGORY"},
+		},
+		{
+			name: "tracker exclusion keeps category scope",
+			settings: models.InstanceReannounceSettings{
+				Categories: []string{"eligible", "category"}, ExcludeTrackers: true, Trackers: []string{"category.test"},
+			},
+			wantHashes: []string{"eligible", "category"},
+			wantJobs:   []string{"ELIGIBLE"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, instanceID, requests := newScanTestService(t, "2.11.4", torrents)
+			svc.now = func() time.Time { return now }
+			var jobs []string
+			svc.runJob = func(_ context.Context, _ int, hash, _, _ string) { jobs = append(jobs, hash) }
+			tc.settings.Enabled = true
+			tc.settings.MaxAgeSeconds = 600
+			tc.settings.InitialWaitSeconds = 15
+			svc.scanInstance(t.Context(), instanceID, &tc.settings)
+			if len(tc.wantHashes) == 0 {
+				require.Empty(t, requests)
+			} else {
+				require.Len(t, requests, 1)
+				require.ElementsMatch(t, tc.wantHashes, <-requests)
+			}
+			require.ElementsMatch(t, tc.wantJobs, jobs)
+		})
+	}
+}
+
+func TestScanInstance_BatchesCandidates(t *testing.T) {
+	torrents := make(map[string]qbt.Torrent)
+	for i := range trackerFetchBatchSize + 1 {
+		hash := fmt.Sprintf("%064x", i)
+		torrents[hash] = qbt.Torrent{Hash: hash, Name: "Synthetic seed", State: qbt.TorrentStateStalledUp}
+	}
+	svc, instanceID, requests := newScanTestService(t, "2.11.4", torrents)
+	svc.runJob = func(context.Context, int, string, string, string) {}
+	svc.scanInstance(t.Context(), instanceID, &models.InstanceReannounceSettings{Enabled: true, MonitorAll: true})
+	require.Len(t, requests, 2)
+	first, second := <-requests, <-requests
+	require.Len(t, first, trackerFetchBatchSize)
+	require.Len(t, second, 1)
+	seen := make(map[string]bool)
+	for _, batch := range [][]string{first, second} {
+		for _, hash := range batch {
+			require.Contains(t, torrents, hash)
+			require.False(t, seen[hash], "duplicate hash in tracker requests")
+			seen[hash] = true
+		}
+	}
+	require.Len(t, seen, len(torrents))
+}
+
+func TestScanInstance_OlderClientUsesCache(t *testing.T) {
+	torrents := map[string]qbt.Torrent{"eligible": {Hash: "eligible", Name: "Synthetic seed", State: qbt.TorrentStateStalledUp}}
+	svc, instanceID, requests := newScanTestService(t, "2.10.0", torrents)
+	var jobs []string
+	svc.runJob = func(_ context.Context, _ int, hash, _, _ string) { jobs = append(jobs, hash) }
+	svc.scanInstance(t.Context(), instanceID, &models.InstanceReannounceSettings{Enabled: true, MonitorAll: true})
+	require.Empty(t, requests)
+	require.Equal(t, []string{"ELIGIBLE"}, jobs)
+}
+
+func newScanTestService(t *testing.T, version string, torrents map[string]qbt.Torrent) (*Service, int, <-chan []string) {
+	t.Helper()
+	requests := make(chan []string, len(torrents)+1)
+	cached := make(map[string]qbt.Torrent, len(torrents))
+	for hash, torrent := range torrents {
+		torrent.Trackers = nil
+		cached[hash] = torrent
+	}
+	mainData, err := json.Marshal(qbt.MainData{Rid: 1, FullUpdate: true, Torrents: cached})
+	require.NoError(t, err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte(version))
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write(mainData)
+		case "/api/v2/torrents/info":
+			assert.Equal(t, "true", r.URL.Query().Get("includeTrackers"))
+			assert.Equal(t, "stalled", r.URL.Query().Get("filter"))
+			hashes := strings.Split(r.URL.Query().Get("hashes"), "|")
+			requests <- hashes
+			var response []qbt.Torrent
+			for _, hash := range hashes {
+				if torrent, ok := torrents[hash]; ok {
+					response = append(response, torrent)
+				}
+			}
+			assert.NoError(t, json.MarshalWrite(w, response))
+		case "/api/v2/torrents/trackers":
+			torrent := torrents[strings.ToLower(r.URL.Query().Get("hash"))]
+			assert.NoError(t, json.MarshalWrite(w, torrent.Trackers))
+		default:
+			t.Errorf("unexpected qBittorrent request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+	db := testdb.NewMigratedSQLite(t, "reannounce-scan")
+	instances, err := models.NewInstanceStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	instance, err := instances.Create(t.Context(), "Reannounce stub", server.URL, "", "", nil, nil, false, new(true))
+	require.NoError(t, err)
+	pool, err := qbittorrent.NewClientPool(instances, models.NewInstanceErrorStore(db), time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	// Fill the cache before attaching qui's background tracker refresh.
+	syncCtx, cancel := context.WithCancel(t.Context())
+	_, err = pool.GetClient(syncCtx, instance.ID)
+	cancel()
+	require.NoError(t, err)
+	svc := NewService(DefaultConfig(), instances, nil, nil, pool, qbittorrent.NewSyncManager(pool, nil))
+	svc.setBaseContext(t.Context())
+	svc.spawn = func(fn func()) { fn() }
+	return svc, instance.ID, requests
+}
+
+func TestServiceEnqueue_BoundsWorkersAndCancelsQueue(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+		svc.setBaseContext(ctx)
+		started := make(chan string, 100)
+		release := make(chan struct{})
+		var active atomic.Int32
+		var spawned atomic.Int32
+		svc.spawn = func(fn func()) { spawned.Add(1); go fn() }
+		svc.runJob = func(ctx context.Context, _ int, hash, _, _ string) {
+			active.Add(1)
+			defer active.Add(-1)
+			started <- hash
+			select {
+			case <-ctx.Done():
+			case <-release:
+			}
+		}
+		for instanceID := 1; instanceID <= 2; instanceID++ {
+			for i := range 20 {
+				require.True(t, svc.enqueue(instanceID, fmt.Sprintf("HASH%d", i), "Synthetic seed", "tracker.test"))
+			}
+		}
+		synctest.Wait()
+		require.EqualValues(t, 2*maxConcurrentJobsPerInstance, active.Load())
+		require.EqualValues(t, 2*maxConcurrentJobsPerInstance, spawned.Load())
+		require.Len(t, started, 2*maxConcurrentJobsPerInstance)
+		for instanceID := 1; instanceID <= 2; instanceID++ {
+			require.Equal(t, maxConcurrentJobsPerInstance, svc.queues[instanceID].active)
+			require.Len(t, svc.queues[instanceID].pending, 20-maxConcurrentJobsPerInstance)
+			require.True(t, svc.enqueue(instanceID, "HASH19", "Synthetic seed", "tracker.test"))
+			require.Len(t, svc.queues[instanceID].pending, 20-maxConcurrentJobsPerInstance)
+		}
+
+		release <- struct{}{}
+		synctest.Wait()
+		require.Len(t, started, 2*maxConcurrentJobsPerInstance+1)
+		require.EqualValues(t, 2*maxConcurrentJobsPerInstance, active.Load())
+		require.EqualValues(t, 2*maxConcurrentJobsPerInstance, spawned.Load())
+
+		cancel()
+		synctest.Wait()
+		require.Zero(t, active.Load())
+		require.Empty(t, svc.queues)
+		require.Len(t, started, 2*maxConcurrentJobsPerInstance+1, "canceled queued jobs must not run")
+		for jobs := range maps.Values(svc.j) {
+			require.NotContains(t, jobs, "HASH19", "queued jobs must not acquire a cooldown on cancellation")
+			for job := range maps.Values(jobs) {
+				require.False(t, job.isRunning)
+			}
+		}
+		require.False(t, svc.enqueue(1, "AFTER_CANCEL", "Synthetic seed", "tracker.test"))
+	})
+}
+
+func TestServiceEnqueue_CooldownStartsAfterQueueWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+		svc.setBaseContext(ctx)
+		release := make(chan struct{})
+		var queuedRuns atomic.Int32
+		svc.runJob = func(ctx context.Context, _ int, hash, _, _ string) {
+			if hash == "QUEUED" {
+				queuedRuns.Add(1)
+				return
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+		}
+		for i := range maxConcurrentJobsPerInstance {
+			require.True(t, svc.enqueue(1, fmt.Sprintf("BLOCKED%d", i), "Synthetic seed", "tracker.test"))
+		}
+		require.True(t, svc.enqueue(1, "QUEUED", "Synthetic seed", "tracker.test"))
+		synctest.Wait()
+		time.Sleep(2 * svc.cfg.DebounceWindow)
+		release <- struct{}{}
+		synctest.Wait()
+		require.EqualValues(t, 1, queuedRuns.Load())
+		require.True(t, svc.enqueue(1, "QUEUED", "Synthetic seed", "tracker.test"))
+		synctest.Wait()
+		require.EqualValues(t, 1, queuedRuns.Load(), "queue wait must not consume the completion cooldown")
+		cancel()
+	})
+}
+
+func TestServiceEnqueue_RechecksScopeAfterQueueWait(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("enabled=%t", enabled), func(t *testing.T) {
+			torrents := make(map[string]qbt.Torrent)
+			for i := range maxConcurrentJobsPerInstance + 1 {
+				hash := fmt.Sprintf("hash%d", i)
+				torrents[hash] = qbt.Torrent{Hash: hash, Name: "Synthetic seed", State: qbt.TorrentStateStalledUp}
+			}
+			svc, instanceID, _ := newScanTestService(t, "2.11.4", torrents)
+			svc.settingsCache = NewSettingsCache(nil)
+			svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: true, MonitorAll: true})
+			var workers []func()
+			svc.spawn = func(fn func()) { workers = append(workers, fn) }
+			for hash := range maps.Keys(torrents) {
+				require.True(t, svc.enqueue(instanceID, strings.ToUpper(hash), "Synthetic seed", "tracker.test"))
+			}
+			svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: enabled, Categories: []string{"missing"}})
+			for _, worker := range workers {
+				worker()
+			}
+			events := svc.GetActivity(instanceID, 0)
+			require.Len(t, events, len(torrents))
+			for _, event := range events {
+				require.Equal(t, ActivityOutcomeSkipped, event.Outcome)
+			}
+		})
+	}
+}
+
+func TestServiceEnqueue_RechecksScopeWithUppercaseHash(t *testing.T) {
+	hash := strings.Repeat("a", 40)
+	torrents := map[string]qbt.Torrent{hash: {
+		Hash: hash, Name: "Synthetic seed", State: qbt.TorrentStateStalledUp,
+		Trackers: []qbt.TorrentTracker{{Url: "https://tracker.test/announce", Status: qbt.TrackerStatusOK}},
+	}}
+	svc, instanceID, _ := newScanTestService(t, "2.11.4", torrents)
+	svc.settingsCache = NewSettingsCache(nil)
+	svc.settingsCache.Replace(&models.InstanceReannounceSettings{InstanceID: instanceID, Enabled: true, MonitorAll: true})
+	require.True(t, svc.enqueue(instanceID, strings.ToUpper(hash), "Synthetic seed", "tracker.test"))
+	events := svc.GetActivity(instanceID, 0)
+	require.Len(t, events, 1)
+	require.Equal(t, ActivityOutcomeSkipped, events[0].Outcome)
+	require.Equal(t, "tracker healthy", events[0].Reason, "the cached torrent must pass the scope check")
 }

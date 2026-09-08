@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -127,7 +129,7 @@ func TestDownloadError_ErrorsIs(t *testing.T) {
 	err := &DownloadError{StatusCode: 404, URL: "https://example.com"}
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
-	assert.True(t, errors.Is(wrapped, &DownloadError{}), "errors.Is should find DownloadError in wrapped error")
+	assert.ErrorIs(t, wrapped, &DownloadError{}, "errors.Is should find DownloadError in wrapped error")
 }
 
 func TestDownloadError_ErrorsAs(t *testing.T) {
@@ -135,9 +137,91 @@ func TestDownloadError_ErrorsAs(t *testing.T) {
 	wrapped := errors.Join(errors.New("wrapper"), err)
 
 	var dlErr *DownloadError
-	require.True(t, errors.As(wrapped, &dlErr), "errors.As should extract DownloadError from wrapped error")
+	require.ErrorAs(t, wrapped, &dlErr, "errors.As should extract DownloadError from wrapped error")
 	assert.Equal(t, 429, dlErr.StatusCode)
 	assert.Equal(t, "https://example.com", dlErr.URL)
+}
+
+func TestFetchCapsPreservesRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "45")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "prowlarr", 5)
+	_, err := client.FetchCaps(context.Background(), "14")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "45", responseErr.RetryAfterHeader())
+}
+
+func TestFetchCapsPreservesBodyRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "47")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><error code="429" description="Too many requests"/>`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "native", 5)
+	_, err := client.FetchCaps(context.Background(), "")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "47", responseErr.RetryAfterHeader())
+}
+
+func TestDownloadPreservesRateLimitResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "52")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "", nil, nil, "jackett", 5)
+	_, err := client.Download(context.Background(), server.URL+"/download")
+	require.Error(t, err)
+
+	var responseErr interface {
+		HTTPStatusCode() int
+		RetryAfterHeader() string
+	}
+	require.ErrorAs(t, err, &responseErr)
+	assert.Equal(t, http.StatusTooManyRequests, responseErr.HTTPStatusCode())
+	assert.Equal(t, "52", responseErr.RetryAfterHeader())
+}
+
+func TestFetchCapsWithRetryDoesNotRetryRateLimit(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := fetchCapsWithRetry(t.Context(), server.URL, "", nil, nil, "prowlarr", "14", 2, time.Millisecond, time.Second)
+	require.Error(t, err)
+	assert.Equal(t, int32(1), calls.Load())
 }
 
 // TestDiscoverJackettIndexers_RedactsAPIKey is a regression test for issue #839.
@@ -162,14 +246,14 @@ func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
 	errStr := err.Error()
 
 	// The error message must NOT contain the secret API key
-	assert.False(t, strings.Contains(errStr, secretAPIKey),
+	assert.NotContains(t, errStr, secretAPIKey,
 		"Error message should not contain the secret API key. Got: %s", errStr)
 
 	// The error message SHOULD contain REDACTED if it includes the URL with apikey param
 	// Note: depending on where the error occurs, it may or may not include URL params.
 	// If it does include URL params, they should be redacted.
 	if strings.Contains(errStr, "apikey=") {
-		assert.True(t, strings.Contains(errStr, "apikey=REDACTED"),
+		assert.Contains(t, errStr, "apikey=REDACTED",
 			"Error message with apikey param should have value redacted. Got: %s", errStr)
 	}
 }

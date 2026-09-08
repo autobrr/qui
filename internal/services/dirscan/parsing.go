@@ -221,6 +221,3 @@ func (m *SearcheeMetadata) SetExternalIDs(imdbID string, tmdbID, tvdbID int) {
 		m.TRaSH.TVDbID = tvdbID
 	}
 }
-
-// seasonFolderPattern matches season folder names like "Season 01", "Season 1", "Specials".
-var seasonFolderPattern = regexp.MustCompile(`(?i)^(?:season\s*(\d+)|specials?)$`)

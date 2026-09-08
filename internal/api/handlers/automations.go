@@ -1029,11 +1029,11 @@ func (h *AutomationHandler) PreviewDeleteRule(w http.ResponseWriter, r *http.Req
 	previewLimit, previewOffset := payload.previewPagination()
 
 	if action == previewActionCategory {
-		h.handleCategoryPreview(w, r.Context(), instanceID, automation, previewLimit, previewOffset)
+		h.handleCategoryPreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset)
 		return
 	}
 
-	h.handleDeletePreview(w, r.Context(), instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
+	h.handleDeletePreview(r.Context(), w, instanceID, automation, previewLimit, previewOffset, payload.PreviewView)
 }
 
 // previewPagination extracts limit and offset from payload with defaults.
@@ -1047,7 +1047,7 @@ func (p *AutomationPayload) previewPagination() (limit, offset int) {
 	return
 }
 
-func (h *AutomationHandler) handleCategoryPreview(w http.ResponseWriter, ctx context.Context, instanceID int, automation *models.Automation, limit, offset int) {
+func (h *AutomationHandler) handleCategoryPreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int) {
 	result, err := h.service.PreviewCategoryRule(ctx, instanceID, automation, limit, offset)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to preview category rule")
@@ -1057,7 +1057,7 @@ func (h *AutomationHandler) handleCategoryPreview(w http.ResponseWriter, ctx con
 	RespondJSON(w, http.StatusOK, result)
 }
 
-func (h *AutomationHandler) handleDeletePreview(w http.ResponseWriter, ctx context.Context, instanceID int, automation *models.Automation, limit, offset int, previewView string) {
+func (h *AutomationHandler) handleDeletePreview(ctx context.Context, w http.ResponseWriter, instanceID int, automation *models.Automation, limit, offset int, previewView string) {
 	if previewView == "" {
 		previewView = "needed"
 	}

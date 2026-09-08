@@ -188,7 +188,7 @@ func TestPatchAutomationSettings_AppliesSeasonPackFields(t *testing.T) {
 	}
 
 	threshold := 0.9
-	//nolint:gosec // test fixtures exercise trimming behavior; these are not real credentials.
+	// Test fixtures exercise trimming behavior; these are not real credentials.
 	tvdbCredential := "  tvdb value  "
 	subscriberCredential := "  subscriber value  "
 	patch := automationSettingsPatchRequest{

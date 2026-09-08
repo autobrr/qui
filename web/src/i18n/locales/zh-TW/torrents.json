@@ -56,6 +56,7 @@
     "searchCrossSeeds": "搜尋輔種",
     "filterCrossSeeds": "篩選輔種",
     "filterCrossSeedsSingleOnly": "篩選輔種（僅限單選）",
+    "manualCrossSeed": "手動新增輔種",
     "setTags": "設定標籤",
     "setLocation": "設定位置",
     "setShareLimits": "設定分享限制",
@@ -506,6 +507,31 @@
       "copyFailed": "複製到剪貼簿失敗"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "BDInfo 掃描進行中",
+    "actionReady": "BDInfo 報告已就緒",
+    "actionFailed": "BDInfo 掃描失敗",
+    "quickSummary": "快速摘要",
+    "forum": "論壇",
+    "copyQuickSummary": "複製快速摘要",
+    "copyForum": "複製論壇程式碼區塊",
+    "rescan": "重新掃描",
+    "cancel": "取消掃描",
+    "retry": "重試",
+    "starting": "正在啟動掃描…",
+    "queued": "排隊中，位置 {{position}}",
+    "scanning": "正在掃描 {{processed}} / {{total}}",
+    "scanningUnknown": "正在掃描…",
+    "failed": "掃描失敗",
+    "canceled": "掃描已取消",
+    "toast": {
+      "copied": "{{label}}已複製到剪貼簿",
+      "copyFailed": "複製到剪貼簿失敗",
+      "completed": "BDInfo 報告已就緒",
+      "failed": "BDInfo 掃描失敗：{{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "未分類",
     "expandCategory": "展開分類",
@@ -671,6 +697,25 @@
     "block": "封鎖",
     "addedToBlocklist": "已新增到封鎖清單",
     "missingInstance": "封鎖清單缺少實例",
+    "trace": {
+      "title": "搜尋明細",
+      "summaryBadge": "{{total}} 個候選，{{matches}} 個匹配項",
+      "summary": "共傳回 {{total}} 個候選。被拒絕：發布資訊不符 {{release}} 個，大小不符 {{size}} 個，內容過濾 {{late}} 個，重複 {{duplicates}} 個。剩餘 {{matches}} 個匹配項。",
+      "indexersHeading": "索引器",
+      "status": {
+        "searched": "已搜尋",
+        "notCovered": "未完成",
+        "error": "錯誤",
+        "excluded": "已排除"
+      },
+      "candidateCount": "{{count}} 個候選",
+      "rejectionsHeading": "被拒絕的候選",
+      "reasonCount": "{{reason}} · {{count}}",
+      "moreCandidates": "還有 {{count}} 個相同原因的候選",
+      "copyReport": "複製報告",
+      "copied": "報告已複製到剪貼簿",
+      "copyFailed": "無法複製報告"
+    },
     "scope": {
       "allIndexers": "所有索引器",
       "selectCustom": "自訂選擇",
@@ -788,7 +833,10 @@
       }
     },
     "title": "篩選器",
-    "clearAll": "全部清除",
+    "clearOptions": "篩選清除選項",
+    "clearSidebarFilters": "清除側邊欄篩選",
+    "clearColumnFilters": "清除欄位篩選",
+    "clearFiltersAndSearch": "清除篩選與搜尋",
     "loading": "載入中...",
     "customFilter": "自訂篩選器",
     "customFilterHelp": "活躍的自訂表示式篩選器（例如輔種結果）",
@@ -1056,7 +1104,7 @@
       "unknownClient": "未知用戶端"
     },
     "actions": {
-      "copyIpPort": "複製 IP:連接埠",
+      "copyIpPort": "複製位址",
       "banPeerPermanently": "永久封鎖節點",
       "selectAll": "全部",
       "selectNone": "無"
@@ -1130,7 +1178,7 @@
     "editTrackerUrl": "編輯 Tracker URL"
   },
   "peersTable": {
-    "address": "IP:連接埠",
+    "address": "IP/位址",
     "client": "用戶端",
     "flags": "標誌",
     "progress": "進度",
@@ -1139,11 +1187,11 @@
     "downloaded": "已下載",
     "uploaded": "已上傳",
     "relevance": "相關性",
-    "copyIpAddress": "複製 IP 位址",
+    "copyIpAddress": "複製位址",
     "banPeer": "封鎖節點",
     "noPeersConnected": "無已連線節點",
     "toast": {
-      "ipCopied": "IP 位址已複製到剪貼簿"
+      "ipCopied": "位址已複製到剪貼簿"
     }
   },
   "routes": {
@@ -1502,5 +1550,67 @@
     "failedToUpdatePriorities": "更新檔案優先順序失敗",
     "failedToRenameFile": "重新命名檔案失敗",
     "failedToRenameFolder": "重新命名資料夾失敗"
+  },
+  "manualCrossSeed": {
+    "title": "手動輔種匹配",
+    "description": "選擇已持有該資料的種子。qui 會將上傳的種子加入其位置，重新校驗後開始做種。",
+    "fileLabel": "種子檔案",
+    "sourceSummary_other": "{{size}} · {{count}} 個檔案",
+    "loadingProposals": "正在依檔案重疊度排序目標...",
+    "proposalsFailed": "載入目標建議失敗",
+    "targetLabel": "目標種子",
+    "noProposals": "找不到重疊的種子。請手動選擇目標。",
+    "overlap": "檔案重疊 {{percent}}%",
+    "pickManually": "選擇其他種子",
+    "pickerPlaceholder": "搜尋種子...",
+    "pickerNoResults": "沒有符合的種子",
+    "zeroOverlapWarning": "所選種子與上傳檔案沒有相同大小的檔案。結果由重新校驗決定；校驗失敗時種子保持暫停。",
+    "category": "分類",
+    "noCategory": "（無分類）",
+    "pinnedCategory": "交叉做種設定將每個配對固定為「{{category}}」分類，因此無法在此變更。",
+    "tags": "標籤",
+    "newTagPlaceholder": "輸入標籤後按 Enter",
+    "savePath": "儲存路徑（實際目標位置）",
+    "cancel": "取消",
+    "apply": "新增輔種",
+    "applying": "正在新增...",
+    "applySuccess": "輔種已新增",
+    "applyFailed": "輔種失敗：{{message}}",
+    "addOptionTitle": "作為輔種新增",
+    "addOptionDescription": "將此種子與現有種子匹配，而不是重新下載。",
+    "addOptionButton": "手動匹配",
+    "pack": {
+      "description": "選擇一個種子進行手動比對，或選擇多個單集來組裝此整季包。",
+      "targetLabel": "目標種子",
+      "checking": "正在檢查所選單集……",
+      "checkFailed": "無法檢查此選擇。",
+      "coverage": "已配對 {{matched}}/{{total}} 集 · 覆蓋率 {{percent}}%",
+      "missing": "缺少 {{size}}",
+      "recheck": "整季包將以暫停狀態加入並重新檢查。當檢查結果達到已連結位元組的比例時，將恢復下載。",
+      "reviewRules": "前往 Cross-seed → 規則查看保護設定",
+      "proposalLimit": "此整季包包含 {{count}} 集。候選清單最多顯示 {{limit}} 個種子。請透過搜尋選擇缺少的目標。",
+      "dropped": "整季包已加入。已排除的目標：{{names}}",
+      "rejected": "{{name}}：{{reason}}",
+      "reasons": {
+        "no_filesystem_access": "此實例需要本機檔案系統存取權限才能組裝整季包。",
+        "no_link_mode": "請在此實例上啟用硬連結或 reflink 模式，以選擇多個目標。",
+        "no_base_directory": "請為此實例設定連結基礎目錄。",
+        "no_episode_files": "此整季包中未找到可播放的單集檔案。",
+        "target_not_found": "此實例中未找到目標種子。",
+        "incomplete": "目標種子尚未下載完成。",
+        "no_episode_identity": "無法解析集數。",
+        "file_list_unavailable": "無法取得目標種子的檔案清單。",
+        "episode_file_invalid": "目標種子必須僅包含一個與所選單集識別相符的可播放檔案。",
+        "size_mismatch": "本機檔案大小與整季包中的檔案大小不符。",
+        "release_mismatch": "發行版本與整季包不符。",
+        "local_file_unavailable": "本機檔案不存在或無法使用。",
+        "not_paired": "此目標未提供整季包中的單集，或其他所選目標已涵蓋該單集。",
+        "layout_mismatch": "無法使用所選檔案建立安全的連結目錄。",
+        "unsafe_piece_boundary": "分片邊界保護已阻止新增此合集，因為所選檔案與缺少的檔案共用一個資料區塊。下載該資料區塊可能會透過硬連結變更原始檔案。手動組裝不受覆蓋率門檻限制。",
+        "already_exists": "此種子已存在。",
+        "link_failed": "建立連結失敗。",
+        "add_failed": "加入種子失敗。"
+      }
+    }
   }
 }

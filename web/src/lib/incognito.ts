@@ -8,7 +8,7 @@
 // as the stable incognito API; each getter picks its vocabulary at call time.
 
 import type { Category } from "@/types"
-import { useEffect, useState } from "react"
+import { useClientSetting } from "@/lib/client-settings"
 import { isSpreadsheetDisguiseActive } from "./spreadsheet-disguise"
 
 // Linux ISO names for incognito mode
@@ -630,36 +630,13 @@ export function getLinuxHash(hash: string): string {
 // Storage key for incognito mode
 const INCOGNITO_STORAGE_KEY = "qui-incognito-mode"
 
-// Custom hook for managing incognito mode state with localStorage persistence
+const parseIncognito = (raw: string): boolean => raw === "true"
+
+// Custom hook for managing the DB-backed incognito mode preference
 export function useIncognitoMode(): [boolean, (value: boolean) => void] {
-  const [incognitoMode, setIncognitoModeState] = useState(() => {
-    const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY)
-    return stored === "true"
+  return useClientSetting<boolean>(INCOGNITO_STORAGE_KEY, {
+    defaultValue: false,
+    parse: parseIncognito,
+    serialize: String,
   })
-
-  // Listen for storage changes to sync incognito mode across components
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const stored = localStorage.getItem(INCOGNITO_STORAGE_KEY)
-      setIncognitoModeState(stored === "true")
-    }
-
-    // Listen for both storage events (cross-tab) and custom events (same-tab)
-    window.addEventListener("storage", handleStorageChange)
-    window.addEventListener("incognito-mode-changed", handleStorageChange)
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange)
-      window.removeEventListener("incognito-mode-changed", handleStorageChange)
-    }
-  }, [])
-
-  const setIncognitoMode = (value: boolean) => {
-    setIncognitoModeState(value)
-    localStorage.setItem(INCOGNITO_STORAGE_KEY, String(value))
-    // Dispatch custom event for same-tab updates
-    window.dispatchEvent(new Event("incognito-mode-changed"))
-  }
-
-  return [incognitoMode, setIncognitoMode]
 }

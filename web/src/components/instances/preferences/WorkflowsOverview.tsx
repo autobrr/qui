@@ -357,6 +357,7 @@ export function WorkflowsOverview({
     rule: Automation
     preview: AutomationPreviewResult | null
     isInitialLoading: boolean
+    error?: string
   } | null>(null)
   const [previewView, setPreviewView] = useState<PreviewView>("needed")
   const [isLoadingPreviewView, setIsLoadingPreviewView] = useState(false)
@@ -514,12 +515,14 @@ export function WorkflowsOverview({
         throw error
       }
     },
-    onSuccess: (preview) => {
-      setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
+    // A cancelled dialog does not cancel the request, so only apply a result to the rule it was started for.
+    onSuccess: (preview, { instanceId, rule }) => {
+      setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, preview, isInitialLoading: false } : prev)
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to preview rule")
-      setEnableConfirm(null)
+    onError: (error, { instanceId, rule }) => {
+      // Keep the dialog open: the user can still enable the rule without a preview.
+      const message = error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.previewFailed")
+      setEnableConfirm(prev => prev?.instanceId === instanceId && prev.rule.id === rule.id ? { ...prev, isInitialLoading: false, error: message } : prev)
     },
   })
 
@@ -1612,6 +1615,7 @@ export function WorkflowsOverview({
         preview={enableConfirm?.preview ?? null}
         condition={enableConfirm ? (enableConfirm.rule.conditions?.delete?.condition ?? enableConfirm.rule.conditions?.category?.condition) : null}
         onConfirm={confirmEnableRule}
+        previewError={enableConfirm?.error ?? null}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
         confirmLabel={t("preferences.workflowsOverview.enableRule")}

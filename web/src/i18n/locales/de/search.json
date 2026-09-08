@@ -1,6 +1,6 @@
 {
   "pageTitle": "Indexer durchsuchen",
-  "pageDescription": "Durchsuche alle aktivierten Indexer. Wähle einen Suchtyp oder lass Auto die Kategorien automatisch erkennen.",
+  "pageDescription": "Durchsuche alle aktivierten Indexer. Wähle einen Suchtyp.",
   "indexerSummary": {
     "label": "Indexer",
     "noEnabled": "Keine aktivierten Indexer",
@@ -44,11 +44,6 @@
     "indexersPage": "Indexer-Seite"
   },
   "searchTypes": {
-    "auto": {
-      "label": "Auto-Erkennung",
-      "description": "Erkennt die passenden Kategorien automatisch",
-      "placeholder": "Versuche: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\" oder \"Example Artist – Example Album\""
-    },
     "movies": {
       "label": "Filme",
       "placeholder": "z. B. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""

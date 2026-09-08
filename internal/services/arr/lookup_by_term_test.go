@@ -200,6 +200,7 @@ func TestClient_LookupByTerm_Sonarr(t *testing.T) {
 		require.NotNil(t, result.IDs)
 		assert.Equal(t, 471000, result.IDs.TVDbID)
 		assert.Contains(t, result.Titles, "Kodoku no Solitude")
+		assert.Nil(t, result.EpisodeMap)
 	})
 
 	t.Run("ambiguous in-library titles without year refuse", func(t *testing.T) {

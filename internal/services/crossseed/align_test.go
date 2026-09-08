@@ -193,7 +193,7 @@ func TestBuildFileRenamePlan_AmbiguousSizes(t *testing.T) {
 
 	plan, unmatched := buildFileRenamePlan(sourceFiles, candidateFiles)
 
-	require.Len(t, plan, 0, "ambiguous entries should not be renamed automatically")
+	require.Empty(t, plan, "ambiguous entries should not be renamed automatically")
 	require.ElementsMatch(t, []string{"Disc/Track01.flac", "Disc/Track02.flac"}, unmatched)
 }
 
@@ -210,12 +210,12 @@ func TestDetectCommonRoot(t *testing.T) {
 		{Name: "NoRootA.mkv"},
 		{Name: "Root/B.mkv"},
 	}
-	require.Equal(t, "", detectCommonRoot(files))
+	require.Empty(t, detectCommonRoot(files))
 
 	files = qbt.TorrentFiles{
 		{Name: "SingleFile.mkv"},
 	}
-	require.Equal(t, "", detectCommonRoot(files))
+	require.Empty(t, detectCommonRoot(files))
 }
 
 func TestAdjustPathForRootRename(t *testing.T) {

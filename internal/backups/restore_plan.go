@@ -283,7 +283,6 @@ func applyRestorePlanOptions(plan *RestorePlan, opts *RestorePlanOptions) {
 	plan.Torrents.Add = filterTorrentSpecs(plan.Torrents.Add)
 	plan.Torrents.Update = filterTorrentUpdates(plan.Torrents.Update)
 	plan.Torrents.Delete = filterHashes(plan.Torrents.Delete)
-
 }
 
 // buildRestorePlan compares snapshot and live state to determine the actions needed to reach parity.

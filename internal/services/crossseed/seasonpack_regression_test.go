@@ -543,3 +543,126 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 	_, statErr := os.Stat(filepath.Join(baseDir, fix.packName))
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
+
+// cancelOnAddSeasonPackSyncManager cancels the run's context from inside
+// AddTorrent and then fails the add, so the rollback that follows runs under a
+// cancelled context. It records how many entries the base dir held at that
+// moment, which keeps the "pack dir is gone" assertion non-vacuous.
+type cancelOnAddSeasonPackSyncManager struct {
+	*seasonPackSyncManager
+	cancel       context.CancelFunc
+	poolStore    *offlineAfterAddInstanceStore
+	watchDir     string
+	entriesAtAdd int
+}
+
+func (s *cancelOnAddSeasonPackSyncManager) AddTorrent(ctx context.Context, instanceID int, data []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+	entries, _ := os.ReadDir(s.watchDir)
+	s.entriesAtAdd = len(entries)
+	s.cancel()
+	s.poolStore.offline = true
+	return s.seasonPackSyncManager.AddTorrent(ctx, instanceID, data, options)
+}
+
+// offlineAfterAddInstanceStore serves instance lookups until the run's add
+// fails, then fails every later one. That outage is what makes the threaded
+// planBuild.backend observable: with it, rollback runs on the backend that
+// built the tree; without it, the fallback resolve in the add-failure branch
+// hits the outage and the partial tree survives. The apply path resolves
+// backends sequentially in one goroutine, so the flag needs no mutex.
+type offlineAfterAddInstanceStore struct {
+	instances map[int]*models.Instance
+	offline   bool
+}
+
+func (s *offlineAfterAddInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	if s.offline {
+		return nil, errors.New("instance store offline")
+	}
+	instance, ok := s.instances[id]
+	if !ok {
+		return nil, models.ErrInstanceNotFound
+	}
+	return instance, nil
+}
+
+func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenAddFailsUnderCancelledContext(t *testing.T) {
+	// TestRollbackSeasonPackTree_RunsUnderCancelledContext already pins the
+	// context.WithoutCancel inside rollbackSeasonPackTree. What this adds is the
+	// call site: a real ApplySeasonPackWebhook run whose add fails reaches that
+	// rollback under a cancelled ctx, on the backend threaded through
+	// planBuild.backend. The instance store goes offline when the add fails, so
+	// the fallback resolve in that branch cannot stand in for the threaded
+	// backend: drop the threading and the rollback is skipped, leaving the tree.
+	fix := newSeasonPackFixture(t)
+	store := &stubSeasonPackRunStore{}
+	sourceDir := t.TempDir()
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID:                       1,
+		Name:                     "Test",
+		IsActive:                 true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	hashes := []string{"e01", "e02", "e03", "e04"}
+	require.Len(t, fix.packFiles, len(hashes))
+	episodeTorrents := make([]qbt.Torrent, 0, len(fix.packFiles))
+	for i, fileName := range fix.packFiles {
+		sourcePath := filepath.Join(sourceDir, fileName)
+		require.NoError(t, os.WriteFile(sourcePath, []byte("source"), 0o600))
+		episodeTorrents = append(episodeTorrents, qbt.Torrent{
+			Hash:        hashes[i],
+			Name:        strings.TrimSuffix(fileName, filepath.Ext(fileName)),
+			ContentPath: sourcePath,
+			Progress:    1.0,
+		})
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	poolStore := &offlineAfterAddInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}}
+	sm := &cancelOnAddSeasonPackSyncManager{
+		seasonPackSyncManager: &seasonPackSyncManager{
+			fakeSyncManager: baseSM,
+			addErr:          errors.New("add failed"),
+		},
+		cancel:    cancel,
+		poolStore: poolStore,
+		watchDir:  baseDir,
+	}
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 1.0),
+		seasonPackRunStore:       store,
+	}
+
+	svc.SetBackendPool(fsops.NewPool(poolStore, local.NewBackend()))
+	resp, err := svc.ApplySeasonPackWebhook(ctx, &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Applied)
+	require.Equal(t, "add_failed", resp.Reason)
+	// One entry: the pack tree root the apply path created under the base dir.
+	require.Equal(t, 1, sm.entriesAtAdd, "the link tree must exist when AddTorrent runs, else the rollback assertion is vacuous")
+
+	_, statErr := os.Stat(filepath.Join(baseDir, fix.packName))
+	require.ErrorIs(t, statErr, os.ErrNotExist, "a cancelled run must still roll back its partial pack tree")
+}

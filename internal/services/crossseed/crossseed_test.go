@@ -1358,7 +1358,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches))
+			assert.Len(t, resp.Matches, tt.wantMatchCount)
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation)
 
 			if tt.wantMatchType != "" && tt.wantMatchCount > 0 {
@@ -1387,7 +1387,7 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 	}
 }
 
-func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
+func TestCheckWebhook_DoesNotNotifySuccessfulChecks(t *testing.T) {
 	t.Parallel()
 
 	instance := &models.Instance{
@@ -1401,22 +1401,19 @@ func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
 	}
 
 	tests := []struct {
-		name              string
-		progress          float64
-		wantCanCrossSeed  bool
-		wantNotificationN int
+		name             string
+		progress         float64
+		wantCanCrossSeed bool
 	}{
 		{
-			name:              "pending-only match does not notify",
-			progress:          0.5,
-			wantCanCrossSeed:  false,
-			wantNotificationN: 0,
+			name:             "pending-only match",
+			progress:         0.5,
+			wantCanCrossSeed: false,
 		},
 		{
-			name:              "complete match notifies once",
-			progress:          1.0,
-			wantCanCrossSeed:  true,
-			wantNotificationN: 1,
+			name:             "complete match",
+			progress:         1.0,
+			wantCanCrossSeed: true,
 		},
 	}
 
@@ -1441,10 +1438,7 @@ func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
 			assert.Equal(t, "download", resp.Recommendation)
 
 			events := notifier.Events()
-			assert.Len(t, events, tt.wantNotificationN)
-			if tt.wantNotificationN > 0 {
-				assert.Equal(t, notifications.EventCrossSeedWebhookSucceeded, events[0].Type)
-			}
+			assert.Empty(t, events)
 		})
 	}
 }
@@ -1463,32 +1457,32 @@ func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
 		{
 			name: "successful skipped-only run does not notify",
 			run: &models.CrossSeedRun{
-				ID:              42,
-				Mode:            models.CrossSeedRunModeAuto,
-				Status:          models.CrossSeedRunStatusSuccess,
-				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
-				CompletedAt:     &completedAt,
-				TotalFeedItems:  885,
-				CandidatesFound: 0,
-				TorrentsAdded:   0,
-				TorrentsFailed:  0,
-				TorrentsSkipped: 885,
+				ID:                42,
+				Mode:              models.CrossSeedRunModeAuto,
+				Status:            models.CrossSeedRunStatusSuccess,
+				StartedAt:         time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:       &completedAt,
+				TotalFeedItems:    885,
+				CandidatesFound:   0,
+				CrossSeedsAdded:   0,
+				CandidatesFailed:  0,
+				CandidatesSkipped: 885,
 			},
 			wantEvent: false,
 		},
 		{
 			name: "successful run with additions still notifies",
 			run: &models.CrossSeedRun{
-				ID:              43,
-				Mode:            models.CrossSeedRunModeAuto,
-				Status:          models.CrossSeedRunStatusSuccess,
-				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
-				CompletedAt:     &completedAt,
-				TotalFeedItems:  10,
-				CandidatesFound: 2,
-				TorrentsAdded:   1,
-				TorrentsFailed:  0,
-				TorrentsSkipped: 9,
+				ID:                43,
+				Mode:              models.CrossSeedRunModeAuto,
+				Status:            models.CrossSeedRunStatusSuccess,
+				StartedAt:         time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:       &completedAt,
+				TotalFeedItems:    10,
+				CandidatesFound:   2,
+				CrossSeedsAdded:   1,
+				CandidatesFailed:  0,
+				CandidatesSkipped: 9,
 			},
 			wantEvent:     true,
 			wantEventType: notifications.EventCrossSeedAutomationSucceeded,
@@ -1496,16 +1490,16 @@ func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
 		{
 			name: "failed run still notifies",
 			run: &models.CrossSeedRun{
-				ID:              44,
-				Mode:            models.CrossSeedRunModeAuto,
-				Status:          models.CrossSeedRunStatusFailed,
-				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
-				CompletedAt:     &completedAt,
-				TotalFeedItems:  10,
-				CandidatesFound: 3,
-				TorrentsAdded:   0,
-				TorrentsFailed:  2,
-				TorrentsSkipped: 8,
+				ID:                44,
+				Mode:              models.CrossSeedRunModeAuto,
+				Status:            models.CrossSeedRunStatusFailed,
+				StartedAt:         time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:       &completedAt,
+				TotalFeedItems:    10,
+				CandidatesFound:   3,
+				CrossSeedsAdded:   0,
+				CandidatesFailed:  2,
+				CandidatesSkipped: 8,
 			},
 			wantEvent:     true,
 			wantEventType: notifications.EventCrossSeedAutomationFailed,
@@ -1675,7 +1669,7 @@ func TestCheckWebhook_MultiInstanceScan(t *testing.T) {
 			resp, err := svc.CheckWebhook(context.Background(), tt.request)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches))
+			assert.Len(t, resp.Matches, tt.wantMatchCount)
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation)
 
 			if tt.wantMatchCount > 0 && len(tt.wantInstanceIDs) > 0 {
@@ -1884,7 +1878,7 @@ func (f *fakeSyncManager) GetTorrents(_ context.Context, instanceID int, filter 
 
 func (f *fakeSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
 	if len(f.files) == 0 {
-		return nil, fmt.Errorf("files not configured")
+		return nil, errors.New("files not configured")
 	}
 	result := make(map[string]qbt.TorrentFiles, len(hashes))
 	for _, h := range hashes {
@@ -1932,7 +1926,7 @@ func (f *fakeSyncManager) HasTorrentByAnyHash(_ context.Context, instanceID int,
 }
 
 func (f *fakeSyncManager) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
-	return nil, fmt.Errorf("GetTorrentProperties not implemented in fakeSyncManager")
+	return nil, errors.New("GetTorrentProperties not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPreferences, error) {
@@ -1944,19 +1938,19 @@ func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[s
 }
 
 func (f *fakeSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
-	return fmt.Errorf("BulkAction not implemented in fakeSyncManager")
+	return errors.New("BulkAction not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) RenameTorrent(_ context.Context, _ int, _, _ string) error {
-	return fmt.Errorf("RenameTorrent not implemented in fakeSyncManager")
+	return errors.New("RenameTorrent not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
-	return fmt.Errorf("RenameTorrentFile not implemented in fakeSyncManager")
+	return errors.New("RenameTorrentFile not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ string) error {
-	return fmt.Errorf("RenameTorrentFolder not implemented in fakeSyncManager")
+	return errors.New("RenameTorrentFolder not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) SetTags(_ context.Context, _ int, _ []string, _ string) error {
@@ -1975,7 +1969,7 @@ func (f *fakeSyncManager) ExtractDomainFromURL(string) string {
 }
 
 func (f *fakeSyncManager) GetQBittorrentSyncManager(_ context.Context, _ int) (*qbt.SyncManager, error) {
-	return nil, fmt.Errorf("GetQBittorrentSyncManager not implemented in fakeSyncManager")
+	return nil, errors.New("GetQBittorrentSyncManager not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -2061,7 +2055,7 @@ func TestWebhookCheckRequest_Validation(t *testing.T) {
 }
 
 func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
-	err := errors.New("torznab request rate-limited by tracker")
+	err := &jackett.RateLimitError{IndexerID: 1, IndexerName: "test", Scope: "query", RetryAt: time.Now().Add(time.Minute)}
 	wrapped := wrapCrossSeedSearchError(err)
 
 	if wrapped == nil {
@@ -2072,6 +2066,18 @@ func TestWrapCrossSeedSearchErrorRateLimited(t *testing.T) {
 	}
 	if !strings.Contains(wrapped.Error(), err.Error()) {
 		t.Fatalf("expected original error message to be included")
+	}
+	if _, ok := errors.AsType[*jackett.RateLimitError](wrapped); !ok {
+		t.Fatal("expected wrapped error to preserve the typed rate limit")
+	}
+}
+
+func TestWrapCrossSeedSearchErrorDoesNotClassifyText(t *testing.T) {
+	err := errors.New("backend says rate-limited")
+	wrapped := wrapCrossSeedSearchError(err)
+
+	if !strings.Contains(wrapped.Error(), "torznab search failed") {
+		t.Fatalf("expected untyped text to remain a generic failure, got %q", wrapped.Error())
 	}
 }
 
@@ -2153,21 +2159,22 @@ func (m *mockRecoverSyncManager) BulkAction(_ context.Context, instanceID int, h
 		return errors.New("bulk action failed")
 	}
 
-	if action == "pause" {
+	switch action {
+	case "pause":
 		// Pause torrents
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				torrent.State = qbt.TorrentStatePausedDl
 			}
 		}
-	} else if action == "resume" {
+	case "resume":
 		// Resume torrents
 		for _, hash := range hashes {
 			if torrent, ok := m.torrents[hash]; ok {
 				torrent.State = qbt.TorrentStateDownloading
 			}
 		}
-	} else if action == "recheck" {
+	case "recheck":
 		m.hasRechecked = true
 		m.recheckCount++
 		for _, hash := range hashes {
@@ -2202,11 +2209,11 @@ func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []st
 }
 
 func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
-	return nil, false, fmt.Errorf("not implemented")
+	return nil, false, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) GetTorrentProperties(context.Context, int, string) (*qbt.TorrentProperties, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {
@@ -2220,15 +2227,15 @@ func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[st
 }
 
 func (m *mockRecoverSyncManager) RenameTorrent(context.Context, int, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) RenameTorrentFile(context.Context, int, string, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
-	return fmt.Errorf("not implemented")
+	return errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) SetTags(context.Context, int, []string, string) error {
@@ -2236,7 +2243,7 @@ func (m *mockRecoverSyncManager) SetTags(context.Context, int, []string, string)
 }
 
 func (m *mockRecoverSyncManager) GetCachedInstanceTorrents(context.Context, int) ([]internalqb.CrossInstanceTorrentView, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
@@ -2244,7 +2251,7 @@ func (m *mockRecoverSyncManager) ExtractDomainFromURL(string) string {
 }
 
 func (m *mockRecoverSyncManager) GetQBittorrentSyncManager(context.Context, int) (*qbt.SyncManager, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -2761,7 +2768,8 @@ func TestProcessAutomationCandidate_SkipsWhenInfohashExistsOnAllInstances(t *tes
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	assert.NotNil(t, returnedHash)
 	assert.Equal(t, testHash, *returnedHash)
-	assert.Equal(t, 2, run.TorrentsSkipped, "should skip for both instances")
+	assert.Equal(t, 1, run.CandidatesSkipped, "one candidate skipped, whatever the instance count")
+	assert.Len(t, run.Results, 2, "one exists result per instance")
 	assert.False(t, downloadCalled, "should NOT download torrent when it exists on all instances")
 }
 
@@ -3113,10 +3121,10 @@ func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) 
 
 	// Context cancellation should propagate as an error, not trigger fallback
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
-	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context cancellation")
+	assert.Equal(t, 1, run.CandidatesFailed, "should increment TorrentsFailed on context cancellation")
 	assert.False(t, downloadCalled, "should NOT download torrent when context is canceled")
 }
 
@@ -3190,10 +3198,10 @@ func TestProcessAutomationCandidate_PropagatesContextDeadlineExceeded(t *testing
 
 	// Context deadline exceeded should propagate as an error, not trigger fallback
 	require.Error(t, err)
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Contains(t, err.Error(), "hash check canceled")
 	assert.Equal(t, models.CrossSeedFeedItemStatusFailed, status)
-	assert.Equal(t, 1, run.TorrentsFailed, "should increment TorrentsFailed on context deadline exceeded")
+	assert.Equal(t, 1, run.CandidatesFailed, "should increment TorrentsFailed on context deadline exceeded")
 	assert.False(t, downloadCalled, "should NOT download torrent when context deadline exceeded")
 }
 
@@ -3267,7 +3275,7 @@ func TestProcessAutomationCandidate_SkipsWhenCommentURLMatches(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 	assert.Nil(t, returnedHash, "should not return hash for comment URL match")
-	assert.Equal(t, 1, run.TorrentsSkipped, "should skip for instance with matching comment")
+	assert.Equal(t, 1, run.CandidatesSkipped, "should skip for instance with matching comment")
 	assert.False(t, downloadCalled, "should NOT download torrent when comment URL matches")
 }
 
@@ -3398,7 +3406,7 @@ func TestCheckWebhook_WebhookSourceFilters(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed, "CanCrossSeed mismatch")
-			assert.Equal(t, tt.wantMatchCount, len(resp.Matches), "Match count mismatch")
+			assert.Len(t, resp.Matches, tt.wantMatchCount, "Match count mismatch")
 			assert.Equal(t, tt.wantRecommendation, resp.Recommendation, "Recommendation mismatch")
 		})
 	}

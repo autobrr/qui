@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/autobrr/autobrr/pkg/ttlcache"
+	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/cespare/xxhash/v2"
@@ -277,6 +278,7 @@ const (
 	selectedIndexerCapabilitySkipReason   = "selected indexers do not support required caps"
 	contentPrefilterRejectedContentStatus = "content_mismatch"
 	contentPrefilterRejectedSizeStatus    = "size_mismatch"
+	partialPoolRegistrationErrorStatus    = "partial_pool_registration_error"
 	crossSeedRenameWaitTimeout            = 15 * time.Second
 	crossSeedRenamePollInterval           = 200 * time.Millisecond
 	automationSettingsQueryTimeout        = 5 * time.Second
@@ -286,16 +288,19 @@ const (
 	maxRecheckResumeAttempts              = 3
 	recheckResumeStablePolls              = 2
 	maxMissingFilesResumeAttempts         = 3
+	// recheckFastCompleteMinElapsed is how long after queuing a verification-required
+	// entry may resume on a settled 100% that never showed a checking state: long enough
+	// that the recheck qui issued is treated as having run (#2554), well short of
+	// recheckAbsoluteTimeout.
+	recheckFastCompleteMinElapsed = 30 * time.Second
 	// Forgiveness ceiling for byte-budget auto-resume: even when every missing
 	// file is an irrelevant sidecar, never auto-resume above this much missing data.
 	irrelevantResumeForgivenessCapBytes   = int64(200) << 20
 	minSearchIntervalSecondsTorznab       = 60
 	minSearchIntervalSecondsGazelleOnly   = 5
 	minSearchCooldownMinutes              = 720
-	maxCompletionSearchAttempts           = 3
 	maxCompletionCheckingAttempts         = 3
 	torznabCrossSeedSearchLimit           = 100
-	defaultCompletionRetryDelay           = 30 * time.Second
 	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
 	defaultCompletionCheckingTimeout      = 5 * time.Minute
@@ -313,18 +318,6 @@ func effectiveTorznabCrossSeedSearchLimit(limit int) int {
 		return torznabCrossSeedSearchLimit
 	}
 	return min(limit, torznabCrossSeedSearchLimit)
-}
-
-var completionRateLimitTokens = []string{
-	"429",
-	"rate limit",
-	"rate-limited",
-	"too many requests",
-	"cooldown",
-	"request limit reached",
-	"query limit",
-	"grab limit",
-	"disabled till",
 }
 
 func automationTorrentSearchContext(ctx context.Context, disableTorznab bool) (context.Context, context.CancelFunc, time.Duration) {
@@ -355,9 +348,14 @@ func initializeDomainMappings() map[string][]string {
 
 // Service provides cross-seed functionality
 type Service struct {
-	instanceStore             instanceProvider
-	syncManager               qbittorrentSync
-	filesManager              *filesmanager.Service
+	instanceStore instanceProvider
+	syncManager   qbittorrentSync
+	filesManager  *filesmanager.Service
+	// mediaIDCacheStore backs the MKV-metadata external-ID fallback; nil
+	// disables it. analyzeMediaFile is replaceable in tests; nil selects the
+	// real MediaInfo analyzer.
+	mediaIDCacheStore         mediaIDCache
+	analyzeMediaFile          func(ctx context.Context, path string) (mediainfo.Report, error)
 	trackerCustomizationStore trackerCustomizationProvider
 	releaseCache              *ReleaseCache
 	// searchResultCache stores the most recent search results per torrent hash so that
@@ -441,19 +439,31 @@ type Service struct {
 	backendPool atomic.Value // stores *fsops.Pool
 
 	// test hooks
-	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	seasonPackApplier       func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
-	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
-	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
-	seasonPackLinkCreator   func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	reflinkMaterializer     func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
-	postInjectionHook       func(context.Context, int, string)
-	filesShareAllocation    func(sourcePath, candidatePath string) (bool, error)
+	crossSeedInvoker               func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	seasonPackApplier              func(ctx context.Context, req *SeasonPackApplyRequest) (*SeasonPackApplyResponse, error)
+	torrentDownloadFunc            func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker        func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator          func(ctx context.Context, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	reflinkMaterializer            func(ctx context.Context, baseDir string, plan *hardlinktree.TreePlan) (*fsops.TreeCreateResult, error)
+	partialPoolPropagationRollback func(*hardlinktree.Created) error
+	partialPoolTorrentRefresher    func(context.Context, map[int64]*partialPoolMemberSnapshot, ...*models.CrossSeedPartialPoolMember) bool
+	postInjectionHook              func(context.Context, int, string)
+	filesShareAllocation           func(sourcePath, candidatePath string) (bool, error)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
 	recheckResumeCtx    context.Context
 	recheckResumeCancel context.CancelFunc
+
+	// Durable partial link-mode completion coordinator.
+	partialPoolWake                       chan partialPoolWake
+	partialPoolFullScanPending            atomic.Bool
+	partialPoolAdmissionMaterializationMu sync.Mutex
+	partialPoolCreatedMu                  sync.Mutex
+	partialPoolCreated                    map[int64]*hardlinktree.Created
+	// partialPoolRejectedPairs prevents repeated cross-filesystem attempts for
+	// one source/target file pair until either root path changes or qui restarts.
+	partialPoolRejectedPairs sync.Map
 
 	// Returns the season's episode total, the show's alias titles from the same
 	// lookup (series-wide + same-season), and whether the total resolved.
@@ -478,8 +488,9 @@ type pendingResume struct {
 	monitorOnly bool
 	// verificationRequired marks an ambiguous search match that must not trust
 	// qBittorrent's optimistic pre-check completion state. The WebUI API exposes
-	// no recheck generation, so the worker must first observe checking, then a
-	// 100% result. A transition missed between polls fails closed and stays paused.
+	// no recheck generation, so the worker observes checking, then a 100% result.
+	// A checking transition missed between polls falls back to a settled 100% once
+	// recheckFastCompleteMinElapsed has passed since queuing; below that it stays paused.
 	verificationRequired bool
 	// threshold is the verified-progress fraction required to resume.
 	// Used by the season-pack flow, whose gate is "linked bytes verified".
@@ -502,8 +513,10 @@ type pendingResume struct {
 	resumeAttempts             int
 	awaitingResumeConfirmation bool
 	sawChecking                bool
-	readyPolls                 int
-	resumeConfirmedPolls       int
+	// recheckInterrupted disables the timed fallback after resume-data validation.
+	recheckInterrupted   bool
+	readyPolls           int
+	resumeConfirmedPolls int
 }
 
 type cachedTorrentSearchResults struct {
@@ -559,7 +572,10 @@ func NewService(
 		SetDefaultTTL(searchResultCacheTTL))
 
 	asyncFilteringCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}.
-		SetDefaultTTL(searchResultCacheTTL)) // Use same TTL as search results
+		SetDefaultTTL(searchResultCacheTTL). // Use same TTL as search results
+		// The cache holds live state pointers; the TTL-refresh write-back on Get
+		// could restore a replaced entry (autobrr#2637), so disable it.
+		DisableUpdateTime(true))
 	indexerDomainCache := ttlcache.New(ttlcache.Options[string, string]{}.
 		SetDefaultTTL(indexerDomainCacheTTL))
 	contentFilesCache := ttlcache.New(ttlcache.Options[string, qbt.TorrentFiles]{}.
@@ -567,7 +583,7 @@ func NewService(
 	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
 		SetDefaultTTL(5 * time.Minute))
 
-	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	recheckCtx, recheckCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: service-lifetime context, cancelled on shutdown
 	var arrLookup arrLookupService
 	if !isNilARRLookupService(arrService) {
 		arrLookup = arrService
@@ -606,6 +622,8 @@ func NewService(
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
+		partialPoolWake:               make(chan partialPoolWake, 100),
+		partialPoolCreated:            make(map[int64]*hardlinktree.Created),
 		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
@@ -621,8 +639,20 @@ func NewService(
 // NewServiceWithAutomationStore creates a minimal service for settings-only callers.
 func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
 	return &Service{
-		automationStore: automationStore,
+		automationStore:    automationStore,
+		partialPoolWake:    make(chan partialPoolWake, 100),
+		partialPoolCreated: make(map[int64]*hardlinktree.Created),
 	}
+}
+
+// SetMediaIDCacheStore wires the media_id_cache store that backs the
+// MKV-metadata external-ID fallback. Safe to call once at startup; without it
+// the fallback stays disabled.
+func (s *Service) SetMediaIDCacheStore(store *models.MediaIDCacheStore) {
+	if s == nil || store == nil {
+		return
+	}
+	s.mediaIDCacheStore = store
 }
 
 // SetActivityPublisher wires the qui server-event hub so cross-seed automation and
@@ -789,11 +819,6 @@ func (s *Service) HealthCheck(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("automation settings loader failed: %w", err)
 		}
-	}
-
-	// Check Jackett service connectivity (if configured)
-	if s.jackettService != nil {
-		// We could add a lightweight check here if Jackett service has a health check method
 	}
 
 	return nil
@@ -977,7 +1002,7 @@ func newLocalMatch(instance *models.Instance, cached *qbittorrent.CrossInstanceT
 // Source files are lazily fetched on first access to avoid unnecessary API calls
 // when no ambiguous content_path matches are encountered.
 type localMatchContext struct {
-	ctx               context.Context //nolint:containedctx // pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
+	ctx               context.Context // Pre-existing design: lazy loaders run inside determineLocalMatchType, which has no ctx parameter
 	svc               *Service
 	sourceInstanceID  int
 	sourceHash        string
@@ -1679,6 +1704,9 @@ type searchRunState struct {
 
 	currentCandidate *SearchCandidateStatus
 	recentResults    []models.CrossSeedSearchResult
+	// persistedResults counts the run.Results entries already written to
+	// results_json; see persistSearchRun.
+	persistedResults int
 	nextWake         time.Time
 	lastError        error
 	// lastCandidateErr remembers the most recent candidate-scoped failure so a
@@ -1801,6 +1829,7 @@ func (s *Service) UpdateAutomationSettings(ctx context.Context, settings *models
 	}
 
 	s.signalAutomationWake()
+	s.signalPartialPoolWake(partialPoolWake{})
 
 	return updated, nil
 }
@@ -2164,6 +2193,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 	if s == nil || instanceID <= 0 {
 		return
 	}
+	s.signalPartialPoolWake(partialPoolWake{instanceID: instanceID, hash: partialPoolCanonicalTorrentKey(&torrent)})
 
 	if ctx == nil {
 		ctx = context.Background()
@@ -2292,7 +2322,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	err = s.executeCompletionSearchWithRetry(ctx, instanceID, readyTorrent, settings, completionSettings)
+	err = s.invokeCompletionSearch(ctx, instanceID, readyTorrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -2788,42 +2818,6 @@ func isCompletionCheckingState(state qbt.TorrentState) bool {
 		state == qbt.TorrentStateMoving
 }
 
-func (s *Service) executeCompletionSearchWithRetry(
-	ctx context.Context,
-	instanceID int,
-	torrent *qbt.Torrent,
-	settings *models.CrossSeedAutomationSettings,
-	completionSettings *models.InstanceCrossSeedCompletionSettings,
-) error {
-	var lastErr error
-	for attempt := 1; attempt <= maxCompletionSearchAttempts; attempt++ {
-		err := s.invokeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-
-		retryAfter, retry := completionRetryDelay(err)
-		if !retry || attempt == maxCompletionSearchAttempts {
-			break
-		}
-		if retryAfter <= 0 {
-			retryAfter = defaultCompletionRetryDelay
-		}
-
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Int("attempt", attempt).
-			Dur("retryAfter", retryAfter).
-			Msg("[CROSSSEED-COMPLETION] Rate-limited completion search, retrying")
-
-		time.Sleep(retryAfter)
-	}
-	return lastErr
-}
-
 func (s *Service) invokeCompletionSearch(
 	ctx context.Context,
 	instanceID int,
@@ -2835,28 +2829,6 @@ func (s *Service) invokeCompletionSearch(
 		return s.completionSearchInvoker(ctx, instanceID, torrent, settings, completionSettings)
 	}
 	return s.executeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
-}
-
-func completionRetryDelay(err error) (time.Duration, bool) {
-	if err == nil {
-		return 0, false
-	}
-
-	if waitErr, ok := errors.AsType[*jackett.RateLimitWaitError](err); ok {
-		if waitErr.Wait > 0 {
-			return waitErr.Wait, true
-		}
-		return defaultCompletionRetryDelay, true
-	}
-
-	msg := strings.ToLower(strings.TrimSpace(err.Error()))
-	for _, token := range completionRateLimitTokens {
-		if strings.Contains(msg, token) {
-			return defaultCompletionRetryDelay, true
-		}
-	}
-
-	return 0, false
 }
 
 // updateAutomationRunWithRetry attempts to update the automation run in the database with retries
@@ -2888,7 +2860,7 @@ func (s *Service) updateAutomationRunWithRetry(ctx context.Context, run *models.
 }
 
 // updateSearchRunWithRetry attempts to update the search run in the database with retries
-func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) (*models.CrossSeedSearchRun, error) {
+func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.CrossSeedSearchRun) error {
 	const maxRetries = 3
 	var lastErr error
 
@@ -2897,9 +2869,9 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
 		}
 
-		updated, err := s.automationStore.UpdateSearchRun(ctx, run)
+		err := s.automationStore.UpdateSearchRun(ctx, run)
 		if err == nil {
-			return updated, nil
+			return nil
 		}
 
 		lastErr = err
@@ -2907,7 +2879,7 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 	}
 
 	log.Error().Err(lastErr).Int64("runID", run.ID).Msg("Failed to update search run after retries")
-	return run, lastErr
+	return lastErr
 }
 
 // GetAutomationStatus returns scheduler information for the API.
@@ -3094,7 +3066,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				}
 				requestedIndexerIDs = resolvedRequested
 
-				asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, torrent.Hash, requestedIndexerIDs, true)
+				asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, torrent.Hash, true)
 				var allowedIndexerIDs []int
 				var skipReason string
 				if err != nil {
@@ -3242,20 +3214,7 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		return err
 	}
 
-	if successCount > 0 {
-		log.Info().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Int("added", successCount).
-			Msg("[CROSSSEED-COMPLETION] Added cross-seed from completion search")
-	} else {
-		log.Debug().
-			Int("instanceID", instanceID).
-			Str("hash", torrent.Hash).
-			Str("name", torrent.Name).
-			Msg("[CROSSSEED-COMPLETION] Completion search executed with no additions")
-	}
+	logCompletionSearchSummary(instanceID, torrent, successCount, failedCount, skippedCount)
 
 	if s.notifier != nil && (successCount > 0 || failedCount > 0) {
 		completedAt := time.Now().UTC()
@@ -3310,6 +3269,25 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 	}
 
 	return nil
+}
+
+// logCompletionSearchSummary emits every outcome count and promotes runs with
+// at least one addition from debug to info level.
+func logCompletionSearchSummary(instanceID int, torrent *qbt.Torrent, added, failed, skipped int) {
+	event := log.Debug()
+	message := "[CROSSSEED-COMPLETION] Completion search executed with no additions"
+	if added > 0 {
+		event = log.Info()
+		message = "[CROSSSEED-COMPLETION] Added cross-seed from completion search"
+	}
+	event.
+		Int("instanceID", instanceID).
+		Str("hash", torrent.Hash).
+		Str("name", torrent.Name).
+		Int("added", added).
+		Int("failed", failed).
+		Int("skipped", skipped).
+		Msg(message)
 }
 
 // StartSearchRun launches an on-demand search automation run for a single instance.
@@ -3837,15 +3815,15 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	run.CompletedAt = &completed
 
 	switch {
-	case run.TorrentsFailed > 0 && run.TorrentsAdded > 0:
+	case run.CandidatesFailed > 0 && run.CrossSeedsAdded > 0:
 		run.Status = models.CrossSeedRunStatusPartial
-	case run.TorrentsFailed > 0 && run.TorrentsAdded == 0:
+	case run.CandidatesFailed > 0 && run.CrossSeedsAdded == 0:
 		run.Status = models.CrossSeedRunStatusFailed
 	default:
 		run.Status = models.CrossSeedRunStatusSuccess
 	}
 
-	summary := fmt.Sprintf("processed=%d candidates=%d added=%d skipped=%d failed=%d", processed, run.CandidatesFound, run.TorrentsAdded, run.TorrentsSkipped, run.TorrentsFailed)
+	summary := fmt.Sprintf("processed=%d candidates=%d added=%d skipped=%d failed=%d", processed, run.CandidatesFound, run.CrossSeedsAdded, run.CandidatesSkipped, run.CandidatesFailed)
 	run.Message = &summary
 
 	// Use context.WithoutCancel to ensure DB update succeeds even on cancellation
@@ -3865,7 +3843,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 	// Opportunistic cleanup of stale feed items (older than 30 days)
 	if s.automationStore != nil {
-		cutoff := time.Now().Add(-30 * 24 * time.Hour)
+		cutoff := time.Now().UTC().Truncate(24 * time.Hour).Add(-30 * 24 * time.Hour)
 		if _, pruneErr := s.automationStore.PruneFeedItems(ctx, cutoff); pruneErr != nil {
 			log.Debug().Err(pruneErr).Msg("Failed to prune cross-seed feed cache")
 		}
@@ -3874,14 +3852,14 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	return run, runErr
 }
 
-// sizeMismatchLogLevel returns warn for the first size-mismatch rejection of a
+// sizeMismatchLogLevel returns debug for the first size-mismatch rejection of a
 // (source, matched) pair and trace for repeats: RSS retries the same doomed
 // pair every run until it leaves the feed. In-memory and unbounded on purpose.
 func (s *Service) sizeMismatchLogLevel(sourceHash, matchedHash string) zerolog.Level {
 	if _, seen := s.sizeMismatchWarned.LoadOrStore(sourceHash+"|"+matchedHash, struct{}{}); seen {
 		return zerolog.TraceLevel
 	}
-	return zerolog.WarnLevel
+	return zerolog.DebugLevel
 }
 
 func isSkippedCrossSeedResultStatus(status string) bool {
@@ -3910,7 +3888,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	candidatesResp, err := s.findCandidatesWithAutomationContext(ctx, findReq, autoCtx)
 	if err != nil {
-		run.TorrentsFailed++
+		run.CandidatesFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("find candidates: %w", err)
 	}
 
@@ -3925,7 +3903,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	// cooldown lapses. Feed items marked skipped are re-evaluated every run, so
 	// the item retries once the cooldown expires.
 	if candidateCount == 0 && seasonPackDivertible && s.seasonPackFailCooldownActive(ctx, result.Title, minSearchCooldownMinutes*time.Minute) {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -3938,13 +3916,13 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if candidateCount == 0 && !seasonPackDivertible {
 		boundMatches, err = s.findRSSAnnouncementMatches(ctx, result, settings, autoCtx)
 		if err != nil {
-			run.TorrentsFailed++
+			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("find RSS announcement matches: %w", err)
 		}
 		candidateCount = len(boundMatches)
 	}
 	if candidateCount == 0 && !seasonPackDivertible {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -3964,7 +3942,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		boundMatches = allowed
 		candidateCount = len(boundMatches)
 		if candidateCount == 0 {
-			run.TorrentsSkipped++
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, models.CrossSeedRunResult{
 				InstanceName: result.Indexer,
 				IndexerName:  result.Indexer,
@@ -3979,7 +3957,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	run.CandidatesFound++
 
 	if opts.DryRun {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		dryRunMessage := fmt.Sprintf("Dry run: %d viable candidates", candidateCount)
 		if candidateCount == 0 && seasonPackDivertible {
 			dryRunMessage = "Dry run: season pack could be assembled from local episodes"
@@ -4012,7 +3990,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 			if hashErr != nil {
 				// Context cancellation should propagate, not trigger fallback
 				if errors.Is(hashErr, context.Canceled) || errors.Is(hashErr, context.DeadlineExceeded) {
-					run.TorrentsFailed++
+					run.CandidatesFailed++
 					return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("hash check canceled: %w", hashErr)
 				}
 				log.Warn().
@@ -4044,7 +4022,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 
 		if allExist && len(existingResults) > 0 {
-			run.TorrentsSkipped += len(existingResults)
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, existingResults...)
 
 			log.Debug().
@@ -4067,7 +4045,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		for _, candidate := range precheckCandidates {
 			// Check for context cancellation before processing each candidate
 			if ctx.Err() != nil {
-				run.TorrentsFailed++
+				run.CandidatesFailed++
 				return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("comment URL pre-check canceled: %w", ctx.Err())
 			}
 
@@ -4101,7 +4079,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		}
 
 		if allExist && len(existingResults) > 0 {
-			run.TorrentsSkipped += len(existingResults)
+			run.CandidatesSkipped++
 			run.Results = append(run.Results, existingResults...)
 
 			log.Debug().
@@ -4122,7 +4100,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 		Size:        result.Size,
 	})
 	if err != nil {
-		run.TorrentsFailed++
+		run.CandidatesFailed++
 		return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("download torrent: %w", err)
 	}
 
@@ -4134,7 +4112,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	if len(boundMatches) == 0 {
 		resp, invokeErr = s.invokeCrossSeed(ctx, s.newAutomationCrossSeedRequest(encodedTorrent, sourceIndexer, settings))
 		if invokeErr != nil {
-			run.TorrentsFailed++
+			run.CandidatesFailed++
 			return models.CrossSeedFeedItemStatusFailed, nil, fmt.Errorf("cross-seed request: %w", invokeErr)
 		}
 	} else {
@@ -4158,7 +4136,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 	itemHadExisting := false
 
 	if len(resp.Results) == 0 {
-		run.TorrentsSkipped++
+		run.CandidatesSkipped++
 		run.Results = append(run.Results, models.CrossSeedRunResult{
 			InstanceName: result.Indexer,
 			IndexerName:  result.Indexer,
@@ -4187,33 +4165,33 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 		run.Results = append(run.Results, mapped)
 
-		if instanceResult.Success {
-			itemHasSuccess = true
-			run.TorrentsAdded++
-			continue
-		}
-
 		switch {
+		case instanceResult.Success:
+			itemHasSuccess = true
+			run.CrossSeedsAdded++
 		case instanceResult.Status == "exists":
 			itemHadExisting = true
-			run.TorrentsSkipped++
 		case isSkippedCrossSeedResultStatus(instanceResult.Status):
-			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
-			run.TorrentsFailed++
 		}
 	}
 
+	// One feed item is one candidate: it lands in one bucket no matter how
+	// many instances it was applied to. A candidate with one add and one
+	// failed instance counts as added; the failure stays in run.Results.
 	switch {
 	case itemHasSuccess:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
 	case itemHasFailure:
 		itemStatus = models.CrossSeedFeedItemStatusFailed
+		run.CandidatesFailed++
 	case itemHadExisting:
 		itemStatus = models.CrossSeedFeedItemStatusProcessed
+		run.CandidatesSkipped++
 	default:
 		itemStatus = models.CrossSeedFeedItemStatusSkipped
+		run.CandidatesSkipped++
 	}
 
 	return itemStatus, infoHash, invokeErr
@@ -4367,6 +4345,11 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 	}
 
 	candidate := namedRelease{release: s.releaseCache.Parse(result.Title), rawName: result.Title}
+	// Resolve ARR aliases only when a torrent survives the exact-size gate
+	// below, so feed items with no byte-size collision never touch ARR.
+	aliasLookup := sync.OnceValues(func() ([]string, *models.EpisodeMap) {
+		return s.announceAliasTitles(ctx, result.Title, DetermineContentType(candidate.release).ContentType)
+	})
 	snapshots := (*automationSnapshots)(nil)
 	if autoCtx != nil {
 		snapshots = autoCtx.snapshots
@@ -4399,10 +4382,13 @@ func (s *Service) findRSSAnnouncementMatches(ctx context.Context, result jackett
 				continue
 			}
 
+			aliasTitles, episodeMap := aliasLookup()
 			decision := s.classifyAnnouncementSource(ctx, snapshot.instance.ID, torrent, candidate, result.Size, announcementMatchPolicy{
 				findIndividualEpisodes: settings.FindIndividualEpisodes,
 				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
 				allowUnknownSize:       false,
+				candidateTitles:        aliasTitles,
+				episodeMap:             episodeMap,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -4529,7 +4515,7 @@ func boundAnnouncementResponseTerminal(response *CrossSeedResponse) bool {
 		return true
 	}
 	for _, result := range response.Results {
-		if result.Success || result.Status == "exists" {
+		if result.Success || result.Status == "exists" || result.Status == partialPoolRegistrationErrorStatus {
 			return true
 		}
 	}
@@ -4624,6 +4610,10 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 	if req.TorrentName == "" {
 		return nil, errors.New("torrent_name is required")
+	}
+
+	if req.ManualTargetHash != "" {
+		return s.findManualTargetCandidate(ctx, req)
 	}
 
 	// Parse the title string to understand what we're looking for. Apply may
@@ -4733,8 +4723,9 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 
 		// getMatchTypeFromTitle builds season and episode keys from the existing
 		// torrent's file names. Record only the bound source whose accepted apply-time
-		// mismatch actually changed that structure; another stored hard cause must
-		// not grant this bypass by itself.
+		// mismatch actually changed that structure, or whose episode map equated two
+		// numbering schemes; another stored hard cause must not grant this bypass by
+		// itself.
 		structureRelaxedHash := ""
 
 		// Pre-filter torrents before loading files to reduce downstream work
@@ -4793,24 +4784,41 @@ func (s *Service) findCandidates(ctx context.Context, req *FindCandidatesRequest
 			// for the specific torrent whose qBittorrent size supplied the search
 			// evidence. File matching and later safety checks still run.
 			var candidateAliasTitles []string
+			var targetAliasTitles []string
+			var episodeMap *models.EpisodeMap
 			if isSearchSource {
 				candidateAliasTitles = searchDecision.SourceTitles
+				// Announce-origin decisions resolve aliases for the incoming
+				// release, which is the target side here.
+				targetAliasTitles = searchDecision.CandidateTitles
+				episodeMap = searchDecision.EpisodeMap
 			}
-			fallbackInput := searchCandidateInput{
+			fallbackInput, mappedEpisode := applyEpisodeMap(searchCandidateInput{
 				Source:                 targetSide,
 				Candidate:              sourceSide,
+				SourceTitles:           targetAliasTitles,
 				CandidateTitles:        candidateAliasTitles,
+				EpisodeMap:             episodeMap,
 				FindIndividualEpisodes: req.FindIndividualEpisodes,
+			})
+			if mappedEpisode != "" {
+				// The file names still carry the other scheme, so the name-derived
+				// episode keys cannot line up; file sizes decide at apply.
+				structureRelaxedHash = hashKey
 			}
 			replaysExactDecision := isSearchSource &&
 				(searchDecision.Class == searchCandidateClassExactSizeFallback ||
 					searchDecision.StrictChecksumReplay)
 			if replaysExactDecision {
+				// The listing title and info.name can differ by exactly the
+				// resolved alias, so both alias sets count; only one is ever
+				// non-empty per decision origin.
 				if ok, _ := s.searchCandidateMetadataConsistent(
 					searchDecision.SearchCandidateName,
 					targetSide,
 					searchDecision.RelaxedDifferences,
-					searchDecision.SourceTitles,
+					slices.Concat(searchDecision.SourceTitles, searchDecision.CandidateTitles),
+					searchDecision.EpisodeMap,
 					req.FindIndividualEpisodes,
 				); !ok {
 					continue
@@ -5032,7 +5040,15 @@ func (s *Service) CrossSeed(ctx context.Context, req *CrossSeedRequest) (*CrossS
 		TargetRelease:          sourceView,
 		TargetInstanceIDs:      req.TargetInstanceIDs,
 		FindIndividualEpisodes: req.FindIndividualEpisodes,
+		ManualTargetHash:       req.ManualTargetHash,
 		SearchDecision:         req.SearchDecision.clone(),
+	}
+	if req.ManualTargetHash != "" {
+		log.Info().
+			Str("torrentName", meta.Name).
+			Str("torrentHash", torrentHash).
+			Str("manualTargetHash", req.ManualTargetHash).
+			Msg("[CROSSSEED] Manual match: applying against user-chosen target")
 	}
 	// Pass through source filters for RSS automation
 	if len(req.SourceFilterCategories) > 0 {
@@ -5211,15 +5227,20 @@ func (s *Service) invokeSeasonPackApply(ctx context.Context, req *SeasonPackAppl
 
 // AutobrrApply adds a torrent provided by autobrr to the specified instance using cross-seed logic.
 func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*CrossSeedResponse, error) {
+	startedAt := time.Now().UTC()
 	if req == nil {
 		return nil, fmt.Errorf("%w: request is required", ErrInvalidRequest)
 	}
 	if strings.TrimSpace(req.TorrentData) == "" {
-		return nil, fmt.Errorf("%w: torrentData is required", ErrInvalidRequest)
+		err := fmt.Errorf("%w: torrentData is required", ErrInvalidRequest)
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 	targetInstanceIDs := normalizeInstanceIDs(req.InstanceIDs)
 	if len(req.InstanceIDs) > 0 && len(targetInstanceIDs) == 0 {
-		return nil, fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
+		err := fmt.Errorf("%w: instanceIds must contain at least one positive integer", ErrInvalidRequest)
+		s.notifyWebhookApply(ctx, req, nil, err, startedAt)
+		return nil, err
 	}
 
 	settings, settingsErr := s.GetAutomationSettings(ctx)
@@ -5296,6 +5317,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 	}
 	if err != nil {
 		if resp == nil || !resp.Success {
+			s.notifyWebhookApply(ctx, req, resp, err, startedAt)
 			return nil, err
 		}
 		log.Warn().Err(err).Msg("AutobrrApply completed with partial instance errors")
@@ -5317,6 +5339,8 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 			Str("message", r.Message).
 			Msg("AutobrrApply instance result")
 	}
+
+	s.notifyWebhookApply(ctx, req, resp, err, startedAt)
 
 	return resp, nil
 }
@@ -5353,6 +5377,7 @@ func (s *Service) applyAutobrrAnnouncement(ctx context.Context, announcedName st
 
 func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedName string, actualSize int64, instances []*models.Instance, request *CrossSeedRequest, settings *models.CrossSeedAutomationSettings) []boundAnnouncementMatch {
 	candidate := namedRelease{release: s.releaseCache.Parse(announcedName), rawName: announcedName}
+	aliasTitles, episodeMap := s.announceAliasTitles(ctx, announcedName, DetermineContentType(candidate.release).ContentType)
 	matches := make([]boundAnnouncementMatch, 0, len(instances))
 	for _, instance := range instances {
 		torrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instance.ID)
@@ -5381,6 +5406,8 @@ func (s *Service) findAutobrrAnnouncementMatches(ctx context.Context, announcedN
 				rescueTitleMismatches:  settings != nil && settings.RescueTitleMismatches && !request.SkipRecheck,
 				allowUnknownSize:       false,
 				skipRecheck:            request.SkipRecheck,
+				candidateTitles:        aliasTitles,
+				episodeMap:             episodeMap,
 			})
 			if !decision.replayable || !decision.decision.Accepted {
 				continue
@@ -5582,6 +5609,7 @@ func (s *Service) processCrossSeedCandidate(
 	matchedTorrent := &addPlan.torrent
 	candidateFiles := addPlan.files
 	matchType := addPlan.matchType
+	manualUnvalidated := matchType == manualMatchType
 	verifyBeforeSeed := candidateRequiresVerification(candidate, matchedTorrent.Hash, req)
 	if verifyBeforeSeed && req.SkipRecheck {
 		result.Status = "skipped_recheck"
@@ -5627,8 +5655,9 @@ func (s *Service) processCrossSeedCandidate(
 			Msg("[CROSSSEED] Disc layout detected - torrent will be added paused and only resumed after full recheck")
 	}
 
-	// Check if we need rename alignment (folder/file names differ)
-	requiresAlignment := needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
+	// Check if we need rename alignment (folder/file names differ). An
+	// unvalidated Manual match has no file mapping to align to.
+	requiresAlignment := !manualUnvalidated && needsRenameAlignment(torrentName, matchedTorrent.Name, sourceFiles, candidateFiles)
 
 	// Check if source has extra files that won't exist on disk (e.g., NFO files not in the candidate)
 	hasExtraFiles := hasExtraSourceFiles(sourceFiles, candidateFiles)
@@ -5659,15 +5688,20 @@ func (s *Service) processCrossSeedCandidate(
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
 	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
 	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
-	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks
-	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
+	// An unvalidated Manual match has no validated file correspondence to link
+	// (zero overlap would fail materialization outright), so it always takes the
+	// regular paused add + recheck path.
+	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks && !manualUnvalidated
+	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks && !manualUnvalidated
 
 	runReuseSafetyChecks := func() bool {
 		// SAFETY: Reject cross-seeds where main content file sizes don't match.
 		// This prevents corrupting existing good data with potentially different or corrupted files.
 		// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
 		// it indicates either corruption or a different release that shouldn't be cross-seeded.
-		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
+		// An unvalidated Manual match skips this heuristic by design (the UI already
+		// warned about the overlap); the piece-boundary check below still applies.
+		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch && !manualUnvalidated {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
 			log.WithLevel(s.sizeMismatchLogLevel(torrentHash, matchedTorrent.Hash)).
@@ -5803,10 +5837,7 @@ func (s *Service) processCrossSeedCandidate(
 	// Detect episode matched to season pack - these need special handling
 	// to use the season pack's content path instead of category save path
 	isEpisodeInPack := addPlan.isEpisodeInPack
-	rootlessContentDir := ""
-	if !isEpisodeInPack && candidateRoot == "" {
-		rootlessContentDir = resolveRootlessContentDir(matchedTorrent, candidateFiles)
-	}
+	rootlessContentDir := rootlessDestDir(matchedTorrent, candidateFiles, isEpisodeInPack)
 
 	// Determine final category to apply (with optional .cross suffix for isolation)
 	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
@@ -5991,7 +6022,7 @@ func (s *Service) processCrossSeedCandidate(
 	//
 	// Hardlink/reflink modes are safe because they use contentLayout=Original and preserve
 	// the incoming torrent's layout exactly via hardlink/reflink tree creation.
-	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles {
+	if sourceRoot != "" && candidateRoot == "" && hasExtraFiles && !manualUnvalidated {
 		result.Status = "requires_hardlink_reflink"
 		result.Message = "Skipped: cross-seed with extra files and rootless content requires hardlink or reflink mode to avoid scattering files in base directory"
 		log.Warn().
@@ -6200,6 +6231,11 @@ func (s *Service) processCrossSeedCandidate(
 		Bool("categoryCreationFailed", categoryCreationFailed).
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
+	// Keep rechecks on the explicit save path instead of the incomplete download path.
+	if options["savepath"] != "" {
+		options["useDownloadPath"] = "false"
+	}
+
 	// Add the torrent
 	_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 	if err != nil {
@@ -6258,10 +6294,14 @@ func (s *Service) processCrossSeedCandidate(
 		result.Message += " - link-mode filesystem fallback, full recheck required"
 	}
 
-	// Attempt to align the new torrent's naming and file layout with the matched torrent
-	alignmentSucceeded, activeHash := s.alignCrossSeedContentPaths(
-		ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan,
-	)
+	// Attempt to align the new torrent's naming and file layout with the matched
+	// torrent. An unvalidated Manual match has no mapping to align.
+	alignmentSucceeded, activeHash := true, torrentHash
+	if !manualUnvalidated {
+		alignmentSucceeded, activeHash = s.alignCrossSeedContentPaths(
+			ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, addPlan,
+		)
+	}
 	if activeHash == "" {
 		activeHash = torrentHash
 	}
@@ -6330,13 +6370,6 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message += " - recheck failed, manual intervention required"
-		} else if addPolicy.ShouldSkipAutoResume() {
-			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Skipping auto-resume per add policy (recheck triggered)")
-			result.Message += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
 			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
 			// User requested to skip auto-resume - leave paused after recheck
@@ -6368,13 +6401,7 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
-		if addPolicy.ShouldSkipAutoResume() {
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Skipping auto-resume for perfect match per add policy")
-			result.Message += addPolicy.StatusSuffix()
-		} else if req.SkipAutoResume {
+		if req.SkipAutoResume {
 			// User requested to skip auto-resume - leave paused
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
@@ -6393,9 +6420,6 @@ func (s *Service) processCrossSeedCandidate(
 				result.Message += " - auto-resume failed, manual resume required"
 			}
 		}
-	} else if !startPaused && addPolicy.ShouldSkipAutoResume() {
-		// User wanted auto-start, but policy forces paused
-		result.Message += addPolicy.StatusSuffix()
 	}
 	result.Success = true
 	result.Status = "added"
@@ -6600,6 +6624,45 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 	return granted
 }
 
+// postRecheckBudgetSatisfied applies the shared auto-start byte budget. File
+// progress is required only for the bounded sidecar-forgiveness path.
+func postRecheckBudgetSatisfied(
+	torrent qbt.Torrent,
+	budget int64,
+	files qbt.TorrentFiles,
+	normalizer *stringutils.Normalizer[string, string],
+) bool {
+	if budget <= 0 {
+		return torrent.AmountLeft <= 0
+	}
+	if torrent.AmountLeft <= budget {
+		return true
+	}
+	if torrent.AmountLeft > irrelevantResumeForgivenessCapBytes || len(files) == 0 {
+		return false
+	}
+
+	return relevantMissingFilesWithinBudget(files, budget, normalizer)
+}
+
+func relevantMissingFilesWithinBudget(
+	files qbt.TorrentFiles,
+	budget int64,
+	normalizer *stringutils.Normalizer[string, string],
+) bool {
+	var relevantMissingBytes int64
+	for _, file := range files {
+		if file.Progress >= 1 || file.Priority == 0 || forgivableSidecarFile(file.Name, normalizer) {
+			continue
+		}
+		relevantMissingBytes += int64((1 - float64(file.Progress)) * float64(file.Size))
+		if relevantMissingBytes > budget {
+			return false
+		}
+	}
+	return true
+}
+
 // missingRelevantBytesWithinBudget reports whether the missing bytes inside relevant wanted
 // files fit the budget. Irrelevant sidecars (sample, nfo, subtitle, ...) are excluded from the
 // sum: per-file progress is piece-based, so a fully present file next to a missing sidecar
@@ -6623,21 +6686,7 @@ func (s *Service) missingRelevantBytesWithinBudget(instanceID int, hash string, 
 		return false, false
 	}
 
-	normalizer := normalizerForService(s)
-	var relevantMissingBytes int64
-	for _, f := range files {
-		if f.Progress >= 1 || f.Priority == 0 {
-			continue
-		}
-		if forgivableSidecarFile(f.Name, normalizer) {
-			continue
-		}
-		relevantMissingBytes += int64((1 - float64(f.Progress)) * float64(f.Size))
-		if relevantMissingBytes > budget {
-			return false, true
-		}
-	}
-	return true, true
+	return relevantMissingFilesWithinBudget(files, budget, normalizerForService(s)), true
 }
 
 // forgivableSidecarFile reports whether a file is a sidecar that forgiveness may
@@ -6690,14 +6739,22 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		state == qbt.TorrentStateCheckingDl
 	isChecking := isPieceChecking || state == qbt.TorrentStateCheckingResumeData
 	if isChecking {
-		// checkingResumeData validates qBittorrent's saved state during startup.
-		// It keeps this worker waiting, but it does not prove that a requested
-		// piece hash check ran. It also breaks continuity with any piece-check
-		// state observed before qBittorrent restarted.
 		if isPieceChecking {
 			req.sawChecking = true
-		} else if req.verificationRequired {
+		} else if req.verificationRequired && req.sawChecking {
+			// checkingResumeData validates qBittorrent's saved state during startup.
+			// Seeing it after we already observed a piece hash check means qBittorrent
+			// restarted and re-validated: that breaks continuity with the check we saw,
+			// so the earlier progress no longer proves the requested recheck ran. Block
+			// the fast resume and re-earn confirmation from a fresh piece check.
+			//
+			// A checkingResumeData poll with no prior piece check is just normal
+			// forced-recheck startup, which every recheck passes through before hashing.
+			// A fast (100%-overlap) recheck can still finish between polls, so this must
+			// not set recheckInterrupted or the fast path below could never fire.
 			req.sawChecking = false
+			req.recheckInterrupted = true
+			req.awaitingResumeConfirmation = false
 		}
 		req.readyPolls = 0
 		req.resumeConfirmedPolls = 0
@@ -6705,8 +6762,18 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		// saw; the verdict must be re-earned from post-check file progress.
 		req.forgivenessGranted = false
 	}
-	if req.verificationRequired && !req.sawChecking {
-		return true
+	if req.verificationRequired && !req.sawChecking && !req.awaitingResumeConfirmation {
+		// A fast (100%-overlap) recheck can finish between polls, so checking is never
+		// observed and this would wait out recheckAbsoluteTimeout. After the heuristic
+		// delay, treat a settled 100% as verified and fall through to the normal resume
+		// path (still gated by recheckResumeStablePolls); monitorOnly never resumes. Once
+		// resume is issued, awaitingResumeConfirmation takes over so the entry is
+		// confirmed and dropped rather than waiting out the timeout while it runs.
+		fastRecheckComplete := !req.monitorOnly && !req.recheckInterrupted && isPausedOrStopped(state) &&
+			satisfied() && time.Since(req.addedAt) >= recheckFastCompleteMinElapsed
+		if !fastRecheckComplete {
+			return true
+		}
 	}
 	if req.monitorOnly {
 		if isChecking {
@@ -7262,13 +7329,6 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	}
 
 	if titleMismatch || contentMismatch {
-		log.Warn().
-			Str("torrentName", torrentName).
-			Str("largestFile", largestFile.Name).
-			Str("fileContentType", fileContent.ContentType).
-			Str("torrentContentType", sourceContent.ContentType).
-			Bool("titleMismatch", titleMismatch).
-			Msg("[CROSSSEED-SEARCH] Largest file looked unrelated, falling back to torrent metadata for content detection")
 		return sourceRelease, false
 	}
 
@@ -7297,6 +7357,10 @@ func matchTypePriority(matchType string) int {
 	case "size-partial-in-pack":
 		return 2
 	case "size-partial-contains":
+		return 1
+	case manualMatchType:
+		// A pinned Manual match target with no validated file correspondence.
+		// It is the only candidate in its request, so the rank is nominal.
 		return 1
 	default:
 		// Unknown/unsupported match types (e.g. "release-match")
@@ -7384,10 +7448,14 @@ func (s *Service) selectBestCandidateAddPlan(
 			candidateRelease = s.searchSourceReleaseViewFromFiles(ctx, &torrent, candidateRelease, files).release
 		}
 
+		manualTarget := req != nil && req.ManualTargetHash != "" &&
+			hashKey == normalizeHash(req.ManualTargetHash)
+
 		// Reject forbidden pairing: season pack (new) vs single episode (existing).
 		// Force-on safety guard: always check regardless of user setting since reaching this
 		// code path means we're actually applying a cross-seed (not just searching).
-		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject {
+		// A Manual match target is the user's explicit pick; the recheck arbitrates.
+		if reject, reason := rejectSeasonPackFromEpisode(sourceRelease, candidateRelease, true); reject && !manualTarget {
 			if reason != "" && (bestRejectReason == "" || len(reason) > len(bestRejectReason)) {
 				bestRejectReason = reason
 			}
@@ -7404,7 +7472,7 @@ func (s *Service) selectBestCandidateAddPlan(
 			// Swap parameter order: check if EXISTING files (files) are contained in NEW files (sourceFiles)
 			// This matches the search behavior where we found "partial-in-pack" (existing mkv in new mkv+nfo)
 			matchResult := s.getMatchTypeWithReason(candidateRelease, sourceRelease, files, sourceFiles, tolerancePercent)
-			if matchResult.MatchType == "" {
+			if matchResult.MatchType == "" && !manualTarget {
 				// Track the rejection reason - prefer more specific reasons
 				if matchResult.Reason != "" && (bestRejectReason == "" || len(matchResult.Reason) > len(bestRejectReason)) {
 					bestRejectReason = matchResult.Reason
@@ -7415,6 +7483,10 @@ func (s *Service) selectBestCandidateAddPlan(
 			// Since we swapped parameters above, swap partial match types to keep caller semantics.
 			actualMatchType = matchResult.MatchType
 			switch actualMatchType {
+			case "":
+				// Pinned Manual match target whose files did not validate: proceed
+				// anyway, verify before seeding, and let the recheck arbitrate.
+				actualMatchType = manualMatchType
 			case "partial-in-pack":
 				actualMatchType = "partial-contains"
 			case "partial-contains":
@@ -7434,6 +7506,13 @@ func (s *Service) selectBestCandidateAddPlan(
 		}
 
 		plan := buildCrossSeedAddPlan(torrent, files, actualMatchType, sourceRelease, candidateRelease, sourceFiles)
+		if actualMatchType == manualMatchType {
+			// No validated file correspondence: keep the incoming torrent's own
+			// layout at the target's location instead of mapping into the
+			// candidate's structure.
+			plan.contentLayout = "Original"
+			plan.savePathOverride = ""
+		}
 		if plan.betterThan(bestPlan, hasBestPlan) {
 			bestPlan = plan
 			hasBestPlan = true
@@ -7568,10 +7647,12 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 	// Get all available indexers first
 	var allIndexers []int
+	indexerDiscoveryFailed := false
 	if s.jackettService != nil {
 		indexersResponse, err := s.jackettService.GetIndexers(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to get indexers during async analysis")
+			indexerDiscoveryFailed = true
 		} else {
 			for _, indexer := range indexersResponse.Indexers {
 				if indexer.Configured {
@@ -7600,17 +7681,52 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		DiscMarker:       discMarker,
 	}
 
+	// Reuse a completed filtering run only when it was computed for the same
+	// content type; category mapping rules can change the type at runtime (#2313).
+	if s.asyncFilteringCache != nil {
+		cacheKey := asyncFilteringCacheKey(instanceID, hash)
+		if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
+			if snapshot := existing.Clone(); snapshot != nil && snapshot.ContentCompleted && snapshot.contentType == contentInfo.ContentType {
+				torrentInfo.AvailableIndexers = snapshot.CapabilityIndexers
+				torrentInfo.FilteredIndexers = snapshot.FilteredIndexers
+				torrentInfo.ExcludedIndexers = snapshot.ExcludedIndexers
+				torrentInfo.ContentMatches = snapshot.ContentMatches
+				torrentInfo.ContentFilteringCompleted = true
+
+				log.Debug().
+					Str("torrentHash", hash).
+					Int("instanceID", instanceID).
+					Str("contentType", contentInfo.ContentType).
+					Int("filteredIndexersCount", len(snapshot.FilteredIndexers)).
+					Msg("[CROSSSEED-ASYNC] Reusing completed filtering state for matching content type")
+
+				return &AsyncTorrentAnalysis{
+					TorrentInfo:    torrentInfo,
+					FilteringState: existing,
+				}, nil
+			}
+		}
+	}
+
 	// Initialize filtering state
 	filteringState := &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: false,
 		ContentCompleted:      false,
 		ExcludedIndexers:      make(map[int]string),
 		ContentMatches:        make([]string, 0),
+		contentType:           contentInfo.ContentType,
 	}
 
 	result := &AsyncTorrentAnalysis{
 		TorrentInfo:    torrentInfo,
 		FilteringState: filteringState,
+	}
+
+	// Publish the correctly typed state so it replaces a stale entry (#2313).
+	// Skipped when discovery failed (it would cache an empty run) or when
+	// content filtering is off (the state completes below without filtering).
+	if s.asyncFilteringCache != nil && enableContentFiltering && !indexerDiscoveryFailed {
+		s.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, hash), filteringState, ttlcache.DefaultTTL)
 	}
 
 	log.Trace().
@@ -7634,37 +7750,6 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 		filteringState.Unlock()
 		torrentInfo.AvailableIndexers = capabilityIndexers
 
-		if s.asyncFilteringCache != nil {
-			cacheKey := asyncFilteringCacheKey(instanceID, hash)
-			skipCacheStore := false
-
-			if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
-				existingSnapshot := existing.Clone()
-				if existingSnapshot != nil && existingSnapshot.ContentCompleted {
-					log.Trace().
-						Str("torrentHash", hash).
-						Int("instanceID", instanceID).
-						Str("cacheKey", cacheKey).
-						Bool("existingContentCompleted", existingSnapshot.ContentCompleted).
-						Int("existingFilteredCount", len(existingSnapshot.FilteredIndexers)).
-						Msg("[CROSSSEED-ASYNC] Skipping initial cache storage - content filtering already completed")
-					skipCacheStore = true
-				}
-			}
-
-			if !skipCacheStore {
-				cachedState := &AsyncIndexerFilteringState{
-					CapabilitiesCompleted: true,
-					ContentCompleted:      false,
-					CapabilityIndexers:    append([]int(nil), capabilityIndexers...),
-					FilteredIndexers:      append([]int(nil), capabilityIndexers...),
-					ExcludedIndexers:      make(map[int]string),
-					ContentMatches:        make([]string, 0),
-				}
-				s.asyncFilteringCache.Set(cacheKey, cachedState, ttlcache.DefaultTTL)
-			}
-		}
-
 		log.Trace().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
@@ -7675,7 +7760,7 @@ func (s *Service) AnalyzeTorrentForSearchAsync(ctx context.Context, instanceID i
 
 		if enableContentFiltering {
 			if len(capabilityIndexers) > 0 {
-				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState)
+				go s.performAsyncContentFiltering(context.Background(), instanceID, hash, capabilityIndexers, indexerInfo, filteringState) //nolint:gosec // G118: async filtering must outlive the request that queued it
 			} else {
 				filteringState.Lock()
 				filteringState.FilteredIndexers = []int{}
@@ -7757,16 +7842,9 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Bool("contentCompleted", snapshot.ContentCompleted).
 		Msg("[CROSSSEED-ASYNC] Content filtering completed successfully")
 
-	// Store the completed state in cache for UI polling
-	if s.asyncFilteringCache != nil {
-		cacheKey := asyncFilteringCacheKey(instanceID, hash)
-		cachedState := snapshot.Clone()
-		if cachedState == nil {
-			cachedState = &AsyncIndexerFilteringState{}
-		}
-
-		s.asyncFilteringCache.Set(cacheKey, cachedState, ttlcache.DefaultTTL)
-	}
+	// No cache write here: the cache already holds this state (or a newer run's
+	// state that replaced it, which a finished worker must not clobber, #2313).
+	// An entry that expired mid-run stays gone; the next request refilters.
 
 	log.Debug().
 		Str("torrentHash", hash).
@@ -7782,63 +7860,27 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 // without actually performing the search. This method now uses async filtering with immediate capability
 // results and optional content filtering for better performance.
 func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, hash string) (*TorrentInfo, error) {
-	// Check if we have cached async state with completed content filtering
-	if s.asyncFilteringCache != nil {
-		cacheKey := asyncFilteringCacheKey(instanceID, hash)
-		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
-			cachedSnapshot := cached.Clone()
-			if cachedSnapshot != nil && cachedSnapshot.ContentCompleted {
-				// We have completed filtering results, use those instead of running new analysis
-				asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false) // Don't restart content filtering
-				if err != nil {
-					// Fall back to cached state if torrent analysis fails
-					log.Warn().Err(err).Msg("Failed to get torrent info, using cached filtering state only")
-					return &TorrentInfo{
-						AvailableIndexers:         cachedSnapshot.CapabilityIndexers,
-						FilteredIndexers:          cachedSnapshot.FilteredIndexers,
-						ExcludedIndexers:          cachedSnapshot.ExcludedIndexers,
-						ContentMatches:            cachedSnapshot.ContentMatches,
-						ContentFilteringCompleted: cachedSnapshot.ContentCompleted,
-					}, nil
-				}
-
-				torrentInfo := asyncResult.TorrentInfo
-				// Use the completed filtering results from cache
-				torrentInfo.AvailableIndexers = cachedSnapshot.CapabilityIndexers
-				torrentInfo.FilteredIndexers = cachedSnapshot.FilteredIndexers
-				torrentInfo.ExcludedIndexers = cachedSnapshot.ExcludedIndexers
-				torrentInfo.ContentMatches = cachedSnapshot.ContentMatches
-				torrentInfo.ContentFilteringCompleted = cachedSnapshot.ContentCompleted
-
-				log.Debug().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Bool("contentCompleted", cachedSnapshot.ContentCompleted).
-					Int("filteredIndexersCount", len(cachedSnapshot.FilteredIndexers)).
-					Msg("[CROSSSEED-ANALYZE] Using cached content filtering results")
-
-				return torrentInfo, nil
-			}
-		}
-	}
-
-	// Use the async version with content filtering enabled
+	// The async analysis reuses a completed same-content-type filtering run from
+	// cache or starts a fresh one; that post-detection decision lives there (#2313).
 	asyncResult, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
 	if err != nil {
 		return nil, err
 	}
 
-	// Return immediate results with capability filtering
-	// Content filtering will continue in background but we don't wait for it
 	torrentInfo := asyncResult.TorrentInfo
 
-	// Use capability-filtered indexers as the primary result
 	stateSnapshot := asyncResult.FilteringState.Clone()
 	if stateSnapshot != nil && stateSnapshot.CapabilitiesCompleted {
 		torrentInfo.AvailableIndexers = stateSnapshot.CapabilityIndexers
-		// For immediate response, use capability indexers as filtered indexers
-		// The UI can poll for refined results if needed
-		torrentInfo.FilteredIndexers = stateSnapshot.CapabilityIndexers
+		if stateSnapshot.ContentCompleted {
+			torrentInfo.FilteredIndexers = stateSnapshot.FilteredIndexers
+			torrentInfo.ExcludedIndexers = stateSnapshot.ExcludedIndexers
+			torrentInfo.ContentMatches = stateSnapshot.ContentMatches
+		} else {
+			// Content filtering still running in background; return capability
+			// results now, the UI can poll for refined results.
+			torrentInfo.FilteredIndexers = stateSnapshot.CapabilityIndexers
+		}
 		torrentInfo.ContentFilteringCompleted = stateSnapshot.ContentCompleted
 
 		log.Debug().
@@ -7846,8 +7888,8 @@ func (s *Service) AnalyzeTorrentForSearch(ctx context.Context, instanceID int, h
 			Int("instanceID", instanceID).
 			Bool("capabilitiesCompleted", stateSnapshot.CapabilitiesCompleted).
 			Bool("contentCompleted", stateSnapshot.ContentCompleted).
-			Int("capabilityIndexersCount", len(stateSnapshot.CapabilityIndexers)).
-			Msg("[CROSSSEED-ANALYZE] Returning immediate capability-filtered results")
+			Int("filteredIndexersCount", len(torrentInfo.FilteredIndexers)).
+			Msg("[CROSSSEED-ANALYZE] Returning filtering results")
 	} else {
 		log.Warn().
 			Str("torrentHash", hash).
@@ -7925,6 +7967,7 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType s
 		Str("source", result.Source).
 		Int("titles", len(result.Titles)).
 		Strs("arrTitles", result.Titles).
+		Interface("episodeMap", result.EpisodeMap).
 		Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
 	return result, ""
 }
@@ -8458,19 +8501,20 @@ func alternateConnectorQuery(query string) (string, bool) {
 // AlternateTitleQuery returns the first alternate title under which the same
 // content can be indexed: *arr alternate titles first (scene, localized, and
 // renamed forms), then the release's own parsed Alt title, then "AKA" segments
-// of the release name. A candidate counts only when its normalized form
-// differs from the primary query, so the retry never repeats the query that
-// already returned nothing. Returns ("", false) when no distinct alternate
-// title exists.
+// of the release name, and last the parsed subtitle joined to the title. A
+// candidate counts only when its normalized form differs from the primary
+// query, so the retry never repeats the query that already returned nothing.
+// Returns ("", false) when no distinct alternate title exists.
 func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []string, releaseName string) (string, bool) {
 	primary := stringutils.NormalizeForMatching(primaryQuery)
-	candidates := make([]string, 0, len(arrTitles)+3)
+	candidates := make([]string, 0, len(arrTitles)+4)
 	candidates = append(candidates, arrTitles...)
 	candidates = append(candidates, releaseAlt(release))
 	for _, part := range rawAKATitleParts(releaseName) {
 		parsed := releases.DefaultParser.Parse(part)
 		candidates = append(candidates, parsed.Title, parsed.Alt)
 	}
+	candidates = append(candidates, subtitleTitleQuery(release))
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -8482,6 +8526,30 @@ func AlternateTitleQuery(primaryQuery string, release *rls.Release, arrTitles []
 		return candidate, true
 	}
 	return "", false
+}
+
+// subtitleTitleQuery joins a release's title and parsed subtitle into a query.
+// rls parks the tokens between the year and the resolution in Subtitle, so a
+// title-only query for "Powerboat1.2026.Lisbon.Grand.Prix.1080p.WEB.h264-QUIET"
+// drops the only text that identifies the release. Releases with a numbered
+// season or episode are skipped: their subtitle is an episode title, which no
+// tracker indexes. A seasonless pack (TV type from file inspection, Series
+// still zero) keeps its subtitle: that text is the arc or batch name.
+// A dotted "AKA" never reaches rawAKATitleParts, which needs the spaced form,
+// so it lands here instead, and it replaces the title rather than extending it.
+func subtitleTitleQuery(release *rls.Release) string {
+	if release == nil || release.Series > 0 || release.Episode > 0 {
+		return ""
+	}
+	subtitle := strings.TrimSpace(release.Subtitle)
+	if subtitle == "" {
+		return ""
+	}
+	const akaMarker = "AKA "
+	if stringutils.HasPrefixFold(subtitle, akaMarker) {
+		return strings.TrimSpace(subtitle[len(akaMarker):])
+	}
+	return release.Title + " " + subtitle
 }
 
 // effectiveSearchYear returns the year actually used by the latest search pass: 0
@@ -8539,11 +8607,12 @@ func searchSourceSize(t *qbt.Torrent) int64 {
 // searchResultUsable reports whether the shared search classifier accepts a
 // primary-pass result. Keeping this a boolean projection prevents alternate-query
 // scheduling from drifting from the main result loop.
-func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize, candidateSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) bool {
+func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize, candidateSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
 	return s.classifySearchCandidate(searchCandidateInput{
 		Source:                 source,
 		Candidate:              candidate,
 		SourceTitles:           arrTitles,
+		EpisodeMap:             episodeMap,
 		SourceSize:             sourceSize,
 		CandidateSize:          candidateSize,
 		TolerancePercent:       tolerancePercent,
@@ -8553,47 +8622,45 @@ func (s *Service) searchResultUsable(source, candidate namedRelease, sourceSize,
 
 // indexersWithoutUsableResults returns the requested indexer IDs whose primary
 // pass produced no USABLE candidate. Unlike indexersWithoutResults (which counts
-// any raw hit), an indexer whose primary-spelling hits were all rejected by
-// release/size filtering is still re-queried with the alternate connector
-// spelling, so a connector-variant candidate it carries under the opposite
-// spelling can surface instead of being permanently suppressed.
-func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
+// any raw hit), an indexer whose hits were all rejected by release/size
+// filtering is still re-queried by the targeted retry passes, so a candidate
+// it carries under another title, spelling, or ID can surface instead of
+// being permanently suppressed.
+func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) []int {
 	usable := make([]jackett.SearchResult, 0, len(results))
 	for _, r := range results {
 		candidate := s.parseReleaseName(r.Title)
-		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: r.Title}, sourceSize, r.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes) {
 			usable = append(usable, r)
 		}
 	}
 	return indexersWithoutResults(requestedIDs, usable)
 }
 
-func (s *Service) shouldRunTitleFallback(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes, rescueTitleMismatches bool) bool {
-	if len(results) == 0 {
-		return true
-	}
-	if !rescueTitleMismatches {
-		return false
-	}
-	hasRescue := false
+// hasUsableSearchResult reports whether any result would survive release and
+// size filtering. The retry ladder gates on this rather than on the raw result
+// count: hits that were all rejected leave the search just as empty as no hits
+// at all, so the retry that could still find the match has to run.
+func (s *Service) hasUsableSearchResult(results []jackett.SearchResult, source namedRelease, sourceSize int64, arrTitles []string, episodeMap *models.EpisodeMap, tolerancePercent float64, findIndividualEpisodes bool) bool {
 	for _, result := range results {
 		candidate := s.parseReleaseName(result.Title)
-		decision := s.classifySearchCandidate(searchCandidateInput{
-			Source:                 source,
-			Candidate:              namedRelease{release: candidate, rawName: result.Title},
-			SourceTitles:           arrTitles,
-			SourceSize:             sourceSize,
-			CandidateSize:          result.Size,
-			TolerancePercent:       tolerancePercent,
-			FindIndividualEpisodes: findIndividualEpisodes,
-			RescueTitleMismatches:  true,
-		})
-		if decision.Accepted && decision.Class != searchCandidateClassTitleRescue {
-			return false
+		if s.searchResultUsable(source, namedRelease{release: candidate, rawName: result.Title}, sourceSize, result.Size, arrTitles, episodeMap, tolerancePercent, findIndividualEpisodes) {
+			return true
 		}
-		hasRescue = hasRescue || decision.Class == searchCandidateClassTitleRescue
 	}
-	return hasRescue
+	return false
+}
+
+// clearSearchRequestIDs strips the external-ID parameters from a retry
+// request copied off an ID-driven primary, so its title query reaches every
+// indexer instead of being dropped for the ID-capable ones.
+func clearSearchRequestIDs(req *jackett.TorznabSearchRequest) {
+	req.IMDbID = ""
+	req.TVDbID = ""
+	req.TMDbID = 0
+	req.TVMazeID = 0
+	req.EpisodeMap = nil
+	req.OmitQueryForIDs = false
 }
 
 // searchOnce runs a single Torznab search to completion and returns its response.
@@ -8875,10 +8942,20 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	filteringResolved := false
 	cacheKey := asyncFilteringCacheKey(instanceID, hash)
 
-	// Check for cached content-filtered results first
+	// Check for cached content-filtered results first; a cached run only counts
+	// when it was computed for the current content type (#2313).
 	if s.asyncFilteringCache != nil {
 		if cached, found := s.asyncFilteringCache.Get(cacheKey); found {
 			cachedSnapshot := cached.Clone()
+			if cachedSnapshot != nil && cachedSnapshot.contentType != contentInfo.ContentType {
+				log.Debug().
+					Str("torrentHash", hash).
+					Int("instanceID", instanceID).
+					Str("cachedContentType", cachedSnapshot.contentType).
+					Str("currentContentType", contentInfo.ContentType).
+					Msg("[CROSSSEED-SEARCH] Ignoring cached filtering state for different content type")
+				cachedSnapshot = nil
+			}
 			if cachedSnapshot != nil {
 				log.Debug().
 					Str("torrentHash", hash).
@@ -8931,14 +9008,18 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Int("instanceID", instanceID).
 			Msg("[CROSSSEED-SEARCH] Performing new filtering")
 
-		asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, instanceID, hash, opts.IndexerIDs, true)
+		asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, true)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to perform async indexer filtering for torrent search, using original list")
 			filteredIndexerIDs = opts.IndexerIDs
 		} else {
 			// Use capability-filtered indexers immediately for search
 			if stateSnapshot := asyncAnalysis.FilteringState.Clone(); stateSnapshot != nil && stateSnapshot.CapabilitiesCompleted {
-				filteredIndexerIDs = append([]int(nil), stateSnapshot.CapabilityIndexers...)
+				if stateSnapshot.ContentCompleted {
+					filteredIndexerIDs = append([]int(nil), stateSnapshot.FilteredIndexers...)
+				} else {
+					filteredIndexerIDs = append([]int(nil), stateSnapshot.CapabilityIndexers...)
+				}
 				sourceInfo = *asyncAnalysis.TorrentInfo
 
 				log.Debug().
@@ -9029,12 +9110,31 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
 	var arrTitles []string
+	var episodeMap *models.EpisodeMap
 	arrResult, queryDegraded := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, contentInfo.ContentType)
 	if arrResult != nil {
 		if arrResult.IDs != nil && !arrResult.IDs.IsEmpty() {
 			externalIDs = arrResult.IDs
 		}
 		arrTitles = arrResult.Titles
+		episodeMap = arrResult.EpisodeMap
+	}
+
+	// When the arr path yields no ID, fall back to the external ID embedded in
+	// the torrent's MKV metadata (cached per torrent in media_id_cache) and run
+	// the primary search ID-first through the same mixed-mode path as arr IDs.
+	// The tag is trusted blind: candidates are verified against the source name
+	// and size, so a wrong muxer tag cannot produce a wrong match, and the
+	// title rescue pass below re-covers any indexer a wrong tag leaves empty.
+	tagSourcedIDs := false
+	if externalIDs == nil {
+		if mediaIDs := s.lookupMediaFileIDs(ctx, instance, sourceTorrent, sourceFiles, contentInfo.ContentType); mediaIDs != nil {
+			externalIDs = mediaIDs
+			tagSourcedIDs = true
+			// The primary search now runs at ID quality, so the "searched by
+			// title only" degradation notice no longer holds.
+			queryDegraded = ""
+		}
 	}
 
 	searchReq := &jackett.TorznabSearchRequest{
@@ -9046,7 +9146,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		ReturnAllResults: true,
 	}
 
-	// Apply IDs from ARR lookup and set OmitQueryForIDs flag
+	// Apply the arr- or tag-sourced IDs and set OmitQueryForIDs flag
 	if externalIDs != nil {
 		if externalIDs.IMDbID != "" {
 			searchReq.IMDbID = externalIDs.IMDbID
@@ -9061,6 +9161,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			searchReq.TVMazeID = externalIDs.TVMazeID
 		}
 		searchReq.OmitQueryForIDs = true // Cross-seed: omit q when IDs present
+		// An absolute-numbered source has an episode but no season, and Torznab
+		// ep counts within a season. The map gives ID-capable indexers the
+		// seasoned pair; text indexers keep the title-only query. Keyed on the
+		// parsed release, not the safe-query pointers, so a caller-supplied
+		// query still carries the map.
+		if searchRelease.Series == 0 && searchRelease.Episode > 0 && episodeMap != nil && episodeMap.Absolute == searchRelease.Episode {
+			searchReq.EpisodeMap = episodeMap
+		}
 	}
 
 	if seasonPtr != nil {
@@ -9186,6 +9294,11 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
+	// Capture per-indexer failures for the decision trace. The callback is
+	// copied into every retry pass request, so later passes report here too.
+	traceIndexerErrs := &searchIndexerErrors{}
+	searchReq.OnComplete = traceIndexerErrs.record
+
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
 		onAllCompleteOnce.Do(func() {
 			if err != nil {
@@ -9230,12 +9343,13 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	yearlessRetryRan := false
 
-	// Retry without year when the first pass returned no normal match. A title
-	// rescue does not stop this safer query from running. The year is
-	// the narrowest primary-query constraint, so it is the first fallback to
-	// drop. Together with the alternate-title retry below this caps the
-	// zero-result fallback chain at two extra queries per search.
-	if s.shouldRunTitleFallback(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes, opts.RescueTitleMismatches) && searchReq.Year > 0 {
+	// Retry without year when the first pass turned up nothing usable, whether
+	// it returned no hits at all or only hits that release and size filtering
+	// rejected. The year is the narrowest primary-query constraint, so it is
+	// the first fallback to drop. This pass stays gated on the whole search:
+	// dropping the year fires on nearly every movie and has low per-indexer
+	// value, unlike the targeted passes below.
+	if !s.hasUsableSearchResult(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes) && searchReq.Year > 0 {
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Int("year", searchReq.Year).
@@ -9264,39 +9378,91 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	// Alternate-title retry: a tracker can index the same content under a
-	// different title (localized, romanized, or an *arr scene alias). When the
-	// primary query (and the yearless retry, when it ran) returned no normal match,
-	// re-query once with the first distinct alternate title. A failed extra
-	// pass is not fatal: the primary search already completed with zero
-	// results, so log and continue. Skipped for ID-based searches, which do
-	// not rely on title text.
-	if s.shouldRunTitleFallback(searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes, opts.RescueTitleMismatches) && !searchReq.OmitQueryForIDs {
-		if altTitle, ok := AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name); ok {
+	// Title rescue for the tag-sourced ID primary: indexers that searched by
+	// ID never saw the title query, so a wrong or unrecognized muxer tag would
+	// end their search with nothing and no rescue. Re-query only those still
+	// holding nothing usable with the plain title. Indexers without ID caps
+	// already searched by title in the primary pass and are covered by the
+	// passes below.
+	if tagSourcedIDs {
+		idCapIndexerIDs := s.jackettService.IndexerIDsWithIDSearchCaps(waitCtx, searchReq)
+		rescueIndexerIDs := intersectInts(idCapIndexerIDs, s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes))
+		if len(rescueIndexerIDs) > 0 {
 			log.Debug().
 				Str("torrentName", sourceTorrent.Name).
 				Str("query", searchReq.Query).
-				Str("altTitleQuery", altTitle).
-				Msg("[CROSSSEED-SEARCH] Zero results for primary title; retrying with alternate title")
+				Ints("rescueIndexerIDs", rescueIndexerIDs).
+				Msg("[CROSSSEED-SEARCH] Nothing usable from tag-sourced ID query; retrying with title")
 
-			altTitleReq := *searchReq
-			altTitleReq.Query = altTitle
-			altTitleReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
-			// Internal continuation of the primary search: skip history recording
-			// like the alternate connector-spelling pass below.
-			altTitleReq.SkipHistory = true
-			if altResp, altErr := s.searchOnce(waitCtx, &altTitleReq); altErr != nil {
+			rescueReq := *searchReq
+			clearSearchRequestIDs(&rescueReq)
+			rescueReq.IndexerIDs = rescueIndexerIDs
+			rescueReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
+			// Internal continuation of the primary search: skip history
+			// recording like the alternate-title pass below.
+			rescueReq.SkipHistory = true
+			if rescueResp, rescueErr := s.searchOnce(waitCtx, &rescueReq); rescueErr != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+				}
 				log.Debug().
-					Err(altErr).
+					Err(rescueErr).
+					Str("torrentName", sourceTorrent.Name).
+					Ints("rescueIndexerIDs", rescueIndexerIDs).
+					Msg("[CROSSSEED-SEARCH] Title rescue after ID primary failed; continuing with primary results")
+				coveredIndexerIDs = subtractInts(coveredIndexerIDs, rescueIndexerIDs)
+			} else if rescueResp != nil {
+				coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, rescueIndexerIDs, rescueResp.CoveredIndexerIDs)
+				if len(rescueResp.Results) > 0 {
+					searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, rescueResp)
+				}
+			}
+		}
+	}
+
+	// Alternate-title retry: a tracker can index the same content under a
+	// different title (localized, romanized, or an *arr scene alias). Re-query
+	// the indexers that still hold nothing usable with the first distinct
+	// alternate title; an indexer that already produced a usable candidate is
+	// left alone, because cross-seed success is per tracker, not per search.
+	// Skipped for arr-ID searches, which do not rely on title text; a
+	// tag-sourced ID primary keeps its title passes because the IDs came from
+	// the file, not a resolver, and the retry request drops them.
+	if !searchReq.OmitQueryForIDs || tagSourcedIDs {
+		if altTitle, ok := AlternateTitleQuery(searchReq.Query, searchRelease, arrTitles, sourceTorrent.Name); ok {
+			altTitleIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
+			if len(altTitleIndexerIDs) > 0 {
+				log.Debug().
+					Str("torrentName", sourceTorrent.Name).
+					Str("query", searchReq.Query).
 					Str("altTitleQuery", altTitle).
-					Msg("[CROSSSEED-SEARCH] Alternate-title retry failed; continuing with primary results")
-				coveredIndexerIDs = nil
-			} else if altResp != nil {
-				primaryPartial := searchResp.Partial
-				searchResults = append(searchResults, altResp.Results...)
-				searchResp = altResp
-				searchResp.Partial = primaryPartial || altResp.Partial
-				coveredIndexerIDs = intersectInts(coveredIndexerIDs, altResp.CoveredIndexerIDs)
+					Ints("altTitleIndexerIDs", altTitleIndexerIDs).
+					Msg("[CROSSSEED-SEARCH] Nothing usable for primary title; retrying with alternate title")
+
+				altTitleReq := *searchReq
+				clearSearchRequestIDs(&altTitleReq)
+				altTitleReq.Query = altTitle
+				altTitleReq.IndexerIDs = altTitleIndexerIDs
+				altTitleReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan)
+				// Internal continuation of the primary search: skip history recording
+				// like the alternate connector-spelling pass below.
+				altTitleReq.SkipHistory = true
+				if altResp, altErr := s.searchOnce(waitCtx, &altTitleReq); altErr != nil {
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+					}
+					log.Debug().
+						Err(altErr).
+						Str("altTitleQuery", altTitle).
+						Ints("altTitleIndexerIDs", altTitleIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] Alternate-title retry failed; continuing with primary results")
+					coveredIndexerIDs = subtractInts(coveredIndexerIDs, altTitleIndexerIDs)
+				} else if altResp != nil {
+					coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, altTitleIndexerIDs, altResp.CoveredIndexerIDs)
+					if len(altResp.Results) > 0 {
+						searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
+					}
+				}
 			}
 		}
 	}
@@ -9306,12 +9472,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// q only matches one spelling, so re-query the indexers that returned nothing
 	// for the primary spelling using the alternate connector and merge the extra
 	// candidates (the match loop dedupes by GUID/download URL). Skipped for
-	// ID-based searches, which do not rely on title text.
-	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
+	// arr-ID searches, which do not rely on title text; a tag-sourced ID
+	// primary keeps its title passes (see the alternate-title pass above).
+	if !opts.DisableTorznab && (!searchReq.OmitQueryForIDs || tagSourcedIDs) {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
-			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
+			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchSource, searchSourceSize(sourceTorrent), arrTitles, episodeMap, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altIndexerIDs) > 0 {
 				altReq := *searchReq
+				clearSearchRequestIDs(&altReq)
 				altReq.Query = altQuery
 				altReq.IndexerIDs = altIndexerIDs
 				altReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan) // year actually searched (0 if yearless retry ran)
@@ -9324,6 +9492,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				// passes reuse the Torznab result cache instead of re-hitting indexers.
 				altReq.SkipHistory = true
 				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(ctxErr)
+					}
 					log.Debug().
 						Err(altErr).
 						Str("altQuery", altQuery).
@@ -9331,9 +9502,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass failed; continuing with primary results")
 					coveredIndexerIDs = subtractInts(coveredIndexerIDs, altIndexerIDs)
 				} else if altResp != nil {
-					// This pass only targeted altIndexerIDs; un-cover the targeted
-					// indexers that missed it, leave the rest untouched.
-					coveredIndexerIDs = subtractInts(coveredIndexerIDs, subtractInts(altIndexerIDs, altResp.CoveredIndexerIDs))
+					coveredIndexerIDs = uncoverMissed(coveredIndexerIDs, altIndexerIDs, altResp.CoveredIndexerIDs)
 					if len(altResp.Results) > 0 {
 						log.Debug().
 							Str("query", searchReq.Query).
@@ -9346,6 +9515,13 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				}
 			}
 		}
+	}
+
+	// Count raw results before the late content filter drops any; the breakdown subtracts LateContentFiltered from this total.
+	totalResults := len(searchResults)
+	traceCandidateCounts := make(map[int]int)
+	for _, res := range searchResults {
+		traceCandidateCounts[res.IndexerID]++
 	}
 
 	searchResults, lateFilterSnapshot, lateExcludedCount = s.filterSearchResultsByLateContentFilter(instanceID, sourceTorrent, searchResults)
@@ -9366,6 +9542,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	exactSizeHardRejected := 0
 
 	sourceSizeForSearch := searchSourceSize(sourceTorrent)
+	traceRejections := &searchTraceRejections{}
 	for _, res := range searchResults {
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		// Search has only the source torrent's full size and Torznab's advertised
@@ -9376,6 +9553,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Source:                 searchSource,
 			Candidate:              namedRelease{release: candidateRelease, rawName: res.Title},
 			SourceTitles:           arrTitles,
+			EpisodeMap:             episodeMap,
 			SourceSize:             sourceSizeForSearch,
 			CandidateSize:          res.Size,
 			TolerancePercent:       tolerancePercent,
@@ -9388,11 +9566,15 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		if !decision.Accepted {
 			if decision.SizeRejected {
 				sizeFilteredCount++
+				traceRejections.add(res, "size mismatch", sizeFilteredCount)
 			} else {
 				releaseFilteredCount++
 				reason := decision.RejectReason
 				if reason == "" {
 					reason = decision.StrictMismatchReason
+				}
+				if reason == "" {
+					reason = "release mismatch"
 				}
 				recordReleaseRejection(
 					releaseFilterReasons,
@@ -9404,6 +9586,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					releaseFilterDebugInfoFrom(candidateRelease),
 					"[CROSSSEED-SEARCH] Candidate rejected by search classifier",
 				)
+				traceRejections.add(res, reason, releaseFilterReasons[reason])
 			}
 			if decision.StrictMismatchReason != "" && decision.SizeEvidence == searchSizeEvidenceExact {
 				exactSizeHardRejected++
@@ -9457,7 +9640,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	scored = deduplicateScoredTorrentSearchResults(scored)
 
 	// Log filtering statistics
-	totalResults := len(searchResults)
 	matchedResults := len(scored)
 	log.Debug().
 		Str("torrentName", sourceTorrent.Name).
@@ -9480,6 +9662,29 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Release filtering rejection summary")
 	}
 
+	buildDecisionTrace := func(finalMatches, duplicateFiltered int) *SearchDecisionTrace {
+		rejectionCounts := maps.Clone(releaseFilterReasons)
+		if sizeFilteredCount > 0 {
+			if rejectionCounts == nil {
+				rejectionCounts = make(map[string]int, 1)
+			}
+			rejectionCounts["size mismatch"] = sizeFilteredCount
+		}
+		return &SearchDecisionTrace{
+			SourceSize:          sourceSizeForSearch,
+			TolerancePercent:    tolerancePercent,
+			TotalResults:        totalResults,
+			SizeFiltered:        sizeFilteredCount,
+			ReleaseFiltered:     releaseFilteredCount,
+			LateContentFiltered: lateExcludedCount,
+			DuplicateFiltered:   duplicateFiltered,
+			FinalMatches:        finalMatches,
+			RejectionCounts:     rejectionCounts,
+			RejectedCandidates:  traceRejections.candidates,
+			Indexers:            buildSearchIndexerOutcomes(searchResp.RequestedIndexerIDs, coveredIndexerIDs, traceIndexerErrs.snapshot(), sourceInfo.ExcludedIndexers, traceCandidateCounts),
+		}
+	}
+
 	if len(scored) == 0 {
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
@@ -9491,6 +9696,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			JobID:             searchResp.JobID,
 			CoveredIndexerIDs: coveredIndexerIDs,
 			QueryDegraded:     queryDegraded,
+			DecisionTrace:     buildDecisionTrace(0, 0),
 		}, gazelleLookupAttempted, remoteRequestsMade, nil
 	}
 
@@ -9524,6 +9730,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		JobID:             searchResp.JobID,
 		CoveredIndexerIDs: coveredIndexerIDs,
 		QueryDegraded:     queryDegraded,
+		DecisionTrace:     buildDecisionTrace(len(results), duplicateFilteredCount),
 	}, gazelleLookupAttempted, remoteRequestsMade, nil
 }
 
@@ -10584,14 +10791,7 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	}
 	s.searchMu.Unlock()
 
-	if updated, err := s.updateSearchRunWithRetry(context.Background(), state.run); err == nil {
-		s.searchMu.Lock()
-		if s.searchState == state {
-			state.run = updated
-			s.searchState.run = updated
-		}
-		s.searchMu.Unlock()
-	} else {
+	if err := s.updateSearchRunWithRetry(context.Background(), state.run); err != nil {
 		log.Warn().Err(err).Msg("failed to persist search run state")
 	}
 
@@ -10702,49 +10902,15 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	// Group torrents by matching content
 	// We'll track the preferred torrent (folder-aware, then oldest) for each unique content group
 	type contentGroup struct {
-		representativeIdx int // index into parsed slice
-		addedOn           int64
+		representativeIdx int      // index into parsed slice
 		duplicates        []string // Track duplicate names for logging
-		hasRootFolder     bool
-		rootFolderKnown   bool
+		members           []int    // parsed indices in encounter order; members[0] seeds the fold
 	}
 
 	groups := make([]*contentGroup, 0)
 	groupMap := make(map[string]int) // hash to group index
 	hasRootCache := make(map[string]bool)
 	releasesMatchCache := make(map[string]bool) // cache releasesMatch results
-
-	// Pre-populate hasRootCache for all torrents to avoid individual fetches
-	torrentHashes := make([]string, 0, len(parsed))
-	for _, item := range parsed {
-		torrentHashes = append(torrentHashes, item.torrent.Hash)
-	}
-
-	if len(torrentHashes) > 0 && s.syncManager != nil {
-		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, torrentHashes)
-		if err == nil {
-			for _, item := range parsed {
-				normHash := normalizeHash(item.torrent.Hash)
-				if files, exists := filesMap[normHash]; exists && len(files) > 0 {
-					hasRoot := detectCommonRoot(files) != ""
-					hasRootCache[normHash] = hasRoot
-				} else {
-					hasRootCache[normHash] = false
-				}
-			}
-		} else {
-			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
-			// Pre-populate cache with false for all torrents
-			for _, item := range parsed {
-				hasRootCache[normalizeHash(item.torrent.Hash)] = false
-			}
-		}
-	} else {
-		// No sync manager, pre-populate cache with false
-		for _, item := range parsed {
-			hasRootCache[normalizeHash(item.torrent.Hash)] = false
-		}
-	}
 
 	// Helper to get cache key for releasesMatch
 	getMatchCacheKey := func(idx1, idx2 int) string {
@@ -10754,6 +10920,9 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		return fmt.Sprintf("%d:%d", idx2, idx1)
 	}
 
+	// First pass: assign every torrent to a content group. Group membership
+	// depends only on the parsed release, never on the root folder, so this
+	// runs before any file list is fetched.
 	for i := range parsed {
 		current := &parsed[i]
 
@@ -10784,48 +10953,61 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 		}
 
 		if foundGroup == -1 {
-			// Create new group with this torrent as the first member
-			group := &contentGroup{
+			groups = append(groups, &contentGroup{
 				representativeIdx: i,
-				addedOn:           current.torrent.AddedOn,
-				duplicates:        []string{},
-			}
-			groups = append(groups, group)
+				members:           []int{i},
+			})
 			groupMap[current.torrent.Hash] = len(groups) - 1
 			continue
 		}
 
-		group := groups[foundGroup]
-		currentHasRoot := s.torrentHasTopLevelFolderCached(current.torrent.Hash, hasRootCache)
-		groupHasRoot := group.hasRootFolder
-		if !group.rootFolderKnown {
-			rep := &parsed[group.representativeIdx]
-			groupHasRoot = s.torrentHasTopLevelFolderCached(rep.torrent.Hash, hasRootCache)
-			group.hasRootFolder = groupHasRoot
-			group.rootFolderKnown = true
-		}
+		groups[foundGroup].members = append(groups[foundGroup].members, i)
+		groupMap[current.torrent.Hash] = foundGroup
+	}
 
-		promoteCurrent := false
-		switch {
-		case currentHasRoot && !groupHasRoot:
-			promoteCurrent = true
-		case currentHasRoot == groupHasRoot:
-			if current.torrent.AddedOn < group.addedOn {
-				promoteCurrent = true
+	// Only a group with more than one member has a representative to choose, so
+	// only those torrents need a root-folder answer. A library of unique content
+	// costs no file requests here, instead of one per torrent.
+	var contested []string
+	for _, group := range groups {
+		if len(group.members) < 2 {
+			continue
+		}
+		for _, idx := range group.members {
+			contested = append(contested, parsed[idx].torrent.Hash)
+		}
+	}
+
+	if len(contested) > 0 && s.syncManager != nil {
+		filesMap, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, contested)
+		if err != nil {
+			// Partial results still improve the choice, so keep whatever came back.
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to batch fetch torrent files for deduplication")
+		}
+		for _, hash := range contested {
+			normHash := normalizeHash(hash)
+			hasRootCache[normHash] = detectCommonRoot(filesMap[normHash]) != ""
+		}
+	}
+
+	// Second pass: fold each contested group down to one representative. A top-level
+	// folder wins first, and the oldest torrent breaks the tie.
+	for _, group := range groups {
+		for _, idx := range group.members[1:] {
+			rep, current := &parsed[group.representativeIdx], &parsed[idx]
+			repHasRoot := hasRootCache[normalizeHash(rep.torrent.Hash)]
+			currentHasRoot := hasRootCache[normalizeHash(current.torrent.Hash)]
+
+			promoteCurrent := (currentHasRoot && !repHasRoot) ||
+				(currentHasRoot == repHasRoot && current.torrent.AddedOn < rep.torrent.AddedOn)
+
+			if promoteCurrent {
+				group.duplicates = append(group.duplicates, rep.torrent.Hash)
+				group.representativeIdx = idx
+			} else {
+				group.duplicates = append(group.duplicates, current.torrent.Hash)
 			}
 		}
-
-		if promoteCurrent {
-			rep := &parsed[group.representativeIdx]
-			group.duplicates = append(group.duplicates, rep.torrent.Hash)
-			group.representativeIdx = i
-			group.addedOn = current.torrent.AddedOn
-			group.hasRootFolder = currentHasRoot
-			group.rootFolderKnown = true
-		} else {
-			group.duplicates = append(group.duplicates, current.torrent.Hash)
-		}
-		groupMap[current.torrent.Hash] = foundGroup
 	}
 
 	// Build deduplicated list from group representatives
@@ -10842,7 +11024,7 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 				Str("representativeHash", rep.torrent.Hash).
 				// A top-level folder wins first, and the oldest torrent breaks
 				// the tie. Both fields are here so the entry explains its choice.
-				Bool("representativeHasRootFolder", group.hasRootFolder).
+				Bool("representativeHasRootFolder", hasRootCache[normalizeHash(rep.torrent.Hash)]).
 				Int64("addedOn", rep.torrent.AddedOn).
 				Int("duplicateCount", len(group.duplicates)).
 				Strs("duplicateHashes", group.duplicates).
@@ -10875,12 +11057,6 @@ func (s *Service) deduplicateSourceTorrents(ctx context.Context, instanceID int,
 	}
 
 	return deduplicated, duplicateMap
-}
-
-// torrentHasTopLevelFolderCached checks if a torrent has a top-level folder from pre-populated cache
-func (s *Service) torrentHasTopLevelFolderCached(hash string, cache map[string]bool) bool {
-	normHash := normalizeHash(hash)
-	return cache[normHash] // Cache is pre-populated, so this should always exist
 }
 
 func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *searchRunState, representativeHash string, processedAt time.Time, coveredIndexerIDs []int, gazelleStamped bool) {
@@ -10918,6 +11094,10 @@ func (s *Service) propagateDuplicateSearchHistory(ctx context.Context, state *se
 }
 
 func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState) error {
+	// A big instance spends a while here, so the run does not look hung.
+	queueStart := time.Now()
+	log.Info().Int("instanceID", state.opts.InstanceID).Msg("[CROSSSEED-SEARCH] Building search queue")
+
 	filterOpts := qbt.TorrentFilterOptions{Filter: qbt.TorrentFilterAll}
 
 	// Apply category filter if only one category is specified
@@ -11030,6 +11210,13 @@ func (s *Service) refreshSearchQueue(ctx context.Context, state *searchRunState)
 	state.run.TotalTorrents = totalEligible
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
+
+	log.Info().
+		Int("instanceID", state.opts.InstanceID).
+		Int("queued", len(state.queue)).
+		Int("due", totalEligible).
+		Dur("took", time.Since(queueStart)).
+		Msg("[CROSSSEED-SEARCH] Search queue ready")
 
 	return nil
 }
@@ -11225,9 +11412,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	if !state.opts.DisableTorznab && state.resolvedTorznabIndexerErr != nil {
 		state.lastError = state.resolvedTorznabIndexerErr
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11237,7 +11421,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      fmt.Sprintf("search failed: %v", state.resolvedTorznabIndexerErr),
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, true)
 		return false, state.resolvedTorznabIndexerErr
 	}
 
@@ -11245,11 +11429,8 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	skipReasonForNoIndexers := ""
 	if !searchDisableTorznab && len(requestedIndexerIDs) > 0 {
 		// Use async filtering for better performance - capability filtering returns immediately.
-		asyncAnalysis, err := s.filterIndexerIDsForTorrentAsync(ctx, state.opts.InstanceID, torrent.Hash, requestedIndexerIDs, true)
+		asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, state.opts.InstanceID, torrent.Hash, true)
 		if err != nil {
-			s.searchMu.Lock()
-			state.run.TorrentsFailed++
-			s.searchMu.Unlock()
 			s.appendSearchResult(state, models.CrossSeedSearchResult{
 				TorrentHash:  torrent.Hash,
 				TorrentName:  torrent.Name,
@@ -11259,7 +11440,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				Message:      fmt.Sprintf("analyze torrent: %v", err),
 				ProcessedAt:  processedAt,
 			})
-			s.persistSearchRun(state)
+			s.finishSearchCandidate(state, 0, true)
 			return false, err
 		}
 
@@ -11339,9 +11520,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		if skipReasonForNoIndexers == "" {
 			skipReasonForNoIndexers = "no eligible indexers"
 		}
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11351,7 +11529,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      skipReasonForNoIndexers,
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, false)
 		return false, nil
 	}
 
@@ -11400,9 +11578,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			if timeoutDisplay <= 0 {
 				timeoutDisplay = timeouts.DefaultSearchTimeout
 			}
-			s.searchMu.Lock()
-			state.run.TorrentsSkipped++
-			s.searchMu.Unlock()
 			s.appendSearchResult(state, models.CrossSeedSearchResult{
 				TorrentHash:  torrent.Hash,
 				TorrentName:  torrent.Name,
@@ -11412,12 +11587,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
 				ProcessedAt:  processedAt,
 			})
-			s.persistSearchRun(state)
+			s.finishSearchCandidate(state, 0, false)
 			return delayAfterCandidate, nil
 		}
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11427,14 +11599,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      fmt.Sprintf("search failed: %v", err),
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, true)
 		return delayAfterCandidate, err
 	}
 
 	if len(searchResp.Results) == 0 {
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
 		s.appendSearchResult(state, models.CrossSeedSearchResult{
 			TorrentHash:  torrent.Hash,
 			TorrentName:  torrent.Name,
@@ -11444,7 +11613,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			Message:      "no matches returned",
 			ProcessedAt:  processedAt,
 		})
-		s.persistSearchRun(state)
+		s.finishSearchCandidate(state, 0, false)
 		return delayAfterCandidate, nil
 	}
 
@@ -11460,7 +11629,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	successCount := 0
 	failedAttempt := false
-	nonSuccessAttempt := false
 	var classifiedFailures []string
 	var attemptErrors []string
 
@@ -11472,26 +11640,25 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	attemptMatch := func(match TorrentSearchResult, normalCandidate bool) {
 		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
 		if attemptResult != nil {
-			if attemptResult.Status == models.CrossSeedSearchResultStatusAdded {
+			switch attemptResult.Status {
+			case models.CrossSeedSearchResultStatusAdded:
 				s.searchMu.Lock()
-				state.run.TorrentsAdded++
+				state.run.CrossSeedsAdded++
 				s.searchMu.Unlock()
 				successCount++
 				indexerAdds[match.IndexerID]++
 				if normalCandidate {
 					addTorrentSearchResultHashes(normalAddedHashes, match)
 				}
-			} else {
-				nonSuccessAttempt = true
-				if attemptResult.Status == models.CrossSeedSearchResultStatusFailed {
-					failedAttempt = true
-					message := strings.TrimSpace(attemptResult.Message)
-					if message == "" {
-						message = "classified apply failure"
-					}
-					classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
-					indexerFails[match.IndexerID]++
+			case models.CrossSeedSearchResultStatusFailed:
+				failedAttempt = true
+				message := strings.TrimSpace(attemptResult.Message)
+				if message == "" {
+					message = "classified apply failure"
 				}
+				classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
+				indexerFails[match.IndexerID]++
+			case models.CrossSeedSearchResultStatusSkipped:
 			}
 			s.appendSearchResult(state, *attemptResult)
 		}
@@ -11518,39 +11685,33 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	// Report outcomes to jackett service for search history
 	s.reportIndexerOutcomes(searchResp.JobID, indexerAdds, indexerFails)
 
-	if successCount > 0 {
-		s.persistSearchRun(state)
+	failed := len(attemptErrors) > 0 || failedAttempt
+	s.finishSearchCandidate(state, successCount, failed)
+	if successCount > 0 || !failed {
 		return delayAfterCandidate, nil
 	}
-
-	if len(attemptErrors) > 0 || failedAttempt {
-		s.searchMu.Lock()
-		state.run.TorrentsFailed++
-		s.searchMu.Unlock()
-		s.persistSearchRun(state)
-		if len(attemptErrors) > 0 {
-			return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
-		}
-		if len(classifiedFailures) > 0 {
-			return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", classifiedFailures[0])
-		}
-		return delayAfterCandidate, errors.New("cross-seed matches failed: classified apply failures")
+	if len(attemptErrors) > 0 {
+		return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
 	}
+	return delayAfterCandidate, fmt.Errorf("cross-seed matches failed: %s", classifiedFailures[0])
+}
 
-	if nonSuccessAttempt {
-		s.searchMu.Lock()
-		state.run.TorrentsSkipped++
-		s.searchMu.Unlock()
-		s.persistSearchRun(state)
-		return delayAfterCandidate, nil
-	}
-
-	// Fallback: treat as skipped if no attempts recorded for some reason
+// finishSearchCandidate puts one completed search candidate into exactly one
+// bucket, so torrentsWithCrossSeeds + torrentsFailed + torrentsSkipped stays
+// equal to processed. A candidate with one add and later apply failures counts
+// as added; the failures stay visible in run.Results.
+func (s *Service) finishSearchCandidate(state *searchRunState, crossSeedsAdded int, failed bool) {
 	s.searchMu.Lock()
-	state.run.TorrentsSkipped++
+	switch {
+	case crossSeedsAdded > 0:
+		state.run.TorrentsWithCrossSeeds++
+	case failed:
+		state.run.TorrentsFailed++
+	default:
+		state.run.TorrentsSkipped++
+	}
 	s.searchMu.Unlock()
 	s.persistSearchRun(state)
-	return delayAfterCandidate, nil
 }
 
 // reportIndexerOutcomes reports cross-seed outcomes to the jackett service for search history tracking.
@@ -11822,7 +11983,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 
 	if resp.Success {
 		result.Status = models.CrossSeedSearchResultStatusAdded
-		result.Message = "added via " + match.Indexer
+		result.Message = extractSuccessMessage(resp.Results, match.Indexer)
 		if resp.titleRescueUsed {
 			result.Message += "; verification pending"
 		}
@@ -11850,6 +12011,17 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	result.Status = classifyFailedCrossSeedSearchResult(resp.Results)
 	return result, nil
+}
+
+// extractSuccessMessage returns pooled-completion detail only for the result
+// that owns it. Ordinary successful searches retain the generic indexer text.
+func extractSuccessMessage(results []InstanceCrossSeedResult, indexer string) string {
+	for _, result := range results {
+		if result.Success && result.partialPoolPending && strings.TrimSpace(result.Message) != "" {
+			return result.Message
+		}
+	}
+	return "added via " + indexer
 }
 
 // classifyFailedCrossSeedSearchResult separates harmless no-add outcomes from
@@ -11881,81 +12053,6 @@ func extractFailureMessage(results []InstanceCrossSeedResult, indexer string) st
 		return status
 	}
 	return fallback
-}
-
-// filterIndexerIDsForTorrentAsync performs indexer filtering with async content filtering support.
-// This allows immediate return of capability-filtered results while content filtering continues in background.
-func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceID int, hash string, requested []int, enableContentFiltering bool) (*AsyncTorrentAnalysis, error) {
-	cacheKey := asyncFilteringCacheKey(instanceID, hash)
-
-	// Check if we already have completed content filtering to avoid overwriting
-	if s.asyncFilteringCache != nil {
-		if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
-			existingSnapshot := existing.Clone()
-			if existingSnapshot != nil && existingSnapshot.ContentCompleted {
-				log.Debug().
-					Str("torrentHash", hash).
-					Int("instanceID", instanceID).
-					Str("cacheKey", cacheKey).
-					Bool("existingContentCompleted", existingSnapshot.ContentCompleted).
-					Int("existingFilteredCount", len(existingSnapshot.FilteredIndexers)).
-					Msg("[crossseed-async] Reusing completed content-filtering cache entry")
-
-				var torrentInfo *TorrentInfo
-				asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false)
-				if err != nil {
-					log.Warn().
-						Err(err).
-						Str("torrentHash", hash).
-						Int("instanceID", instanceID).
-						Msg("[CROSSSEED-ASYNC] Failed to rebuild torrent info from cache, falling back to minimal info")
-					torrentInfo = &TorrentInfo{
-						InstanceID: instanceID,
-						Hash:       hash,
-					}
-				} else if asyncAnalysis != nil && asyncAnalysis.TorrentInfo != nil {
-					torrentInfo = asyncAnalysis.TorrentInfo
-				}
-
-				if torrentInfo != nil {
-					// Ensure runtime fields reflect the cached completed state
-					torrentInfo.AvailableIndexers = append([]int(nil), existingSnapshot.CapabilityIndexers...)
-					torrentInfo.FilteredIndexers = append([]int(nil), existingSnapshot.FilteredIndexers...)
-					if len(existingSnapshot.ExcludedIndexers) > 0 {
-						torrentInfo.ExcludedIndexers = make(map[int]string, len(existingSnapshot.ExcludedIndexers))
-						maps.Copy(torrentInfo.ExcludedIndexers, existingSnapshot.ExcludedIndexers)
-					} else {
-						torrentInfo.ExcludedIndexers = nil
-					}
-					torrentInfo.ContentMatches = append([]string(nil), existingSnapshot.ContentMatches...)
-					torrentInfo.ContentFilteringCompleted = existingSnapshot.ContentCompleted
-				} else {
-					// Absolute fallback so callers never see a nil TorrentInfo
-					torrentInfo = &TorrentInfo{
-						InstanceID: instanceID,
-						Hash:       hash,
-					}
-				}
-
-				// Return existing completed state instead of creating new filtering
-				return &AsyncTorrentAnalysis{
-					FilteringState: existingSnapshot,
-					TorrentInfo:    torrentInfo,
-				}, nil
-			}
-		}
-	}
-
-	log.Trace().
-		Str("torrentHash", hash).
-		Int("instanceID", instanceID).
-		Str("cacheKey", cacheKey).
-		Bool("enableContentFiltering", enableContentFiltering).
-		Ints("requestedIndexers", requested).
-		Msg("[CROSSSEED-ASYNC] Starting new async filtering (may overwrite existing cache)")
-
-	// Use the async analysis method
-	return s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, enableContentFiltering)
 }
 
 // GetAsyncFilteringStatus returns the current status of async filtering for a torrent.
@@ -11992,16 +12089,17 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 		return nil, err
 	}
 
-	if snapshot := asyncResult.FilteringState.Clone(); snapshot != nil {
-		log.Trace().
-			Str("torrentHash", hash).
-			Int("instanceID", instanceID).
-			Bool("capabilitiesCompleted", snapshot.CapabilitiesCompleted).
-			Bool("contentCompleted", snapshot.ContentCompleted).
-			Msg("[CROSSSEED-ASYNC] Generated new filtering status (no cache)")
-	}
+	// Return a snapshot: the live state is shared with the background worker
+	// (and the cache), and the handler marshals the result to JSON.
+	snapshot := asyncResult.FilteringState.Clone()
+	log.Trace().
+		Str("torrentHash", hash).
+		Int("instanceID", instanceID).
+		Bool("capabilitiesCompleted", snapshot.CapabilitiesCompleted).
+		Bool("contentCompleted", snapshot.ContentCompleted).
+		Msg("[CROSSSEED-ASYNC] Generated new filtering status (no cache)")
 
-	return asyncResult.FilteringState, nil
+	return snapshot, nil
 }
 
 // filterIndexersByExistingContent removes indexers for which we already have matching content
@@ -12260,7 +12358,6 @@ func (s *Service) trackerDomainsMatchIndexerDomain(trackerDomains []string, inde
 			if normalizedDomain == normalizedSpecificDomain {
 				return true
 			}
-
 		}
 
 		// 3. Partial match: domain contains normalized indexer name or vice versa
@@ -12459,15 +12556,15 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 	eventType := notifications.EventCrossSeedAutomationSucceeded
 	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
 		eventType = notifications.EventCrossSeedAutomationFailed
-	} else if run.TorrentsAdded == 0 && run.TorrentsFailed == 0 {
+	} else if run.CrossSeedsAdded == 0 && run.CandidatesFailed == 0 {
 		log.Info().
 			Int64("runID", run.ID).
 			Str("status", string(run.Status)).
 			Int("feedItems", run.TotalFeedItems).
 			Int("candidates", run.CandidatesFound).
-			Int("added", run.TorrentsAdded).
-			Int("failed", run.TorrentsFailed).
-			Int("skipped", run.TorrentsSkipped).
+			Int("added", run.CrossSeedsAdded).
+			Int("failed", run.CandidatesFailed).
+			Int("skipped", run.CandidatesSkipped).
 			Msg("Skipping cross-seed RSS success notification")
 		return
 	}
@@ -12488,9 +12585,9 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 		fmt.Sprintf("Status: %s", run.Status),
 		fmt.Sprintf("Feed items: %d", run.TotalFeedItems),
 		fmt.Sprintf("Candidates: %d", run.CandidatesFound),
-		fmt.Sprintf("Added: %d", run.TorrentsAdded),
-		fmt.Sprintf("Failed: %d", run.TorrentsFailed),
-		fmt.Sprintf("Skipped: %d", run.TorrentsSkipped),
+		fmt.Sprintf("Added: %d", run.CrossSeedsAdded),
+		fmt.Sprintf("Failed: %d", run.CandidatesFailed),
+		fmt.Sprintf("Skipped: %d", run.CandidatesSkipped),
 	}
 	if run.Message != nil && strings.TrimSpace(*run.Message) != "" {
 		lines = append(lines, "Message: "+strings.TrimSpace(*run.Message))
@@ -12515,9 +12612,9 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 			Status:     string(run.Status),
 			FeedItems:  run.TotalFeedItems,
 			Candidates: run.CandidatesFound,
-			Added:      run.TorrentsAdded,
-			Failed:     run.TorrentsFailed,
-			Skipped:    run.TorrentsSkipped,
+			Added:      run.CrossSeedsAdded,
+			Failed:     run.CandidatesFailed,
+			Skipped:    run.CandidatesSkipped,
 			Samples:    samples,
 		},
 		ErrorMessage: errorMessage,
@@ -12556,7 +12653,8 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 		fmt.Sprintf("Run: %d", state.run.ID),
 		fmt.Sprintf("Status: %s", state.run.Status),
 		fmt.Sprintf("Processed: %d/%d", state.run.Processed, state.run.TotalTorrents),
-		fmt.Sprintf("Added: %d", state.run.TorrentsAdded),
+		fmt.Sprintf("Cross-seeds added: %d", state.run.CrossSeedsAdded),
+		fmt.Sprintf("Torrents with cross-seeds: %d", state.run.TorrentsWithCrossSeeds),
 		fmt.Sprintf("Failed: %d", state.run.TorrentsFailed),
 		fmt.Sprintf("Skipped: %d", state.run.TorrentsSkipped),
 	}
@@ -12580,14 +12678,15 @@ func (s *Service) notifySearchRun(ctx context.Context, state *searchRunState, ca
 		InstanceID: state.run.InstanceID,
 		Message:    strings.Join(lines, "\n"),
 		CrossSeed: &notifications.CrossSeedEventData{
-			RunID:     state.run.ID,
-			Status:    string(state.run.Status),
-			Processed: state.run.Processed,
-			Total:     state.run.TotalTorrents,
-			Added:     state.run.TorrentsAdded,
-			Failed:    state.run.TorrentsFailed,
-			Skipped:   state.run.TorrentsSkipped,
-			Samples:   samples,
+			RunID:                  state.run.ID,
+			Status:                 string(state.run.Status),
+			Processed:              state.run.Processed,
+			Total:                  state.run.TotalTorrents,
+			Added:                  state.run.CrossSeedsAdded,
+			TorrentsWithCrossSeeds: state.run.TorrentsWithCrossSeeds,
+			Failed:                 state.run.TorrentsFailed,
+			Skipped:                state.run.TorrentsSkipped,
+			Samples:                samples,
 		},
 		ErrorMessage: errorMessage,
 		ErrorMessages: func() []string {
@@ -12708,87 +12807,103 @@ func formatSamplesForMessage(samples []string, maxCount int) string {
 	return out
 }
 
-func collectWebhookMatchSamples(matches []WebhookCheckMatch, limit int) []string {
-	if len(matches) == 0 {
-		return nil
-	}
-
-	capHint := 64
-	if limit > 0 {
-		capHint = min(limit, len(matches))
-	} else {
-		capHint = min(capHint, len(matches))
-	}
-	seen := make(map[string]struct{}, capHint)
-	samples := make([]string, 0, capHint)
-	for _, match := range matches {
-		label := strings.TrimSpace(match.TorrentName)
-		if label == "" {
-			label = strings.TrimSpace(match.TorrentHash)
-		}
-		if label == "" {
-			continue
-		}
-		if strings.TrimSpace(match.InstanceName) != "" {
-			label = fmt.Sprintf("%s @ %s", label, strings.TrimSpace(match.InstanceName))
-		}
-		if _, ok := seen[label]; ok {
-			continue
-		}
-		seen[label] = struct{}{}
-		samples = append(samples, label)
-		if limit > 0 && len(samples) >= limit {
-			break
-		}
-	}
-	return samples
-}
-
-func (s *Service) notifyWebhookCheck(ctx context.Context, req *WebhookCheckRequest, matches []WebhookCheckMatch, recommendation string, startedAt time.Time) {
-	if s == nil || s.notifier == nil || req == nil || len(matches) == 0 {
+func (s *Service) notifyWebhookApply(ctx context.Context, req *AutobrrApplyRequest, resp *CrossSeedResponse, runErr error, startedAt time.Time) {
+	if s == nil || s.notifier == nil || req == nil {
 		return
 	}
 
-	completeCount := 0
-	pendingCount := 0
-	for _, match := range matches {
-		if match.Progress >= 1.0 {
-			completeCount++
-		} else {
-			pendingCount++
+	var addedResults, failedResults []InstanceCrossSeedResult
+	if resp != nil {
+		addedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
+		failedResults = make([]InstanceCrossSeedResult, 0, len(resp.Results))
+		for _, result := range resp.Results {
+			switch result.Status {
+			case "added", "added_hardlink", "added_reflink":
+				if result.Success {
+					addedResults = append(addedResults, result)
+				}
+			case "error", "no_save_path", "invalid_content_path", "pause_failed", "alignment_failed", "hardlink_error", "reflink_error":
+				failedResults = append(failedResults, result)
+			}
 		}
 	}
-	if completeCount == 0 {
+	if len(addedResults) == 0 && len(failedResults) == 0 && runErr == nil {
 		return
 	}
 
-	lines := []string{
-		"Torrent: " + strings.TrimSpace(req.TorrentName),
-		fmt.Sprintf("Matches: %d", len(matches)),
-		fmt.Sprintf("Complete matches: %d", completeCount),
-		fmt.Sprintf("Pending matches: %d", pendingCount),
+	torrentName := strings.TrimSpace(req.TorrentName)
+	if torrentName == "" && resp != nil && resp.TorrentInfo != nil {
+		torrentName = strings.TrimSpace(resp.TorrentInfo.Name)
 	}
-	if strings.TrimSpace(recommendation) != "" {
-		lines = append(lines, "Recommendation: "+strings.TrimSpace(recommendation))
+	failedCount := len(failedResults)
+	if failedCount == 0 && runErr != nil {
+		failedCount = 1
 	}
-	samples := collectWebhookMatchSamples(matches, 0)
-	if sampleText := formatSamplesForMessage(samples, 3); sampleText != "" {
-		lines = append(lines, "Samples: "+sampleText)
+	lines := make([]string, 0, 3)
+	if torrentName != "" {
+		lines = append(lines, "Torrent: "+torrentName)
+	}
+	lines = append(lines, fmt.Sprintf("Added: %d", len(addedResults)))
+	if failedCount > 0 {
+		lines = append(lines, fmt.Sprintf("Failed: %d", failedCount))
+	}
+
+	results := make([]InstanceCrossSeedResult, 0, len(addedResults)+len(failedResults))
+	results = append(results, addedResults...)
+	results = append(results, failedResults...)
+	const maxSamples = 3
+	samples := make([]string, 0, min(maxSamples, len(results)))
+	seenSamples := make(map[string]struct{}, min(maxSamples, len(results)))
+	for _, result := range results {
+		if instanceName := strings.TrimSpace(result.InstanceName); instanceName != "" {
+			if _, ok := seenSamples[instanceName]; ok {
+				continue
+			}
+			seenSamples[instanceName] = struct{}{}
+			samples = append(samples, instanceName)
+			if len(samples) == maxSamples {
+				break
+			}
+		}
+	}
+	if sampleText := formatSamplesForMessage(samples, maxSamples); sampleText != "" {
+		lines = append(lines, "Instances: "+sampleText)
+	}
+
+	eventType := notifications.EventCrossSeedWebhookSucceeded
+	errorMessage := ""
+	if len(failedResults) > 0 || runErr != nil {
+		eventType = notifications.EventCrossSeedWebhookFailed
+		if runErr != nil {
+			errorMessage = strings.TrimSpace(runErr.Error())
+		}
+		if errorMessage == "" && len(failedResults) > 0 {
+			errorMessage = strings.TrimSpace(failedResults[0].Message)
+		}
+		if errorMessage == "" {
+			errorMessage = "cross-seed webhook apply failed"
+		}
+		lines = append(lines, "Error: "+errorMessage)
 	}
 
 	completedAt := time.Now().UTC()
 	s.notifier.Notify(ctx, notifications.Event{
-		Type:         notifications.EventCrossSeedWebhookSucceeded,
+		Type:         eventType,
 		InstanceName: "Cross-seed webhook",
 		Message:      strings.Join(lines, "\n"),
-		TorrentName:  strings.TrimSpace(req.TorrentName),
+		TorrentName:  torrentName,
 		CrossSeed: &notifications.CrossSeedEventData{
-			Matches:        len(matches),
-			Complete:       completeCount,
-			Pending:        pendingCount,
-			Recommendation: strings.TrimSpace(recommendation),
-			Samples:        samples,
+			Added:   len(addedResults),
+			Failed:  failedCount,
+			Samples: samples,
 		},
+		ErrorMessage: errorMessage,
+		ErrorMessages: func() []string {
+			if errorMessage == "" {
+				return nil
+			}
+			return []string{errorMessage}
+		}(),
 		StartedAt:   &startedAt,
 		CompletedAt: &completedAt,
 	})
@@ -12827,17 +12942,33 @@ func (s *Service) notifyWebhookCheckFailure(ctx context.Context, req *WebhookChe
 	})
 }
 
+// searchResultsFlushEvery bounds how many result entries a killed process can
+// lose: the results blob is rewritten once this many new entries have
+// accumulated, and on finalize. Counters are written on every call.
+// ponytail: each flush still rewrites the whole blob, so a run costs
+// O(n²/25) bytes; move results to their own table if that ever bites.
+const searchResultsFlushEvery = 25
+
 func (s *Service) persistSearchRun(state *searchRunState) {
-	updated, err := s.automationStore.UpdateSearchRun(context.Background(), state.run)
-	if err != nil {
-		log.Debug().Err(err).Msg("failed to persist search run progress")
+	ctx := context.Background()
+	s.searchMu.Lock()
+	resultCount := len(state.run.Results)
+	s.searchMu.Unlock()
+
+	if resultCount-state.persistedResults >= searchResultsFlushEvery {
+		if err := s.automationStore.UpdateSearchRun(ctx, state.run); err != nil {
+			log.Debug().Err(err).Msg("failed to persist search run results")
+			return
+		}
+		s.searchMu.Lock()
+		state.persistedResults = resultCount
+		s.searchMu.Unlock()
 		return
 	}
-	s.searchMu.Lock()
-	if s.searchState == state {
-		state.run = updated
+
+	if err := s.automationStore.UpdateSearchRunProgress(ctx, state.run); err != nil {
+		log.Debug().Err(err).Msg("failed to persist search run progress")
 	}
-	s.searchMu.Unlock()
 }
 
 func (s *Service) setCurrentCandidate(state *searchRunState, torrent *qbt.Torrent) {
@@ -13115,6 +13246,12 @@ func intersectInts(a, b []int) []int {
 	return slices.DeleteFunc(slices.Clone(a), func(v int) bool { return !slices.Contains(b, v) })
 }
 
+// uncoverMissed removes from covered the targeted indexers that did not
+// answer a retry pass, leaving untargeted indexers' coverage untouched.
+func uncoverMissed(covered, targeted, answered []int) []int {
+	return subtractInts(covered, subtractInts(targeted, answered))
+}
+
 // subtractInts returns the elements of a that are not in b, preserving a's order.
 func subtractInts(a, b []int) []int {
 	return slices.DeleteFunc(slices.Clone(a), func(v int) bool { return slices.Contains(b, v) })
@@ -13386,6 +13523,16 @@ func isWindowsDriveAbs(p string) bool {
 // Shared implementation lives in pkg/pathcmp.
 func normalizePath(p string) string {
 	return pathcmp.NormalizePath(p)
+}
+
+// rootlessDestDir returns the content dir that a rootless target sends an add
+// to, or "" when the add lands at the target's save path instead. The apply and
+// the Manual match save-path preview must agree on this, so both call it.
+func rootlessDestDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles, isEpisodeInPack bool) string {
+	if isEpisodeInPack || detectCommonRoot(candidateFiles) != "" {
+		return ""
+	}
+	return resolveRootlessContentDir(matchedTorrent, candidateFiles)
 }
 
 func resolveRootlessContentDir(matchedTorrent *qbt.Torrent, candidateFiles qbt.TorrentFiles) string {
@@ -13795,6 +13942,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	// Describe the parsed content type for easier debugging and tuning.
 	contentInfo := DetermineContentType(incomingRelease)
 
+	aliasTitles, episodeMap := s.announceAliasTitles(ctx, req.TorrentName, contentInfo.ContentType)
+
 	log.Debug().
 		Str("source", "cross-seed.webhook").
 		Ints("requestedInstanceIds", requestedInstanceIDs).
@@ -13882,10 +14031,13 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				}
 			}
 			decision := s.classifyWebhookAnnouncementSource(ctx, instance.ID, torrent, announcedCandidate, int64(req.Size), announcementMatchPolicy{
-				findIndividualEpisodes: findIndividualEpisodes,
-				rescueTitleMismatches:  settings.RescueTitleMismatches && !settings.SkipRecheck,
-				allowUnknownSize:       req.Size == 0,
-				skipRecheck:            settings.SkipRecheck,
+				findIndividualEpisodes:   findIndividualEpisodes,
+				rescueTitleMismatches:    settings.RescueTitleMismatches && !settings.SkipRecheck,
+				allowUnknownSize:         req.Size == 0,
+				skipRecheck:              settings.SkipRecheck,
+				candidateTitles:          aliasTitles,
+				episodeMap:               episodeMap,
+				tolerateOneSidedChecksum: true,
 			})
 			if !decision.decision.Accepted || decision.replayable != (req.Size > 0) {
 				continue
@@ -13989,8 +14141,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("canCrossSeed", canCrossSeed).
 		Str("recommendation", recommendation).
 		Msg("Webhook check completed")
-
-	s.notifyWebhookCheck(ctx, req, matches, recommendation, startedAt)
 
 	return &WebhookCheckResponse{
 		CanCrossSeed:   canCrossSeed,
@@ -14367,9 +14517,8 @@ func wrapCrossSeedSearchError(err error) error {
 		return nil
 	}
 
-	msg := normalizeLowerTrim(err.Error())
-	if strings.Contains(msg, "rate-limited") || strings.Contains(msg, "cooldown") {
-		return fmt.Errorf("cross-seed search temporarily unavailable: %w. This is normal protection against tracker bans. Try again in 30-60 minutes or use fewer indexers", err)
+	if _, ok := errors.AsType[*jackett.RateLimitError](err); ok {
+		return fmt.Errorf("cross-seed search temporarily unavailable: %w. Retry after the indexer cooldown or use fewer indexers", err)
 	}
 
 	return fmt.Errorf("torznab search failed: %w", err)
@@ -14755,6 +14904,14 @@ func (s *Service) processHardlinkMode(
 			Msg("[CROSSSEED] Hardlink mode: failed to build plan, aborting")
 		return handleError(fmt.Sprintf("Failed to build hardlink plan: %v", err))
 	}
+	addPolicy := PolicyForSourceFiles(sourceFiles)
+	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
+	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, recheckPolicy.requireComplete)
+	var poolDescriptors []partialPoolFileDescriptor
+	var poolDescriptorErr error
+	if pooledCompletion {
+		_, _, _, poolDescriptors, poolDescriptorErr = partialPoolParsedIdentity(torrentBytes)
+	}
 
 	// Create hardlink tree on disk
 	created, err := backend.HardlinkTree(ctx, plan)
@@ -14795,10 +14952,6 @@ func (s *Service) processHardlinkMode(
 	options["autoTMM"] = "false"
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
-
-	// Compute add policy from source files (e.g., disc layout detection)
-	addPolicy := PolicyForSourceFiles(sourceFiles)
-	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
 
 	if addPolicy.DiscLayout {
 		log.Info().
@@ -14860,7 +15013,8 @@ func (s *Service) processHardlinkMode(
 		Msg("[CROSSSEED] Hardlink mode: adding torrent")
 
 	// Add the torrent
-	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+	addResponse, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
+	if err != nil {
 		// Rollback only what this attempt created: the destination can be shared
 		// with an earlier successful add for the same release (discussion #2282).
 		// WithoutCancel: a cancelled run must still roll back its partial tree.
@@ -14877,6 +15031,41 @@ func (s *Service) processHardlinkMode(
 			Int("rolledBackFiles", len(created.Files)).
 			Msg("[CROSSSEED] Hardlink mode: failed to add torrent, aborting")
 		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
+	}
+	var addedTorrentIDs []string
+	if addResponse != nil {
+		addedTorrentIDs = append([]string(nil), addResponse.AddedTorrentIds...)
+	}
+
+	var pooledMember *models.CrossSeedPartialPoolMember
+	var poolRegistrationErr error
+	if pooledCompletion {
+		if poolDescriptorErr != nil {
+			poolRegistrationErr = fmt.Errorf("describe partial pool files: %w", poolDescriptorErr)
+		} else {
+			_, pooledMember, poolRegistrationErr = s.registerPartialPoolAdmission(
+				ctx,
+				candidate,
+				torrentBytes,
+				addedTorrentIDs,
+				req,
+				matchedTorrent,
+				models.CrossSeedPartialPoolModeHardlink,
+				plan.RootDir,
+				candidateTorrentFilesToLink,
+				nil,
+				poolDescriptors,
+			)
+		}
+	}
+	if poolRegistrationErr != nil {
+		poolRegistrationErr = fmt.Errorf("register partial pool admission: %w", poolRegistrationErr)
+		log.Warn().
+			Err(poolRegistrationErr).
+			Str("mode", models.CrossSeedPartialPoolModeHardlink).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Partial pool registration failed after qBittorrent add")
 	}
 
 	// Build result message
@@ -14896,72 +15085,80 @@ func (s *Service) processHardlinkMode(
 	// Handle recheck and auto-resume when extras exist, or disc layout or the
 	// search decision requires verification
 	if recheckPolicy.requiresRecheck {
-		recheckHashes := []string{torrentHash}
-		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
-			recheckHashes = append(recheckHashes, torrentHashV2)
-		}
+		switch {
+		case poolRegistrationErr != nil:
+		case pooledMember != nil:
+			s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
+			statusMsg += " - pooled completion pending"
+		default:
+			recheckHashes := []string{torrentHash}
+			if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+				recheckHashes = append(recheckHashes, torrentHashV2)
+			}
 
-		// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
-		// and which are missing (extras to download)
-		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
-		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
-			statusMsg += " - recheck failed, manual intervention required"
-		} else if addPolicy.ShouldSkipAutoResume() {
-			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per add policy")
-			statusMsg += addPolicy.StatusSuffix()
-		} else if req.SkipAutoResume {
-			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
-			// User requested to skip auto-resume - leave paused after recheck
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per user settings")
-			statusMsg += " - auto-resume skipped per settings"
-		} else {
-			// Queue for background resume - worker will resume when recheck completes within budget
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Int("extraFiles", len(sourceFiles)-len(candidateTorrentFilesToLink)).
-				Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
-			queueErr := error(nil)
+			// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
+			// and which are missing (extras to download)
+			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
+			recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
 			switch {
-			case verifyBeforeSeed:
-				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
-			case recheckPolicy.requireComplete:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
+			case recheckErr != nil:
+				log.Warn().
+					Err(recheckErr).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
+				statusMsg += " - recheck failed, manual intervention required"
+			case req.SkipAutoResume:
+				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
+				// User requested to skip auto-resume - leave paused after recheck
+				log.Debug().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per user settings")
+				statusMsg += " - auto-resume skipped per settings"
 			default:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, false)
-			}
-			if queueErr != nil {
-				statusMsg += " - auto-resume queue full, manual resume required"
+				// Queue for background resume - worker will resume when recheck completes within budget
+				log.Debug().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Int("extraFiles", len(sourceFiles)-len(candidateTorrentFilesToLink)).
+					Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
+				queueErr := error(nil)
+				switch {
+				case verifyBeforeSeed:
+					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
+				case recheckPolicy.requireComplete:
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
+				default:
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, false)
+				}
+				if queueErr != nil {
+					statusMsg += " - auto-resume queue full, manual resume required"
+				}
 			}
 		}
-	} else if addPolicy.ShouldSkipAutoResume() {
-		// Disc layout without extras - add policy status suffix
-		statusMsg += addPolicy.StatusSuffix()
+	}
+	if poolRegistrationErr != nil {
+		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
 	}
 
 	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	success := poolRegistrationErr == nil
+	status := "added_hardlink"
+	if !success {
+		status = partialPoolRegistrationErrorStatus
+	}
 
 	return hardlinkModeResult{
 		Used:    true,
-		Success: true,
+		Success: success,
 		Result: InstanceCrossSeedResult{
-			InstanceID:   candidate.InstanceID,
-			InstanceName: candidate.InstanceName,
-			Success:      true,
-			Status:       "added_hardlink",
-			Message:      statusMsg,
+			InstanceID:         candidate.InstanceID,
+			InstanceName:       candidate.InstanceName,
+			Success:            success,
+			Status:             status,
+			Message:            statusMsg,
+			partialPoolPending: pooledMember != nil,
 			MatchedTorrent: &MatchedTorrent{
 				Hash:     matchedTorrent.Hash,
 				Name:     matchedTorrent.Name,
@@ -14992,7 +15189,6 @@ func (s *Service) buildHardlinkDestDir(
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-
 	// Determine if isolation folder is needed based on torrent structure.
 	// Since hardlink mode always uses contentLayout=Original, we only need
 	// an isolation folder when the torrent doesn't have a common root folder.
@@ -15475,6 +15671,15 @@ func (s *Service) processReflinkMode(
 			Msg("[CROSSSEED] Reflink mode: failed to build plan, aborting")
 		return handleMaterializationError(fmt.Sprintf("Failed to build reflink plan: %v", err))
 	}
+	addPolicy := PolicyForSourceFiles(sourceFiles)
+	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
+	pooledCompletion := s.partialPoolAdmissionEnabled(ctx, instance, hasExtras, req, recheckPolicy.requireComplete)
+	var poolDescriptors []partialPoolFileDescriptor
+	var poolReplaceablePaths map[string]struct{}
+	var poolDescriptorErr error
+	if pooledCompletion {
+		_, _, _, poolDescriptors, poolDescriptorErr = partialPoolParsedIdentity(torrentBytes)
+	}
 
 	// Materialize only after the coverage and plan gates so clearly invalid
 	// partial matches are skipped before probing filesystem capabilities.
@@ -15506,6 +15711,9 @@ func (s *Service) processReflinkMode(
 		Str("destDir", destDir).
 		Int("fileCount", len(plan.Files)).
 		Msg("[CROSSSEED] Reflink mode: created reflink tree")
+	if pooledCompletion && poolDescriptorErr == nil {
+		poolReplaceablePaths = partialPoolReplaceableTargets(plan.RootDir, poolDescriptors)
+	}
 
 	// Build options for adding torrent
 	options := make(map[string]string)
@@ -15526,10 +15734,6 @@ func (s *Service) processReflinkMode(
 	options["autoTMM"] = "false"
 	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
-
-	// Compute add policy from source files (e.g., disc layout detection)
-	addPolicy := PolicyForSourceFiles(sourceFiles)
-	recheckPolicy := linkModeRecheckPolicy(hasExtras, verifyBeforeSeed, addPolicy.DiscLayout)
 
 	if addPolicy.DiscLayout {
 		log.Info().
@@ -15594,7 +15798,8 @@ func (s *Service) processReflinkMode(
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
 
 	// Add the torrent
-	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+	addResponse, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
+	if err != nil {
 		// Rollback only what this attempt created (discussion #2282).
 		// WithoutCancel: a cancelled run must still roll back its partial tree.
 		if rollbackErr := backend.RemoveTree(context.WithoutCancel(ctx), created); rollbackErr != nil {
@@ -15610,6 +15815,41 @@ func (s *Service) processReflinkMode(
 			Int("rolledBackFiles", len(created.Files)).
 			Msg("[CROSSSEED] Reflink mode: failed to add torrent, aborting")
 		return handleError(fmt.Sprintf("Failed to add torrent: %v", err))
+	}
+	var addedTorrentIDs []string
+	if addResponse != nil {
+		addedTorrentIDs = append([]string(nil), addResponse.AddedTorrentIds...)
+	}
+
+	var pooledMember *models.CrossSeedPartialPoolMember
+	var poolRegistrationErr error
+	if pooledCompletion {
+		if poolDescriptorErr != nil {
+			poolRegistrationErr = fmt.Errorf("describe partial pool files: %w", poolDescriptorErr)
+		} else {
+			_, pooledMember, poolRegistrationErr = s.registerPartialPoolAdmission(
+				ctx,
+				candidate,
+				torrentBytes,
+				addedTorrentIDs,
+				req,
+				matchedTorrent,
+				models.CrossSeedPartialPoolModeReflink,
+				plan.RootDir,
+				candidateTorrentFilesToClone,
+				poolReplaceablePaths,
+				poolDescriptors,
+			)
+		}
+	}
+	if poolRegistrationErr != nil {
+		poolRegistrationErr = fmt.Errorf("register partial pool admission: %w", poolRegistrationErr)
+		log.Warn().
+			Err(poolRegistrationErr).
+			Str("mode", models.CrossSeedPartialPoolModeReflink).
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("[CROSSSEED] Partial pool registration failed after qBittorrent add")
 	}
 
 	// Build result message
@@ -15629,77 +15869,85 @@ func (s *Service) processReflinkMode(
 	// Handle recheck and auto-resume when extras exist, or disc layout or the
 	// search decision requires verification
 	if recheckPolicy.requiresRecheck {
-		recheckHashes := []string{torrentHash}
-		if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
-			recheckHashes = append(recheckHashes, torrentHashV2)
-		}
+		switch {
+		case poolRegistrationErr != nil:
+		case pooledMember != nil:
+			s.signalPartialPoolWake(partialPoolWake{poolID: pooledMember.PoolID})
+			statusMsg += " - pooled completion pending"
+		default:
+			recheckHashes := []string{torrentHash}
+			if torrentHashV2 != "" && !strings.EqualFold(torrentHash, torrentHashV2) {
+				recheckHashes = append(recheckHashes, torrentHashV2)
+			}
 
-		// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
-		// and which are missing (extras to download)
-		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
-		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
-			statusMsg += " - recheck failed, manual intervention required"
-		} else if addPolicy.ShouldSkipAutoResume() {
-			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per add policy")
-			statusMsg += addPolicy.StatusSuffix()
-		} else if req.SkipAutoResume {
-			statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
-			// User requested to skip auto-resume - leave paused after recheck
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("[CROSSSEED] Reflink mode: skipping auto-resume per user settings")
-			statusMsg += " - auto-resume skipped per settings"
-		} else {
-			// Queue for background resume - worker will resume when recheck completes within budget
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Int("missingFiles", totalFiles-clonedFiles).
-				Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
-			queueErr := error(nil)
+			// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
+			// and which are missing (extras to download).
+			recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
+			recheckErr := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck")
 			switch {
-			case verifyBeforeSeed:
-				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
-			case recheckPolicy.requireComplete:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
+			case recheckErr != nil:
+				log.Warn().
+					Err(recheckErr).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
+				statusMsg += " - recheck failed, manual intervention required"
+			case req.SkipAutoResume:
+				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
+				// User requested to skip auto-resume - leave paused after recheck
+				log.Debug().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("[CROSSSEED] Reflink mode: skipping auto-resume per user settings")
+				statusMsg += " - auto-resume skipped per settings"
 			default:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, true)
-			}
-			if queueErr != nil {
-				statusMsg += " - auto-resume queue full, manual resume required"
+				// Queue for background resume - worker will resume when recheck completes within budget
+				log.Debug().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Int("missingFiles", totalFiles-clonedFiles).
+					Msg("[CROSSSEED] Reflink mode: queuing torrent for recheck resume")
+				queueErr := error(nil)
+				switch {
+				case verifyBeforeSeed:
+					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
+				case recheckPolicy.requireComplete:
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
+				default:
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, true)
+				}
+				if queueErr != nil {
+					statusMsg += " - auto-resume queue full, manual resume required"
+				}
 			}
 		}
-	} else if addPolicy.ShouldSkipAutoResume() {
-		// Disc layout without extras - add policy status suffix
-		statusMsg += addPolicy.StatusSuffix()
 	}
 
 	// Add note about low completion behavior
 	if hasExtras && clonedFiles < totalFiles {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}
+	if poolRegistrationErr != nil {
+		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
+	}
 
 	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+	success := poolRegistrationErr == nil
+	status := "added_reflink"
+	if !success {
+		status = partialPoolRegistrationErrorStatus
+	}
 
 	return reflinkModeResult{
 		Used:    true,
-		Success: true,
+		Success: success,
 		Result: InstanceCrossSeedResult{
-			InstanceID:   candidate.InstanceID,
-			InstanceName: candidate.InstanceName,
-			Success:      true,
-			Status:       "added_reflink",
-			Message:      statusMsg,
+			InstanceID:         candidate.InstanceID,
+			InstanceName:       candidate.InstanceName,
+			Success:            success,
+			Status:             status,
+			Message:            statusMsg,
+			partialPoolPending: pooledMember != nil,
 			MatchedTorrent: &MatchedTorrent{
 				Hash:     matchedTorrent.Hash,
 				Name:     matchedTorrent.Name,

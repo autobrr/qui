@@ -319,6 +319,12 @@
       "maxActiveTorrentsDescription": "전체 최대 활성 토렌트",
       "maxCheckingTorrents": "최대 확인 토렌트",
       "maxCheckingTorrentsDescription": "동시에 확인하는 최대 토렌트 수",
+      "dontCountSlowTorrents": "느린 토렌트 제외",
+      "dontCountSlowTorrentsDescription": "느린 토렌트는 위의 활성 제한에 포함되지 않습니다",
+      "slowTorrentDlRateThreshold": "다운로드 속도 임계값 (KiB/s)",
+      "slowTorrentUlRateThreshold": "업로드 속도 임계값 (KiB/s)",
+      "slowTorrentInactiveTimer": "토렌트 비활성 타이머 (초)",
+      "slowTorrentInactiveTimerDescription": "두 속도가 임계값 아래로 얼마나 유지되어야 느린 토렌트로 간주하는지",
       "validation": {
         "maxActiveDownloads": "최대 활성 다운로드는 -1보다 커야 합니다",
         "maxActiveUploads": "최대 활성 업로드는 -1보다 커야 합니다",
@@ -875,7 +881,10 @@
       "unregistered": "등록되지 않음",
       "andMoreTorrents": "... 그리고 토렌트 {{count}}개 더",
       "loadMore": "더 불러오기",
-      "exportCSV": "CSV 내보내기"
+      "exportCSV": "CSV 내보내기",
+      "saveWithoutPreview": "미리보기 없이 저장",
+      "previewFailed": "미리보기 실패: {{error}}",
+      "skipPreviewHint": "규칙은 다음 실행 시 일치하는 모든 토렌트에 그대로 적용됩니다. 미리보기를 기다리지 않고 저장할 수 있습니다."
     },
     "orphanScanOverview": {
       "title": "고아 파일 스캔",

@@ -40,6 +40,7 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
 import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { api } from "@/lib/api"
+import { canOfferManualCrossSeed } from "@/lib/manual-cross-seed"
 import { cn } from "@/lib/utils"
 import type { AddTorrentResponse, Torrent } from "@/types"
 import { useForm } from "@tanstack/react-form"
@@ -50,6 +51,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
+
+import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 
 // Extract info hash from magnet link
 function extractHashFromMagnet(magnetUrl: string): string | null {
@@ -165,6 +168,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const [categorySearch, setCategorySearch] = useState("")
   const [tagSearch, setTagSearch] = useState("")
   const [duplicateSummary, setDuplicateSummary] = useState<DuplicateSummary>(() => createEmptyDuplicateSummary())
+  const [manualCrossSeedFile, setManualCrossSeedFile] = useState<File | null>(null)
   const [duplicateCheckStatus, setDuplicateCheckStatus] = useState<"idle" | "pending" | "visible">("idle")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const duplicateCheckRequestRef = useRef(0)
@@ -639,6 +643,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     highlightedIndex: saveHighlightedIndex,
     showSuggestions: showSaveSuggestions,
     inputRef: savePathInputRef,
+    listRef: savePathListRef,
   } = usePathAutocomplete(setSavePath, instanceId);
 
   const {
@@ -649,6 +654,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     highlightedIndex: tempHighlightedIndex,
     showSuggestions: showTempSuggestions,
     inputRef: tempPathInputRef,
+    listRef: tempPathListRef,
   } = usePathAutocomplete(setTempPath, instanceId);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
@@ -796,6 +802,17 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      <ManualCrossSeedDialog
+        instanceId={instanceId}
+        open={manualCrossSeedFile !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setManualCrossSeedFile(null)
+          }
+        }}
+        initialFile={manualCrossSeedFile}
+        onApplied={() => setOpen(false)}
+      />
       {controlledOpen === undefined && (
         <DialogTrigger asChild>
           <Button>
@@ -1057,6 +1074,32 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                       </div>
                     )}
                   </form.Field>
+                )}
+
+                {activeTab === "file" && (
+                  <form.Subscribe selector={(state) => [state.values.torrentFiles, state.values.urls] as const}>
+                    {([files, urls]) => {
+                      if (!files || !canOfferManualCrossSeed({ fileCount: files.length, urlText: urls ?? "" })) {
+                        return null
+                      }
+                      return (
+                        <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{t("manualCrossSeed.addOptionTitle")}</p>
+                            <p className="text-xs text-muted-foreground">{t("manualCrossSeed.addOptionDescription")}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setManualCrossSeedFile(files[0])}
+                          >
+                            {t("manualCrossSeed.addOptionButton")}
+                          </Button>
+                        </div>
+                      )
+                    }}
+                  </form.Subscribe>
                 )}
 
                 {/* Basic Toggles */}
@@ -1327,7 +1370,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
                                 {supportsPathAutocomplete && showSaveSuggestions && saveSuggestions.length > 0 && (
                                   <div className="relative">
-                                    <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                                    <div ref={savePathListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
                                       <div className="max-h-55 overflow-y-auto py-1">
                                         {saveSuggestions.map((entry, idx) => (
                                           <button
@@ -1402,7 +1445,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
                                           {supportsPathAutocomplete && showTempSuggestions && tempSuggestions.length > 0 && (
                                             <div className="relative">
-                                              <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                                              <div ref={tempPathListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
                                                 <div className="max-h-55 overflow-y-auto py-1">
                                                   {tempSuggestions.map((entry, idx) => (
                                                     <button

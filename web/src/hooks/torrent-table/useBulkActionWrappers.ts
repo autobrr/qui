@@ -180,21 +180,26 @@ export function useBulkActionWrappers({
 
   const handleDeleteWrapper = useCallback(async () => {
     const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+    const crossSeedDeleteTargets = [
+      ...(contextClientMeta.actionTargets ?? []),
+      ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
+    ]
 
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
-      const blocklistTargets = [
-        ...(contextClientMeta.actionTargets ?? []),
-        ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
-      ]
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], blocklistTargets)
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], crossSeedDeleteTargets)
     }
 
     // Include cross-seed hashes if user opted to delete them
     const hashesToDelete = deleteCrossSeeds? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]: contextHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }: contextClientMeta
+    const deleteClientMeta = deleteCrossSeeds ? {
+      ...contextClientMeta,
+      clientHashes: hashesToDelete,
+      totalSelected: hashesToDelete.length,
+      actionTargets: isAllSelected ? undefined : crossSeedDeleteTargets,
+    } : contextClientMeta
 
     await handleDelete(
       hashesToDelete,

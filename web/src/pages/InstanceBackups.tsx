@@ -159,6 +159,13 @@ export function InstanceBackups() {
   const instanceCapabilitiesPending = (instances?.length ?? 0) > 0
     && instanceCapabilitiesQueries.some(query => query.isPending)
 
+  // An errored capabilities query is as unresolved as a pending one: deciding
+  // on it would drop its instance from supportedInstances and clear a saved
+  // selection over a transient failure. Only the selection effect cares; the
+  // UI keeps treating an error as "not checking".
+  const instanceCapabilitiesUnresolved = instanceCapabilitiesPending
+    || instanceCapabilitiesQueries.some(query => query.isError)
+
   // Filter instances to only show those that support backups
   const supportedInstances = useMemo(() => {
     if (!instances) return []
@@ -178,7 +185,7 @@ export function InstanceBackups() {
     if (!instances) {
       return
     }
-    if (instanceCapabilitiesPending) {
+    if (instanceCapabilitiesUnresolved) {
       return
     }
 
@@ -186,7 +193,7 @@ export function InstanceBackups() {
     if (!stillSupported) {
       setSelectedInstanceId(undefined)
     }
-  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances, instances, instanceCapabilitiesPending])
+  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances, instances, instanceCapabilitiesUnresolved])
 
   const instanceId = selectedInstanceId
 

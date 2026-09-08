@@ -199,7 +199,7 @@ func (s *BackupStore) UpsertSettings(ctx context.Context, settings *BackupSettin
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	query := `
         INSERT INTO instance_backup_settings (
@@ -270,7 +270,7 @@ func (s *BackupStore) CreateRun(ctx context.Context, run *BackupRun) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern all strings in a single call (convert required strings to pointers)
 	kind := string(run.Kind)
@@ -395,7 +395,7 @@ func (s *BackupStore) UpdateRunMetadata(ctx context.Context, runID int64, update
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Read the current state WITHIN the transaction
 	run, err := s.getRunForUpdate(ctx, tx, runID)
@@ -481,7 +481,7 @@ func (s *BackupStore) updateMultipleRunsStatusChunk(ctx context.Context, runIDs 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Intern all strings in a single call
 	statusStr := string(status)
@@ -576,17 +576,17 @@ func (s *BackupStore) getRunForUpdate(ctx context.Context, tx dbinterface.TxQuer
 	}
 	run.CategoryCounts = counts
 
-	if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+	categories, err := unmarshalCategories(categoriesJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Categories = categories
 	}
+	run.Categories = categories
 
-	if tagList, err := unmarshalTags(tagsJSON); err != nil {
+	tagList, err := unmarshalTags(tagsJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Tags = tagList
 	}
+	run.Tags = tagList
 
 	if categoriesJSON.Valid {
 		run.categoriesJSON = &categoriesJSON.String
@@ -672,16 +672,16 @@ func (s *BackupStore) ListRuns(ctx context.Context, instanceID int, limit, offse
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}
@@ -732,7 +732,7 @@ func (s *BackupStore) DeleteRun(ctx context.Context, runID int64) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, "DELETE FROM instance_backup_runs WHERE id = ?", runID)
 	if err != nil {
@@ -755,7 +755,7 @@ func (s *BackupStore) InsertItems(ctx context.Context, runID int64, items []Back
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Optimize for large bulk inserts (e.g., 180k+ torrents)
 	// Temporarily disable foreign key checks for massive performance boost
@@ -1353,16 +1353,16 @@ func (s *BackupStore) ListRunsByKind(ctx context.Context, instanceID int, kind B
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}
@@ -1441,16 +1441,16 @@ func (s *BackupStore) GetRun(ctx context.Context, runID int64) (*BackupRun, erro
 		return nil, err
 	}
 	run.CategoryCounts = counts
-	if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+	categories, err := unmarshalCategories(categoriesJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Categories = categories
 	}
-	if tagList, err := unmarshalTags(tagsJSON); err != nil {
+	run.Categories = categories
+	tagList, err := unmarshalTags(tagsJSON)
+	if err != nil {
 		return nil, err
-	} else {
-		run.Tags = tagList
 	}
+	run.Tags = tagList
 	if categoriesJSON.Valid {
 		run.categoriesJSON = &categoriesJSON.String
 	}
@@ -1569,16 +1569,16 @@ func (s *BackupStore) getRunsChunk(ctx context.Context, runIDs []int64) ([]*Back
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}
@@ -1777,7 +1777,7 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	args := make([]any, len(runIDs))
 	for i, id := range runIDs {
@@ -1871,16 +1871,16 @@ func (s *BackupStore) FindIncompleteRuns(ctx context.Context) ([]*BackupRun, err
 			return nil, err
 		}
 		run.CategoryCounts = counts
-		if categories, err := unmarshalCategories(categoriesJSON); err != nil {
+		categories, err := unmarshalCategories(categoriesJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Categories = categories
 		}
-		if tagList, err := unmarshalTags(tagsJSON); err != nil {
+		run.Categories = categories
+		tagList, err := unmarshalTags(tagsJSON)
+		if err != nil {
 			return nil, err
-		} else {
-			run.Tags = tagList
 		}
+		run.Tags = tagList
 		if categoriesJSON.Valid {
 			run.categoriesJSON = &categoriesJSON.String
 		}

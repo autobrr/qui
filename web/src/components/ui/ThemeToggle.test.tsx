@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => {
   const makeTheme = (
     id: string,
     name: string,
-    options: Pick<Theme, "isPremium" | "isCustom" | "variations"> = {}
+    options: Pick<Theme, "isPremium" | "isCustom" | "variations" | "locked"> = {}
   ): Theme => ({
     id,
     name,
@@ -42,8 +42,10 @@ const fixture = vi.hoisted(() => {
   const otherTheme = makeTheme("other", "Other theme", {
     variations: ["amber"],
   })
+  // Unlicensed install: the server ships premium themes as locked stubs.
   const premiumTheme = makeTheme("premium", "Premium theme", {
     isPremium: true,
+    locked: true,
   })
   const customTheme = makeTheme("custom:local", "Custom theme", {
     isCustom: true,
@@ -79,6 +81,11 @@ vi.mock("@/hooks/useLicense.ts", () => ({
     isLoading: false,
     isError: false,
   }),
+}))
+
+const builtinsResult = vi.hoisted(() => ({ data: undefined, isSuccess: true, isError: false }))
+vi.mock("@/hooks/useBuiltinThemes", () => ({
+  useBuiltinThemes: () => builtinsResult,
 }))
 
 vi.mock("@/hooks/useCustomThemes", () => ({

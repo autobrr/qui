@@ -4,39 +4,20 @@
  */
 
 import type { ColumnFilter } from "@/lib/column-filter-utils"
-import { useEffect, useState } from "react"
+
+import { useClientSetting } from "@/lib/client-settings"
+
+const NO_FILTERS: ColumnFilter[] = []
+
+const parseColumnFilters = (raw: string): ColumnFilter[] => {
+  const parsed = JSON.parse(raw)
+  if (!Array.isArray(parsed)) throw new Error("invalid column filters")
+  return parsed
+}
 
 export function usePersistedColumnFilters(instanceId: number) {
-  const storageKey = `qui-column-filters-${instanceId}`
-
-  // Initialize state with persisted values immediately
-  const [columnFilters, setColumnFilters] = useState<ColumnFilter[]>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      return stored ? JSON.parse(stored) : []
-    } catch {
-      return []
-    }
+  return useClientSetting<ColumnFilter[]>(`qui-column-filters-${instanceId}`, {
+    defaultValue: NO_FILTERS,
+    parse: parseColumnFilters,
   })
-
-  // Load filters when instanceId changes
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      setColumnFilters(stored ? JSON.parse(stored) : [])
-    } catch {
-      setColumnFilters([])
-    }
-  }, [instanceId, storageKey])
-
-  // Save filters when they change
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(columnFilters))
-    } catch (error) {
-      console.error("Failed to save column filters:", error)
-    }
-  }, [columnFilters, storageKey])
-
-  return [columnFilters, setColumnFilters] as const
 }

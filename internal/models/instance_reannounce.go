@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/dbinterface"
 )
 
 const (
@@ -42,6 +43,21 @@ type InstanceReannounceSettings struct {
 	UpdatedAt                 time.Time `json:"updatedAt"`
 }
 
+// CanMatchTorrents reports whether any torrent can match these settings: the
+// feature is on, and the scope is either MonitorAll or at least one inclusion
+// list. A scope that matches nothing lets callers skip the client fetch.
+func (s *InstanceReannounceSettings) CanMatchTorrents() bool {
+	if s == nil || !s.Enabled {
+		return false
+	}
+	if s.MonitorAll {
+		return true
+	}
+	return (len(s.Categories) > 0 && !s.ExcludeCategories) ||
+		(len(s.Tags) > 0 && !s.ExcludeTags) ||
+		(len(s.Trackers) > 0 && !s.ExcludeTrackers)
+}
+
 // InstanceReannounceStore manages persistence for InstanceReannounceSettings.
 type InstanceReannounceStore struct {
 	db dbinterface.Querier
@@ -62,7 +78,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 		MaxAgeSeconds:             defaultMaxAgeSeconds,
 		MaxRetries:                defaultMaxRetries,
 		Aggressive:                false,
-		MonitorAll:                false,
+		MonitorAll:                true,
 		ExcludeCategories:         false,
 		Categories:                []string{},
 		ExcludeTags:               false,
@@ -122,7 +138,7 @@ func (s *InstanceReannounceStore) List(ctx context.Context) ([]*InstanceReannoun
 // Upsert saves settings for an instance, creating or updating as needed.
 func (s *InstanceReannounceStore) Upsert(ctx context.Context, settings *InstanceReannounceSettings) (*InstanceReannounceSettings, error) {
 	if settings == nil {
-		return nil, fmt.Errorf("settings cannot be nil")
+		return nil, errors.New("settings cannot be nil")
 	}
 
 	coerced := sanitizeInstanceReannounceSettings(settings)

@@ -20,26 +20,10 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// mockProgramStore implements a minimal mock for testing
-type mockProgramStore struct {
-	programs map[int]*models.ExternalProgram
-	err      error
-}
-
-// mockActivityStore implements a minimal mock for testing
-type mockActivityStore struct {
-	activities []*models.AutomationActivity
-	err        error
-}
-
 func TestNewService(t *testing.T) {
 	t.Run("creates service with all dependencies", func(t *testing.T) {
-		store := &mockProgramStore{}
-		activityStore := &mockActivityStore{}
 		config := &domain.Config{}
 
-		// Note: NewService accepts the concrete types, not our mocks
-		// This test validates the constructor pattern
 		service := NewService(nil, nil, config)
 		assert.NotNil(t, service)
 		assert.Equal(t, config, service.config)
@@ -48,9 +32,6 @@ func TestNewService(t *testing.T) {
 		service2 := NewService(nil, nil, nil)
 		assert.NotNil(t, service2)
 		assert.Nil(t, service2.config)
-
-		_ = store
-		_ = activityStore
 	})
 }
 

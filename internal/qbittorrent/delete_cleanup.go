@@ -26,6 +26,7 @@ type managedDeleteCleanupTarget struct {
 const (
 	managedDeleteCleanupRetryInterval = 50 * time.Millisecond
 	managedDeleteCleanupRetryAttempts = 20
+	managedDeleteCleanupTimeout       = 30 * time.Second
 )
 
 func buildManagedDeleteCleanupTargets(ctx context.Context, configuredBaseDirs string, torrents []qbt.Torrent, backend fsops.Backend) []managedDeleteCleanupTarget {
@@ -58,6 +59,12 @@ func buildManagedDeleteCleanupTargets(ctx context.Context, configuredBaseDirs st
 }
 
 func cleanupManagedDeleteTargets(ctx context.Context, targets []managedDeleteCleanupTarget, backend fsops.Backend) {
+	// qBittorrent has already accepted the delete by the time this runs, so a
+	// client that disconnects mid-request must not abort the pruning and leave
+	// empty managed directories behind. Detach from request cancellation,
+	// bounded by a fixed timeout.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), managedDeleteCleanupTimeout)
+	defer cancel()
 	for _, target := range targets {
 		pruneEmptyManagedDeleteDir(ctx, target, backend)
 	}

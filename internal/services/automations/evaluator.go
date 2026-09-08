@@ -5,8 +5,6 @@ package automations
 
 import (
 	"math"
-	"net"
-	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -28,8 +26,8 @@ const maxConditionDepth = 20
 // to avoid surprising matches on short names.
 const minContainsNameLength = 10
 
-// categoryEntry stores torrent info for category-based lookups.
-type categoryEntry struct {
+// CategoryEntry stores torrent info for category-based lookups.
+type CategoryEntry struct {
 	Hash           string // torrent hash for self-exclusion
 	Name           string // lowercased name (for EXISTS_IN exact match)
 	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
@@ -66,6 +64,8 @@ type EvalContext struct {
 	HardlinkCrossScopeByHash map[string]string
 	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
 	HasMissingFilesByHash map[string]bool
+	// HasSkippedFilesByHash maps torrent hash to whether any file has priority 0 (Do not download)
+	HasSkippedFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
@@ -98,9 +98,9 @@ type EvalContext struct {
 	// Enables O(1) EXISTS_IN lookups while supporting self-exclusion.
 	CategoryIndex map[string]map[string]map[string]struct{}
 
-	// CategoryNames maps lowercased category → slice of categoryEntry.
+	// CategoryNames maps lowercased category → slice of CategoryEntry.
 	// Used for CONTAINS_IN iteration (stores pre-normalized names).
-	CategoryNames map[string][]categoryEntry
+	CategoryNames map[string][]CategoryEntry
 
 	// NowUnix is the current Unix timestamp, used for age field evaluation.
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
@@ -124,7 +124,8 @@ type EvalContext struct {
 	SameInstanceCrossSeedTagsByHash map[string][]string
 
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
-	// Used for UseTrackerAsTag with UseDisplayName option.
+	// Read by the TRACKER and TRACKERS conditions, and by UseTrackerAsTag with the
+	// UseDisplayName option.
 	TrackerDisplayNameByDomain map[string]string
 
 	// ReleaseParser caches parsed release metadata for RLS-derived fields.
@@ -160,9 +161,9 @@ func normalizeName(s string) string {
 
 // BuildCategoryIndex builds the category lookup structures from a list of torrents.
 // Returns both the CategoryIndex (for O(1) EXISTS_IN) and CategoryNames (for CONTAINS_IN iteration).
-func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]categoryEntry) {
+func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[string]struct{}, map[string][]CategoryEntry) {
 	categoryIndex := make(map[string]map[string]map[string]struct{})
-	categoryNames := make(map[string][]categoryEntry)
+	categoryNames := make(map[string][]CategoryEntry)
 
 	for _, t := range torrents {
 		// Use lowercased + trimmed category as key (empty string is valid for uncategorized)
@@ -179,7 +180,7 @@ func BuildCategoryIndex(torrents []qbt.Torrent) (map[string]map[string]map[strin
 		categoryIndex[catKey][nameLower][t.Hash] = struct{}{}
 
 		// Build CategoryNames for CONTAINS_IN iteration
-		categoryNames[catKey] = append(categoryNames[catKey], categoryEntry{
+		categoryNames[catKey] = append(categoryNames[catKey], CategoryEntry{
 			Hash:           t.Hash,
 			Name:           nameLower,
 			NormalizedName: normalizeName(t.Name),
@@ -338,6 +339,9 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 					break
 				}
 			}
+		default:
+			// A group carrying a leaf operator has no children to combine.
+			result = false
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
@@ -408,9 +412,7 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareRlsYearIfSet(torrentRlsYear(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
-	case FieldTracker:
-		return compareTracker(torrent.Tracker, cond, ctx)
-	case FieldTrackers:
+	case FieldTracker, FieldTrackers:
 		return compareTrackers(torrent, cond, ctx)
 	case FieldTrackerStatus:
 		return compareTrackerStatuses(torrent, cond)
@@ -612,6 +614,16 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			return false // Unknown state - don't match
 		}
 		return compareBool(hasMissing, cond)
+
+	case FieldHasSkippedFiles:
+		if ctx == nil {
+			return false
+		}
+		hasSkipped, ok := ctx.HasSkippedFilesByHash[torrent.Hash]
+		if !ok {
+			return false // Files not fetched - don't match
+		}
+		return compareBool(hasSkipped, cond)
 
 	case FieldIsGrouped:
 		grouped := false
@@ -818,10 +830,8 @@ func compareString(value string, cond *RuleCondition) bool {
 	}
 }
 
-func compareTracker(trackerURL string, cond *RuleCondition, ctx *EvalContext) bool {
-	return compareStringCandidates(trackerCandidates(trackerURL, ctx), cond)
-}
-
+// compareTrackers matches TRACKER and TRACKERS against every tracker the torrent
+// announces to: qBittorrent empties the primary tracker field when none work.
 func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext) bool {
 	candidates := make([]string, 0, len(torrent.Trackers)*3+3)
 	candidates = append(candidates, trackerCandidates(torrent.Tracker, ctx)...)
@@ -931,7 +941,16 @@ func compareTrackerMessage(message string, cond *RuleCondition) bool {
 func trackerCandidates(trackerURL string, ctx *EvalContext) []string {
 	// Candidates: raw URL, extracted domain, optional customization display name.
 	raw := strings.TrimSpace(trackerURL)
-	domain := extractTrackerDomain(raw)
+	// DHT/PeX/LSD are peer-discovery mechanisms, not trackers. qBittorrent reports
+	// them both as entries and as the primary tracker, and they would otherwise match
+	// a "contains dht" query on nearly every public torrent.
+	if qbittorrent.IsPseudoTrackerLabel(raw) {
+		return nil
+	}
+	domain := qbittorrent.ExtractDomainFromURL(raw)
+	if domain == "Unknown" {
+		domain = ""
+	}
 	displayName := ""
 	if ctx != nil && ctx.TrackerDisplayNameByDomain != nil && domain != "" {
 		if name, ok := ctx.TrackerDisplayNameByDomain[strings.ToLower(domain)]; ok {
@@ -1000,62 +1019,8 @@ func compareStringCandidates(candidates []string, cond *RuleCondition) bool {
 	}
 
 	return slices.ContainsFunc(uniq, func(c string) bool {
-		if compareString(c, cond) {
-			return true
-		}
-		return false
+		return compareString(c, cond)
 	})
-}
-
-func extractTrackerDomain(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	// URL parsing with scheme (http/https/udp/etc).
-	if u, err := url.Parse(raw); err == nil {
-		if h := u.Hostname(); h != "" {
-			return normalizeLower(h)
-		}
-	}
-
-	// Scheme-less input (tracker.example.com/announce).
-	if !strings.Contains(raw, "://") {
-		if u, err := url.Parse("//" + raw); err == nil {
-			if h := u.Hostname(); h != "" {
-				return normalizeLower(h)
-			}
-		}
-	}
-
-	// Manual fallback: host[:port][/path]
-	candidate := raw
-	if idx := strings.IndexAny(candidate, "/?#"); idx != -1 {
-		candidate = candidate[:idx]
-	}
-	candidate = strings.TrimPrefix(candidate, "//")
-	candidate = strings.TrimSpace(candidate)
-	if candidate == "" {
-		return ""
-	}
-
-	// Try to split host:port (IPv6 requires brackets for SplitHostPort).
-	if host, _, err := net.SplitHostPort(candidate); err == nil {
-		return normalizeLower(strings.Trim(host, "[]"))
-	}
-
-	// If it's a plain IP (including IPv6 without port), keep it.
-	if ip := net.ParseIP(candidate); ip != nil && strings.Contains(candidate, ":") {
-		return normalizeLower(candidate)
-	}
-
-	// Strip :port for hostnames/IPv4.
-	if idx := strings.Index(candidate, ":"); idx != -1 {
-		candidate = candidate[:idx]
-	}
-	candidate = strings.Trim(candidate, "[]")
-	return normalizeLowerTrim(candidate)
 }
 
 // compareTags compares tags against the condition, treating tags as a set.

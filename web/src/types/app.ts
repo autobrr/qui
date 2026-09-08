@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { ThemeMode } from "@/utils/theme"
+
 export interface ApplicationDatabaseInfo {
   engine: string
   target: string
@@ -289,4 +291,22 @@ export interface QBittorrentAppInfo {
 
 export interface QBittorrentProcessInfo {
   launchTime: number
+}
+
+export interface ThemeSettings {
+  themeId: string
+  mode: ThemeMode
+  variation?: string
+}
+
+export interface BuiltinTheme {
+  id: string
+  name: string
+  description?: string
+  premium: boolean
+  css?: string
+  preview?: {
+    light: Record<string, string>
+    dark: Record<string, string>
+  }
 }

@@ -16,7 +16,6 @@ import type {
   RefreshRSSItemRequest,
   MarkRSSAsReadRequest,
   SetRSSRuleRequest,
-  RenameRSSRuleRequest,
   SetRSSFeedURLRequest
 } from "@/types"
 
@@ -47,9 +46,7 @@ export function useRSSFeeds(instanceId: number, options?: { enabled?: boolean; w
   const handleFeedsUpdate = useCallback(
     (data: FeedsUpdatePayload) => {
       if (data.instanceId === instanceId) {
-        // Set the data and invalidate to ensure re-render
         queryClient.setQueryData(rssKeys.feeds(instanceId), data.items)
-        queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId), refetchType: "none" })
       }
     },
     [instanceId, queryClient]
@@ -238,18 +235,6 @@ export function useSetRSSRule(instanceId: number) {
 
   return useMutation({
     mutationFn: (data: SetRSSRuleRequest) => api.setRSSRule(instanceId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: rssKeys.rules(instanceId) })
-    },
-  })
-}
-
-export function useRenameRSSRule(instanceId: number) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: ({ ruleName, data }: { ruleName: string; data: RenameRSSRuleRequest }) =>
-      api.renameRSSRule(instanceId, ruleName, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: rssKeys.rules(instanceId) })
     },

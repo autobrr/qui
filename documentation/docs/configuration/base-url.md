@@ -1,21 +1,22 @@
 ---
 sidebar_position: 3
 title: Base URL
+description: Serve qui from a subdirectory behind a reverse proxy.
 ---
 
 # Base URL Configuration
 
-If you need to serve qui from a subdirectory (e.g., `https://example.com/qui/`), you can configure the base URL.
+If you serve qui from a subdirectory (for example `https://example.com/qui/`), configure the base URL.
 
-qui normalizes the value at startup. `/qui/`, `/qui`, and `qui` all become `/qui/`.
+qui normalizes the value at startup. `/qui/`, `/qui`, and `qui` all become `/qui/`. Restart qui after you change the base URL.
 
-## Using Environment Variable
+## Environment variable
 
 ```bash
-QUI__BASE_URL=/qui/ ./qui
+QUI__BASE_URL=/qui/ ./qui serve
 ```
 
-## Using Configuration File
+## Configuration file
 
 Edit your `config.toml`:
 
@@ -23,7 +24,7 @@ Edit your `config.toml`:
 baseUrl = "/qui/"
 ```
 
-## With Nginx Reverse Proxy
+## Nginx reverse proxy
 
 ```nginx
 # Redirect /qui to /qui/ for proper SPA routing

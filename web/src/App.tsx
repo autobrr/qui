@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { BuiltinThemesLoader } from "@/components/themes/BuiltinThemesLoader"
+import { DiscScanToasts } from "@/components/torrents/DiscScanToasts"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SyncStreamProvider } from "@/contexts/SyncStreamContext"
@@ -40,6 +42,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SyncStreamProvider>
+        <BuiltinThemesLoader />
+        <DiscScanToasts />
         <TooltipProvider>
           <RouterProvider router={router} />
           <Toaster />

@@ -5,7 +5,7 @@
 
 // Speed units utilities for toggling between B/s and bps display
 
-import { useEffect, useState } from "react"
+import { useClientSetting } from "@/lib/client-settings"
 
 // Speed unit types
 export type SpeedUnit = "bytes" | "bits"
@@ -13,38 +13,15 @@ export type SpeedUnit = "bytes" | "bits"
 // Storage key for speed units preference
 const SPEED_UNITS_STORAGE_KEY = "qui-speed-units"
 
-// Custom hook for managing speed units state with localStorage persistence
+const parseSpeedUnit = (raw: string): SpeedUnit => (raw === "bits" ? "bits" : "bytes")
+
+// Custom hook for managing the DB-backed speed units preference
 export function useSpeedUnits(): [SpeedUnit, (unit: SpeedUnit) => void] {
-  const [speedUnit, setSpeedUnitState] = useState<SpeedUnit>(() => {
-    const stored = localStorage.getItem(SPEED_UNITS_STORAGE_KEY) as SpeedUnit
-    return stored === "bits" ? "bits" : "bytes" // Default to bytes
+  return useClientSetting<SpeedUnit>(SPEED_UNITS_STORAGE_KEY, {
+    defaultValue: "bytes",
+    parse: parseSpeedUnit,
+    serialize: String,
   })
-
-  // Listen for storage changes to sync speed units across components
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const stored = localStorage.getItem(SPEED_UNITS_STORAGE_KEY) as SpeedUnit
-      setSpeedUnitState(stored === "bits" ? "bits" : "bytes")
-    }
-
-    // Listen for both storage events (cross-tab) and custom events (same-tab)
-    window.addEventListener("storage", handleStorageChange)
-    window.addEventListener("speed-units-changed", handleStorageChange)
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange)
-      window.removeEventListener("speed-units-changed", handleStorageChange)
-    }
-  }, [])
-
-  const setSpeedUnit = (unit: SpeedUnit) => {
-    setSpeedUnitState(unit)
-    localStorage.setItem(SPEED_UNITS_STORAGE_KEY, unit)
-    // Dispatch custom event for same-tab updates
-    window.dispatchEvent(new Event("speed-units-changed"))
-  }
-
-  return [speedUnit, setSpeedUnit]
 }
 
 // Format speed with unit preference

@@ -130,8 +130,6 @@
     "switchedToMode": "Přepnuto na {{mode}} režim",
     "switchedToTheme": "Přepnuto na {{theme}} vzhled",
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
-    "unableToVerifyLicense": "Nelze ověřit licenci",
-    "licenseCheckFailed": "Ověření licence se nezdařilo. Přepnutí vzhledu premium je dočasně nedostupné.",
     "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence.",
     "custom": "Vlastní"
   },

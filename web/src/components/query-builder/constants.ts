@@ -19,7 +19,10 @@ export const CONDITION_FIELDS = {
   CONTENT_PATH: { label: "Content Path", type: "string" as const, description: "Content location" },
   DOWNLOAD_PATH: { label: "Download Path", type: "string" as const, description: "Session download path from qBittorrent" },
   CREATED_BY: { label: "Created By", type: "string" as const, description: "Torrent creator metadata" },
-  TRACKERS: { label: "Trackers (All)", type: "string" as const, description: "All tracker URLs/domains/display names for this torrent" },
+  // Legacy alias of TRACKER, which now matches every tracker too. Kept out of
+  // FIELD_GROUPS so it is no longer offered, and kept here so saved rules that
+  // already use it still render a label, a type, and help text.
+  TRACKERS: { label: "Trackers (All)", type: "string" as const, description: "Same as Tracker: any tracker of the torrent (URL, domain, or display name)" },
   CONTENT_TYPE: { label: "Content Type", type: "string" as const, description: "Detected content type (movie, tv, music, etc) from release parsing" },
   EFFECTIVE_NAME: { label: "Effective Name", type: "string" as const, description: "Parsed item key (title/year or SxxEyy) for grouping across trackers" },
   RLS_SOURCE: { label: "Source (RLS)", type: "string" as const, description: "Parsed source (normalized: WEBDL, WEBRIP, BLURAY, etc)" },
@@ -31,7 +34,7 @@ export const CONDITION_FIELDS = {
   RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
   RLS_YEAR: { label: "Year (RLS)", type: "integer" as const, description: "Year parsed from the torrent name (e.g. 2021). Best for movies and dated releases; most TV episodes (e.g. S14E05) have no year and never match any comparison operator (the NOT toggle inverts that, so it matches yearless releases)." },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
-  TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
+  TRACKER: { label: "Tracker", type: "string" as const, description: "Any tracker of the torrent (URL, domain, or display name)" },
   TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
   TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
@@ -107,6 +110,7 @@ export const CONDITION_FIELDS = {
   SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const, description: "Super-seeding mode enabled" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
+  HAS_SKIPPED_FILES: { label: "Has Skipped Files", type: "boolean" as const, description: "Some files are set to Do not download" },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
   EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
   SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
@@ -236,14 +240,6 @@ export const TORRENT_STATES = [
   { value: "missingFiles", label: "Missing Files" },
 ];
 
-// Delete mode options
-export const DELETE_MODES = [
-  { value: "delete", label: "Remove from client" },
-  { value: "deleteWithFiles", label: "Remove with files" },
-  { value: "deleteWithFilesPreserveCrossSeeds", label: "Remove with files (preserve cross-seeds)" },
-  { value: "deleteWithFilesIncludeCrossSeeds", label: "Remove with files (include cross-seeds)" },
-];
-
 // Field groups for organized selection
 export const FIELD_GROUPS = [
   {
@@ -288,7 +284,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Tracker",
-    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
+    fields: ["TRACKER", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
   },
   {
     label: "Cross-Seed",
@@ -300,7 +296,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
+    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES", "HAS_SKIPPED_FILES"],
   },
 ];
 
@@ -328,15 +324,6 @@ export function getOperatorsForField(field: string) {
 
   return baseOperators;
 }
-
-// Unit conversion helpers for display
-export const BYTE_UNITS = [
-  { value: 1, label: "B" },
-  { value: 1024, label: "KiB" },
-  { value: 1024 * 1024, label: "MiB" },
-  { value: 1024 * 1024 * 1024, label: "GiB" },
-  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
-];
 
 export const DURATION_UNITS = [
   { value: 1, label: "seconds" },
@@ -468,13 +455,5 @@ export function getTranslatedHardlinkScopes(t: TFunction): { value: string; labe
   return HARDLINK_SCOPE_VALUES.map((scope) => ({
     value: scope.value,
     label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
-  }));
-}
-
-/** Get translated delete modes */
-export function getTranslatedDeleteModes(t: TFunction): { value: string; label: string }[] {
-  return DELETE_MODES.map((mode) => ({
-    value: mode.value,
-    label: t(`queryBuilder.deleteModes.${mode.value}`, { defaultValue: mode.label }),
   }));
 }

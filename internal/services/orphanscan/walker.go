@@ -214,15 +214,20 @@ func walkScanRootWithUnitFilter(
 ) ([]OrphanFile, bool, error) {
 	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter, backend)
 
-	ch, err := backend.WalkDir(ctx, root, fsops.WalkOptions{
-		IgnoreDirNames: ignoredOrphanDirNames,
-		IgnorePaths:    ignorePaths,
-		WantFileID:     true,
+	walkCtx, cancelWalk := context.WithCancel(ctx)
+	ch, err := backend.WalkDir(walkCtx, root, fsops.WalkOptions{
+		IgnoreDirNames:        ignoredOrphanDirNames,
+		IgnoreDirNamePrefixes: ignoredOrphanDirNamePrefixes,
+		IgnorePaths:           ignorePaths,
+		WantFileID:            true,
+		EmitStatErrors:        true,
 	})
 	if err != nil {
+		cancelWalk()
 		return nil, false, fmt.Errorf("walk %s: %w", root, err)
 	}
 	defer func() {
+		cancelWalk()
 		for range ch { //nolint:revive // drain channel to avoid leaking sender goroutine
 		}
 	}()
@@ -252,11 +257,6 @@ func walkScanRootWithUnitFilter(
 			continue
 		}
 
-		// Skip files under directories matching ignored prefix patterns (e.g., "..data" for k8s).
-		if isUnderIgnoredPrefixDir(entry.Path, root) {
-			continue
-		}
-
 		// Handle files
 		path := entry.Path
 		if isIgnoredPath(path, w.ignorePaths) {
@@ -268,6 +268,9 @@ func walkScanRootWithUnitFilter(
 		if w.tfm.Has(normPath) {
 			w.markInUse(unitPath, isDiscUnit)
 			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
+			continue
+		}
+		if entry.StatErr != nil {
 			continue
 		}
 
@@ -580,43 +583,6 @@ func isIgnoredOrphanFileName(name string) bool {
 	}
 	for _, suffix := range ignoredOrphanFileNameSuffixes {
 		if hasSuffixFold(name, suffix) {
-			return true
-		}
-	}
-	return false
-}
-
-// isUnderIgnoredPrefixDir checks if a path has any directory component matching
-// the ignored directory name prefix patterns (e.g., ".." prefix for k8s "..data").
-func isUnderIgnoredPrefixDir(path, root string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	// Only inspect directory components — exclude the basename so file names
-	// like ".Trash-foo.mkv" don't match the prefix check.
-	dir := filepath.Dir(rel)
-	if dir == "." {
-		return false
-	}
-	for seg := range strings.SplitSeq(dir, string(filepath.Separator)) {
-		for _, prefix := range ignoredOrphanDirNamePrefixes {
-			if hasPrefixFold(seg, prefix) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func isIgnoredOrphanDirName(name string) bool {
-	for _, exact := range ignoredOrphanDirNames {
-		if strings.EqualFold(name, exact) {
-			return true
-		}
-	}
-	for _, prefix := range ignoredOrphanDirNamePrefixes {
-		if hasPrefixFold(name, prefix) {
 			return true
 		}
 	}

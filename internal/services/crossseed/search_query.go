@@ -54,11 +54,11 @@ func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) S
 	// If rls already gave us structured series/episode info, keep it.
 	var seasonPtr, episodePtr *int
 	if release.Series > 0 {
-		season := int(release.Series)
+		season := release.Series
 		seasonPtr = &season
 	}
 	if release.Episode > 0 {
-		ep := int(release.Episode)
+		ep := release.Episode
 		episodePtr = &ep
 	}
 

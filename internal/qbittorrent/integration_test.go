@@ -87,8 +87,8 @@ func TestSyncManager_FilteringAndSorting(t *testing.T) {
 		stats := sm.calculateStats(torrents)
 
 		assert.Equal(t, 10, stats.Total, "Total should be 10")
-		assert.Greater(t, stats.TotalDownloadSpeed, 0, "Should have download speed")
-		assert.Greater(t, stats.TotalUploadSpeed, 0, "Should have upload speed")
+		assert.Positive(t, stats.TotalDownloadSpeed, "Should have download speed")
+		assert.Positive(t, stats.TotalUploadSpeed, "Should have upload speed")
 
 		assert.Positive(t, stats.TotalDownloadData, "Should have session download data")
 		assert.Positive(t, stats.TotalUploadData, "Should have session upload data")
@@ -1525,13 +1525,13 @@ func TestSyncManager_ValidatedTrackerMapping_DeepCopy(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	// Get a copy
-	copy := sm.getValidatedTrackerMapping(1)
-	assert.NotNil(t, copy)
+	// Get a mappingCopy
+	mappingCopy := sm.getValidatedTrackerMapping(1)
+	assert.NotNil(t, mappingCopy)
 
-	// Modify the copy
-	copy.HashToDomains["hash1"]["modified.com"] = struct{}{}
-	copy.DomainToHashes["modified.com"] = map[string]struct{}{"hash1": {}}
+	// Modify the mappingCopy
+	mappingCopy.HashToDomains["hash1"]["modified.com"] = struct{}{}
+	mappingCopy.DomainToHashes["modified.com"] = map[string]struct{}{"hash1": {}}
 
 	// Original should be unchanged
 	original := sm.validatedTrackerMapping[1]

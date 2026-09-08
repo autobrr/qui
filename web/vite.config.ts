@@ -126,11 +126,11 @@ export default defineConfig(() => ({
   ],
   experimental: {
     // The Go handler rewrites the absolute /assets/ paths in index.html for
-    // base-URL deployments, but never rewrites CSS content, so CSS url()
-    // assets (large flag icons) 404 under a subpath. Emit CSS urls relative
-    // to the stylesheet; they resolve correctly for any base. HTML keeps the
-    // absolute paths the handler rewrite depends on.
-    renderBuiltUrl: (_filename, { hostType }) => hostType === "css" ? { relative: true } : undefined,
+    // base-URL deployments, but never rewrites JS/CSS content. Emit asset
+    // urls relative to the requesting file so dynamic imports and CSS url()
+    // resolve correctly for any base. HTML keeps the absolute paths the
+    // handler rewrite depends on.
+    renderBuiltUrl: (_filename, { hostType }) => hostType === "html" ? undefined : { relative: true },
   },
   resolve: {
     alias: {

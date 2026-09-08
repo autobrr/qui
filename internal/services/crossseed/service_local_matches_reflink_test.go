@@ -512,7 +512,7 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 
 	cleanRoot, err := filepath.Abs(root)
 	require.NoError(t, err)
-	testRoot, err := os.MkdirTemp(cleanRoot, "qui-crossseed-reflink-") //nolint:gosec // Opt-in test root; containment is verified below.
+	testRoot, err := os.MkdirTemp(cleanRoot, "qui-crossseed-reflink-")
 	require.NoError(t, err)
 	testRoot, err = filepath.Abs(testRoot)
 	require.NoError(t, err)
@@ -521,7 +521,7 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 	require.NotEqual(t, "..", relativeTestRoot)
 	require.False(t, strings.HasPrefix(relativeTestRoot, ".."+string(filepath.Separator)))
 	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(testRoot)) //nolint:gosec // Verified test temp directory under cleanRoot.
+		require.NoError(t, os.RemoveAll(testRoot))
 	})
 
 	fileName := "shared.mkv"
@@ -530,7 +530,7 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 	copyDir := filepath.Join(testRoot, "copy")
 	hardlinkDir := filepath.Join(testRoot, "hardlink")
 	for _, dir := range []string{sourceDir, cloneDir, copyDir, hardlinkDir} {
-		require.NoError(t, os.MkdirAll(dir, 0o755)) //nolint:gosec // Path is under verified test temp directory.
+		require.NoError(t, os.MkdirAll(dir, 0o755))
 	}
 
 	data := make([]byte, 3*64*1024)
@@ -540,8 +540,8 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 	clonePath := filepath.Join(cloneDir, fileName)
 	copyPath := filepath.Join(copyDir, fileName)
 	hardlinkPath := filepath.Join(hardlinkDir, fileName)
-	require.NoError(t, os.WriteFile(sourcePath, data, 0o600)) //nolint:gosec // Path is under verified test temp directory.
-	require.NoError(t, os.WriteFile(copyPath, data, 0o600))   //nolint:gosec // Path is under verified test temp directory.
+	require.NoError(t, os.WriteFile(sourcePath, data, 0o600))
+	require.NoError(t, os.WriteFile(copyPath, data, 0o600))
 	require.NoError(t, os.Link(sourcePath, hardlinkPath))
 	_, err = reflinktree.Create(&hardlinktree.TreePlan{
 		RootDir: cloneDir,
@@ -575,7 +575,7 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 		hardlinkTestCandidate(hardlinkDir),
 	))
 
-	cloneFile, err := os.OpenFile(clonePath, os.O_WRONLY, 0) //nolint:gosec // Path is under verified test temp directory.
+	cloneFile, err := os.OpenFile(clonePath, os.O_WRONLY, 0)
 	require.NoError(t, err)
 	_, err = cloneFile.WriteAt([]byte{0xff}, 0)
 	require.NoError(t, err)
@@ -590,7 +590,7 @@ func TestLocalLinkedMatchTypeReFS(t *testing.T) {
 	replacement := make([]byte, len(data))
 	_, err = rand.Read(replacement)
 	require.NoError(t, err)
-	cloneFile, err = os.OpenFile(clonePath, os.O_WRONLY, 0) //nolint:gosec // Path is under verified test temp directory.
+	cloneFile, err = os.OpenFile(clonePath, os.O_WRONLY, 0)
 	require.NoError(t, err)
 	_, err = cloneFile.WriteAt(replacement, 0)
 	require.NoError(t, err)

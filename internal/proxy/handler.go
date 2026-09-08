@@ -407,7 +407,6 @@ func (h *Handler) Routes(r chi.Router) {
 		// Register intercepted endpoints (these use qui's sync manager or special handling)
 		pr.Post("/api/v2/auth/login", h.handleAuthLogin)
 		pr.Get("/api/v2/sync/maindata", h.handleSyncMainData)
-		pr.Get("/api/v2/sync/torrentPeers", h.handleTorrentPeers)
 		pr.Get("/api/v2/torrents/info", h.handleTorrentsInfo)
 		pr.Get("/api/v2/torrents/categories", h.handleCategories)
 		pr.Get("/api/v2/torrents/tags", h.handleTags)
@@ -563,8 +562,7 @@ func (h *Handler) monitoringEnabled(instanceID int) bool {
 	if h.reannounceCache == nil {
 		return false
 	}
-	settings := h.reannounceCache.Get(instanceID)
-	return settings != nil && settings.Enabled
+	return h.reannounceCache.Get(instanceID).CanMatchTorrents()
 }
 
 func restoreBody(r *http.Request, body []byte) {
@@ -1532,81 +1530,6 @@ func (h *Handler) handleTorrentTrackers(w http.ResponseWriter, r *http.Request) 
 			Err(err).
 			Int("instanceId", instanceID).
 			Msg("Failed to encode trackers response")
-	}
-}
-
-// handleTorrentPeers handles /api/v2/sync/torrentPeers requests
-func (h *Handler) handleTorrentPeers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	instanceID := GetInstanceIDFromContext(ctx)
-	clientAPIKey := GetClientAPIKeyFromContext(ctx)
-
-	hash := r.URL.Query().Get("hash")
-
-	log.Trace().
-		Int("instanceId", instanceID).
-		Str("client", clientAPIKey.ClientName).
-		Str("hash", hash).
-		Msg("Proxying sync/torrentPeers request")
-
-	// Use a custom response writer to capture the response
-	buf := h.bufferPool.Get()
-	crwBody := buf[:0]
-	crw := &capturingResponseWriter{
-		ResponseWriter: w,
-		body:           crwBody,
-		statusCode:     http.StatusOK,
-	}
-	defer func() {
-		if buf != nil {
-			h.bufferPool.Put(buf[:cap(buf)])
-		}
-	}()
-
-	// Proxy the request
-	h.proxy.ServeHTTP(crw, r)
-
-	// Update local peer sync manager state for successful responses
-	if crw.statusCode == http.StatusOK && len(crw.body) > 0 {
-		var peersData qbt.TorrentPeersResponse
-		if err := json.Unmarshal(crw.body, &peersData); err != nil {
-			log.Error().
-				Err(err).
-				Int("instanceId", instanceID).
-				Str("hash", hash).
-				Msg("Failed to parse sync/torrentPeers response")
-			return
-		}
-
-		// Check if this is a full update (FullUpdate field or rid == 0)
-		isFullUpdate := peersData.FullUpdate || peersData.Rid == 0
-
-		if isFullUpdate {
-			client, err := h.clientPool.GetClient(ctx, instanceID)
-			if err != nil {
-				log.Error().
-					Err(err).
-					Int("instanceId", instanceID).
-					Msg("Failed to get client for peer state update")
-				return
-			}
-
-			// Update peer state using the same pattern as maindata
-			client.UpdateWithPeersData(hash, &peersData)
-
-			log.Trace().
-				Int("instanceId", instanceID).
-				Str("hash", hash).
-				Int64("rid", peersData.Rid).
-				Int("peerCount", len(peersData.Peers)).
-				Msg("Updated local peer state from full sync/torrentPeers response")
-		} else {
-			log.Trace().
-				Int("instanceId", instanceID).
-				Str("hash", hash).
-				Int64("rid", peersData.Rid).
-				Msg("Skipping incremental sync/torrentPeers update")
-		}
 	}
 }
 

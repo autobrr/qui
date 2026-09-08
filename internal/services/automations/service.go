@@ -937,7 +937,7 @@ func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceI
 	if s == nil || s.trackerCustomizationStore == nil {
 		return
 	}
-	if !ConditionUsesField(cond, FieldTracker) {
+	if !ConditionUsesField(cond, FieldTracker) && !ConditionUsesField(cond, FieldTrackers) {
 		return
 	}
 
@@ -1016,6 +1016,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
+	s.setupSkippedFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1109,6 +1110,30 @@ func (s *Service) setupMissingFilesContext(
 		return
 	}
 	evalCtx.HasMissingFilesByHash = missing
+}
+
+// setupSkippedFilesContext sets up skipped files detection if needed for preview sorting/conditions.
+func (s *Service) setupSkippedFilesContext(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	cond *RuleCondition,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+) {
+	if rule == nil {
+		return
+	}
+	if !ConditionUsesField(cond, FieldHasSkippedFiles) && !sortingConfigUsesField(rule.SortingConfig, FieldHasSkippedFiles) {
+		return
+	}
+
+	skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
+		return
+	}
+	evalCtx.HasSkippedFilesByHash = skipped
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -1557,6 +1582,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
+	s.setupSkippedFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1948,10 +1974,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		return nil, nil
 	}
 
-	// Pre-filter rules by interval eligibility
+	// Pre-filter rules by enablement and interval eligibility
 	now := time.Now()
 	eligibleRules := make([]*models.Automation, 0, len(rules))
 	for _, rule := range rules {
+		// A disabled rule never stamps lastRuleRun, so the interval filter below can
+		// never drop it: without this it stays eligible on every tick and pulls the
+		// data the gates further down fetch.
+		if !rule.Enabled {
+			continue
+		}
 		if !force {
 			interval := DefaultRuleInterval
 			if rule.IntervalSeconds != nil {
@@ -2026,6 +2058,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	if rulesUseTrackerEntryData(eligibleRules) {
 		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+		if trackerDataMissing(torrents) {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Int("torrents", len(torrents)).
+				Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+		}
 	}
 
 	// Get instance for local filesystem access check
@@ -2087,6 +2125,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: missing files detection failed")
 		} else {
 			evalCtx.HasMissingFilesByHash = missing
+		}
+	}
+
+	// On-demand skipped files detection (only if rules use HAS_SKIPPED_FILES)
+	if rulesUseCondition(eligibleRules, FieldHasSkippedFiles) {
+		skipped, err := s.detectSkippedFiles(ctx, instanceID, torrents)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: skipped files detection failed")
+		} else {
+			evalCtx.HasSkippedFilesByHash = skipped
 		}
 	}
 
@@ -2169,9 +2217,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		s.loadCrossSeedFiles(ctx, instanceID, buildContentPathIndex(torrents), evalCtx)
 	}
 
-	// Load tracker display names when needed by tagging OR by TRACKER conditions.
+	// Load tracker display names when needed by tagging OR by TRACKER/TRACKERS conditions.
 	// KISS: only load customizations when a rule actually references them.
-	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker)) && s.trackerCustomizationStore != nil {
+	if (rulesUseTrackerDisplayName(eligibleRules) || rulesUseCondition(eligibleRules, FieldTracker) || rulesUseCondition(eligibleRules, FieldTrackers)) && s.trackerCustomizationStore != nil {
 		customizations, err := s.trackerCustomizationStore.List(ctx)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to load tracker customizations for display names")
@@ -2205,10 +2253,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// This must happen after skipCheck is defined so we only stamp lastRuleRun
 	// for rules that will actually process at least one torrent.
 	rulesUsed := make(map[int]struct{})
+	consideredTorrents := 0
 	for _, torrent := range torrents {
 		if skipCheck(torrent.Hash) {
 			continue
 		}
+		consideredTorrents++
 		for _, rule := range selectMatchingRules(torrent, eligibleRules, s.syncManager) {
 			rulesUsed[rule.ID] = struct{}{}
 		}
@@ -2228,37 +2278,50 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Int("torrents", len(torrents)).
 			Int("matchedRules", len(rulesUsed)).
 			Msg("automations: no actions to apply")
+	}
 
-		for _, rule := range eligibleRules {
-			stats := ruleStats[rule.ID]
-			if stats == nil || stats.MatchedTrackers == 0 {
-				continue
+	// Report every rule that did nothing, even when another rule acted. A rule
+	// matching zero torrents is the hardest run to diagnose, so it must not stay silent.
+	for _, rule := range eligibleRules {
+		stats := ruleStats[rule.ID]
+		if stats == nil || stats.MatchedTrackers == 0 {
+			// Stay quiet when every torrent was skipped as recently processed:
+			// the rule saw nothing, which says nothing about the rule.
+			if consideredTorrents > 0 {
+				log.Debug().
+					Int("instanceID", instanceID).
+					Int("ruleID", rule.ID).
+					Str("ruleName", rule.Name).
+					Str("trackerPattern", rule.TrackerPattern).
+					Int("consideredTorrents", consideredTorrents).
+					Msg("automations: rule matched no torrents")
 			}
-			if stats.totalApplied() > 0 {
-				continue
-			}
-
-			log.Debug().
-				Int("instanceID", instanceID).
-				Int("ruleID", rule.ID).
-				Str("ruleName", rule.Name).
-				Int("matchedTrackers", stats.MatchedTrackers).
-				Int("speedNoMatch", stats.SpeedConditionNotMet).
-				Int("shareNoMatch", stats.ShareConditionNotMet).
-				Int("pauseNoMatch", stats.PauseConditionNotMet).
-				Int("resumeNoMatch", stats.ResumeConditionNotMet).
-				Int("recheckNoMatch", stats.RecheckConditionNotMet).
-				Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
-				Int("tagNoMatch", stats.TagConditionNotMet).
-				Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
-				Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
-				Int("deleteNoMatch", stats.DeleteConditionNotMet).
-				Int("moveNoMatch", stats.MoveConditionNotMet).
-				Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
-				Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
-				Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
-				Msg("automations: rule matched trackers but applied no actions")
+			continue
 		}
+		if stats.totalApplied() > 0 {
+			continue
+		}
+
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("ruleID", rule.ID).
+			Str("ruleName", rule.Name).
+			Int("matchedTrackers", stats.MatchedTrackers).
+			Int("speedNoMatch", stats.SpeedConditionNotMet).
+			Int("shareNoMatch", stats.ShareConditionNotMet).
+			Int("pauseNoMatch", stats.PauseConditionNotMet).
+			Int("resumeNoMatch", stats.ResumeConditionNotMet).
+			Int("recheckNoMatch", stats.RecheckConditionNotMet).
+			Int("reannounceNoMatch", stats.ReannounceConditionNotMet).
+			Int("tagNoMatch", stats.TagConditionNotMet).
+			Int("tagMissingUnregisteredSet", stats.TagSkippedMissingUnregisteredSet).
+			Int("categoryNoMatchOrBlocked", stats.CategoryConditionNotMetOrBlocked).
+			Int("deleteNoMatch", stats.DeleteConditionNotMet).
+			Int("moveNoMatch", stats.MoveConditionNotMet).
+			Int("moveAlreadyAtDest", stats.MoveAlreadyAtDestination).
+			Int("moveBlockedByCrossSeed", stats.MoveBlockedByCrossSeed).
+			Int("exportToInstanceNoMatch", stats.ExportToInstanceConditionNotMet).
+			Msg("automations: rule matched trackers but applied no actions")
 	}
 
 	// Update lastRuleRun only for rules that matched at least one non-skipped torrent
@@ -2514,11 +2577,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 				// Determine activity action type
 				action := models.ActivityActionDeletedCondition
-				if state.deleteReason == "unregistered" {
+				switch state.deleteReason {
+				case "unregistered":
 					action = models.ActivityActionDeletedUnregistered
-				} else if state.deleteReason == "ratio limit reached" {
+				case "ratio limit reached":
 					action = models.ActivityActionDeletedRatio
-				} else if state.deleteReason == "seeding time limit reached" || state.deleteReason == "ratio and seeding time limits reached" {
+				case "seeding time limit reached", "ratio and seeding time limits reached":
 					action = models.ActivityActionDeletedSeeding
 				}
 
@@ -2654,10 +2718,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				desired[t] = struct{}{}
 			}
 			for tag, action := range state.tagActions {
-				if action == "add" {
+				switch action {
+				case "add":
 					toAdd = append(toAdd, tag)
 					desired[tag] = struct{}{}
-				} else if action == "remove" {
+				case "remove":
 					toRemove = append(toRemove, tag)
 					delete(desired, tag)
 				}
@@ -2766,7 +2831,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				exportExecutions = append(exportExecutions, exportEntry)
 			}
 		}
-
 	}
 
 	if dryRun {
@@ -4152,13 +4216,13 @@ func (s *Service) notifyAutomationFailure(ctx context.Context, instanceID int, e
 	})
 }
 
-func limitHashBatch(hashes []string, max int) [][]string {
-	if max <= 0 || len(hashes) <= max {
+func limitHashBatch(hashes []string, batchSize int) [][]string {
+	if batchSize <= 0 || len(hashes) <= batchSize {
 		return [][]string{hashes}
 	}
 	var batches [][]string
 	for len(hashes) > 0 {
-		end := min(len(hashes), max)
+		end := min(len(hashes), batchSize)
 		batches = append(batches, slices.Clone(hashes[:end]))
 		hashes = hashes[end:]
 	}
@@ -4470,7 +4534,7 @@ func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string 
 		}
 	}
 
-	var domains []string
+	domains := make([]string, 0, len(domainSet))
 	for d := range domainSet {
 		domains = append(domains, d)
 	}
@@ -4623,15 +4687,6 @@ func cachedTorrentFilesFetcher(filesByHash map[string]qbt.TorrentFiles) torrentF
 	return func(_ []string) (map[string]qbt.TorrentFiles, error) {
 		return filesByHash, nil
 	}
-}
-
-// isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
-// files unique to this torrent. This happens when ContentPath == SavePath, meaning
-// the torrent uses the SavePath directly (common for shared download directories).
-func isContentPathAmbiguous(t qbt.Torrent) bool {
-	contentPath := normalizePath(t.ContentPath)
-	savePath := normalizePath(t.SavePath)
-	return contentPath == savePath
 }
 
 // findCrossSeedGroup returns all torrents (including the target) that share
@@ -5049,18 +5104,38 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	return false
 }
 
+// rulesUseTrackerEntryData reports whether any rule needs the per-torrent tracker
+// list. Rules without a tracker condition skip hydration entirely.
 func rulesUseTrackerEntryData(rules []*models.Automation) bool {
-	return rulesUseCondition(rules, FieldTrackerStatus) || rulesUseCondition(rules, FieldTrackerMessage)
+	return rulesUseCondition(rules, FieldTracker) ||
+		rulesUseCondition(rules, FieldTrackers) ||
+		rulesUseCondition(rules, FieldTrackerStatus) ||
+		rulesUseCondition(rules, FieldTrackerMessage)
 }
 
 func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {
 	if s == nil || s.syncManager == nil || rule == nil {
 		return torrents
 	}
-	if !ruleUsesCondition(rule, FieldTrackerStatus) && !ruleUsesCondition(rule, FieldTrackerMessage) {
+	if !rulesUseTrackerEntryData([]*models.Automation{rule}) {
 		return torrents
 	}
-	return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+
+	hydrated := s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
+	if trackerDataMissing(hydrated) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("rule", rule.Name).
+			Int("torrents", len(hydrated)).
+			Msg("automations: no tracker data for any torrent, tracker conditions will not match")
+	}
+	return hydrated
+}
+
+// trackerDataMissing reports that no torrent carries tracker entries. An empty
+// torrent list is not missing data: it says nothing about hydration.
+func trackerDataMissing(torrents []qbt.Torrent) bool {
+	return len(torrents) > 0 && !slices.ContainsFunc(torrents, func(t qbt.Torrent) bool { return len(t.Trackers) > 0 })
 }
 
 // rulesUseCondition checks if any enabled rule uses the given field.
@@ -5260,7 +5335,15 @@ func buildTrackerDisplayNameMap(customizations []*models.TrackerCustomization) m
 // filename byte on Linux, and inventing a nested path from it makes
 // missing-files flag a file that exists (a skipped file is safe, a false
 // missing-files verdict can fire a destructive rule).
+//
+// basePath must be absolute in local form. An empty or relative save path would
+// otherwise join to a relative path that resolves against the process working
+// directory, so a file that exists would stat as missing.
 func buildFullPath(basePath, fileName string) (string, bool) {
+	base := filepath.FromSlash(basePath)
+	if base == "" || !filepath.IsAbs(base) {
+		return "", false
+	}
 	if fileName == "" || strings.ContainsRune(fileName, '\\') ||
 		strings.HasPrefix(fileName, "/") || hasWindowsDrivePrefix(fileName) {
 		return "", false
@@ -5269,7 +5352,7 @@ func buildFullPath(basePath, fileName string) (string, bool) {
 	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
 		return "", false
 	}
-	return filepath.Join(filepath.FromSlash(basePath), filepath.FromSlash(cleaned)), true
+	return filepath.Join(base, filepath.FromSlash(cleaned)), true
 }
 
 func hasWindowsDrivePrefix(p string) bool {
@@ -6240,7 +6323,7 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 
 		// Execute asynchronously - the service handles its own activity logging
 		// Use context.Background() since parent context may be cancelled before execution completes
-		go func() {
+		go func() { //nolint:gosec // G118: external program runs past the automation pass that queued it
 			result := s.externalProgramService.Execute(context.Background(), externalprograms.ExecuteRequest{
 				ProgramID:  programID,
 				Torrent:    &torrent,

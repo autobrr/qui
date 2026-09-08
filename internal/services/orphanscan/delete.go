@@ -89,7 +89,7 @@ func safeDeleteFile(ctx context.Context, scanRoot, target string, tfm *TorrentFi
 // checkDirContainsInUseFile walks a directory and returns ErrInUse if any file is in the TorrentFileMap.
 func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentFileMap, backend fsops.Backend) error {
 	walkCtx, cancelWalk := context.WithCancel(ctx)
-	ch, err := backend.WalkDir(walkCtx, target, fsops.WalkOptions{})
+	ch, err := backend.WalkDir(walkCtx, target, fsops.WalkOptions{EmitStatErrors: true})
 	if err != nil {
 		cancelWalk()
 		if errors.Is(err, fs.ErrNotExist) {
@@ -108,6 +108,19 @@ func checkDirContainsInUseFile(ctx context.Context, target string, tfm *TorrentF
 				continue
 			}
 			return fmt.Errorf("walk entry: %w", entry.Err)
+		}
+		if entry.StatErr != nil {
+			// The path was enumerated but its metadata is unreadable, so it
+			// cannot be verified against the file map. Fail closed: an in-use
+			// match still counts, a vanished entry is fine, anything else
+			// aborts the deletion rather than risk removing torrent-owned data.
+			if err := checkFileInUse(entry.Path, tfm); err != nil {
+				return err
+			}
+			if errors.Is(entry.StatErr, fs.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("stat %s: %w", entry.Path, entry.StatErr)
 		}
 		if entry.IsDir {
 			continue

@@ -1,0 +1,3 @@
+# Go tooling writes LF and gofmt normalises it, so a file committed with CRLF
+# shows up as a whole-file diff the first time anyone formats it.
+*.go text eol=lf

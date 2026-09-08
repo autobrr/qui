@@ -59,10 +59,10 @@ type ValidationResponse struct {
 }
 
 type ValidateResp struct {
-	Id               string    `json:"id"`
-	OrganizationId   string    `json:"organization_id"`
-	UserId           string    `json:"user_id"`
-	BenefitId        string    `json:"benefit_id"`
+	ID               string    `json:"id"`
+	OrganizationID   string    `json:"organization_id"`
+	UserID           string    `json:"user_id"`
+	BenefitID        string    `json:"benefit_id"`
 	Key              string    `json:"key"`
 	DisplayKey       string    `json:"display_key"`
 	Status           string    `json:"status"`
@@ -73,8 +73,8 @@ type ValidateResp struct {
 	LastValidatedAt  time.Time `json:"last_validated_at"`
 	ExpiresAt        time.Time `json:"expires_at"`
 	Activation       struct {
-		Id           string         `json:"id"`
-		LicenseKeyId string         `json:"license_key_id"`
+		ID           string         `json:"id"`
+		LicenseKeyID string         `json:"license_key_id"`
 		Label        string         `json:"label"`
 		Meta         map[string]any `json:"meta"`
 		CreatedAt    time.Time      `json:"created_at"`
@@ -83,11 +83,7 @@ type ValidateResp struct {
 }
 
 func (v *ValidateResp) ValidLicense() bool {
-	if v.Status == "granted" {
-		return true
-	}
-
-	return false
+	return v.Status == "granted"
 }
 
 // ActivationResponse represents the response from the activate endpoint
@@ -96,7 +92,7 @@ type ActivationResponse struct {
 }
 
 type ActivateKeyResponse struct {
-	Id           string         `json:"id"`
+	ID           string         `json:"id"`
 	LicenseKeyID string         `json:"license_key_id"`
 	Label        string         `json:"label"`
 	Meta         map[string]any `json:"meta"`

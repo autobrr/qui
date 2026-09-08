@@ -6,7 +6,7 @@ Fixes # (issue)
 
 ## How has this been tested?
 
-<!--- Describe how you tested your change. --->
+<!--- Only manual or live verification that CI cannot do. Delete this section if CI covers everything. --->
 
 ## Screenshots (for UI changes)
 
@@ -17,8 +17,6 @@ Fixes # (issue)
 ## Checklist
 
 - [ ] My PR title follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) format (it becomes the squashed commit message)
-- [ ] I have read [CONTRIBUTING.md](https://github.com/autobrr/qui/blob/develop/.github/CONTRIBUTING.md)
-- [ ] I ran `make precommit` and the tests pass locally
 - [ ] If this changes the database schema, I have added migrations for both SQLite and PostgreSQL
 
 ## AI disclosure

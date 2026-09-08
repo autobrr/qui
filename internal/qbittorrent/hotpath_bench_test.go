@@ -17,7 +17,7 @@ import (
 // benchTorrents builds a library that looks like a real one: long dotted release
 // names, mixed case, several categories, multi-tag strings and a spread of states.
 func benchTorrents(count int) []qbt.Torrent {
-	rng := rand.New(rand.NewPCG(1, 2)) //nolint:gosec // deterministic fixture data, not security
+	rng := rand.New(rand.NewPCG(1, 2))
 
 	states := []qbt.TorrentState{
 		qbt.TorrentStateUploading, qbt.TorrentStateStalledUp, qbt.TorrentStateDownloading,

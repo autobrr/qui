@@ -27,7 +27,7 @@ func TestPreloadIconsFromDisk(t *testing.T) {
         "www.alias.example": "data:image/png;base64,` + tinyPNG + `"
     };`
 
-	require.NoError(t, os.WriteFile(filepath.Join(iconDir, "preload.json"), []byte(preload), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(iconDir, "preload.json"), []byte(preload), 0o600))
 
 	svc, err := NewService(dataDir, "test-agent")
 	require.NoError(t, err)

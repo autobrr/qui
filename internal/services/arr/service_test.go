@@ -58,6 +58,10 @@ func openTestDB(t *testing.T) *sql.DB {
 			tvdb_id INTEGER,
 			tvmaze_id INTEGER,
 			titles_json TEXT,
+			episode_map_season INTEGER,
+			episode_map_episode INTEGER,
+			episode_map_absolute INTEGER,
+			episode_map_known INTEGER NOT NULL DEFAULT 0,
 			is_negative BOOLEAN DEFAULT 0,
 			cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			expires_at TIMESTAMP NOT NULL,
@@ -502,127 +506,203 @@ func TestNewService(t *testing.T) {
 	assert.Equal(t, DefaultNegativeCacheTTL, s.negativeTTL)
 }
 
-func TestService_WithPositiveTTL(t *testing.T) {
-	s := NewService(nil, nil)
-	customTTL := 30 * time.Minute
-
-	result := s.WithPositiveTTL(customTTL)
-
-	assert.Same(t, s, result, "should return same service for chaining")
-	assert.Equal(t, customTTL, s.positiveTTL)
-}
-
-func TestService_WithNegativeTTL(t *testing.T) {
-	s := NewService(nil, nil)
-	customTTL := 15 * time.Minute
-
-	result := s.WithNegativeTTL(customTTL)
-
-	assert.Same(t, s, result, "should return same service for chaining")
-	assert.Equal(t, customTTL, s.negativeTTL)
-}
-
-func TestService_TTLChaining(t *testing.T) {
-	s := NewService(nil, nil).
-		WithPositiveTTL(4 * time.Hour).
-		WithNegativeTTL(30 * time.Minute)
-
-	assert.Equal(t, 4*time.Hour, s.positiveTTL)
-	assert.Equal(t, 30*time.Minute, s.negativeTTL)
-}
-
-func TestExternalIDsResult_Structure(t *testing.T) {
-	// Test that ExternalIDsResult fields are correctly structured
-	ids := &models.ExternalIDs{
-		IMDbID:   "tt1234567",
-		TMDbID:   12345,
-		TVDbID:   67890,
-		TVMazeID: 11111,
-	}
-	instanceID := 42
-
-	result := ExternalIDsResult{
-		IDs:           ids,
-		FromCache:     true,
-		ArrInstanceID: &instanceID,
-		ContentType:   ContentTypeTV,
-	}
-
-	assert.Equal(t, ids, result.IDs)
-	assert.True(t, result.FromCache)
-	assert.Equal(t, 42, *result.ArrInstanceID)
-	assert.Equal(t, ContentTypeTV, result.ContentType)
-}
-
-func TestExternalIDsResult_NilIDs(t *testing.T) {
-	// Test negative cache result
-	result := ExternalIDsResult{
-		IDs:           nil,
-		FromCache:     true,
-		ArrInstanceID: nil,
-		ContentType:   ContentTypeMovie,
-	}
-
-	assert.Nil(t, result.IDs)
-	assert.True(t, result.FromCache)
-	assert.Nil(t, result.ArrInstanceID)
-	assert.Equal(t, ContentTypeMovie, result.ContentType)
-}
-
-func TestDebugResolveResult_Structure(t *testing.T) {
-	result := DebugResolveResult{
-		Title:              "Breaking Bad S01E01",
-		TitleHash:          "abc123",
-		ContentType:        ContentTypeTV,
-		CacheHit:           false,
-		InstancesAvailable: 2,
-		InstanceResults: []DebugInstanceResult{
-			{
-				InstanceID:   1,
-				InstanceName: "Sonarr 1",
-				InstanceType: "sonarr",
-				IDs: &models.ExternalIDs{
-					TVDbID: 81189,
-				},
-			},
-		},
-	}
-
-	assert.Equal(t, "Breaking Bad S01E01", result.Title)
-	assert.Equal(t, "abc123", result.TitleHash)
-	assert.Equal(t, ContentTypeTV, result.ContentType)
-	assert.False(t, result.CacheHit)
-	assert.Equal(t, 2, result.InstancesAvailable)
-	assert.Len(t, result.InstanceResults, 1)
-	assert.Equal(t, 81189, result.InstanceResults[0].IDs.TVDbID)
-}
-
-func TestDebugInstanceResult_WithError(t *testing.T) {
-	result := DebugInstanceResult{
-		InstanceID:   1,
-		InstanceName: "Sonarr",
-		InstanceType: "sonarr",
-		IDs:          nil,
-		Error:        "connection timeout",
-	}
-
-	assert.Equal(t, 1, result.InstanceID)
-	assert.Equal(t, "Sonarr", result.InstanceName)
-	assert.Equal(t, "sonarr", result.InstanceType)
-	assert.Nil(t, result.IDs)
-	assert.Equal(t, "connection timeout", result.Error)
-}
-
 func TestContentType_Constants(t *testing.T) {
 	// Verify content type constant values
-	assert.Equal(t, ContentType("movie"), ContentTypeMovie)
-	assert.Equal(t, ContentType("tv"), ContentTypeTV)
-	assert.Equal(t, ContentType("anime"), ContentTypeAnime)
-	assert.Equal(t, ContentType("unknown"), ContentTypeUnknown)
+	assert.Equal(t, ContentTypeMovie, ContentType("movie"))
+	assert.Equal(t, ContentTypeTV, ContentType("tv"))
+	assert.Equal(t, ContentTypeAnime, ContentType("anime"))
+	assert.Equal(t, ContentTypeUnknown, ContentType("unknown"))
 }
 
 func TestDefaultTTL_Values(t *testing.T) {
 	// Verify default TTL values match expected configuration
 	assert.Equal(t, 30*24*time.Hour, DefaultPositiveCacheTTL)
 	assert.Equal(t, 1*time.Hour, DefaultNegativeCacheTTL)
+}
+
+// TestCacheWritesSurviveCallerCancellation catches a cache write bound to the
+// request context: an announce-path lookup that finishes near its deadline
+// would then succeed but fail to cache, so the apply-time repeat of the same
+// title pays the ARR round trips again.
+func TestCacheWritesSurviveCallerCancellation(t *testing.T) {
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.NotFoundHandler())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	const title = "Sousou no Frieren S02E10 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+	titleHash := models.ComputeTitleHash(title)
+	instance := &models.ArrInstance{ID: 1}
+	lookupResult := &ExternalIDsLookupResult{
+		IDs:    &models.ExternalIDs{TVDbID: 424536},
+		Titles: []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"},
+	}
+
+	result := service.cacheAndBuildResult(ctx, titleHash, title, ContentTypeTV, instance, lookupResult, "parse", true)
+	require.NotNil(t, result)
+
+	entry, err := cacheStore.Get(context.Background(), titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.NotNil(t, entry)
+	require.Equal(t, []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}, entry.Titles)
+}
+
+// sonarrEpisodeMapHandler serves a Sonarr parse response for "Solitude" and counts
+// parse calls. An empty episodes string means Sonarr named no episode.
+func sonarrEpisodeMapHandler(t *testing.T, parseCalls *int, episodes string) http.Handler {
+	t.Helper()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			*parseCalls++
+			_, _ = w.Write([]byte(`{
+				"series": {"title": "Solitude", "tvdbId": 471000},
+				"episodes": [` + episodes + `]
+			}`))
+		default:
+			t.Errorf("unexpected ARR request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+}
+
+const solitudeMappedEpisode = `{"seasonNumber": 4, "episodeNumber": 15, "absoluteEpisodeNumber": 81}`
+
+func TestService_LookupExternalIDsRoundTripsEpisodeMap(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	want := &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
+	parseCalls := 0
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "parse", result.Source)
+	require.True(t, result.EpisodeMapKnown)
+	require.Equal(t, want, result.EpisodeMap)
+
+	entry, err := cacheStore.Get(ctx, models.ComputeTitleHash(title), string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, entry.HasEpisodeMap)
+	require.Equal(t, want, entry.EpisodeMap)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, cached.FromCache)
+	require.True(t, cached.EpisodeMapKnown)
+	require.Equal(t, want, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsDoesNotRefetchWhenNoMapWasFound(t *testing.T) {
+	ctx := context.Background()
+	title := "Solitude.S04.1080p.WEB.H264-KAIZOKU"
+	parseCalls := 0
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, ""))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, result.EpisodeMapKnown)
+	require.Nil(t, result.EpisodeMap)
+
+	entry, err := cacheStore.Get(ctx, models.ComputeTitleHash(title), string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, entry.HasEpisodeMap)
+	require.Nil(t, entry.EpisodeMap)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, cached.FromCache)
+	require.True(t, cached.EpisodeMapKnown)
+	require.Nil(t, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsRefetchesPreMapRowOnce(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	titleHash := models.ComputeTitleHash(title)
+	parseCalls := 0
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
+
+	// A row written before the map columns existed: titles known, map flag unset.
+	require.NoError(t, cacheStore.SetWithTitles(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{TVDbID: 471000}, []string{"Solitude"}, nil, false, false, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "parse", result.Source)
+	require.Equal(t, &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}, result.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.True(t, cached.FromCache)
+	require.Equal(t, result.EpisodeMap, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsServesCachedMapFromDisabledInstance(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	parseCalls := 0
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, sonarrEpisodeMapHandler(t, &parseCalls, solitudeMappedEpisode))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.NotNil(t, result.EpisodeMap)
+
+	instances, err := service.instanceStore.ListEnabledByType(ctx, models.ArrInstanceTypeSonarr)
+	require.NoError(t, err)
+	require.Len(t, instances, 1)
+	disabled := false
+	_, err = service.instanceStore.Update(ctx, instances[0].ID, &models.ArrInstanceUpdateParams{Enabled: &disabled})
+	require.NoError(t, err)
+
+	cached, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.NotNil(t, cached)
+	require.True(t, cached.FromCache)
+	require.Equal(t, result.EpisodeMap, cached.EpisodeMap)
+	require.Equal(t, 1, parseCalls)
+}
+
+func TestService_LookupExternalIDsLeavesMapUnknownWhenParseNeverAnswered(t *testing.T) {
+	ctx := context.Background()
+	title := "[Kaizoku] Solitude - 81 (1080p) [A1B2C3D4].mkv"
+	parseCalls := 0
+	parseHealthy := false
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			parseCalls++
+			if !parseHealthy {
+				http.Error(w, "boom", http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(`{"series": {"title": "Solitude", "tvdbId": 471000}, "episodes": [` + solitudeMappedEpisode + `]}`))
+		case "/api/v3/series/lookup":
+			_, _ = w.Write([]byte(`[{"title": "Solitude", "tvdbId": 471000}]`))
+		default:
+			t.Errorf("unexpected ARR request: %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "lookup", result.Source)
+	require.False(t, result.EpisodeMapKnown)
+	require.Nil(t, result.EpisodeMap)
+
+	entry, err := cacheStore.Get(ctx, models.ComputeTitleHash(title), string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, entry.HasTitles)
+	require.False(t, entry.HasEpisodeMap)
+
+	parseHealthy = true
+	healed, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+	require.NoError(t, err)
+	require.Equal(t, "parse", healed.Source)
+	require.Equal(t, &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}, healed.EpisodeMap)
+	require.Equal(t, 2, parseCalls)
 }

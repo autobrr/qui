@@ -13,7 +13,7 @@ export const DEFAULT_REANNOUNCE_SETTINGS: InstanceReannounceSettings = {
   maxAgeSeconds: 600,
   maxRetries: 50,
   aggressive: false,
-  monitorAll: false,
+  monitorAll: true,
   excludeCategories: false,
   categories: [],
   excludeTags: false,
