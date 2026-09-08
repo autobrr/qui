@@ -546,6 +546,7 @@ func createOrphanScanSchema(t *testing.T, db *sql.DB) {
 			folders_deleted INTEGER DEFAULT 0,
 			bytes_reclaimed INTEGER DEFAULT 0,
 			truncated       INTEGER NOT NULL DEFAULT 0,
+			partial         INTEGER NOT NULL DEFAULT 0,
 			error_message   TEXT,
 			started_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
 			completed_at    DATETIME,
