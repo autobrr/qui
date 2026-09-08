@@ -142,30 +142,33 @@ QUI__ALLOWED_HOSTS=qui.example.com,localhost,::1,*.home.example.com
 ```
 
 qui checks the `Host` that it receives and ignores `X-Forwarded-Host`.
+Caddy and Traefik pass the original `Host`, so list the public name of qui.
+By default, nginx sends the address of the upstream instead. Set `proxy_set_header Host $host;` to pass the original name.
 If a reverse proxy rewrites `Host`, list the rewritten name.
-The proxy must reject unwanted public hostnames before it rewrites them to an accepted name.
+The proxy must then reject unwanted public hostnames itself, because qui only sees the rewritten name.
 
 Matching rules:
 
 - DNS names ignore case and one final dot. International names and their punycode forms match.
-- IP addresses use their parsed values. IPv6 entries accept brackets or no brackets.
+- qui compares IP addresses by value, so `::1` and `[::1]` match the same address.
 - Request ports do not affect matching. Do not include ports in the configured list.
 - `*.example.com` matches `qui.example.com` and `a.qui.example.com`. It does not match `example.com` or `badexample.com`.
 - Schemes, paths, CIDR ranges, other wildcard forms, and empty entries are invalid. Invalid configuration prevents startup.
 
 The restriction covers all requests on the main HTTP listener, including authenticated requests, static files, and the qBittorrent proxy.
 With a configured list, a missing, invalid, or unlisted Host returns HTTP 400.
-Ordinary local browser and API requests also need a listed hostname or address.
+Your own browser and API requests must also use a listed hostname or address.
 
 Health `GET` and `HEAD` requests to `/health`, `/healthz/readiness`, and `/healthz/liveness` bypass the list when the immediate connection peer is a loopback address.
 This includes external health requests forwarded by a local reverse proxy.
 To restrict health endpoints to local probes, block external health requests at the proxy.
 Forwarded IP headers do not affect this exemption. The Docker health probe continues to work.
 
-Restart qui after each change to `allowedHosts`.
-Configuration reloads keep the active list until restart.
-This restriction supplements authentication and IP restrictions, and can block DNS rebinding through an unlisted hostname.
-It does not block unwanted requests that use an accepted hostname.
+qui reads the list once at startup. Restart qui after each change to `allowedHosts`.
+The list works together with authentication and the IP allowlist.
+It blocks DNS rebinding, an attack where a hostname of the attacker points at the address of qui.
+That hostname is not on the list, so qui rejects the request.
+It does not block requests that use a listed hostname.
 
 ## CORS
 
