@@ -31,7 +31,7 @@ import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { canBanPeer, getPeerDisplayAddress } from "@/lib/torrent-peer-address"
 import { getPeerFlagDetails } from "@/lib/torrent-peer-flags"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { resolveTorrentHashes } from "@/lib/torrent-utils"
+import { resolveStreamRow, resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SortedPeer, SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker } from "@/types"
@@ -142,7 +142,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
 
     return {
-      expr: `Hash == "${torrent.hash}"`,
+      hashes: [torrent.hash],
       status: [],
       excludeStatus: [],
       categories: [],
@@ -174,14 +174,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         return
       }
 
-      const nextTorrent = payload.data.torrents?.find(item => item.hash === torrent.hash) ?? null
-      if (!nextTorrent && payload.data.total === 0) {
-        setStreamTorrent(null)
-        return
-      }
-      if (nextTorrent) {
-        setStreamTorrent(nextTorrent)
-      }
+      const data = payload.data
+      setStreamTorrent(previous => resolveStreamRow(previous, data))
     },
     [torrent?.hash]
   )

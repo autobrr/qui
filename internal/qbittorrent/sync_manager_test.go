@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -910,48 +911,16 @@ func TestNormalizeHashes(t *testing.T) {
 func TestBulkActionRetryAttempts(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 0, 1))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 1, 2))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(WithPostAddBulkActionRetry(ctx))
-	defer cancelRetry()
+	retryCtx := context.WithoutCancel(WithPostAddBulkActionRetry(ctx))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(retryCtx, 1, 2))
 	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
-}
-
-func TestWithoutCancelPreservingDeadlineDetachesDeadlineAndKeepsRetryValue(t *testing.T) {
-	t.Parallel()
-
-	deadline := time.Now().Add(time.Hour)
-	parentCtx, cancelParent := context.WithDeadline(WithPostAddBulkActionRetry(context.Background()), deadline)
-	cancelParent()
-
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
-	defer cancelRetry()
-
-	_, ok := retryCtx.Deadline()
-	require.False(t, ok)
-	require.NoError(t, retryCtx.Err())
-	require.True(t, postAddBulkActionRetry(retryCtx))
-}
-
-func TestWithoutCancelPreservingDeadlineDropsExpiredDeadline(t *testing.T) {
-	t.Parallel()
-
-	deadline := time.Now().Add(-time.Nanosecond)
-	parentCtx, cancelParent := context.WithDeadline(context.Background(), deadline)
-	defer cancelParent()
-
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
-	defer cancelRetry()
-
-	_, ok := retryCtx.Deadline()
-	require.False(t, ok)
-	require.NoError(t, retryCtx.Err())
 }
 
 func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
@@ -1051,12 +1020,11 @@ func TestBulkActionSyncRetryStopsAfterAttemptLimitOnSyncFailure(t *testing.T) {
 func TestBulkActionSyncRetryKeepsCriticalBudgetWithDecoupledContext(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	syncer := &bulkActionRetrySyncer{}
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(ctx)
-	defer cancelRetry()
+	retryCtx := context.WithoutCancel(ctx)
 	resolved, variants := bulkActionSyncRetry(
 		retryCtx,
 		syncer,
@@ -1841,7 +1809,7 @@ func (fm *stubFilesManager) GetCachedFiles(context.Context, int, string) (qbt.To
 	return nil, nil
 }
 
-func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+func (fm *stubFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))
@@ -1887,7 +1855,7 @@ func (fm *aliasingFilesManager) GetCachedFiles(context.Context, int, string) (qb
 	return nil, nil
 }
 
-func (fm *aliasingFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+func (fm *aliasingFilesManager) GetCachedFilesBatch(_ context.Context, _ int, hashes []string, _ time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
 	fm.lastHashes = append([]string(nil), hashes...)
 
 	cached := make(map[string]qbt.TorrentFiles, len(hashes))
@@ -3350,4 +3318,111 @@ func TestGetAuthoritativeDomainToHashesMemoizesPerGeneration(t *testing.T) {
 		"a mapping write must invalidate the snapshot")
 	require.NotContains(t, third, "tracker.example.invalid",
 		"the fresh snapshot must reflect the removal")
+}
+
+// The details panel streams one torrent by hash on every sync tick. The cache
+// indexes rows by hash, so that request is a lookup, not a copy of the library
+// plus a filter pass. Not parallel: it reads process-wide allocation totals.
+func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
+	const librarySize = 500
+
+	var maindata bytes.Buffer
+	maindata.WriteString(`{"rid":1,"full_update":true,"torrents":{`)
+	for i := range librarySize {
+		if i > 0 {
+			maindata.WriteByte(',')
+		}
+		fmt.Fprintf(&maindata, `"%040x": {"name":"Some.Release.Title.%d.S01E01.1080p.WEB-GRPA","infohash_v1":"%040x","state":"uploading","added_on":%d,"size":100,"progress":1,"category":"tv"}`, i+1, i+1, i+1, i)
+	}
+	// One hybrid torrent keyed by its v1 hash with a distinct v2 hash.
+	maindata.WriteString(`,"aa11": {"name":"Hybrid.Release.S02E03.2160p.WEB-GRPB","infohash_v1":"aa11","infohash_v2":"bb22bb22","state":"uploading","added_on":1,"size":100,"progress":1,"category":"tv"}`)
+	maindata.WriteString(`}}`)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			_, _ = w.Write(maindata.Bytes())
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		case "/api/v2/torrents/categories":
+			_, _ = w.Write([]byte(`{}`))
+		case "/api/v2/torrents/tags":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := WithSkipFreshData(t.Context())
+	inst, err := pool.instanceStore.Create(ctx, "mock", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	client := &Client{
+		Client:      qbtClient,
+		instanceID:  inst.ID,
+		syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions()),
+	}
+	client.updateHealthStatus(true)
+	require.NoError(t, client.syncManager.Sync(ctx))
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = client
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	byHash := func(hash string) FilterOptions { return FilterOptions{Hashes: []string{hash}} }
+	byExpr := func(hash string) FilterOptions { return FilterOptions{Expr: fmt.Sprintf("Hash == %q", hash)} }
+	target := fmt.Sprintf("%040x", 7)
+
+	for _, tc := range []struct {
+		name    string
+		filters FilterOptions
+		want    string // expected name; "" means no row
+	}{
+		{"exact key", byHash(target), "Some.Release.Title.7.S01E01.1080p.WEB-GRPA"},
+		{"upper-case key", byHash(strings.ToUpper(target)), "Some.Release.Title.7.S01E01.1080p.WEB-GRPA"},
+		{"v2 variant of a hybrid torrent", byHash("BB22BB22"), "Hybrid.Release.S02E03.2160p.WEB-GRPB"},
+		{"removed torrent", byHash(fmt.Sprintf("%040x", 999999)), ""},
+		{"hash plus a status the row fails", FilterOptions{Hashes: []string{target}, Status: []string{"downloading"}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 1, 0, "added_on", "desc", "", tc.filters)
+			require.NoError(t, err)
+			if tc.want == "" {
+				require.Equal(t, 0, resp.Total, "a miss reports total 0 so the panel drops its stale row")
+				require.Empty(t, resp.Torrents)
+			} else {
+				require.Equal(t, 1, resp.Total)
+				require.Len(t, resp.Torrents, 1)
+				require.Equal(t, tc.want, resp.Torrents[0].Name)
+			}
+			require.NotNil(t, resp.Counts)
+			require.Equal(t, librarySize+1, resp.Counts.Status["all"], "sidebar counts still cover the whole library")
+		})
+	}
+
+	// Allocation proof: the hash request must not copy the library the way the
+	// expr request does. Counts are left out, the way a stream tick without
+	// IncludeCounts leaves them out, so the runs compare only the row selection.
+	ctx = WithSkipTrackerHydration(ctx)
+	measure := func(filters FilterOptions) uint64 {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for range 20 {
+			_, err := sm.GetTorrentsWithFilters(ctx, inst.ID, 1, 0, "added_on", "desc", "", filters)
+			require.NoError(t, err)
+		}
+		runtime.ReadMemStats(&after)
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	exprBytes := measure(byExpr(target))
+	hashBytes := measure(byHash(target))
+	t.Logf("20 requests: expr filter %d bytes, hash filter %d bytes", exprBytes, hashBytes)
+	require.Less(t, hashBytes*10, exprBytes, "a single-hash request must allocate far less than the library scan")
 }

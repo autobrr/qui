@@ -292,17 +292,6 @@ export function formatDate(date: Date, preferences?: DateTimePreferences): strin
 }
 
 /**
- * Format the "Added On" date for torrent table columns using user preferences
- * This maintains compatibility with the existing TorrentTableColumns component
- * @param addedOn Unix timestamp in seconds
- * @param preferences Optional preferences (will use stored if not provided)
- * @returns Formatted date/time string
- */
-export function formatAddedOn(addedOn: number, preferences?: DateTimePreferences): string {
-  return formatTimestamp(addedOn, preferences)
-}
-
-/**
  * Format an ISO 8601 timestamp string using user preferences
  * Useful for activity logs and event timestamps from APIs
  * @param isoTimestamp ISO 8601 timestamp string (e.g., "2025-01-15T10:30:00Z")

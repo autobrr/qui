@@ -207,6 +207,7 @@ export interface TorrentCounts {
  * Tracker filters use the same normalized domain keys as TorrentCounts.trackers.
  */
 export interface TorrentFilters {
+  hashes?: string[]
   status: string[]
   excludeStatus: string[]
   categories: string[]
@@ -414,7 +415,6 @@ export interface TorrentPeersResponse {
   peers?: Record<string, TorrentPeer>
   peers_removed?: string[]
   rid: number
-  full_update: boolean
   show_flags?: boolean
 }
 

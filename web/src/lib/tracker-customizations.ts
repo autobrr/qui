@@ -140,21 +140,6 @@ export function resolveTrackerDisplay(
 }
 
 /**
- * Convenience function that extracts host from a tracker URL and resolves its display info.
- *
- * @param tracker - The tracker URL or hostname
- * @param lookup - The customization lookup map
- * @returns Display info with displayName, primaryDomain, and isCustomized flag
- */
-export function resolveTrackerDisplayFromURL(
-  tracker: string | undefined | null,
-  lookup: TrackerCustomizationLookup
-): TrackerDisplayInfo {
-  const host = extractTrackerHost(tracker)
-  return resolveTrackerDisplay(host, lookup)
-}
-
-/**
  * Generates a stable cache key from tracker customizations.
  * This key changes whenever any customization is added, removed, or modified.
  *

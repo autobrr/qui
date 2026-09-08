@@ -193,10 +193,6 @@ function recordsShallowEqual(
   return true
 }
 
-function hasDashboardInstanceData(data: InstanceStreamData | null | undefined) {
-  return hasDashboardStatsPayload(data)
-}
-
 function instanceStreamDataFromResponse(
   response: TorrentResponse | undefined,
   current?: InstanceStreamData
@@ -239,7 +235,7 @@ function mergeCachedInstanceData(
     torrentCounts: resolveDashboardTorrentCounts(current.torrentCounts, cached.torrentCounts),
     appInfo: current.appInfo ?? cached.appInfo,
     altSpeedEnabled: current.serverState?.use_alt_speed_limits ?? cached.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
-    isLoading: current.isLoading && !hasDashboardInstanceData(cached),
+    isLoading: current.isLoading && !hasDashboardStatsPayload(cached),
     error: current.error,
     hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload,
     cacheMetadata: current.cacheMetadata ?? cached.cacheMetadata,

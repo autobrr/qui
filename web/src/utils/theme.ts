@@ -389,18 +389,6 @@ export const initializeTheme = async (): Promise<void> => {
   addMediaQueryListener(systemPreference, handleSystemThemeChange);
 };
 
-export const resetToSystemTheme = async (): Promise<void> => {
-  setStoredMode(THEME_AUTO);
-  const theme = getCurrentTheme();
-  const variation = getThemeVariation(theme.id);
-  await applyTheme(theme, variation, getSystemPreference().matches, false);
-  dispatchThemeChange(THEME_AUTO, theme, false, variation);
-};
-
-export const setAutoTheme = async (): Promise<void> => {
-  await resetToSystemTheme();
-};
-
 export const setThemeVariation = async (variation: string): Promise<void> => {
   const theme = getCurrentTheme();
 

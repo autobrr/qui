@@ -881,7 +881,10 @@
       }
     },
     "title": "Filters",
-    "clearAll": "Clear all",
+    "clearOptions": "Filter clearing options",
+    "clearSidebarFilters": "Clear sidebar filters",
+    "clearColumnFilters": "Clear column filters",
+    "clearFiltersAndSearch": "Clear filters and search",
     "loading": "Loading...",
     "customFilter": "Custom Filter",
     "customFilterHelp": "Active custom expression filter (e.g., cross-seed results)",

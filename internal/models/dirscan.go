@@ -874,22 +874,6 @@ func scanRunsFromRows(rows *sql.Rows) ([]*DirScanRun, error) {
 	return runs, nil
 }
 
-// HasActiveRun checks if there's an active run for a directory.
-func (s *DirScanStore) HasActiveRun(ctx context.Context, directoryID int) (bool, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM dir_scan_runs
-		WHERE directory_id = ?
-		  AND status IN ('queued', 'scanning', 'searching', 'injecting')
-	`, directoryID)
-
-	var count int
-	if err := row.Scan(&count); err != nil {
-		return false, fmt.Errorf("scan active run count: %w", err)
-	}
-	return count > 0, nil
-}
-
 // GetActiveRun returns the active run for a directory, if any.
 func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `

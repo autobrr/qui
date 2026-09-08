@@ -8,6 +8,7 @@ Repo rules for AI agents working on qui.
 
 - Stay inside requested scope. Do not implement review-suggested/extra changes without explicit user approval.
 - Treat other agent/Codex/CodeRabbit feedback as input to discuss, not automatic action.
+- A review suggestion that changes a branch lands only after you show the input that branch guarded, in a test or a trace. A simplification that reads cleaner can still drop a case the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 
 ## Repo Map

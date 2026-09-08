@@ -72,7 +72,7 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 		PollInterval: 0,
 		WorkerCount:  1,
 	}
-	service := backups.NewService(backupStore, nil, nil, cfg, nil)
+	service := backups.NewService(backupStore, nil, cfg, nil)
 
 	handler := NewBackupsHandler(service)
 
@@ -604,50 +604,6 @@ func TestDownloadRun_DefaultFormat(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/zip", w.Header().Get("Content-Type"))
 	assert.Contains(t, w.Header().Get("Content-Disposition"), ".zip")
-}
-
-func TestGetBackupDownloadUrl(t *testing.T) {
-	// Test the API URL generation function
-
-	// Mock window.location
-	originalLocation := windowLocation
-	windowLocation = &url.URL{Scheme: "http", Host: "localhost:7476"}
-	defer func() { windowLocation = originalLocation }()
-
-	// Test without format (should not add query param)
-	url := getBackupDownloadURL(1, 123)
-	expected := "http://localhost:7476/api/instances/1/backups/runs/123/download"
-	assert.Equal(t, expected, url)
-
-	// Test with zip format (should not add query param since it's default)
-	url = getBackupDownloadURL(1, 123, "zip")
-	assert.Equal(t, expected, url)
-
-	// Test with other formats
-	url = getBackupDownloadURL(1, 123, "tar.gz")
-	expected = "http://localhost:7476/api/instances/1/backups/runs/123/download?format=tar.gz"
-	assert.Equal(t, expected, url)
-
-	url = getBackupDownloadURL(1, 123, "tar.zst")
-	expected = "http://localhost:7476/api/instances/1/backups/runs/123/download?format=tar.zst"
-	assert.Equal(t, expected, url)
-}
-
-// Mock window.location for testing
-var windowLocation *url.URL
-
-func getBackupDownloadURL(instanceID, runID int, format ...string) string {
-	u := &url.URL{
-		Scheme: windowLocation.Scheme,
-		Host:   windowLocation.Host,
-		Path:   fmt.Sprintf("/api/instances/%d/backups/runs/%d/download", instanceID, runID),
-	}
-	if len(format) > 0 && format[0] != "" && format[0] != "zip" {
-		q := u.Query()
-		q.Set("format", format[0])
-		u.RawQuery = q.Encode()
-	}
-	return u.String()
 }
 
 // Archive entry names are attacker-controlled, so the check must reject POSIX

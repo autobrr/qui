@@ -93,6 +93,11 @@ type SortedPeer struct {
 // SortedPeersResponse wraps the peers response with sorted peers
 type SortedPeersResponse struct {
 	*qbt.TorrentPeersResponse
+	// FullUpdate shadows the promoted qbt field so it never reaches the JSON:
+	// MergePeers never copies it into the cached response, so the endpoint has
+	// only ever sent false. *struct{} makes accidental promoted reads fail to
+	// compile.
+	FullUpdate  *struct{}    `json:"full_update,omitempty"`
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 

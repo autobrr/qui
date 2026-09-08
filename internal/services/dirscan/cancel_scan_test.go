@@ -25,7 +25,7 @@ func setupDirScanServiceTestDB(t *testing.T) *database.DB {
 func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	db := setupDirScanServiceTestDB(t)
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
@@ -63,9 +63,9 @@ func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {
 	require.WithinDuration(t, time.Now(), *updatedDir.LastScanAt, 5*time.Second)
 	require.False(t, svc.isDueForScan(updatedDir), "directory should not be immediately due after queued cancel")
 
-	active, err := store.HasActiveRun(ctx, dir.ID)
+	activeRun, err := store.GetActiveRun(ctx, dir.ID)
 	require.NoError(t, err)
-	require.False(t, active)
+	require.Nil(t, activeRun)
 }
 
 func TestService_Start_PrunesLegacyRunHistory(t *testing.T) {
