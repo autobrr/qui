@@ -208,8 +208,11 @@ func TestDownloadPreservesRateLimitResponse(t *testing.T) {
 	assert.Equal(t, "52", responseErr.RetryAfterHeader())
 }
 
+// testTorrentPayload is a minimal single-file torrent that parses as metainfo.
+const testTorrentPayload = "d4:infod6:lengthi1e4:name8:test.bin12:piece lengthi16384e6:pieces20:aaaaaaaaaaaaaaaaaaaaee"
+
 func TestDownloadRejectsNonTorrentPayloads(t *testing.T) {
-	const torrentBody = "d4:name8:test.bine"
+	const torrentBody = testTorrentPayload
 	tests := []struct {
 		name        string
 		contentType string
@@ -222,6 +225,8 @@ func TestDownloadRejectsNonTorrentPayloads(t *testing.T) {
 		{name: "magnet body", contentType: "text/plain", body: "magnet:?xt=urn:btih:0123456789012345678901234567890123456789", wantError: true},
 		{name: "HTML with torrent type", contentType: "application/x-bittorrent", body: "<html>Challenge</html>", wantError: true},
 		{name: "bencoded list", contentType: "application/x-bittorrent", body: "le", wantError: true},
+		{name: "dict-prefixed garbage", contentType: "application/x-bittorrent", body: "dnot-a-valid-torrent", wantError: true},
+		{name: "bencoded dict without info", contentType: "application/x-bittorrent", body: "d4:name8:test.bine", wantError: true},
 		{name: "torrent", contentType: "application/x-bittorrent", body: torrentBody},
 		{name: "plain text torrent", contentType: "text/plain", body: torrentBody},
 		{name: "torrent without content type", body: torrentBody},

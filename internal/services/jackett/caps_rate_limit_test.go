@@ -221,7 +221,7 @@ func TestQueryCooldownDoesNotBlockTorrentDownload(t *testing.T) {
 			return
 		}
 		downloadCalls.Add(1)
-		_, _ = w.Write([]byte("d4:name8:test.bine"))
+		_, _ = w.Write([]byte(testTorrentPayload))
 	}))
 	t.Cleanup(server.Close)
 
@@ -246,7 +246,7 @@ func TestQueryCooldownDoesNotBlockTorrentDownload(t *testing.T) {
 		DownloadURL: server.URL + "/download",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []byte("d4:name8:test.bine"), data)
+	assert.Equal(t, []byte(testTorrentPayload), data)
 	assert.Equal(t, int32(1), downloadCalls.Load())
 }
 

@@ -168,7 +168,7 @@ func TestDownloadRateLimitUsesGrabScopeAndRetryAfter(t *testing.T) {
 }
 
 func TestDownloadTorrentDoesNotCacheRejectedPayload(t *testing.T) {
-	const torrentBody = "d4:name8:test.bine"
+	const torrentBody = testTorrentPayload
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if calls.Add(1) == 1 {
