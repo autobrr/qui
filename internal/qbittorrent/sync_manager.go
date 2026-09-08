@@ -5443,21 +5443,19 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 	return false
 }
 
-// SubcategoriesEnabled reports whether an instance nests categories, so callers
-// get one answer instead of combining the version flag with the preference
-// themselves. qBittorrent 5.2 dropped use_subcategories and always inherits
-// through the parent, so the absent preference decodes as false and cannot be
-// read on its own.
-//
-// resolveUseSubcategories below answers the same question during a torrent
-// fetch, where main data is already at hand; this reads the preference instead.
+// SubcategoriesEnabled reports whether an instance nests categories. qBittorrent
+// 5.2 dropped use_subcategories, so the preference cannot be read on its own.
+// resolveUseSubcategories below answers the same from main data.
 func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client: %w", err)
 	}
-	if enabled, ok := subcategoriesFromVersion(client.SupportsSubcategories(), client.SubcategoriesAlwaysEnabled()); ok {
-		return enabled, nil
+	if !client.SupportsSubcategories() {
+		return false, nil
+	}
+	if client.SubcategoriesAlwaysEnabled() {
+		return true, nil
 	}
 
 	prefs, err := client.GetAppPreferences(ctx)
@@ -5467,23 +5465,13 @@ func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int)
 	return prefs.UseSubcategories, nil
 }
 
-// subcategoriesFromVersion answers from the server version alone: a server too
-// old to nest never does, and one that dropped the preference always does. When
-// ok is false the version does not settle it and the caller supplies the
-// preference, from main data or by reading it.
-func subcategoriesFromVersion(supports bool, alwaysEnabled bool) (enabled bool, ok bool) {
-	if !supports {
-		return false, true
-	}
-	if alwaysEnabled {
-		return true, true
-	}
-	return false, false
-}
-
 func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
-	if enabled, ok := subcategoriesFromVersion(supports, alwaysEnabled); ok {
-		return enabled
+	if !supports {
+		return false
+	}
+
+	if alwaysEnabled {
+		return true
 	}
 
 	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
