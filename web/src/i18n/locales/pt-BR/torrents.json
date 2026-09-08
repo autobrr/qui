@@ -1651,6 +1651,7 @@
       "coverage": "{{matched}} de {{total}} episódios · {{percent}}% de cobertura",
       "missing": "Faltam {{size}}",
       "recheck": "O pacote é adicionado pausado e verificado. Ele retoma quando a verificação alcança a fração dos bytes vinculados.",
+      "reviewRules": "Revisar a proteção em Cross-seed → Regras",
       "proposalLimit": "Este pacote contém {{count}} episódios. As sugestões são limitadas a {{limit}} torrents. Use a busca para selecionar os destinos que faltam.",
       "dropped": "Pacote adicionado. Destinos descartados: {{names}}",
       "rejected": "{{name}}: {{reason}}",
@@ -1669,6 +1670,7 @@
         "local_file_unavailable": "O arquivo local não existe ou está indisponível.",
         "not_paired": "Este destino não fornece um episódio do pacote ou outro destino selecionado já o cobre.",
         "layout_mismatch": "Os arquivos selecionados não permitem criar links seguros.",
+        "unsafe_piece_boundary": "A proteção de limites de peças bloqueou este pacote porque os arquivos selecionados e ausentes compartilham um bloco de dados. Baixar esse bloco pode alterar seus arquivos originais por meio de hardlinks. O limite de cobertura não se aplica à montagem manual.",
         "already_exists": "Este torrent já existe.",
         "link_failed": "Falha ao criar os links.",
         "add_failed": "Falha ao adicionar o torrent."

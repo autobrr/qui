@@ -7916,6 +7916,7 @@ components:
           type: boolean
         reason:
           type: string
+          description: Empty when ready. unsafe_piece_boundary means hardlink piece boundary protection blocked the pack. Other file layout failures use layout_mismatch.
         message:
           type: string
         targets:

@@ -1587,6 +1587,7 @@
       "coverage": "已匹配 {{matched}}/{{total}} 集 · 覆盖率 {{percent}}%",
       "missing": "缺少 {{size}}",
       "recheck": "整季包将以暂停状态添加并重新校验。当校验结果达到已链接字节的比例时，将恢复下载。",
+      "reviewRules": "前往 Cross-seed → 规则查看保护设置",
       "proposalLimit": "此整季包包含 {{count}} 集。候选列表最多显示 {{limit}} 个种子。请通过搜索选择缺少的目标。",
       "dropped": "整季包已添加。已排除的目标：{{names}}",
       "rejected": "{{name}}：{{reason}}",
@@ -1605,6 +1606,7 @@
         "local_file_unavailable": "本地文件不存在或不可用。",
         "not_paired": "此目标未提供整季包中的单集，或其他所选目标已覆盖该单集。",
         "layout_mismatch": "无法使用所选文件创建安全的链接目录。",
+        "unsafe_piece_boundary": "分片边界保护已阻止添加此合集，因为所选文件与缺失文件共享一个数据块。下载该数据块可能会通过硬链接更改原始文件。手动组装不受覆盖率阈值限制。",
         "already_exists": "此种子已存在。",
         "link_failed": "创建链接失败。",
         "add_failed": "添加种子失败。"

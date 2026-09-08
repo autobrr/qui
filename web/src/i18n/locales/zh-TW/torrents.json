@@ -1587,6 +1587,7 @@
       "coverage": "已配對 {{matched}}/{{total}} 集 · 覆蓋率 {{percent}}%",
       "missing": "缺少 {{size}}",
       "recheck": "整季包將以暫停狀態加入並重新檢查。當檢查結果達到已連結位元組的比例時，將恢復下載。",
+      "reviewRules": "前往 Cross-seed → 規則查看保護設定",
       "proposalLimit": "此整季包包含 {{count}} 集。候選清單最多顯示 {{limit}} 個種子。請透過搜尋選擇缺少的目標。",
       "dropped": "整季包已加入。已排除的目標：{{names}}",
       "rejected": "{{name}}：{{reason}}",
@@ -1605,6 +1606,7 @@
         "local_file_unavailable": "本機檔案不存在或無法使用。",
         "not_paired": "此目標未提供整季包中的單集，或其他所選目標已涵蓋該單集。",
         "layout_mismatch": "無法使用所選檔案建立安全的連結目錄。",
+        "unsafe_piece_boundary": "分片邊界保護已阻止新增此合集，因為所選檔案與缺少的檔案共用一個資料區塊。下載該資料區塊可能會透過硬連結變更原始檔案。手動組裝不受覆蓋率門檻限制。",
         "already_exists": "此種子已存在。",
         "link_failed": "建立連結失敗。",
         "add_failed": "加入種子失敗。"

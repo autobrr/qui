@@ -1651,6 +1651,7 @@
       "coverage": "{{matched}} von {{total}} Episoden · {{percent}}% Abdeckung",
       "missing": "{{size}} fehlen",
       "recheck": "Das Paket wird pausiert hinzugefügt und geprüft. Es wird fortgesetzt, sobald die Prüfung den Anteil der verknüpften Bytes erreicht.",
+      "reviewRules": "Schutz unter Cross-seed → Regeln prüfen",
       "proposalLimit": "Dieses Paket enthält {{count}} Episoden. Die Vorschläge sind auf {{limit}} Torrents begrenzt. Suche nach fehlenden Zielen.",
       "dropped": "Paket hinzugefügt. Ausgelassene Ziele: {{names}}",
       "rejected": "{{name}}: {{reason}}",
@@ -1669,6 +1670,7 @@
         "local_file_unavailable": "Die lokale Datei fehlt oder ist nicht verfügbar.",
         "not_paired": "Dieses Ziel liefert keine Episode des Pakets oder ein anderes ausgewähltes Ziel deckt sie bereits ab.",
         "layout_mismatch": "Aus den ausgewählten Dateien können keine sicheren Links erstellt werden.",
+        "unsafe_piece_boundary": "Der Schutz der Stückgrenzen hat dieses Paket blockiert, weil ausgewählte und fehlende Dateien einen Datenblock teilen. Das Herunterladen dieses Blocks kann Ihre Originaldateien über Hardlinks verändern. Der Abdeckungsschwellenwert gilt nicht für die manuelle Zusammenstellung.",
         "already_exists": "Dieser Torrent ist bereits vorhanden.",
         "link_failed": "Die Links konnten nicht erstellt werden.",
         "add_failed": "Der Torrent konnte nicht hinzugefügt werden."

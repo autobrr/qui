@@ -83,6 +83,18 @@ func TestManualAssembleCheckAndApply(t *testing.T) {
 			require.Empty(t, sm.addCalls)
 			require.Empty(t, runs.runs)
 
+			unalignedReq := *req
+			unalignedReq.TorrentData = base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 1024, contents))
+			boundaryPreview, err := svc.CheckManualAssemble(t.Context(), &unalignedReq)
+			require.NoError(t, err)
+			if mode == "hardlink" {
+				require.False(t, boundaryPreview.Ready)
+				require.Equal(t, "unsafe_piece_boundary", boundaryPreview.Reason)
+				require.Contains(t, boundaryPreview.Message, "unsafe piece boundary with pending files")
+			} else {
+				require.True(t, boundaryPreview.Ready)
+			}
+
 			// A moved file must not discard the two remaining selected episodes.
 			require.NoError(t, os.Remove(torrents[1].ContentPath))
 			applied, err := svc.ApplyManualAssemble(t.Context(), req)

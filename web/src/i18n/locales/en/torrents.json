@@ -1651,6 +1651,7 @@
       "coverage": "{{matched}} of {{total}} episodes · {{percent}}% coverage",
       "missing": "{{size}} missing",
       "recheck": "The pack is added paused and rechecked. It resumes when verification reaches the linked byte fraction.",
+      "reviewRules": "Review protection in Cross-seed → Rules",
       "proposalLimit": "This pack has {{count}} episodes. Proposals are limited to {{limit}} torrents. Use search to select any missing targets.",
       "dropped": "Pack added. Dropped targets: {{names}}",
       "rejected": "{{name}}: {{reason}}",
@@ -1669,6 +1670,7 @@
         "local_file_unavailable": "The local file is missing or unavailable.",
         "not_paired": "This target did not provide a pack episode, or another selected target already covers it.",
         "layout_mismatch": "The selected files cannot form a safe link tree.",
+        "unsafe_piece_boundary": "Piece boundary protection blocked this pack because selected and missing files share a data block. Downloading that block can change your original files through hardlinks. The coverage threshold does not apply to manual assembly.",
         "already_exists": "This torrent already exists.",
         "link_failed": "Failed to create the links.",
         "add_failed": "Failed to add the torrent."

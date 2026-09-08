@@ -1651,6 +1651,7 @@
       "coverage": "{{matched}} épisodes sur {{total}} · {{percent}}% de couverture",
       "missing": "{{size}} manquants",
       "recheck": "Le pack est ajouté en pause et vérifié. Il reprend lorsque la vérification atteint la proportion des octets liés.",
+      "reviewRules": "Consulter la protection dans Cross-seed → Règles",
       "proposalLimit": "Ce pack contient {{count}} épisodes. Les propositions sont limitées à {{limit}} torrents. Utilisez la recherche pour ajouter les cibles manquantes.",
       "dropped": "Pack ajouté. Cibles écartées : {{names}}",
       "rejected": "{{name}} : {{reason}}",
@@ -1669,6 +1670,7 @@
         "local_file_unavailable": "Le fichier local est absent ou indisponible.",
         "not_paired": "Cette cible ne fournit aucun épisode du pack, ou une autre cible sélectionnée le couvre déjà.",
         "layout_mismatch": "Les fichiers sélectionnés ne permettent pas de créer des liens sûrs.",
+        "unsafe_piece_boundary": "La protection des limites de pièces a bloqué ce pack car les fichiers sélectionnés et manquants partagent un bloc de données. Le téléchargement de ce bloc peut modifier vos fichiers originaux via les liens physiques. Le seuil de couverture ne concerne pas l’assemblage manuel.",
         "already_exists": "Ce torrent existe déjà.",
         "link_failed": "Impossible de créer les liens.",
         "add_failed": "Impossible d’ajouter le torrent."

@@ -46,6 +46,8 @@ var videoExtensions = map[string]struct{}{
 // errLayoutMismatch signals that pack files could not be mapped to local episodes.
 var errLayoutMismatch = errors.New("layout_mismatch")
 
+var errUnsafePieceBoundary = fmt.Errorf("%w: unsafe piece boundary with pending files", errLayoutMismatch)
+
 // errSkippedRecheck signals a partial season pack that requires recheck, but recheck is disabled.
 var errSkippedRecheck = errors.New("skipped_recheck")
 
@@ -590,7 +592,7 @@ func (s *Service) planSeasonPack(
 
 	if linkMode == "hardlink" && !prep.settings.SkipPieceBoundarySafetyCheck {
 		if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
-			return planBuild, episodes, fmt.Errorf("%w: unsafe piece boundary with pending files: %s", errLayoutMismatch, result.Reason)
+			return planBuild, episodes, fmt.Errorf("%w: %s", errUnsafePieceBoundary, result.Reason)
 		}
 	}
 

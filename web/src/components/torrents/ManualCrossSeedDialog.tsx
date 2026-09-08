@@ -23,6 +23,7 @@ import { fileToBase64, overlapPercent } from "@/lib/manual-cross-seed"
 import { formatBytes } from "@/lib/utils"
 import type { ManualCrossSeedProposal } from "@/types"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { AlertTriangle, FileUp } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -410,6 +411,11 @@ export function ManualCrossSeedDialog({
                   <p>{t("manualCrossSeed.pack.missing", { size: formatBytes(preview.missingBytes) })}</p>
                   <p className="text-muted-foreground">{t("manualCrossSeed.pack.recheck")}</p>
                   {preview.reason && <p className="text-destructive">{assemblyReason(preview.reason)}</p>}
+                  {preview.reason === "unsafe_piece_boundary" && (
+                    <Link to="/cross-seed" search={{ tab: "rules" }} onClick={() => handleOpenChange(false)} className="inline-block text-primary underline underline-offset-4">
+                      {t("manualCrossSeed.pack.reviewRules")}
+                    </Link>
+                  )}
                   {preview.targets.filter(target => target.reason).map(target => (
                     <p key={target.hash} className="text-destructive">{t("manualCrossSeed.pack.rejected", { name: target.name || target.hash, reason: assemblyReason(target.reason) })}</p>
                   ))}

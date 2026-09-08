@@ -262,6 +262,9 @@ func (s *Service) planManualAssemble(ctx context.Context, req *ManualAssembleReq
 	}
 	if planErr != nil {
 		resp.Reason, resp.Message = "layout_mismatch", planErr.Error()
+		if errors.Is(planErr, errUnsafePieceBoundary) {
+			resp.Reason = "unsafe_piece_boundary"
+		}
 	} else {
 		resp.Ready = true
 	}

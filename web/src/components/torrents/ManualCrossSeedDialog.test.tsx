@@ -6,6 +6,7 @@
 import { api } from "@/lib/api"
 import type { ManualAssembleResponse, ManualCrossSeedProposalsResponse } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from "@tanstack/react-router"
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
@@ -38,8 +39,23 @@ const preview: ManualAssembleResponse = {
 
 function openDialog() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
-  return render(<QueryClientProvider client={client}><ManualCrossSeedDialog instanceId={1} open onOpenChange={() => {}} initialFile={new File(["torrent"], "pack.torrent")} /></QueryClientProvider>)
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() })
+  return render(<RouterContextProvider router={router}><QueryClientProvider client={client}><ManualCrossSeedDialog instanceId={1} open onOpenChange={() => {}} initialFile={new File(["torrent"], "pack.torrent")} /></QueryClientProvider></RouterContextProvider>)
 }
+
+it.each(["unsafe_piece_boundary", "layout_mismatch"])("explains %s and links only piece boundary failures to Rules", async reason => {
+  vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
+  vi.mocked(api.checkManualAssemble).mockResolvedValue({ ...preview, ready: false, reason })
+  const ui = openDialog()
+  await waitFor(() => expect(ui.getByText(`manualCrossSeed.pack.reasons.${reason}`)).toBeTruthy())
+  expect(ui.getByRole("button", { name: "manualCrossSeed.apply" }).hasAttribute("disabled")).toBe(true)
+  const link = ui.queryByRole("link", { name: "manualCrossSeed.pack.reviewRules" })
+  if (reason === "unsafe_piece_boundary") {
+    expect(link?.getAttribute("href")).toBe("/cross-seed?tab=rules")
+  } else {
+    expect(link).toBeNull()
+  }
+})
 
 it("waits for the current preview and applies the selected set with editable category and tags", async () => {
   vi.mocked(api.getManualCrossSeedProposals).mockResolvedValue(proposals)
