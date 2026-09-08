@@ -1578,6 +1578,39 @@
     "applyFailed": "크로스시드 실패: {{message}}",
     "addOptionTitle": "크로스시드로 추가",
     "addOptionDescription": "다운로드하는 대신 이 토렌트를 기존 토렌트와 매칭합니다.",
-    "addOptionButton": "수동 매칭"
+    "addOptionButton": "수동 매칭",
+    "pack": {
+      "description": "수동 매칭에는 토렌트 하나를, 시즌 팩 조립에는 여러 에피소드를 선택하세요.",
+      "targetLabel": "대상 토렌트",
+      "checking": "선택한 에피소드를 확인하는 중...",
+      "checkFailed": "선택 항목을 확인할 수 없습니다.",
+      "coverage": "{{total}}개 중 {{matched}}개 에피소드 · {{percent}}% 포함",
+      "missing": "{{size}} 부족",
+      "recheck": "팩을 일시 정지 상태로 추가하고 재검사합니다. 검사 결과가 연결된 바이트 비율에 도달하면 재개합니다.",
+      "reviewRules": "Cross-seed → 규칙에서 보호 설정 확인",
+      "proposalLimit": "이 팩에는 에피소드가 {{count}}개 있습니다. 제안은 토렌트 {{limit}}개로 제한됩니다. 검색으로 누락된 대상을 선택하세요.",
+      "dropped": "팩을 추가했습니다. 제외된 대상: {{names}}",
+      "rejected": "{{name}}: {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "팩을 조립하려면 이 인스턴스에 로컬 파일 시스템 접근 권한이 필요합니다.",
+        "no_link_mode": "여러 대상을 선택하려면 이 인스턴스에서 하드링크 또는 reflink 모드를 활성화하세요.",
+        "no_base_directory": "이 인스턴스의 링크 기본 디렉터리를 설정하세요.",
+        "no_episode_files": "이 팩에서 재생 가능한 에피소드 파일을 찾지 못했습니다.",
+        "target_not_found": "이 인스턴스에서 대상을 찾지 못했습니다.",
+        "incomplete": "대상 다운로드가 완료되지 않았습니다.",
+        "no_episode_identity": "에피소드 번호를 해석할 수 없습니다.",
+        "file_list_unavailable": "대상 파일 목록을 사용할 수 없습니다.",
+        "episode_file_invalid": "대상에는 선택한 에피소드 식별자와 일치하는 재생 가능한 파일이 하나 있어야 합니다.",
+        "size_mismatch": "로컬 파일 크기가 팩 파일 크기와 다릅니다.",
+        "release_mismatch": "릴리스가 팩과 일치하지 않습니다.",
+        "local_file_unavailable": "로컬 파일이 없거나 사용할 수 없습니다.",
+        "not_paired": "이 대상에 팩 에피소드가 없거나 다른 선택 대상이 이미 해당 에피소드를 제공합니다.",
+        "layout_mismatch": "선택한 파일로 안전한 링크 구조를 만들 수 없습니다.",
+        "unsafe_piece_boundary": "선택한 파일과 누락된 파일이 데이터 블록을 공유하므로 조각 경계 보호가 이 팩을 차단했습니다. 해당 블록을 다운로드하면 하드링크를 통해 원본 파일이 변경될 수 있습니다. 수동 조립에는 커버리지 임계값이 적용되지 않습니다.",
+        "already_exists": "이 토렌트가 이미 존재합니다.",
+        "link_failed": "링크를 만들지 못했습니다.",
+        "add_failed": "토렌트를 추가하지 못했습니다."
+      }
+    }
   }
 }

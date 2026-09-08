@@ -87,10 +87,15 @@ type ManualMatchProposal struct {
 // ManualMatchProposalsResponse carries the ranked target proposals plus the
 // prefill values the Manual match dialog needs.
 type ManualMatchProposalsResponse struct {
-	SourceName      string   `json:"source_name"`
-	SourceSize      int64    `json:"source_size"`
-	SourceFileCount int      `json:"source_file_count"`
-	DefaultTags     []string `json:"default_tags"`
+	PackMode                  bool     `json:"pack_mode"`
+	PackEpisodeCount          int      `json:"pack_episode_count"`
+	AssemblyUnavailableReason string   `json:"assembly_unavailable_reason"`
+	ProposalLimit             int      `json:"proposal_limit"`
+	ProposalsTruncated        bool     `json:"proposals_truncated"`
+	SourceName                string   `json:"source_name"`
+	SourceSize                int64    `json:"source_size"`
+	SourceFileCount           int      `json:"source_file_count"`
+	DefaultTags               []string `json:"default_tags"`
 	// PinnedCategory is set when the automation settings pin every cross-seed to
 	// one category. The apply then ignores the request category, so the dialog
 	// shows this value instead of offering a pick it would discard.
@@ -137,6 +142,18 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 
 	sourceRelease := s.releaseCache.Parse(meta.Name)
+	packMode := isTVSeasonPack(sourceRelease)
+	packEpisodeCount := 0
+	proposalLimit := manualMatchProposalLimit
+	assemblyUnavailable := ""
+	if packMode {
+		packEpisodeCount = len(extractPackEpisodes(meta.Files, sourceRelease))
+		proposalLimit = min(manualMatchCoarseLimit, packEpisodeCount+manualMatchProposalLimit)
+		assemblyUnavailable = manualAssemblyUnavailableReason(instance)
+		if packEpisodeCount == 0 {
+			assemblyUnavailable = "no_episode_files"
+		}
+	}
 	sourceTitle := ""
 	if sourceRelease != nil {
 		sourceTitle = s.stringNormalizer.Normalize(sourceRelease.Title)
@@ -224,7 +241,7 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 
 	linkMode := instance != nil && (instance.UseReflinks || instance.UseHardlinks)
-	proposals := make([]ManualMatchProposal, 0, manualMatchProposalLimit+1)
+	proposals := make([]ManualMatchProposal, 0, proposalLimit+1)
 	for _, torrent := range shortlist {
 		hashKey := normalizeHash(torrent.Hash)
 		candidateFiles := filesByHash[hashKey]
@@ -258,12 +275,13 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	slices.SortFunc(proposals, func(a, b ManualMatchProposal) int {
 		return cmp.Or(cmp.Compare(b.OverlapBytes, a.OverlapBytes), strings.Compare(a.Name, b.Name))
 	})
+	proposalsTruncated := len(proposals) > proposalLimit || (packMode && packEpisodeCount > manualMatchCoarseLimit)
 	if requestedIdx := slices.IndexFunc(proposals, func(p ManualMatchProposal) bool {
 		return wantHash != "" && normalizeHash(p.Hash) == wantHash
-	}); requestedIdx >= manualMatchProposalLimit {
-		proposals = append(proposals[:manualMatchProposalLimit], proposals[requestedIdx])
-	} else if len(proposals) > manualMatchProposalLimit {
-		proposals = proposals[:manualMatchProposalLimit]
+	}); requestedIdx >= proposalLimit {
+		proposals = append(proposals[:proposalLimit], proposals[requestedIdx])
+	} else if len(proposals) > proposalLimit {
+		proposals = proposals[:proposalLimit]
 	}
 
 	// Default tag parity with the search-results dialog, which applies
@@ -284,12 +302,17 @@ func (s *Service) ManualMatchProposals(ctx context.Context, instanceID int, torr
 	}
 
 	return &ManualMatchProposalsResponse{
-		SourceName:      meta.Name,
-		SourceSize:      sourceTotal,
-		SourceFileCount: len(meta.Files),
-		DefaultTags:     defaultTags,
-		PinnedCategory:  pinnedCategory,
-		Proposals:       proposals,
+		PackMode:                  packMode,
+		PackEpisodeCount:          packEpisodeCount,
+		AssemblyUnavailableReason: assemblyUnavailable,
+		ProposalLimit:             proposalLimit,
+		ProposalsTruncated:        proposalsTruncated,
+		SourceName:                meta.Name,
+		SourceSize:                sourceTotal,
+		SourceFileCount:           len(meta.Files),
+		DefaultTags:               defaultTags,
+		PinnedCategory:            pinnedCategory,
+		Proposals:                 proposals,
 	}, nil
 }
 

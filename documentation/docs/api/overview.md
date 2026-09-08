@@ -23,6 +23,14 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
   http://localhost:7476/api/instances
 ```
 
+## Torrent updates
+
+`GET /api/stream` sends torrent updates through Server-Sent Events. See `/api/docs` for subscription parameters and event examples.
+
+Keep the version from each accepted snapshot or delta. Apply a delta only when its `baseVersion` matches that version and its `minor` increases by one within the same `major`. If the versions do not match, reconnect for a full snapshot and use REST polling until it arrives.
+
+In a delta, omitted counts and preferences retain their previous values. Explicit `preferences: null` clears preferences. Omitted categories and tags mean empty collections.
+
 ## Security notes
 
 - qui shows an API key only once, at creation. Save it in a safe place.

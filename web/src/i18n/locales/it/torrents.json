@@ -1642,6 +1642,39 @@
     "applyFailed": "Cross-seed non riuscito: {{message}}",
     "addOptionTitle": "Aggiungi come cross-seed",
     "addOptionDescription": "Abbina questo torrent a un torrent esistente invece di scaricarlo.",
-    "addOptionButton": "Abbina manualmente"
+    "addOptionButton": "Abbina manualmente",
+    "pack": {
+      "description": "Seleziona un torrent per un abbinamento manuale o più episodi per assemblare questa stagione.",
+      "targetLabel": "Torrent di destinazione",
+      "checking": "Verifica degli episodi selezionati...",
+      "checkFailed": "Impossibile verificare questa selezione.",
+      "coverage": "{{matched}} episodi su {{total}} · copertura {{percent}}%",
+      "missing": "{{size}} mancanti",
+      "recheck": "Il pacchetto viene aggiunto in pausa e verificato. Riprende quando la verifica raggiunge la frazione di byte collegati.",
+      "reviewRules": "Esamina la protezione in Cross-seed → Regole",
+      "proposalLimit": "Questo pacchetto contiene {{count}} episodi. I suggerimenti sono limitati a {{limit}} torrent. Cerca le destinazioni mancanti.",
+      "dropped": "Pacchetto aggiunto. Destinazioni escluse: {{names}}",
+      "rejected": "{{name}}: {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "Questa istanza richiede accesso al file system locale per assemblare un pacchetto.",
+        "no_link_mode": "Abilita hardlink o reflink su questa istanza per selezionare più destinazioni.",
+        "no_base_directory": "Configura una directory di base per i collegamenti di questa istanza.",
+        "no_episode_files": "Nessun file episodio riproducibile trovato nel pacchetto.",
+        "target_not_found": "Destinazione non trovata in questa istanza.",
+        "incomplete": "Il download della destinazione è incompleto.",
+        "no_episode_identity": "Impossibile riconoscere il numero dell’episodio.",
+        "file_list_unavailable": "L’elenco dei file della destinazione non è disponibile.",
+        "episode_file_invalid": "La destinazione deve contenere un solo file riproducibile con l’identità dell’episodio selezionato.",
+        "size_mismatch": "La dimensione del file locale differisce da quella del file nel pacchetto.",
+        "release_mismatch": "La versione non corrisponde al pacchetto.",
+        "local_file_unavailable": "Il file locale manca o non è disponibile.",
+        "not_paired": "Questa destinazione non fornisce un episodio del pacchetto o un’altra destinazione selezionata lo copre già.",
+        "layout_mismatch": "I file selezionati non consentono di creare collegamenti sicuri.",
+        "unsafe_piece_boundary": "La protezione dei confini dei pezzi ha bloccato questo pacchetto perché i file selezionati e quelli mancanti condividono un blocco di dati. Scaricare quel blocco può modificare i file originali tramite i collegamenti fisici. La soglia di copertura non si applica all’assemblaggio manuale.",
+        "already_exists": "Questo torrent esiste già.",
+        "link_failed": "Impossibile creare i collegamenti.",
+        "add_failed": "Impossibile aggiungere il torrent."
+      }
+    }
   }
 }
