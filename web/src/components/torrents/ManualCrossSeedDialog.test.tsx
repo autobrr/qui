@@ -10,13 +10,18 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 
+const { metadataResult, translationResult } = vi.hoisted(() => ({
+  metadataResult: { data: undefined },
+  translationResult: { t: (key: string) => key },
+}))
+
 vi.mock("@/lib/api", () => ({ api: {
   getManualCrossSeedProposals: vi.fn(), checkManualAssemble: vi.fn(),
   applyManualAssemble: vi.fn(), applyManualCrossSeed: vi.fn(),
 } }))
-vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => ({ data: undefined }) }))
+vi.mock("@/hooks/useInstanceMetadata", () => ({ useInstanceMetadata: () => metadataResult }))
 vi.mock("@/lib/manual-cross-seed", () => ({ fileToBase64: async () => "torrent", overlapPercent: (fraction: number) => Math.round(fraction * 100) }))
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock("react-i18next", () => ({ useTranslation: () => translationResult }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }))
 
 afterEach(() => { cleanup(); vi.resetAllMocks() })
