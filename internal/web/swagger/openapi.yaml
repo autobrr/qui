@@ -1416,6 +1416,86 @@ paths:
         '500':
           description: Failed to get cross-seed status
 
+  /api/stream:
+    get:
+      tags:
+        - Torrents
+      summary: Stream torrent updates
+      description: |
+        Subscribe to torrent views through Server-Sent Events. Each named event
+        contains a JSON payload. `meta.streamKey` identifies the requested view.
+
+        `init` and `update` contain a full snapshot in `data`. All torrent data
+        events include `version`, an object with positive integer `major` and
+        `minor` fields. `major` changes when the server recreates a stream group.
+        `minor` advances with each data update in that group.
+
+        `delta` contains changed rows and requires `delta.baseVersion`, with the
+        same fields as `version`. Apply a delta only when `baseVersion` equals
+        the last applied version, `major` is unchanged, and `minor` advances by one.
+        If any check fails, reconnect for a fresh `init` and use REST polling
+        until a valid full snapshot arrives.
+
+        `delta.order`, when present, replaces the row order and membership.
+        An empty array clears the page. Row keys are torrent hashes for a single
+        instance and `instanceId:hash` for a cross-instance view. Changed rows
+        are in `data.torrents` or `data.cross_instance_torrents`, respectively.
+        The other `data` fields follow the torrent list response.
+
+        In a delta, omitted `counts` and `preferences` retain their previous
+        values. Explicit `preferences: null` clears preferences. Omitted
+        `categories` and `tags` mean empty collections and clear previous values.
+
+        `stream-error` contains an `error` message and optional retry metadata.
+        `heartbeat` keeps the connection alive. Neither advances the data version.
+        With `activity=1`, separate `activity` events report qui background changes.
+      parameters:
+        - name: streams
+          in: query
+          description: |
+            JSON array of 1 to 64 subscriptions. Required unless `activity=1`.
+            Each entry accepts `key`, `instanceId`, `instanceIds`, `page`, `limit`,
+            `sort`, `order`, `search`, and `filters`. Use a positive `instanceId`
+            or 1 to 64 positive `instanceIds` for a cross-instance view.
+            `key` is returned as `meta.streamKey`. `page` starts at 0.
+            `limit` defaults to 300 and cannot exceed 2000. `sort` defaults to
+            `added_on` and `order` to `desc`. `filters` is a JSON object with the
+            same fields as the torrent list filters.
+          schema:
+            type: string
+          example: '[{"key":"main","instanceId":1,"page":0,"limit":300}]'
+        - name: activity
+          in: query
+          description: Set to 1 to include activity events, with or without torrent subscriptions.
+          schema:
+            type: integer
+            enum: [0, 1]
+            default: 0
+      responses:
+        '200':
+          description: Stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: init
+                data: {"type":"init","version":{"major":1,"minor":1},"meta":{"streamKey":"main","instanceId":1,"timestamp":"2026-09-08T12:00:00Z"},"data":{"torrents":[],"total":0}}
+
+                event: delta
+                data: {"type":"delta","version":{"major":1,"minor":2},"delta":{"baseVersion":{"major":1,"minor":1}},"meta":{"streamKey":"main","instanceId":1,"timestamp":"2026-09-08T12:00:02Z"},"data":{"torrents":[],"total":0}}
+
+        '400':
+          description: Missing or invalid subscriptions
+        '401':
+          description: Authentication required
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to prepare the stream
+        '503':
+          description: Server is shutting down
+
   /api/instances/{instanceID}/torrents:
     get:
       tags:
