@@ -128,9 +128,7 @@ func TestSSHCredentialsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, testHostKey, pin)
 
-	mode, ok := HasFilesystemAccess(stored)
-	assert.Equal(t, FilesystemModeRemote, mode)
-	assert.True(t, ok)
+	assert.Equal(t, FilesystemModeRemote, HasFilesystemAccess(stored))
 }
 
 func TestGetHostKeyPinUnpinned(t *testing.T) {
@@ -146,9 +144,7 @@ func TestGetHostKeyPinUnpinned(t *testing.T) {
 	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned)
 
 	// Credentials without a confirmed pin are not a usable remote.
-	mode, ok := HasFilesystemAccess(stored)
-	assert.Equal(t, FilesystemModeNone, mode)
-	assert.False(t, ok)
+	assert.Equal(t, FilesystemModeNone, HasFilesystemAccess(stored))
 }
 
 func TestTamperedCiphertextFailsClosed(t *testing.T) {

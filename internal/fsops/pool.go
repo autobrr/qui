@@ -12,8 +12,9 @@ import (
 
 // Pool resolves an instance ID to the appropriate Backend. For instances with
 // local filesystem access it returns the local backend; for instances without
-// access it returns a noop backend that errors on every call. A future remote
-// backend slots in here for instances with SSH access configured.
+// access it returns a noop backend that errors on every call. Instances pinned
+// for SSH access fail with ErrRemoteBackendNotImplemented until the remote
+// backend lands.
 type Pool struct {
 	instanceStore instanceGetter
 	local         Backend
@@ -45,13 +46,11 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
 
-	mode, _ := models.HasFilesystemAccess(instance)
-	switch mode {
+	switch models.HasFilesystemAccess(instance) {
 	case models.FilesystemModeLocal:
 		return p.local, nil
 	case models.FilesystemModeRemote:
-		// Future: return a remote backend over the instance's pinned SSH endpoint.
-	case models.FilesystemModeNone:
+		return nil, fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotImplemented)
 	}
 
 	return noopBackend{}, nil

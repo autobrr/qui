@@ -90,6 +90,17 @@ func TestPool_NoAccess(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 }
 
+func TestPool_RemoteNotImplemented(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		3: {ID: 3, SSHHost: "box.example.com", SSHKeyEncrypted: "enc-key", SSHHostKeyEncrypted: "enc-hostkey"},
+	}}
+	pool := NewPool(store, fakeBackend{kind: "local"})
+
+	backend, err := pool.GetBackend(context.Background(), 3)
+	require.ErrorIs(t, err, ErrRemoteBackendNotImplemented)
+	assert.Nil(t, backend)
+}
+
 func TestPool_InstanceNotFound(t *testing.T) {
 	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
 	pool := NewPool(store, fakeBackend{})

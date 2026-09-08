@@ -31,26 +31,22 @@ func TestHasFilesystemAccess(t *testing.T) {
 	localAndRemote.HasLocalFilesystemAccess = true
 
 	tests := []struct {
-		name     string
-		inst     *Instance
-		wantMode FilesystemMode
-		wantOK   bool
+		name string
+		inst *Instance
+		want FilesystemMode
 	}{
-		{"nil instance", nil, FilesystemModeNone, false},
-		{"no access", &Instance{}, FilesystemModeNone, false},
-		{"local access", &Instance{HasLocalFilesystemAccess: true}, FilesystemModeLocal, true},
-		{"remote pinned", remote(), FilesystemModeRemote, true},
-		{"remote awaiting host key confirmation", pendingPin, FilesystemModeNone, false},
-		{"remote without credentials", noCreds, FilesystemModeNone, false},
-		{"local takes precedence", localAndRemote, FilesystemModeLocal, true},
+		{"no access", &Instance{}, FilesystemModeNone},
+		{"local access", &Instance{HasLocalFilesystemAccess: true}, FilesystemModeLocal},
+		{"remote pinned", remote(), FilesystemModeRemote},
+		{"remote awaiting host key confirmation", pendingPin, FilesystemModeNone},
+		{"remote without credentials", noCreds, FilesystemModeNone},
+		{"local takes precedence", localAndRemote, FilesystemModeLocal},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mode, ok := HasFilesystemAccess(tt.inst)
-			assert.Equal(t, tt.wantMode, mode)
-			assert.Equal(t, tt.wantOK, ok)
+			assert.Equal(t, tt.want, HasFilesystemAccess(tt.inst))
 		})
 	}
 }
