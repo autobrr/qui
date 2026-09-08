@@ -144,7 +144,7 @@ func TestManualAssembleSuggestionsAndValidation(t *testing.T) {
 	require.Len(t, sm.bulkCalls, 1)
 	require.InDelta(t, seasonPackResumeSlack, (<-svc.recheckResumeChan).threshold, 0.00001)
 
-	files["e02"][0].Size++
+	sm.files["e02"][0].Size++
 	req.TargetHashes = []string{"e01", "e02", "another-instance-hash"}
 	preview, err = svc.CheckManualAssemble(t.Context(), req)
 	require.NoError(t, err)
