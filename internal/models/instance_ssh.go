@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -37,12 +39,9 @@ func sshKeyAAD(instanceID int) []byte {
 // hostKeyPinAAD binds the pin to the endpoint it was confirmed for. Redirecting
 // an instance by editing ssh_host or ssh_port then reads as a decryption
 // failure — unambiguous tampering — rather than as a host-key mismatch, which
-// is also what a legitimate re-key looks like.
-//
-// The encoding must stay injective, and it is only injective because the port
-// is decimal-only and last: that makes the final "|" unambiguous even when the
-// host itself contains one. A new field appended after the host would break
-// that. Append after the port, or length-prefix the parts.
+// is also what a legitimate re-key looks like. The decimal port goes last so
+// the final "|" stays unambiguous whatever the host contains; add new parts
+// after it.
 func hostKeyPinAAD(instanceID int, host string, port int) []byte {
 	return []byte(strconv.Itoa(instanceID) + "|" + aadFieldSSHHostKey + "|" + host + "|" + strconv.Itoa(port))
 }
@@ -59,7 +58,9 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 	switch {
 	case host == "":
 		return errors.New("ssh host is required")
-	case strings.ContainsAny(host, "/\\:@ \t"):
+	case strings.ContainsFunc(host, func(r rune) bool { return !unicode.IsPrint(r) }):
+		return fmt.Errorf("ssh host %q contains non-printable characters", host)
+	case !isIPLiteral(host) && strings.ContainsAny(host, "/\\:@ "):
 		return fmt.Errorf("ssh host %q must be a bare hostname or IP, without scheme, port or credentials", host)
 	case port < 1 || port > 65535:
 		return fmt.Errorf("ssh port %d out of range", port)
@@ -90,7 +91,14 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 		    ssh_host_key_encrypted = CASE WHEN ssh_host = ? AND ssh_port = ? THEN ssh_host_key_encrypted ELSE '' END
 		WHERE id = ?
 	`
-	return s.execInstanceUpdate(ctx, query, host, port, username, encryptedKey, host, port, instanceID)
+	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, host, port, username, encryptedKey, host, port, instanceID)
+}
+
+// isIPLiteral lets a bare IPv6 address through the hostname character check;
+// it is stored unbracketed and net.JoinHostPort brackets it at dial time.
+func isIPLiteral(host string) bool {
+	_, err := netip.ParseAddr(host)
+	return err == nil
 }
 
 // ClearSSHCredentials removes the credentials but keeps the pin: the pin
@@ -101,7 +109,7 @@ func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int)
 		SET ssh_username = '', ssh_key_encrypted = ''
 		WHERE id = ?
 	`
-	return s.execInstanceUpdate(ctx, query, instanceID)
+	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, instanceID)
 }
 
 // SetHostKeyPin pins the marshaled host public key for an instance. The
@@ -144,13 +152,9 @@ func validateMarshaledHostKey(marshaledKey []byte) error {
 	return nil
 }
 
-// setHostKeyPinFor writes a pin bound to one endpoint and refuses if the row no
-// longer carries that endpoint, or if it has been pinned in the meantime. The
-// AAD is built from a host and port read a moment earlier, so an interleaved
-// credential update would otherwise leave behind a pin that can never decrypt
-// again — remote access dead until someone pins afresh, with nothing pointing
-// at why. The empty-pin term is the race-safe backstop for the check callers
-// have already made against the row they read.
+// setHostKeyPinFor is a compare-and-set on the endpoint the AAD was built from:
+// an interleaved credential update would otherwise leave a pin that can never
+// decrypt again, with nothing pointing at why.
 func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
 	encrypted, err := s.encryptWithAAD(string(marshaledKey), hostKeyPinAAD(instanceID, host, port))
 	if err != nil {
@@ -162,20 +166,7 @@ func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, ho
 		SET ssh_host_key_encrypted = ?
 		WHERE id = ? AND ssh_host = ? AND ssh_port = ? AND ssh_host_key_encrypted = ''
 	`
-	result, err := s.db.ExecContext(ctx, query, encrypted, instanceID, host, port)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		return ErrSSHEndpointChanged
-	}
-
-	return nil
+	return s.execInstanceUpdate(ctx, ErrSSHEndpointChanged, query, encrypted, instanceID, host, port)
 }
 
 // GetDecryptedSSHKey returns the private key for an instance, or "" when no
@@ -205,7 +196,9 @@ func (s *InstanceStore) GetHostKeyPin(instance *Instance) ([]byte, error) {
 	return []byte(pin), nil
 }
 
-func (s *InstanceStore) execInstanceUpdate(ctx context.Context, query string, args ...any) error {
+// execInstanceUpdate runs a single-row UPDATE and returns noRow when the WHERE
+// clause matched nothing.
+func (s *InstanceStore) execInstanceUpdate(ctx context.Context, noRow error, query string, args ...any) error {
 	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
@@ -216,7 +209,7 @@ func (s *InstanceStore) execInstanceUpdate(ctx context.Context, query string, ar
 		return err
 	}
 	if rows != 1 {
-		return ErrInstanceNotFound
+		return noRow
 	}
 
 	return nil

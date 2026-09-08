@@ -52,11 +52,9 @@ type Instance struct {
 	SSHHost     string `json:"-"`
 	SSHPort     int    `json:"-"`
 	SSHUsername string `json:"-"`
-	// AES-GCM encrypted private key (AAD: instance id + field).
+	// Both ciphertexts are AEAD-bound to this row; see instance_ssh.go.
 	SSHKeyEncrypted string `json:"-"`
-	// Pinned host key: the marshaled public key under the same AEAD
-	// (AAD: instance id + field + host + port). Empty until the user
-	// confirms the key, and no remote operation runs before it is set.
+	// Marshaled host public key, empty until the user confirms it.
 	SSHHostKeyEncrypted string `json:"-"`
 }
 

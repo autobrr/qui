@@ -1,14 +1,8 @@
 -- Copyright (c) 2025-2026, s0up and the autobrr contributors.
 -- SPDX-License-Identifier: GPL-2.0-or-later
 
--- SSH access for instances whose torrent data lives on another host.
--- ssh_key_encrypted holds the AES-GCM encrypted private key (AAD: instance id
--- + field). ssh_host_key_encrypted holds the pinned host key under the same
--- AEAD (AAD: instance id + field + host + port) so a plaintext edit that
--- redirects the instance fails as a decryption error rather than as a host-key
--- mismatch. The pinned value is the marshaled public key, which carries its own
--- algorithm name -- not a fingerprint: HostKeyAlgorithms pinning and the
--- mismatch flow both need the full key.
+-- SSH access for instances whose torrent data lives on another host. The two
+-- encrypted columns are AEAD-bound to the row; see internal/models/instance_ssh.go.
 ALTER TABLE instances ADD COLUMN ssh_host               TEXT NOT NULL DEFAULT '';
 ALTER TABLE instances ADD COLUMN ssh_port               INTEGER NOT NULL DEFAULT 22;
 ALTER TABLE instances ADD COLUMN ssh_username           TEXT NOT NULL DEFAULT '';

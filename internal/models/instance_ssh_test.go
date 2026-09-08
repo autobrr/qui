@@ -327,6 +327,11 @@ func TestSetSSHCredentialsValidation(t *testing.T) {
 		{"host carrying a port", testSSHHost + ":22", 22, testSSHUser, testSSHKey},
 		{"host carrying a user", testSSHUser + "@" + testSSHHost, 22, testSSHUser, testSSHKey},
 		{"host with embedded whitespace", "seedbox example.com", 22, testSSHUser, testSSHKey},
+		{"host with embedded newline", "seedbox\n.example.com", 22, testSSHUser, testSSHKey},
+		{"host with non-breaking space", "seedbox\u00a0example.com", 22, testSSHUser, testSSHKey},
+		{"host with zero-width space", "seedbox\u200bexample.com", 22, testSSHUser, testSSHKey},
+		{"host with NUL", "seedbox\x00example.com", 22, testSSHUser, testSSHKey},
+		{"bracketed IPv6 literal", "[fd00::1]", 22, testSSHUser, testSSHKey},
 		{"unparseable key", testSSHHost, 22, testSSHUser, "-----BEGIN OPENSSH PRIVATE KEY-----\nnope\n-----END OPENSSH PRIVATE KEY-----"},
 		{"passphrase-protected key", testSSHHost, 22, testSSHUser, testSSHKeyPassphrased},
 	}
@@ -339,6 +344,23 @@ func TestSetSSHCredentialsValidation(t *testing.T) {
 			require.NoError(t, err)
 			assert.Empty(t, stored.SSHHost, "a rejected update must not write anything")
 			assert.Empty(t, stored.SSHKeyEncrypted)
+		})
+	}
+}
+
+// IP literals are stored bare: the hostname check must not mistake the colons
+// of an IPv6 address for a port, or an IPv6-only box can never be configured.
+func TestSetSSHCredentialsAcceptsIPLiterals(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+
+	for _, host := range []string{"192.0.2.10", "fd00::1", "2001:db8::1", "fe80::1%eth0"} {
+		t.Run(host, func(t *testing.T) {
+			instance := newSSHTestInstance(t, store, "remote-"+host)
+			require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, host, 22, testSSHUser, testSSHKey))
+
+			stored, err := store.Get(ctx, instance.ID)
+			require.NoError(t, err)
+			assert.Equal(t, host, stored.SSHHost)
 		})
 	}
 }
