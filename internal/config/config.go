@@ -44,6 +44,13 @@ type AppConfig struct {
 	logManager *LogManager
 }
 
+// zerolog keeps its formatting settings in package globals. Set them once at
+// startup: writing them again on a config reload races with any goroutine that
+// logs at the same time.
+func init() {
+	zerolog.TimeFieldFormat = time.RFC3339
+}
+
 func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	version := "dev"
 	if len(versions) > 0 && strings.TrimSpace(versions[0]) != "" {
@@ -758,8 +765,6 @@ func generateSecureToken(length int) (string, error) {
 }
 
 func (c *AppConfig) ApplyLogConfig() error {
-	zerolog.TimeFieldFormat = time.RFC3339
-
 	// Initialize the log manager on first call (sets up switchable writer)
 	c.logManager.Initialize()
 
@@ -811,7 +816,6 @@ func baseLogWriter(version string) io.Writer {
 // InitDefaultLogger configures zerolog with the default writer for this version.
 // This is used by CLI entry points before a configuration file is loaded.
 func InitDefaultLogger(version string) {
-	zerolog.TimeFieldFormat = time.RFC3339
 	log.Logger = log.Logger.Output(baseLogWriter(version))
 }
 
