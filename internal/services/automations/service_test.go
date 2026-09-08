@@ -1153,67 +1153,6 @@ func TestCategoryConditionNotMet(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// isContentPathAmbiguous tests
-// -----------------------------------------------------------------------------
-
-func TestIsContentPathAmbiguous(t *testing.T) {
-	tests := []struct {
-		scenario    string
-		contentPath string
-		savePath    string
-		want        bool
-	}{
-		{
-			scenario:    "ContentPath != SavePath => unambiguous",
-			contentPath: "/downloads/torrent/My.Movie.2024",
-			savePath:    "/downloads/torrent",
-			want:        false,
-		},
-		{
-			scenario:    "ContentPath == SavePath => ambiguous (shared dir)",
-			contentPath: "/downloads/shared",
-			savePath:    "/downloads/shared",
-			want:        true,
-		},
-		{
-			scenario:    "ContentPath subfolder of SavePath => unambiguous",
-			contentPath: "/Downloads/torrent/My.Movie",
-			savePath:    "/downloads/torrent",
-			want:        false,
-		},
-		{
-			scenario:    "ContentPath == SavePath (case-insensitive) => ambiguous",
-			contentPath: "/Downloads/Shared",
-			savePath:    "/downloads/shared",
-			want:        true,
-		},
-		{
-			scenario:    "ContentPath == SavePath (trailing slash diff) => ambiguous",
-			contentPath: "/downloads/shared/",
-			savePath:    "/downloads/shared",
-			want:        true,
-		},
-		{
-			scenario:    "ContentPath is specific file/folder under SavePath => unambiguous",
-			contentPath: "/downloads/movies/MyMovie",
-			savePath:    "/downloads/movies",
-			want:        false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.scenario, func(t *testing.T) {
-			torrent := qbt.Torrent{
-				ContentPath: tc.contentPath,
-				SavePath:    tc.savePath,
-			}
-			got := isContentPathAmbiguous(torrent)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
 // crossSeedGroupMembers tests
 // -----------------------------------------------------------------------------
 

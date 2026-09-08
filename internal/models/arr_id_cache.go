@@ -157,8 +157,8 @@ func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string
 // same title can race, and a slower no-ID result must not hide freshly resolved
 // IDs for the negative TTL (#2300). Positive writes always win.
 func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, episodeMap *EpisodeMap, episodeMapKnown, isNegative bool, ttl time.Duration) error {
-	// Store expires_at in UTC so the bound-UTC comparisons in Get/CleanupExpired/
-	// CountValid are timezone-independent. Without .UTC() the value carries the
+	// Store expires_at in UTC so the comparisons in Get and CleanupExpired
+	// do not depend on the process timezone. Without .UTC() the value carries the
 	// process-local offset and the cache silently misses in non-UTC zones (#1961).
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
@@ -225,30 +225,6 @@ func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentT
 	return nil
 }
 
-// Delete removes a specific cache entry
-func (s *ArrIDCacheStore) Delete(ctx context.Context, titleHash, contentType string) error {
-	query := `DELETE FROM arr_id_cache WHERE title_hash = ? AND content_type = ?`
-
-	_, err := s.db.ExecContext(ctx, query, titleHash, contentType)
-	if err != nil {
-		return fmt.Errorf("failed to delete arr id cache entry: %w", err)
-	}
-
-	return nil
-}
-
-// DeleteByArrInstance removes all cache entries for a specific ARR instance
-func (s *ArrIDCacheStore) DeleteByArrInstance(ctx context.Context, arrInstanceID int) error {
-	query := `DELETE FROM arr_id_cache WHERE arr_instance_id = ?`
-
-	_, err := s.db.ExecContext(ctx, query, arrInstanceID)
-	if err != nil {
-		return fmt.Errorf("failed to delete arr id cache entries for instance: %w", err)
-	}
-
-	return nil
-}
-
 // CleanupExpired removes all expired cache entries
 func (s *ArrIDCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
 	// Compare against a bound UTC time rather than CURRENT_TIMESTAMP; see Get (#1961).
@@ -265,25 +241,4 @@ func (s *ArrIDCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
 	}
 
 	return rowsAffected, nil
-}
-
-// Count returns the total number of cache entries
-func (s *ArrIDCacheStore) Count(ctx context.Context) (int64, error) {
-	var count int64
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM arr_id_cache").Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count arr id cache entries: %w", err)
-	}
-	return count, nil
-}
-
-// CountValid returns the number of non-expired cache entries
-func (s *ArrIDCacheStore) CountValid(ctx context.Context) (int64, error) {
-	// Compare against a bound UTC time rather than CURRENT_TIMESTAMP; see Get (#1961).
-	var count int64
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM arr_id_cache WHERE expires_at > ?", time.Now().UTC()).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count valid arr id cache entries: %w", err)
-	}
-	return count, nil
 }

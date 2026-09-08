@@ -70,7 +70,6 @@ export function LicenseManager({
   const { hasPremiumAccess, isLoading } = useHasPremiumAccess()
   const { data: licenses } = useLicenseDetails()
   const activateLicense = useActivateLicense()
-  // const validateLicense = useValidateThemeLicense()
   const deleteLicense = useDeleteLicense()
   const primaryLicense = licenses?.[0]
   const hasStoredLicense = Boolean(primaryLicense)

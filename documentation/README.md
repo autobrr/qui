@@ -28,6 +28,4 @@ This command generates static content into the `build` directory.
 
 Documentation is deployed to [getqui.com](https://getqui.com) via Netlify.
 
-**Automatic deployment**: Pushes to version tags (`v*`) trigger the `.github/workflows/docs.yml` workflow, which builds and deploys to Netlify automatically.
-
-**Manual deployment**: Use the "Run workflow" button in GitHub Actions. Requires `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID` secrets to be configured in the repository settings.
+The Netlify configuration in [`netlify.toml`](netlify.toml) sets `pnpm build` as the build command and `build` as the publish directory.
