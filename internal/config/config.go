@@ -258,7 +258,9 @@ func (c *AppConfig) loadFromEnv() {
 }
 
 func (c *AppConfig) watchConfig() {
-	c.viper.WatchConfig()
+	// Register the handler before the watcher starts: viper reads onConfigChange
+	// from the watcher goroutine without a lock, so setting it after WatchConfig
+	// races with an event that arrives right away.
 	c.viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Info().Msgf("Config file changed: %s", e.Name)
 
@@ -283,6 +285,7 @@ func (c *AppConfig) watchConfig() {
 		// Apply dynamic changes
 		c.applyDynamicChanges(previousAuthSettings)
 	})
+	c.viper.WatchConfig()
 }
 
 type authReloadSettings struct {
