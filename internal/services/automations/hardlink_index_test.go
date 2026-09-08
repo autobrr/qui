@@ -727,7 +727,7 @@ func TestGetHardlinkIndex_CanceledFinalScanIsNotCached(t *testing.T) {
 	rig.service.GetHardlinkIndex(scanCtx, rig.instanceID, torrents)
 	require.ErrorIs(t, scanCtx.Err(), context.Canceled)
 
-	require.Equal(t, HardlinkScopeNone, rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents).GetHardlinkScope(hash))
+	require.Equal(t, HardlinkScopeNone, rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents).ScopeByHash[hash])
 }
 
 // hardlinkIndexRig is a Service wired to a stub qBittorrent over HTTP, a real
@@ -908,7 +908,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 
 	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
-	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashA))
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 
 	// A link appears outside the torrent set, the index ages past its TTL, and the
 	// files cache ages past its freshness window but not past the index's bound:
@@ -921,7 +921,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
-	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.GetHardlinkScope(hashA))
+	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash[hashA])
 
 	// A torrent with no cached row is still fetched on an expired rebuild.
 	expireHardlinkIndex(t, rig.instanceID)
@@ -929,7 +929,7 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(3), fileRequests.Load())
-	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashC))
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashC])
 
 	// An incremental update re-reads the torrents that share files with the new
 	// one. Their lists are cached too, so only the new torrent is fetched.
@@ -940,8 +940,8 @@ func TestGetHardlinkIndex_ExpiredRebuildReadsCachedFileLists(t *testing.T) {
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(4), fileRequests.Load())
-	require.Equal(t, HardlinkScopeBoth, index.GetHardlinkScope(hashA))
-	require.Equal(t, HardlinkScopeBoth, index.GetHardlinkScope(hashD))
+	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash[hashA])
+	require.Equal(t, HardlinkScopeBoth, index.ScopeByHash[hashD])
 }
 
 func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
@@ -964,7 +964,7 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 
 	index := rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
-	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashA))
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 
 	// The file is renamed in qBittorrent's own WebUI: the disk and qBittorrent
 	// agree on the new name, the cached row still holds the old one. The expired
@@ -978,8 +978,8 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(2), fileRequests.Load())
-	require.Empty(t, index.GetHardlinkScope(hashA))
-	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashB))
+	require.Empty(t, index.ScopeByHash[hashA])
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashB])
 
 	// Once the rows age past the bound, the next rebuild refetches and recovers.
 	expireHardlinkIndex(t, rig.instanceID)
@@ -988,7 +988,7 @@ func TestGetHardlinkIndex_StaleCachedNameLeavesScopeUnknown(t *testing.T) {
 
 	index = rig.service.GetHardlinkIndex(t.Context(), rig.instanceID, torrents)
 	require.Equal(t, int32(4), fileRequests.Load())
-	require.Equal(t, HardlinkScopeNone, index.GetHardlinkScope(hashA))
+	require.Equal(t, HardlinkScopeNone, index.ScopeByHash[hashA])
 }
 
 func expireHardlinkIndex(t *testing.T, instanceID int) {

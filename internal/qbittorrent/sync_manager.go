@@ -156,10 +156,6 @@ func postAddFileFetchRetry(ctx context.Context) bool {
 	return ok && value
 }
 
-func withoutCancelPreservingDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithoutCancel(ctx), func() {}
-}
-
 // CacheMetadata describes whether torrent response data came from a recent
 // qBittorrent sync or from the last retained cache snapshot.
 type CacheMetadata struct {
@@ -2447,9 +2443,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	postAddRetry := postAddBulkActionRetry(ctx)
 	retryCtx := ctx
 	if postAddRetry {
-		var retryCancel context.CancelFunc
-		retryCtx, retryCancel = withoutCancelPreservingDeadline(ctx)
-		defer retryCancel()
+		retryCtx = context.WithoutCancel(ctx)
 	}
 
 	// If not all found, try variant resolution with full torrent map.

@@ -911,48 +911,16 @@ func TestNormalizeHashes(t *testing.T) {
 func TestBulkActionRetryAttempts(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 0, 1))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 1, 2))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(WithPostAddBulkActionRetry(ctx))
-	defer cancelRetry()
+	retryCtx := context.WithoutCancel(WithPostAddBulkActionRetry(ctx))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(retryCtx, 1, 2))
 	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
-}
-
-func TestWithoutCancelPreservingDeadlineDetachesDeadlineAndKeepsRetryValue(t *testing.T) {
-	t.Parallel()
-
-	deadline := time.Now().Add(time.Hour)
-	parentCtx, cancelParent := context.WithDeadline(WithPostAddBulkActionRetry(context.Background()), deadline)
-	cancelParent()
-
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
-	defer cancelRetry()
-
-	_, ok := retryCtx.Deadline()
-	require.False(t, ok)
-	require.NoError(t, retryCtx.Err())
-	require.True(t, postAddBulkActionRetry(retryCtx))
-}
-
-func TestWithoutCancelPreservingDeadlineDropsExpiredDeadline(t *testing.T) {
-	t.Parallel()
-
-	deadline := time.Now().Add(-time.Nanosecond)
-	parentCtx, cancelParent := context.WithDeadline(context.Background(), deadline)
-	defer cancelParent()
-
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
-	defer cancelRetry()
-
-	_, ok := retryCtx.Deadline()
-	require.False(t, ok)
-	require.NoError(t, retryCtx.Err())
 }
 
 func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
@@ -1052,12 +1020,11 @@ func TestBulkActionSyncRetryStopsAfterAttemptLimitOnSyncFailure(t *testing.T) {
 func TestBulkActionSyncRetryKeepsCriticalBudgetWithDecoupledContext(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	syncer := &bulkActionRetrySyncer{}
-	retryCtx, cancelRetry := withoutCancelPreservingDeadline(ctx)
-	defer cancelRetry()
+	retryCtx := context.WithoutCancel(ctx)
 	resolved, variants := bulkActionSyncRetry(
 		retryCtx,
 		syncer,
