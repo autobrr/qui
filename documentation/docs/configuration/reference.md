@@ -156,8 +156,11 @@ Matching rules:
 The restriction covers all requests on the main HTTP listener, including authenticated requests, static files, and the qBittorrent proxy.
 With a configured list, a missing, invalid, or unlisted Host returns HTTP 400.
 Ordinary local browser and API requests also need a listed hostname or address.
-Only direct loopback `GET` and `HEAD` requests to `/health`, `/healthz/readiness`, and `/healthz/liveness` bypass the list.
-Forwarded IP headers cannot grant this exemption, and the Docker health probe continues to work.
+
+Health `GET` and `HEAD` requests to `/health`, `/healthz/readiness`, and `/healthz/liveness` bypass the list when the immediate connection peer is a loopback address.
+This includes external health requests forwarded by a local reverse proxy.
+To restrict health endpoints to local probes, block external health requests at the proxy.
+Forwarded IP headers do not affect this exemption. The Docker health probe continues to work.
 
 Restart qui after each change to `allowedHosts`.
 Configuration reloads keep the active list until restart.
