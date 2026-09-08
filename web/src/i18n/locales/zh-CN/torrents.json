@@ -1578,6 +1578,37 @@
     "applyFailed": "辅种失败：{{message}}",
     "addOptionTitle": "作为辅种添加",
     "addOptionDescription": "将此种子与现有种子匹配，而不是重新下载。",
-    "addOptionButton": "手动匹配"
+    "addOptionButton": "手动匹配",
+    "pack": {
+      "description": "选择一个种子进行手动匹配，或选择多个单集来组装此整季包。",
+      "targetLabel": "目标种子",
+      "checking": "正在检查所选单集……",
+      "checkFailed": "无法检查此选择。",
+      "coverage": "已匹配 {{matched}}/{{total}} 集 · 覆盖率 {{percent}}%",
+      "missing": "缺少 {{size}}",
+      "recheck": "整季包将以暂停状态添加并重新校验。当校验结果达到已链接字节的比例时，将恢复下载。",
+      "proposalLimit": "此整季包包含 {{count}} 集。候选列表最多显示 {{limit}} 个种子。请通过搜索选择缺少的目标。",
+      "dropped": "整季包已添加。已排除的目标：{{names}}",
+      "rejected": "{{name}}：{{reason}}",
+      "reasons": {
+        "no_filesystem_access": "此实例需要本地文件系统访问权限才能组装整季包。",
+        "no_link_mode": "请在此实例上启用硬链接或 reflink 模式，以选择多个目标。",
+        "no_base_directory": "请为此实例配置链接基础目录。",
+        "no_episode_files": "此整季包中未找到可播放的单集文件。",
+        "target_not_found": "此实例中未找到目标种子。",
+        "incomplete": "目标种子尚未下载完成。",
+        "no_episode_identity": "无法解析集数。",
+        "file_list_unavailable": "无法获取目标种子的文件列表。",
+        "episode_file_invalid": "目标种子必须仅包含一个与所选单集标识相符的可播放文件。",
+        "size_mismatch": "本地文件大小与整季包中的文件大小不符。",
+        "release_mismatch": "发布版本与整季包不匹配。",
+        "local_file_unavailable": "本地文件不存在或不可用。",
+        "not_paired": "此目标未提供整季包中的单集，或其他所选目标已覆盖该单集。",
+        "layout_mismatch": "无法使用所选文件创建安全的链接目录。",
+        "already_exists": "此种子已存在。",
+        "link_failed": "创建链接失败。",
+        "add_failed": "添加种子失败。"
+      }
+    }
   }
 }

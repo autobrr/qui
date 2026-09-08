@@ -1642,6 +1642,37 @@
     "applyFailed": "Cross-Seed fehlgeschlagen: {{message}}",
     "addOptionTitle": "Als Cross-Seed hinzufügen",
     "addOptionDescription": "Diesen Torrent einem vorhandenen Torrent zuordnen, statt ihn herunterzuladen.",
-    "addOptionButton": "Manuell zuordnen"
+    "addOptionButton": "Manuell zuordnen",
+    "pack": {
+      "description": "Wähle einen Torrent für einen manuellen Abgleich oder mehrere Episoden, um dieses Staffelpaket zusammenzustellen.",
+      "targetLabel": "Ziel-Torrents",
+      "checking": "Ausgewählte Episoden werden geprüft...",
+      "checkFailed": "Diese Auswahl konnte nicht geprüft werden.",
+      "coverage": "{{matched}} von {{total}} Episoden · {{percent}}% Abdeckung",
+      "missing": "{{size}} fehlen",
+      "recheck": "Das Paket wird pausiert hinzugefügt und geprüft. Es wird fortgesetzt, sobald die Prüfung den Anteil der verknüpften Bytes erreicht.",
+      "proposalLimit": "Dieses Paket enthält {{count}} Episoden. Die Vorschläge sind auf {{limit}} Torrents begrenzt. Suche nach fehlenden Zielen.",
+      "dropped": "Paket hinzugefügt. Ausgelassene Ziele: {{names}}",
+      "rejected": "{{name}}: {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "Diese Instanz benötigt lokalen Dateisystemzugriff, um ein Paket zusammenzustellen.",
+        "no_link_mode": "Aktiviere Hardlinks oder Reflinks für diese Instanz, um mehrere Ziele auszuwählen.",
+        "no_base_directory": "Lege ein Basisverzeichnis für Links in dieser Instanz fest.",
+        "no_episode_files": "In diesem Paket wurden keine abspielbaren Episodendateien gefunden.",
+        "target_not_found": "Ziel in dieser Instanz nicht gefunden.",
+        "incomplete": "Der Download des Ziels ist unvollständig.",
+        "no_episode_identity": "Die Episodennummer konnte nicht erkannt werden.",
+        "file_list_unavailable": "Die Dateiliste des Ziels ist nicht verfügbar.",
+        "episode_file_invalid": "Das Ziel muss genau eine abspielbare Datei mit der ausgewählten Episodenkennung enthalten.",
+        "size_mismatch": "Die lokale Dateigröße weicht von der Dateigröße im Paket ab.",
+        "release_mismatch": "Die Veröffentlichung passt nicht zum Paket.",
+        "local_file_unavailable": "Die lokale Datei fehlt oder ist nicht verfügbar.",
+        "not_paired": "Dieses Ziel liefert keine Episode des Pakets oder ein anderes ausgewähltes Ziel deckt sie bereits ab.",
+        "layout_mismatch": "Aus den ausgewählten Dateien können keine sicheren Links erstellt werden.",
+        "already_exists": "Dieser Torrent ist bereits vorhanden.",
+        "link_failed": "Die Links konnten nicht erstellt werden.",
+        "add_failed": "Der Torrent konnte nicht hinzugefügt werden."
+      }
+    }
   }
 }

@@ -1642,6 +1642,37 @@
     "applyFailed": "Falha no cross-seed: {{message}}",
     "addOptionTitle": "Adicionar como cross-seed",
     "addOptionDescription": "Corresponder este torrent a um torrent existente em vez de baixá-lo.",
-    "addOptionButton": "Corresponder manualmente"
+    "addOptionButton": "Corresponder manualmente",
+    "pack": {
+      "description": "Selecione um torrent para correspondência manual ou vários episódios para montar esta temporada.",
+      "targetLabel": "Torrents de destino",
+      "checking": "Verificando os episódios selecionados...",
+      "checkFailed": "Não foi possível verificar esta seleção.",
+      "coverage": "{{matched}} de {{total}} episódios · {{percent}}% de cobertura",
+      "missing": "Faltam {{size}}",
+      "recheck": "O pacote é adicionado pausado e verificado. Ele retoma quando a verificação alcança a fração dos bytes vinculados.",
+      "proposalLimit": "Este pacote contém {{count}} episódios. As sugestões são limitadas a {{limit}} torrents. Use a busca para selecionar os destinos que faltam.",
+      "dropped": "Pacote adicionado. Destinos descartados: {{names}}",
+      "rejected": "{{name}}: {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "Esta instância precisa de acesso ao sistema de arquivos local para montar um pacote.",
+        "no_link_mode": "Ative hardlinks ou reflinks nesta instância para selecionar vários destinos.",
+        "no_base_directory": "Configure um diretório base para os links desta instância.",
+        "no_episode_files": "Nenhum arquivo de episódio reproduzível foi encontrado neste pacote.",
+        "target_not_found": "Destino não encontrado nesta instância.",
+        "incomplete": "O download do destino está incompleto.",
+        "no_episode_identity": "Não foi possível reconhecer o número do episódio.",
+        "file_list_unavailable": "A lista de arquivos do destino não está disponível.",
+        "episode_file_invalid": "O destino deve conter um arquivo reproduzível com a identidade do episódio selecionado.",
+        "size_mismatch": "O tamanho do arquivo local difere do tamanho do arquivo no pacote.",
+        "release_mismatch": "A versão não corresponde ao pacote.",
+        "local_file_unavailable": "O arquivo local não existe ou está indisponível.",
+        "not_paired": "Este destino não fornece um episódio do pacote ou outro destino selecionado já o cobre.",
+        "layout_mismatch": "Os arquivos selecionados não permitem criar links seguros.",
+        "already_exists": "Este torrent já existe.",
+        "link_failed": "Falha ao criar os links.",
+        "add_failed": "Falha ao adicionar o torrent."
+      }
+    }
   }
 }

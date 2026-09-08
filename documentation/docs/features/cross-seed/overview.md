@@ -126,11 +126,21 @@ Two entry points open the same flow:
 
 qui ranks torrents from the same instance by file-size overlap with the uploaded file. You can also pick any other torrent. A pick with no file overlap shows a warning, but you can proceed.
 
-You select one target torrent, not several. To cross-seed a season pack against the episodes that you seed, use [Season Pack Assembly](#season-pack-assembly), which is automatic. A manual match of a pack against one episode pairs the data of that episode only. The other episodes stay unlinked, and the recheck leaves the torrent paused.
+When the upload parses as a season pack, you can select several episode torrents from the same instance. One selected target uses the existing manual match. If the upload does not parse as a season pack, the dialog permits only one target.
+
+Multiple targets require local filesystem access, hardlink or reflink mode, and a configured link base directory. The dialog shows why assembly is unavailable. Manual assembly works even when season pack automation is off.
+
+The check first selects a complete matching pack alone, if one exists. Otherwise, it suggests the episodes that automatic discovery pairs. You can change the selection or use search to add targets that the proposal list omits. The proposal limit grows with the pack episode count, up to 60 torrents. The dialog reports this limit when it truncates the list.
+
+Before you add the pack, the check shows matched episodes, coverage, missing bytes, rejected targets, and the resolved destination. Coverage uses the episode files in your upload. No coverage threshold applies to manual assembly. Each selected torrent must be complete and provide one playable episode file with an exact size match. Manual selection bypasses title, source-filter, and numbering-scheme checks, but each file still needs a parsed episode identity.
+
+qui adds the assembled pack paused and rechecks it. It resumes when verified progress reaches the linked byte fraction, with the assembly margin for piece boundaries. If a file moves between check and apply, qui drops that target, reports its name, and assembles the remaining files. Season pack run history records the matched count, coverage, and link mode.
 
 A manual selection bypasses candidate discovery and the category and content-type gates. Link mode per instance settings and tag and category treatment stay the same as the automatic pipeline. Every manual match runs a full recheck before it seeds; you cannot skip it, and it decides a wrong pick. A failed recheck leaves the torrent paused for manual review.
 
-The dialog prefills the category from the target torrent and the tags from the cross-seed tag settings. You can edit both. If **Use Custom Category** is on, every cross-seed goes to that one category. The dialog then shows the category and locks it. The save path shows the effective destination and is read-only. With **By Tracker** directory organization, the tracker folder comes from the announce URL in the uploaded file. The tracker does not need a configured indexer.
+For one selected target, the dialog prefills the category from that torrent and the tags from the cross-seed tag settings. You can edit both. If **Use Custom Category** is on, every cross-seed goes to that one category. The dialog then shows the category and locks it. The save path shows the effective destination and is read-only. With **By Tracker** directory organization, the tracker folder comes from the announce URL in the uploaded file. The tracker does not need a configured indexer.
+
+For multiple targets, season pack category routing supplies the initial category. Your category and tag choices control the add. qui does not append the automatic season pack tags. The destination uses the selected episode files and the instance link directory preset.
 
 ### Season Pack Assembly
 

@@ -1578,6 +1578,37 @@
     "applyFailed": "輔種失敗：{{message}}",
     "addOptionTitle": "作為輔種新增",
     "addOptionDescription": "將此種子與現有種子匹配，而不是重新下載。",
-    "addOptionButton": "手動匹配"
+    "addOptionButton": "手動匹配",
+    "pack": {
+      "description": "選擇一個種子進行手動比對，或選擇多個單集來組裝此整季包。",
+      "targetLabel": "目標種子",
+      "checking": "正在檢查所選單集……",
+      "checkFailed": "無法檢查此選擇。",
+      "coverage": "已配對 {{matched}}/{{total}} 集 · 覆蓋率 {{percent}}%",
+      "missing": "缺少 {{size}}",
+      "recheck": "整季包將以暫停狀態加入並重新檢查。當檢查結果達到已連結位元組的比例時，將恢復下載。",
+      "proposalLimit": "此整季包包含 {{count}} 集。候選清單最多顯示 {{limit}} 個種子。請透過搜尋選擇缺少的目標。",
+      "dropped": "整季包已加入。已排除的目標：{{names}}",
+      "rejected": "{{name}}：{{reason}}",
+      "reasons": {
+        "no_filesystem_access": "此實例需要本機檔案系統存取權限才能組裝整季包。",
+        "no_link_mode": "請在此實例上啟用硬連結或 reflink 模式，以選擇多個目標。",
+        "no_base_directory": "請為此實例設定連結基礎目錄。",
+        "no_episode_files": "此整季包中未找到可播放的單集檔案。",
+        "target_not_found": "此實例中未找到目標種子。",
+        "incomplete": "目標種子尚未下載完成。",
+        "no_episode_identity": "無法解析集數。",
+        "file_list_unavailable": "無法取得目標種子的檔案清單。",
+        "episode_file_invalid": "目標種子必須僅包含一個與所選單集識別相符的可播放檔案。",
+        "size_mismatch": "本機檔案大小與整季包中的檔案大小不符。",
+        "release_mismatch": "發行版本與整季包不符。",
+        "local_file_unavailable": "本機檔案不存在或無法使用。",
+        "not_paired": "此目標未提供整季包中的單集，或其他所選目標已涵蓋該單集。",
+        "layout_mismatch": "無法使用所選檔案建立安全的連結目錄。",
+        "already_exists": "此種子已存在。",
+        "link_failed": "建立連結失敗。",
+        "add_failed": "加入種子失敗。"
+      }
+    }
   }
 }
