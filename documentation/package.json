@@ -26,8 +26,7 @@
     "docusaurus-plugin-llms": "^0.5.1",
     "prism-react-renderer": "^2.4.1",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "redoc": "^2.5.3"
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.2",

@@ -835,6 +835,7 @@ function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
 
 function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDialogProps) {
   const { t } = useTranslation("crossseed")
+  const { formatDate } = useDateTimeFormatters()
   const updateSettings = useUpdateDirScanSettings()
   const [form, setForm] = useState(() => buildSettingsFormState(settings))
 
@@ -923,8 +924,8 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
     }
     const days = Math.max(1, form.maxSearcheeAgeDays)
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-    return cutoff.toLocaleString()
-  }, [ageFilterEnabled, form.maxSearcheeAgeDays])
+    return formatDate(cutoff)
+  }, [ageFilterEnabled, form.maxSearcheeAgeDays, formatDate])
 
   const handleSave = useCallback(() => {
     updateSettings.mutate(form, {

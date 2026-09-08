@@ -56,6 +56,15 @@ func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func renewSessionToken(ctx context.Context, sessionManager *scs.SessionManager) error {
+	if err := sessionManager.RenewToken(ctx); err != nil {
+		// Clear marks the old session for saving without authentication, even
+		// when the store cannot delete it. LoadAndSave handles save errors.
+		return errors.Join(err, sessionManager.Clear(ctx))
+	}
+	return nil
+}
+
 func NewAuthHandler(
 	authService *auth.Service,
 	sessionManager *scs.SessionManager, config *domain.Config,
@@ -169,7 +178,7 @@ func (h *AuthHandler) Setup(w http.ResponseWriter, r *http.Request) {
 
 	// Create session using SCS
 	// Renew token to prevent session fixation attacks
-	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
+	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
 		RespondError(w, http.StatusInternalServerError, "Failed to create session")
 		return
@@ -324,7 +333,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Create session using SCS
 	// Renew token to prevent session fixation attacks
-	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
+	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msg("Failed to renew session token")
 		RespondError(w, http.StatusInternalServerError, "Failed to create session")
 		return

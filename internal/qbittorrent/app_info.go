@@ -98,16 +98,20 @@ func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 		ctx = context.Background()
 	}
 
-	c.appInfoMu.RLock()
-	cached := cloneAppInfo(c.appInfoCache)
-	fresh := c.appInfoCache != nil && time.Since(c.appInfoFetchedAt) < appInfoCacheTTL
-	c.appInfoMu.RUnlock()
-
+	cached, fresh := c.cachedAppInfo()
 	if fresh {
-		return cached, nil
+		return cloneAppInfo(cached), nil
 	}
 
-	info, err := c.refreshAppInfo(ctx)
+	// Concurrent stream groups all see the cache expire at once; share one
+	// refresh. Joiners share the leader's result, so the refresh must not die
+	// with the leader's context; appInfoRequestTimeout still bounds it.
+	result, err, _ := c.appInfoGroup.Do("refresh", func() (any, error) {
+		if info, fresh := c.cachedAppInfo(); fresh {
+			return info, nil
+		}
+		return c.refreshAppInfo(context.WithoutCancel(ctx))
+	})
 	if err != nil {
 		// A saturated qBittorrent WebUI times out even trivial calls. Serve the
 		// last known app info rather than failing the whole torrent stream tick;
@@ -117,14 +121,25 @@ func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 				Err(err).
 				Int("instanceID", c.instanceID).
 				Msg("Serving stale qBittorrent app info after refresh failure")
-			return cached, nil
+			return cloneAppInfo(cached), nil
 		}
 		return nil, err
 	}
 
-	return info, nil
+	cached, _ = result.(*AppInfo)
+	return cloneAppInfo(cached), nil
 }
 
+// cachedAppInfo returns the cached app info and whether it is still within the TTL.
+func (c *Client) cachedAppInfo() (*AppInfo, bool) {
+	c.appInfoMu.RLock()
+	defer c.appInfoMu.RUnlock()
+	return c.appInfoCache, c.appInfoCache != nil && time.Since(c.appInfoFetchedAt) < appInfoCacheTTL
+}
+
+// refreshAppInfo fetches app info and stores it in the cache. Callers must not
+// mutate the returned value: it is the cached instance, shared by every caller
+// that joined the same singleflight refresh.
 func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, appInfoRequestTimeout)
 	defer cancel()
@@ -184,5 +199,5 @@ func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 	c.appInfoFetchedAt = time.Now()
 	c.appInfoMu.Unlock()
 
-	return cloneAppInfo(info), nil
+	return info, nil
 }

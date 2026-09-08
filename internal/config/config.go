@@ -772,16 +772,11 @@ func baseLogWriter(version string) io.Writer {
 	return os.Stderr
 }
 
-// DefaultLogWriter returns the base log writer for the provided version.
-func DefaultLogWriter(version string) io.Writer {
-	return baseLogWriter(version)
-}
-
 // InitDefaultLogger configures zerolog with the default writer for this version.
 // This is used by CLI entry points before a configuration file is loaded.
 func InitDefaultLogger(version string) {
 	zerolog.TimeFieldFormat = time.RFC3339
-	log.Logger = log.Logger.Output(DefaultLogWriter(version))
+	log.Logger = log.Logger.Output(baseLogWriter(version))
 }
 
 func isDevBuild(version string) bool {

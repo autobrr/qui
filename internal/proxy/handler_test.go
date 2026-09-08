@@ -193,6 +193,55 @@ func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	require.Equal(t, payload, rec.Body.Bytes())
 }
 
+func TestProxyTorrentPeersPassesThroughWithoutCacheWarming(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"full update", http.StatusOK, `{"rid":7,"full_update":true,"peers":{"127.0.0.1:6881":{"client":"test"}}}`},
+		{"zero rid", http.StatusOK, `{"rid":0,"peers":{}}`},
+		{"incremental update", http.StatusOK, `{"rid":8,"full_update":false,"peers_removed":["127.0.0.1:6881"]}`},
+		{"upstream error", http.StatusNotFound, "torrent not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var requests atomic.Int64
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				if r.Method != http.MethodGet || r.URL.Path != "/api/v2/sync/torrentPeers" || r.URL.RawQuery != "hash=abc123&rid=6" {
+					t.Errorf("unexpected upstream request: %s %s", r.Method, r.URL)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Peer-Response", "unchanged")
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer upstream.Close()
+
+			// A full response must not access the client pool to start another fetch.
+			handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+			instanceURL, err := url.Parse(upstream.URL)
+			require.NoError(t, err)
+			routeCtx := chi.NewRouteContext()
+			routeCtx.URLParams.Add("api-key", "test-key")
+			ctx := context.WithValue(t.Context(), chi.RouteCtxKey, routeCtx)
+			ctx = context.WithValue(ctx, ClientAPIKeyContextKey, &models.ClientAPIKey{ClientName: "test", InstanceID: 1})
+			ctx = context.WithValue(ctx, InstanceIDContextKey, 1)
+			ctx = context.WithValue(ctx, proxyContextKey, &proxyContext{instanceID: 1, instanceURL: instanceURL, httpClient: upstream.Client()})
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/proxy/test-key/api/v2/sync/torrentPeers?hash=abc123&rid=6", nil)
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req)
+
+			require.Equal(t, int64(1), requests.Load())
+			require.Equal(t, tc.status, rec.Code)
+			require.Equal(t, tc.body, rec.Body.String())
+			require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+			require.Equal(t, "unchanged", rec.Header().Get("X-Peer-Response"))
+		})
+	}
+}
+
 func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
 	t.Helper()
 

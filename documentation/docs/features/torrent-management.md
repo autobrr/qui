@@ -1,12 +1,12 @@
 ---
 sidebar_position: 14
 title: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, torrent creation, export, and MediaInfo.
+description: Tags, categories, saved filter views, keyboard control, torrent creation, export, MediaInfo, and BDInfo.
 ---
 
 # Torrent Management
 
-qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, a torrent creator, `.torrent` export, and MediaInfo. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
 
 ## Tags and categories
 
@@ -24,6 +24,18 @@ Manage tags and categories from the **Tags** and **Categories** sections in the 
 ### Subcategories
 
 qBittorrent stores a subcategory as a name with `/` separators, for example `media/movies`. qui shows the categories as a collapsible tree sorted by name when the instance supports subcategories (qBittorrent WebUI API 2.9.0 or newer). The qBittorrent preference **Enable Subcategories** (Instance Preferences > Files) must also be on. From WebUI API 2.15.0, subcategories are always on. In other cases, qui shows a flat list.
+
+## Clear filters
+
+Click **Clear filters** at the top of the filter sidebar to remove sidebar and column filters. The button appears when either group has active filters. Search text and sorting stay unchanged.
+
+Open the arrow menu beside the button for these actions:
+
+- **Clear sidebar filters** keeps column filters and search text.
+- **Clear column filters** keeps sidebar filters and search text.
+- **Clear filters and search** removes both filter groups and search text.
+
+Each action keeps the current sort order. The table toolbar's clear button removes column filters only.
 
 ## Saved filter views
 
@@ -101,3 +113,15 @@ Folders always stay above files. A folder sorts by the total of its files. The *
 The **Content** tab of the details panel offers a **MediaInfo** action on each file. It analyzes the file on disk and opens a dialog with two tabs: **Summary** and **Raw JSON**. **Copy Summary** and **Copy JSON** copy the report to the clipboard.
 
 Because qui reads the file from disk, MediaInfo requires the instance option **Local Filesystem Access**. See [Instance Settings](./instance-settings.md#local-filesystem-access).
+
+## BDInfo
+
+The **Content** tab offers a **BDInfo** action on each Disc in a torrent. A Disc is a folder that holds a `BDMV` folder, or an `.iso` file. A box set gets one action per Disc. DVD folders (`VIDEO_TS`) are not supported.
+
+The first click starts a scan with [go-bdinfo](https://github.com/autobrr/go-bdinfo) and opens a dialog. The scan runs in the background, so you can close the dialog or leave the page. qui shows a toast when the scan finishes. Scans run one at a time in the order you start them. The dialog shows the queue position of a waiting scan, the progress of a running scan, and a **Cancel scan** button for both.
+
+A finished scan opens a dialog with two tabs: **Quick Summary** and **Forum**. The Forum tab holds the BBCode block for tracker upload forms. Each tab has a copy button. The report covers the main playlist only.
+
+qui keeps the report, so a second visit to the same Disc opens it at once. Two torrents on one instance that point at the same Disc share one report. **Rescan** replaces the stored report with a new scan. A scan that was running when qui restarted shows as failed; use **Rescan** to run it again.
+
+Because qui reads the Disc from disk, BDInfo requires the instance option **Local Filesystem Access**. See [Instance Settings](./instance-settings.md#local-filesystem-access).

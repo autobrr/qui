@@ -110,6 +110,7 @@ export const CONDITION_FIELDS = {
   SUPER_SEEDING: { label: "Super Seeding", type: "boolean" as const, description: "Super-seeding mode enabled" },
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
+  HAS_SKIPPED_FILES: { label: "Has Skipped Files", type: "boolean" as const, description: "Some files are set to Do not download" },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
   EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
   SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
@@ -239,14 +240,6 @@ export const TORRENT_STATES = [
   { value: "missingFiles", label: "Missing Files" },
 ];
 
-// Delete mode options
-export const DELETE_MODES = [
-  { value: "delete", label: "Remove from client" },
-  { value: "deleteWithFiles", label: "Remove with files" },
-  { value: "deleteWithFilesPreserveCrossSeeds", label: "Remove with files (preserve cross-seeds)" },
-  { value: "deleteWithFilesIncludeCrossSeeds", label: "Remove with files (include cross-seeds)" },
-];
-
 // Field groups for organized selection
 export const FIELD_GROUPS = [
   {
@@ -303,7 +296,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
+    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES", "HAS_SKIPPED_FILES"],
   },
 ];
 
@@ -331,15 +324,6 @@ export function getOperatorsForField(field: string) {
 
   return baseOperators;
 }
-
-// Unit conversion helpers for display
-export const BYTE_UNITS = [
-  { value: 1, label: "B" },
-  { value: 1024, label: "KiB" },
-  { value: 1024 * 1024, label: "MiB" },
-  { value: 1024 * 1024 * 1024, label: "GiB" },
-  { value: 1024 * 1024 * 1024 * 1024, label: "TiB" },
-];
 
 export const DURATION_UNITS = [
   { value: 1, label: "seconds" },
@@ -471,13 +455,5 @@ export function getTranslatedHardlinkScopes(t: TFunction): { value: string; labe
   return HARDLINK_SCOPE_VALUES.map((scope) => ({
     value: scope.value,
     label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
-  }));
-}
-
-/** Get translated delete modes */
-export function getTranslatedDeleteModes(t: TFunction): { value: string; label: string }[] {
-  return DELETE_MODES.map((mode) => ({
-    value: mode.value,
-    label: t(`queryBuilder.deleteModes.${mode.value}`, { defaultValue: mode.label }),
   }));
 }

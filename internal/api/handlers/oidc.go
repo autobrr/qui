@@ -356,7 +356,7 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		Msg("successfully processed OIDC claims")
 
 	// Create new session
-	if err := h.sessionManager.RenewToken(r.Context()); err != nil {
+	if err := renewSessionToken(r.Context(), h.sessionManager); err != nil {
 		log.Error().Err(err).Msgf("Auth: Failed to renew session token for username: [%s] ip: %s", username, r.RemoteAddr)
 		RespondError(w, http.StatusInternalServerError, "could not renew session token")
 		return

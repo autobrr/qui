@@ -25,7 +25,15 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
 
 ## Session cookies
 
-The session cookie is for the qui web UI. Scripts should use an API key. See [Sessions](../configuration/reference.md#sessions) for the rules that apply to cookie requests.
+The session cookie is for the qui web UI. Use an API key for scripts. See [Sessions](../configuration/reference.md#sessions) for the rules that apply to cookie requests.
+
+## Torrent updates
+
+`GET /api/stream` sends torrent updates through Server-Sent Events. See `/api/docs` for subscription parameters and event examples.
+
+Keep the version from each accepted snapshot or delta. Apply a delta only when its `baseVersion` matches that version and its `minor` increases by one within the same `major`. If the versions do not match, reconnect for a full snapshot and use REST polling until it arrives.
+
+In a delta, omitted counts and preferences retain their previous values. Explicit `preferences: null` clears preferences. Omitted categories and tags mean empty collections.
 
 ## Security notes
 

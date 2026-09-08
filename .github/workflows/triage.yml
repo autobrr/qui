@@ -136,7 +136,7 @@ jobs:
           # prompt-injection in discussion content cannot spam mutations. The
           # longest playbook path (promote to issue) takes 5 calls.
           CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 8}'
-        uses: anthropics/claude-code-action@v1.0.200
+        uses: anthropics/claude-code-action@v1.0.210
         with:
           # The dispatch job re-triggers this run via workflow_dispatch using
           # GITHUB_TOKEN, so the actor is github-actions[bot]. Allow it past the

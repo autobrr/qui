@@ -157,7 +157,8 @@ func (failingDeleteStore) Delete(string) error { return errors.New("store down")
 
 func TestLoginFailsWhenTokenRenewalFails(t *testing.T) {
 	h := newPasswordAuthHandler(t)
-	h.sessionManager.Store = failingDeleteStore{memstore.New()}
+	store := memstore.New()
+	h.sessionManager.Store = failingDeleteStore{store}
 	login := h.sessionManager.LoadAndSave(http.HandlerFunc(h.Login))
 	creds := `{"username":"alice","password":"password1234"}`
 
@@ -166,7 +167,25 @@ func TestLoginFailsWhenTokenRenewalFails(t *testing.T) {
 	rec := post(t, login, "/api/auth/login", "application/json", creds, existing)
 
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.False(t, sessionAuthenticated(t, h, existing), "the old session must not remain authenticated")
 	for _, c := range rec.Result().Cookies() {
-		assert.NotEqual(t, h.sessionManager.Cookie.Name, c.Name, "no session cookie must be issued")
+		if c.Name == h.sessionManager.Cookie.Name {
+			assert.False(t, sessionAuthenticated(t, h, c), "the response cookie must not authenticate")
+		}
 	}
+
+	validateReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/validate", nil)
+	validateReq.AddCookie(existing)
+	validateRec := httptest.NewRecorder()
+	h.sessionManager.LoadAndSave(http.HandlerFunc(h.Validate)).ServeHTTP(validateRec, validateReq)
+	assert.Equal(t, http.StatusUnauthorized, validateRec.Code)
+
+	// Login works again after the store recovers, with a new session token.
+	h.sessionManager.Store = store
+	retry := post(t, login, "/api/auth/login", "application/json", creds, existing)
+	require.Equal(t, http.StatusOK, retry.Code)
+	renewed := sessionCookie(t, h, retry)
+	assert.NotEqual(t, existing.Value, renewed.Value)
+	assert.True(t, sessionAuthenticated(t, h, renewed))
+	assert.False(t, sessionAuthenticated(t, h, existing))
 }

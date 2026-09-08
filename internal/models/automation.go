@@ -749,6 +749,7 @@ const (
 	FieldSuperSeeding           ConditionField = "SUPER_SEEDING"
 	FieldIsUnregistered         ConditionField = "IS_UNREGISTERED"
 	FieldHasMissingFiles        ConditionField = "HAS_MISSING_FILES"
+	FieldHasSkippedFiles        ConditionField = "HAS_SKIPPED_FILES"
 	FieldIsGrouped              ConditionField = "IS_GROUPED"
 	FieldExistsOnOtherInstance  ConditionField = "EXISTS_ON_OTHER_INSTANCE"
 	FieldSeedingOnOtherInstance ConditionField = "SEEDING_ON_OTHER_INSTANCE"

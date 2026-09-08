@@ -8,7 +8,7 @@ description: Automatic favicon caching for tracker hosts.
 
 qui stores cached icons in your data directory under `tracker-icons/`. If you use the default SQLite engine, this directory sits next to `qui.db`. If you use Postgres, qui uses the same data directory. qui stores icons as 16×16 PNGs and rejects source images larger than 1024×1024.
 
-qui downloads a favicon the first time it sees a tracker host and caches it for future sessions. If a download fails, qui waits 30 minutes before it tries that host again.
+qui downloads a favicon the first time it sees a tracker host and caches it for future sessions. If a download fails, qui waits 30 minutes before it tries that host again. Each failure after that doubles the wait, up to 24 hours. qui records these failures in `tracker-icons/fetch-failures.json`, so a restart does not probe every failed host again. If the host name does not resolve, qui does not try the parent domains or the `www.` alias for that host.
 
 If you want to disable these network fetches, set `trackerIconsFetchEnabled = false` in `config.toml` (or `QUI__TRACKER_ICONS_FETCH_ENABLED=false`).
 
