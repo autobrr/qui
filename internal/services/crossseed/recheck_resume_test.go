@@ -411,6 +411,127 @@ func TestProcessPendingRecheckResumeConfirmationStates(t *testing.T) {
 				},
 			},
 		},
+		{
+			// Legitimate fast recheck: a 100%-overlap recheck finishes between polls,
+			// so the only checking state ever observed is the normal forced-recheck
+			// startup (checkingResumeData), with no prior piece check. That must not
+			// be mistaken for a restart interruption: once the fast-complete delay
+			// has passed, a settled 100% has to resume and then confirm-and-drop.
+			// Regression for the case that stayed paused for the full timeout.
+			name: "fast resume when only resume-data validation is observed",
+			initial: pendingResume{
+				instanceID:           1,
+				hash:                 "hash1",
+				threshold:            1.0,
+				addedAt:              now.Add(-2 * recheckFastCompleteMinElapsed),
+				verificationRequired: true,
+			},
+			steps: []resumeStep{
+				{
+					torrent: qbt.Torrent{
+						Hash:       "hash1",
+						Progress:   1.0,
+						AmountLeft: 0,
+						State:      qbt.TorrentStateCheckingResumeData,
+					},
+					keep: true,
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:       "hash1",
+						Progress:   1.0,
+						AmountLeft: 0,
+						State:      qbt.TorrentStatePausedUp,
+					},
+					keep: true,
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:       "hash1",
+						Progress:   1.0,
+						AmountLeft: 0,
+						State:      qbt.TorrentStatePausedUp,
+					},
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStateUploading,
+					},
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStateUploading,
+					},
+					keep:                       false,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+			},
+		},
+		{
+			// Restart protection: a checkingResumeData poll that follows an observed
+			// piece check is a genuine qBittorrent restart. Even after the
+			// fast-complete delay, a later settled 100% must stay paused because the
+			// interrupted check no longer proves the recheck ran.
+			name: "interrupted piece check stays paused after fast-complete delay",
+			initial: pendingResume{
+				instanceID:           1,
+				hash:                 "hash1",
+				threshold:            1.0,
+				addedAt:              now.Add(-2 * recheckFastCompleteMinElapsed),
+				verificationRequired: true,
+			},
+			steps: []resumeStep{
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 0.5,
+						State:    qbt.TorrentStateCheckingUp,
+					},
+					keep: true,
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:       "hash1",
+						Progress:   1.0,
+						AmountLeft: 0,
+						State:      qbt.TorrentStateCheckingResumeData,
+					},
+					keep: true,
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:       "hash1",
+						Progress:   1.0,
+						AmountLeft: 0,
+						State:      qbt.TorrentStatePausedUp,
+					},
+					keep: true,
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:       "hash1",
+						Progress:   1.0,
+						AmountLeft: 0,
+						State:      qbt.TorrentStatePausedUp,
+					},
+					keep: true,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {

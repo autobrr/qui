@@ -6752,13 +6752,19 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		state == qbt.TorrentStateCheckingDl
 	isChecking := isPieceChecking || state == qbt.TorrentStateCheckingResumeData
 	if isChecking {
-		// checkingResumeData validates qBittorrent's saved state during startup.
-		// It keeps this worker waiting, but it does not prove that a requested
-		// piece hash check ran. It also breaks continuity with any piece-check
-		// state observed before qBittorrent restarted.
 		if isPieceChecking {
 			req.sawChecking = true
-		} else if req.verificationRequired {
+		} else if req.verificationRequired && req.sawChecking {
+			// checkingResumeData validates qBittorrent's saved state during startup.
+			// Seeing it after we already observed a piece hash check means qBittorrent
+			// restarted and re-validated: that breaks continuity with the check we saw,
+			// so the earlier progress no longer proves the requested recheck ran. Block
+			// the fast resume and re-earn confirmation from a fresh piece check.
+			//
+			// A checkingResumeData poll with no prior piece check is just normal
+			// forced-recheck startup, which every recheck passes through before hashing.
+			// A fast (100%-overlap) recheck can still finish between polls, so this must
+			// not set recheckInterrupted or the fast path below could never fire.
 			req.sawChecking = false
 			req.recheckInterrupted = true
 			req.awaitingResumeConfirmation = false
