@@ -10,27 +10,23 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-// scanScope carries the opt-in settings that widen a run beyond the scan roots
-// derived from torrent save paths. The zero value is the historical behavior:
-// walk only where a torrent already points.
+// scanScope carries the opt-in settings that widen a run. The zero value is the
+// historical behaviour: walk only where a torrent already points.
 type scanScope struct {
 	// DefaultSavePath adds qBittorrent's default save path as a scan root.
 	DefaultSavePath bool
 	// CategoryPaths adds every category destination as a scan root.
 	CategoryPaths bool
-	// AbandonedDirs reports file-free directories for removal. Category
-	// destinations are resolved for it too, so a category folder is never
-	// removed just because it is empty right now.
+	// AbandonedDirs reports file-free directories for removal, and pulls in the
+	// category destinations so an empty category folder is not one of them.
 	AbandonedDirs bool
-	// PersistedRoots are the roots a previous run recorded. Deletion is still
-	// bounded by them, so they must take part in cross-instance overlap
-	// detection even when the settings behind them have since been turned off.
+	// PersistedRoots are the roots a previous run recorded; deletion is still
+	// bounded by them after the settings behind them change.
 	PersistedRoots []string
 }
 
-// scopeFromSettings reads the scope out of an instance's settings. Nil settings
-// mean the instance has never been configured, which is the same as every
-// option being off.
+// scopeFromSettings reads the scope out of an instance's settings; nil means
+// never configured, which is every option off.
 func scopeFromSettings(settings *models.OrphanScanSettings) scanScope {
 	if settings == nil {
 		return scanScope{}

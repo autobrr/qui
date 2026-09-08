@@ -35,9 +35,8 @@ func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSave
 	return sortedRoots(seen), nil
 }
 
-// qbtInvalidPathChars mirrors the regex in qBittorrent's Utils::Fs::toValidPath.
-// Slashes are absent on purpose: they separate path segments and survive. A run
-// of invalid characters collapses into a single pad character.
+// qbtInvalidPathChars is the regex from Utils::Fs::toValidPath; slashes are
+// absent there because they separate path segments.
 var qbtInvalidPathChars = regexp.MustCompile(`[:?"*<>|]+`)
 
 // toValidPath converts a category name into the relative path qBittorrent
@@ -46,19 +45,9 @@ func toValidPath(name string) string {
 	return qbtInvalidPathChars.ReplaceAllString(name, " ")
 }
 
-// resolveCategoryPath mirrors qBittorrent's own resolution:
-//
-//   - an absolute save path is used as-is;
-//   - a relative save path is taken against the default save path;
-//   - a category with no save path of its own inherits, which with subcategories
-//     enabled means its parent's destination plus the last name segment, and
-//     otherwise the default save path plus the whole name.
-//
-// Returns "" when the destination cannot be determined, which callers treat as
-// "no such destination" rather than as a path.
-// The parent walk terminates on its own: each step drops a "/" segment, so the
-// recursion is bounded by the name itself. Capping it would silently drop
-// protection for a deeply nested category, which is the dangerous direction.
+// resolveCategoryPath mirrors SessionImpl::categorySavePath. Returns "" when the
+// destination cannot be determined; a depth cap here would silently drop
+// protection for a deeply nested category.
 func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
 	savePath := filepath.Clean(strings.TrimSpace(categories[name].SavePath))
 	if savePath != "." && savePath != "" {
@@ -104,12 +93,8 @@ func sortDeepestFirst(dirs []AbandonedDir) []AbandonedDir {
 	return sorted
 }
 
-// abandonedDirCandidates narrows the file-free directories a walk found to those
-// safe to remove: inside a scan root but never a scan root itself, not ignored,
-// not a category destination, and settled past the grace period.
-//
-// Deepest first, and a directory is kept only when every child directory is also
-// kept, so removing them in order never meets a non-empty directory.
+// abandonedDirCandidates narrows file-free directories to those safe to remove.
+// Deepest first, so removing them in order never meets a non-empty directory.
 func abandonedDirCandidates(
 	ctx context.Context,
 	dirs []AbandonedDir,
@@ -156,8 +141,7 @@ func abandonedDirCandidates(
 }
 
 // childrenAllKept reports whether dir can be emptied by removing directories
-// already kept. A directory holding anything else — a file the walk skipped, an
-// ignored subtree, a symlink — is left alone rather than failing on delete.
+// already kept, so an ignored subtree or a symlink leaves it alone.
 func childrenAllKept(ctx context.Context, dir string, kept map[string]struct{}, backend fsops.Backend) bool {
 	entries, err := backend.ReadDir(ctx, dir)
 	if err != nil {

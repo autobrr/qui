@@ -5456,11 +5456,8 @@ func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int)
 	if err != nil {
 		return false, fmt.Errorf("failed to get client: %w", err)
 	}
-	if !client.SupportsSubcategories() {
-		return false, nil
-	}
-	if client.SubcategoriesAlwaysEnabled() {
-		return true, nil
+	if enabled, ok := subcategoriesFromVersion(client.SupportsSubcategories(), client.SubcategoriesAlwaysEnabled()); ok {
+		return enabled, nil
 	}
 
 	prefs, err := client.GetAppPreferences(ctx)
@@ -5470,13 +5467,23 @@ func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int)
 	return prefs.UseSubcategories, nil
 }
 
-func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
+// subcategoriesFromVersion answers from the server version alone: a server too
+// old to nest never does, and one that dropped the preference always does. When
+// ok is false the version does not settle it and the caller supplies the
+// preference, from main data or by reading it.
+func subcategoriesFromVersion(supports bool, alwaysEnabled bool) (enabled bool, ok bool) {
 	if !supports {
-		return false
+		return false, true
 	}
-
 	if alwaysEnabled {
-		return true
+		return true, true
+	}
+	return false, false
+}
+
+func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
+	if enabled, ok := subcategoriesFromVersion(supports, alwaysEnabled); ok {
+		return enabled
 	}
 
 	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
