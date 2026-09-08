@@ -227,6 +227,12 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 			want: []string{archive, filepath.Join(archive, "b"), filepath.Join(archive, "b", "c")},
 		},
 		{
+			name: "a name qBittorrent cannot use as a directory is converted",
+			// qBittorrent accepts "movies:hd" and creates "movies hd" for it.
+			categories: map[string]qbt.Category{"movies:hd": {Name: "movies:hd", SavePath: ""}},
+			want:       []string{filepath.Join(defaultSavePath, "movies hd")},
+		},
+		{
 			name:             "with subcategories off the whole name is a path under the default save path",
 			useSubcategories: false,
 			categories: map[string]qbt.Category{
@@ -246,7 +252,7 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 				return tt.categories, nil
 			}
 
-			got, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, tt.useSubcategories)
+			got, _, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, tt.useSubcategories)
 			if err != nil {
 				t.Fatalf("categoryPaths: %v", err)
 			}
@@ -256,6 +262,89 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 			slices.Sort(got)
 			if !slices.Equal(got, want) {
 				t.Fatalf("categoryPaths = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestCategoryPaths_ProtectsBothSpellingsOfAConvertedName covers a category name
+// that has to be converted before it can be a directory. qBittorrent's exact
+// rule is not pinned down here, so the unconverted spelling stays protected too:
+// leaving a directory in place costs nothing, deleting a live one does not.
+func TestCategoryPaths_ProtectsBothSpellingsOfAConvertedName(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	defaultSavePath := filepath.Join(base, "torrents")
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{"movies:hd": {Name: "movies:hd", SavePath: ""}}, nil
+	}
+
+	destinations, protected, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, false)
+	if err != nil {
+		t.Fatalf("categoryPaths: %v", err)
+	}
+
+	converted := filepath.Join(defaultSavePath, "movies hd")
+	raw := filepath.Join(defaultSavePath, "movies:hd")
+
+	if !slices.Contains(destinations, converted) {
+		t.Fatalf("destinations = %v, want the converted name %q", destinations, converted)
+	}
+	for _, want := range []string{converted, raw} {
+		if !slices.Contains(protected, want) {
+			t.Fatalf("protected = %v, want %q", protected, want)
+		}
+	}
+}
+
+// TestDeclaredScanRoots_SubcategoriesAlwaysEnabledOnNewerServers covers
+// qBittorrent 5.2, which dropped use_subcategories and always inherits through
+// the parent. The absent preference decodes as false, so relying on it alone
+// sends an inherited subcategory to the wrong directory and leaves the real one
+// unprotected.
+func TestDeclaredScanRoots_SubcategoriesAlwaysEnabledOnNewerServers(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	defaultSavePath := filepath.Join(base, "torrents")
+	archive := filepath.Join(base, "archive")
+
+	for _, tc := range []struct {
+		name                       string
+		useSubcategoriesPreference bool
+		subcategoriesAlwaysEnabled bool
+		want                       string
+	}{
+		{name: "older server with the preference on", useSubcategoriesPreference: true, want: filepath.Join(archive, "hd")},
+		{name: "5.2 with the preference absent", subcategoriesAlwaysEnabled: true, want: filepath.Join(archive, "hd")},
+		{name: "older server with the preference off", want: filepath.Join(defaultSavePath, "movies", "hd")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+			svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+				return stubHealthChecker{healthy: true, subcategoriesAlwaysEnabled: tc.subcategoriesAlwaysEnabled}, nil
+			}
+			svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
+				return qbt.AppPreferences{SavePath: defaultSavePath, UseSubcategories: tc.useSubcategoriesPreference}, nil
+			}
+			svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
+				return map[string]qbt.Category{
+					"movies":    {Name: "movies", SavePath: archive},
+					"movies/hd": {Name: "movies/hd", SavePath: ""},
+				}, nil
+			}
+
+			_, protected, err := svc.declaredScanRoots(context.Background(), 1, scanScope{AbandonedDirs: true})
+			if err != nil {
+				t.Fatalf("declaredScanRoots: %v", err)
+			}
+			if !slices.Contains(protected, tc.want) {
+				t.Fatalf("protected = %v, want %q", protected, tc.want)
 			}
 		})
 	}

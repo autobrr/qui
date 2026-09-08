@@ -435,6 +435,6 @@ func TestResolveCategoryPath_DeepInheritanceIsNotDropped(t *testing.T) {
 		categories[name] = qbt.Category{Name: name}
 	}
 
-	got := resolveCategoryPath(name, categories, filepath.Join(base, "torrents"), true)
+	got := resolveCategoryPath(name, categories, filepath.Join(base, "torrents"), true, categoryDirName)
 	require.Equal(t, want, got, "a deeply nested category must still resolve to its parent chain")
 }

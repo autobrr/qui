@@ -17,12 +17,14 @@ import (
 )
 
 type stubHealthChecker struct {
-	healthy  bool
-	lastSync time.Time
+	healthy                    bool
+	lastSync                   time.Time
+	subcategoriesAlwaysEnabled bool
 }
 
-func (s stubHealthChecker) IsHealthy() bool              { return s.healthy }
-func (s stubHealthChecker) GetLastSyncUpdate() time.Time { return s.lastSync }
+func (s stubHealthChecker) IsHealthy() bool                  { return s.healthy }
+func (s stubHealthChecker) GetLastSyncUpdate() time.Time     { return s.lastSync }
+func (s stubHealthChecker) SubcategoriesAlwaysEnabled() bool { return s.subcategoriesAlwaysEnabled }
 
 func TestGetOtherLocalInstances(t *testing.T) {
 	t.Parallel()

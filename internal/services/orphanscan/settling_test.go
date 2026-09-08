@@ -21,12 +21,14 @@ import (
 )
 
 type mockHealthChecker struct {
-	healthy  bool
-	lastSync time.Time
+	healthy                    bool
+	lastSync                   time.Time
+	subcategoriesAlwaysEnabled bool
 }
 
-func (m *mockHealthChecker) IsHealthy() bool              { return m.healthy }
-func (m *mockHealthChecker) GetLastSyncUpdate() time.Time { return m.lastSync }
+func (m *mockHealthChecker) IsHealthy() bool                  { return m.healthy }
+func (m *mockHealthChecker) GetLastSyncUpdate() time.Time     { return m.lastSync }
+func (m *mockHealthChecker) SubcategoriesAlwaysEnabled() bool { return m.subcategoriesAlwaysEnabled }
 
 type rootIdentityBackend struct {
 	fsops.Backend

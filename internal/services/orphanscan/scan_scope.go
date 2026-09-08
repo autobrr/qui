@@ -82,17 +82,27 @@ func (s *Service) declaredScanRoots(ctx context.Context, instanceID int, scope s
 		return nil, nil, err
 	}
 
+	// qBittorrent 5.2 removed use_subcategories and always inherits through the
+	// parent, so the absent preference decodes as false and would otherwise send
+	// every inherited subcategory to the wrong directory.
+	client, err := s.getClient(ctx, instanceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get client for category resolution: %w", err)
+	}
+	useSubcategories := prefs.UseSubcategories || client.SubcategoriesAlwaysEnabled()
+
 	if scope.DefaultSavePath {
 		roots = append(roots, defaultSavePath)
 	}
 
 	if scope.needsCategories() {
-		categoryPaths, err = s.categoryPaths(ctx, instanceID, defaultSavePath, prefs.UseSubcategories)
-		if err != nil {
-			return nil, nil, err
+		destinations, protected, catErr := s.categoryPaths(ctx, instanceID, defaultSavePath, useSubcategories)
+		if catErr != nil {
+			return nil, nil, catErr
 		}
+		categoryPaths = protected
 		if scope.CategoryPaths {
-			roots = append(roots, categoryPaths...)
+			roots = append(roots, destinations...)
 		}
 	}
 

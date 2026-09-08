@@ -20,18 +20,56 @@ import (
 
 // categoryPaths returns the on-disk destination of every qBittorrent category,
 // resolved the way qBittorrent resolves it.
-func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, useSubcategories bool) ([]string, error) {
+// It returns the destinations to scan, and a superset to protect. The two differ
+// only for a category whose name needs converting: qBittorrent's exact rule is
+// not fully pinned down here, so both spellings are protected. Over-protecting
+// leaves a directory in place, while under-protecting deletes a live one.
+func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSavePath string, useSubcategories bool) (destinations, protected []string, err error) {
 	categories, err := s.getCategories(ctx, instanceID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
+		return nil, nil, fmt.Errorf("failed to read qBittorrent categories: %w", err)
 	}
 
-	seen := make(map[string]struct{}, len(categories))
+	dests := make(map[string]struct{}, len(categories))
+	prot := make(map[string]struct{}, len(categories))
 	for name := range categories {
-		addAbsoluteScanRoot(seen, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories))
+		addAbsoluteScanRoot(dests, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories, categoryDirName))
+		addAbsoluteScanRoot(prot, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories, categoryDirName))
+		// The unconverted spelling, in case the server converts less than we do.
+		addAbsoluteScanRoot(prot, resolveCategoryPath(name, categories, defaultSavePath, useSubcategories, func(segment string) string { return segment }))
 	}
 
-	return sortedRoots(seen), nil
+	return sortedRoots(dests), sortedRoots(prot), nil
+}
+
+// joinSegments applies dirName to each slash-separated segment of a category
+// name, keeping the slashes so the result stays a relative slash path.
+func joinSegments(name string, dirName func(string) string) string {
+	segments := strings.Split(name, "/")
+	for i, segment := range segments {
+		segments[i] = dirName(segment)
+	}
+	return strings.Join(segments, "/")
+}
+
+// categoryDirNameInvalid are the characters qBittorrent replaces when it turns a
+// category name into a directory name. "/" is absent: it separates
+// subcategories and is consumed before a segment reaches here.
+const categoryDirNameInvalid = `\:?"*<>|`
+
+// categoryDirName converts one category name segment into the directory name
+// qBittorrent creates for it, replacing characters invalid in a path with a
+// space, so a category called "movies:hd" is protected at "movies hd".
+func categoryDirName(segment string) string {
+	if !strings.ContainsAny(segment, categoryDirNameInvalid) {
+		return segment
+	}
+	return strings.Map(func(r rune) rune {
+		if strings.ContainsRune(categoryDirNameInvalid, r) {
+			return ' '
+		}
+		return r
+	}, segment)
 }
 
 // resolveCategoryPath mirrors qBittorrent's own resolution:
@@ -47,7 +85,7 @@ func (s *Service) categoryPaths(ctx context.Context, instanceID int, defaultSave
 // The parent walk terminates on its own: each step drops a "/" segment, so the
 // recursion is bounded by the name itself. Capping it would silently drop
 // protection for a deeply nested category, which is the dangerous direction.
-func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
+func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool, dirName func(string) string) string {
 	savePath := filepath.Clean(strings.TrimSpace(categories[name].SavePath))
 	if savePath != "." && savePath != "" {
 		if filepath.IsAbs(savePath) {
@@ -62,18 +100,18 @@ func resolveCategoryPath(name string, categories map[string]qbt.Category, defaul
 	// Category names are slash-delimited whatever the host separator is.
 	if useSubcategories {
 		if i := strings.LastIndex(name, "/"); i > 0 {
-			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories)
+			parent := resolveCategoryPath(name[:i], categories, defaultSavePath, useSubcategories, dirName)
 			if parent == "" {
 				return ""
 			}
-			return filepath.Join(parent, filepath.FromSlash(name[i+1:]))
+			return filepath.Join(parent, dirName(name[i+1:]))
 		}
 	}
 
 	if defaultSavePath == "" {
 		return ""
 	}
-	return filepath.Join(defaultSavePath, filepath.FromSlash(name))
+	return filepath.Join(defaultSavePath, filepath.FromSlash(joinSegments(name, dirName)))
 }
 
 // sortDeepestFirst orders directories so a child is always judged, and removed,

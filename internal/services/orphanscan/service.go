@@ -33,6 +33,9 @@ import (
 type healthChecker interface {
 	IsHealthy() bool
 	GetLastSyncUpdate() time.Time
+	// SubcategoriesAlwaysEnabled reports servers that dropped the
+	// use_subcategories preference and always inherit through the parent.
+	SubcategoriesAlwaysEnabled() bool
 }
 
 // Service handles orphan file scanning and deletion.
@@ -743,6 +746,15 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	sort.Slice(allOrphans, func(i, j int) bool {
 		a, b := allOrphans[i], allOrphans[j]
+
+		// This ordering decides truncation, not display: the preview re-sorts
+		// on read. Among abandoned directories the deepest must come first, or
+		// the cap can keep a parent while cutting its child, and that parent can
+		// never be removed because the child still blocks it. Every later scan
+		// would then re-select the same parent and nothing would ever go.
+		if a.IsAbandonedDir && b.IsAbandonedDir && len(a.Path) != len(b.Path) {
+			return len(a.Path) > len(b.Path)
+		}
 
 		switch previewSort {
 		case "directory_size_desc":
