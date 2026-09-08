@@ -119,13 +119,6 @@ export function useQBittorrentAppInfo(
   instanceId: number | undefined,
   options: UseQBittorrentAppInfoOptions = {}
 ) {
-  return useQBittorrentAppInfoImpl(instanceId, options)
-}
-
-function useQBittorrentAppInfoImpl(
-  instanceId: number | undefined,
-  options: UseQBittorrentAppInfoOptions
-) {
   const queryClient = useQueryClient()
   const queryKey = useMemo(
     () => ["qbittorrent-app-info", instanceId] as const,

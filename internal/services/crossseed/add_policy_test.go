@@ -149,12 +149,11 @@ func TestIsDiscLayoutTorrent(t *testing.T) {
 
 func TestPolicyForSourceFiles(t *testing.T) {
 	tests := []struct {
-		name                    string
-		files                   qbt.TorrentFiles
-		wantDiscLayout          bool
-		wantForcePaused         bool
-		wantForceSkipAutoResume bool
-		wantDiscMarker          string
+		name            string
+		files           qbt.TorrentFiles
+		wantDiscLayout  bool
+		wantForcePaused bool
+		wantDiscMarker  string
 	}{
 		{
 			name: "disc layout forces paused",
@@ -179,7 +178,6 @@ func TestPolicyForSourceFiles(t *testing.T) {
 
 			assert.Equal(t, tt.wantDiscLayout, policy.DiscLayout)
 			assert.Equal(t, tt.wantForcePaused, policy.ForcePaused)
-			assert.Equal(t, tt.wantForceSkipAutoResume, policy.ForceSkipAutoResume)
 			assert.Equal(t, tt.wantDiscMarker, policy.DiscMarker)
 		})
 	}
@@ -217,30 +215,6 @@ func TestAddPolicy_ApplyToAddOptions(t *testing.T) {
 
 			assert.Equal(t, tt.wantPaused, options["paused"])
 			assert.Equal(t, tt.wantStopped, options["stopped"])
-		})
-	}
-}
-
-func TestAddPolicy_ShouldSkipAutoResume(t *testing.T) {
-	tests := []struct {
-		name   string
-		policy AddPolicy
-		want   bool
-	}{
-		{
-			name:   "ForceSkipAutoResume true",
-			policy: AddPolicy{ForceSkipAutoResume: true},
-			want:   true,
-		},
-		{
-			name:   "ForceSkipAutoResume false",
-			policy: AddPolicy{ForceSkipAutoResume: false},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, tt.policy.ShouldSkipAutoResume())
 		})
 	}
 }
@@ -285,12 +259,11 @@ func TestAddPolicy_StatusSuffix(t *testing.T) {
 // This proves that disc layout torrents cannot be added "running" regardless of mode.
 func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
 	tests := []struct {
-		name         string
-		files        qbt.TorrentFiles
-		initialOpts  map[string]string
-		wantPaused   string
-		wantStopped  string
-		wantSkipAuto bool
+		name        string
+		files       qbt.TorrentFiles
+		initialOpts map[string]string
+		wantPaused  string
+		wantStopped string
 	}{
 		{
 			name: "BDMV disc overrides paused=false",
@@ -298,40 +271,36 @@ func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
 				{Name: "Movie/BDMV/index.bdmv"},
 				{Name: "Movie/BDMV/STREAM/00000.m2ts"},
 			},
-			initialOpts:  map[string]string{"paused": "false", "stopped": "false"},
-			wantPaused:   "true",
-			wantStopped:  "true",
-			wantSkipAuto: false,
+			initialOpts: map[string]string{"paused": "false", "stopped": "false"},
+			wantPaused:  "true",
+			wantStopped: "true",
 		},
 		{
 			name: "VIDEO_TS disc overrides paused=false",
 			files: qbt.TorrentFiles{
 				{Name: "DVD/VIDEO_TS/VIDEO_TS.VOB"},
 			},
-			initialOpts:  map[string]string{"paused": "false", "stopped": "false"},
-			wantPaused:   "true",
-			wantStopped:  "true",
-			wantSkipAuto: false,
+			initialOpts: map[string]string{"paused": "false", "stopped": "false"},
+			wantPaused:  "true",
+			wantStopped: "true",
 		},
 		{
 			name: "non-disc preserves paused=false",
 			files: qbt.TorrentFiles{
 				{Name: "Movie.2024.1080p.BluRay.x264-GROUP.mkv"},
 			},
-			initialOpts:  map[string]string{"paused": "false", "stopped": "false"},
-			wantPaused:   "false",
-			wantStopped:  "false",
-			wantSkipAuto: false,
+			initialOpts: map[string]string{"paused": "false", "stopped": "false"},
+			wantPaused:  "false",
+			wantStopped: "false",
 		},
 		{
 			name: "non-disc preserves paused=true",
 			files: qbt.TorrentFiles{
 				{Name: "Movie.2024.1080p.BluRay.x264-GROUP.mkv"},
 			},
-			initialOpts:  map[string]string{"paused": "true", "stopped": "true"},
-			wantPaused:   "true",
-			wantStopped:  "true",
-			wantSkipAuto: false,
+			initialOpts: map[string]string{"paused": "true", "stopped": "true"},
+			wantPaused:  "true",
+			wantStopped: "true",
 		},
 	}
 
@@ -345,7 +314,6 @@ func TestPolicyFlow_DiscLayoutForcesPaused(t *testing.T) {
 
 			assert.Equal(t, tt.wantPaused, opts["paused"], "paused option mismatch")
 			assert.Equal(t, tt.wantStopped, opts["stopped"], "stopped option mismatch")
-			assert.Equal(t, tt.wantSkipAuto, policy.ShouldSkipAutoResume(), "ShouldSkipAutoResume mismatch")
 		})
 	}
 }

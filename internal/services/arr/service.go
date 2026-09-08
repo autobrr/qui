@@ -90,18 +90,6 @@ func NewService(instanceStore *models.ArrInstanceStore, cacheStore *models.ArrID
 	}
 }
 
-// WithPositiveTTL sets the TTL for positive cache entries
-func (s *Service) WithPositiveTTL(ttl time.Duration) *Service {
-	s.positiveTTL = ttl
-	return s
-}
-
-// WithNegativeTTL sets the TTL for negative cache entries
-func (s *Service) WithNegativeTTL(ttl time.Duration) *Service {
-	s.negativeTTL = ttl
-	return s
-}
-
 // LookupExternalIDs queries ARR instances for external IDs based on content type.
 // It checks the cache first, then queries ARR instances in priority order.
 func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentType ContentType) (*ExternalIDsResult, error) {
@@ -609,11 +597,6 @@ func (s *Service) getArrTypeForContent(contentType ContentType) models.ArrInstan
 	default:
 		return ""
 	}
-}
-
-// CleanupExpiredCache removes expired cache entries
-func (s *Service) CleanupExpiredCache(ctx context.Context) (int64, error) {
-	return s.cacheStore.CleanupExpired(ctx)
 }
 
 // DebugResolveResult contains detailed debug information about an ID resolution

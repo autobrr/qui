@@ -46,7 +46,6 @@ import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { buildPooledCompletionPatch } from "@/lib/crossseed-settings"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { parseNonNegativeInt } from "@/lib/cross-seed-utils"
 import type {
@@ -1326,7 +1325,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       categoryMappingRules: globalSource.categoryMappingRules,
-      ...buildPooledCompletionPatch(globalSource.pooledPartialCompletionEnabled, globalSource.autoResumeMaxDownloadMb),
+      pooledPartialCompletionEnabled: globalSource.pooledPartialCompletionEnabled,
+      autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
       categoryAffixMode: globalSource.categoryAffixMode,

@@ -140,8 +140,9 @@ func TestUpsertFilesWritesChangedRows(t *testing.T) {
 
 				require.Zero(t, countAtSentinel(ctx, t, db), "changed %s should have been written", tt.name)
 
-				stored, err := repo.GetFiles(ctx, 1, "guard-hash")
+				batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
 				require.NoError(t, err)
+				stored := batch["guard-hash"]
 				require.Len(t, stored, 1)
 				require.Equal(t, changed.Name, stored[0].Name)
 				require.Equal(t, changed.Size, stored[0].Size)
@@ -191,8 +192,9 @@ func TestUpsertFilesGuardIsNullSafe(t *testing.T) {
 			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{baseFile()}))
 			require.Zero(t, countAtSentinel(ctx, t, db), "null-to-value should have been written")
 
-			stored, err := repo.GetFiles(ctx, 1, "guard-hash")
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
 			require.NoError(t, err)
+			stored := batch["guard-hash"]
 			require.Len(t, stored, 1)
 			require.Equal(t, new(true), stored[0].IsSeed)
 		})
@@ -212,8 +214,9 @@ func TestUpsertFilesGuardIsNullSafe(t *testing.T) {
 			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{nullSeed}))
 			require.Zero(t, countAtSentinel(ctx, t, db), "value-to-null should have been written")
 
-			stored, err := repo.GetFiles(ctx, 1, "guard-hash")
+			batch, err := repo.GetFilesBatch(ctx, 1, []string{"guard-hash"})
 			require.NoError(t, err)
+			stored := batch["guard-hash"]
 			require.Len(t, stored, 1)
 			require.Nil(t, stored[0].IsSeed)
 		})

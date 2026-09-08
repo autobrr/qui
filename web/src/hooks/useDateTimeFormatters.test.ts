@@ -40,7 +40,6 @@ describe("useDateTimeFormatters", () => {
     expect(result.current.formatDateOnly).toBe(initial.formatDateOnly)
     expect(result.current.formatTimeOnly).toBe(initial.formatTimeOnly)
     expect(result.current.formatDate).toBe(initial.formatDate)
-    expect(result.current.formatAddedOn).toBe(initial.formatAddedOn)
     expect(result.current.formatISOTimestamp).toBe(initial.formatISOTimestamp)
   })
 

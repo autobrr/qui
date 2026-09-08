@@ -5,6 +5,7 @@ package filesmanager
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -101,6 +102,54 @@ func TestCacheFilesBatch_MaintainsHashAlignment(t *testing.T) {
 			require.Equalf(t, names[hash], cached[0].Name, "attempt %d hash %s", attempt, hash)
 		}
 	}
+}
+
+func TestCacheFilesBatchAcrossQueryBatches(t *testing.T) {
+	t.Parallel()
+
+	forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+		svc := NewService(db)
+		hashes := make([]string, 801)
+		files := make(map[string]qbt.TorrentFiles, len(hashes))
+		for i := range hashes {
+			hashes[i] = fmt.Sprintf("batch-hash-%d", i)
+			files[hashes[i]] = qbt.TorrentFiles{{Name: fmt.Sprintf("example-%d.mkv", i), Size: int64(i + 1)}}
+		}
+		require.NoError(t, svc.CacheFilesBatch(ctx, 1, files))
+
+		for _, empty := range [][]string{nil, {}, {"", " "}} {
+			cached, err := svc.repo.GetFilesBatch(ctx, 1, empty)
+			require.NoError(t, err)
+			require.Empty(t, cached)
+			info, err := svc.repo.GetSyncInfoBatch(ctx, 1, empty)
+			require.NoError(t, err)
+			require.Empty(t, info)
+			require.NoError(t, svc.repo.DeleteTorrentCache(ctx, 1, empty))
+		}
+
+		cached, missing, err := svc.GetCachedFilesBatch(ctx, 1, append(hashes, hashes[0], " ", "absent"), 0)
+		require.NoError(t, err)
+		require.Equal(t, []string{"absent"}, missing)
+		require.Len(t, cached, len(hashes))
+		for _, hash := range hashes {
+			require.Len(t, cached[hash], 1)
+			require.Equal(t, files[hash][0].Name, cached[hash][0].Name)
+			require.Equal(t, files[hash][0].Size, cached[hash][0].Size)
+		}
+
+		require.NoError(t, svc.CacheFiles(ctx, 1, "keep", qbt.TorrentFiles{{Name: "keep.mkv", Size: 1}}))
+		require.NoError(t, svc.repo.DeleteTorrentCache(ctx, 1, hashes))
+		cachedFiles, err := svc.repo.GetFilesBatch(ctx, 1, hashes)
+		require.NoError(t, err)
+		require.Empty(t, cachedFiles)
+		info, err := svc.repo.GetSyncInfoBatch(ctx, 1, hashes)
+		require.NoError(t, err)
+		require.Empty(t, info)
+		kept, err := svc.GetCachedFiles(ctx, 1, "keep")
+		require.NoError(t, err)
+		require.Len(t, kept, 1)
+		require.Equal(t, "keep.mkv", kept[0].Name)
+	})
 }
 
 func TestGetCachedFilesBatch_MaxAgeServesAgedRows(t *testing.T) {

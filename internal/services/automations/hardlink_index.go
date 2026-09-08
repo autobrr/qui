@@ -912,37 +912,6 @@ func (idx *HardlinkIndex) GetHardlinkCopies(triggerHash string) []string {
 	return copies
 }
 
-// GetHardlinkScope returns the hardlink scope for a torrent (none, torrents_only, outside_qbittorrent, both).
-// Returns empty string if the scope is unknown (torrent not in index, files inaccessible, etc.).
-func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
-	if idx == nil {
-		return ""
-	}
-	if scope, ok := idx.ScopeByHash[hash]; ok {
-		return scope
-	}
-	return ""
-}
-
-// GetHardlinkCrossScope returns the cross-instance hardlink scope for a torrent.
-// Returns empty string if cross-scope has not been computed or is unknown.
-// Safe for concurrent use; acquires crossScopeMu internally.
-func (idx *HardlinkIndex) GetHardlinkCrossScope(hash string) string {
-	if idx == nil {
-		return ""
-	}
-	idx.crossScopeMu.Lock()
-	scopeMap := idx.CrossScopeByHash
-	idx.crossScopeMu.Unlock()
-	if scopeMap == nil {
-		return ""
-	}
-	if scope, ok := scopeMap[hash]; ok {
-		return scope
-	}
-	return ""
-}
-
 // augmentCrossInstanceScope runs Phase 2 of the hardlink index: scanning files from other
 // instances to determine whether "outside" hardlinks point to other qBittorrent instances
 // or to truly external paths (media libraries, import dirs, etc.).

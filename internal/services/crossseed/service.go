@@ -6362,13 +6362,6 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Msg("Failed to trigger recheck after add, skipping auto-resume")
 			result.Message += " - recheck failed, manual intervention required"
-		} else if addPolicy.ShouldSkipAutoResume() {
-			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Skipping auto-resume per add policy (recheck triggered)")
-			result.Message += addPolicy.StatusSuffix()
 		} else if req.SkipAutoResume {
 			result.Message += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, activeHash)
 			// User requested to skip auto-resume - leave paused after recheck
@@ -6400,13 +6393,7 @@ func (s *Service) processCrossSeedCandidate(
 		}
 	} else if startPaused && alignmentSucceeded {
 		// Perfect match: skip_checking=true, no alignment needed, torrent is at 100%
-		if addPolicy.ShouldSkipAutoResume() {
-			log.Debug().
-				Int("instanceID", candidate.InstanceID).
-				Str("torrentHash", torrentHash).
-				Msg("Skipping auto-resume for perfect match per add policy")
-			result.Message += addPolicy.StatusSuffix()
-		} else if req.SkipAutoResume {
+		if req.SkipAutoResume {
 			// User requested to skip auto-resume - leave paused
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
@@ -6425,9 +6412,6 @@ func (s *Service) processCrossSeedCandidate(
 				result.Message += " - auto-resume failed, manual resume required"
 			}
 		}
-	} else if !startPaused && addPolicy.ShouldSkipAutoResume() {
-		// User wanted auto-start, but policy forces paused
-		result.Message += addPolicy.StatusSuffix()
 	}
 	result.Success = true
 	result.Status = "added"
@@ -15098,13 +15082,6 @@ func (s *Service) processHardlinkMode(
 					Str("torrentHash", torrentHash).
 					Msg("[CROSSSEED] Hardlink mode: failed to trigger recheck after add")
 				statusMsg += " - recheck failed, manual intervention required"
-			case addPolicy.ShouldSkipAutoResume():
-				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
-				log.Debug().
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg("[CROSSSEED] Hardlink mode: skipping auto-resume per add policy")
-				statusMsg += addPolicy.StatusSuffix()
 			case req.SkipAutoResume:
 				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 				// User requested to skip auto-resume - leave paused after recheck
@@ -15134,9 +15111,6 @@ func (s *Service) processHardlinkMode(
 				}
 			}
 		}
-	} else if addPolicy.ShouldSkipAutoResume() {
-		// Disc layout without extras - add policy status suffix
-		statusMsg += addPolicy.StatusSuffix()
 	}
 	if poolRegistrationErr != nil {
 		statusMsg += fmt.Sprintf(" - qBittorrent added torrent, but pooled registration failed: %v; torrent remains stopped for manual intervention", poolRegistrationErr)
@@ -15892,13 +15866,6 @@ func (s *Service) processReflinkMode(
 					Str("torrentHash", torrentHash).
 					Msg("[CROSSSEED] Reflink mode: failed to trigger recheck after add")
 				statusMsg += " - recheck failed, manual intervention required"
-			case addPolicy.ShouldSkipAutoResume():
-				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
-				log.Debug().
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg("[CROSSSEED] Reflink mode: skipping auto-resume per add policy")
-				statusMsg += addPolicy.StatusSuffix()
 			case req.SkipAutoResume:
 				statusMsg += s.titleRescueMonitorSuffix(candidate.titleRescue, candidate.InstanceID, torrentHash)
 				// User requested to skip auto-resume - leave paused after recheck
@@ -15928,9 +15895,6 @@ func (s *Service) processReflinkMode(
 				}
 			}
 		}
-	} else if addPolicy.ShouldSkipAutoResume() {
-		// Disc layout without extras - add policy status suffix
-		statusMsg += addPolicy.StatusSuffix()
 	}
 
 	// Add note about low completion behavior

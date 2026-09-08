@@ -13,7 +13,6 @@ import { TorrentTableResponsive } from "@/components/torrents/TorrentTableRespon
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useInstances } from "@/hooks/useInstances"
 import { useIsMobile } from "@/hooks/useMediaQuery"
@@ -661,11 +660,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             hideClose
           >
             <SheetHeader className="sr-only">
-              <VisuallyHidden>
-                <SheetTitle>
-                  {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
-                </SheetTitle>
-              </VisuallyHidden>
+              <SheetTitle>
+                {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
+              </SheetTitle>
             </SheetHeader>
             {selectedTorrent && (
               <TorrentDetailsPanel
