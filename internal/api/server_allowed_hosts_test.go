@@ -102,3 +102,37 @@ func TestAllowedHostsWithCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestAllowedHostsGeneralOptions(t *testing.T) {
+	deps := newTestDependencies(t)
+	for _, tc := range []struct {
+		name  string
+		hosts []string
+		want  int
+	}{
+		{"restricted", []string{"qui.test"}, http.StatusBadRequest},
+		{"unrestricted", nil, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deps.Config.Config.AllowedHosts = tc.hosts
+			server := NewServer(deps)
+			router, err := server.Handler()
+			require.NoError(t, err)
+
+			testServer := httptest.NewUnstartedServer(router)
+			testServer.Config = server.server
+			testServer.Config.Handler = router
+			testServer.Start()
+			t.Cleanup(testServer.Close)
+
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodOptions, testServer.URL, nil)
+			require.NoError(t, err)
+			req.URL.Path = "*"
+			req.Host = "unlisted.test"
+			res, err := testServer.Client().Do(req)
+			require.NoError(t, err)
+			defer res.Body.Close()
+			require.Equal(t, tc.want, res.StatusCode)
+		})
+	}
+}

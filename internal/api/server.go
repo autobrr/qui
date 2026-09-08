@@ -168,6 +168,8 @@ func NewServer(deps *Dependencies) *Server {
 			// instance the response-side slow-client protection is not worth the cost.
 			WriteTimeout: 0,
 			IdleTimeout:  180 * time.Second,
+			// Route OPTIONS * through the Host guard when filtering is enabled.
+			DisableGeneralOptionsHandler: len(deps.Config.Config.AllowedHosts) > 0,
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
