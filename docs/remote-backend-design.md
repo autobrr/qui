@@ -206,9 +206,11 @@ backend domain end to end.
   AES-GCM/`sessionSecret` helpers the existing credential stores use,
   with an AAD argument those stores simply haven't passed before.
 - Key derivation: `GetEncryptionKey` truncates `sessionSecret` to 32 bytes
-  instead of deriving from it. Moving to HKDF with a decidable ciphertext
-  format is tracked in #2521 and should land with or right after #1917, so
-  the SSH columns are written once under the derived key.
+  instead of deriving from it. Moving to HKDF is tracked in #2521. It has
+  to land before the first release that writes SSH rows, unless it ships a
+  decidable ciphertext format so rows encrypted under the truncated key
+  still decrypt after the switch. That ordering is why #2521 is sequenced
+  against #1917.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
@@ -309,9 +311,14 @@ scratch directories and a temporarily added, uniquely tagged
 `authorized_keys` line.
 
 - `statvfs@openssh.com` and `hardlink@openssh.com` both work over the sftp
-  subsystem: `df` returned filesystem numbers and `ln` created a real
-  nlink=2 hardlink. `limits@openssh.com` is absent (it arrived in 8.5), so
-  the backend must tolerate that extension missing.
+  subsystem. `df` returned filesystem numbers and `ln` created a real
+  hardlink. The sftp attribute set has no link-count field, and the only
+  place the server exposes one is the free-form `ls -l` longname, which
+  the protocol tells clients not to parse and `pkg/sftp` discards, so link
+  identity only ever arrives through the exec tier (the `find -printf`
+  sweep below).
+  `limits@openssh.com` is absent (it arrived in OpenSSH 8.6), so the
+  backend must tolerate that extension missing.
 - A `command="internal-sftp",restrict` key behaves exactly as the Security
   section specifies: sftp works, exec is refused with "This service allows
   sftp connections only." The recommended template holds as written.
