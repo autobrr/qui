@@ -60,7 +60,6 @@ var undocumentedRoutes = map[routeKey]struct{}{
 	{Method: http.MethodPut, Path: "/api/torznab/search/cache/settings"}:                            {},
 	{Method: http.MethodGet, Path: "/api/torznab/search/history"}:                                   {},
 	{Method: http.MethodGet, Path: "/api/torznab/search/recent"}:                                    {},
-	{Method: http.MethodGet, Path: "/api/stream"}:                                                   {},
 	{Method: http.MethodPost, Path: "/api/instances/{instanceId}/backups/run"}:                      {},
 	{Method: http.MethodGet, Path: "/api/instances/{instanceId}/backups/runs"}:                      {},
 	{Method: http.MethodDelete, Path: "/api/instances/{instanceId}/backups/runs"}:                   {},
