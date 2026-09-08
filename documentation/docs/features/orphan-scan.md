@@ -54,7 +54,7 @@ Everything else still applies inside the wider roots:
 
 - Files that torrents reference are protected, including torrents on other active instances with local filesystem access.
 - Ignore paths, the grace period, and max files per run all apply.
-- Save paths that already sit under a wider root are not walked twice. qui scans the wider root once and skips the nested roots it already covers.
+- Save paths that already sit under a wider root are not walked twice. qui scans the wider root once and skips the nested roots it already covers. A skipped path that is missing from disk, such as an unmounted volume, is still reported: the run does not treat it as scanned.
 
 If qui cannot read the default save path or the category list from qBittorrent, or qBittorrent reports an empty or relative default save path, the run fails and names the cause. qui does not fall back to a narrower scan, because a narrower scan would report a clean result over a tree you asked it to check.
 

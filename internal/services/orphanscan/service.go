@@ -237,6 +237,28 @@ func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignoreP
 	return orphans, dirs, err
 }
 
+// unreachableCoveredRoots reports the roots pruning dropped that are not on
+// disk. Pruning is a walk optimisation, not a coverage decision: without this an
+// unmounted save path nested under a walked parent reads as a clean scan
+// (discussion #2483).
+func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string, backend fsops.Backend) []string {
+	walked := make(map[string]struct{}, len(walkRoots))
+	for _, root := range walkRoots {
+		walked[root] = struct{}{}
+	}
+
+	var errs []string
+	for _, root := range scanRoots {
+		if _, ok := walked[root]; ok {
+			continue
+		}
+		if _, err := backend.Stat(ctx, root); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", root, err))
+		}
+	}
+	return errs
+}
+
 // pruneNestedScanRoots drops roots already covered by another root in the set so
 // an ancestor and its descendants are not walked twice. Callers keep the full
 // set for run.ScanPaths; only the walk is narrowed.
@@ -714,6 +736,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// run.ScanPaths keeps every root so deletion still resolves the narrowest
 	// one per file, but walking an ancestor already covers its descendants.
 	walkRoots := pruneNestedScanRoots(scanRoots)
+	walkErrors = append(walkErrors, unreachableCoveredRoots(ctx, scanRoots, walkRoots, backend)...)
 
 	var fileFreeDirs []AbandonedDir
 

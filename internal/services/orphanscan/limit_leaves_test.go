@@ -97,3 +97,67 @@ func runCycle(t *testing.T, svc *Service, store *models.OrphanScanStore) []strin
 	svc.executeDeletion(context.Background(), 1, runID)
 	return previewed
 }
+
+// TestExecuteScan_MissingNestedRootStillWarns covers a save path that is nested
+// under another scan root and absent from disk, such as an unmounted volume.
+// Pruning stops it being walked, so without an explicit check its absence would
+// read as a clean scan (discussion #2483).
+func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
+	base := t.TempDir()
+	parent := filepath.Join(base, "data")
+	nested := filepath.Join(parent, "movies") // never created: the volume is not mounted
+
+	require.NoError(t, os.MkdirAll(parent, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(parent, "owned.mkv"), []byte("x"), 0o600))
+
+	db := testdb.NewMigratedSQLite(t, "orphanscan-missing-nested-root")
+	is, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	_, err = is.Create(t.Context(), "t", "http://127.0.0.1:8080", "u", "p", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewOrphanScanStore(db)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
+	}
+	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
+	}
+	// Two torrents: one in the parent, one on the volume that is not mounted.
+	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{
+			{Hash: "here", SavePath: parent, State: qbt.TorrentStatePausedUp},
+			{Hash: "gone", SavePath: nested, State: qbt.TorrentStatePausedUp},
+		}, nil
+	}
+	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{
+			"here": {{Name: "owned.mkv", Size: 1}},
+			"gone": {{Name: "unreachable.mkv", Size: 1}},
+		}, nil
+	}
+	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: parent}, nil
+	}
+	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{}, nil
+	}
+
+	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID: 1, GracePeriodMinutes: 0, IgnorePaths: []string{},
+		ScanIntervalHours: 24, PreviewSort: "size_desc", MaxFilesPerRun: 1000,
+		AutoCleanupMaxFiles: 100,
+	})
+	require.NoError(t, err)
+
+	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
+	require.NoError(t, err)
+	svc.executeScan(context.Background(), 1, runID)
+
+	run, err := store.GetRun(t.Context(), runID)
+	require.NoError(t, err)
+	require.Contains(t, run.ErrorMessage, nested,
+		"a nested save path that is not on disk must still be reported, not hidden by pruning")
+}
