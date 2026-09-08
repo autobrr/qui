@@ -21,7 +21,7 @@ import {
 } from "@/hooks/useOrphanScan"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import type { Instance, OrphanScanRun, OrphanScanRunStatus } from "@/types"
+import type { Instance, OrphanScanRun } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -33,10 +33,14 @@ interface OrphanScanOverviewProps {
   onExpandedInstancesChange?: (values: string[]) => void
 }
 
-function getStatusBadge(status: OrphanScanRunStatus, filesFound: number | undefined, t: (key: string) => string) {
+function getStatusBadge(run: OrphanScanRun, t: (key: string) => string) {
+  const { status, filesFound } = run
+  if (run.partial && (status === "completed" || status === "preview_ready")) {
+    return { variant: "outline" as const, className: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20", label: t("preferences.orphanScanOverview.statusPartial") }
+  }
   // Special case: "Clean" state for zero-file scans
   // Handles both new (completed) and old DB rows (preview_ready) with no files
-  if ((status === "completed" || status === "preview_ready") && filesFound === 0) {
+  if ((status === "completed" || status === "preview_ready") && filesFound === 0 && !run.errorMessage) {
     return { variant: "outline" as const, className: "bg-muted text-muted-foreground border-border/60", label: t("preferences.orphanScanOverview.statusClean") }
   }
 
@@ -63,12 +67,12 @@ function getStatusBadge(status: OrphanScanRunStatus, filesFound: number | undefi
 // only when it has something to show, so it stays a plain row otherwise.
 export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
   const { t } = useTranslation("instances")
-  const statusBadge = getStatusBadge(run.status, run.filesFound, t)
+  const statusBadge = getStatusBadge(run, t)
   const hasError = !!run.errorMessage
   const hasDetails = hasError || run.scanPaths.length > 0
 
   // Show warning indicator for completed runs with errors (partial failures)
-  const hasWarning = run.status === "completed" && hasError
+  const hasWarning = run.status === "completed" && hasError && !run.partial
 
   const rowContent = (
     <div className="p-3 flex items-center justify-between">
@@ -89,7 +93,7 @@ export function OrphanScanRunItem({ run }: { run: OrphanScanRun }) {
         <span className="text-xs text-muted-foreground capitalize">{run.triggeredBy}</span>
       </div>
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
-        {statusBadge.label === "Clean" && (
+        {(run.status === "completed" || run.status === "preview_ready") && run.filesFound === 0 && !run.partial && !hasError && (
           <span>{t("preferences.orphanScanOverview.zeroOrphans")}</span>
         )}
         {run.status === "completed" && run.filesFound > 0 && (
@@ -239,7 +243,7 @@ function InstanceOrphanScanItem({
   }
 
   // Compute status badge once for reuse in header
-  const latestRunBadge = latestRun ? getStatusBadge(latestRun.status, latestRun.filesFound, t) : null
+  const latestRunBadge = latestRun ? getStatusBadge(latestRun, t) : null
 
   if (!hasLocalAccess) {
     return (
@@ -282,7 +286,7 @@ function InstanceOrphanScanItem({
                   })}
                 </Badge>
               )}
-              {latestRun?.status === "completed" && latestRun.errorMessage && (
+              {latestRun?.status === "completed" && latestRun.errorMessage && !latestRun.partial && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <AlertTriangle className="h-4 w-4 text-yellow-500" />

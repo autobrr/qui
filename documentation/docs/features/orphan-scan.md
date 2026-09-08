@@ -40,6 +40,23 @@ qui scans a directory only if at least one torrent points to it. If you delete a
 
 **Example:** You have torrents in `/downloads/old-stuff/`. If you delete all those torrents, orphan scan stops tracking `/downloads/old-stuff/` and does not clean it up.
 
+## Partial scans
+
+A directory can disappear while a scan runs, for example when an automation removes a torrent and its files.
+If some selected paths cannot be scanned, qui reports **Partial scan** and keeps the results from paths that completed.
+This result applies even when qui finds no orphan files.
+The run details list the unavailable paths and their errors.
+The selected scan paths list includes these unavailable paths.
+
+Partial scans skip automatic cleanup.
+You can review the warning and delete the listed orphan files manually.
+Before deletion, qui refreshes torrent ownership data and applies its normal deletion checks.
+If you enable orphan-scan completion notifications, partial scans send a warning through that setting, including when results await manual review.
+
+Use **Scan Now** to try again, or wait for the next scheduled scan.
+qui does not retry immediately.
+If no selected paths can be scanned, or qui cannot establish torrent ownership, the run fails.
+
 ## Settings
 
 | Setting | Description | Default |

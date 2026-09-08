@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render } from "@testing-library/react"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import type { OrphanScanRun } from "@/types"
 
 // OrphanScanRunItem only needs a translator; keep the module's other exports
@@ -60,4 +61,27 @@ describe("OrphanScanRunItem", () => {
     // No trigger means no chevron and nothing to expand.
     expect(container.querySelector("button")).toBeNull()
   })
+  it.each([
+    { status: "completed" as const, filesFound: 0 },
+    { status: "preview_ready" as const, filesFound: 1 },
+  ])("identifies a partial $status run before expanding it", ({ status, filesFound }) => {
+    const warning = "Partial scan: /data/missing is unavailable"
+    const { container } = render(
+      <TooltipProvider>
+        <OrphanScanRunItem run={makeRun({ status, filesFound, partial: true, errorMessage: warning })} />
+      </TooltipProvider>
+    )
+
+    expect(container.textContent).toContain("preferences.orphanScanOverview.statusPartial")
+    expect(container.textContent).not.toContain("preferences.orphanScanOverview.statusClean")
+    fireEvent.click(container.querySelector("button")!)
+    expect(container.textContent).toContain(warning)
+  })
+
+  it("keeps a failed run failed when its scan was partial", () => {
+    const { container } = render(<OrphanScanRunItem run={makeRun({ status: "failed", partial: true, errorMessage: "Deletion failed" })} />)
+    expect(container.textContent).toContain("preferences.orphanScanOverview.statusFailed")
+    expect(container.textContent).not.toContain("preferences.orphanScanOverview.statusPartial")
+  })
+
 })

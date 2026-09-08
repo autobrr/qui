@@ -56,6 +56,7 @@ export interface OrphanScanRun {
   foldersDeleted: number
   bytesReclaimed: number
   truncated: boolean
+  partial?: boolean
   errorMessage?: string | null
   startedAt: string
   completedAt?: string | null
