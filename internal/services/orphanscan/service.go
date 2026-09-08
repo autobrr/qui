@@ -563,13 +563,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		Int("torrentCount", result.torrentCount).
 		Msg("orphanscan: built file map")
 
-	if len(result.skippedRoots) > 0 {
+	var scanWarnings []string
+	if skippedRoots := filterCoveredScanRoots(result.skippedRoots, settings.IgnorePaths); len(skippedRoots) > 0 {
 		warnMsg := fmt.Sprintf(
 			"Skipped %d scan path(s) because qBittorrent had transitional torrents with unavailable file lists:\n%s",
-			len(result.skippedRoots),
-			strings.Join(result.skippedRoots, "\n"),
+			len(skippedRoots),
+			strings.Join(skippedRoots, "\n"),
 		)
-		s.warnRun(ctx, runID, warnMsg)
+		scanWarnings = append(scanWarnings, warnMsg)
 	}
 
 	// Update scan paths
@@ -679,17 +680,25 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		bytesFound += o.Size
 	}
 
-	// If no orphans found but we had walk errors, all roots likely failed
-	if len(allOrphans) == 0 && len(walkErrors) > 0 {
+	if len(walkErrors) == len(scanRoots) {
 		errMsg := fmt.Sprintf("Failed to access %d scan path(s):\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
 		s.failRun(ctx, runID, instanceID, errMsg)
 		return
 	}
 
-	// Surface partial failures as warning (but continue with found orphans)
 	if len(walkErrors) > 0 {
 		warnMsg := fmt.Sprintf("Partial scan: %d path(s) inaccessible:\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
-		s.warnRun(ctx, runID, warnMsg)
+		scanWarnings = append(scanWarnings, warnMsg)
+	}
+	partial := len(scanWarnings) > 0
+	var scanWarning string
+	if partial {
+		scanWarnings = append(scanWarnings, "Automatic cleanup is disabled for partial scans. Review the results before deleting files.")
+		scanWarning = strings.Join(scanWarnings, "\n\n")
+		if err := s.store.UpdateRunPartial(ctx, runID, scanWarning); err != nil {
+			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to save partial scan result: %v", err))
+			return
+		}
 	}
 
 	log.Info().Int("orphans", len(allOrphans)).Bool("truncated", truncated).Msg("orphanscan: scan complete")
@@ -722,7 +731,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update files found")
 	}
 
-	// If no orphans found, mark as completed (clean) instead of preview_ready
+	// Runs without orphan results do not need a deletion preview.
 	if len(allOrphans) == 0 {
 		if err := s.store.UpdateRunCompleted(ctx, runID, 0, 0, 0); err != nil {
 			if ctx.Err() != nil {
@@ -738,12 +747,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			Type:                     notifications.EventOrphanScanCompleted,
 			InstanceID:               instanceID,
 			OrphanScanRunID:          runID,
+			OrphanScanPartial:        partial,
+			ErrorMessage:             scanWarning,
 			OrphanScanFilesDeleted:   0,
 			OrphanScanFoldersDeleted: 0,
 			StartedAt:                startedAt,
 			CompletedAt:              completedAt,
 		})
-		log.Info().Int64("run", runID).Msg("orphanscan: clean (no orphan files found)")
+		log.Info().Int64("run", runID).Bool("partial", partial).Msg("orphanscan: no orphan files found")
 		return
 	}
 
@@ -759,6 +770,19 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	s.emitRun(instanceID, runID)
 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
+	if partial {
+		startedAt, _ := s.getRunTimes(ctx, runID)
+		s.notify(ctx, notifications.Event{
+			Type:                 notifications.EventOrphanScanCompleted,
+			InstanceID:           instanceID,
+			OrphanScanRunID:      runID,
+			OrphanScanPartial:    true,
+			OrphanScanFilesFound: len(allOrphans),
+			ErrorMessage:         scanWarning,
+			StartedAt:            startedAt,
+			CompletedAt:          new(time.Now()),
+		})
+	}
 
 	// Check if auto-cleanup should be triggered for scheduled scans
 	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
@@ -808,6 +832,9 @@ func (s *Service) maybeAutoCleanup(ctx context.Context, instanceID int, runID in
 
 	// Only auto-cleanup for scheduled scans (manual scans always show preview)
 	if run.TriggeredBy != "scheduled" {
+		return
+	}
+	if run.Partial {
 		return
 	}
 
@@ -1013,6 +1040,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		return
 	}
 
+	warningMessage := run.ErrorMessage
+	if failedDeletes > 0 {
+		warningMessage = strings.TrimSpace(warningMessage + "\n\n" + failureMessage)
+		if err := s.store.UpdateRunWarning(ctx, runID, warningMessage); err != nil {
+			log.Error().Err(err).Msg("orphanscan: failed to update run warning")
+		}
+	}
+
 	// Mark as completed (possibly with partial failure warning)
 	if err := s.store.UpdateRunCompleted(ctx, runID, filesDeleted, foldersDeleted, bytesReclaimed); err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
@@ -1025,18 +1060,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		Type:                     notifications.EventOrphanScanCompleted,
 		InstanceID:               instanceID,
 		OrphanScanRunID:          runID,
+		OrphanScanPartial:        run.Partial,
+		OrphanScanFilesFound:     run.FilesFound,
+		ErrorMessage:             warningMessage,
 		OrphanScanFilesDeleted:   filesDeleted,
 		OrphanScanFoldersDeleted: foldersDeleted,
 		StartedAt:                startedAt,
 		CompletedAt:              completedAt,
 	})
-
-	// Add warning for partial failures
-	if failedDeletes > 0 {
-		if err := s.store.UpdateRunWarning(ctx, runID, failureMessage); err != nil {
-			log.Error().Err(err).Msg("orphanscan: failed to update run warning")
-		}
-	}
 
 	log.Info().
 		Int64("run", runID).
@@ -1075,15 +1106,6 @@ func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, mess
 		StartedAt:       startedAt,
 		CompletedAt:     completedAt,
 	})
-}
-
-func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
-	if ctx.Err() != nil {
-		return
-	}
-	if err := s.store.UpdateRunWarning(ctx, runID, message); err != nil {
-		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to update warning")
-	}
 }
 
 func (s *Service) notify(ctx context.Context, event notifications.Event) {

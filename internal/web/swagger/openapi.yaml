@@ -8724,7 +8724,7 @@ components:
           type: array
           items:
             type: string
-          description: Directories that were scanned (derived from torrent SavePath values)
+          description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
         filesFound:
           type: integer
           description: Number of orphan files found
@@ -8741,6 +8741,9 @@ components:
         truncated:
           type: boolean
           description: True if max_files_per_run was reached and more orphans may exist
+        partial:
+          type: boolean
+          description: True when some selected scan paths could not be scanned. Automatic cleanup is skipped for this run.
         errorMessage:
           type: string
           nullable: true
