@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,6 +25,36 @@ func manualMatchTestService(instance *models.Instance, torrents []qbt.Torrent, f
 		syncManager:      &applyFakeSyncManager{newFakeSyncManager(instance, torrents, files)},
 		releaseCache:     NewReleaseCache(),
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+}
+
+func TestManualMatchPackProposalLimit(t *testing.T) {
+	for _, count := range []int{14, manualMatchCoarseLimit + 1} {
+		t.Run(strconv.Itoa(count), func(t *testing.T) {
+			const packName = "Cedar.Harbor.S01.1080p.WEB.x264-PINE"
+			names := make([]string, 0, count)
+			for i := 1; i <= count; i++ {
+				names = append(names, fmt.Sprintf("Cedar.Harbor.S01E%02d.1080p.WEB.x264-PINE.mkv", i))
+			}
+			data := createTestTorrent(t, packName, names, 256*1024)
+			meta, err := ParseTorrentMetadataWithInfo(data)
+			require.NoError(t, err)
+			torrents := make([]qbt.Torrent, 0, len(meta.Files))
+			files := make(map[string]qbt.TorrentFiles)
+			for i, file := range meta.Files {
+				hash := fmt.Sprintf("episode-%d", i)
+				torrents = append(torrents, qbt.Torrent{Hash: hash, Name: names[i], Progress: 1, Size: file.Size})
+				files[hash] = qbt.TorrentFiles{{Name: names[i], Size: file.Size}}
+			}
+			svc := manualMatchTestService(&models.Instance{ID: 1, Name: "local"}, torrents, files)
+			resp, err := svc.ManualMatchProposals(t.Context(), 1, data, "")
+			require.NoError(t, err)
+			require.True(t, resp.PackMode)
+			require.Equal(t, count, resp.PackEpisodeCount)
+			require.Len(t, resp.Proposals, min(count, manualMatchCoarseLimit))
+			require.Equal(t, count > manualMatchCoarseLimit, resp.ProposalsTruncated)
+			require.Equal(t, "no_filesystem_access", resp.AssemblyUnavailableReason)
+		})
 	}
 }
 
