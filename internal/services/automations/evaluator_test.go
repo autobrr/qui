@@ -882,6 +882,99 @@ func TestEvaluateCondition_Negate(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "torrent"}
+	for _, field := range []ConditionField{FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles} {
+		t.Run(string(field), func(t *testing.T) {
+			value := HardlinkScopeOutsideQBitTorrent
+			if field == FieldHasMissingFiles {
+				value = "true"
+			}
+			cond := &RuleCondition{Field: field, Operator: OperatorEqual, Value: value}
+			for _, tc := range []struct {
+				name    string
+				ctx     *EvalContext
+				known   bool
+				matches bool
+			}{
+				{name: "nil context"},
+				{name: "nil maps", ctx: &EvalContext{InstanceHasLocalAccess: true}},
+				{name: "missing hash", ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{"other": HardlinkScopeNone},
+					HardlinkCrossScopeByHash: map[string]string{"other": HardlinkScopeNone},
+					HasMissingFilesByHash:    map[string]bool{"other": false},
+				}},
+				{name: "no local access", ctx: &EvalContext{
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+				}},
+				{name: "known none", known: true, ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+				}},
+				{name: "known torrents only", known: true, ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+				}},
+				{name: "known match", known: true, matches: true, ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: true},
+				}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					for _, negate := range []bool{false, true} {
+						cond.Negate = negate
+						want := tc.known && (tc.matches != negate)
+						if got := EvaluateConditionWithContext(cond, torrent, tc.ctx, 0); got != want {
+							t.Errorf("negate=%v: got %v, want %v", negate, got, want)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_NegateUnknownGroups(t *testing.T) {
+	unknown := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeOutsideQBitTorrent, Negate: true}
+	match := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "movies"}
+	noMatch := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "tv"}
+	for _, tc := range []struct {
+		name     string
+		operator ConditionOperator
+		children []*RuleCondition
+		negate   bool
+		want     bool
+	}{
+		{name: "and", operator: OperatorAnd, children: []*RuleCondition{match, unknown}},
+		{name: "negated and", operator: OperatorAnd, children: []*RuleCondition{match, unknown}, negate: true},
+		{name: "negated and non-match first", operator: OperatorAnd, children: []*RuleCondition{noMatch, unknown}, negate: true},
+		{name: "negated and non-match last", operator: OperatorAnd, children: []*RuleCondition{unknown, noMatch}, negate: true},
+		{name: "negated or", operator: OperatorOr, children: []*RuleCondition{noMatch, unknown}, negate: true},
+		{name: "or independent match first", operator: OperatorOr, children: []*RuleCondition{match, unknown}, want: true},
+		{name: "or independent match last", operator: OperatorOr, children: []*RuleCondition{unknown, match}, want: true},
+		{name: "negated or independent match", operator: OperatorOr, children: []*RuleCondition{unknown, match}, negate: true},
+		{name: "nested negation", operator: OperatorAnd, negate: true, children: []*RuleCondition{
+			{Operator: OperatorOr, Negate: true, Conditions: []*RuleCondition{unknown}},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cond := &RuleCondition{Operator: tc.operator, Conditions: tc.children, Negate: tc.negate}
+			if got := EvaluateConditionWithContext(cond, qbt.Torrent{Category: "movies"}, &EvalContext{InstanceHasLocalAccess: true}, 0); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_ANDGroup(t *testing.T) {
 	torrent := qbt.Torrent{
 		Name:        "Test.Movie.2024.1080p.BluRay",

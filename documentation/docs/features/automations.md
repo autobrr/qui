@@ -798,6 +798,10 @@ With AND/OR groups and the "is not" operator, you can express every combination 
 
 If path validation or file inspection fails for **any remaining** file, the torrent receives no scope entry. Causes include invalid paths, missing permissions, and inaccessible storage. All `HARDLINK_SCOPE` conditions evaluate to `false` for that torrent, regardless of the operator or value. This safety measure prevents unintended deletion of torrents that qui cannot fully inspect.
 
+The NOT toggle cannot turn unknown data into a match, including through nested condition groups. This also applies to `HARDLINK_SCOPE_CROSS` and `HAS_MISSING_FILES`. Negation still inverts comparisons against known values.
+
+Before deletion, qui reads the files again for rules that use hardlink data. If scope is unknown or changes, qui holds the deletion, even if another branch of an OR group matches.
+
 To diagnose this issue, enable debug logging and check for the "hardlink index built" log message, which reports an `inaccessible` count.
 
 #### Docker volume requirements
