@@ -298,11 +298,16 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) Handler() (*chi.Mux, error) {
 	r := chi.NewRouter()
+	allowedHosts, err := middleware.RequireAllowedHosts(s.config.Config.AllowedHosts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Global middleware
 	r.Use(middleware.RequestID) // Must be before logger to capture request ID
 	// r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.Recoverer)
+	r.Use(allowedHosts)
 	// Enforce auth-disabled IP allowlist against the direct TCP peer.
 	// This runs before RealIP so forwarded headers cannot bypass restrictions.
 	r.Use(middleware.RequireAuthDisabledIPAllowlist(s.config.Config))

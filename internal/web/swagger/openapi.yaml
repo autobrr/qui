@@ -1,7 +1,12 @@
 openapi: 3.1.0
 info:
   title: qui API
-  description: qui API for managing multiple qBittorrent instances
+  description: |
+    qui API for managing multiple qBittorrent instances.
+    If allowedHosts is configured, a missing, invalid, or unlisted received Host
+    returns HTTP 400 before authentication or routing. X-Forwarded-Host is ignored.
+    Request ports do not affect matching. Only direct loopback GET and HEAD
+    requests to /health, /healthz/readiness, and /healthz/liveness bypass the list.
   version: 1.0.0
   license:
     name: GPL-2.0-or-later

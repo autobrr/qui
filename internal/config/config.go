@@ -73,6 +73,9 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 	c.hydrateConfigFromViper()
+	if err := c.loadAllowedHosts(); err != nil {
+		return nil, err
+	}
 	c.Config.Version = c.version
 
 	// Resolve data directory after config is unmarshaled
@@ -103,6 +106,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "/")
 	c.viper.SetDefault("corsAllowedOrigins", []string{})
+	c.viper.SetDefault("allowedHosts", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "DEBUG")
 	c.viper.SetDefault("logPath", "")
@@ -208,6 +212,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
+	c.viper.BindEnv("allowedHosts", envPrefix+"ALLOWED_HOSTS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
@@ -377,6 +382,35 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
 }
 
+func (c *AppConfig) loadAllowedHosts() error {
+	var entries []string
+	if value, present := os.LookupEnv(envPrefix + "ALLOWED_HOSTS"); present {
+		if value != "" {
+			entries = strings.Split(value, ",")
+		}
+	} else {
+		switch value := c.viper.Get("allowedHosts").(type) {
+		case []string:
+			entries = value
+		case []any:
+			for _, item := range value {
+				entry, ok := item.(string)
+				if !ok {
+					return errors.New("allowedHosts must be an array of strings")
+				}
+				entries = append(entries, entry)
+			}
+		default:
+			return errors.New("allowedHosts must be an array of strings")
+		}
+	}
+	if _, err := httphelpers.NewHostAllowlist(entries); err != nil {
+		return err
+	}
+	c.Config.AllowedHosts = entries
+	return nil
+}
+
 func (c *AppConfig) getNormalizedStringSlice(key string) []string {
 	switch value := c.viper.Get(key).(type) {
 	case []string:
@@ -486,6 +520,13 @@ port = {{ .port }}
 # Wildcards are not allowed.
 # Example:
 #corsAllowedOrigins = ["https://sso.example.com", "https://panel.example.com"]
+
+# Allowed request hosts
+# Empty (default) permits all hosts. Restart after changes.
+# List the Host received by qui. X-Forwarded-Host is ignored.
+# Use hostnames, IP addresses, or leading *. subdomain wildcards, without ports.
+# Direct loopback GET and HEAD probes to the three built-in health endpoints bypass this list.
+#allowedHosts = ["qui.example.com", "localhost", "::1", "*.home.example.com"]
 
 # Session secret
 # Auto-generated if not provided
