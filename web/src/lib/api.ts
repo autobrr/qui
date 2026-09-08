@@ -36,6 +36,8 @@ import type {
   CrossSeedSearchSettings,
   CrossSeedSearchStatus,
   DiscScanRun,
+  ManualAssembleRequest,
+  ManualAssembleResponse,
   ManualCrossSeedApplyResponse,
   ManualCrossSeedProposal,
   ManualCrossSeedProposalsResponse,
@@ -1488,6 +1490,11 @@ class ApiClient {
       overlap_fraction: number
     }
     type RawResponse = {
+      pack_mode: boolean
+      pack_episode_count: number
+      assembly_unavailable_reason: string
+      proposal_limit: number
+      proposals_truncated: boolean
       source_name: string
       source_size: number
       source_file_count: number
@@ -1510,6 +1517,11 @@ class ApiClient {
     })
 
     return {
+      packMode: raw.pack_mode,
+      packEpisodeCount: raw.pack_episode_count,
+      assemblyUnavailableReason: raw.assembly_unavailable_reason,
+      proposalLimit: raw.proposal_limit,
+      proposalsTruncated: raw.proposals_truncated,
       sourceName: raw.source_name,
       sourceSize: raw.source_size,
       sourceFileCount: raw.source_file_count,
@@ -1558,6 +1570,57 @@ class ApiClient {
     return {
       success: raw.success,
       results: (raw.results ?? []).map(mapRawCrossSeedInstanceResult),
+    }
+  }
+
+  async checkManualAssemble(payload: ManualAssembleRequest, signal?: AbortSignal): Promise<ManualAssembleResponse> {
+    return this.manualAssemble("/cross-seed/manual/assemble/check", payload, signal)
+  }
+
+  async applyManualAssemble(payload: ManualAssembleRequest): Promise<ManualAssembleResponse> {
+    return this.manualAssemble("/cross-seed/manual/assemble", payload)
+  }
+
+  private async manualAssemble(endpoint: string, payload: ManualAssembleRequest, signal?: AbortSignal): Promise<ManualAssembleResponse> {
+    const raw = await this.request<{
+      ready: boolean
+      applied: boolean
+      reason: string
+      message: string
+      targets: ManualAssembleResponse["targets"]
+      matched_episodes: number
+      total_episodes: number
+      coverage: number
+      linked_bytes: number
+      missing_bytes: number
+      destination: string
+      default_category: string
+      link_mode: string
+    }>(endpoint, {
+      method: "POST",
+      signal,
+      body: JSON.stringify({
+        instance_id: payload.instanceId,
+        torrent_data: payload.torrentData,
+        target_hashes: payload.targetHashes,
+        category: payload.category ?? "",
+        tags: payload.tags ?? [],
+      }),
+    })
+    return {
+      ready: raw.ready,
+      applied: raw.applied,
+      reason: raw.reason,
+      message: raw.message,
+      targets: raw.targets,
+      matchedEpisodes: raw.matched_episodes,
+      totalEpisodes: raw.total_episodes,
+      coverage: raw.coverage,
+      linkedBytes: raw.linked_bytes,
+      missingBytes: raw.missing_bytes,
+      destination: raw.destination,
+      defaultCategory: raw.default_category,
+      linkMode: raw.link_mode,
     }
   }
 

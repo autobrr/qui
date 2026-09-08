@@ -4809,6 +4809,20 @@ paths:
               schema:
                 type: object
                 properties:
+                  pack_mode:
+                    type: boolean
+                    description: True when the uploaded name parses as a season pack.
+                  pack_episode_count:
+                    type: integer
+                  assembly_unavailable_reason:
+                    type: string
+                    enum: ['', no_filesystem_access, no_link_mode, no_base_directory, no_episode_files]
+                  proposal_limit:
+                    type: integer
+                    description: Pack episode count plus ten, capped at the coarse limit of sixty.
+                  proposals_truncated:
+                    type: boolean
+                    description: More proposals or pack episodes exist than the proposal limit supports.
                   source_name:
                     type: string
                   source_size:
@@ -4850,6 +4864,60 @@ paths:
           description: Invalid request
         '500':
           description: Failed to build proposals
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/assemble/check:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Preview manual season pack assembly
+      description: Resolves selected episode files without creating links or adding torrents. An empty target list suggests a full pack alone or the episodes that automatic discovery pairs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualAssembleRequest'
+      responses:
+        '200':
+          description: Resolved selection and assembly result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualAssembleResponse'
+        '400':
+          description: Invalid instance, torrent data, or selection
+        '500':
+          description: Failed to load or apply the selection
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+
+  /api/cross-seed/manual/assemble:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Assemble a season pack from selected torrents
+      description: Requires at least two distinct target hashes from the chosen instance. Adds paused, rechecks, and resumes against the linked byte fraction. Rejects unusable targets and assembles the remaining files. Category and tags come from the request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualAssembleRequest'
+      responses:
+        '200':
+          description: Resolved selection and assembly result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualAssembleResponse'
+        '400':
+          description: Invalid instance, torrent data, or selection
+        '500':
+          description: Failed to load or apply the selection
       security:
         - ApiKeyAuth: []
         - SessionAuth: []
@@ -7813,6 +7881,79 @@ components:
           nullable: true
         running:
           type: boolean
+
+    ManualAssembleRequest:
+      type: object
+      required: [instance_id, torrent_data, target_hashes]
+      properties:
+        instance_id:
+          type: integer
+          minimum: 1
+        torrent_data:
+          type: string
+          description: Base64-encoded season pack torrent.
+        target_hashes:
+          type: array
+          items:
+            type: string
+          description: Same-instance target hashes. Empty suggests targets at check. Apply requires at least two distinct hashes.
+        category:
+          type: string
+          description: Category to apply. Empty means no category. Automatic routing only prefills the dialog.
+        tags:
+          type: array
+          items:
+            type: string
+          description: Exact tags to apply. Season pack tags are not added.
+    ManualAssembleResponse:
+      type: object
+      required: [ready, applied, reason, message, targets, matched_episodes, total_episodes, coverage, linked_bytes, missing_bytes, destination, default_category, link_mode]
+      properties:
+        ready:
+          type: boolean
+          description: The selected episodes can form a safe link tree. A suggested whole pack uses manual match instead.
+        applied:
+          type: boolean
+        reason:
+          type: string
+          description: Empty when ready. unsafe_piece_boundary means hardlink piece boundary protection blocked the pack. Other file layout failures use layout_mismatch.
+        message:
+          type: string
+        targets:
+          type: array
+          items:
+            type: object
+            required: [hash, name, reason]
+            properties:
+              hash:
+                type: string
+              name:
+                type: string
+              reason:
+                type: string
+                description: Empty for a paired target. Otherwise names why the target was rejected or dropped at apply.
+                enum: ['', target_not_found, incomplete, no_episode_identity, file_list_unavailable, episode_file_invalid, size_mismatch, release_mismatch, local_file_unavailable, not_paired]
+        matched_episodes:
+          type: integer
+        total_episodes:
+          type: integer
+          description: Episode count from the uploaded pack files, without an external metadata lookup.
+        coverage:
+          type: number
+          description: Matched episode count divided by uploaded episode count. No manual coverage threshold applies.
+        linked_bytes:
+          type: integer
+          format: int64
+        missing_bytes:
+          type: integer
+          format: int64
+        destination:
+          type: string
+          description: Resolved save directory under the instance link directory preset.
+        default_category:
+          type: string
+        link_mode:
+          type: string
 
     SeasonPackCheckRequest:
       type: object

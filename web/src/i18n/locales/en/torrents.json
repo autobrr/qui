@@ -1642,6 +1642,39 @@
     "applyFailed": "Cross-seed failed: {{message}}",
     "addOptionTitle": "Add as cross-seed",
     "addOptionDescription": "Match this torrent against an existing torrent instead of downloading it.",
-    "addOptionButton": "Match manually"
+    "addOptionButton": "Match manually",
+    "pack": {
+      "description": "Select one torrent for a manual match, or several episodes to assemble this season pack.",
+      "targetLabel": "Target torrents",
+      "checking": "Checking selected episodes...",
+      "checkFailed": "Could not check this selection.",
+      "coverage": "{{matched}} of {{total}} episodes · {{percent}}% coverage",
+      "missing": "{{size}} missing",
+      "recheck": "The pack is added paused and rechecked. It resumes when verification reaches the linked byte fraction.",
+      "reviewRules": "Review protection in Cross-seed → Rules",
+      "proposalLimit": "This pack has {{count}} episodes. Proposals are limited to {{limit}} torrents. Use search to select any missing targets.",
+      "dropped": "Pack added. Dropped targets: {{names}}",
+      "rejected": "{{name}}: {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "This instance needs local filesystem access to assemble a pack.",
+        "no_link_mode": "Enable hardlink or reflink mode on this instance to select several targets.",
+        "no_base_directory": "Configure a link base directory on this instance.",
+        "no_episode_files": "No playable episode files were found in this pack.",
+        "target_not_found": "Target not found in this instance.",
+        "incomplete": "Target download is incomplete.",
+        "no_episode_identity": "The episode number could not be parsed.",
+        "file_list_unavailable": "The target file list is unavailable.",
+        "episode_file_invalid": "The target must contain one playable file with the selected episode identity.",
+        "size_mismatch": "The local file size differs from the pack file size.",
+        "release_mismatch": "The release does not match the pack.",
+        "local_file_unavailable": "The local file is missing or unavailable.",
+        "not_paired": "This target did not provide a pack episode, or another selected target already covers it.",
+        "layout_mismatch": "The selected files cannot form a safe link tree.",
+        "unsafe_piece_boundary": "Piece boundary protection blocked this pack because selected and missing files share a data block. Downloading that block can change your original files through hardlinks. The coverage threshold does not apply to manual assembly.",
+        "already_exists": "This torrent already exists.",
+        "link_failed": "Failed to create the links.",
+        "add_failed": "Failed to add the torrent."
+      }
+    }
   }
 }
