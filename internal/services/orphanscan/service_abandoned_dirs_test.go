@@ -63,6 +63,7 @@ func TestExecuteScan_AbandonedDirsSurviveTheRoundTrip(t *testing.T) {
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{
 			"movies": {Name: "movies", SavePath: categoryPath},

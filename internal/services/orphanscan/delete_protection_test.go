@@ -95,6 +95,7 @@ func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
@@ -267,6 +268,7 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}
@@ -383,6 +385,7 @@ func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t 
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: categoryFolder}}, nil
 	}
@@ -435,6 +438,6 @@ func TestResolveCategoryPath_DeepInheritanceIsNotDropped(t *testing.T) {
 		categories[name] = qbt.Category{Name: name}
 	}
 
-	got := resolveCategoryPath(name, categories, filepath.Join(base, "torrents"), true, categoryDirName)
+	got := resolveCategoryPath(name, categories, filepath.Join(base, "torrents"), true)
 	require.Equal(t, want, got, "a deeply nested category must still resolve to its parent chain")
 }

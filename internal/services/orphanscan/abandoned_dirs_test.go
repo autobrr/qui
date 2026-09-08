@@ -233,6 +233,26 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 			want:       []string{filepath.Join(defaultSavePath, "movies hd")},
 		},
 		{
+			name: "a run of invalid characters collapses into one space",
+			// Utils::Fs::toValidPath replaces [:?"*<>|]+ , so the run is one pad.
+			categories: map[string]qbt.Category{`films:?"x`: {Name: `films:?"x`}},
+			want:       []string{filepath.Join(defaultSavePath, "films x")},
+		},
+		{
+			name:       "a backslash is left alone, since toValidPath does not replace it",
+			categories: map[string]qbt.Category{`a\b`: {Name: `a\b`}},
+			want:       []string{filepath.Join(defaultSavePath, `a\b`)},
+		},
+		{
+			name:             "only the last segment is converted when nesting",
+			useSubcategories: true,
+			categories: map[string]qbt.Category{
+				"movies":     {Name: "movies", SavePath: archive},
+				"movies/h:d": {Name: "movies/h:d"},
+			},
+			want: []string{archive, filepath.Join(archive, "h d")},
+		},
+		{
 			name:             "with subcategories off the whole name is a path under the default save path",
 			useSubcategories: false,
 			categories: map[string]qbt.Category{
@@ -252,7 +272,7 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 				return tt.categories, nil
 			}
 
-			got, _, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, tt.useSubcategories)
+			got, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, tt.useSubcategories)
 			if err != nil {
 				t.Fatalf("categoryPaths: %v", err)
 			}
@@ -267,45 +287,11 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 	}
 }
 
-// TestCategoryPaths_ProtectsBothSpellingsOfAConvertedName covers a category name
-// that has to be converted before it can be a directory. qBittorrent's exact
-// rule is not pinned down here, so the unconverted spelling stays protected too:
-// leaving a directory in place costs nothing, deleting a live one does not.
-func TestCategoryPaths_ProtectsBothSpellingsOfAConvertedName(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	defaultSavePath := filepath.Join(base, "torrents")
-
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{"movies:hd": {Name: "movies:hd", SavePath: ""}}, nil
-	}
-
-	destinations, protected, err := svc.categoryPaths(context.Background(), 1, defaultSavePath, false)
-	if err != nil {
-		t.Fatalf("categoryPaths: %v", err)
-	}
-
-	converted := filepath.Join(defaultSavePath, "movies hd")
-	raw := filepath.Join(defaultSavePath, "movies:hd")
-
-	if !slices.Contains(destinations, converted) {
-		t.Fatalf("destinations = %v, want the converted name %q", destinations, converted)
-	}
-	for _, want := range []string{converted, raw} {
-		if !slices.Contains(protected, want) {
-			t.Fatalf("protected = %v, want %q", protected, want)
-		}
-	}
-}
-
-// TestDeclaredScanRoots_SubcategoriesAlwaysEnabledOnNewerServers covers
-// qBittorrent 5.2, which dropped use_subcategories and always inherits through
-// the parent. The absent preference decodes as false, so relying on it alone
-// sends an inherited subcategory to the wrong directory and leaves the real one
-// unprotected.
-func TestDeclaredScanRoots_SubcategoriesAlwaysEnabledOnNewerServers(t *testing.T) {
+// TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState covers both nesting
+// states through the one accessor. Reading the use_subcategories preference
+// directly would be wrong on qBittorrent 5.2, which dropped it and always
+// inherits through the parent, so the absent field decodes as false.
+func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
 	t.Parallel()
 
 	base := t.TempDir()
@@ -313,24 +299,22 @@ func TestDeclaredScanRoots_SubcategoriesAlwaysEnabledOnNewerServers(t *testing.T
 	archive := filepath.Join(base, "archive")
 
 	for _, tc := range []struct {
-		name                       string
-		useSubcategoriesPreference bool
-		subcategoriesAlwaysEnabled bool
-		want                       string
+		name                 string
+		subcategoriesEnabled bool
+		want                 string
 	}{
-		{name: "older server with the preference on", useSubcategoriesPreference: true, want: filepath.Join(archive, "hd")},
-		{name: "5.2 with the preference absent", subcategoriesAlwaysEnabled: true, want: filepath.Join(archive, "hd")},
-		{name: "older server with the preference off", want: filepath.Join(defaultSavePath, "movies", "hd")},
+		{name: "nesting enabled follows the parent category", subcategoriesEnabled: true, want: filepath.Join(archive, "hd")},
+		{name: "nesting disabled keeps the whole name under the default save path", want: filepath.Join(defaultSavePath, "movies", "hd")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
-			svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
-				return stubHealthChecker{healthy: true, subcategoriesAlwaysEnabled: tc.subcategoriesAlwaysEnabled}, nil
+			svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) {
+				return tc.subcategoriesEnabled, nil
 			}
 			svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-				return qbt.AppPreferences{SavePath: defaultSavePath, UseSubcategories: tc.useSubcategoriesPreference}, nil
+				return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 			}
 			svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
 				return map[string]qbt.Category{

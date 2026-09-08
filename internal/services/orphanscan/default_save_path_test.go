@@ -128,6 +128,7 @@ func TestDeclaredScanRoots_FailsWhenPreferencesAreUnreachable(t *testing.T) {
 	t.Parallel()
 
 	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{}, errors.New("boom")
 	}
@@ -154,6 +155,7 @@ func newDefaultSavePathService(defaultSavePath, torrentSavePath string) *Service
 	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 		return map[string]qbt.TorrentFiles{"a": {{Name: "one.mkv", Size: 1}}}, nil
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}
@@ -246,6 +248,7 @@ func TestBuildFileMap_DefaultSavePathProtectsOverlappingInstance(t *testing.T) {
 			return map[string]qbt.TorrentFiles{}, nil
 		}
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
 	}

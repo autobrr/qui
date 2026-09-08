@@ -54,6 +54,7 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: root}, nil
 	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
 	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
 		return map[string]qbt.Category{}, nil
 	}

@@ -33,9 +33,6 @@ import (
 type healthChecker interface {
 	IsHealthy() bool
 	GetLastSyncUpdate() time.Time
-	// SubcategoriesAlwaysEnabled reports servers that dropped the
-	// use_subcategories preference and always inherit through the parent.
-	SubcategoriesAlwaysEnabled() bool
 }
 
 // Service handles orphan file scanning and deletion.
@@ -65,6 +62,7 @@ type Service struct {
 	getLastCompletedRunProvider  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
 	getAppPreferencesProvider    func(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 	getCategoriesProvider        func(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+	subcategoriesEnabledProvider func(ctx context.Context, instanceID int) (bool, error)
 }
 
 // NewService creates a new orphan scan service.
@@ -194,6 +192,18 @@ func (s *Service) getCategories(ctx context.Context, instanceID int) (map[string
 		return nil, errors.New("sync manager unavailable")
 	}
 	return s.syncManager.GetCategories(ctx, instanceID)
+}
+
+// subcategoriesEnabled reports whether the instance nests categories, using the
+// provider if set.
+func (s *Service) subcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
+	if s.subcategoriesEnabledProvider != nil {
+		return s.subcategoriesEnabledProvider(ctx, instanceID)
+	}
+	if s.syncManager == nil {
+		return false, errors.New("sync manager unavailable")
+	}
+	return s.syncManager.SubcategoriesEnabled(ctx, instanceID)
 }
 
 // validDefaultSavePath checks the default save path qBittorrent reported so it
