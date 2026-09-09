@@ -158,13 +158,14 @@ func (w *scanWalker) markDirsWithFile(path string) {
 	}
 }
 
-// fileFreeDirs returns the directories the walk visited that hold no file at any
-// depth. Ordering is the caller's job, since candidates from several roots are
-// judged together.
+// fileFreeDirs excludes torrent-owned directories even before their files exist.
 func (w *scanWalker) fileFreeDirs() []AbandonedDir {
 	dirs := make([]AbandonedDir, 0, len(w.seenDirs))
 	for dir, modTime := range w.seenDirs {
 		if _, hasFiles := w.dirsWithFiles[dir]; hasFiles {
+			continue
+		}
+		if w.tfm.HasAnyInDir(normalizePath(dir)) {
 			continue
 		}
 		dirs = append(dirs, AbandonedDir{Path: dir, ModTime: modTime})
@@ -518,7 +519,7 @@ func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, t
 }
 
 // isPathUnderNormalized checks if child is strictly under parent.
-// Both paths must already be normalized via normalizePath.
+// Both paths must be clean. Callers choose whether to fold case.
 func isPathUnderNormalized(child, parent string) bool {
 	if child == parent {
 		return false

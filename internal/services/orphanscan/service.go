@@ -215,7 +215,7 @@ func (s *Service) subcategoriesEnabled(ctx context.Context, instanceID int) (boo
 // falling back to torrent-derived roots would report a clean scan over a
 // narrower tree than the user asked for (discussion #2365).
 func validDefaultSavePath(reported string) (string, error) {
-	savePath := filepath.Clean(strings.TrimSpace(reported))
+	savePath := filepath.Clean(reported)
 	if savePath == "." {
 		return "", errors.New("qBittorrent reported an empty default save path")
 	}
@@ -264,18 +264,17 @@ func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string,
 // an ancestor and its descendants are not walked twice. Callers keep the full
 // set for run.ScanPaths; only the walk is narrowed.
 func pruneNestedScanRoots(roots []string) []string {
-	normalized := make([]string, len(roots))
+	cleaned := make([]string, len(roots))
 	for i, root := range roots {
-		normalized[i] = normalizePath(root)
+		cleaned[i] = filepath.Clean(root)
 	}
 
 	pruned := make([]string, 0, len(roots))
 	for i, root := range roots {
 		covered := false
 		for j := range roots {
-			// Strict ancestors only, so two spellings of the same directory
-			// never prune each other and leave nothing behind.
-			if isPathUnderNormalized(normalized[i], normalized[j]) {
+			// Keep case-distinct trees: a folded match does not prove walk coverage.
+			if isPathUnderNormalized(cleaned[i], cleaned[j]) {
 				covered = true
 				break
 			}

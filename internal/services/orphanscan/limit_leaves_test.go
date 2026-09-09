@@ -27,9 +27,11 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	a := filepath.Join(root, "a")
 	b := filepath.Join(a, "b")
 	seeded := filepath.Join(root, "seeded")
+	claimed := filepath.Join(root, "claimed")
 
 	require.NoError(t, os.MkdirAll(b, 0o750))
 	require.NoError(t, os.MkdirAll(seeded, 0o750))
+	require.NoError(t, os.MkdirAll(claimed, 0o750))
 	require.NoError(t, os.WriteFile(filepath.Join(seeded, "owned.mkv"), []byte("x"), 0o600))
 
 	db := testdb.NewMigratedSQLite(t, "orphanscan-limit-leaves")
@@ -47,10 +49,13 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
 	}
 	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "o", SavePath: seeded, State: qbt.TorrentStatePausedUp}}, nil
+		return []qbt.Torrent{{Hash: "o", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 	}
 	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"o": {{Name: "owned.mkv", Size: 1}}}, nil
+		return map[string]qbt.TorrentFiles{"o": {
+			{Name: "seeded/owned.mkv", Size: 1},
+			{Name: "claimed/unwritten.mkv", Size: 1},
+		}}, nil
 	}
 	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
 		return qbt.AppPreferences{SavePath: root}, nil
@@ -78,6 +83,7 @@ func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
 	runParent := runCycle(t, svc, store)
 	require.Equal(t, []string{a}, runParent, "the parent becomes removable once the leaf is gone")
 	require.NoDirExists(t, a)
+	require.DirExists(t, claimed, "a claimed directory must not occupy the preview cap or be removed")
 }
 
 // runCycle scans, returns what the run previewed, and confirms the deletion.

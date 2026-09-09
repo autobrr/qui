@@ -208,6 +208,25 @@ func TestCategoryPaths_ResolvesTheWayQBittorrentDoes(t *testing.T) {
 			want:       []string{filepath.Join(defaultSavePath, "sorted", "audio")},
 		},
 		{
+			name:       "an explicit dot uses the default save path",
+			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: "."}},
+			want:       []string{defaultSavePath},
+		},
+		{
+			name:       "spaces in an explicit save path are preserved",
+			categories: map[string]qbt.Category{"movies": {Name: "movies", SavePath: " archive "}},
+			want:       []string{filepath.Join(defaultSavePath, " archive ")},
+		},
+		{
+			name:             "a child inherits an explicit dot destination",
+			useSubcategories: true,
+			categories: map[string]qbt.Category{
+				"movies":    {Name: "movies", SavePath: "."},
+				"movies/hd": {Name: "movies/hd", SavePath: ""},
+			},
+			want: []string{defaultSavePath, filepath.Join(defaultSavePath, "hd")},
+		},
+		{
 			name:             "an inheriting subcategory follows its parent, not the default save path",
 			useSubcategories: true,
 			categories: map[string]qbt.Category{

@@ -67,6 +67,11 @@ func TestPruneNestedScanRoots(t *testing.T) {
 			want:  []string{data("Torrents"), data("torrents")},
 		},
 		{
+			name:  "a case-distinct tree is not covered by another root",
+			roots: []string{data("a"), data("A", "b")},
+			want:  []string{data("a"), data("A", "b")},
+		},
+		{
 			name:  "empty input",
 			roots: nil,
 			want:  []string{},
@@ -98,7 +103,8 @@ func TestValidDefaultSavePath(t *testing.T) {
 	}{
 		{name: "absolute path is used as a scan root", savePath: absRoot, want: absRoot},
 		{name: "trailing separator is cleaned", savePath: absRoot + string(filepath.Separator), want: absRoot},
-		{name: "surrounding whitespace is trimmed", savePath: "  " + absRoot + "  ", want: absRoot},
+		{name: "trailing spaces are preserved", savePath: absRoot + "  ", want: absRoot + "  "},
+		{name: "leading spaces make a path relative", savePath: "  " + absRoot, wantErr: true},
 		{name: "empty save path is rejected", savePath: "", wantErr: true},
 		{name: "relative save path is rejected", savePath: filepath.Join("relative", "path"), wantErr: true},
 	}

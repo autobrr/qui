@@ -49,8 +49,9 @@ func toValidPath(name string) string {
 // destination cannot be determined; a depth cap here would silently drop
 // protection for a deeply nested category.
 func resolveCategoryPath(name string, categories map[string]qbt.Category, defaultSavePath string, useSubcategories bool) string {
-	savePath := filepath.Clean(strings.TrimSpace(categories[name].SavePath))
-	if savePath != "." && savePath != "" {
+	savePath := categories[name].SavePath
+	if savePath != "" {
+		savePath = filepath.Clean(savePath)
 		if filepath.IsAbs(savePath) {
 			return savePath
 		}
