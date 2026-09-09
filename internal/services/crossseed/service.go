@@ -7284,7 +7284,7 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 	// release name inside themselves, so parsing the full path makes rls read the title
 	// twice and invent a Group ("Azure Compass" -> "Compass"). Folder-only fields are
 	// backfilled from the torrent-name parse below.
-	largestRelease := s.releaseCache.Parse(path.Base(largestFile.Name))
+	largestRelease := s.parseFileRelease(path.Base(largestFile.Name))
 	largestRelease = enrichReleaseFromTorrent(largestRelease, sourceRelease)
 	if largestRelease.Type == rls.Unknown {
 		return sourceRelease, false
