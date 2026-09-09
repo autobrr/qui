@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1148,6 +1149,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	var foldersDeleted int
 
+	// The protected sets are the same for every entry, so normalize them once
+	// rather than once per directory.
+	normScanRoots := normalizePaths(fileMapResult.scanRoots)
+	normCategoryPaths := normalizePaths(fileMapResult.categoryPaths)
+
 	// Remove the abandoned directories the preview listed. safeDeleteEmptyDir
 	// refuses a non-empty directory, so anything that gained content since the
 	// scan is reported rather than removed.
@@ -1168,18 +1174,20 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 		// Re-check against the roots and categories as they stand now, not as
 		// the preview saw them: a category created or repointed since then makes
-		// an already-listed directory a live destination again.
-		if isScanRoot(d.FilePath, fileMapResult.scanRoots) {
+		// an already-listed directory a live destination again. A scan root is a
+		// configured destination, so it stays even when empty.
+		normDir := normalizePath(d.FilePath)
+		if slices.Contains(normScanRoots, normDir) {
 			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now a scan root")
 			continue
 		}
-		if isCategoryDestination(d.FilePath, fileMapResult.categoryPaths) {
+		if isCategoryDestinationNormalized(normDir, normCategoryPaths) {
 			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now a category destination")
 			continue
 		}
 		// A torrent that has not written its payload yet still owns its save
 		// path, and that directory is empty on disk right now.
-		if tfm.HasAnyInDir(normalizePath(d.FilePath)) {
+		if tfm.HasAnyInDir(normDir) {
 			s.updateFileStatus(ctx, d.ID, "skipped", "directory is now used by a torrent")
 			continue
 		}
@@ -1207,7 +1215,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 		// Emptying a category folder by deleting an orphan inside it must not
 		// remove the folder either.
-		if isScanRoot(dir, fileMapResult.scanRoots) || isCategoryDestination(dir, fileMapResult.categoryPaths) {
+		normDir := normalizePath(dir)
+		if slices.Contains(normScanRoots, normDir) || isCategoryDestinationNormalized(normDir, normCategoryPaths) {
 			continue
 		}
 
@@ -1220,16 +1229,18 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	var failureMessage string
 	if failedDeletes > 0 {
 		if sawReadOnly {
-			failureMessage = fmt.Sprintf("Deletion failed for %d file(s): filesystem is read-only. If running via Docker, remove ':ro' from the volume mapping for your downloads path.", failedDeletes)
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): filesystem is read-only. If running via Docker, remove ':ro' from the volume mapping for your downloads path.", failedDeletes)
 		} else if sawPermissionDenied {
-			failureMessage = fmt.Sprintf("Deletion failed for %d file(s): permission denied. Check that the qui process has write access to the download directories.", failedDeletes)
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s): permission denied. Check that the qui process has write access to the download directories.", failedDeletes)
 		} else {
-			failureMessage = fmt.Sprintf("Deletion failed for %d file(s). Check the file details for specific errors.", failedDeletes)
+			failureMessage = fmt.Sprintf("Deletion failed for %d item(s). Check the details for specific errors.", failedDeletes)
 		}
 	}
 
-	// Determine final status based on deletion results
-	if failedDeletes > 0 && filesDeleted == 0 {
+	// Determine final status based on deletion results. A run that removed
+	// directories did work, even when no file could go, and UpdateRunFailed
+	// records neither count.
+	if failedDeletes > 0 && filesDeleted == 0 && foldersDeleted == 0 {
 		// All deletions failed - mark as failed
 		if err := s.store.UpdateRunFailed(ctx, runID, failureMessage); err != nil {
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
@@ -1248,7 +1259,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Warn().
 			Int64("run", runID).
 			Int("failedDeletes", failedDeletes).
-			Msg("orphanscan: deletion failed (no files deleted)")
+			Msg("orphanscan: deletion failed (nothing deleted)")
 		return
 	}
 

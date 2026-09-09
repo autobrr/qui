@@ -190,6 +190,39 @@ func TestExecuteDeletion_DeletesAbandonedDirectoryWhenNothingClaimsIt(t *testing
 	require.NoFileExists(t, f.strayFile)
 }
 
+// TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome covers a run whose
+// only file could not be deleted while a directory went. Judging the outcome on
+// the file count alone marked that run failed, and UpdateRunFailed stores no
+// folder count, so the directories it did remove vanished from the report.
+func TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome(t *testing.T) {
+	f := newDeletionFixture(t, "orphanscan-delete-dirs-count")
+
+	// Leave the abandoned directory as the only entry that can succeed: park
+	// every real orphan, then add one whose path no scan root covers, which
+	// fails deterministically on every OS.
+	pending, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
+	require.NoError(t, err)
+	for _, file := range pending {
+		if !file.IsAbandonedDir {
+			f.svc.updateFileStatus(t.Context(), file.ID, "skipped", "parked by the test")
+		}
+	}
+	outside := filepath.Join(t.TempDir(), "unreachable.mkv")
+	require.NoError(t, f.store.InsertFiles(t.Context(), f.runID, []models.OrphanScanFile{
+		{FilePath: outside, FileSize: 1, Status: "pending"},
+	}))
+
+	f.svc.executeDeletion(context.Background(), 1, f.runID)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.NoDirExists(t, f.abandoned, "the directory should still have been removed")
+	require.Equal(t, "completed", run.Status, "a run that removed a directory did work, whatever the files did")
+	require.Equal(t, 1, run.FoldersDeleted, "the folder count must survive into the run")
+	require.Equal(t, 0, run.FilesDeleted)
+	require.Contains(t, run.ErrorMessage, "1 item(s)", "the failed file still has to be reported as a warning")
+}
+
 // TestExecuteDeletion_FailsWhenSettingsCannotBeRead covers a settings read that
 // errors. Continuing would rebuild the protection map with an empty scope, so
 // the run must stop instead of deleting against thinner protection.

@@ -169,18 +169,9 @@ func normalizePaths(paths []string) []string {
 	return normalized
 }
 
-// isScanRoot reports whether path is one of the roots the run walks. A scan root
-// is a configured destination, so it stays even when empty.
-func isScanRoot(path string, scanRoots []string) bool {
-	return slices.Contains(normalizePaths(scanRoots), normalizePath(path))
-}
-
-// isCategoryDestination reports whether path is a category destination or holds
-// one below it. Both stay: qBittorrent will save into them again.
-func isCategoryDestination(path string, categoryPaths []string) bool {
-	return isCategoryDestinationNormalized(normalizePath(path), normalizePaths(categoryPaths))
-}
-
+// isCategoryDestinationNormalized reports whether normPath is a category
+// destination or holds one below it. Both stay: qBittorrent will save into them
+// again. Callers normalize once and test many paths against the same set.
 func isCategoryDestinationNormalized(normPath string, normCategories []string) bool {
 	for _, nCategory := range normCategories {
 		if normPath == nCategory || isPathUnderNormalized(nCategory, normPath) {

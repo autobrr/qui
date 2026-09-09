@@ -333,3 +333,30 @@ func TestDeclaredScanRoots_FollowsTheEffectiveSubcategoryState(t *testing.T) {
 		})
 	}
 }
+
+// TestAbandonedDirs_DirectoryHoldingASymlinkIsKept covers the promise that a
+// directory is only removed when everything in it is also going. The walk skips
+// symlinks, so a directory holding nothing else looks file-free; childrenAllKept
+// is what stops it being reported.
+func TestAbandonedDirs_DirectoryHoldingASymlinkIsKept(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := mkdirs(t, filepath.Join(base, "root"), "withlink", "junk")
+
+	target := filepath.Join(base, "outside.txt")
+	writeFile(t, target)
+	withLink := filepath.Join(root, "withlink")
+	if err := os.Symlink(target, filepath.Join(withLink, "link.txt")); err != nil {
+		t.Skipf("symlinks are unavailable on this host: %v", err)
+	}
+
+	got := abandonedPaths(t, root, nil, nil)
+
+	if slices.Contains(got, withLink) {
+		t.Fatalf("a directory holding a symlink must be kept: %v", got)
+	}
+	if !slices.Contains(got, filepath.Join(root, "junk")) {
+		t.Fatalf("a genuinely empty directory should still be reported: %v", got)
+	}
+}
