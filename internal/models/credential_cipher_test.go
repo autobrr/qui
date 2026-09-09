@@ -115,8 +115,12 @@ func TestCredentialCipherDecryptRejects(t *testing.T) {
 	sealed, err := cipherUnderTest.Encrypt("secret", []byte("bound"))
 	require.NoError(t, err)
 
-	tampered := []byte(sealed)
-	tampered[len(tampered)-2] ^= 0x01
+	// Flip a byte of the sealed payload itself, not of its base64 text, so the
+	// case reaches the GCM tag check rather than failing in the decoder.
+	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(sealed, "qui2:"))
+	require.NoError(t, err)
+	payload[len(payload)-1] ^= 0x01
+	tampered := "qui2:" + base64.StdEncoding.EncodeToString(payload)
 
 	tests := []struct {
 		name       string
@@ -125,7 +129,7 @@ func TestCredentialCipherDecryptRejects(t *testing.T) {
 	}{
 		{name: "wrong_aad", ciphertext: sealed, aad: []byte("other")},
 		{name: "missing_aad", ciphertext: sealed},
-		{name: "tampered", ciphertext: string(tampered), aad: []byte("bound")},
+		{name: "tampered", ciphertext: tampered, aad: []byte("bound")},
 		{name: "not_base64", ciphertext: "qui2:not base64 at all", aad: []byte("bound")},
 		{name: "shorter_than_nonce", ciphertext: "qui2:" + base64.StdEncoding.EncodeToString([]byte("short")), aad: []byte("bound")},
 		{name: "legacy_without_a_legacy_key", ciphertext: legacyEncrypt(t, testKey(t, 9), "secret")},
