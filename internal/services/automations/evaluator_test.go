@@ -1621,6 +1621,18 @@ func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
 			expected:      true,
 		},
 		{
+			name:          "uppercase sharp S query matches lowercase category member",
+			categoryName:  "Gro\u00dfstadt.2024",
+			evaluatedName: "GRO\u1e9eSTADT.2024",
+			expected:      true,
+		},
+		{
+			name:          "uppercase sharp S category member matches lowercase query",
+			categoryName:  "GRO\u1e9eSTADT.2024",
+			evaluatedName: "Gro\u00dfstadt.2024",
+			expected:      true,
+		},
+		{
 			name:          "unrelated accented name still does not match",
 			categoryName:  "Am\u00e9lie.2001.1080p.BluRay",
 			evaluatedName: "Bj\u00f6rk.Concert.2018.1080p",
@@ -1735,11 +1747,13 @@ func TestNormalizeName(t *testing.T) {
 		// Accents and the Nordic/Germanic letters fold to their ASCII base, so
 		// accented names match their plain form.
 		{"Am\u00e9lie.2001.1080p", "amelie 2001 1080p"},
-		{"\u0130stanbul.Nights.2019", "istanbul nights 2019"}, // dotted capital I folds before lowercasing
+		{"\u0130stanbul.Nights.2019", "istanbul nights 2019"},
 		{"Bj\u00f6rk.Concert.2018", "bjork concert 2018"},
 		{"na\u00efve.Detective.S01", "naive detective s01"},
 		{"\u00c6on.Flux.2005.1080p", "aeon flux 2005 1080p"},
 		{"Stra\u00dfe.Berlin.2020", "strasse berlin 2020"},
+		{"GRO\u1e9eSTADT.2024", "grossstadt 2024"},
+		{"\U0001d400lpha.2024", "alpha 2024"},      // mathematical capital A decomposes to uppercase ASCII
 		{"Cafe\u0301.Noir.2021", "cafe noir 2021"}, // decomposed accent (e + combining acute)
 	}
 

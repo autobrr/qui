@@ -150,11 +150,9 @@ var separatorReplacer = strings.NewReplacer(".", " ", "_", " ", "-", " ")
 // whitespaceCollapser collapses multiple spaces into one.
 var whitespaceCollapser = regexp.MustCompile(`\s+`)
 
-// normalizeName normalizes a torrent name for CONTAINS_IN comparison: fold
-// accents via NormalizeUnicode, lowercase, replace . _ - with spaces, and
-// collapse whitespace. Folding makes accented names match their plain form.
+// Lowercase before Unicode folding for ẞ, and after for letters produced by decomposition.
 func normalizeName(s string) string {
-	s = stringutils.NormalizeUnicode(s)
+	s = stringutils.NormalizeUnicode(normalizeLower(s))
 	s = normalizeLower(s)
 	s = separatorReplacer.Replace(s)
 	s = whitespaceCollapser.ReplaceAllString(s, " ")
