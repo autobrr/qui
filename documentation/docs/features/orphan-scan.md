@@ -46,7 +46,7 @@ The same gap applies one level up. If your torrents all save to `/data/torrents/
 
 Turn on **Scan Default Save Path** to close that gap. qui reads the default save path from the instance's own qBittorrent settings and walks it as a scan root, including subdirectories that no torrent uses.
 
-Turn on **Including Category Paths** underneath it to also walk every category destination: the save path a category sets, or `default save path / category name` for a category that inherits it. This matters when a category points somewhere outside the default save path, which the first toggle alone would not reach. It is available only while **Scan Default Save Path** is on, because scanning the category folders under a directory without scanning the directory itself leaves the original gap open.
+Turn on **Including Category Paths** underneath it to also walk every category destination: the save path a category sets, or `default save path / category name` for a category that inherits it. This matters when a category points somewhere outside the default save path, which the first toggle alone would not reach. It is available only while **Scan Default Save Path** is on.
 
 Both are off by default. Turning them on widens what a scan can flag, so review the preview before you confirm a deletion.
 
@@ -54,7 +54,7 @@ Everything else still applies inside the wider roots:
 
 - Files that torrents reference are protected, including torrents on other active instances with local filesystem access.
 - Ignore paths, the grace period, and max files per run all apply.
-- Save paths that already sit under a wider root are not walked twice. qui scans the wider root once and skips the nested roots it already covers. A skipped path that is missing from disk, such as an unmounted volume, is still reported: the run does not treat it as scanned.
+- A save path missing from disk, such as an unmounted volume, is reported rather than treated as scanned, even when a wider root covers it.
 
 If qui cannot read the default save path or the category list from qBittorrent, or qBittorrent reports an empty or relative default save path, the run fails and names the cause. qui does not fall back to a narrower scan, because a narrower scan would report a clean result over a tree you asked it to check.
 
@@ -71,12 +71,12 @@ Turn on **Delete Abandoned Directories** to include them. qui reports a director
 These are never reported, even when empty:
 
 - A scan root itself.
-- A category destination, or any directory above one. qBittorrent will save into it again. Destinations are resolved the way qBittorrent resolves them: an absolute save path as-is, a relative one against the default save path, and a category that sets none inherits from its parent category when subcategories are enabled, or from the default save path otherwise.
+- A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's folder the same way qBittorrent does, including one that inherits from a parent category.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
 
-Directories are removed after the files, deepest first, so a tree that this run empties collapses in one pass. A directory that only becomes empty because this run deleted the last file in it is removed as well, even though it was not itself listed: that has always been how orphan scan cleans up after a deletion, and the run's folder count reflects it. Removal only ever succeeds on an already-empty directory, so a directory that gained content between the preview and your confirmation is reported rather than removed. If something replaced the directory with a file in the meantime, that file is left alone. A directory that a torrent has claimed but not yet written to is skipped for the same reason, and so is one that became a category destination after the preview.
+Directories are removed after the files, so a tree this run empties goes in one pass. That includes a directory left empty only because the run deleted the last file in it, which is why the folder count can be higher than the number of directories you saw listed. Anything that changed between the preview and your confirmation is skipped rather than removed.
 
 ## Settings
 
