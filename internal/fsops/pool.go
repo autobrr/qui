@@ -46,12 +46,16 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return nil, fmt.Errorf("instance %d not found", instanceID)
 	}
 
-	switch models.HasFilesystemAccess(instance) {
+	mode := models.HasFilesystemAccess(instance)
+	switch mode {
 	case models.FilesystemModeLocal:
 		return p.local, nil
 	case models.FilesystemModeRemote:
 		return nil, fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotImplemented)
-	default:
+	case models.FilesystemModeNone:
 		return noopBackend{}, nil
 	}
+	// No default arm, so exhaustive flags a new mode here instead of letting
+	// it fall through to "not configured".
+	return nil, fmt.Errorf("instance %d: unknown filesystem mode %q", instanceID, mode)
 }
