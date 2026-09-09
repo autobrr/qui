@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -241,8 +242,8 @@ func TestGetEncryptionKey(t *testing.T) {
 		name   string
 		secret string
 	}{
-		{name: "truncates_long_secret", secret: strings.Repeat("a", encryptionKeySize+8)},
-		{name: "pads_short_secret", secret: "short"},
+		{name: "long_secret", secret: strings.Repeat("a", encryptionKeySize+8)},
+		{name: "short_secret", secret: "short"},
 	}
 
 	for _, tt := range tests {
@@ -251,14 +252,87 @@ func TestGetEncryptionKey(t *testing.T) {
 
 			key := cfg.GetEncryptionKey()
 			require.Len(t, key, encryptionKeySize)
+			assert.Equal(t, key, cfg.GetEncryptionKey(), "derivation must be deterministic")
+			assert.NotEqual(t, cfg.GetLegacyEncryptionKey(), key, "derived key must differ from the truncated secret")
+		})
+	}
 
-			if len(tt.secret) >= encryptionKeySize {
-				assert.Equal(t, []byte(tt.secret[:encryptionKeySize]), key)
-			} else {
-				expected := make([]byte, encryptionKeySize)
-				copy(expected, tt.secret)
-				assert.Equal(t, expected, key)
+	t.Run("distinguishes_secrets_sharing_a_prefix", func(t *testing.T) {
+		prefix := strings.Repeat("a", encryptionKeySize)
+		first := &AppConfig{Config: &domain.Config{SessionSecret: prefix + "one"}}
+		second := &AppConfig{Config: &domain.Config{SessionSecret: prefix + "two"}}
+
+		assert.NotEqual(t, first.GetEncryptionKey(), second.GetEncryptionKey())
+		assert.Equal(t, first.GetLegacyEncryptionKey(), second.GetLegacyEncryptionKey(), "the legacy key only saw the shared prefix")
+	})
+}
+
+// TestGetEncryptionKeyGoldenVector freezes the hash, the nil salt and the info
+// string together. Rows sealed under a different derivation carry the same qui2
+// prefix, so the rewrite pass skips them and the legacy key does not apply,
+// which makes every stored credential permanently unreadable with no warning.
+// Changing this constant means changing that contract, not fixing a test.
+func TestGetEncryptionKeyGoldenVector(t *testing.T) {
+	cfg := &AppConfig{Config: &domain.Config{SessionSecret: "qui-golden-vector-session-secret"}}
+
+	assert.Equal(t, "8ced9a614da47fa9d7868174b649cba66c236a66b2866801cd2f0af68423f531", hex.EncodeToString(cfg.GetEncryptionKey()))
+}
+
+func TestGetLegacyEncryptionKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		secret   string
+		expected []byte
+	}{
+		{
+			name:     "truncates_long_secret",
+			secret:   strings.Repeat("a", encryptionKeySize+8),
+			expected: []byte(strings.Repeat("a", encryptionKeySize)),
+		},
+		{
+			name:     "pads_short_secret",
+			secret:   "short",
+			expected: append([]byte("short"), make([]byte, encryptionKeySize-len("short"))...),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &AppConfig{Config: &domain.Config{SessionSecret: tt.secret}}
+
+			key := cfg.GetLegacyEncryptionKey()
+			require.Len(t, key, encryptionKeySize)
+			assert.Equal(t, tt.expected, key)
+		})
+	}
+}
+
+func TestWarnWeakSessionSecret(t *testing.T) {
+	tests := []struct {
+		name       string
+		secret     string
+		expectWarn bool
+	}{
+		{name: "short_secret_warns", secret: "short", expectWarn: true},
+		{name: "long_secret_stays_quiet", secret: strings.Repeat("a", encryptionKeySize), expectWarn: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs strings.Builder
+			previous := log.Logger
+			log.Logger = zerolog.New(&logs)
+			t.Cleanup(func() { log.Logger = previous })
+
+			cfg := &AppConfig{Config: &domain.Config{SessionSecret: tt.secret}}
+			cfg.warnWeakSessionSecret()
+
+			if tt.expectWarn {
+				assert.Contains(t, logs.String(), "sessionSecret is shorter than 32 characters")
+				assert.Contains(t, logs.String(), "On a new install set at least 32 characters", "the warning has to name a path forward")
+				return
 			}
+			assert.Empty(t, logs.String())
 		})
 	}
 }
