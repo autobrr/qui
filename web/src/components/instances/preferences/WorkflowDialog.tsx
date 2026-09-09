@@ -1620,11 +1620,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Check if current form state represents a delete or category rule (both need previews)
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
-  // Tag rules only need a preview when cross-seed expansion is on; delete/category take dispatch precedence (matches backend)
-  const isTagRule = formState.tagEnabled &&
-    !formState.deleteEnabled &&
-    !formState.categoryEnabled &&
-    formState.exprTagActions.some(action => action.includeCrossSeeds && !action.useTrackerAsTag)
+  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
+  const isTagRule = formState.tagEnabled && !formState.deleteEnabled && !formState.categoryEnabled
 
   // Check if condition uses FREE_SPACE field (for free space source UI - shown regardless of action)
   const conditionUsesFreeSpace = useMemo(() => {

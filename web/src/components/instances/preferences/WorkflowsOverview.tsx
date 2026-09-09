@@ -654,12 +654,12 @@ export function WorkflowsOverview({
     return rule.conditions?.category?.enabled === true
   }
 
-  // Tag rules only need a preview when cross-seed expansion is on; delete/category take dispatch precedence (matches backend)
+  // Tag rules preview like category rules; delete/category take dispatch precedence (matches backend)
   const isTagRule = (rule: Automation): boolean => {
     if (isDeleteRule(rule) || isCategoryRule(rule)) return false
     const conditions = rule.conditions
     const tagActions = conditions?.tags && conditions.tags.length > 0 ? conditions.tags : conditions?.tag ? [conditions.tag] : []
-    return tagActions.some(action => action?.enabled && action.includeCrossSeeds && !action.useTrackerAsTag)
+    return tagActions.some(action => action?.enabled)
   }
 
   // Handle toggle - show preview when enabling delete or category rules
