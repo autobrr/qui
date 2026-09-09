@@ -5,6 +5,7 @@ package notifications
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestValidateNotifiarrAPIKeySkipsNonNotifiarrAPI(t *testing.T) {
@@ -211,4 +214,108 @@ func TestBuildNotifiarrAPIDataIncludesZeroValueTorrentMetrics(t *testing.T) {
 	require.Equal(t, int64(0), *data.Torrent.NumSeeds)
 	require.NotNil(t, data.Torrent.NumLeechs)
 	require.Equal(t, int64(0), *data.Torrent.NumLeechs)
+}
+
+func TestBuildNotifiarrTestPayload(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []EventType{EventTorrentAdded, EventTorrentCompleted} {
+		t.Run(string(eventType), func(t *testing.T) {
+			encoded, err := BuildNotifiarrTestPayload(Event{Type: eventType, InstanceID: 1})
+			require.NoError(t, err)
+
+			var payload notifiarrAPIPayload
+			require.NoError(t, json.Unmarshal(encoded, &payload))
+			require.Equal(t, string(eventType), payload.Event)
+			require.Equal(t, string(eventType), payload.Data.Event)
+			require.NotEmpty(t, payload.Data.Subject)
+			require.Contains(t, payload.Data.Message, "Progress: 0.0000")
+			require.Contains(t, payload.Data.Message, "Total size bytes: 0")
+			require.Contains(t, payload.Data.Fields, notifiarrField{Title: "Total size bytes", Text: "0", Inline: true})
+			require.Equal(t, new("Instance"), payload.Data.InstanceName)
+
+			torrent := payload.Data.Torrent
+			require.NotNil(t, torrent)
+			for _, metric := range []*int64{
+				torrent.EtaSeconds, torrent.TotalSizeBytes, torrent.DownloadedBytes,
+				torrent.AmountLeftBytes, torrent.DlSpeedBps, torrent.UpSpeedBps,
+				torrent.NumSeeds, torrent.NumLeechs,
+			} {
+				require.NotNil(t, metric)
+				require.Zero(t, *metric)
+			}
+			for _, metric := range []*float64{torrent.Progress, torrent.Ratio} {
+				require.NotNil(t, metric)
+				require.Zero(t, *metric)
+			}
+			require.Equal(t, &payload.Data.Timestamp, torrent.EstimatedCompletionAt)
+		})
+	}
+
+	t.Run("unknown event", func(t *testing.T) {
+		payload, err := BuildNotifiarrTestPayload(Event{Type: "unknown"})
+		require.NoError(t, err)
+		require.Nil(t, payload)
+	})
+}
+
+func TestSendTestNotifiarrAPIUsesConfiguredEventType(t *testing.T) {
+	t.Parallel()
+
+	type receivedPayload struct {
+		payload notifiarrAPIPayload
+		err     error
+	}
+	payloads := make(chan receivedPayload, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload notifiarrAPIPayload
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		payloads <- receivedPayload{
+			payload: payload,
+			err:     err,
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	endpoint := server.URL + "/api/v1/notification/qui"
+	target := &models.NotificationTarget{
+		URL:        "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint),
+		EventTypes: []string{string(EventCrossSeedCompletionSucceeded)},
+	}
+
+	err := (&Service{}).SendTest(context.Background(), target, "Test notification", "Test message")
+	require.NoError(t, err)
+
+	select {
+	case received := <-payloads:
+		require.NoError(t, received.err)
+		payload := received.payload
+		require.Equal(t, string(EventCrossSeedCompletionSucceeded), payload.Event)
+		require.Equal(t, string(EventCrossSeedCompletionSucceeded), payload.Data.Event)
+		require.Equal(t, "Test notification", payload.Data.Subject)
+		require.Equal(t, "Test message", payload.Data.Message)
+	case <-time.After(time.Second):
+		t.Fatal("expected test notification request")
+	}
+}
+
+func TestSendTestNotifiarrAPIRequiresConfiguredEventType(t *testing.T) {
+	t.Parallel()
+
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	endpoint := server.URL + "/api/v1/notification/qui"
+	target := &models.NotificationTarget{
+		URL: "notifiarrapi://abc123?endpoint=" + url.QueryEscape(endpoint),
+	}
+
+	err := (&Service{}).SendTest(context.Background(), target, "Test notification", "Test message")
+	require.EqualError(t, err, "notifiarr api test requires at least one event type")
+	require.Zero(t, hits.Load())
 }

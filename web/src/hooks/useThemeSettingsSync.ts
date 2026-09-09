@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useBuiltinThemes } from "@/hooks/useBuiltinThemes"
+import { useIsAuthed } from "@/hooks/useIsAuthed"
 import { getStoredVariation } from "@/hooks/usePersistedThemeVariation"
 import { getThemeById } from "@/config/themes"
 import { setTheme } from "@/utils/theme"
@@ -25,15 +26,9 @@ export function useThemeSettingsSync(): void {
   // value straight back as a PUT.
   const lastSynced = useRef<string | null>(null)
 
-  // Observe the cached auth state without fetching (enabled: false); useAuth
-  // owns the fetch. Pre-auth the activity stream would 401 and retry forever,
-  // so registration must wait for a user.
-  const { data: user } = useQuery({
-    queryKey: ["auth", "user"],
-    queryFn: () => api.checkAuth(),
-    enabled: false,
-  })
-  const isAuthed = Boolean(user)
+  // Pre-auth the activity stream would 401 and retry forever, so
+  // registration must wait for a user.
+  const isAuthed = useIsAuthed()
 
   // Authed tabs hear about API-side theme changes over the activity SSE
   // channel ("theme.settings" invalidates ["theme-settings"]); the login/setup

@@ -27,7 +27,7 @@ func (s stubHealthChecker) GetLastSyncUpdate() time.Time { return s.lastSync }
 func TestGetOtherLocalInstances(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
@@ -50,8 +50,10 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	metadataRoot := filepath.Join(root, "incoming")
+	hasMetadata := false
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -75,7 +77,10 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		case 1:
 			return []qbt.Torrent{{Hash: "A", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
 		case 2:
-			return []qbt.Torrent{{Hash: "B", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+			return []qbt.Torrent{
+				{Hash: "B", SavePath: root, State: qbt.TorrentStatePausedUp},
+				{Hash: "C", SavePath: metadataRoot, State: qbt.TorrentStateStoppedDl, HasMetadata: &hasMetadata},
+			}, nil
 		default:
 			return nil, nil
 		}
@@ -96,7 +101,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1)
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -114,6 +119,9 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	if !slices.Equal(gotRoots, wantRoots) {
 		t.Fatalf("scanRoots mismatch: got=%v want=%v", gotRoots, wantRoots)
 	}
+	if got := metadataIgnoreRoots(context.Background(), result.scanRoots, result.metadataRoots, newTestBackend()); !slices.Equal(got, []string{filepath.Clean(metadataRoot)}) {
+		t.Fatalf("metadataIgnoreRoots mismatch: got=%v want=%v", got, []string{filepath.Clean(metadataRoot)})
+	}
 }
 
 func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.T) {
@@ -124,7 +132,7 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 	instanceTwoSaveRoot := filepath.Join(root, "qb2", "cross-seed")
 	sharedContentRoot := filepath.Join(root, "shared", "tracker-name")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -179,7 +187,7 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1)
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -197,7 +205,7 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -231,7 +239,7 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1)
+	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -245,7 +253,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -286,7 +294,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1)
+	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -301,7 +309,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -346,7 +354,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1)
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -362,7 +370,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -401,7 +409,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 	stableRoot := filepath.Join(root, "stable")
 	skippedRoot := filepath.Join(stableRoot, "partial")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -444,7 +452,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1)
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -467,7 +475,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 	skippedRoot := filepath.Join(root, "partial")
 	stableRoot := filepath.Join(skippedRoot, "complete")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -510,7 +518,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 		}
 	}
 
-	result, err := svc.buildFileMap(context.Background(), 1)
+	result, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err != nil {
 		t.Fatalf("buildFileMap: %v", err)
 	}
@@ -532,7 +540,7 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -576,7 +584,7 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 		}, nil
 	}
 
-	_, err := svc.buildFileMap(context.Background(), 1)
+	_, err := svc.buildFileMap(context.Background(), 1, newTestBackend())
 	if err == nil {
 		t.Fatalf("expected error")
 	}

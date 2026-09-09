@@ -147,6 +147,23 @@ func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	verifyPragmas(ctx, t, conn2)
 }
 
+// TestConnectionPragmasApplyWithoutNew pins the pragma hook to package init:
+// qui db migrate opens the source database with a bare sql.Open, never New.
+//
+// ponytail: only proves the regression in isolation, with
+// `go test -run TestConnectionPragmasApplyWithoutNew ./internal/database/`.
+// A full-suite run may call New first, which was enough to register the hook
+// under the old lazy path.
+func TestConnectionPragmasApplyWithoutNew(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, sqlDB.Close())
+	})
+
+	verifyPragmas(t.Context(), t, sqlDB)
+}
+
 func TestReadOnlyConnectionsDoNotApplyWritePragmas(t *testing.T) {
 	log.Output(io.Discard)
 	ctx := t.Context()
@@ -307,8 +324,7 @@ var expectedIndexes = map[string][]string{
 	"client_api_keys":     {"idx_client_api_keys_instance_id"},
 	"instance_errors":     {"idx_instance_errors_lookup"},
 	"sessions":            {"sessions_expiry_idx"},
-	"torrent_files_cache": {"idx_torrent_files_cache_lookup", "idx_torrent_files_cache_cached_at"},
-	"torrent_files_sync":  {"idx_torrent_files_sync_last_synced"},
+	"torrent_files_cache": {"idx_torrent_files_cache_lookup"},
 	"automations":         {"idx_automations_instance"},
 	"automation_activity": {"idx_automation_activity_instance_created"},
 }

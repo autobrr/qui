@@ -128,6 +128,15 @@ func TestLstat_RegularFile(t *testing.T) {
 	assert.Equal(t, uint64(1), info.Nlinks)
 }
 
+func TestLstat_DirectoryHasIdentity(t *testing.T) {
+	b := newBackend()
+	dir := t.TempDir()
+
+	info, err := b.Lstat(context.Background(), dir)
+	require.NoError(t, err)
+	assert.False(t, info.FileID.IsZero())
+}
+
 func TestLstat_Symlink(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
@@ -249,14 +258,18 @@ func TestWalkDir_SkipHidden(t *testing.T) {
 	assert.NotContains(t, relPaths, filepath.Join(".hiddendir", "inside.txt"))
 }
 
-func TestWalkDir_IgnoreDirNames(t *testing.T) {
+func TestWalkDir_IgnoreDirNamesAndPrefixes(t *testing.T) {
 	b := newBackend()
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "keep.txt"), "k")
 	writeFile(t, filepath.Join(dir, "node_modules", "pkg.js"), "p")
 	writeFile(t, filepath.Join(dir, "$recycle.bin", "old.mkv"), "r")
+	writeFile(t, filepath.Join(dir, ".trash-1000", "deleted.mkv"), "t")
 
-	ch, err := b.WalkDir(context.Background(), dir, fsops.WalkOptions{IgnoreDirNames: []string{"node_modules", "$RECYCLE.BIN"}})
+	ch, err := b.WalkDir(context.Background(), dir, fsops.WalkOptions{
+		IgnoreDirNames:        []string{"node_modules", "$RECYCLE.BIN"},
+		IgnoreDirNamePrefixes: []string{".Trash-"},
+	})
 	require.NoError(t, err)
 
 	var relPaths []string
@@ -267,6 +280,7 @@ func TestWalkDir_IgnoreDirNames(t *testing.T) {
 	assert.NotContains(t, relPaths, filepath.Join("node_modules", "pkg.js"))
 	// Matching is case-insensitive: metadata dir case varies on disk.
 	assert.NotContains(t, relPaths, filepath.Join("$recycle.bin", "old.mkv"))
+	assert.NotContains(t, relPaths, filepath.Join(".trash-1000", "deleted.mkv"))
 }
 
 func TestWalkDir_ContextCancellation(t *testing.T) {

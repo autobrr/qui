@@ -31,127 +31,11 @@ func setupTestPool(t *testing.T) *ClientPool {
 	require.NoError(t, err, "Failed to create instance store")
 
 	errorStore := models.NewInstanceErrorStore(db)
-	pool, err := NewClientPool(instanceStore, errorStore)
+	pool, err := NewClientPool(instanceStore, errorStore, 60*time.Second)
 	require.NoError(t, err, "Failed to create client pool")
 	return pool
 }
 
-/*
-	func TestClientPool_BackoffLogic(t *testing.T) {
-		pool := setupTestPool(t)
-		defer pool.Close()
-
-		instanceID := 1
-
-		tests := []struct {
-			name           string
-			err            error
-			expectedBanned bool
-			minBackoff     time.Duration
-			maxBackoff     time.Duration
-		}{
-			{
-				name:           "IP ban error triggers long backoff",
-				err:            errors.New("User's IP is banned for too many failed login attempts"),
-				expectedBanned: true,
-				minBackoff:     4 * time.Minute,
-				maxBackoff:     6 * time.Minute,
-			},
-			{
-				name:           "Rate limit error triggers long backoff",
-				err:            errors.New("Rate limit exceeded"),
-				expectedBanned: true,
-				minBackoff:     4 * time.Minute,
-				maxBackoff:     6 * time.Minute,
-			},
-			{
-				name:           "403 forbidden triggers long backoff",
-				err:            errors.New("HTTP 403 Forbidden"),
-				expectedBanned: true,
-				minBackoff:     4 * time.Minute,
-				maxBackoff:     6 * time.Minute,
-			},
-			{
-				name:           "Generic connection error triggers short backoff",
-				err:            errors.New("connection refused"),
-				expectedBanned: false,
-				minBackoff:     25 * time.Second,
-				maxBackoff:     35 * time.Second,
-			},
-			{
-				name:           "Timeout error triggers short backoff",
-				err:            errors.New("context deadline exceeded"),
-				expectedBanned: false,
-				minBackoff:     25 * time.Second,
-				maxBackoff:     35 * time.Second,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				// Reset failure tracking
-				pool.ResetFailureTracking(instanceID)
-
-				// Should not be in backoff initially
-				assert.False(t, pool.isInBackoff(instanceID), "Instance should not be in backoff initially")
-
-				// Track failure
-				pool.trackFailure(instanceID, tt.err)
-
-				// Should now be in backoff
-				assert.True(t, pool.isInBackoff(instanceID), "Instance should be in backoff after failure")
-
-				// Check failure info
-				pool.mu.RLock()
-				info, exists := pool.failureTracker[instanceID]
-				pool.mu.RUnlock()
-
-				require.True(t, exists, "Failure info should exist")
-
-				// Check if this is a ban error (we can't directly check isBanned field anymore)
-				isBanError := pool.isBanError(tt.err)
-				assert.Equal(t, tt.expectedBanned, isBanError, "Ban error classification mismatch")
-
-				// Check backoff duration is in expected range
-				backoffDuration := time.Until(info.nextRetry)
-				assert.Truef(t, backoffDuration >= tt.minBackoff && backoffDuration <= tt.maxBackoff,
-					"Backoff duration %v not in range [%v, %v]", backoffDuration, tt.minBackoff, tt.maxBackoff)
-			})
-		}
-	}
-
-	func TestClientPool_BackoffEscalation(t *testing.T) {
-		pool := setupTestPool(t)
-		defer pool.Close()
-
-		instanceID := 1
-		banError := errors.New("User's IP is banned for too many failed login attempts")
-
-		// Test exponential backoff escalation for ban errors
-		expectedMinutes := []int{5, 10, 20, 40, 60, 60} // Max at 1 hour
-
-		for i, expectedMin := range expectedMinutes {
-			t.Run(fmt.Sprintf("failure_%d", i+1), func(t *testing.T) {
-				pool.trackFailure(instanceID, banError)
-
-				pool.mu.RLock()
-				info, exists := pool.failureTracker[instanceID]
-				pool.mu.RUnlock()
-
-				require.True(t, exists, "Failure info should exist")
-
-				assert.Equal(t, i+1, info.attempts, "Attempt count mismatch")
-
-				backoffDuration := time.Until(info.nextRetry)
-				minExpected := time.Duration(expectedMin-1) * time.Minute
-				maxExpected := time.Duration(expectedMin+1) * time.Minute
-
-				assert.Truef(t, backoffDuration >= minExpected && backoffDuration <= maxExpected,
-					"Failure %d: backoff duration %v not in range [%v, %v]", i+1, backoffDuration, minExpected, maxExpected)
-			})
-		}
-	}
-*/
 func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -216,12 +100,11 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 // TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce verifies that
 // a burst of concurrent callers against one unhealthy, not-yet-backed-off instance records
 // a single failure (advances backoff once), not once per caller (adversarial review of #2096).
+// The instance is dead (connection refused): a hard failure, so it must back off.
 func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
-	// Blocking endpoint so the probes overlap in time instead of failing instantly.
-	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done()
-	}))
-	defer srv.Close()
+	// Closed listener: probes fail fast with a hard connection error.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+	srv.Close()
 
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -235,7 +118,7 @@ func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t 
 	var wg sync.WaitGroup
 	for range callers {
 		wg.Go(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			_, _ = pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
 		})
@@ -248,6 +131,41 @@ func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t 
 
 	require.NotNil(t, info, "one failure should have been recorded")
 	assert.Equal(t, 1, info.attempts, "concurrent probes must advance the backoff exactly once, not once per caller")
+	assert.True(t, pool.isInBackoff(instanceID), "a dead instance must go into backoff (#2096)")
+}
+
+// TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff verifies that a probe that
+// times out against a responding-but-saturated instance does NOT record a failure or back
+// the instance off: slow is not down, and backing off a working instance turns one slow
+// request into an outage for every caller.
+func TestClientPool_GetClientWithTimeout_SlowProbeDoesNotBackoff(t *testing.T) {
+	// Blocking endpoint: the connection is accepted but the response never comes,
+	// so the probe fails with a deadline, the signature of a saturated instance.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	pool.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	client, err := pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
+	require.Error(t, err)
+	require.Nil(t, client)
+
+	assert.False(t, pool.isInBackoff(instanceID), "a timed-out probe must not put the instance in backoff")
+	pool.mu.RLock()
+	_, tracked := pool.failureTracker[instanceID]
+	pool.mu.RUnlock()
+	assert.False(t, tracked, "a timed-out probe must not record an instance failure")
 }
 
 // TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff verifies that a probe

@@ -2328,6 +2328,65 @@ func TestCrossSeedRevalidatesARRSourceTitles(t *testing.T) {
 	require.Contains(t, aliased.Results[0].Message, "torrent properties")
 }
 
+// TestCrossSeedRevalidatesARRCandidateTitles mirrors the SourceTitles
+// revalidation above for announce-origin aliases: CandidateTitles describe the
+// incoming (target) release, so apply widens the target side with them, still
+// bound to the decision's source torrent.
+func TestCrossSeedRevalidatesARRCandidateTitles(t *testing.T) {
+	const (
+		instanceID   = 1
+		targetName   = "Money.Heist.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		existingName = "La.Casa.De.Papel.S01E01.1080p.NF.WEB-DL.DDP5.1.H.264-NTb"
+		existingHash = "existing"
+	)
+	torrentData := createTestTorrent(t, targetName, []string{"payload.mkv"}, 256*1024)
+	meta, err := ParseTorrentMetadataWithInfo(torrentData)
+	require.NoError(t, err)
+	var torrentSize int64
+	for _, file := range meta.Files {
+		torrentSize += file.Size
+	}
+
+	instance := &models.Instance{ID: instanceID, Name: "main"}
+	existing := qbt.Torrent{
+		Hash:     existingHash,
+		Name:     existingName,
+		Size:     torrentSize,
+		Progress: 1,
+	}
+	service := &Service{
+		instanceStore:    &fakeInstanceStore{instances: map[int]*models.Instance{instanceID: instance}},
+		syncManager:      newFakeSyncManager(instance, []qbt.Torrent{existing}, map[string]qbt.TorrentFiles{existingHash: meta.Files}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	apply := func(candidateTitles []string, sourceHash string) *CrossSeedResponse {
+		response, applyErr := service.CrossSeed(context.Background(), &CrossSeedRequest{
+			TorrentData:       base64.StdEncoding.EncodeToString(torrentData),
+			TargetInstanceIDs: []int{instanceID},
+			SearchDecision: searchDecisionProvenance{
+				Class:            searchCandidateClassStrict,
+				SourceInstanceID: instanceID,
+				SourceHash:       sourceHash,
+				CandidateTitles:  candidateTitles,
+			},
+		})
+		require.NoError(t, applyErr)
+		require.Len(t, response.Results, 1)
+		return response
+	}
+
+	require.Equal(t, "no_match", apply(nil, existingHash).Results[0].Status)
+	require.Equal(t, "no_match", apply([]string{"Unrelated Show"}, existingHash).Results[0].Status)
+	// The aliases stay bound to the decision's source torrent.
+	require.Equal(t, "no_match", apply([]string{"La Casa de Papel"}, "different-hash").Results[0].Status)
+
+	aliased := apply([]string{"La Casa de Papel"}, existingHash)
+	require.NotEqual(t, "no_match", aliased.Results[0].Status)
+	require.Contains(t, aliased.Results[0].Message, "torrent properties")
+}
+
 func TestARRAliasSurvivesSearchToManualAndAutomatedApply(t *testing.T) {
 	const (
 		instanceID    = 1

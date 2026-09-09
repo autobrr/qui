@@ -5,13 +5,14 @@ package dirscan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
 
@@ -63,14 +64,17 @@ type ScanResult struct {
 
 // Scanner walks directories and collects media files into searchees.
 type Scanner struct {
+	backend fsops.Backend
+
 	// FileID index for detecting already-seeding files.
 	// Maps FileID.Bytes() to torrent hash.
 	seenFileIDs map[string]string
 }
 
 // NewScanner creates a new directory scanner.
-func NewScanner() *Scanner {
+func NewScanner(backend fsops.Backend) *Scanner {
 	return &Scanner{
+		backend:     backend,
 		seenFileIDs: make(map[string]string),
 	}
 }
@@ -85,39 +89,42 @@ func (s *Scanner) ScanDirectory(ctx context.Context, rootPath string) (*ScanResu
 	result := &ScanResult{}
 	rootPath = filepath.Clean(rootPath)
 
-	entries, err := os.ReadDir(rootPath)
+	dirEntries, err := s.backend.ReadDir(ctx, rootPath)
 	if err != nil {
 		return nil, fmt.Errorf("read directory %s: %w", rootPath, err)
 	}
 
-	for _, entry := range entries {
+	for _, entry := range dirEntries {
 		if ctx.Err() != nil {
 			return result, fmt.Errorf("scan directory: %w", ctx.Err())
 		}
 
-		if strings.HasPrefix(entry.Name(), ".") {
+		if strings.HasPrefix(entry.Name, ".") {
 			continue
 		}
 
-		entryPath := filepath.Join(rootPath, entry.Name())
+		entryPath := filepath.Join(rootPath, entry.Name)
 		s.processRootEntry(ctx, entry, entryPath, result)
+		if err := ctx.Err(); err != nil {
+			return result, fmt.Errorf("scan directory: %w", err)
+		}
 	}
 
 	return result, nil
 }
 
 // processRootEntry handles a single entry in the root directory.
-func (s *Scanner) processRootEntry(ctx context.Context, entry fs.DirEntry, entryPath string, result *ScanResult) {
-	if entry.IsDir() {
-		s.processDirEntry(ctx, entry, entryPath, result)
-	} else if isMediaFile(entry.Name()) {
-		s.processFileEntry(entryPath, result)
+func (s *Scanner) processRootEntry(ctx context.Context, entry fsops.DirEntry, entryPath string, result *ScanResult) {
+	if entry.IsDir {
+		s.processDirEntry(ctx, entryPath, entry.Name, result)
+	} else if isMediaFile(entry.Name) {
+		s.processFileEntry(ctx, entryPath, result)
 	}
 }
 
 // processDirEntry scans a directory and adds it as a searchee.
-func (s *Scanner) processDirEntry(ctx context.Context, entry fs.DirEntry, entryPath string, result *ScanResult) {
-	searchee, err := s.scanSearcheeDir(ctx, entryPath, entry.Name())
+func (s *Scanner) processDirEntry(ctx context.Context, entryPath, name string, result *ScanResult) {
+	searchee, err := s.scanSearcheeDir(ctx, entryPath, name)
 	if err != nil || len(searchee.Files) == 0 {
 		return
 	}
@@ -137,8 +144,8 @@ func (s *Scanner) processDirEntry(ctx context.Context, entry fs.DirEntry, entryP
 }
 
 // processFileEntry scans a single file and adds it as a searchee.
-func (s *Scanner) processFileEntry(entryPath string, result *ScanResult) {
-	searchee, err := s.scanSingleFile(entryPath)
+func (s *Scanner) processFileEntry(ctx context.Context, entryPath string, result *ScanResult) {
+	searchee, err := s.scanSingleFile(ctx, entryPath)
 	if err != nil || searchee == nil {
 		return
 	}
@@ -155,118 +162,83 @@ func (s *Scanner) processFileEntry(entryPath string, result *ScanResult) {
 	}
 }
 
-// scanSearcheeDir scans a directory as a searchee.
+// scanSearcheeDir scans a directory as a searchee using the backend's WalkDir.
 func (s *Scanner) scanSearcheeDir(ctx context.Context, dirPath, name string) (*Searchee, error) {
 	searchee := &Searchee{
 		Name:   name,
 		Path:   dirPath,
-		IsDisc: isDiscLayoutRoot(dirPath),
+		IsDisc: s.isDiscLayoutRoot(ctx, dirPath),
 	}
 
-	err := filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, walkErr error) error {
-		return s.walkDirEntry(ctx, path, d, walkErr, searchee)
+	walkCtx, cancelWalk := context.WithCancel(ctx)
+	ch, err := s.backend.WalkDir(walkCtx, dirPath, fsops.WalkOptions{
+		SkipHidden: true,
+		WantFileID: true,
 	})
 	if err != nil {
+		cancelWalk()
+		return nil, fmt.Errorf("walk directory %s: %w", dirPath, err)
+	}
+	defer func() {
+		cancelWalk()
+		for range ch { //nolint:revive // drain channel to release the walk goroutine
+		}
+	}()
+
+	for entry := range ch {
+		if entry.Err != nil {
+			if errors.Is(entry.Err, fs.ErrPermission) {
+				continue
+			}
+			return nil, fmt.Errorf("walk entry %s: %w", entry.Path, entry.Err)
+		}
+
+		// Skip symlinks
+		if entry.IsSymlink {
+			continue
+		}
+
+		// Skip directories (WalkDir yields them for traversal, we only want files)
+		if entry.IsDir {
+			continue
+		}
+
+		// For non-disc layouts, only process media files
+		if !searchee.IsDisc && !isMediaFile(filepath.Base(entry.Path)) {
+			continue
+		}
+
+		relPath := entry.RelPath
+		if relPath == "" {
+			relPath = filepath.Base(entry.Path)
+		}
+
+		searchee.Files = append(searchee.Files, &ScannedFile{
+			Path:      entry.Path,
+			RelPath:   relPath,
+			Size:      entry.Size,
+			ModTime:   entry.ModTime,
+			FileID:    entry.FileID,
+			LinkCount: entry.Nlinks,
+			HasLinks:  entry.Nlinks > 1,
+		})
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("walk directory %s: %w", dirPath, err)
 	}
 
 	return searchee, nil
 }
 
-// walkDirEntry handles a single entry in the WalkDir callback.
-func (s *Scanner) walkDirEntry(ctx context.Context, path string, d fs.DirEntry, walkErr error, searchee *Searchee) error {
-	if walkErr != nil {
-		if os.IsPermission(walkErr) {
-			return nil
-		}
-		return fmt.Errorf("walk entry %s: %w", path, walkErr)
-	}
-
-	if ctx.Err() != nil {
-		return fmt.Errorf("walk canceled: %w", ctx.Err())
-	}
-
-	if shouldSkipEntry(d) {
-		if d.IsDir() {
-			return filepath.SkipDir
-		}
-		return nil
-	}
-
-	if !shouldProcessFile(d, searchee.IsDisc) {
-		return nil
-	}
-
-	return s.addFileToSearchee(path, d, searchee)
-}
-
-// shouldSkipEntry checks if an entry should be skipped entirely.
-func shouldSkipEntry(d fs.DirEntry) bool {
-	// Skip hidden files/directories
-	if strings.HasPrefix(d.Name(), ".") {
-		return true
-	}
-	// Skip symlinks
-	if d.Type()&fs.ModeSymlink != 0 {
-		return true
-	}
-	return false
-}
-
-// shouldProcessFile checks if a file should be processed.
-func shouldProcessFile(d fs.DirEntry, isDisc bool) bool {
-	// Only process regular files
-	if d.IsDir() {
-		return false
-	}
-	// For disc layouts, keep all files; otherwise only media files
-	return isDisc || isMediaFile(d.Name())
-}
-
-// addFileToSearchee adds a file to the searchee's file list.
-func (s *Scanner) addFileToSearchee(path string, d fs.DirEntry, searchee *Searchee) error {
-	fi, err := d.Info()
-	if err != nil {
-		return nil //nolint:nilerr // skip files we can't stat
-	}
-
-	fileID, linkCount := getFileIDSafe(fi, path)
-
-	relPath, err := filepath.Rel(searchee.Path, path)
-	if err != nil {
-		relPath = filepath.Base(path) // fallback to base name
-	}
-
-	searchee.Files = append(searchee.Files, &ScannedFile{
-		Path:      path,
-		RelPath:   relPath,
-		Size:      fi.Size(),
-		ModTime:   fi.ModTime(),
-		FileID:    fileID,
-		LinkCount: linkCount,
-		HasLinks:  linkCount > 1,
-	})
-
-	return nil
-}
-
-// getFileIDSafe gets the FileID, returning zero value on error.
-func getFileIDSafe(fi os.FileInfo, path string) (fileID hardlink.FileID, linkCount uint64) {
-	fileID, linkCount, err := hardlink.GetFileID(fi, path)
-	if err != nil {
-		return hardlink.FileID{}, 1
-	}
-	return fileID, linkCount
-}
-
-// scanSingleFile creates a searchee for a single file.
-func (s *Scanner) scanSingleFile(filePath string) (*Searchee, error) {
-	fi, err := os.Stat(filePath)
+// scanSingleFile creates a searchee for a single file. Stat, not Lstat:
+// root-level symlinked media files are scanned via their target, unlike the
+// directory walk which skips links inside a searchee.
+func (s *Scanner) scanSingleFile(ctx context.Context, filePath string) (*Searchee, error) {
+	info, err := s.backend.Stat(ctx, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("stat file %s: %w", filePath, err)
 	}
 
-	fileID, linkCount := getFileIDSafe(fi, filePath)
 	base := filepath.Base(filePath)
 	name := strings.TrimSuffix(base, filepath.Ext(base))
 
@@ -276,11 +248,11 @@ func (s *Scanner) scanSingleFile(filePath string) (*Searchee, error) {
 		Files: []*ScannedFile{{
 			Path:      filePath,
 			RelPath:   base,
-			Size:      fi.Size(),
-			ModTime:   fi.ModTime(),
-			FileID:    fileID,
-			LinkCount: linkCount,
-			HasLinks:  linkCount > 1,
+			Size:      info.Size,
+			ModTime:   info.ModTime,
+			FileID:    info.FileID,
+			LinkCount: info.Nlinks,
+			HasLinks:  info.Nlinks > 1,
 		}},
 	}, nil
 }
@@ -317,17 +289,17 @@ func isMediaFile(name string) bool {
 }
 
 // isDiscLayoutRoot checks if a directory is a disc layout root.
-func isDiscLayoutRoot(dirPath string) bool {
-	entries, err := os.ReadDir(dirPath)
+func (s *Scanner) isDiscLayoutRoot(ctx context.Context, dirPath string) bool {
+	entries, err := s.backend.ReadDir(ctx, dirPath)
 	if err != nil {
 		return false
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir {
 			continue
 		}
-		if _, ok := discLayoutMarkers[strings.ToLower(entry.Name())]; ok {
+		if _, ok := discLayoutMarkers[strings.ToLower(entry.Name)]; ok {
 			return true
 		}
 	}

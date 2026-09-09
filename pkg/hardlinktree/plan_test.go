@@ -8,7 +8,46 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
+
+func TestBuildSingleFilePlanRejectsForeignPathForms(t *testing.T) {
+	t.Parallel()
+
+	for _, relativePath := range []string{
+		"../escape.mkv",
+		"folder/../../escape.mkv",
+		"/absolute.mkv",
+		`\absolute.mkv`,
+		`\\server\share\file.mkv`,
+		`C:\file.mkv`,
+		`folder\file.mkv`,
+		"folder//file.mkv",
+		"folder/./file.mkv",
+		"folder/",
+	} {
+		t.Run(relativePath, func(t *testing.T) {
+			t.Parallel()
+			_, err := BuildSingleFilePlan(t.TempDir(), relativePath, filepath.Join(t.TempDir(), "source.mkv"))
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestBuildSingleFilePlanPreservesTorrentPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := filepath.Join(t.TempDir(), "source.mkv")
+	plan, err := BuildSingleFilePlan(root, "Synthetic.Release/video.mkv", source)
+	require.NoError(t, err)
+	require.Equal(t, root, plan.RootDir)
+	require.Equal(t, []FilePlan{{
+		SourcePath: source,
+		TargetPath: filepath.Join(root, "Synthetic.Release", "video.mkv"),
+	}}, plan.Files)
+}
 
 func TestBuildPlan_SingleFile(t *testing.T) {
 	candidateFiles := []TorrentFile{

@@ -7,6 +7,7 @@ package hardlinktree
 
 import (
 	"errors"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -232,6 +233,36 @@ func BuildPlan(
 	return plan, nil
 }
 
+// BuildSingleFilePlan creates an exact-path plan for one already-paired torrent
+// file. It rejects unsafe or non-canonical slash paths, performs no I/O, and
+// never performs fuzzy matching or conflict renaming.
+func BuildSingleFilePlan(rootDir, relativePath, sourcePath string) (*TreePlan, error) {
+	if rootDir == "" {
+		return nil, errors.New("destination directory is required")
+	}
+	if sourcePath == "" {
+		return nil, errors.New("source path is required")
+	}
+	if err := validateCandidatePath(relativePath); err != nil {
+		return nil, err
+	}
+	if path.Clean(relativePath) != relativePath {
+		return nil, errors.New("non-canonical torrent path: " + relativePath)
+	}
+
+	targetPath := filepath.Join(rootDir, filepath.FromSlash(relativePath))
+	if err := validateTargetInsideBase(targetPath, rootDir); err != nil {
+		return nil, err
+	}
+	return &TreePlan{
+		RootDir: rootDir,
+		Files: []FilePlan{{
+			SourcePath: sourcePath,
+			TargetPath: targetPath,
+		}},
+	}, nil
+}
+
 type existingEntry struct {
 	file       *ExistingFile
 	base       string
@@ -279,10 +310,16 @@ func validateCandidatePath(path string) error {
 		return errors.New("empty file path in torrent")
 	}
 
-	// Reject Unix-style absolute paths on all platforms.
-	// (On Windows, filepath.IsAbs("/etc/passwd") is false.)
-	if strings.HasPrefix(path, "/") {
+	// Torrent paths are slash-delimited. Reject both platform-native and
+	// foreign absolute/traversal forms on every host OS.
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) {
 		return errors.New("absolute path not allowed in torrent: " + path)
+	}
+	if strings.Contains(path, `\`) {
+		return errors.New("backslash not allowed in torrent path: " + path)
+	}
+	if len(path) >= 2 && ((path[0] >= 'a' && path[0] <= 'z') || (path[0] >= 'A' && path[0] <= 'Z')) && path[1] == ':' {
+		return errors.New("volume prefix not allowed in torrent path: " + path)
 	}
 
 	// Normalize path

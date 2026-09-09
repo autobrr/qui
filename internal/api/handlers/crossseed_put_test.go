@@ -335,3 +335,43 @@ func TestAutomationSettingsAutoResumeBudget(t *testing.T) {
 		})
 	}
 }
+
+func TestAutomationSettingsPooledPartialCompletion(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		setup  string
+		body   string
+		want   bool
+	}{
+		{name: "put omitted defaults false", method: http.MethodPut, body: `{"seasonPackCoverageThreshold":0.75}`, want: false},
+		{name: "put true", method: http.MethodPut, body: `{"seasonPackCoverageThreshold":0.75,"pooledPartialCompletionEnabled":true}`, want: true},
+		{name: "patch true", method: http.MethodPatch, body: `{"pooledPartialCompletionEnabled":true}`, want: true},
+		{name: "patch false", method: http.MethodPatch, setup: `{"seasonPackCoverageThreshold":0.75,"pooledPartialCompletionEnabled":true}`, body: `{"pooledPartialCompletionEnabled":false}`, want: false},
+		{name: "patch omitted preserves true", method: http.MethodPatch, setup: `{"seasonPackCoverageThreshold":0.75,"pooledPartialCompletionEnabled":true}`, body: `{"findIndividualEpisodes":true}`, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, store := newTestCrossSeedHandler(t)
+			if tt.setup != "" {
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(tt.setup))
+				resp := httptest.NewRecorder()
+				handler.UpdateAutomationSettings(resp, req)
+				require.Equal(t, http.StatusOK, resp.Code)
+			}
+
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, "/api/cross-seed/settings", strings.NewReader(tt.body))
+			resp := httptest.NewRecorder()
+			if tt.method == http.MethodPatch {
+				handler.PatchAutomationSettings(resp, req)
+			} else {
+				handler.UpdateAutomationSettings(resp, req)
+			}
+			require.Equal(t, http.StatusOK, resp.Code)
+			stored, err := store.GetSettings(t.Context())
+			require.NoError(t, err)
+			require.Equal(t, tt.want, stored.PooledPartialCompletionEnabled)
+		})
+	}
+}

@@ -4,6 +4,7 @@
 package automations
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
@@ -22,7 +24,7 @@ func scanOne(t *testing.T, savePath string, names ...string) *torrentFileInfo {
 	for _, name := range names {
 		files = append(files, qbt.TorrentFile{Name: name})
 	}
-	return scanTorrentFiles(qbt.Torrent{SavePath: savePath}, files)
+	return scanTorrentFiles(context.Background(), localbackend.NewBackend(), qbt.Torrent{SavePath: savePath}, files)
 }
 
 // linkPair creates one file under a/ and hardlinks it into b/, returning both paths.
@@ -70,7 +72,7 @@ func TestScanTorrentFiles_MissingFileScope(t *testing.T) {
 			}
 
 			index := indexFrom(map[string]*torrentFileInfo{
-				"hash": scanTorrentFiles(qbt.Torrent{SavePath: dir}, files),
+				"hash": scanTorrentFiles(context.Background(), localbackend.NewBackend(), qbt.Torrent{SavePath: dir}, files),
 			})
 			scope, present := index.ScopeByHash["hash"]
 			require.Equal(t, tt.wantPresent, present)
@@ -87,7 +89,7 @@ func TestScanTorrentFiles_PresentSkippedFileStillAffectsScope(t *testing.T) {
 	files := qbt.TorrentFiles{{Name: "movie.mkv", Priority: 0}}
 
 	index := indexFrom(map[string]*torrentFileInfo{
-		"hash": scanTorrentFiles(qbt.Torrent{SavePath: filepath.Join(dir, "a")}, files),
+		"hash": scanTorrentFiles(context.Background(), localbackend.NewBackend(), qbt.Torrent{SavePath: filepath.Join(dir, "a")}, files),
 	})
 	require.Equal(t, HardlinkScopeOutsideQBitTorrent, index.ScopeByHash["hash"])
 }

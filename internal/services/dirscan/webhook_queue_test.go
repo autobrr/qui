@@ -21,13 +21,13 @@ func TestMergeWebhookScanRoots(t *testing.T) {
 	require.Equal(t, dir, mergeWebhookScanRoots(dir, "", dir))
 	require.Equal(t, path.Join(dir, "Show"), mergeWebhookScanRoots(
 		dir,
-		filepath.Join(dir, "Show", "Season 01"),
-		filepath.Join(dir, "Show", "Season 02"),
+		path.Join(dir, "Show", "Season 01"),
+		path.Join(dir, "Show", "Season 02"),
 	))
 	require.Equal(t, dir, mergeWebhookScanRoots(
 		dir,
-		filepath.Join(dir, "Show A", "Season 01"),
-		filepath.Join(dir, "Show B", "Season 01"),
+		path.Join(dir, "Show A", "Season 01"),
+		path.Join(dir, "Show B", "Season 01"),
 	))
 }
 
@@ -43,7 +43,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
-	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil)
+	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil)
 
 	dirPath := t.TempDir()
 	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{

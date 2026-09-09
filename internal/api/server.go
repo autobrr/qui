@@ -25,6 +25,7 @@ import (
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -33,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -79,6 +81,7 @@ type Server struct {
 	automationService                *automations.Service
 	trackerCustomizationStore        *models.TrackerCustomizationStore
 	dashboardSettingsStore           *models.DashboardSettingsStore
+	clientSettingsStore              *models.ClientSettingsStore
 	themeSettingsStore               *models.ThemeSettingsStore
 	filterViewStore                  *models.FilterViewStore
 	logExclusionsStore               *models.LogExclusionsStore
@@ -88,6 +91,9 @@ type Server struct {
 	seasonPackRunStore               *models.SeasonPackRunStore
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
+	discScanStore                    *models.DiscScanStore
+	discScanService                  *discscan.Service
+	backendPool                      *fsops.Pool
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
@@ -122,6 +128,7 @@ type Dependencies struct {
 	AutomationService                *automations.Service
 	TrackerCustomizationStore        *models.TrackerCustomizationStore
 	DashboardSettingsStore           *models.DashboardSettingsStore
+	ClientSettingsStore              *models.ClientSettingsStore
 	ThemeSettingsStore               *models.ThemeSettingsStore
 	FilterViewStore                  *models.FilterViewStore
 	LogExclusionsStore               *models.LogExclusionsStore
@@ -131,6 +138,9 @@ type Dependencies struct {
 	SeasonPackRunStore               *models.SeasonPackRunStore
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
+	DiscScanStore                    *models.DiscScanStore
+	DiscScanService                  *discscan.Service
+	BackendPool                      *fsops.Pool
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
@@ -188,6 +198,7 @@ func NewServer(deps *Dependencies) *Server {
 		automationService:                deps.AutomationService,
 		trackerCustomizationStore:        deps.TrackerCustomizationStore,
 		dashboardSettingsStore:           deps.DashboardSettingsStore,
+		clientSettingsStore:              deps.ClientSettingsStore,
 		themeSettingsStore:               deps.ThemeSettingsStore,
 		filterViewStore:                  deps.FilterViewStore,
 		logExclusionsStore:               deps.LogExclusionsStore,
@@ -197,6 +208,9 @@ func NewServer(deps *Dependencies) *Server {
 		seasonPackRunStore:               deps.SeasonPackRunStore,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
+		discScanStore:                    deps.DiscScanStore,
+		discScanService:                  deps.DiscScanService,
+		backendPool:                      deps.BackendPool,
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
@@ -371,6 +385,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
+	discScanHandler := handlers.NewDiscScanHandler(s.discScanService, s.discScanStore, s.syncManager, s.backendPool)
 	var dirScanHandler *handlers.DirScanHandler
 	if s.dirScanService != nil {
 		dirScanHandler = handlers.NewDirScanHandler(s.dirScanService, s.instanceStore)
@@ -379,6 +394,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	rssHandler := handlers.NewRSSHandler(s.syncManager)
 	rssSSEHandler := handlers.NewRSSSSEHandler(s.syncManager)
 	dashboardSettingsHandler := handlers.NewDashboardSettingsHandler(s.dashboardSettingsStore)
+	clientSettingsHandler := handlers.NewClientSettingsHandler(s.clientSettingsStore, s.activityHub)
 	filterViewHandler := handlers.NewFilterViewHandler(s.filterViewStore)
 	logExclusionsHandler := handlers.NewLogExclusionsHandler(s.logExclusionsStore)
 	logsHandler := handlers.NewLogsHandler(s.config)
@@ -451,6 +467,10 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Persisted theme selection (reads are public above)
 			r.Put("/themes/settings", themesHandler.UpdateThemeSettings)
+
+			// Persisted frontend user settings (opaque key-value map)
+			r.Get("/client-settings", clientSettingsHandler.GetClientSettings)
+			r.Put("/client-settings", clientSettingsHandler.UpdateClientSettings)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {
@@ -577,7 +597,14 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
 							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
+							r.Get("/disc-scans", discScanHandler.ListForTorrent)
+							r.Post("/disc-scans", discScanHandler.Start)
 						})
+					})
+
+					r.Route("/disc-scans/{runID}", func(r chi.Router) {
+						r.Get("/", discScanHandler.Get)
+						r.Post("/cancel", discScanHandler.Cancel)
 					})
 
 					r.Get("/capabilities", instancesHandler.GetInstanceCapabilities)

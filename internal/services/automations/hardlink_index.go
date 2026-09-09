@@ -9,8 +9,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"maps"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
 )
@@ -30,10 +31,17 @@ import (
 // hardlinkIndexTTL bounds how long an index survives without a full rebuild.
 // Torrent set changes are folded in incrementally and do not wait for it, so this
 // only has to catch link counts that changed on disk without any torrent being
-// added or removed: a manual rm or ln, or a script moving data. Delete decisions
-// do not rely on it either, because verifyDeleteCandidates re-reads the disk for
-// the candidates before a rule deletes anything.
+// added or removed: a manual rm or ln, or a script moving data. That needs a disk
+// re-stat, not new file lists, so rebuilds and updates read file lists from the
+// files cache up to hardlinkFilesCacheMaxAge old and ask qBittorrent only for the
+// rest. Delete decisions do not rely on it either, because verifyDeleteCandidates
+// re-reads the disk for the candidates before a rule deletes anything.
 const hardlinkIndexTTL = 10 * time.Minute
+
+// hardlinkFilesCacheMaxAge bounds how long the index trusts a cached file list.
+// A rename or priority edit made outside qui leaves the row stale, and the torrent
+// scope unknown, until the bound refetches it.
+const hardlinkFilesCacheMaxAge = time.Hour
 
 // hardlinkIncrementalChangeRatio is the share of the torrent set that may change
 // before an incremental update stops being worthwhile. Past it, the update would
@@ -153,16 +161,20 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 		return cached
 	}
 
+	// A build only has to re-stat the disk, so it reads file lists from the cache
+	// and refetches each one once per hardlinkFilesCacheMaxAge.
+	buildCtx := qbittorrent.WithFilesCacheMaxAge(ctx, hardlinkFilesCacheMaxAge)
+
 	// Build index with singleflight to prevent duplicate builds. The digest keys the
 	// call so concurrent callers looking at the same torrent set share one build.
 	key := strconv.Itoa(instanceID) + ":" + currentDigest
 	result, err, _ := globalHardlinkIndexCache.sf.Do(key, func() (any, error) {
 		if fresh {
-			if updated := s.updateHardlinkIndex(ctx, instanceID, cached, torrents, currentDigest); updated != nil {
+			if updated := s.updateHardlinkIndex(buildCtx, instanceID, cached, torrents, currentDigest); updated != nil {
 				return updated, nil
 			}
 		}
-		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest), nil
+		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest), nil
 	})
 	if err != nil {
 		return nil
@@ -176,7 +188,7 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	// Validate digest matches (paranoid check for edge cases)
 	if idx.digest != currentDigest {
 		// Rebuild with correct digest
-		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest)
+		return s.buildHardlinkIndex(buildCtx, instanceID, torrents, currentDigest)
 	}
 	return idx
 }
@@ -222,7 +234,7 @@ type fileIDTracker struct {
 // scanTorrentFiles reads one torrent's files off disk and records what it found.
 // A torrent that could not be fully inspected keeps allAccessible false, which
 // leaves its scope unknown rather than guessing at "not hardlinked".
-func scanTorrentFiles(torrent qbt.Torrent, files qbt.TorrentFiles) *torrentFileInfo {
+func scanTorrentFiles(ctx context.Context, backend fsops.Backend, torrent qbt.Torrent, files qbt.TorrentFiles) *torrentFileInfo {
 	info := &torrentFileInfo{
 		savePath:      torrent.SavePath,
 		fileIDs:       make([]hardlink.FileID, 0, len(files)),
@@ -237,30 +249,36 @@ func scanTorrentFiles(torrent qbt.Torrent, files qbt.TorrentFiles) *torrentFileI
 	}
 
 	for _, f := range files {
-		fullPath := buildFullPath(torrent.SavePath, f.Name)
+		if ctx.Err() != nil {
+			// Incomplete scan: keep the scope unknown rather than guessing.
+			info.allAccessible = false
+			return info
+		}
 
 		// Reject paths that escape the torrent's save path to prevent malicious
 		// torrent metadata from causing Lstat on arbitrary filesystem locations.
-		if !isPathInsideBase(torrent.SavePath, fullPath) {
+		fullPath, ok := buildFullPath(torrent.SavePath, f.Name)
+		if !ok || !isPathInsideBase(torrent.SavePath, fullPath) {
 			info.allAccessible = false
 			info.hasInvalidPath = true
 			continue
 		}
 
-		fi, err := os.Lstat(fullPath)
+		lstatInfo, err := backend.Lstat(ctx, fullPath)
 		if err != nil {
-			if f.Priority == 0 && os.IsNotExist(err) {
+			if f.Priority == 0 && errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
 			info.allAccessible = false
 			continue
 		}
-		if !fi.Mode().IsRegular() {
+		if !lstatInfo.Mode.IsRegular() {
 			continue
 		}
 
-		fileID, nlink, err := hardlink.GetFileID(fi, fullPath)
-		if err != nil {
+		fileID := lstatInfo.FileID
+		nlink := lstatInfo.Nlinks
+		if fileID.IsZero() {
 			info.allAccessible = false
 			continue
 		}
@@ -491,6 +509,17 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		return blocked
 	}
 
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Int("candidates", len(hashes)).
+			Msg("automations: failed to get backend to re-read delete candidates, holding the deletions")
+		blocked := make(map[string]string, len(hashes))
+		for _, hash := range hashes {
+			blocked[hash] = "filesystem backend unavailable"
+		}
+		return blocked
+	}
+
 	var blocked map[string]string
 	for _, hash := range hashes {
 		expected, known := index.ScopeByHash[hash]
@@ -503,7 +532,7 @@ func (s *Service) verifyDeleteCandidates(ctx context.Context, instanceID int, in
 		files, present := filesByHash[hash]
 		actual := ""
 		if present {
-			actual = index.scopeAfterRescan(scanTorrentFiles(torrentByHash[hash], files))
+			actual = index.scopeAfterRescan(scanTorrentFiles(ctx, backend, torrentByHash[hash], files))
 		}
 
 		if actual == expected {
@@ -602,8 +631,20 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 		return nil, false
 	}
 
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).Int("hashes", len(list)).
+			Msg("automations: failed to get backend for hardlink index update, falling back to a full build")
+		return nil, false
+	}
+
 	scanned := make(map[string]*torrentFileInfo, len(list))
 	for _, hash := range list {
+		if ctx.Err() != nil {
+			// A canceled scan is incomplete; caching it would freeze wrong link
+			// counts until the next full rebuild.
+			return nil, false
+		}
 		files, present := filesByHash[hash]
 		if !present {
 			// A torrent with no file list has unknown links. Recording it as inspected
@@ -611,7 +652,10 @@ func (s *Service) scanHashes(ctx context.Context, instanceID int, torrentByHash 
 			scanned[hash] = &torrentFileInfo{savePath: torrentByHash[hash].SavePath}
 			continue
 		}
-		scanned[hash] = scanTorrentFiles(torrentByHash[hash], files)
+		scanned[hash] = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+	}
+	if ctx.Err() != nil {
+		return nil, false
 	}
 
 	return scanned, true
@@ -638,6 +682,13 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		globalHardlinkIndexCache.mu.Lock()
 		globalHardlinkIndexCache.indices[instanceID] = index
 		globalHardlinkIndexCache.mu.Unlock()
+		return index
+	}
+
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
+		index.builtAt = time.Now()
 		return index
 	}
 
@@ -672,7 +723,14 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	// Phase 1: read every torrent's files off disk, then derive the link counts.
 	torrentInfoByHash := make(map[string]*torrentFileInfo, len(filesByHash))
 	for hash, files := range filesByHash {
-		torrentInfoByHash[hash] = scanTorrentFiles(torrentByHash[hash], files)
+		if ctx.Err() != nil {
+			// Don't cache a partial build - a canceled request shouldn't poison the cache
+			return index
+		}
+		torrentInfoByHash[hash] = scanTorrentFiles(ctx, backend, torrentByHash[hash], files)
+	}
+	if ctx.Err() != nil {
+		return index
 	}
 
 	// Phase 2: derive scope, signatures and groups from the scan results.
@@ -821,7 +879,7 @@ func isPathInsideBase(basePath, fullPath string) bool {
 	// Check if the relative path escapes the base:
 	// - ".." means direct parent traversal
 	// - Paths starting with "../" traverse upward
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return false
 	}
 
@@ -852,37 +910,6 @@ func (idx *HardlinkIndex) GetHardlinkCopies(triggerHash string) []string {
 		}
 	}
 	return copies
-}
-
-// GetHardlinkScope returns the hardlink scope for a torrent (none, torrents_only, outside_qbittorrent, both).
-// Returns empty string if the scope is unknown (torrent not in index, files inaccessible, etc.).
-func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
-	if idx == nil {
-		return ""
-	}
-	if scope, ok := idx.ScopeByHash[hash]; ok {
-		return scope
-	}
-	return ""
-}
-
-// GetHardlinkCrossScope returns the cross-instance hardlink scope for a torrent.
-// Returns empty string if cross-scope has not been computed or is unknown.
-// Safe for concurrent use; acquires crossScopeMu internally.
-func (idx *HardlinkIndex) GetHardlinkCrossScope(hash string) string {
-	if idx == nil {
-		return ""
-	}
-	idx.crossScopeMu.Lock()
-	scopeMap := idx.CrossScopeByHash
-	idx.crossScopeMu.Unlock()
-	if scopeMap == nil {
-		return ""
-	}
-	if scope, ok := scopeMap[hash]; ok {
-		return scope
-	}
-	return ""
 }
 
 // augmentCrossInstanceScope runs Phase 2 of the hardlink index: scanning files from other
@@ -1051,6 +1078,14 @@ func (s *Service) scanOtherInstancesForDeficits(
 			break
 		}
 
+		backend, backendErr := s.backendPool.GetBackend(ctx, otherID)
+		if backendErr != nil {
+			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
+				Msg("automations: failed to get backend for cross-scope scan, skipping instance")
+			stats.skipped++
+			continue
+		}
+
 		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, otherID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
@@ -1091,8 +1126,8 @@ func (s *Service) scanOtherInstancesForDeficits(
 					break
 				}
 
-				fullPath := buildFullPath(savePath, f.Name)
-				if !isPathInsideBase(savePath, fullPath) {
+				fullPath, ok := buildFullPath(savePath, f.Name)
+				if !ok || !isPathInsideBase(savePath, fullPath) {
 					continue
 				}
 				if _, seen := state.seenPaths[fullPath]; seen {
@@ -1101,17 +1136,17 @@ func (s *Service) scanOtherInstancesForDeficits(
 
 				stats.lstatCalls++
 
-				fi, err := os.Lstat(fullPath)
+				lstatInfo, err := backend.Lstat(ctx, fullPath)
 				if err != nil {
 					stats.lstatErrors++
 					continue
 				}
-				if !fi.Mode().IsRegular() {
+				if !lstatInfo.Mode.IsRegular() {
 					continue
 				}
 
-				fileID, _, err := hardlink.GetFileID(fi, fullPath)
-				if err != nil {
+				fileID := lstatInfo.FileID
+				if fileID.IsZero() {
 					stats.lstatErrors++
 					continue
 				}

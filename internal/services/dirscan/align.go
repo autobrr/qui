@@ -5,13 +5,13 @@ package dirscan
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -130,11 +130,14 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	return plan
 }
 
-// searcheePathIsDir reports whether the searchee path is an existing directory. A missing path is
-// treated as not-a-directory so alignment stays conservative.
-func searcheePathIsDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
+// searcheePathIsDir reports whether the searchee path is an existing directory. A missing path
+// or unavailable backend is treated as not-a-directory so alignment stays conservative.
+func searcheePathIsDir(ctx context.Context, backend fsops.Backend, path string) bool {
+	if backend == nil {
+		return false
+	}
+	info, err := backend.Stat(ctx, path)
+	return err == nil && info.IsDir
 }
 
 // alignAndRecheck renames the just-added torrent to match the on-disk files, then triggers a

@@ -72,17 +72,22 @@ func TestSetupPreviewTrackerDisplayNames_LoadsWhenTrackerFieldUsed(t *testing.T)
 		trackerCustomizationStore: store,
 	}
 
-	evalCtx := &EvalContext{}
-	cond := &RuleCondition{
-		Field:    FieldTracker,
-		Operator: OperatorNotEqual,
-		Value:    "BHD",
+	// Both tracker fields match display names, so both must load the map.
+	for _, field := range []ConditionField{FieldTracker, FieldTrackers} {
+		t.Run(string(field), func(t *testing.T) {
+			evalCtx := &EvalContext{}
+			cond := &RuleCondition{
+				Field:    field,
+				Operator: OperatorNotEqual,
+				Value:    "BHD",
+			}
+
+			s.setupPreviewTrackerDisplayNames(ctx, 1, cond, evalCtx)
+
+			require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
+			assert.Equal(t, "BHD", evalCtx.TrackerDisplayNameByDomain["bhd.example"])
+		})
 	}
-
-	s.setupPreviewTrackerDisplayNames(ctx, 1, cond, evalCtx)
-
-	require.NotNil(t, evalCtx.TrackerDisplayNameByDomain)
-	assert.Equal(t, "BHD", evalCtx.TrackerDisplayNameByDomain["bhd.example"])
 }
 
 func TestSetupPreviewTrackerDisplayNames_SkipsWhenTrackerFieldNotUsed(t *testing.T) {

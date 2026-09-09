@@ -32,7 +32,6 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/activity"
-	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
@@ -61,7 +60,6 @@ type BackupProgress struct {
 
 type missingTorrent struct {
 	hash    string
-	name    string
 	relPath string
 	absPath string
 }
@@ -73,7 +71,6 @@ type Service struct {
 	categoryWriter backupCategoryMutator
 	tagWriter      backupTagMutator
 	torrentWriter  backupTorrentMutator
-	jackettSvc     *jackett.Service
 	notifier       notifications.Notifier
 	cfg            Config
 	root           string // backup root directory; stored paths resolve against it
@@ -154,7 +151,7 @@ type ManifestItem struct {
 	SavePath    string   `json:"savePath,omitempty"`
 }
 
-func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
+func NewService(store *models.BackupStore, reader backupReader, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -183,23 +180,17 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		}
 	}
 
-	var jackettService *jackett.Service
-	if svc, ok := jackettSvc.(*jackett.Service); ok {
-		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
-	}
-
 	svc := &Service{
-		store:      store,
-		reader:     reader,
-		jackettSvc: jackettService,
-		notifier:   notifier,
-		cfg:        cfg,
-		root:       root,
-		cacheDir:   cacheDir,
-		jobs:       make(chan job, cfg.WorkerCount*2),
-		inflight:   make(map[int]int64),
-		progress:   make(map[int64]*BackupProgress),
-		now:        func() time.Time { return time.Now().UTC() },
+		store:    store,
+		reader:   reader,
+		notifier: notifier,
+		cfg:      cfg,
+		root:     root,
+		cacheDir: cacheDir,
+		jobs:     make(chan job, cfg.WorkerCount*2),
+		inflight: make(map[int]int64),
+		progress: make(map[int64]*BackupProgress),
+		now:      func() time.Time { return time.Now().UTC() },
 
 		activityPublisher: activity.NopPublisher{},
 	}
@@ -1860,7 +1851,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 			}
 
 			// Mark for background download from qBittorrent
-			missing = append(missing, missingTorrent{hash: item.Hash, name: item.Name, relPath: rel, absPath: absPath})
+			missing = append(missing, missingTorrent{hash: item.Hash, relPath: rel, absPath: absPath})
 		}
 
 		items = append(items, backupItem)
@@ -2003,44 +1994,6 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, rootDir s
 			}
 		} else {
 			log.Warn().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Msg("Failed to download missing torrent blob from client")
-			// TODO: Torznab search fallback is disabled due to API changes
-			/*
-				// Attempt Torznab search fallback for missing torrents
-				if s.jackettSvc != nil {
-					ctx := context.Background()
-					searchReq := &jackett.TorznabSearchRequest{
-						Query: mt.name, // Search by torrent name
-						Limit: 10,      // Get multiple results to find the right one
-					}
-
-					searchResp, searchErr := s.jackettSvc.SearchGeneric(ctx, searchReq)
-					if searchErr != nil {
-						log.Warn().Err(searchErr).Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Msg("Torznab search failed")
-					} else if len(searchResp.Results) > 0 {
-						// Look for a result that matches our infohash or name
-						var matchingResult *jackett.SearchResult
-						for _, result := range searchResp.Results {
-							// Check if this result has the infohash we want
-							// TODO: If InfoHashV1/InfoHashV2 are populated from RSS, check them here
-
-							// For now, prefer exact name matches, then partial matches
-							if result.Title == mt.name {
-								matchingResult = &result
-								break // Exact match, use this one
-							} else if strings.Contains(strings.ToLower(result.Title), strings.ToLower(mt.name)) && matchingResult == nil {
-								matchingResult = &result // Partial match, keep looking for exact
-							}
-						}
-
-						// If no good name match, take the first result as a last resort
-						if matchingResult == nil && len(searchResp.Results) > 0 {
-							matchingResult = &searchResp.Results[0]
-							log.Warn().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("fallbackTitle", matchingResult.Title).Msg("No good name match found, using first result as fallback")
-						}
-
-						if matchingResult != nil {
-							log.Info().Int64("runID", runID).Str("hash", mt.hash).Str("name", mt.name).Str("title", matchingResult.Title).Str("indexer", matchingResult.Indexer).Msg("Found potential torrent match via Torznab search, downloading")
-			*/
 			s.updateProgress(runID, i+1)
 		}
 	}

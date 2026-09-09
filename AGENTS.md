@@ -8,6 +8,7 @@ Repo rules for AI agents working on qui.
 
 - Stay inside requested scope. Do not implement review-suggested/extra changes without explicit user approval.
 - Treat other agent/Codex/CodeRabbit feedback as input to discuss, not automatic action.
+- A review suggestion that changes a branch lands only after you show the input that branch guarded, in a test or a trace. A simplification that reads cleaner can still drop a case the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 
 ## Repo Map
@@ -32,7 +33,7 @@ Before changing cross-module data flow, service boundaries, API routing, or long
 - Full Go suite: `make test` (`go test -race -count=1 -v ./...`)
 - OpenAPI changes under `internal/web/swagger`: run `make test-openapi`
 
-For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first. Skip local full `make test` by default; CI covers it unless requested.
+CI runs `make test` on every push. Run the full suite locally only when asked, or when one change crosses many packages.
 
 ## Lint / Format
 
@@ -64,6 +65,14 @@ For changes under `internal/services/crossseed` or `internal/qbittorrent`, run t
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
 
+## Comments
+
+A comment caches what the code cannot show: why this shape, the bug a guard prevents, a coupling to another file. Caching what the line does buys nothing and rots first. One line is the norm.
+
+- Change a line, change its comment, in the same diff. A stale-comment finding from a review bot is right; a docstring coverage percentage is not.
+- An invariant a future change must hold is a test, not a sentence with "must not" in it.
+- Doc-comment an exported identifier when its name leaves the contract unclear.
+
 ## Paths / Security
 
 qui must work on Windows and Unix-like hosts.
@@ -90,8 +99,11 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 ## Commits / PRs
 
 - Keep Superpowers workflow files local and untracked; never add or commit `docs/superpowers/`.
+- Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
+- When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- Keep commits focused; split backend/frontend when practical.
+- One feature is one branch and one PR. Do not stack PRs or split a feature across PRs. When a feature spans schema, backend service, and web UI, keep the layers as separate commits on the one branch, each commit a working slice: backend end-to-end work first, then UI. A dependency in another repo is its own PR there.
+- Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.
 - Fill `.github/pull_request_template.md` into the PR body; `gh pr create --body` does not auto-fill it.
@@ -110,3 +122,9 @@ Before you report a code change complete, run it live: build and start the app (
 ## Final Report
 
 State required checks run, skipped/deferred checks with reason, and unresolved failures. Do not claim complete while a required repo check is known failing unless user accepts the risk.
+
+## Agent skills
+
+- Issue tracker: bug reports and feature requests are GitHub Discussions; `ready-for-agent` work becomes a linked issue. See `docs/agents/issue-tracker.md`.
+- Triage: labels equal the five role names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). Both the workflow and a local `/triage` session obey `docs/agents/triage.md`; its outcomes override the skill's own outcomes. `ready-for-agent` (`bug` only) creates the linked issue and closes the discussion. Do not post the brief on the discussion.
+- Domain docs: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.

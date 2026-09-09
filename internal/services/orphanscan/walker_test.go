@@ -5,14 +5,83 @@ package orphanscan
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 )
 
 const orphanFileName = "orphan.txt"
+
+type cancelAwareWalkBackend struct {
+	fsops.Backend
+	err error
+}
+
+type statFailureWalkBackend struct {
+	fsops.Backend
+	failedPath string
+	entries    []fsops.WalkEntry
+}
+
+func (b *statFailureWalkBackend) WalkDir(_ context.Context, _ string, opts fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	entries := b.entries
+	if opts.EmitStatErrors {
+		entries = append([]fsops.WalkEntry{{Path: b.failedPath, StatErr: errors.New("metadata unavailable")}}, entries...)
+	}
+
+	ch := make(chan fsops.WalkEntry, len(entries))
+	for _, entry := range entries {
+		ch <- entry
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (b *cancelAwareWalkBackend) WalkDir(ctx context.Context, _ string, _ fsops.WalkOptions) (<-chan fsops.WalkEntry, error) {
+	ch := make(chan fsops.WalkEntry, 1)
+	ch <- fsops.WalkEntry{Err: b.err}
+
+	go func() {
+		<-ctx.Done()
+		close(ch)
+	}()
+
+	return ch, nil
+}
+
+func TestWalkScanRoot_CancelsProducerBeforeDrainingOnEntryError(t *testing.T) {
+	walkErr := errors.New("walk entry failed")
+	backend := &cancelAwareWalkBackend{
+		Backend: newTestBackend(),
+		err:     walkErr,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	root := t.TempDir()
+
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := walkScanRoot(ctx, root, NewTorrentFileMap(), nil, 0, 0, backend)
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, walkErr) {
+			t.Fatalf("walkScanRoot error = %v, want %v", err, walkErr)
+		}
+	case <-time.After(time.Second):
+		cancel()
+		err := <-result
+		t.Fatalf("walk remained blocked until the parent context was canceled: %v", err)
+	}
+}
 
 func TestWalkScanRoot_CollapsesDiscLayoutIntoSingleOrphanUnit(t *testing.T) {
 	t.Parallel()
@@ -42,7 +111,7 @@ func TestWalkScanRoot_CollapsesDiscLayoutIntoSingleOrphanUnit(t *testing.T) {
 	}
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -84,12 +153,66 @@ func TestWalkScanRoot_DiscUnitSuppressedWhenAnyContainedFileInUse(t *testing.T) 
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(inUse))
 
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
 	if len(orphans) != 0 {
 		t.Fatalf("expected no orphans when disc unit contains an in-use file, got %d", len(orphans))
+	}
+}
+
+func TestWalkScanRoot_DiscUnitSuppressedWhenOwnedFileMetadataFails(t *testing.T) {
+	root := t.TempDir()
+	movieDir := filepath.Join(root, "Movie.2024")
+	bdmvDir := filepath.Join(movieDir, "BDMV")
+	streamDir := filepath.Join(bdmvDir, "STREAM")
+	if err := os.MkdirAll(streamDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	inUse := filepath.Join(bdmvDir, "index.bdmv")
+	sibling := filepath.Join(streamDir, "00000.m2ts")
+	for _, path := range []string{inUse, sibling} {
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tfm := NewTorrentFileMap()
+	tfm.Add(inUse)
+	backend := &statFailureWalkBackend{
+		Backend:    newTestBackend(),
+		failedPath: inUse,
+		entries: []fsops.WalkEntry{{
+			Path:    sibling,
+			Size:    1,
+			ModTime: time.Now().Add(-time.Hour),
+		}},
+	}
+
+	orphans, _, err := walkScanRoot(t.Context(), root, tfm, nil, 0, 100, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("owned disc unit was exposed as orphan: %#v", orphans)
+	}
+}
+
+func TestWalkScanRoot_SkipsUnownedFileWhenMetadataFails(t *testing.T) {
+	root := t.TempDir()
+	backend := &statFailureWalkBackend{
+		Backend:    newTestBackend(),
+		failedPath: filepath.Join(root, "unreadable.mkv"),
+	}
+
+	orphans, _, err := walkScanRoot(t.Context(), root, NewTorrentFileMap(), nil, 0, 100, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("metadata failure was exposed as orphan: %#v", orphans)
 	}
 }
 
@@ -110,7 +233,7 @@ func TestWalkScanRoot_UsesMarkerDirWhenMarkerIsDirectlyUnderScanRoot(t *testing.
 	_ = os.Chtimes(p, old, old)
 
 	tfm := NewTorrentFileMap()
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -155,7 +278,7 @@ func TestWalkScanRoot_DiscUnitUsesParentWhenSiblingContentNotInUse(t *testing.T)
 	_ = os.Chtimes(extra, old, old)
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -204,7 +327,7 @@ func TestWalkScanRoot_DiscUnitFallsBackToMarkerDirWhenSiblingContentInUse(t *tes
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(extra))
 
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -238,7 +361,7 @@ func TestWalkScanRoot_IgnoresFuseHiddenFiles(t *testing.T) {
 	_ = os.Chtimes(normal, old, old)
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -285,7 +408,7 @@ func TestWalkScanRoot_IgnoresPartsFiles(t *testing.T) {
 	_ = os.Chtimes(normal, old, old)
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -347,7 +470,7 @@ func TestWalkScanRoot_IgnoresTrashDirs(t *testing.T) {
 	writeOldFile(t, normal)
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -385,7 +508,7 @@ func TestWalkScanRoot_IgnoresKubernetesInternalDirs(t *testing.T) {
 	writeOldFile(t, normal)
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -446,7 +569,7 @@ func TestWalkScanRoot_IgnorePathSiblingPreventsParentDiscUnit(t *testing.T) {
 	ignorePaths := []string{extra}
 
 	tfm := NewTorrentFileMap()
-	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, ignorePaths, 0, 100)
+	orphans, truncated, err := walkScanRoot(context.Background(), root, tfm, ignorePaths, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -488,7 +611,7 @@ func TestWalkScanRoot_IgnorePathInsideMarkerDisablesDiscGrouping(t *testing.T) {
 	ignorePaths := []string{fileA}
 
 	tfm := NewTorrentFileMap()
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, ignorePaths, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, ignorePaths, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -533,7 +656,7 @@ func TestWalkScanRoot_IgnorePathInsideMarkerMultipleFiles(t *testing.T) {
 	ignorePaths := []string{fileIgnored}
 
 	tfm := NewTorrentFileMap()
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, ignorePaths, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, ignorePaths, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -574,7 +697,7 @@ func TestWalkScanRoot_MixedCaseMarkerOnDisk(t *testing.T) {
 	_ = os.Chtimes(fileA, old, old)
 
 	tfm := NewTorrentFileMap()
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -615,7 +738,7 @@ func TestWalkScanRoot_MixedCaseMarkerDirectlyUnderScanRoot(t *testing.T) {
 	_ = os.Chtimes(fileA, old, old)
 
 	tfm := NewTorrentFileMap()
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -656,7 +779,7 @@ func TestWalkScanRoot_UnicodeCanonicalEquivalenceDoesNotFalseOrphan(t *testing.T
 	tfm := NewTorrentFileMap()
 	tfm.Add(fileComposed)
 
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -688,7 +811,7 @@ func TestWalkScanRoot_CaseDifferenceDoesNotFalseOrphan(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	tfm.Add(filepath.Join(root, "trackername", "Show.S01E01.mkv"))
 
-	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
@@ -747,8 +870,10 @@ func TestDiscUnitFromParentMarker_CaseVariantSiblingsDoNotShareCache(t *testing.
 
 	unitFor := func(dir string) string {
 		unit, ok := discUnitFromParentMarker(
+			context.Background(),
 			filepath.Join(dir, "BDMV", "STREAM", "a.m2ts"),
-			dir, filepath.Join(dir, "BDMV"), "BDMV", nil, cache, nil)
+			dir, filepath.Join(dir, "BDMV"), "BDMV", nil, cache, nil,
+			local.NewBackend())
 		if !ok {
 			t.Fatalf("expected a disc unit for %q", dir)
 		}

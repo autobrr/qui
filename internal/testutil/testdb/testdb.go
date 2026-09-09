@@ -1,7 +1,7 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// Package testdb provides migrated SQLite database fixtures for tests.
+// Package testdb provides isolated migrated database fixtures for tests.
 package testdb
 
 import (
@@ -9,11 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/autobrr/qui/internal/database"
 )
@@ -42,6 +46,85 @@ func NewMigratedSQLite(t testing.TB, name string) *database.DB {
 	})
 
 	return db
+}
+
+// NewMigratedPostgres returns an isolated migrated PostgreSQL schema when
+// QUI_TEST_POSTGRES_DSN is configured, otherwise it skips the calling test.
+func NewMigratedPostgres(t testing.TB, name string) *database.DB {
+	t.Helper()
+
+	baseDSN := strings.TrimSpace(os.Getenv("QUI_TEST_POSTGRES_DSN"))
+	if baseDSN == "" {
+		t.Skip("QUI_TEST_POSTGRES_DSN not set")
+	}
+
+	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelSetup()
+	adminPool, err := pgxpool.New(setupCtx, baseDSN)
+	if err != nil {
+		t.Fatalf("open PostgreSQL test administrator: %v", err)
+	}
+
+	safeName := strings.ReplaceAll(sanitizeName(name), "-", "_")
+	if len(safeName) > 24 {
+		safeName = safeName[:24]
+	}
+	schemaName := fmt.Sprintf("qui_test_%s_%d", safeName, time.Now().UnixNano())
+	quotedSchema := quotePostgresIdentifier(schemaName)
+	if _, err := adminPool.Exec(setupCtx, "CREATE SCHEMA "+quotedSchema); err != nil {
+		adminPool.Close()
+		t.Fatalf("create PostgreSQL test schema: %v", err)
+	}
+
+	testDSN, err := postgresDSNWithSearchPath(baseDSN, schemaName)
+	if err != nil {
+		_, _ = adminPool.Exec(context.Background(), "DROP SCHEMA "+quotedSchema+" CASCADE")
+		adminPool.Close()
+		t.Fatalf("configure PostgreSQL test schema: %v", err)
+	}
+	db, err := database.Open(database.OpenOptions{Engine: string(database.DialectPostgres), PostgresDSN: testDSN})
+	if err != nil {
+		_, _ = adminPool.Exec(context.Background(), "DROP SCHEMA "+quotedSchema+" CASCADE")
+		adminPool.Close()
+		t.Fatalf("open migrated PostgreSQL test database: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close PostgreSQL test database: %v", err)
+		}
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancelCleanup()
+		if _, err := adminPool.Exec(cleanupCtx, "DROP SCHEMA "+quotedSchema+" CASCADE"); err != nil {
+			t.Errorf("drop PostgreSQL test schema: %v", err)
+		}
+		adminPool.Close()
+	})
+
+	return db
+}
+
+func postgresDSNWithSearchPath(dsn, schema string) (string, error) {
+	if _, err := pgxpool.ParseConfig(dsn); err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(dsn, "postgres://") && !strings.HasPrefix(dsn, "postgresql://") {
+		escapedSchema := strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(schema)
+		return dsn + " search_path='" + escapedSchema + "'", nil
+	}
+
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		return "", err
+	}
+	query := parsed.Query()
+	query.Set("search_path", schema)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
+}
+
+func quotePostgresIdentifier(value string) string {
+	return `"` + strings.ReplaceAll(value, `"`, `""`) + `"`
 }
 
 // CloneMigratedSQLite copies the migrated template database into t.TempDir and

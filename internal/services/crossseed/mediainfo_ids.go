@@ -6,7 +6,6 @@ package crossseed
 import (
 	"cmp"
 	"context"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -69,7 +69,13 @@ func (s *Service) lookupMediaFileIDs(ctx context.Context, instance *models.Insta
 		return nil
 	}
 
-	filePath := largestMKVPath(torrent.SavePath, files)
+	backend, err := s.getBackendForInstance(ctx, instance.ID)
+	if err != nil {
+		log.Debug().Err(err).Str("torrentName", torrent.Name).Msg("[CROSSSEED-SEARCH] no filesystem backend for media ID lookup; not caching")
+		return nil
+	}
+
+	filePath := largestMKVPath(ctx, backend, torrent.SavePath, files)
 	if filePath == "" {
 		return nil
 	}
@@ -131,7 +137,7 @@ func mediaIDsToExternalIDs(idType, idValue string) *models.ExternalIDs {
 // largestMKVPath returns the resolved local path of the torrent's largest
 // .mkv file, or "" when none resolves. qBittorrent returns files in stable
 // index order, so the pick is deterministic.
-func largestMKVPath(savePath string, files qbt.TorrentFiles) string {
+func largestMKVPath(ctx context.Context, backend fsops.Backend, savePath string, files qbt.TorrentFiles) string {
 	// Filter first: forEachLocalTorrentFile stats every file it visits.
 	// Skip deselected/partial files: a stub can sit on disk at the declared
 	// size and would cache a wrong "no tags" row over the complete file.
@@ -146,7 +152,7 @@ func largestMKVPath(savePath string, files qbt.TorrentFiles) string {
 	})
 
 	var bestPath string
-	forEachLocalTorrentFile(savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ os.FileInfo) bool {
+	forEachLocalTorrentFile(ctx, backend, savePath, mkvs, func(_ qbt.TorrentFile, fullPath string, _ *fsops.LstatInfo) bool {
 		bestPath = fullPath
 		return false
 	})

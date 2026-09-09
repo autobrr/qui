@@ -1,25 +1,31 @@
 ---
 sidebar_position: 100
 title: Support Development
-description: Donation options that help fund ongoing qui development.
+description: Donation and subscription options that fund qui development.
 ---
 
 import CopyAddress from '@site/src/components/CopyAddress';
 
 # Support Development
 
-qui is developed and maintained by volunteers. Your support helps us continue improving the project.
+Volunteers develop and maintain qui. Your support funds continued work on the project.
 
-## Premium Themes
+## Supporter subscription
 
-Purchase premium themes directly from Settings → Themes in your qui instance. Your license key is delivered instantly after checkout.
+Subscribe for $5 per month or $50 per year through Dodo Payments. Click the heart icon in the qui header to open the subscription dialog. The subscription unlocks no features. It funds qui development. Supporters get the `qui-patron` role on [Discord](https://discord.autobrr.com/qui).
+
+The subscription never issues a license key. Premium themes are a separate one-time purchase.
+
+## Premium themes
+
+Buy premium themes from **Settings → Premium Themes** in your qui instance. The purchase is pay what you want, with a $9.99 minimum, and the license is lifetime. The checkout page shows your license key.
 If you donate with crypto, verify your transaction at [crypto.getqui.com](https://crypto.getqui.com/) to receive a 100% discount code for premium themes.
 To manage activations or move a license to a new server, see [License Management](./licenses.md).
-A license also unlocks [custom themes](./features/custom-themes.md), which you can write yourself or take from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
+A license also unlocks [custom themes](./features/custom-themes.md). Write your own or take one from [qui-community-themes](https://github.com/autobrr/qui-community-themes).
 
 ## Donations
 
-If you'd like to support development beyond theme purchases, donations are always appreciated.
+To give beyond subscriptions and theme purchases, use one of these donation options.
 
 - **soup**
   - [Patreon](https://www.patreon.com/c/s0up4200)
@@ -51,11 +57,11 @@ Verify your crypto donation at [crypto.getqui.com](https://crypto.getqui.com/) t
 
 #### Monero (XMR)
 
-XMR discount codes are handled manually. Reach out on [Discord](https://discord.autobrr.com/qui) or [email s0up4200@pm.me](mailto:s0up4200@pm.me).
+We handle XMR discount codes manually. Contact us on [Discord](https://discord.autobrr.com/qui) or [email s0up4200@pm.me](mailto:s0up4200@pm.me).
 
 <CopyAddress label="soup" address="8AMPTPgjmLG9armLBvRA8NMZqPWuNT4US3kQoZrxDDVSU21kpYpFr1UCWmmtcBKGsvDCFA3KTphGXExWb3aHEu67JkcjAvC" />
 <CopyAddress label="zze0s" address="44AvbWXzFN3bnv2oj92AmEaR26PQf5Ys4W155zw3frvEJf2s4g325bk4tRBgH7umSVMhk88vkU3gw9cDvuCSHgpRPsuWVJp" />
 
 ---
 
-For other currencies or donation methods, [reach out on Discord](https://discord.autobrr.com/qui).
+For other currencies or donation methods, [contact us on Discord](https://discord.autobrr.com/qui).

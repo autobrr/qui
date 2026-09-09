@@ -216,4 +216,17 @@ func TestIsEpisodeRange(t *testing.T) {
 	// A path naming the same episode twice is one episode, not a range.
 	require.False(t, IsEpisodeRange(parser.Parse("Show.Name.S11E11.1080p.WEB-GRP/Show.Name.S11E11.1080p.WEB-GRP.mkv")))
 	require.False(t, IsEpisodeRange(nil))
+	// One episode named under two schemes (SxxEyy plus an absolute "Episode N")
+	// is not a range, even though rls lists both numbers in SeriesEpisodes.
+	release := parser.Parse("Sea.Voyage.S23E19.Episode.1174.1080p.CR.WEB-DL.DDP2.0.H.264-Grp.mkv")
+	require.False(t, IsEpisodeRange(release))
+	require.Equal(t, 19, release.Episode)
+	require.Equal(t, rls.Episode, release.Type)
+	// A bare E continuation, an NxNN pair, or a pack folder with an
+	// "Episode N" file name is still a range.
+	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.S01E05.E06.1080p.WEB-GRP")))
+	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.1x05.1x06.1080p.WEB-GRP")))
+	require.True(t, IsEpisodeRange(parser.Parse("Show.Name.S01E01E02-GRP/Show.Name.Episode.1-2.mkv")))
+	// An absolute-only batch has no SxxEyy tag, so every tag counts.
+	require.True(t, IsEpisodeRange(parser.Parse("[Grp] Show Name - 01 - 12 [1080p]")))
 }

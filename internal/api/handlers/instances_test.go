@@ -31,7 +31,7 @@ func TestGetInstanceCapabilitiesPreservesBackoffMessage(t *testing.T) {
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 	errorStore := models.NewInstanceErrorStore(db)
-	clientPool, err := internalqbittorrent.NewClientPool(instanceStore, errorStore)
+	clientPool, err := internalqbittorrent.NewClientPool(instanceStore, errorStore, 60*time.Second)
 	require.NoError(t, err)
 	defer clientPool.Close()
 

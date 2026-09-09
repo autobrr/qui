@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -177,6 +178,9 @@ func TestCloneFile_RejectsDifferentVolumes(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "same volume") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !errors.Is(err, syscall.EXDEV) {
+		t.Fatalf("expected cross-device error, got: %v", err)
 	}
 }
 

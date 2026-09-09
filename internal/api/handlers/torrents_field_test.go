@@ -16,6 +16,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/autobrr/autobrr/pkg/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -284,7 +285,7 @@ func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[stri
 	require.NoError(t, err)
 
 	errorStore := models.NewInstanceErrorStore(db)
-	clientPool, err := quiqbt.NewClientPool(instanceStore, errorStore)
+	clientPool, err := quiqbt.NewClientPool(instanceStore, errorStore, 60*time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = clientPool.Close()
@@ -327,7 +328,7 @@ func createStaleCrossInstanceReadHarness(t *testing.T) (*TorrentsHandler, func()
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 	errorStore := models.NewInstanceErrorStore(db)
-	clientPool, err := quiqbt.NewClientPool(instanceStore, errorStore)
+	clientPool, err := quiqbt.NewClientPool(instanceStore, errorStore, 60*time.Second)
 	require.NoError(t, err)
 
 	instance, err := instanceStore.Create(context.Background(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
@@ -393,6 +394,7 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 	setUnexportedField(t, client, "isHealthy", true)
 	setUnexportedField(t, client, "lastHealthCheck", time.Now())
 	setUnexportedField(t, client, "syncManager", syncManager)
+	setUnexportedField(t, client, "optimisticUpdates", ttlcache.New(ttlcache.Options[string, *quiqbt.OptimisticTorrentUpdate]{}))
 
 	return client
 }

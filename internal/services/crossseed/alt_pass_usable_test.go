@@ -106,7 +106,7 @@ func TestSearchResultUsable(t *testing.T) {
 			got := s.searchResultUsable(
 				namedRelease{release: &source, rawName: tt.sourceName},
 				namedRelease{release: &candidate, rawName: tt.candidateName},
-				tt.sourceSize, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes,
+				tt.sourceSize, tt.candidateSize, nil, nil, tt.tolerance, tt.findIndividualEpisodes,
 			)
 			require.Equal(t, tt.want, got)
 		})
@@ -140,7 +140,7 @@ func TestIndexersWithoutUsableResults(t *testing.T) {
 	got := s.indexersWithoutUsableResults(
 		[]int{1, 2, 3}, results,
 		namedRelease{release: &source, rawName: sourceName},
-		size, nil, 5, false,
+		size, nil, nil, 5, false,
 	)
 	require.Equal(t, []int{1, 3}, got)
 
@@ -181,7 +181,7 @@ func TestHasUsableSearchResult(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, service.hasUsableSearchResult(tt.results, sourceView, size, nil, 5, false))
+			require.Equal(t, tt.want, service.hasUsableSearchResult(tt.results, sourceView, size, nil, nil, 5, false))
 		})
 	}
 }

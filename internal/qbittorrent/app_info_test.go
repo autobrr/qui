@@ -6,6 +6,9 @@ package qbittorrent
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -92,36 +95,98 @@ func TestBuildProcessInfo(t *testing.T) {
 	}
 }
 
-func TestGetAppInfoServesStaleCacheWhenRefreshFails(t *testing.T) {
+// newAppInfoStub serves the app info endpoints and counts hits per path. A
+// non-2xx versionStatus makes the version call fail without retries.
+func newAppInfoStub(t *testing.T, versionStatus int) (*Client, func(path string) int) {
+	t.Helper()
+
+	var mu sync.Mutex
+	hits := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		hits[r.URL.Path]++
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/api/v2/app/version":
+			time.Sleep(50 * time.Millisecond) // widen the window so callers overlap
+			w.WriteHeader(versionStatus)
+			_, _ = w.Write([]byte("v5.1.0"))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.11.4"))
+		case "/api/v2/app/buildInfo":
+			_, _ = w.Write([]byte(`{"qt":"6.7.2","libtorrent":"2.0.10","boost":"1.86","openssl":"3.3","zlib":"1.3","bitness":64}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
 	c := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
+		Client:     qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}),
 		instanceID: 1,
 	}
+	hitCount := func(path string) int {
+		mu.Lock()
+		defer mu.Unlock()
+		return hits[path]
+	}
+	return c, hitCount
+}
+
+type appInfoResult struct {
+	info *AppInfo
+	err  error
+}
+
+// callGetAppInfoConcurrently runs n overlapping GetAppInfo calls and returns every result.
+func callGetAppInfoConcurrently(ctx context.Context, c *Client, n int) []appInfoResult {
+	results := make([]appInfoResult, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			results[i].info, results[i].err = c.GetAppInfo(ctx)
+		})
+	}
+	wg.Wait()
+	return results
+}
+
+func TestGetAppInfoSharesOneRefreshAcrossConcurrentCallers(t *testing.T) {
+	c, hitCount := newAppInfoStub(t, http.StatusOK)
 	c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
 	c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
 
-	// A canceled context makes the refresh fail immediately, standing in for a
-	// saturated qBittorrent WebUI that times out every request.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
+		require.NoError(t, r.err)
+		require.NotNil(t, r.info)
+		require.Equal(t, "v5.1.0", r.info.Version)
+		require.Equal(t, "2.11.4", r.info.WebAPIVersion)
+	}
+	require.Equal(t, 1, hitCount("/api/v2/app/version"))
+	require.Equal(t, 1, hitCount("/api/v2/app/webapiVersion"))
+	require.Equal(t, 1, hitCount("/api/v2/app/buildInfo"))
+	require.Equal(t, 0, hitCount("/api/v2/app/processInfo"), "2.11.4 predates process info")
+}
 
-	info, err := c.GetAppInfo(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, info)
-	require.Equal(t, "4.6.7", info.Version)
-	require.Equal(t, "2.11.4", info.WebAPIVersion)
+func TestGetAppInfoServesStaleCacheWhenRefreshFails(t *testing.T) {
+	c, hitCount := newAppInfoStub(t, http.StatusInternalServerError)
+	c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
+	c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
+
+	for _, r := range callGetAppInfoConcurrently(t.Context(), c, 8) {
+		require.NoError(t, r.err)
+		require.NotNil(t, r.info)
+		require.Equal(t, "4.6.7", r.info.Version)
+		require.Equal(t, "2.11.4", r.info.WebAPIVersion)
+	}
+	require.Equal(t, 1, hitCount("/api/v2/app/version"))
+	require.Equal(t, 0, hitCount("/api/v2/app/webapiVersion"), "refresh stops at the first failure")
 }
 
 func TestGetAppInfoReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {
-	c := &Client{
-		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
-		instanceID: 1,
-	}
+	c, _ := newAppInfoStub(t, http.StatusInternalServerError)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	info, err := c.GetAppInfo(ctx)
+	info, err := c.GetAppInfo(t.Context())
 	require.Error(t, err)
 	require.Nil(t, info)
 }

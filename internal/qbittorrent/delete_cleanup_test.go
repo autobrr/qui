@@ -4,6 +4,7 @@
 package qbittorrent
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,10 +12,15 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops/local"
 )
+
+var testBackend = local.NewBackend()
 
 func TestBuildManagedDeleteCleanupTargets_SingleFileUsesParentDir(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	baseDir := t.TempDir()
 	trackerDir := filepath.Join(baseDir, "tracker-a")
@@ -24,13 +30,13 @@ func TestBuildManagedDeleteCleanupTargets_SingleFileUsesParentDir(t *testing.T) 
 	require.NoError(t, os.MkdirAll(leafDir, 0o755))
 	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 
-	targets := buildManagedDeleteCleanupTargets(baseDir, []qbt.Torrent{
+	targets := buildManagedDeleteCleanupTargets(ctx, baseDir, []qbt.Torrent{
 		{
 			Hash:        "abc123",
 			SavePath:    leafDir,
 			ContentPath: filePath,
 		},
-	})
+	}, testBackend)
 
 	require.Len(t, targets, 1)
 	require.Equal(t, leafDir, targets[0].dir)
@@ -39,6 +45,7 @@ func TestBuildManagedDeleteCleanupTargets_SingleFileUsesParentDir(t *testing.T) 
 
 func TestCleanupManagedDeleteTargets_RemovesEmptyParentsUntilBase(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	baseDir := t.TempDir()
 	trackerDir := filepath.Join(baseDir, "tracker-a")
@@ -48,17 +55,56 @@ func TestCleanupManagedDeleteTargets_RemovesEmptyParentsUntilBase(t *testing.T) 
 	require.NoError(t, os.MkdirAll(leafDir, 0o755))
 	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 
-	targets := buildManagedDeleteCleanupTargets(baseDir, []qbt.Torrent{
+	targets := buildManagedDeleteCleanupTargets(ctx, baseDir, []qbt.Torrent{
 		{
 			Hash:        "abc123",
 			SavePath:    leafDir,
 			ContentPath: filePath,
 		},
-	})
+	}, testBackend)
 	require.Len(t, targets, 1)
 
 	require.NoError(t, os.Remove(filePath))
-	cleanupManagedDeleteTargets(targets)
+	cleanupManagedDeleteTargets(ctx, targets, testBackend)
+
+	_, err := os.Stat(leafDir)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	_, err = os.Stat(trackerDir)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	info, err := os.Stat(baseDir)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
+func TestCleanupManagedDeleteTargets_RunsAfterRequestCancellation(t *testing.T) {
+	t.Parallel()
+
+	baseDir := t.TempDir()
+	trackerDir := filepath.Join(baseDir, "tracker-a")
+	leafDir := filepath.Join(trackerDir, "MovieA")
+	filePath := filepath.Join(leafDir, "MovieA.mkv")
+
+	require.NoError(t, os.MkdirAll(leafDir, 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
+
+	targets := buildManagedDeleteCleanupTargets(context.Background(), baseDir, []qbt.Torrent{
+		{
+			Hash:        "abc123",
+			SavePath:    leafDir,
+			ContentPath: filePath,
+		},
+	}, testBackend)
+	require.Len(t, targets, 1)
+
+	// Simulate the client disconnecting after qBittorrent accepted the delete:
+	// the request context is already cancelled when pruning starts.
+	requestCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.NoError(t, os.Remove(filePath))
+	cleanupManagedDeleteTargets(requestCtx, targets, testBackend)
 
 	_, err := os.Stat(leafDir)
 	require.ErrorIs(t, err, os.ErrNotExist)
@@ -73,6 +119,7 @@ func TestCleanupManagedDeleteTargets_RemovesEmptyParentsUntilBase(t *testing.T) 
 
 func TestCleanupManagedDeleteTargets_StopsAtNonEmptyParent(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	baseDir := t.TempDir()
 	trackerDir := filepath.Join(baseDir, "tracker-a")
@@ -86,17 +133,17 @@ func TestCleanupManagedDeleteTargets_StopsAtNonEmptyParent(t *testing.T) {
 	require.NoError(t, os.WriteFile(movieAPath, []byte("a"), 0o600))
 	require.NoError(t, os.WriteFile(movieBPath, []byte("b"), 0o600))
 
-	targets := buildManagedDeleteCleanupTargets(baseDir, []qbt.Torrent{
+	targets := buildManagedDeleteCleanupTargets(ctx, baseDir, []qbt.Torrent{
 		{
 			Hash:        "abc123",
 			SavePath:    movieADir,
 			ContentPath: movieAPath,
 		},
-	})
+	}, testBackend)
 	require.Len(t, targets, 1)
 
 	require.NoError(t, os.Remove(movieAPath))
-	cleanupManagedDeleteTargets(targets)
+	cleanupManagedDeleteTargets(ctx, targets, testBackend)
 
 	_, err := os.Stat(movieADir)
 	require.ErrorIs(t, err, os.ErrNotExist)
@@ -112,6 +159,7 @@ func TestCleanupManagedDeleteTargets_StopsAtNonEmptyParent(t *testing.T) {
 
 func TestCleanupManagedDeleteTargets_RetriesWhileLeafDirStillBusy(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	baseDir := t.TempDir()
 	trackerDir := filepath.Join(baseDir, "tracker-a")
@@ -121,13 +169,13 @@ func TestCleanupManagedDeleteTargets_RetriesWhileLeafDirStillBusy(t *testing.T) 
 	require.NoError(t, os.MkdirAll(leafDir, 0o755))
 	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 
-	targets := buildManagedDeleteCleanupTargets(baseDir, []qbt.Torrent{
+	targets := buildManagedDeleteCleanupTargets(ctx, baseDir, []qbt.Torrent{
 		{
 			Hash:        "abc123",
 			SavePath:    leafDir,
 			ContentPath: filePath,
 		},
-	})
+	}, testBackend)
 	require.Len(t, targets, 1)
 
 	done := make(chan struct{})
@@ -137,7 +185,7 @@ func TestCleanupManagedDeleteTargets_RetriesWhileLeafDirStillBusy(t *testing.T) 
 		close(done)
 	}()
 
-	cleanupManagedDeleteTargets(targets)
+	cleanupManagedDeleteTargets(ctx, targets, testBackend)
 	<-done
 
 	_, err := os.Stat(leafDir)
@@ -149,6 +197,7 @@ func TestCleanupManagedDeleteTargets_RetriesWhileLeafDirStillBusy(t *testing.T) 
 
 func TestBuildManagedDeleteCleanupTargets_PrefersMostSpecificBaseDir(t *testing.T) {
 	t.Parallel()
+	ctx := context.Background()
 
 	rootDir := t.TempDir()
 	baseDir := filepath.Join(rootDir, "cross-seeds")
@@ -159,13 +208,13 @@ func TestBuildManagedDeleteCleanupTargets_PrefersMostSpecificBaseDir(t *testing.
 	require.NoError(t, os.MkdirAll(leafDir, 0o755))
 	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 
-	targets := buildManagedDeleteCleanupTargets(baseDir+","+specificBaseDir, []qbt.Torrent{
+	targets := buildManagedDeleteCleanupTargets(ctx, baseDir+","+specificBaseDir, []qbt.Torrent{
 		{
 			Hash:        "abc123",
 			SavePath:    leafDir,
 			ContentPath: filePath,
 		},
-	})
+	}, testBackend)
 
 	require.Len(t, targets, 1)
 	require.Equal(t, specificBaseDir, targets[0].baseDir)

@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useState, useEffect } from "react"
+import { useCallback } from "react"
+
+import { useClientSetting } from "@/lib/client-settings"
 
 export interface DateTimePreferences {
   timezone: string
@@ -17,67 +19,23 @@ const DEFAULT_PREFERENCES: DateTimePreferences = {
   dateFormat: "iso",
 }
 
+const parseDateTimePreferences = (raw: string): DateTimePreferences => ({
+  ...DEFAULT_PREFERENCES,
+  ...JSON.parse(raw),
+})
+
 export function usePersistedDateTimePreferences() {
-  const storageKey = "qui-datetime-preferences"
-
-  // Initialize state from localStorage or default values
-  const [preferences, setPreferencesState] = useState<DateTimePreferences>(() => {
-    try {
-      const stored = localStorage.getItem(storageKey)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        return {
-          ...DEFAULT_PREFERENCES,
-          ...parsed,
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load date/time preferences from localStorage:", error)
-    }
-
-    return DEFAULT_PREFERENCES
+  const [preferences, setStored] = useClientSetting<DateTimePreferences>("qui-datetime-preferences", {
+    defaultValue: DEFAULT_PREFERENCES,
+    parse: parseDateTimePreferences,
   })
 
-  // Persist to localStorage whenever preferences change
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(preferences))
-    } catch (error) {
-      console.error("Failed to save date/time preferences to localStorage:", error)
-    }
-  }, [preferences])
-
-  // Listen for cross-component updates via CustomEvent within the same tab
-  useEffect(() => {
-    const handleEvent = (e: Event) => {
-      const custom = e as CustomEvent<{ preferences: DateTimePreferences }>
-      if (custom.detail?.preferences) {
-        setPreferencesState(custom.detail.preferences)
-      }
-    }
-
-    window.addEventListener(storageKey, handleEvent as EventListener)
-    return () => window.removeEventListener(storageKey, handleEvent as EventListener)
-  }, [])
-
-  // Update preferences function
-  const setPreferences = (newPreferences: Partial<DateTimePreferences>) => {
-    setPreferencesState((prev) => {
-      const updated = { ...prev, ...newPreferences }
-
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(updated))
-      } catch (error) {
-        console.error("Failed to save date/time preferences to localStorage:", error)
-      }
-
-      // Notify other components via CustomEvent
-      const evt = new CustomEvent(storageKey, { detail: { preferences: updated } })
-      window.dispatchEvent(evt)
-
-      return updated
-    })
-  }
+  const setPreferences = useCallback(
+    (newPreferences: Partial<DateTimePreferences>) => {
+      setStored((prev) => ({ ...prev, ...newPreferences }))
+    },
+    [setStored]
+  )
 
   return {
     preferences,

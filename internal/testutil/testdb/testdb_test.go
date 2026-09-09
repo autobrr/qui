@@ -10,11 +10,72 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/database"
 )
+
+func TestPostgresDSNWithSearchPath(t *testing.T) {
+	const schema = "qui_test_schema"
+	tests := []struct {
+		name         string
+		dsn          string
+		wantPassword string
+		wantErr      bool
+	}{
+		{
+			name:         "URL",
+			dsn:          "postgres://tester:url%20secret@localhost:5432/qui?sslmode=disable&application_name=suite&search_path=old",
+			wantPassword: "url secret",
+		},
+		{
+			name:         "keyword value",
+			dsn:          "host=localhost port=5432 user=tester password='keyword secret' dbname=qui sslmode=disable application_name=suite search_path=old",
+			wantPassword: "keyword secret",
+		},
+		{
+			name:    "malformed URL",
+			dsn:     "postgres://%zz",
+			wantErr: true,
+		},
+		{
+			name:    "malformed keyword value",
+			dsn:     "host='unterminated",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dsn, err := postgresDSNWithSearchPath(tt.dsn, schema)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("postgresDSNWithSearchPath() error = nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("postgresDSNWithSearchPath() error = %v", err)
+			}
+
+			config, err := pgxpool.ParseConfig(dsn)
+			if err != nil {
+				t.Fatalf("parse modified DSN: %v", err)
+			}
+			if got := config.ConnConfig.RuntimeParams["search_path"]; got != schema {
+				t.Fatalf("search_path = %q, want %q", got, schema)
+			}
+			if got := config.ConnConfig.RuntimeParams["application_name"]; got != "suite" {
+				t.Fatalf("application_name = %q, want suite", got)
+			}
+			if got := config.ConnConfig.Password; got != tt.wantPassword {
+				t.Fatalf("password = %q, want %q", got, tt.wantPassword)
+			}
+		})
+	}
+}
 
 func BenchmarkFullMigrationTestDB(b *testing.B) {
 	disableBenchmarkLogs(b)

@@ -6,6 +6,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { PathCell } from "@/components/ui/path-cell"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useConfirmOrphanScanDeletion, useOrphanScanRun } from "@/hooks/useOrphanScan"
 import { api } from "@/lib/api"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
@@ -32,6 +33,7 @@ export function OrphanScanPreviewDialog({
   runId,
 }: OrphanScanPreviewDialogProps) {
   const { t } = useTranslation("instances")
+  const { formatISOTimestamp } = useDateTimeFormatters()
   const [offset, setOffset] = useState(0)
   const [files, setFiles] = useState<OrphanScanFile[]>([])
   const [isExporting, setIsExporting] = useState(false)
@@ -167,7 +169,7 @@ export function OrphanScanPreviewDialog({
                       {formatBytes(f.fileSize)}
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                      {f.modifiedAt ? new Date(f.modifiedAt).toLocaleString() : "-"}
+                      {f.modifiedAt ? formatISOTimestamp(f.modifiedAt) : "-"}
                     </td>
                     <td className="p-2">
                       <div className="text-xs font-mono text-muted-foreground">

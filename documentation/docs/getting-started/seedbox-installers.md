@@ -7,9 +7,9 @@ description: One-line installers for popular seedbox providers.
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Seedbox Installers
+# Seedbox installers
 
-One-line installers for popular seedbox providers. These scripts automatically configure qui for your specific environment.
+One-line installers for popular seedbox providers. Each script configures qui for the provider's environment.
 
 <Tabs>
   <TabItem value="feral" label="Feral" default>
@@ -42,7 +42,7 @@ One-line installers for popular seedbox providers. These scripts automatically c
     wget -O installer.sh https://get.autobrr.com/qui/bytesized && chmod +x installer.sh && ./installer.sh
     ```
     :::note
-    This installer has not been tested.
+    This installer is untested.
     :::
   </TabItem>
 </Tabs>

@@ -5,8 +5,8 @@
 
 import { useFilterLifecycle, type UseFilterLifecycleParams } from "@/hooks/torrent-table/useFilterLifecycle"
 import type { Virtualizer } from "@tanstack/react-virtual"
-import { act, renderHook } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, cleanup, renderHook } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 function fakeVirtualizer() {
   return { measure: vi.fn(), scrollToOffset: vi.fn() } as unknown as Virtualizer<HTMLDivElement, Element>
@@ -18,7 +18,6 @@ function makeParams(over: Partial<UseFilterLifecycleParams> = {}): UseFilterLife
     sortedTorrentsLength: 500,
     onFilterChange: vi.fn(),
     setColumnFilters: vi.fn(),
-    setSorting: vi.fn(),
     setLoadedRows: vi.fn(),
     isCrossSeedFiltering: false,
     columnFiltersLength: 0,
@@ -34,6 +33,8 @@ const EMPTY_FILTERS = {
 }
 
 describe("useFilterLifecycle", () => {
+  afterEach(cleanup)
+
   it("runs the atomic clear-all transaction and settles back to idle", () => {
     const p = makeParams({ sortedTorrentsLength: 500 })
     const { result } = renderHook(() => useFilterLifecycle(p))
@@ -42,22 +43,20 @@ describe("useFilterLifecycle", () => {
 
     expect(result.current.filterLifecycleState).toBe("idle")
     expect(p.setColumnFilters).toHaveBeenCalledWith([])
-    expect(p.setSorting).toHaveBeenCalledWith([])
     expect(p.virtualizer.scrollToOffset).toHaveBeenCalledWith(0)
     expect(p.virtualizer.measure).toHaveBeenCalled()
     expect(p.setLoadedRows).toHaveBeenCalledWith(100) // min(100, 500)
     expect(p.onFilterChange).toHaveBeenCalledWith(EMPTY_FILTERS)
   })
 
-  it("clears columns only without touching the parent filters", () => {
-    const p = makeParams()
+  it.each([false, true])("clears columns only without touching parent filters, cross-seed=%s", (isCrossSeedFiltering) => {
+    const p = makeParams({ isCrossSeedFiltering, columnFiltersLength: 1 })
     const { result } = renderHook(() => useFilterLifecycle(p))
 
     act(() => result.current.clearFiltersAtomically("columns-only"))
 
     expect(result.current.filterLifecycleState).toBe("idle")
     expect(p.setColumnFilters).toHaveBeenCalledWith([])
-    expect(p.setSorting).toHaveBeenCalledWith([])
     expect(p.onFilterChange).not.toHaveBeenCalled()
   })
 

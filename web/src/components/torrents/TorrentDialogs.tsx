@@ -529,6 +529,7 @@ export const SetLocationDialog = memo(function SetLocationDialog({
     highlightedIndex,
     showSuggestions,
     inputRef: autocompleteInputRef,
+    listRef: suggestionListRef,
   } = usePathAutocomplete(setLocation, instanceId)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -601,7 +602,7 @@ export const SetLocationDialog = memo(function SetLocationDialog({
             />
             {supportsPathAutocomplete && showSuggestions && suggestions.length > 0 && (
               <div className="relative">
-                <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                <div ref={suggestionListRef} className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
                   <div className="max-h-55 overflow-y-auto py-1">
                     {suggestions.map((entry, idx) => (
                       <button
@@ -1962,7 +1963,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("dialogs.shareLimit.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
@@ -2308,7 +2309,7 @@ export const SpeedLimitsDialog = memo(function SpeedLimitsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("dialogs.speedLimits.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>

@@ -52,8 +52,8 @@ var eventDefinitions = []EventDefinition{
 	{Type: EventCrossSeedSearchFailed, Label: "Cross-seed seeded search failed", Description: "A seeded search run fails or is canceled."},
 	{Type: EventCrossSeedCompletionSucceeded, Label: "Cross-seed completion search completed", Description: "A completion search run completes (summary counts and samples)."},
 	{Type: EventCrossSeedCompletionFailed, Label: "Cross-seed completion search failed", Description: "A completion search run fails."},
-	{Type: EventCrossSeedWebhookSucceeded, Label: "Cross-seed webhook check completed", Description: "A webhook check run completes (summary counts and samples)."},
-	{Type: EventCrossSeedWebhookFailed, Label: "Cross-seed webhook check failed", Description: "A webhook check run fails."},
+	{Type: EventCrossSeedWebhookSucceeded, Label: "Cross-seed webhook torrent added", Description: "A webhook apply adds one or more torrents."},
+	{Type: EventCrossSeedWebhookFailed, Label: "Cross-seed webhook failed", Description: "A webhook check or apply fails."},
 	{Type: EventAutomationsActionsApplied, Label: "Automations actions applied", Description: "Automation rules applied actions (summary counts and samples; only when actions occur)."},
 	{Type: EventAutomationsRunFailed, Label: "Automations run failed", Description: "Automation rules failed to run for an instance (system error)."},
 }

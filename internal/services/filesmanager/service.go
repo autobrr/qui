@@ -4,11 +4,11 @@
 package filesmanager
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -29,24 +29,13 @@ type TorrentHashProvider interface {
 
 // Service manages cached torrent file information
 type Service struct {
-	db           dbinterface.Querier
-	repo         *Repository
-	mu           sync.Mutex
-	lastCacheLog map[string]time.Time
-}
-
-const cacheLogThrottle = 30 * time.Second
-
-func newCacheKey(instanceID int, hash string) string {
-	return fmt.Sprintf("%d:%s", instanceID, hash)
+	repo *Repository
 }
 
 // NewService creates a new files manager service
 func NewService(db dbinterface.Querier) *Service {
 	return &Service{
-		db:           db,
-		repo:         NewRepository(db),
-		lastCacheLog: make(map[string]time.Time),
+		repo: NewRepository(db),
 	}
 }
 
@@ -64,7 +53,7 @@ func NewService(db dbinterface.Querier) *Service {
 // If absolute consistency is required, the caller should invalidate the cache
 // before calling this method, or use the qBittorrent API directly.
 func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash string) (qbt.TorrentFiles, error) {
-	results, missing, err := s.GetCachedFilesBatch(ctx, instanceID, []string{hash})
+	results, missing, err := s.GetCachedFilesBatch(ctx, instanceID, []string{hash}, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +70,7 @@ func (s *Service) GetCachedFiles(ctx context.Context, instanceID int, hash strin
 
 // GetCachedFilesBatch retrieves cached file information for multiple torrents.
 // Missing or stale entries are returned in the second slice so callers can decide what to refresh.
-func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, []string, error) {
+func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashes []string, maxAge time.Duration) (map[string]qbt.TorrentFiles, []string, error) {
 	unique := dedupeHashes(hashes)
 	if len(unique) == 0 {
 		return map[string]qbt.TorrentFiles{}, nil, nil
@@ -102,7 +91,7 @@ func (s *Service) GetCachedFilesBatch(ctx context.Context, instanceID int, hashe
 			continue
 		}
 
-		if !cacheIsFresh(info) {
+		if !cacheIsFresh(info, maxAge) {
 			missing = append(missing, hash)
 			continue
 		}
@@ -196,32 +185,6 @@ func (s *Service) CacheFilesBatch(ctx context.Context, instanceID int, files map
 		if err := s.repo.UpsertSyncInfoBatch(ctx, allSyncInfos); err != nil {
 			return fmt.Errorf("failed to update sync info: %w", err)
 		}
-	}
-
-	// Log each torrent individually
-	for hash, torrentFiles := range files {
-		if len(torrentFiles) == 0 {
-			continue
-		}
-
-		now := time.Now()
-		cacheKey := newCacheKey(instanceID, hash)
-		// shouldLog := false
-
-		s.mu.Lock()
-		if last, ok := s.lastCacheLog[cacheKey]; !ok || now.Sub(last) >= cacheLogThrottle {
-			s.lastCacheLog[cacheKey] = now
-			// shouldLog = true
-		}
-		s.mu.Unlock()
-
-		// if shouldLog {
-		//	log.Trace().
-		//		Int("instanceID", instanceID).
-		//		Str("hash", hash).
-		//		Int("fileCount", len(torrentFiles)).
-		//		Msg("Cached torrent files")
-		//}
 	}
 
 	return nil
@@ -327,15 +290,13 @@ func (s *Service) GetCacheStats(ctx context.Context, instanceID int) (*CacheStat
 	return s.repo.GetCacheStats(ctx, instanceID)
 }
 
-func cacheIsFresh(info *SyncInfo) bool {
+const defaultCacheFreshness = 5 * time.Minute
+
+func cacheIsFresh(info *SyncInfo, maxAge time.Duration) bool {
 	if info == nil {
 		return false
 	}
-
-	// Use a fixed cache duration for simplicity
-	cacheFreshDuration := 5 * time.Minute
-
-	return time.Since(info.LastSyncedAt) <= cacheFreshDuration
+	return time.Since(info.LastSyncedAt) <= cmp.Or(maxAge, defaultCacheFreshness)
 }
 
 func convertCachedFiles(cached []CachedFile) qbt.TorrentFiles {

@@ -8,7 +8,8 @@ import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { isAllInstancesScope } from "@/lib/instances"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
-import { useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { ManualCrossSeedDialog } from "./ManualCrossSeedDialog"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
@@ -41,6 +42,11 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const crossSeed = useCrossSeedSearch(props.instanceId)
   const allowCrossSeedSearch = !readOnly && !isAllInstancesView
 
+  const [manualCrossSeedTarget, setManualCrossSeedTarget] = useState<{ hash: string; name: string } | null>(null)
+  const openManualCrossSeed = useCallback((torrent: Torrent) => {
+    setManualCrossSeedTarget({ hash: torrent.hash, name: torrent.name })
+  }, [])
+
   // Update context with current filters and instance
   useEffect(() => {
     setFiltersAndInstance(props.filters, props.instanceId)
@@ -48,6 +54,19 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
 
   // Memoize props to avoid unnecessary re-renders
   const memoizedProps = props // If props are stable, this is fine; otherwise use useMemo
+
+  const manualCrossSeedDialog = allowCrossSeedSearch ? (
+    <ManualCrossSeedDialog
+      instanceId={props.instanceId}
+      open={manualCrossSeedTarget !== null}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setManualCrossSeedTarget(null)
+        }
+      }}
+      preselectedTarget={manualCrossSeedTarget}
+    />
+  ) : null
 
   if (isMobile && !readOnly) {
     return (
@@ -57,8 +76,10 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
           canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
           onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
           isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
+          onManualCrossSeed={allowCrossSeedSearch ? openManualCrossSeed : undefined}
         />
         {allowCrossSeedSearch && crossSeed.crossSeedDialog}
+        {manualCrossSeedDialog}
       </>
     )
   }
@@ -72,8 +93,10 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
         canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
         onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
         isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
+        onManualCrossSeed={allowCrossSeedSearch ? openManualCrossSeed : undefined}
       />
       {allowCrossSeedSearch && crossSeed.crossSeedDialog}
+      {manualCrossSeedDialog}
     </>
   )
 }

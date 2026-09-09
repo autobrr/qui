@@ -109,6 +109,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			if d.IsDir() && path != root {
 				if slices.ContainsFunc(opts.IgnoreDirNames, func(ignored string) bool {
 					return strings.EqualFold(ignored, name)
+				}) || slices.ContainsFunc(opts.IgnoreDirNamePrefixes, func(prefix string) bool {
+					return len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix)
 				}) {
 					return filepath.SkipDir
 				}
@@ -134,16 +136,19 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 
 			if walkErr != nil {
 				entry.Err = walkErr
-			} else {
-				fi, err := d.Info()
-				if err != nil {
-					// An entry that vanished or can't be stat'd is skipped, not
-					// surfaced: consumers (orphanscan, dirscan) skipped such
-					// files pre-migration, and emitting it as Err would read as
-					// a walk failure and abort whole scans. Err stays reserved
-					// for enumeration-level failures.
+			} else if fi, err := d.Info(); err != nil {
+				// An entry that vanished or can't be stat'd is skipped by
+				// default, not surfaced: consumers (orphanscan, dirscan)
+				// skipped such files pre-migration, and emitting it as Err
+				// would read as a walk failure and abort whole scans. Err
+				// stays reserved for enumeration-level failures. Delete
+				// preflights opt in via EmitStatErrors so they can fail
+				// closed instead.
+				if !opts.EmitStatErrors {
 					return nil
 				}
+				entry.StatErr = err
+			} else {
 				entry.Size = fi.Size()
 				entry.ModTime = fi.ModTime()
 				entry.Mode = fi.Mode()
@@ -284,7 +289,7 @@ func osFileInfoToLstat(fi os.FileInfo, path string) *fsops.LstatInfo {
 	info := &fsops.LstatInfo{
 		FileInfo: *osFileInfoToFsops(fi, path),
 	}
-	if fi.Mode().IsRegular() {
+	if fi.Mode().IsRegular() || fi.IsDir() {
 		fid, nlinks, err := hardlink.GetFileID(fi, path)
 		if err != nil {
 			info.FileIDErr = err

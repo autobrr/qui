@@ -20,11 +20,6 @@ type AddPolicy struct {
 	// regardless of user's StartPaused setting.
 	ForcePaused bool
 
-	// ForceSkipAutoResume prevents any auto-resume logic from running,
-	// including both immediate resume for perfect matches and queued
-	// recheck-resume for alignment/extras cases.
-	ForceSkipAutoResume bool
-
 	// DiscLayout indicates this is a disc-based media torrent (Blu-ray/DVD).
 	// When true, ForcePaused is set and auto-resume is only allowed after
 	// a full recheck reaches 100%.
@@ -41,10 +36,9 @@ func PolicyForSourceFiles(sourceFiles qbt.TorrentFiles) AddPolicy {
 	isDisc, marker := isDiscLayoutTorrent(sourceFiles)
 	if isDisc {
 		return AddPolicy{
-			ForcePaused:         true,
-			ForceSkipAutoResume: false,
-			DiscLayout:          true,
-			DiscMarker:          marker,
+			ForcePaused: true,
+			DiscLayout:  true,
+			DiscMarker:  marker,
 		}
 	}
 	return AddPolicy{}
@@ -95,12 +89,6 @@ func (p AddPolicy) ApplyToAddOptions(options map[string]string) {
 		options["paused"] = "true"
 		options["stopped"] = "true"
 	}
-}
-
-// ShouldSkipAutoResume returns true if auto-resume should be skipped for this torrent.
-// This includes both immediate resume (perfect match) and queued recheck-resume.
-func (p AddPolicy) ShouldSkipAutoResume() bool {
-	return p.ForceSkipAutoResume
 }
 
 // StatusSuffix returns a message suffix for result status when policy constraints applied.
