@@ -1828,14 +1828,14 @@ export function TorrentCardsMobile({
     const deleteActionTargets = torrentToDelete? buildTorrentActionTargets([torrentToDelete], instanceId): (isAllSelected ? undefined : selectedActionTargets)
 
     const crossSeedTagHashesToBlock = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
+    const crossSeedDeleteTargets = [
+      ...(deleteActionTargets ?? []),
+      ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
+    ]
 
     if (shouldBlockCrossSeeds) {
       const taggedHashes = getTorrentHashesWithTag(deleteTorrents, "cross-seed")
-      const blocklistTargets = [
-        ...(deleteActionTargets ?? []),
-        ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
-      ]
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedTagHashesToBlock], blocklistTargets)
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedTagHashesToBlock], crossSeedDeleteTargets)
     }
 
     let hashes: string[]
@@ -1886,7 +1886,7 @@ export function TorrentCardsMobile({
       {
         clientHashes: visibleHashesToDelete,
         totalSelected: totalToDelete,
-        actionTargets: deleteActionTargets,
+        actionTargets: deleteCrossSeeds && deleteActionTargets ? crossSeedDeleteTargets : deleteActionTargets,
         excludeTargets: !torrentToDelete && isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )

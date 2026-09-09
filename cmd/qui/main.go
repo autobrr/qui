@@ -42,6 +42,7 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/services/discscan"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -739,6 +740,10 @@ func (app *Application) runServer() {
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 	orphanScanService.SetActivityPublisher(activityHub)
 
+	discScanStore := models.NewDiscScanStore(db)
+	discScanService := discscan.NewService(discScanStore)
+	discScanService.SetActivityPublisher(activityHub)
+
 	dirScanStore := models.NewDirScanStore(db)
 	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool)
 	dirScanService.SetActivityPublisher(activityHub)
@@ -772,6 +777,10 @@ func (app *Application) runServer() {
 	defer orphanScanCancel()
 	orphanScanService.Start(orphanScanCtx)
 
+	discScanCtx, discScanCancel := context.WithCancel(context.Background())
+	defer discScanCancel()
+	discScanService.Start(discScanCtx)
+
 	dirScanCtx, dirScanCancel := context.WithCancel(context.Background())
 	defer dirScanCancel()
 	if err := dirScanService.Start(dirScanCtx); err != nil {
@@ -779,7 +788,7 @@ func (app *Application) runServer() {
 	}
 
 	backupStore := models.NewBackupStore(db)
-	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
+	backupService := backups.NewService(backupStore, syncManager, backups.Config{DataDir: cfg.GetDataDir(), BackupDir: cfg.GetBackupDir()}, notificationService)
 	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
@@ -875,6 +884,9 @@ func (app *Application) runServer() {
 		SeasonPackRunStore:               seasonPackRunStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
+		DiscScanStore:                    discScanStore,
+		DiscScanService:                  discScanService,
+		BackendPool:                      backendPool,
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,

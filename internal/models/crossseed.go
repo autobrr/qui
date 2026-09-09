@@ -274,21 +274,21 @@ type CrossSeedRunResult struct {
 
 // CrossSeedRun stores the persisted automation run metadata.
 type CrossSeedRun struct {
-	ID              int64                `json:"id"`
-	TriggeredBy     string               `json:"triggeredBy"`
-	Mode            CrossSeedRunMode     `json:"mode"`
-	Status          CrossSeedRunStatus   `json:"status"`
-	StartedAt       time.Time            `json:"startedAt"`
-	CompletedAt     *time.Time           `json:"completedAt,omitempty"`
-	TotalFeedItems  int                  `json:"totalFeedItems"`
-	CandidatesFound int                  `json:"candidatesFound"`
-	TorrentsAdded   int                  `json:"torrentsAdded"`
-	TorrentsFailed  int                  `json:"torrentsFailed"`
-	TorrentsSkipped int                  `json:"torrentsSkipped"`
-	Message         *string              `json:"message,omitempty"`
-	ErrorMessage    *string              `json:"errorMessage,omitempty"`
-	Results         []CrossSeedRunResult `json:"results,omitempty"`
-	CreatedAt       time.Time            `json:"createdAt"`
+	ID                int64                `json:"id"`
+	TriggeredBy       string               `json:"triggeredBy"`
+	Mode              CrossSeedRunMode     `json:"mode"`
+	Status            CrossSeedRunStatus   `json:"status"`
+	StartedAt         time.Time            `json:"startedAt"`
+	CompletedAt       *time.Time           `json:"completedAt,omitempty"`
+	TotalFeedItems    int                  `json:"totalFeedItems"`
+	CandidatesFound   int                  `json:"candidatesFound"`
+	CrossSeedsAdded   int                  `json:"crossSeedsAdded"`
+	CandidatesFailed  int                  `json:"candidatesFailed"`
+	CandidatesSkipped int                  `json:"candidatesSkipped"`
+	Message           *string              `json:"message,omitempty"`
+	ErrorMessage      *string              `json:"errorMessage,omitempty"`
+	Results           []CrossSeedRunResult `json:"results,omitempty"`
+	CreatedAt         time.Time            `json:"createdAt"`
 }
 
 // CrossSeedSearchRunStatus represents the lifecycle state of an automated search pass.
@@ -332,24 +332,25 @@ type CrossSeedSearchResult struct {
 
 // CrossSeedSearchRun stores metadata for library search automation runs.
 type CrossSeedSearchRun struct {
-	ID              int64                    `json:"id"`
-	InstanceID      int                      `json:"instanceId"`
-	Status          CrossSeedSearchRunStatus `json:"status"`
-	StartedAt       time.Time                `json:"startedAt"`
-	CompletedAt     *time.Time               `json:"completedAt,omitempty"`
-	TotalTorrents   int                      `json:"totalTorrents"`
-	Processed       int                      `json:"processed"`
-	TorrentsAdded   int                      `json:"torrentsAdded"`
-	TorrentsFailed  int                      `json:"torrentsFailed"`
-	TorrentsSkipped int                      `json:"torrentsSkipped"`
-	Message         *string                  `json:"message,omitempty"`
-	ErrorMessage    *string                  `json:"errorMessage,omitempty"`
-	Filters         CrossSeedSearchFilters   `json:"filters"`
-	IndexerIDs      []int                    `json:"indexerIds"`
-	IntervalSeconds int                      `json:"intervalSeconds"`
-	CooldownMinutes int                      `json:"cooldownMinutes"`
-	Results         []CrossSeedSearchResult  `json:"results"`
-	CreatedAt       time.Time                `json:"createdAt"`
+	ID                     int64                    `json:"id"`
+	InstanceID             int                      `json:"instanceId"`
+	Status                 CrossSeedSearchRunStatus `json:"status"`
+	StartedAt              time.Time                `json:"startedAt"`
+	CompletedAt            *time.Time               `json:"completedAt,omitempty"`
+	TotalTorrents          int                      `json:"totalTorrents"`
+	Processed              int                      `json:"processed"`
+	TorrentsWithCrossSeeds int                      `json:"torrentsWithCrossSeeds"`
+	CrossSeedsAdded        int                      `json:"crossSeedsAdded"`
+	TorrentsFailed         int                      `json:"torrentsFailed"`
+	TorrentsSkipped        int                      `json:"torrentsSkipped"`
+	Message                *string                  `json:"message,omitempty"`
+	ErrorMessage           *string                  `json:"errorMessage,omitempty"`
+	Filters                CrossSeedSearchFilters   `json:"filters"`
+	IndexerIDs             []int                    `json:"indexerIds"`
+	IntervalSeconds        int                      `json:"intervalSeconds"`
+	CooldownMinutes        int                      `json:"cooldownMinutes"`
+	Results                []CrossSeedSearchResult  `json:"results"`
+	CreatedAt              time.Time                `json:"createdAt"`
 }
 
 // CrossSeedFeedItemStatus tracks processing state for feed items.
@@ -1235,8 +1236,8 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 	query := `
 		INSERT INTO cross_seed_runs (
 			triggered_by, mode, status, started_at,
-			total_feed_items, candidates_found, torrents_added,
-			torrents_failed, torrents_skipped, message,
+			total_feed_items, candidates_found, cross_seeds_added,
+			candidates_failed, candidates_skipped, message,
 			error_message, results_json
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
@@ -1250,9 +1251,9 @@ func (s *CrossSeedStore) CreateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		run.StartedAt,
 		run.TotalFeedItems,
 		run.CandidatesFound,
-		run.TorrentsAdded,
-		run.TorrentsFailed,
-		run.TorrentsSkipped,
+		run.CrossSeedsAdded,
+		run.CandidatesFailed,
+		run.CandidatesSkipped,
 		run.Message,
 		run.ErrorMessage,
 		resultsJSON,
@@ -1294,8 +1295,8 @@ func (s *CrossSeedStore) UpdateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 	query := `
 		UPDATE cross_seed_runs
 		SET status = ?, completed_at = ?, total_feed_items = ?,
-		    candidates_found = ?, torrents_added = ?, torrents_failed = ?,
-		    torrents_skipped = ?, message = ?, error_message = ?, results_json = ?
+		    candidates_found = ?, cross_seeds_added = ?, candidates_failed = ?,
+		    candidates_skipped = ?, message = ?, error_message = ?, results_json = ?
 		WHERE id = ?
 	`
 
@@ -1304,9 +1305,9 @@ func (s *CrossSeedStore) UpdateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 		run.CompletedAt,
 		run.TotalFeedItems,
 		run.CandidatesFound,
-		run.TorrentsAdded,
-		run.TorrentsFailed,
-		run.TorrentsSkipped,
+		run.CrossSeedsAdded,
+		run.CandidatesFailed,
+		run.CandidatesSkipped,
 		run.Message,
 		run.ErrorMessage,
 		resultsJSON,
@@ -1323,8 +1324,8 @@ func (s *CrossSeedStore) UpdateRun(ctx context.Context, run *CrossSeedRun) (*Cro
 func (s *CrossSeedStore) GetRun(ctx context.Context, id int64) (*CrossSeedRun, error) {
 	query := `
 		SELECT id, triggered_by, mode, status, started_at, completed_at,
-		       total_feed_items, candidates_found, torrents_added,
-		       torrents_failed, torrents_skipped, message, error_message,
+		       total_feed_items, candidates_found, cross_seeds_added,
+		       candidates_failed, candidates_skipped, message, error_message,
 		       results_json, created_at
 		FROM cross_seed_runs
 		WHERE id = ?
@@ -1342,8 +1343,8 @@ func (s *CrossSeedStore) GetRun(ctx context.Context, id int64) (*CrossSeedRun, e
 func (s *CrossSeedStore) GetLatestRun(ctx context.Context) (*CrossSeedRun, error) {
 	query := `
 		SELECT id, triggered_by, mode, status, started_at, completed_at,
-		       total_feed_items, candidates_found, torrents_added,
-		       torrents_failed, torrents_skipped, message, error_message,
+		       total_feed_items, candidates_found, cross_seeds_added,
+		       candidates_failed, candidates_skipped, message, error_message,
 		       results_json, created_at
 		FROM cross_seed_runs
 		ORDER BY started_at DESC
@@ -1369,8 +1370,8 @@ func (s *CrossSeedStore) ListRuns(ctx context.Context, limit, offset int) ([]*Cr
 
 	query := `
 		SELECT id, triggered_by, mode, status, started_at, completed_at,
-		       total_feed_items, candidates_found, torrents_added,
-		       torrents_failed, torrents_skipped, message, error_message,
+		       total_feed_items, candidates_found, cross_seeds_added,
+		       candidates_failed, candidates_skipped, message, error_message,
 		       results_json, created_at
 		FROM cross_seed_runs
 		ORDER BY started_at DESC
@@ -1426,10 +1427,10 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	const query = `
 		INSERT INTO cross_seed_search_runs (
 			instance_id, status, started_at, total_torrents, processed,
-			torrents_added, torrents_failed, torrents_skipped, message,
+			torrents_with_cross_seeds, cross_seeds_added, torrents_failed, torrents_skipped, message,
 			error_message, filters_json, indexer_ids_json, interval_seconds,
 			cooldown_minutes, results_json
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
 	`
 
@@ -1440,7 +1441,8 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 		run.StartedAt,
 		run.TotalTorrents,
 		run.Processed,
-		run.TorrentsAdded,
+		run.TorrentsWithCrossSeeds,
+		run.CrossSeedsAdded,
 		run.TorrentsFailed,
 		run.TorrentsSkipped,
 		run.Message,
@@ -1472,26 +1474,27 @@ func (s *CrossSeedStore) CreateSearchRun(ctx context.Context, run *CrossSeedSear
 	return s.GetSearchRun(ctx, insertedID)
 }
 
-// UpdateSearchRun updates persisted metadata for a search run.
-func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSearchRun) (*CrossSeedSearchRun, error) {
+// UpdateSearchRun persists the full row of a search run, results blob included.
+// UpdateSearchRunProgress is the cheap per-candidate write.
+func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSearchRun) error {
 	if run == nil {
-		return nil, errors.New("run cannot be nil")
+		return errors.New("run cannot be nil")
 	}
 	if run.ID == 0 {
-		return nil, errors.New("run ID cannot be zero")
+		return errors.New("run ID cannot be zero")
 	}
 
 	resultsJSON, err := encodeSearchResults(run.Results)
 	if err != nil {
-		return nil, fmt.Errorf("encode results: %w", err)
+		return fmt.Errorf("encode results: %w", err)
 	}
 	filtersJSON, err := encodeSearchFilters(run.Filters)
 	if err != nil {
-		return nil, fmt.Errorf("encode filters: %w", err)
+		return fmt.Errorf("encode filters: %w", err)
 	}
 	indexersJSON, err := encodeIntSlice(run.IndexerIDs)
 	if err != nil {
-		return nil, fmt.Errorf("encode indexers: %w", err)
+		return fmt.Errorf("encode indexers: %w", err)
 	}
 
 	const query = `
@@ -1501,7 +1504,8 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 			completed_at = ?,
 			total_torrents = ?,
 			processed = ?,
-			torrents_added = ?,
+			torrents_with_cross_seeds = ?,
+			cross_seeds_added = ?,
 			torrents_failed = ?,
 			torrents_skipped = ?,
 			message = ?,
@@ -1525,7 +1529,8 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 		completed,
 		run.TotalTorrents,
 		run.Processed,
-		run.TorrentsAdded,
+		run.TorrentsWithCrossSeeds,
+		run.CrossSeedsAdded,
 		run.TorrentsFailed,
 		run.TorrentsSkipped,
 		run.Message,
@@ -1537,18 +1542,50 @@ func (s *CrossSeedStore) UpdateSearchRun(ctx context.Context, run *CrossSeedSear
 		resultsJSON,
 		run.ID,
 	); err != nil {
-		return nil, fmt.Errorf("update search run: %w", err)
+		return fmt.Errorf("update search run: %w", err)
 	}
 
-	return s.GetSearchRun(ctx, run.ID)
+	return nil
+}
+
+// UpdateSearchRunProgress writes the live counters of a search run and leaves
+// results_json alone. The hot per-candidate path uses it so the bytes written
+// per candidate stay constant; UpdateSearchRun persists the full row.
+func (s *CrossSeedStore) UpdateSearchRunProgress(ctx context.Context, run *CrossSeedSearchRun) error {
+	const query = `
+		UPDATE cross_seed_search_runs SET
+			status = ?,
+			total_torrents = ?,
+			processed = ?,
+			torrents_with_cross_seeds = ?,
+			cross_seeds_added = ?,
+			torrents_failed = ?,
+			torrents_skipped = ?
+		WHERE id = ?
+	`
+
+	if _, err := s.db.ExecContext(ctx, query,
+		run.Status,
+		run.TotalTorrents,
+		run.Processed,
+		run.TorrentsWithCrossSeeds,
+		run.CrossSeedsAdded,
+		run.TorrentsFailed,
+		run.TorrentsSkipped,
+		run.ID,
+	); err != nil {
+		return fmt.Errorf("update search run progress: %w", err)
+	}
+
+	return nil
 }
 
 // GetSearchRun loads a specific search run by ID.
 func (s *CrossSeedStore) GetSearchRun(ctx context.Context, id int64) (*CrossSeedSearchRun, error) {
 	const query = `
 		SELECT id, instance_id, status, started_at, completed_at,
-		       total_torrents, processed, torrents_added, torrents_failed,
-		       torrents_skipped, message, error_message, filters_json,
+		       total_torrents, processed, torrents_with_cross_seeds, cross_seeds_added,
+		       torrents_failed, torrents_skipped, message, error_message, filters_json,
 		       indexer_ids_json, interval_seconds, cooldown_minutes,
 		       results_json, created_at
 		FROM cross_seed_search_runs
@@ -1570,8 +1607,8 @@ func (s *CrossSeedStore) ListSearchRuns(ctx context.Context, instanceID, limit, 
 
 	const query = `
 		SELECT id, instance_id, status, started_at, completed_at,
-		       total_torrents, processed, torrents_added, torrents_failed,
-		       torrents_skipped, message, error_message, filters_json,
+		       total_torrents, processed, torrents_with_cross_seeds, cross_seeds_added,
+		       torrents_failed, torrents_skipped, message, error_message, filters_json,
 		       indexer_ids_json, interval_seconds, cooldown_minutes,
 		       results_json, created_at
 		FROM cross_seed_search_runs
@@ -1883,9 +1920,9 @@ func scanCrossSeedRun(scanner interface {
 		&completedAt,
 		&run.TotalFeedItems,
 		&run.CandidatesFound,
-		&run.TorrentsAdded,
-		&run.TorrentsFailed,
-		&run.TorrentsSkipped,
+		&run.CrossSeedsAdded,
+		&run.CandidatesFailed,
+		&run.CandidatesSkipped,
 		&run.Message,
 		&run.ErrorMessage,
 		&resultsJSON,
@@ -1925,7 +1962,8 @@ func scanCrossSeedSearchRun(scanner interface {
 		&completedAt,
 		&run.TotalTorrents,
 		&run.Processed,
-		&run.TorrentsAdded,
+		&run.TorrentsWithCrossSeeds,
+		&run.CrossSeedsAdded,
 		&run.TorrentsFailed,
 		&run.TorrentsSkipped,
 		&run.Message,

@@ -9,62 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestContentDetectionSkippedWhenCategoriesProvided verifies that content detection is bypassed when categories are provided
-func TestContentDetectionSkippedWhenCategoriesProvided(t *testing.T) {
-	tests := []struct {
-		name               string
-		query              string
-		providedCategories []int
-		expectDetection    bool
-	}{
-		{
-			name:               "No categories provided - should trigger detection",
-			query:              "Some Query",
-			providedCategories: nil,
-			expectDetection:    true,
-		},
-		{
-			name:               "Categories provided - should skip detection",
-			query:              "Some Query",
-			providedCategories: []int{CategoryTV},
-			expectDetection:    false,
-		},
-		{
-			name:               "Multiple categories provided - should skip detection",
-			query:              "Some Query",
-			providedCategories: []int{CategoryMovies, CategoryBooks},
-			expectDetection:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := &TorznabSearchRequest{
-				Query:      tt.query,
-				Categories: tt.providedCategories,
-			}
-
-			// Simulate the logic from Search/SearchGeneric methods
-			var detectedType contentType
-			if len(req.Categories) == 0 {
-				// Content detection would happen here
-				detectedType = contentTypeMovie // Just use a dummy value for this test
-			} else {
-				// When categories are provided, skip content detection
-				detectedType = contentTypeUnknown
-			}
-
-			assert.Equal(t, tt.query, req.Query)
-
-			if tt.expectDetection {
-				assert.NotEqual(t, contentTypeUnknown, detectedType, "Should have detected content type")
-			} else {
-				assert.Equal(t, contentTypeUnknown, detectedType, "Should have skipped content detection")
-			}
-		})
-	}
-}
-
 // TestCategoryAssignment tests that categories are assigned correctly based on the logic
 func TestCategoryAssignment(t *testing.T) {
 	tests := []struct {

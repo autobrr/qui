@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query"
 
 import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
@@ -44,6 +44,24 @@ export function useUpdateBackupSettings(instanceId: number) {
   })
 }
 
+// prependRun puts a fresh run at the top of every first-page runs query for
+// the instance so the history table shows it before the refetch lands.
+function prependRun(queryClient: QueryClient, instanceId: number, run: BackupRun) {
+  queryClient.setQueriesData<BackupRunsResponse>(
+    {
+      queryKey: ["instance-backups", instanceId, "runs"],
+      predicate: (query) => !query.queryKey[4],
+    },
+    (existing) => {
+      if (!existing) {
+        return { runs: [run], hasMore: false }
+      }
+      const filtered = existing.runs.filter(item => item.id !== run.id)
+      return { ...existing, runs: [run, ...filtered] }
+    }
+  )
+}
+
 export function useTriggerBackup(instanceId: number) {
   const queryClient = useQueryClient()
 
@@ -51,28 +69,7 @@ export function useTriggerBackup(instanceId: number) {
     mutationFn: (payload: { kind?: string; requestedBy?: string } = {}) => api.triggerBackup(instanceId, payload),
     onSuccess: (run: BackupRun) => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
-      queryClient.setQueriesData<BackupRunsResponse>(
-        {
-          predicate: (query) => {
-            const key = query.queryKey
-            if (!Array.isArray(key)) {
-              return false
-            }
-            const [, keyInstanceId, section, , offset] = key
-            if (keyInstanceId !== instanceId || section !== "runs") {
-              return false
-            }
-            return offset === 0 || offset === null || offset === undefined
-          },
-        },
-        (existing) => {
-          if (!existing) {
-            return { runs: [run], hasMore: false }
-          }
-          const filtered = existing.runs.filter(item => item.id !== run.id)
-          return { ...existing, runs: [run, ...filtered] }
-        }
-      )
+      prependRun(queryClient, instanceId, run)
     },
   })
 }
@@ -164,28 +161,7 @@ export function useImportBackupManifest(instanceId: number) {
     mutationFn: (manifestFile: File) => api.importBackupManifest(instanceId, manifestFile),
     onSuccess: (run: BackupRun) => {
       queryClient.invalidateQueries({ queryKey: ["instance-backups", instanceId, "runs"] })
-      queryClient.setQueriesData<BackupRunsResponse>(
-        {
-          predicate: (query) => {
-            const key = query.queryKey
-            if (!Array.isArray(key)) {
-              return false
-            }
-            const [, keyInstanceId, section, , offset] = key
-            if (keyInstanceId !== instanceId || section !== "runs") {
-              return false
-            }
-            return offset === 0 || offset === null || offset === undefined
-          },
-        },
-        (existing) => {
-          if (!existing) {
-            return { runs: [run], hasMore: false }
-          }
-          const filtered = existing.runs.filter(item => item.id !== run.id)
-          return { ...existing, runs: [run, ...filtered] }
-        }
-      )
+      prependRun(queryClient, instanceId, run)
     },
   })
 }

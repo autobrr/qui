@@ -273,6 +273,10 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 			tvdb_id INTEGER,
 			tvmaze_id INTEGER,
 			titles_json TEXT,
+			episode_map_season INTEGER,
+			episode_map_episode INTEGER,
+			episode_map_absolute INTEGER,
+			episode_map_known INTEGER NOT NULL DEFAULT 0,
 			is_negative INTEGER DEFAULT 0,
 			cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			expires_at TIMESTAMP NOT NULL,
@@ -293,11 +297,15 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 	store := NewArrIDCacheStore(q)
 	err := store.Set(context.Background(), "title-hash", "movie", nil, nil, false, time.Hour)
 	require.NoError(t, err)
-	// 10 insert columns plus the now bound in the upsert's expired-row check (#2300).
-	require.Len(t, insertArgs, 11)
+	// 14 insert columns plus the now bound in the upsert's expired-row check (#2300).
+	require.Len(t, insertArgs, 15)
 
-	isNegativeArg, ok := insertArgs[8].(int)
-	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[8])
+	mapKnownArg, ok := insertArgs[11].(int)
+	require.Truef(t, ok, "expected int arg for episode_map_known, got %T", insertArgs[11])
+	require.Equal(t, 0, mapKnownArg)
+
+	isNegativeArg, ok := insertArgs[12].(int)
+	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[12])
 	require.Equal(t, 0, isNegativeArg)
 }
 

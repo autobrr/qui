@@ -23,6 +23,7 @@ import { fileToBase64, overlapPercent } from "@/lib/manual-cross-seed"
 import { formatBytes } from "@/lib/utils"
 import type { ManualCrossSeedProposal } from "@/types"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import { AlertTriangle, FileUp } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -51,7 +52,8 @@ export function ManualCrossSeedDialog({
 
   const [file, setFile] = useState<File | null>(null)
   const [torrentData, setTorrentData] = useState<string | null>(null)
-  const [selectedHash, setSelectedHash] = useState<string | null>(null)
+  const [selectedHashes, setSelectedHashes] = useState<string[] | null>(null)
+  const [pickedTargets, setPickedTargets] = useState<{ hash: string; name: string }[]>([])
   const [pinnedHash, setPinnedHash] = useState<string | null>(null)
   // null = not edited for the current selection; prefill wins until then.
   const [categoryEdit, setCategoryEdit] = useState<string | null>(null)
@@ -79,7 +81,7 @@ export function ManualCrossSeedDialog({
     }
   }, [open, activeFile])
 
-  const requestedHash = pinnedHash ?? preselectedTarget?.hash ?? undefined
+  const requestedHash = selectedHashes?.length === 1 ? selectedHashes[0] : pinnedHash ?? preselectedTarget?.hash ?? undefined
   const fileKey = activeFile ? `${activeFile.name}:${activeFile.size}:${activeFile.lastModified}` : ""
   const proposalsQuery = useQuery({
     queryKey: ["cross-seed-manual-proposals", instanceId, fileKey, requestedHash],
@@ -101,15 +103,45 @@ export function ManualCrossSeedDialog({
     [proposalsQuery.data]
   )
 
-  const effectiveSelectedHash = selectedHash ?? preselectedTarget?.hash ?? proposals[0]?.hash ?? null
+  const source = proposalsQuery.data
+  const packMode = source?.packMode ?? false
+  const assemblyUnavailable = source?.assemblyUnavailableReason ?? ""
+  const suggestQuery = useQuery({
+    queryKey: ["cross-seed-manual-suggest", instanceId, fileKey],
+    queryFn: ({ signal }) => api.checkManualAssemble({ instanceId, torrentData: torrentData ?? "", targetHashes: [] }, signal),
+    enabled: open && Boolean(torrentData) && packMode,
+    retry: false,
+  })
+  const effectiveSelectedHashes = selectedHashes ?? (preselectedTarget
+    ? [preselectedTarget.hash]
+    : packMode && !assemblyUnavailable
+      ? (suggestQuery.data?.targets ?? []).filter(target => !target.reason).map(target => target.hash)
+      : proposals[0] ? [proposals[0].hash] : [])
+  const effectiveSelectedHash = effectiveSelectedHashes[0]
   const selectedProposal: ManualCrossSeedProposal | undefined = proposals.find(
     proposal => proposal.hash.toLowerCase() === effectiveSelectedHash?.toLowerCase()
   )
+  const assembling = packMode && effectiveSelectedHashes.length > 1
+  const checkQuery = useQuery({
+    queryKey: ["cross-seed-manual-check", instanceId, fileKey, [...effectiveSelectedHashes].sort()],
+    queryFn: ({ signal }) => api.checkManualAssemble({
+      instanceId, torrentData: torrentData ?? "", targetHashes: effectiveSelectedHashes,
+    }, signal),
+    enabled: open && Boolean(torrentData) && assembling && !assemblyUnavailable,
+    retry: false,
+  })
+  const preview = checkQuery.data
+  const targetRows = [...proposals]
+  for (const target of [...(suggestQuery.data?.targets ?? []), ...pickedTargets]) {
+    if (!targetRows.some(row => row.hash.toLowerCase() === target.hash.toLowerCase())) {
+      targetRows.push({ ...target, size: 0, category: "", effectiveSavePath: "", overlapBytes: 0, overlapFraction: 0 })
+    }
+  }
 
-  // Settings can pin every cross-seed to one category, in which case the apply
-  // discards whatever the dialog sends. Show the pinned value and lock the pick.
-  const pinnedCategory = proposalsQuery.data?.pinnedCategory ?? ""
-  const categoryValue = pinnedCategory || (categoryEdit ?? selectedProposal?.category ?? "")
+  const pinnedCategory = assembling ? "" : (source?.pinnedCategory ?? "")
+  const categoryValue = pinnedCategory || (categoryEdit ?? (assembling
+    ? preview?.defaultCategory ?? suggestQuery.data?.defaultCategory ?? ""
+    : selectedProposal?.category ?? ""))
   const selectedTags = tagsEdit ?? proposalsQuery.data?.defaultTags ?? []
   const toggleTag = (tag: string) => {
     setTagsEdit(selectedTags.includes(tag) ? selectedTags.filter(item => item !== tag) : [...selectedTags, tag])
@@ -127,17 +159,32 @@ export function ManualCrossSeedDialog({
   })
 
   const applyMutation = useMutation({
-    mutationFn: () => api.applyManualCrossSeed({
-      instanceId,
-      torrentData: torrentData ?? "",
-      targetHash: effectiveSelectedHash ?? "",
-      category: categoryValue || undefined,
-      tags: selectedTags,
-    }),
+    mutationFn: async () => {
+      if (assembling) {
+        const assembly = await api.applyManualAssemble({
+          instanceId, torrentData: torrentData ?? "", targetHashes: effectiveSelectedHashes,
+          category: categoryValue, tags: selectedTags,
+        })
+        return { success: assembly.applied, results: [], assembly }
+      }
+      const result = await api.applyManualCrossSeed({
+        instanceId,
+        torrentData: torrentData ?? "",
+        targetHash: effectiveSelectedHash ?? "",
+        category: categoryValue || undefined,
+        tags: selectedTags,
+      })
+      return { ...result, assembly: undefined }
+    },
     onSuccess: response => {
       const firstResult = response.results[0]
       if (response.success) {
-        toast.success(t("manualCrossSeed.applySuccess"))
+        const dropped = response.assembly?.targets.filter(target => target.reason) ?? []
+        if (dropped.length > 0) {
+          toast.warning(t("manualCrossSeed.pack.dropped", { names: dropped.map(target => target.name || target.hash).join(", ") }), { duration: 15_000 })
+        } else {
+          toast.success(t("manualCrossSeed.applySuccess"))
+        }
         // Same post-add delay as AddTorrentDialog: give qBittorrent a beat to
         // register the torrent before the list refetch.
         setTimeout(() => {
@@ -146,7 +193,7 @@ export function ManualCrossSeedDialog({
         handleOpenChange(false)
         onApplied?.()
       } else {
-        toast.error(t("manualCrossSeed.applyFailed", { message: firstResult?.message ?? firstResult?.status ?? "" }))
+        toast.error(t("manualCrossSeed.applyFailed", { message: response.assembly ? assemblyReason(response.assembly.reason) : firstResult?.message ?? firstResult?.status ?? "" }))
       }
     },
     onError: error => {
@@ -158,7 +205,8 @@ export function ManualCrossSeedDialog({
     if (!nextOpen) {
       setFile(null)
       setTorrentData(null)
-      setSelectedHash(null)
+      setSelectedHashes(null)
+      setPickedTargets([])
       setPinnedHash(null)
       setCategoryEdit(null)
       setTagsEdit(null)
@@ -170,12 +218,19 @@ export function ManualCrossSeedDialog({
   }
 
   const handleSelectTarget = (hash: string) => {
-    setSelectedHash(hash)
-    setCategoryEdit(null)
+    if (packMode && !assemblyUnavailable) {
+      setSelectedHashes(effectiveSelectedHashes.some(selected => selected.toLowerCase() === hash.toLowerCase())
+        ? effectiveSelectedHashes.filter(selected => selected.toLowerCase() !== hash.toLowerCase())
+        : [...effectiveSelectedHashes, hash])
+    } else {
+      setSelectedHashes([hash])
+      setCategoryEdit(null)
+    }
     setShowPicker(false)
   }
 
-  const handlePickFromSearch = (hash: string) => {
+  const handlePickFromSearch = (hash: string, name: string) => {
+    setPickedTargets(current => current.some(target => target.hash === hash) ? current : [...current, { hash, name }])
     setPinnedHash(hash)
     handleSelectTarget(hash)
   }
@@ -191,7 +246,7 @@ export function ManualCrossSeedDialog({
     ...(proposalsQuery.data?.defaultTags ?? []),
     ...selectedTags,
   ])).sort()
-  const source = proposalsQuery.data
+  const assemblyReason = (reason: string) => t(`manualCrossSeed.pack.reasons.${reason}`, { defaultValue: t("manualCrossSeed.pack.checkFailed") })
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -200,7 +255,7 @@ export function ManualCrossSeedDialog({
       <DialogContent className="sm:max-w-2xl max-h-[90dvh] sm:max-h-[85dvh] flex flex-col !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
         <DialogHeader>
           <DialogTitle>{t("manualCrossSeed.title")}</DialogTitle>
-          <DialogDescription>{t("manualCrossSeed.description")}</DialogDescription>
+          <DialogDescription>{t(packMode ? "manualCrossSeed.pack.description" : "manualCrossSeed.description")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
@@ -214,7 +269,8 @@ export function ManualCrossSeedDialog({
                 onChange={event => {
                   const selected = event.target.files?.[0] ?? null
                   setFile(selected)
-                  setSelectedHash(null)
+                  setSelectedHashes(null)
+                  setPickedTargets([])
                   setPinnedHash(null)
                   setCategoryEdit(null)
                   setTagsEdit(null)
@@ -250,28 +306,53 @@ export function ManualCrossSeedDialog({
 
           {activeFile && source && (
             <div className="space-y-2">
-              <Label>{t("manualCrossSeed.targetLabel")}</Label>
+              <Label>{t(packMode ? "manualCrossSeed.pack.targetLabel" : "manualCrossSeed.targetLabel")}</Label>
+              {packMode && assemblyUnavailable && (
+                <p className="text-sm text-muted-foreground">{assemblyReason(assemblyUnavailable)}</p>
+              )}
+              {packMode && source.proposalsTruncated && (
+                <p className="text-sm text-muted-foreground">{t("manualCrossSeed.pack.proposalLimit", { count: source.packEpisodeCount, limit: source.proposalLimit })}</p>
+              )}
+              {packMode && suggestQuery.isFetching && (
+                <p className="text-sm text-muted-foreground">{t("manualCrossSeed.pack.checking")}</p>
+              )}
+              {packMode && suggestQuery.isError && (
+                <p className="text-sm text-destructive">{t("manualCrossSeed.pack.checkFailed")}</p>
+              )}
               {proposals.length === 0 && (
                 <p className="text-sm text-muted-foreground">{t("manualCrossSeed.noProposals")}</p>
               )}
-              {proposals.length > 0 && (
+              {targetRows.length > 0 && (
                 <div className="space-y-1 rounded-md border p-1 sm:max-h-48 sm:overflow-y-auto">
-                  {proposals.map(proposal => {
-                    const isSelected = proposal.hash.toLowerCase() === effectiveSelectedHash?.toLowerCase()
+                  {targetRows.map(proposal => {
+                    const isSelected = effectiveSelectedHashes.some(hash => proposal.hash.toLowerCase() === hash.toLowerCase())
                     return (
-                      <button
-                        key={proposal.hash}
-                        type="button"
-                        onClick={() => handleSelectTarget(proposal.hash)}
-                        className={`w-full rounded-sm px-2 py-1.5 text-left text-sm transition-colors ${
-                          isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-                        }`}
-                      >
-                        <span className="block truncate">{proposal.name}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {formatBytes(proposal.size)} · {t("manualCrossSeed.overlap", { percent: overlapPercent(proposal.overlapFraction) })}
-                        </span>
-                      </button>
+                      <div key={proposal.hash} className="flex items-center gap-2 px-2">
+                        {packMode && (
+                          <input
+                            type="checkbox"
+                            aria-label={proposal.name}
+                            checked={isSelected}
+                            disabled={Boolean(assemblyUnavailable) || applyMutation.isPending}
+                            onChange={() => handleSelectTarget(proposal.hash)}
+                            className="h-4 w-4 shrink-0 accent-primary"
+                          />
+                        )}
+                        <button
+                          type="button"
+                          aria-pressed={isSelected}
+                          disabled={applyMutation.isPending}
+                          onClick={() => handleSelectTarget(proposal.hash)}
+                          className={`w-full rounded-sm px-2 py-1.5 text-left text-sm transition-colors ${
+                            isSelected ? "bg-accent text-accent-foreground" : "hover:bg-muted"
+                          }`}
+                        >
+                          <span className="block truncate">{proposal.name}</span>
+                          {proposal.size > 0 && <span className="block text-xs text-muted-foreground">
+                            {formatBytes(proposal.size)} · {t("manualCrossSeed.overlap", { percent: overlapPercent(proposal.overlapFraction) })}
+                          </span>}
+                        </button>
+                      </div>
                     )
                   })}
                 </div>
@@ -299,7 +380,7 @@ export function ManualCrossSeedDialog({
                         <button
                           key={torrent.hash}
                           type="button"
-                          onClick={() => handlePickFromSearch(torrent.hash)}
+                          onClick={() => handlePickFromSearch(torrent.hash, torrent.name)}
                           className="w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
                         >
                           <span className="block truncate">{torrent.name}</span>
@@ -313,14 +394,37 @@ export function ManualCrossSeedDialog({
             </div>
           )}
 
-          {zeroOverlap && (
+          {zeroOverlap && !assembling && (
             <div className="flex items-start gap-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-yellow-600 dark:text-yellow-500" />
               <p>{t("manualCrossSeed.zeroOverlapWarning")}</p>
             </div>
           )}
 
-          {selectedProposal && (
+          {assembling && (
+            <div className="space-y-2 rounded-md border p-3 text-sm" aria-live="polite">
+              {checkQuery.isFetching && <p>{t("manualCrossSeed.pack.checking")}</p>}
+              {checkQuery.isError && <p className="text-destructive">{t("manualCrossSeed.pack.checkFailed")}</p>}
+              {preview && !checkQuery.isFetching && (
+                <>
+                  <p>{t("manualCrossSeed.pack.coverage", { matched: preview.matchedEpisodes, total: preview.totalEpisodes, percent: overlapPercent(preview.coverage) })}</p>
+                  <p>{t("manualCrossSeed.pack.missing", { size: formatBytes(preview.missingBytes) })}</p>
+                  <p className="text-muted-foreground">{t("manualCrossSeed.pack.recheck")}</p>
+                  {preview.reason && <p className="text-destructive">{assemblyReason(preview.reason)}</p>}
+                  {preview.reason === "unsafe_piece_boundary" && (
+                    <Link to="/cross-seed" search={{ tab: "rules" }} onClick={() => handleOpenChange(false)} className="inline-block text-primary underline underline-offset-4">
+                      {t("manualCrossSeed.pack.reviewRules")}
+                    </Link>
+                  )}
+                  {preview.targets.filter(target => target.reason).map(target => (
+                    <p key={target.hash} className="text-destructive">{t("manualCrossSeed.pack.rejected", { name: target.name || target.hash, reason: assemblyReason(target.reason) })}</p>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
+
+          {(selectedProposal || assembling) && (
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label>{t("manualCrossSeed.category")}</Label>
@@ -333,7 +437,7 @@ export function ManualCrossSeedDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(selectedProposal?.category ?? "") === "" && (
+                    {(assembling || (selectedProposal?.category ?? "") === "") && (
                       <SelectItem value="__none__">{t("manualCrossSeed.noCategory")}</SelectItem>
                     )}
                     {categoryNames.map(name => (
@@ -390,7 +494,7 @@ export function ManualCrossSeedDialog({
               <div className="space-y-1">
                 <Label>{t("manualCrossSeed.savePath")}</Label>
                 <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs break-all">
-                  {selectedProposal.effectiveSavePath}
+                  {assembling ? preview?.destination : selectedProposal?.effectiveSavePath}
                 </p>
               </div>
             </div>
@@ -403,7 +507,7 @@ export function ManualCrossSeedDialog({
           </Button>
           <Button
             type="button"
-            disabled={!torrentData || !selectedProposal || applyMutation.isPending}
+            disabled={!torrentData || effectiveSelectedHashes.length === 0 || applyMutation.isPending || (assembling ? !preview?.ready || checkQuery.isFetching || checkQuery.isError || Boolean(assemblyUnavailable) : !selectedProposal)}
             onClick={() => applyMutation.mutate()}
           >
             {applyMutation.isPending ? t("manualCrossSeed.applying") : t("manualCrossSeed.apply")}

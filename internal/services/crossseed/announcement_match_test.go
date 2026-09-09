@@ -544,3 +544,34 @@ func TestAnnounceAliasTitlesBoundsLookup(t *testing.T) {
 	require.True(t, spy.hasDeadline)
 	require.LessOrEqual(t, time.Until(spy.deadline), announceAliasLookupTimeout)
 }
+
+// TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode: a Sonarr
+// announce keeps the series title's colon and S04E15; the file on disk cannot
+// hold a colon and carries the absolute number. Exact size admits the pair.
+func TestClassifyWebhookAnnouncementSourceColonTitleAbsoluteEpisode(t *testing.T) {
+	const (
+		sourceHash   = "colon-absolute-source"
+		sourceName   = "[KiraSubs] Re Start Isekai Life - 81 (1080p) [ABCD1234].mkv"
+		announceName = "Re:Start Isekai Life S04E15 1080p WEB-DL AAC2.0 H.264-KiraSubs"
+		size         = int64(1_449_551_462)
+	)
+	source := qbt.Torrent{Hash: sourceHash, Name: sourceName, Size: size, TotalSize: size, Progress: 1}
+	instance := &models.Instance{ID: 1, Name: "main"}
+	svc := &Service{
+		syncManager: newFakeSyncManager(instance, []qbt.Torrent{source}, map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: sourceName, Size: size}},
+		}),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+	candidate := namedRelease{release: svc.releaseCache.Parse(announceName), rawName: announceName}
+
+	got := svc.classifyWebhookAnnouncementSource(context.Background(), 1, &source, candidate, size, announcementMatchPolicy{
+		findIndividualEpisodes:   true,
+		tolerateOneSidedChecksum: true,
+	})
+
+	require.True(t, got.decision.Accepted, got.decision.RejectReason)
+	require.Equal(t, searchCandidateClassExactSizeFallback, got.decision.Class)
+	require.Contains(t, got.decision.RelaxedDifferences, "episode")
+}

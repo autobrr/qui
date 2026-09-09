@@ -8,6 +8,7 @@ Repo rules for AI agents working on qui.
 
 - Stay inside requested scope. Do not implement review-suggested/extra changes without explicit user approval.
 - Treat other agent/Codex/CodeRabbit feedback as input to discuss, not automatic action.
+- A review suggestion that changes a branch lands only after you show the input that branch guarded, in a test or a trace. A simplification that reads cleaner can still drop a case the old guard handled.
 - qui is single-user self-hosted software. Prefer readable, maintainable code over paranoid guards for impossible states.
 
 ## Repo Map
@@ -64,6 +65,14 @@ CI runs `make test` on every push. Run the full suite locally only when asked, o
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
 
+## Comments
+
+A comment caches what the code cannot show: why this shape, the bug a guard prevents, a coupling to another file. Caching what the line does buys nothing and rots first. One line is the norm.
+
+- Change a line, change its comment, in the same diff. A stale-comment finding from a review bot is right; a docstring coverage percentage is not.
+- An invariant a future change must hold is a test, not a sentence with "must not" in it.
+- Doc-comment an exported identifier when its name leaves the contract unclear.
+
 ## Paths / Security
 
 qui must work on Windows and Unix-like hosts.
@@ -93,7 +102,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 - Before you open a PR or add commits to one, review the complete PR diff for documentation needs. If the diff needs Docusaurus documentation, update `documentation/docs/` in the same PR. State in the final report whether you updated the documentation or why no update was needed.
 - When available, use the `simple-english`, `unslop`, and `stop-slop` skills for documentation prose.
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- Keep commits focused; split backend/frontend when practical. If a feature spans schema, backend service, and web UI, stack PRs: schema + models, then service logic, then UI.
+- One feature is one branch and one PR. Do not stack PRs or split a feature across PRs. When a feature spans schema, backend service, and web UI, keep the layers as separate commits on the one branch, each commit a working slice: backend end-to-end work first, then UI. A dependency in another repo is its own PR there.
 - Before each commit, review the diff for over-engineering. If the ponytail plugin (<https://github.com/DietrichGebert/ponytail>) is installed, use its `ponytail:ponytail-review` skill. If it is not, do a trim pass: remove speculative config, unused states, single-caller layers, and duplicate helpers.
 - Update PR branches by merging develop into them, never rebase/force-push. PRs are squash-merged, so rebase gains nothing and force-pushes break review history and contributors' local branches.
 - Never add AI advertising/attribution/co-author lines.

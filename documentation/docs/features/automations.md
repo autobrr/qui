@@ -193,6 +193,7 @@ Older rules can use a second field named **Trackers (All)**. It now behaves the 
 | Hardlink Scope | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` (requires local filesystem access, see [Hardlink detection](#hardlink-detection)) |
 | Hardlink Scope (Cross-Instance) | `none`, `torrents_only`, `inside_qbittorrent`, or `outside_qbittorrent` across all instances (requires local filesystem access) |
 | Has Missing Files | Boolean: a completed torrent has files missing on disk (requires local filesystem access) |
+| Has Skipped Files | Boolean: one or more files are set to `Do not download`. qui reads file priorities from its files cache, so a priority change made outside qui can take up to 5 minutes to reach this field |
 
 ### State values
 
@@ -334,6 +335,8 @@ When you edit workflows, qui provides immediate feedback for delete and category
 - When conditions and actions change, the **Live impact preview** in the workflow dialog updates.
 - It shows the current **impacted count** and a preview list of matching torrents.
 - For category rules, the preview summary splits direct matches and cross-seed expansions.
+
+When you enable a delete or category workflow, qui opens a confirmation dialog that loads the same preview. The preview does not block the save. Click **Save without preview** while it loads, or after it fails, to enable the workflow at once. The workflow then acts on every matching torrent on its next run.
 
 To run a dry-run immediately without waiting for interval execution:
 
@@ -766,7 +769,7 @@ The `HARDLINK_SCOPE` field lets automations tell apart torrents whose files are 
 
 #### How scope is determined
 
-When an automation references `HARDLINK_SCOPE`, qui validates and inspects every file of every torrent in qBittorrent. qui ignores a priority-0 (`Do not download`) file that does not exist on disk. qui scans an existing priority-0 file like any other regular file. For each regular file, qui extracts:
+When an automation references `HARDLINK_SCOPE`, qui validates and inspects every file of every torrent in qBittorrent. qui ignores a priority-0 (`Do not download`) file that does not exist on disk. qui scans an existing priority-0 file like any other regular file. To keep partially selected torrents out of a hardlink rule, add the condition `Has Skipped Files` is `false`. For each regular file, qui extracts:
 
 - The **inode** and **device ID**: These identify the file on disk.
 - The **nlink count**: The total number of hardlinks to that inode, as the filesystem reports it.

@@ -115,6 +115,7 @@ const (
 	FieldSuperSeeding           = models.FieldSuperSeeding
 	FieldIsUnregistered         = models.FieldIsUnregistered
 	FieldHasMissingFiles        = models.FieldHasMissingFiles
+	FieldHasSkippedFiles        = models.FieldHasSkippedFiles
 	FieldIsGrouped              = models.FieldIsGrouped
 	FieldExistsOnOtherInstance  = models.FieldExistsOnOtherInstance
 	FieldSeedingOnOtherInstance = models.FieldSeedingOnOtherInstance

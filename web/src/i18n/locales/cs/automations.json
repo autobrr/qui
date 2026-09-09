@@ -201,6 +201,7 @@
       "SUPER_SEEDING": "Super seedování",
       "IS_UNREGISTERED": "Neregistrované",
       "HAS_MISSING_FILES": "Má chybějící soubory",
+      "HAS_SKIPPED_FILES": "Má přeskočené soubory",
       "IS_GROUPED": "Je seskupeno",
       "EXISTS_ON_OTHER_INSTANCE": "Existuje na jiné instanci",
       "SEEDING_ON_OTHER_INSTANCE": "Seeduje na jiné instanci",

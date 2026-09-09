@@ -16,8 +16,7 @@ import {
 } from "@/components/ui/table"
 import { api } from "@/lib/api"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
-import { getTorrentTaskPollInterval } from "@/lib/torrent-task-polling"
-import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
+import type { TorrentCreationStatus } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Clock, Download, Loader2, Trash2, XCircle } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -51,9 +50,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
     queryKey: ["torrent-creation-tasks", instanceId],
     queryFn: () => api.getTorrentCreationTasks(instanceId),
     refetchInterval: (query) =>
-      getTorrentTaskPollInterval(query.state.data as TorrentCreationTask[] | undefined, {
-        activeInterval: 2000,
-      }),
+      query.state.data?.some((task) => task.status === "Running" || task.status === "Queued") ? 2000 : 30000,
     refetchIntervalInBackground: true,
   })
 

@@ -5,7 +5,6 @@ package qbittorrent
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/rs/zerolog/log"
 )
@@ -14,10 +13,6 @@ type InstanceInfo struct {
 	ID       int
 	Name     string
 	IsActive bool
-}
-
-func (i *InstanceInfo) IDString() string {
-	return strconv.Itoa(i.ID)
 }
 
 func (cp *ClientPool) GetAllInstances(ctx context.Context) []*InstanceInfo {

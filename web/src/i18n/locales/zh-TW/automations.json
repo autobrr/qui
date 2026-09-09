@@ -205,6 +205,7 @@
       "SUPER_SEEDING": "超級做種",
       "IS_UNREGISTERED": "未註冊",
       "HAS_MISSING_FILES": "有缺失檔案",
+      "HAS_SKIPPED_FILES": "有略過的檔案",
       "IS_GROUPED": "已分組",
       "EXISTS_ON_OTHER_INSTANCE": "存在於其他實例",
       "SEEDING_ON_OTHER_INSTANCE": "在其他實例做種",

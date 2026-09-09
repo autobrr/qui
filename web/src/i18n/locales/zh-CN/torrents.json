@@ -507,6 +507,31 @@
       "copyFailed": "复制到剪贴板失败"
     }
   },
+  "discScan": {
+    "action": "BDInfo",
+    "actionActive": "BDInfo 扫描进行中",
+    "actionReady": "BDInfo 报告已就绪",
+    "actionFailed": "BDInfo 扫描失败",
+    "quickSummary": "快速摘要",
+    "forum": "论坛",
+    "copyQuickSummary": "复制快速摘要",
+    "copyForum": "复制论坛代码块",
+    "rescan": "重新扫描",
+    "cancel": "取消扫描",
+    "retry": "重试",
+    "starting": "正在启动扫描…",
+    "queued": "排队中，位置 {{position}}",
+    "scanning": "正在扫描 {{processed}} / {{total}}",
+    "scanningUnknown": "正在扫描…",
+    "failed": "扫描失败",
+    "canceled": "扫描已取消",
+    "toast": {
+      "copied": "{{label}}已复制到剪贴板",
+      "copyFailed": "复制到剪贴板失败",
+      "completed": "BDInfo 报告已就绪",
+      "failed": "BDInfo 扫描失败：{{error}}"
+    }
+  },
   "categoryTree": {
     "uncategorized": "未分类",
     "expandCategory": "展开分类",
@@ -808,7 +833,10 @@
       }
     },
     "title": "筛选器",
-    "clearAll": "全部清除",
+    "clearOptions": "筛选清除选项",
+    "clearSidebarFilters": "清除侧边栏筛选",
+    "clearColumnFilters": "清除列筛选",
+    "clearFiltersAndSearch": "清除筛选和搜索",
     "loading": "加载中...",
     "customFilter": "自定义筛选器",
     "customFilterHelp": "活跃的自定义表达式筛选器（例如辅种结果）",
@@ -1550,6 +1578,39 @@
     "applyFailed": "辅种失败：{{message}}",
     "addOptionTitle": "作为辅种添加",
     "addOptionDescription": "将此种子与现有种子匹配，而不是重新下载。",
-    "addOptionButton": "手动匹配"
+    "addOptionButton": "手动匹配",
+    "pack": {
+      "description": "选择一个种子进行手动匹配，或选择多个单集来组装此整季包。",
+      "targetLabel": "目标种子",
+      "checking": "正在检查所选单集……",
+      "checkFailed": "无法检查此选择。",
+      "coverage": "已匹配 {{matched}}/{{total}} 集 · 覆盖率 {{percent}}%",
+      "missing": "缺少 {{size}}",
+      "recheck": "整季包将以暂停状态添加并重新校验。当校验结果达到已链接字节的比例时，将恢复下载。",
+      "reviewRules": "前往 Cross-seed → 规则查看保护设置",
+      "proposalLimit": "此整季包包含 {{count}} 集。候选列表最多显示 {{limit}} 个种子。请通过搜索选择缺少的目标。",
+      "dropped": "整季包已添加。已排除的目标：{{names}}",
+      "rejected": "{{name}}：{{reason}}",
+      "reasons": {
+        "no_filesystem_access": "此实例需要本地文件系统访问权限才能组装整季包。",
+        "no_link_mode": "请在此实例上启用硬链接或 reflink 模式，以选择多个目标。",
+        "no_base_directory": "请为此实例配置链接基础目录。",
+        "no_episode_files": "此整季包中未找到可播放的单集文件。",
+        "target_not_found": "此实例中未找到目标种子。",
+        "incomplete": "目标种子尚未下载完成。",
+        "no_episode_identity": "无法解析集数。",
+        "file_list_unavailable": "无法获取目标种子的文件列表。",
+        "episode_file_invalid": "目标种子必须仅包含一个与所选单集标识相符的可播放文件。",
+        "size_mismatch": "本地文件大小与整季包中的文件大小不符。",
+        "release_mismatch": "发布版本与整季包不匹配。",
+        "local_file_unavailable": "本地文件不存在或不可用。",
+        "not_paired": "此目标未提供整季包中的单集，或其他所选目标已覆盖该单集。",
+        "layout_mismatch": "无法使用所选文件创建安全的链接目录。",
+        "unsafe_piece_boundary": "分片边界保护已阻止添加此合集，因为所选文件与缺失文件共享一个数据块。下载该数据块可能会通过硬链接更改原始文件。手动组装不受覆盖率阈值限制。",
+        "already_exists": "此种子已存在。",
+        "link_failed": "创建链接失败。",
+        "add_failed": "添加种子失败。"
+      }
+    }
   }
 }

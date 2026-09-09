@@ -89,12 +89,6 @@ type TorznabIndexerUpdateParams struct {
 	TimeoutSeconds *int
 }
 
-// TorznabIndexerCapability represents a search capability
-type TorznabIndexerCapability struct {
-	IndexerID      int    `json:"indexer_id"`
-	CapabilityType string `json:"capability_type"`
-}
-
 // TorznabIndexerCategory represents a category supported by an indexer
 type TorznabIndexerCategory struct {
 	IndexerID      int    `json:"indexer_id"`
@@ -112,16 +106,6 @@ type TorznabIndexerError struct {
 	OccurredAt   time.Time  `json:"occurred_at"`
 	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
 	ErrorCount   int        `json:"error_count"`
-}
-
-// TorznabIndexerLatency represents a latency measurement
-type TorznabIndexerLatency struct {
-	ID            int       `json:"id"`
-	IndexerID     int       `json:"indexer_id"`
-	OperationType string    `json:"operation_type"`
-	LatencyMs     int       `json:"latency_ms"`
-	Success       bool      `json:"success"`
-	MeasuredAt    time.Time `json:"measured_at"`
 }
 
 // TorznabIndexerLatencyStats represents aggregated latency statistics
@@ -797,19 +781,6 @@ func (s *TorznabIndexerStore) GetDecryptedBasicPassword(indexer *TorznabIndexer)
 	return s.decrypt(*indexer.BasicPasswordEncrypted)
 }
 
-// Test tests the connection to a Torznab indexer by querying its capabilities
-func (s *TorznabIndexerStore) Test(ctx context.Context, baseURL, apiKey string) error {
-	// This would be implemented by calling the caps endpoint
-	// For now, just validate the parameters
-	if baseURL == "" {
-		return errors.New("base URL is required")
-	}
-	if apiKey == "" {
-		return errors.New("API key is required")
-	}
-	return nil
-}
-
 // GetCapabilities retrieves all capabilities for an indexer
 func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
 	query := `
@@ -1089,19 +1060,6 @@ func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, er
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return nil
-}
-
-// ResolveErrors marks all unresolved errors for an indexer as resolved
-func (s *TorznabIndexerStore) ResolveErrors(ctx context.Context, indexerID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE torznab_indexer_errors
-		SET resolved_at = CURRENT_TIMESTAMP
-		WHERE indexer_id = ? AND resolved_at IS NULL
-	`, indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve errors: %w", err)
-	}
 	return nil
 }
 

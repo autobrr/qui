@@ -205,6 +205,7 @@
       "SUPER_SEEDING": "Mode Super Seed",
       "IS_UNREGISTERED": "Non enregistré",
       "HAS_MISSING_FILES": "Fichiers manquants",
+      "HAS_SKIPPED_FILES": "Fichiers ignorés",
       "IS_GROUPED": "Est groupé",
       "EXISTS_ON_OTHER_INSTANCE": "Existe sur une autre instance",
       "SEEDING_ON_OTHER_INSTANCE": "En partage sur une autre instance",

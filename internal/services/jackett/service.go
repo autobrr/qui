@@ -167,6 +167,8 @@ type searchContext struct {
 	// ID-driven movie or TV search. The category filter is dropped with it, but only
 	// for indexers that keep at least one usable ID.
 	omitCategoriesForIDs bool
+	// episodeMap adds season and ep for indexers that keep an ID parameter.
+	episodeMap *models.EpisodeMap
 }
 
 type searchPriorityKey struct{}
@@ -220,23 +222,24 @@ type searchCacheSignature struct {
 }
 
 type searchCacheKeyPayload struct {
-	SchemaVersion int         `json:"schema_version"`
-	Scope         string      `json:"scope"`
-	Query         string      `json:"query"`
-	Categories    []int       `json:"categories,omitempty"`
-	IndexerIDs    []int       `json:"indexer_ids,omitempty"`
-	Limit         int         `json:"limit,omitempty"`
-	IMDbID        string      `json:"imdb_id,omitempty"`
-	TVDbID        string      `json:"tvdb_id,omitempty"`
-	TMDbID        int         `json:"tmdb_id,omitempty"`
-	TVMazeID      int         `json:"tvmaze_id,omitempty"`
-	Year          int         `json:"year,omitempty"`
-	Season        *int        `json:"season,omitempty"`
-	Episode       *int        `json:"episode,omitempty"`
-	Artist        string      `json:"artist,omitempty"`
-	Album         string      `json:"album,omitempty"`
-	SearchMode    string      `json:"search_mode,omitempty"`
-	ContentType   contentType `json:"content_type"`
+	SchemaVersion int                `json:"schema_version"`
+	Scope         string             `json:"scope"`
+	Query         string             `json:"query"`
+	Categories    []int              `json:"categories,omitempty"`
+	IndexerIDs    []int              `json:"indexer_ids,omitempty"`
+	Limit         int                `json:"limit,omitempty"`
+	IMDbID        string             `json:"imdb_id,omitempty"`
+	TVDbID        string             `json:"tvdb_id,omitempty"`
+	TMDbID        int                `json:"tmdb_id,omitempty"`
+	TVMazeID      int                `json:"tvmaze_id,omitempty"`
+	Year          int                `json:"year,omitempty"`
+	Season        *int               `json:"season,omitempty"`
+	Episode       *int               `json:"episode,omitempty"`
+	EpisodeMap    *models.EpisodeMap `json:"episode_map,omitempty"`
+	Artist        string             `json:"artist,omitempty"`
+	Album         string             `json:"album,omitempty"`
+	SearchMode    string             `json:"search_mode,omitempty"`
+	ContentType   contentType        `json:"content_type"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -560,40 +563,6 @@ func (s *Service) GetSearchHistory(_ context.Context, limit int) (*SearchHistory
 	}, nil
 }
 
-// GetSearchHistoryStats returns statistics about search history.
-func (s *Service) GetSearchHistoryStats(_ context.Context) (*SearchHistoryStats, error) {
-	if s.searchHistory == nil {
-		return &SearchHistoryStats{
-			ByStatus:   make(map[string]int),
-			ByPriority: make(map[string]int),
-		}, nil
-	}
-
-	stats := s.searchHistory.Stats()
-	return &stats, nil
-}
-
-// GetIndexerName resolves a Torznab indexer ID to its configured name.
-func (s *Service) GetIndexerName(ctx context.Context, id int) string {
-	if id <= 0 {
-		return ""
-	}
-
-	indexer, err := s.indexerStore.Get(ctx, id)
-	if err != nil {
-		log.Debug().
-			Err(err).
-			Int("indexer_id", id).
-			Msg("Failed to resolve indexer name")
-		return ""
-	}
-	if indexer == nil {
-		return ""
-	}
-
-	return indexer.Name
-}
-
 // Search searches enabled Torznab indexers with intelligent category detection
 func (s *Service) Search(ctx context.Context, req *TorznabSearchRequest) error {
 	return s.performSearch(ctx, req, searchCacheScopeCrossSeed)
@@ -671,6 +640,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		originalQuery:           req.Query,
 
 		omitCategoriesForIDs: req.OmitQueryForIDs && !params.Has("q"),
+		episodeMap:           req.EpisodeMap,
 	}, RateLimitPriorityInteractive)
 
 	cacheEnabled := s.shouldUseSearchCache()
@@ -1204,6 +1174,7 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Year:          req.Year,
 		Season:        req.Season,
 		Episode:       req.Episode,
+		EpisodeMap:    req.EpisodeMap,
 		Artist:        strings.TrimSpace(req.Artist),
 		Album:         strings.TrimSpace(req.Album),
 		SearchMode:    searchMode,
@@ -1621,14 +1592,6 @@ func (s *Service) maybeScheduleLatencyCleanup() {
 			log.Debug().Int64("deleted", deleted).Msg("Cleaned up torznab indexer latency records")
 		}
 	}()
-}
-
-// FlushSearchCache removes all cached search responses.
-func (s *Service) FlushSearchCache(ctx context.Context) (int64, error) {
-	if !s.shouldUseSearchCache() {
-		return 0, nil
-	}
-	return s.searchCache.Flush(ctx)
 }
 
 // InvalidateSearchCache clears cached searches referencing the provided indexers.
@@ -2546,7 +2509,12 @@ func (s *Service) IndexerIDsWithIDSearchCaps(ctx context.Context, req *TorznabSe
 }
 
 func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta *searchContext, params map[string]string) {
-	if meta == nil || len(idx.Capabilities) == 0 || len(params) == 0 {
+	if meta == nil || len(params) == 0 {
+		return
+	}
+	if len(idx.Capabilities) == 0 {
+		// Unknown caps prune nothing, so every ID the request carries survives.
+		applyEpisodeMapParams(meta, params, hasTorznabIDParams(params))
 		return
 	}
 
@@ -2612,6 +2580,8 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 			Msg("Pruned unsupported ID parameters for indexer")
 	}
 
+	applyEpisodeMapParams(meta, params, hasIDsAfterPruning)
+
 	// If we had IDs but they were all pruned, restore q param for this indexer
 	if !hadIDs || hasIDsAfterPruning {
 		return
@@ -2633,6 +2603,16 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 			Str("query", restoredQuery).
 			Msg("Restored q parameter after all ID params were pruned for indexer")
 	}
+}
+
+// applyEpisodeMapParams adds the Sonarr-mapped season and ep for an indexer
+// that keeps an ID parameter. Text fallbacks never receive them.
+func applyEpisodeMapParams(meta *searchContext, params map[string]string, keepsIDs bool) {
+	if !keepsIDs || meta.episodeMap == nil {
+		return
+	}
+	params["season"] = strconv.Itoa(meta.episodeMap.Season)
+	params["ep"] = strconv.Itoa(meta.episodeMap.Episode)
 }
 
 // applyProwlarrWorkaround applies Prowlarr-specific query workarounds to search parameters.
@@ -3038,7 +3018,11 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 			Msg("Adding season parameter to torznab search")
 	}
 
-	if req.Episode != nil {
+	// Torznab ep counts within a season. An absolute-numbered anime episode has
+	// no season, and HDBits filters its TVDb search on the bare number and
+	// returns nothing. applyCapabilitySpecificParams adds the Sonarr-mapped pair
+	// for indexers that keep an ID.
+	if req.Episode != nil && req.Season != nil && *req.Season > 0 {
 		params.Set("ep", strconv.Itoa(*req.Episode))
 		log.Debug().
 			Str("search_mode", mode).
@@ -4053,31 +4037,6 @@ func getCategoriesForContentType(ct contentType) []int {
 	}
 }
 
-// GetTrackerDomains extracts domain names from all configured indexers
-func (s *Service) GetTrackerDomains(ctx context.Context) ([]string, error) {
-	indexers, err := s.indexerStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list indexers: %w", err)
-	}
-
-	domainMap := make(map[string]bool)
-	var domains []string
-
-	for _, indexer := range indexers {
-		if indexer.BaseURL != "" {
-			domain := extractDomainFromURL(indexer.BaseURL)
-			if domain != "" && !domainMap[domain] {
-				domainMap[domain] = true
-				domains = append(domains, domain)
-			}
-		}
-	}
-
-	// Sort for consistent output
-	sort.Strings(domains)
-	return domains, nil
-}
-
 // EnabledIndexerInfo holds both name and domain information for an enabled indexer
 type EnabledIndexerInfo struct {
 	ID     int
@@ -4163,61 +4122,6 @@ func GetIndexerDomainFromInfo(indexerInfo map[int]EnabledIndexerInfo, indexerID 
 		return info.Domain
 	}
 	return ""
-}
-
-// GetEnabledTrackerDomains extracts domain names from enabled indexers only
-func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error) {
-	indexers, err := s.indexerStore.ListEnabled(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list enabled indexers: %w", err)
-	}
-
-	domainMap := make(map[string]bool)
-	var domains []string
-
-	// Group indexers by backend for efficient processing
-	var jackettIndexers, prowlarrIndexers, nativeIndexers []*models.TorznabIndexer
-	for _, indexer := range indexers {
-		switch indexer.Backend {
-		case models.TorznabBackendProwlarr:
-			prowlarrIndexers = append(prowlarrIndexers, indexer)
-		case models.TorznabBackendNative:
-			nativeIndexers = append(nativeIndexers, indexer)
-		default: // Jackett
-			jackettIndexers = append(jackettIndexers, indexer)
-		}
-	}
-
-	// Handle Jackett and Native indexers (use BaseURL)
-	for _, indexer := range append(jackettIndexers, nativeIndexers...) {
-		if indexer.BaseURL != "" {
-			domain := extractDomainFromURL(indexer.BaseURL)
-			if domain != "" && !domainMap[domain] {
-				domainMap[domain] = true
-				domains = append(domains, domain)
-			}
-		}
-	}
-
-	// Handle Prowlarr indexers (need to query Prowlarr API for actual tracker domains)
-	if len(prowlarrIndexers) > 0 {
-		prowlarrDomains := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
-
-		for _, indexer := range prowlarrIndexers {
-			domain := prowlarrDomains[indexer.ID]
-			if domain == "" && indexer.BaseURL != "" {
-				domain = extractDomainFromURL(indexer.BaseURL)
-			}
-			if domain != "" && !domainMap[domain] {
-				domainMap[domain] = true
-				domains = append(domains, domain)
-			}
-		}
-	}
-
-	// Sort for consistent output
-	sort.Strings(domains)
-	return domains, nil
 }
 
 // GetConfiguredTrackerDomains returns tracker domains for enabled indexers whose
@@ -4330,51 +4234,6 @@ func extractDomainFromURL(urlStr string) string {
 	}
 
 	return hostname
-}
-
-// TrackerDomainInfo represents detailed information about a tracker domain
-type TrackerDomainInfo struct {
-	Domain    string `json:"domain"`
-	IndexerID int    `json:"indexer_id"`
-	Name      string `json:"name"`
-	BaseURL   string `json:"base_url"`
-	JackettID string `json:"jackett_id,omitempty"`
-	Backend   string `json:"backend"`
-	Enabled   bool   `json:"enabled"`
-}
-
-// GetTrackerDomainDetails returns detailed information about tracker domains from all indexers
-func (s *Service) GetTrackerDomainDetails(ctx context.Context) ([]TrackerDomainInfo, error) {
-	indexers, err := s.indexerStore.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list indexers: %w", err)
-	}
-
-	var domainInfos []TrackerDomainInfo
-
-	for _, indexer := range indexers {
-		if indexer.BaseURL != "" {
-			domain := extractDomainFromURL(indexer.BaseURL)
-			if domain != "" {
-				domainInfos = append(domainInfos, TrackerDomainInfo{
-					Domain:    domain,
-					IndexerID: indexer.ID,
-					Name:      indexer.Name,
-					BaseURL:   indexer.BaseURL,
-					JackettID: indexer.IndexerID,
-					Backend:   string(indexer.Backend),
-					Enabled:   indexer.Enabled,
-				})
-			}
-		}
-	}
-
-	// Sort by domain name for consistent output
-	sort.Slice(domainInfos, func(i, j int) bool {
-		return domainInfos[i].Domain < domainInfos[j].Domain
-	})
-
-	return domainInfos, nil
 }
 
 // GetIndexerDomain gets the tracker domain for a specific indexer by name

@@ -205,6 +205,7 @@
       "SUPER_SEEDING": "슈퍼 시딩",
       "IS_UNREGISTERED": "등록되지 않음",
       "HAS_MISSING_FILES": "누락된 파일 있음",
+      "HAS_SKIPPED_FILES": "건너뛴 파일 있음",
       "IS_GROUPED": "그룹화됨",
       "EXISTS_ON_OTHER_INSTANCE": "다른 인스턴스에 존재",
       "SEEDING_ON_OTHER_INSTANCE": "다른 인스턴스에서 시딩 중",

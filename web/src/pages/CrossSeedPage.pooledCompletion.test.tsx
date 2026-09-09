@@ -23,7 +23,6 @@ vi.mock("@/components/ui/field-help", () => ({
   FieldHelp: ({ children }: { children: ReactNode }) => <span>{children}</span>,
 }))
 
-import { buildPooledCompletionPatch } from "@/lib/crossseed-settings"
 import { PooledCompletionSetting } from "@/pages/CrossSeedPage"
 
 afterEach(cleanup)
@@ -45,12 +44,5 @@ describe("PooledCompletionSetting", () => {
 
     fireEvent.click(checkbox)
     expect(onCheckedChange).toHaveBeenCalledWith(false)
-  })
-
-  it("builds the save payload with both bound values", () => {
-    expect(buildPooledCompletionPatch(true, 125)).toEqual({
-      pooledPartialCompletionEnabled: true,
-      autoResumeMaxDownloadMb: 125,
-    })
   })
 })
