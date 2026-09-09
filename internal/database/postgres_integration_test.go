@@ -185,7 +185,9 @@ func openPostgresTestSchema(t *testing.T) (context.Context, string) {
 		t.Skip("QUI_TEST_POSTGRES_DSN not set")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Budget for two full migration chains plus a data copy under -race on a
+	// shared CI runner, where the SQLite chain alone has taken over 30s.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	t.Cleanup(cancel)
 
 	adminPool, err := pgxpool.New(ctx, baseDSN)
