@@ -374,6 +374,8 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 	}
 
 	statusRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackerStatus, Operator: models.OperatorEqual, Value: "error"})
+	trackerRule := deleteRule(&models.RuleCondition{Field: models.FieldTracker, Operator: models.OperatorEqual, Value: "dead"})
+	trackersRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackers, Operator: models.OperatorContains, Value: "tracker.example"})
 	nestedMessageRule := deleteRule(&models.RuleCondition{
 		Operator: models.OperatorOr,
 		Conditions: []*models.RuleCondition{
@@ -389,6 +391,8 @@ func TestRulesUseTrackerEntryData(t *testing.T) {
 		want  bool
 	}{
 		{name: "status field", rules: []*models.Automation{statusRule}, want: true},
+		{name: "tracker field", rules: []*models.Automation{trackerRule}, want: true},
+		{name: "trackers field", rules: []*models.Automation{trackersRule}, want: true},
 		{name: "message field nested in group", rules: []*models.Automation{nestedMessageRule}, want: true},
 		{name: "no tracker entry fields", rules: []*models.Automation{unrelatedRule}, want: false},
 		{name: "mixed rules detect tracker field", rules: []*models.Automation{unrelatedRule, statusRule}, want: true},
@@ -1149,67 +1153,6 @@ func TestCategoryConditionNotMet(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
-// isContentPathAmbiguous tests
-// -----------------------------------------------------------------------------
-
-func TestIsContentPathAmbiguous(t *testing.T) {
-	tests := []struct {
-		scenario    string
-		contentPath string
-		savePath    string
-		want        bool
-	}{
-		{
-			scenario:    "ContentPath != SavePath => unambiguous",
-			contentPath: "/downloads/torrent/My.Movie.2024",
-			savePath:    "/downloads/torrent",
-			want:        false,
-		},
-		{
-			scenario:    "ContentPath == SavePath => ambiguous (shared dir)",
-			contentPath: "/downloads/shared",
-			savePath:    "/downloads/shared",
-			want:        true,
-		},
-		{
-			scenario:    "ContentPath subfolder of SavePath => unambiguous",
-			contentPath: "/Downloads/torrent/My.Movie",
-			savePath:    "/downloads/torrent",
-			want:        false,
-		},
-		{
-			scenario:    "ContentPath == SavePath (case-insensitive) => ambiguous",
-			contentPath: "/Downloads/Shared",
-			savePath:    "/downloads/shared",
-			want:        true,
-		},
-		{
-			scenario:    "ContentPath == SavePath (trailing slash diff) => ambiguous",
-			contentPath: "/downloads/shared/",
-			savePath:    "/downloads/shared",
-			want:        true,
-		},
-		{
-			scenario:    "ContentPath is specific file/folder under SavePath => unambiguous",
-			contentPath: "/downloads/movies/MyMovie",
-			savePath:    "/downloads/movies",
-			want:        false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.scenario, func(t *testing.T) {
-			torrent := qbt.Torrent{
-				ContentPath: tc.contentPath,
-				SavePath:    tc.savePath,
-			}
-			got := isContentPathAmbiguous(torrent)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
 // crossSeedGroupMembers tests
 // -----------------------------------------------------------------------------
 
@@ -1928,30 +1871,6 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
 }
 
-func TestUpdateCumulativeFreeSpaceCleared_EligibleView(t *testing.T) {
-	// Test that "eligible" mode does NOT update cumulative space tracking
-	// (simulated by not calling updateCumulativeFreeSpaceCleared)
-	// This is the expected behavior in eligible mode - we skip the update
-	allTorrents := []qbt.Torrent{
-		{Hash: "a", Size: 100 * 1024 * 1024 * 1024, ContentPath: "/data/movie1"}, // 100 GB
-		{Hash: "b", Size: 50 * 1024 * 1024 * 1024, ContentPath: "/data/movie2"},  // 50 GB
-	}
-
-	evalCtx := &EvalContext{
-		SpaceToClear: 0,
-	}
-
-	// In "eligible" mode, we don't call updateCumulativeFreeSpaceCleared
-	// SpaceToClear should remain 0, so all torrents continue to match FREE_SPACE conditions
-
-	// Verify SpaceToClear stays at 0 when we don't update it
-	assert.Equal(t, int64(0), evalCtx.SpaceToClear)
-
-	// In eligible mode the condition would continue matching all torrents
-	// because SpaceToClear is never incremented
-	_ = allTorrents // Used in actual preview logic
-}
-
 func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	// Test that cross-seed expansion works the same way in both views
 	// Only deleteWithFilesIncludeCrossSeeds mode expands cross-seeds
@@ -2662,4 +2581,27 @@ func (r *automationRecordingNotifier) Events() []notifications.Event {
 	out := make([]notifications.Event, len(r.events))
 	copy(out, r.events)
 	return out
+}
+
+func TestTrackerDataMissing(t *testing.T) {
+	withTrackers := qbt.Torrent{Trackers: []qbt.TorrentTracker{{Url: "https://tracker.example/announce"}}}
+	withoutTrackers := qbt.Torrent{Tracker: "https://tracker.example/announce"}
+
+	tests := []struct {
+		name     string
+		torrents []qbt.Torrent
+		want     bool
+	}{
+		{name: "no torrents at all says nothing about hydration", torrents: nil, want: false},
+		{name: "hydration returned no tracker entries", torrents: []qbt.Torrent{withoutTrackers, withoutTrackers}, want: true},
+		{name: "one torrent with entries is enough", torrents: []qbt.Torrent{withoutTrackers, withTrackers}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := trackerDataMissing(tt.torrents); got != tt.want {
+				t.Errorf("trackerDataMissing() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

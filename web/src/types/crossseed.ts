@@ -144,6 +144,60 @@ export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
 }
 
+export interface ManualCrossSeedProposal {
+  hash: string
+  name: string
+  size: number
+  category: string
+  effectiveSavePath: string
+  overlapBytes: number
+  overlapFraction: number
+}
+
+export interface ManualCrossSeedProposalsResponse {
+  packMode: boolean
+  packEpisodeCount: number
+  assemblyUnavailableReason: string
+  proposalLimit: number
+  proposalsTruncated: boolean
+  sourceName: string
+  sourceSize: number
+  sourceFileCount: number
+  defaultTags: string[]
+  /** Set when settings pin every cross-seed to one category; the apply discards any pick. */
+  pinnedCategory: string
+  proposals: ManualCrossSeedProposal[]
+}
+
+export interface ManualAssembleRequest {
+  instanceId: number
+  torrentData: string
+  targetHashes: string[]
+  category?: string
+  tags?: string[]
+}
+
+export interface ManualAssembleResponse {
+  ready: boolean
+  applied: boolean
+  reason: string
+  message: string
+  targets: { hash: string; name: string; reason: string }[]
+  matchedEpisodes: number
+  totalEpisodes: number
+  coverage: number
+  linkedBytes: number
+  missingBytes: number
+  destination: string
+  defaultCategory: string
+  linkMode: string
+}
+
+export interface ManualCrossSeedApplyResponse {
+  success: boolean
+  results: CrossSeedInstanceResult[]
+}
+
 export interface CrossSeedBlocklistEntry {
   instanceId: number
   infoHash: string
@@ -171,9 +225,9 @@ export interface CrossSeedRun {
   completedAt?: string
   totalFeedItems: number
   candidatesFound: number
-  torrentsAdded: number
-  torrentsFailed: number
-  torrentsSkipped: number
+  crossSeedsAdded: number
+  candidatesFailed: number
+  candidatesSkipped: number
   message?: string
   errorMessage?: string
   results?: CrossSeedRunResult[]
@@ -210,6 +264,7 @@ export interface CrossSeedAutomationSettings {
   webhookSourceExcludeTags: string[]
   findIndividualEpisodes: boolean
   autoResumeMaxDownloadMb: number
+  pooledPartialCompletionEnabled: boolean
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -277,6 +332,7 @@ export interface CrossSeedAutomationSettingsPatch {
   webhookSourceExcludeTags?: string[]
   findIndividualEpisodes?: boolean
   autoResumeMaxDownloadMb?: number
+  pooledPartialCompletionEnabled?: boolean
   useCategoryFromIndexer?: boolean
   useCrossCategoryAffix?: boolean
   categoryAffixMode?: "prefix" | "suffix"
@@ -375,7 +431,8 @@ export interface CrossSeedSearchRun {
   completedAt?: string
   totalTorrents: number
   processed: number
-  torrentsAdded: number
+  torrentsWithCrossSeeds: number
+  crossSeedsAdded: number
   torrentsFailed: number
   torrentsSkipped: number
   message?: string

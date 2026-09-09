@@ -93,6 +93,11 @@ type SortedPeer struct {
 // SortedPeersResponse wraps the peers response with sorted peers
 type SortedPeersResponse struct {
 	*qbt.TorrentPeersResponse
+	// FullUpdate shadows the promoted qbt field so it never reaches the JSON:
+	// MergePeers never copies it into the cached response, so the endpoint has
+	// only ever sent false. *struct{} makes accidental promoted reads fail to
+	// compile.
+	FullUpdate  *struct{}    `json:"full_update,omitempty"`
 	SortedPeers []SortedPeer `json:"sorted_peers,omitempty"`
 }
 
@@ -1283,10 +1288,6 @@ func parseInstanceIDsParam(raw string) ([]int, error) {
 	return normalizeInstanceIDs(instanceIDs)
 }
 
-func shouldResolveCrossInstanceHashes(instanceID int, req BulkActionRequest) bool {
-	return instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0
-}
-
 func appendTargetsFromCrossInstanceTorrents(
 	targetsByInstance map[int][]string,
 	seen map[int]map[string]struct{},
@@ -1376,6 +1377,12 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 	if req.SelectAll && (len(req.Hashes) > 0 || len(req.Targets) > 0) {
 		RespondError(w, http.StatusBadRequest, "Cannot specify hashes/targets together with selectAll")
+		return
+	}
+
+	// A hash names a torrent, not an instance. In the unified scope only targets can.
+	if instanceID == allInstancesID && len(req.Hashes) > 0 && len(req.Targets) == 0 {
+		RespondError(w, http.StatusBadRequest, "targets is required when addressing torrents by hash in the unified scope")
 		return
 	}
 
@@ -1510,49 +1517,9 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			addBulkTarget(targetsByInstance, seenTargets, targetInstanceID, target.Hash)
 		}
 
-		if len(req.Hashes) > 0 {
-			// Explicit targets are authoritative in unified scope; only resolve hashes when
-			// targets are not provided (backward-compatible payloads).
-			if shouldResolveCrossInstanceHashes(instanceID, req) {
-				requestedHashes := buildExcludeHashSet(req.Hashes)
-				response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-					r.Context(),
-					0,
-					0,
-					"",
-					"",
-					"",
-					qbittorrent.FilterOptions{},
-					req.InstanceIDs,
-				)
-				if crossErr != nil {
-					log.Error().Err(crossErr).Msg("Failed to resolve hash targets for cross-instance bulk action")
-					RespondError(w, http.StatusInternalServerError, "Failed to get torrents for bulk action")
-					return
-				}
-				if response.PartialResults {
-					log.Warn().
-						Str("action", req.Action).
-						Ints("instanceIDs", req.InstanceIDs).
-						Msg("Cross-instance hash resolution aborted due to partial results")
-					RespondError(w, http.StatusServiceUnavailable, "Unable to resolve all scoped instances for bulk action")
-					return
-				}
-
-				for _, torrent := range response.CrossInstanceTorrents {
-					normalized := normalizeHashValue(torrent.Hash)
-					if requestedHashes == nil {
-						continue
-					}
-					if _, ok := requestedHashes[normalized]; !ok {
-						continue
-					}
-					addBulkTarget(targetsByInstance, seenTargets, torrent.InstanceID, torrent.Hash)
-				}
-			} else if instanceID != allInstancesID {
-				for _, hash := range req.Hashes {
-					addBulkTarget(targetsByInstance, seenTargets, instanceID, hash)
-				}
+		if instanceID != allInstancesID {
+			for _, hash := range req.Hashes {
+				addBulkTarget(targetsByInstance, seenTargets, instanceID, hash)
 			}
 		}
 	}
@@ -2389,8 +2356,8 @@ func (h *TorrentsHandler) GetTorrentPeers(w http.ResponseWriter, r *http.Request
 			return sortedPeers[i].UpSpeed > sortedPeers[j].UpSpeed
 		}
 
-		// Finally by IP for stable sorting
-		return sortedPeers[i].IP < sortedPeers[j].IP
+		// Finally by canonical peer address for stable sorting.
+		return sortedPeers[i].Key < sortedPeers[j].Key
 	})
 
 	// Create response with sorted peers

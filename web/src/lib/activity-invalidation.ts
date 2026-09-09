@@ -26,6 +26,8 @@ export function activityQueryKeys(event: ActivityEvent): QueryKey[] {
       return event.resourceId ? [["dir-scan", "directory", Number(event.resourceId)]] : [["dir-scan"]]
     case "orphanscan.run":
       return id ? [["orphan-scan", id]] : [["orphan-scan"]]
+    case "discscan.run":
+      return id ? [["disc-scans", id]] : [["disc-scans"]]
     case "crossseed.status":
       return [["cross-seed", "status"]]
     case "crossseed.search":
@@ -70,6 +72,7 @@ export const ACTIVITY_FEATURE_PREFIXES: QueryKey[] = [
   ["instance-backups"],
   ["dir-scan"],
   ["orphan-scan"],
+  ["disc-scans"],
   ["cross-seed", "status"],
   ["cross-seed", "search-status"],
   ["cross-seed", "search-runs"],

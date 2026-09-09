@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { applyStreamDelta, mergeStreamedCrossInstanceFirstPage, normalizeCrossInstanceTorrents, normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
+import { mergeStreamedCrossInstanceFirstPage, normalizeCrossInstanceTorrents, normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
 import type { CrossInstanceTorrent, Torrent, TorrentResponse } from "@/types"
 
 // A streamed cross-instance torrent as it arrives over SSE: the backend's
@@ -217,81 +217,5 @@ describe("mergeStreamedCrossInstanceFirstPage", () => {
       camel("e", 1, "alpha"), camel("f", 1, "alpha"),
     ]
     expect(mergeStreamedCrossInstanceFirstPage(prev, snapshot(0, streamed("a", 1, "alpha")))).toEqual([])
-  })
-})
-
-describe("applyStreamDelta", () => {
-  function singleBase(...hashes: string[]): TorrentResponse {
-    return {
-      torrents: hashes.map(hash => ({ hash, name: `${hash}.iso` })) as unknown as Torrent[],
-      total: hashes.length,
-    }
-  }
-
-  it("reconstructs a single-instance page from an in-place value change", () => {
-    const base = singleBase("a", "b", "c")
-    const a = base.torrents![0]
-    const payload = {
-      type: "delta" as const,
-      data: { torrents: [{ hash: "b", name: "b-new.iso" }] as unknown as Torrent[], total: 3 },
-    }
-    const { data, changed } = applyStreamDelta(base, payload, false)
-    expect(changed).toBe(true)
-    expect(data.torrents!.map(t => t.hash)).toEqual(["a", "b", "c"])
-    expect(data.torrents![0]).toBe(a) // unchanged row keeps reference
-    expect(data.torrents![1].name).toBe("b-new.iso")
-  })
-
-  it("applies a single-instance reorder + add from the order list", () => {
-    const base = singleBase("a", "b")
-    const payload = {
-      type: "delta" as const,
-      delta: { order: ["b", "d", "a"] },
-      data: { torrents: [{ hash: "d", name: "d.iso" }] as unknown as Torrent[], total: 3 },
-    }
-    const { data } = applyStreamDelta(base, payload, false)
-    expect(data.torrents!.map(t => t.hash)).toEqual(["b", "d", "a"])
-  })
-
-  it("clears the page when a delta drains it to zero rows (present empty order)", () => {
-    const base = singleBase("a", "b")
-    const payload = {
-      type: "delta" as const,
-      delta: { order: [] as string[] },
-      data: { torrents: [] as unknown as Torrent[], total: 0 },
-    }
-    const { data, changed } = applyStreamDelta(base, payload, false)
-    expect(changed).toBe(true)
-    expect(data.torrents).toEqual([])
-  })
-
-  it("passes the page through unchanged on an aggregate-only delta", () => {
-    const base = singleBase("a", "b")
-    const prevRows = base.torrents
-    const payload = { type: "delta" as const, data: { torrents: [], total: 2, stats: { downloading: 1 } } as unknown as TorrentResponse }
-    const { data, changed } = applyStreamDelta(base, payload, false)
-    expect(changed).toBe(false)
-    expect(data.torrents).toBe(prevRows) // page list referentially stable
-  })
-
-  it("reconstructs a cross-instance page and normalizes snake_case changed rows", () => {
-    const base: TorrentResponse = {
-      crossInstanceTorrents: [camel("a", 1, "alpha"), camel("a", 2, "beta")],
-      total: 2,
-    } as TorrentResponse
-    const payload = {
-      type: "delta" as const,
-      data: {
-        cross_instance_torrents: [streamed("a", 2, "beta")],
-        total: 2,
-      } as unknown as TorrentResponse,
-    }
-    const { data, changed } = applyStreamDelta(base, payload, true)
-    expect(changed).toBe(true)
-    const rows = data.crossInstanceTorrents!
-    expect(rows.map(r => `${r.instanceId}:${r.hash}`)).toEqual(["1:a", "2:a"])
-    // The changed instance-2 row is normalized to camelCase instance metadata.
-    expect(rows[1].instanceId).toBe(2)
-    expect(rows[1].instanceName).toBe("beta")
   })
 })

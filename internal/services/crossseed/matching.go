@@ -199,8 +199,6 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
 	sourceTitles := s.normalizedReleaseTitles(source, sourceName)
 	candidateTitles := s.normalizedReleaseTitles(candidate, candidateName)
-	addNormalizedTitles(sourceTitles, sourceExtraTitles)
-	addNormalizedTitles(candidateTitles, candidateExtraTitles)
 	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
 		return false, "empty normalized title"
 	}
@@ -212,7 +210,14 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 	// This still avoids false positives between related-but-distinct TV franchises
 	// (e.g. "FBI" vs "FBI Most Wanted") because overlap is checked on full normalized
 	// title entries, not arbitrary substrings.
-	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) {
+	//
+	// Extra titles (ARR aliases) are loop-invariant across a scan while this
+	// function runs once per scanned torrent, and Sonarr alias lists are uncapped.
+	// Probe them against the other side's set instead of inserting them, so the
+	// per-pair maps stay small and never regrow per torrent.
+	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) &&
+		!normalizedTitleSetContainsAny(sourceTitles, candidateExtraTitles) &&
+		!normalizedTitleSetContainsAny(candidateTitles, sourceExtraTitles) {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
 		return false, titleMismatchReason
 	}
@@ -322,10 +327,15 @@ func (s *Service) normalizedReleaseTitles(release *rls.Release, rawName string) 
 	return titles
 }
 
-func addNormalizedTitles(titles map[string]struct{}, extraTitles []string) {
+// normalizedTitleSetContainsAny reports whether any extra title normalizes to
+// an entry of the set. It never mutates the set.
+func normalizedTitleSetContainsAny(titles map[string]struct{}, extraTitles []string) bool {
 	for _, title := range extraTitles {
-		addNormalizedTitle(titles, title)
+		if _, exists := titles[stringutils.NormalizeForMatching(title)]; exists {
+			return true
+		}
 	}
+	return false
 }
 
 func releaseTitle(release *rls.Release) string {

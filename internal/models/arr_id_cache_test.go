@@ -51,14 +51,12 @@ func TestArrIDCacheStore_GetReturnsLiveEntryInNonUTCTimezone(t *testing.T) {
 	require.False(t, entry.IsNegative)
 }
 
-// TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone confirms the same UTC
-// normalization holds for the expiry-counting and cleanup helpers: a live entry
-// counts as valid and survives cleanup, while an already-expired entry is excluded
-// and removed — regardless of the process timezone.
+// TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone covers expiry and cleanup
+// outside UTC. Get excludes expired entries, and cleanup removes only those entries.
 func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	forceNonUTCLocal(t)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	db := testdb.NewMigratedSQLite(t, "arr-id-cache-nonutc-expiry")
 	store := models.NewArrIDCacheStore(db)
 
@@ -69,17 +67,13 @@ func TestArrIDCacheStore_ExpiryHelpersRespectNonUTCTimezone(t *testing.T) {
 	_, err := store.Get(ctx, "stale", "movie")
 	require.ErrorIs(t, err, sql.ErrNoRows)
 
-	valid, err := store.CountValid(ctx)
-	require.NoError(t, err)
-	require.Equal(t, int64(1), valid)
-
 	removed, err := store.CleanupExpired(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), removed)
 
-	total, err := store.Count(ctx)
+	removed, err = store.CleanupExpired(ctx)
 	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
+	require.Zero(t, removed)
 
 	// The live entry is the survivor and is still retrievable.
 	entry, err := store.Get(ctx, "live", "tv")
@@ -153,8 +147,7 @@ func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
 		require.NoError(t, store.Set(ctx, "expired", "movie", nil, ids, false, -time.Minute))
 		require.NoError(t, store.Set(ctx, "expired", "movie", nil, nil, true, time.Hour))
 
-		// Get filters expired rows, so read the row state via CountValid semantics:
-		// the negative entry must be the live one.
+		// The negative entry must replace the expired positive entry.
 		entry, err := store.Get(ctx, "expired", "movie")
 		require.NoError(t, err)
 		require.True(t, entry.IsNegative)
@@ -167,5 +160,46 @@ func TestArrIDCacheStore_NegativeWriteDoesNotClobberLivePositive(t *testing.T) {
 		entry, err := store.Get(ctx, "neg-refresh", "movie")
 		require.NoError(t, err)
 		require.True(t, entry.IsNegative)
+	})
+}
+
+func TestArrIDCacheStore_EpisodeMapRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "arr-id-cache-episode-map")
+	store := models.NewArrIDCacheStore(db)
+	ids := &models.ExternalIDs{TVDbID: 471000}
+	episodeMap := &models.EpisodeMap{Season: 4, Episode: 15, Absolute: 81}
+
+	t.Run("map stored and read back", func(t *testing.T) {
+		require.NoError(t, store.SetWithTitles(ctx, "mapped", "tv", nil, ids, []string{"Solitude"}, episodeMap, true, false, time.Hour))
+		entry, err := store.Get(ctx, "mapped", "tv")
+		require.NoError(t, err)
+		require.True(t, entry.HasEpisodeMap)
+		require.Equal(t, episodeMap, entry.EpisodeMap)
+	})
+
+	t.Run("looked and found none sets the flag with nulls", func(t *testing.T) {
+		require.NoError(t, store.SetWithTitles(ctx, "unmapped", "tv", nil, ids, []string{"Solitude"}, nil, true, false, time.Hour))
+		entry, err := store.Get(ctx, "unmapped", "tv")
+		require.NoError(t, err)
+		require.True(t, entry.HasEpisodeMap)
+		require.Nil(t, entry.EpisodeMap)
+	})
+
+	t.Run("legacy positive write leaves the flag unset", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "legacy", "tv", nil, ids, false, time.Hour))
+		entry, err := store.Get(ctx, "legacy", "tv")
+		require.NoError(t, err)
+		require.False(t, entry.HasEpisodeMap)
+		require.Nil(t, entry.EpisodeMap)
+	})
+
+	t.Run("negative row carries no map", func(t *testing.T) {
+		require.NoError(t, store.Set(ctx, "negative", "tv", nil, nil, true, time.Hour))
+		entry, err := store.Get(ctx, "negative", "tv")
+		require.NoError(t, err)
+		require.True(t, entry.IsNegative)
+		require.False(t, entry.HasEpisodeMap)
+		require.Nil(t, entry.EpisodeMap)
 	})
 }

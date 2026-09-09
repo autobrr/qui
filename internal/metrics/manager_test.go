@@ -113,17 +113,6 @@ func TestTorrentCollector_CollectWithNilDependencies(t *testing.T) {
 	assert.Equal(t, 0, metricCount, "Should collect 0 metrics with nil dependencies")
 }
 
-func TestInstanceInfo_IDString(t *testing.T) {
-	// Test the IDString method optimization
-	instance := &qbittorrent.InstanceInfo{
-		ID:   123,
-		Name: "test",
-	}
-
-	result := instance.IDString()
-	assert.Equal(t, "123", result, "Should convert ID to string correctly")
-}
-
 func BenchmarkTorrentCollector_Describe(b *testing.B) {
 	collector := collector.NewTorrentCollector(nil, nil, nil)
 	descChan := make(chan *prometheus.Desc, 20)
@@ -147,16 +136,5 @@ func BenchmarkTorrentCollector_CollectWithNilDeps(b *testing.B) {
 		for len(metricChan) > 0 {
 			<-metricChan
 		}
-	}
-}
-
-func BenchmarkInstanceInfo_IDString(b *testing.B) {
-	instance := &qbittorrent.InstanceInfo{
-		ID:   123456,
-		Name: "benchmark-instance",
-	}
-
-	for b.Loop() {
-		_ = instance.IDString()
 	}
 }

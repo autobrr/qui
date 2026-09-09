@@ -1,6 +1,6 @@
 {
   "pageTitle": "搜尋索引器",
-  "pageDescription": "搜尋所有已啟用的索引器。選擇查詢類型，或保持自動以自動檢測分類。",
+  "pageDescription": "搜尋所有已啟用的索引器。選擇搜尋類型。",
   "indexerSummary": {
     "label": "索引器",
     "noEnabled": "無已啟用的索引器",
@@ -44,11 +44,6 @@
     "indexersPage": "索引器頁面"
   },
   "searchTypes": {
-    "auto": {
-      "label": "自動檢測",
-      "description": "自動推斷正確的分類",
-      "placeholder": "試試：\"Sample Movie 2024\"、\"tt1234567\"、\"tvdb 123456\" 或 \"Example Artist – Example Album\""
-    },
     "movies": {
       "label": "電影",
       "placeholder": "例如 \"Sample Movie 2024\"、\"Another Film 1999\"、\"tt1234567\""

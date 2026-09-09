@@ -16,6 +16,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -490,6 +492,7 @@ func TestFindLocalMatches_ReflinkVerificationErrorPolicy(t *testing.T) {
 			return false, queryErr
 		},
 	}
+	service.SetBackendPool(fsops.NewPool(service.instanceStore, local.NewBackend()))
 
 	response, err := service.FindLocalMatches(context.Background(), 1, source.Hash, false)
 	require.NoError(t, err)

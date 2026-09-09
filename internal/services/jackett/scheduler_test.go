@@ -83,7 +83,7 @@ func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 		return []Result{{Title: "test"}}, []int{indexers[0].ID}, nil
 	}
 
-	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer", Backend: models.TorznabBackendNative}
 
 	// Callbacks run on a scheduler worker, so they hand their outcome to the
 	// test goroutine: a failed require there would Goexit the worker instead of
@@ -368,6 +368,104 @@ func TestSearchScheduler_TaskTimeoutCompletesHungExecution(t *testing.T) {
 	require.Less(t, time.Since(start), 150*time.Millisecond)
 }
 
+func TestSearchScheduler_ExecutionTimeoutStartsAfterNativePacing(t *testing.T) {
+	limiter := NewRateLimiter(40 * time.Millisecond)
+	s := newSearchScheduler(limiter, 1)
+	defer s.Stop()
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstDone := make(chan error, 1)
+
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			close(firstStarted)
+			<-releaseFirst
+			return nil, []int{indexer.ID}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			firstDone <- err
+		}},
+	})
+	require.NoError(t, err)
+	<-firstStarted
+
+	remainingBudget := make(chan time.Duration, 1)
+	secondDone := make(chan error, 1)
+	_, err = s.Submit(context.Background(), SubmitRequest{
+		Indexers:         []*models.TorznabIndexer{indexer},
+		ExecutionTimeout: 30 * time.Millisecond,
+		ExecFn: func(ctx context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				remainingBudget <- 0
+				return nil, nil, errors.New("execution context has no deadline")
+			}
+			remainingBudget <- time.Until(deadline)
+			return nil, []int{indexer.ID}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			secondDone <- err
+		}},
+	})
+	require.NoError(t, err)
+
+	time.Sleep(15 * time.Millisecond)
+	close(releaseFirst)
+	require.NoError(t, <-firstDone)
+
+	select {
+	case remaining := <-remainingBudget:
+		require.Greater(t, remaining, 15*time.Millisecond)
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("second task did not start after native pacing")
+	}
+	require.NoError(t, <-secondDone)
+}
+
+func TestSearchScheduler_QueryCooldownSkipsBeforeNativePacing(t *testing.T) {
+	limiter := NewRateLimiter(200 * time.Millisecond)
+	indexer := &models.TorznabIndexer{ID: 1, Name: "native", Backend: models.TorznabBackendNative}
+	limiter.RecordRequestComplete(indexer.ID, time.Now())
+	limiter.SetCooldown(indexer.ID, rateLimitScopeQuery, time.Now().Add(time.Second))
+
+	limiter.mu.Lock()
+	lastCompleted := limiter.states[indexer.ID].lastCompleted
+	limiter.mu.Unlock()
+
+	s := newSearchScheduler(limiter, 1)
+	defer s.Stop()
+
+	var executed atomic.Bool
+	complete := make(chan error, 1)
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			executed.Store(true)
+			return nil, []int{indexer.ID}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			complete <- err
+		}},
+	})
+	require.NoError(t, err)
+
+	select {
+	case err := <-complete:
+		var rateLimitErr *RateLimitError
+		require.ErrorAs(t, err, &rateLimitErr)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("known query cooldown waited for native pacing")
+	}
+	assert.False(t, executed.Load())
+
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	assert.Equal(t, lastCompleted, limiter.states[indexer.ID].lastCompleted, "local cooldown rejection must not reserve a pacing slot")
+}
+
 func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 	s := newSearchScheduler(nil, 10)
 	defer s.Stop()
@@ -397,6 +495,49 @@ func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 
 	<-done
 	require.True(t, <-deadlineCh)
+}
+
+func TestSearchScheduler_DoesNotRunQueuedTaskAfterDeadline(t *testing.T) {
+	s := newSearchScheduler(NewRateLimiter(time.Millisecond), 1)
+	defer s.Stop()
+
+	blockerStarted := make(chan struct{})
+	releaseBlocker := make(chan struct{})
+	blockerDone := make(chan struct{})
+	expiredDone := make(chan error, 1)
+	var expiredExecuted atomic.Bool
+
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{{ID: 1, Name: "blocker"}},
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			close(blockerStarted)
+			<-releaseBlocker
+			return nil, []int{1}, nil
+		},
+		Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(blockerDone) }},
+	})
+	require.NoError(t, err)
+	<-blockerStarted
+
+	expiredCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err = s.Submit(expiredCtx, SubmitRequest{
+		Indexers: []*models.TorznabIndexer{{ID: 2, Name: "expires-in-queue"}},
+		ExecFn: func(context.Context, []*models.TorznabIndexer, url.Values, *searchContext) ([]Result, []int, error) {
+			expiredExecuted.Store(true)
+			return nil, []int{2}, nil
+		},
+		Callbacks: JobCallbacks{OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+			expiredDone <- err
+		}},
+	})
+	require.NoError(t, err)
+	<-expiredCtx.Done()
+	close(releaseBlocker)
+	<-blockerDone
+
+	require.ErrorIs(t, <-expiredDone, context.DeadlineExceeded)
+	assert.False(t, expiredExecuted.Load(), "expired queued task must not be resurrected")
 }
 
 func TestSearchScheduler_RSSDeduplication(t *testing.T) {
@@ -768,7 +909,7 @@ func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {
 	s := newSearchScheduler(rl, 10)
 	defer s.Stop()
 
-	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer", Backend: models.TorznabBackendNative}
 	var calls atomic.Int32
 
 	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -803,134 +944,6 @@ func TestSearchScheduler_RateLimitIntervalStartsAfterCompletion(t *testing.T) {
 	assert.Greater(t, elapsed2, 70*time.Millisecond)
 }
 
-func TestSearchScheduler_MaxWaitSkipsIndexer(t *testing.T) {
-	// Use a long interval (5 seconds) with background priority (1.0 multiplier)
-	// so we're guaranteed to need to wait
-	rl := NewRateLimiter(5 * time.Second)
-	s := newSearchScheduler(rl, 10)
-	defer s.Stop()
-
-	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
-
-	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
-		return []Result{{Title: "test"}}, []int{1}, nil
-	}
-
-	// First request to set rate limit state
-	done1 := make(chan struct{})
-	_, err := s.Submit(context.Background(), SubmitRequest{
-		Indexers:  []*models.TorznabIndexer{indexer},
-		ExecFn:    exec,
-		Callbacks: JobCallbacks{OnJobDone: func(jobID uint64) { close(done1) }},
-	})
-	require.NoError(t, err)
-	<-done1
-
-	// Verify rate limiter recorded the request
-	wait := rl.NextWait(indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground})
-	t.Logf("After first request, NextWait returns: %v", wait)
-
-	// Second request with short MaxWait should be skipped
-	completeCh := make(chan error, 1)
-	_, err = s.Submit(context.Background(), SubmitRequest{
-		Indexers: []*models.TorznabIndexer{indexer},
-		Meta: &searchContext{
-			rateLimit: &RateLimitOptions{
-				Priority: RateLimitPriorityBackground, // 1.0 multiplier
-				MaxWait:  10 * time.Millisecond,       // Very short max wait (5s wait > 10ms max)
-			},
-		},
-		ExecFn: exec,
-		Callbacks: JobCallbacks{
-			OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
-				completeCh <- err
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	// Wait for OnComplete callback
-	gotError := <-completeCh
-
-	// Should have received a RateLimitWaitError
-	require.Error(t, gotError, "expected RateLimitWaitError but got nil")
-	var waitErr *RateLimitWaitError
-	assert.ErrorAs(t, gotError, &waitErr)
-}
-
-func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
-	// Use a very long interval so we're always blocked (must exceed backgroundMaxWait of 60s)
-	rl := NewRateLimiter(90 * time.Second)
-	s := newSearchScheduler(rl, 10)
-	defer s.Stop()
-
-	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
-
-	exec := func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
-		return []Result{{Title: "test"}}, []int{1}, nil
-	}
-
-	// First request to set rate limit state
-	done1 := make(chan struct{})
-	_, err := s.Submit(context.Background(), SubmitRequest{
-		Indexers:  []*models.TorznabIndexer{indexer},
-		ExecFn:    exec,
-		Callbacks: JobCallbacks{OnJobDone: func(jobID uint64) { close(done1) }},
-	})
-	require.NoError(t, err)
-	<-done1
-
-	// Test RSS and Background - they should skip immediately
-	skipTests := []struct {
-		name            string
-		priority        RateLimitPriority
-		expectedMaxWait time.Duration
-	}{
-		{
-			name:            "RSS uses 15s default, should skip (90s wait > 15s max)",
-			priority:        RateLimitPriorityRSS,
-			expectedMaxWait: 15 * time.Second,
-		},
-		{
-			name:            "Completion uses 30s default, should skip (90s wait > 30s max)",
-			priority:        RateLimitPriorityCompletion,
-			expectedMaxWait: 30 * time.Second,
-		},
-		{
-			name:            "Background uses 60s default, should skip (90s wait > 60s max)",
-			priority:        RateLimitPriorityBackground,
-			expectedMaxWait: 60 * time.Second,
-		},
-	}
-
-	for _, tc := range skipTests {
-		t.Run(tc.name, func(t *testing.T) {
-			completeCh := make(chan error, 1)
-			_, err := s.Submit(context.Background(), SubmitRequest{
-				Indexers: []*models.TorznabIndexer{indexer},
-				Meta: &searchContext{
-					rateLimit: &RateLimitOptions{
-						Priority: tc.priority,
-					},
-				},
-				ExecFn: exec,
-				Callbacks: JobCallbacks{
-					OnComplete: func(jobID uint64, idx *models.TorznabIndexer, results []Result, coverage []int, err error) {
-						completeCh <- err
-					},
-				},
-			})
-			require.NoError(t, err)
-
-			gotError := <-completeCh
-			require.Error(t, gotError, "expected RateLimitWaitError for priority %s", tc.priority)
-			var waitErr *RateLimitWaitError
-			require.ErrorAs(t, gotError, &waitErr)
-			assert.Equal(t, tc.expectedMaxWait, waitErr.MaxWait, "wrong MaxWait for priority %s", tc.priority)
-		})
-	}
-}
-
 // Activity emission tests
 //
 // Both consuming panels (SearchHistoryPanel, IndexerActivityPanel) disabled
@@ -939,82 +952,6 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 // completion paths that previously stayed silent: the rate-limit skip in
 // dispatchTasks, and a panicking exec (recovered per-task) still routing its
 // completion through the emit.
-
-func TestSearchScheduler_RateLimitSkipEmitsActivity(t *testing.T) {
-	// Long interval with background priority guarantees the second request is
-	// skipped for exceeding its MaxWait budget, exercising the dispatchTasks
-	// rate-limit-skip completion path.
-	rl := NewRateLimiter(5 * time.Second)
-	s := newSearchScheduler(rl, 10)
-	defer s.Stop()
-
-	pub := &recordingPublisher{}
-	rec := &recordingHistoryRecorder{}
-	s.setActivityPublisher(pub)
-	s.historyRecorder = rec
-
-	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
-	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
-		return []Result{{Title: "test"}}, []int{1}, nil
-	}
-
-	// First request sets rate-limit state and completes successfully. Its own
-	// completion already emits both signals, so the skip path below must be measured
-	// as a DELTA on top of this baseline, not as an absolute count.
-	done1 := make(chan struct{})
-	_, err := s.Submit(context.Background(), SubmitRequest{
-		Indexers:  []*models.TorznabIndexer{indexer},
-		ExecFn:    exec,
-		Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(done1) }},
-	})
-	require.NoError(t, err)
-	<-done1
-
-	// KindSearchHistory is emitted only by completion paths, never by enqueue, so a
-	// settled count of 1 after the first (successful) request is a stable baseline.
-	require.Eventually(t, func() bool {
-		return pub.counts()[activity.KindSearchHistory] >= 1
-	}, time.Second, 5*time.Millisecond, "first completion should emit a search-history signal")
-	before := pub.counts()
-
-	// Second request with a tiny MaxWait is skipped as rate_limited.
-	completeCh := make(chan error, 1)
-	_, err = s.Submit(context.Background(), SubmitRequest{
-		Indexers: []*models.TorznabIndexer{indexer},
-		Meta: &searchContext{
-			rateLimit: &RateLimitOptions{
-				Priority: RateLimitPriorityBackground,
-				MaxWait:  10 * time.Millisecond,
-			},
-		},
-		ExecFn: exec,
-		Callbacks: JobCallbacks{
-			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
-				completeCh <- err
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	gotErr := <-completeCh
-	var waitErr *RateLimitWaitError
-	require.ErrorAs(t, gotErr, &waitErr)
-
-	require.Eventually(t, func() bool {
-		return slices.Contains(rec.statuses(), "rate_limited")
-	}, time.Second, 5*time.Millisecond, "rate_limited history entry should be recorded")
-
-	// The skip path must emit its OWN completion signals: the search-history count has
-	// to rise above the post-first-request baseline. Without the dispatchTasks
-	// skip-path emit, KindSearchHistory stays at `before` and this fails
-	// (fail-without-fix). The search-history delta is load-bearing here because
-	// KindIndexerActivity is also bumped by the second request's enqueue.
-	require.Eventually(t, func() bool {
-		after := pub.counts()
-		return after[activity.KindSearchHistory] > before[activity.KindSearchHistory] &&
-			after[activity.KindIndexerActivity] > before[activity.KindIndexerActivity]
-	}, time.Second, 5*time.Millisecond, "rate-limit skip must emit its own indexer-activity and search-history signals")
-}
 
 // TestSearchScheduler_ExecPanicStillEmitsActivity verifies that an exec which
 // panics does not silently swallow the activity signals the panels depend on. The
@@ -1065,55 +1002,49 @@ func TestSearchScheduler_ExecPanicStillEmitsActivity(t *testing.T) {
 
 // Rate limiter tests
 
-func TestRateLimiter_NextWaitRespectsCooldown(t *testing.T) {
+func TestRateLimiter_NextWaitIgnoresCooldown(t *testing.T) {
 	limiter := NewRateLimiter(5 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
 	cooldown := 40 * time.Millisecond
-	limiter.SetCooldown(indexer.ID, time.Now().Add(cooldown))
+	limiter.SetCooldown(indexer.ID, rateLimitScopeQuery, time.Now().Add(cooldown))
 
-	wait := limiter.NextWait(indexer, nil)
-	if wait < 30*time.Millisecond {
-		t.Fatalf("expected wait at least 30ms due to cooldown, got %v", wait)
+	wait := limiter.NextWait(indexer)
+	if wait != 0 {
+		t.Fatalf("expected cooldown to be handled as an immediate skip, got wait %v", wait)
 	}
 }
 
 func TestRateLimiter_NextWaitRespectsMinInterval(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
 	limiter.RecordRequestComplete(indexer.ID, time.Now())
 
-	wait := limiter.NextWait(indexer, nil)
+	wait := limiter.NextWait(indexer)
 	if wait < 40*time.Millisecond {
 		t.Fatalf("expected wait at least 40ms due to min interval, got %v", wait)
 	}
 }
 
-func TestRateLimiter_NextWaitIgnoresStartedUntilCompleted(t *testing.T) {
-	limiter := NewRateLimiter(50 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+func TestRateLimiter_NextWaitOnlyPacesNativeTorznab(t *testing.T) {
+	limiter := NewRateLimiter(time.Hour)
+	prowlarr := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendProwlarr}
+	native := &models.TorznabIndexer{ID: 2, Backend: models.TorznabBackendNative}
 
-	limiter.RecordRequestStart(indexer.ID, time.Now())
+	limiter.RecordRequestComplete(prowlarr.ID, time.Now())
+	limiter.RecordRequestComplete(native.ID, time.Now())
 
-	wait := limiter.NextWait(indexer, nil)
-	if wait > 0 {
-		t.Fatalf("expected zero wait before request completion, got %v", wait)
-	}
-
-	limiter.RecordRequestComplete(indexer.ID, time.Now())
-	wait = limiter.NextWait(indexer, nil)
-	if wait < 40*time.Millisecond {
-		t.Fatalf("expected wait after request completion, got %v", wait)
-	}
+	assert.Zero(t, limiter.NextWait(prowlarr), "aggregator owns its request pacing")
+	assert.Greater(t, limiter.NextWait(native), time.Duration(0), "native Torznab retains local pacing")
 }
 
 func TestRateLimiter_NextWaitReturnsZeroWhenReady(t *testing.T) {
 	limiter := NewRateLimiter(5 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
 	// No prior requests - should be ready immediately
-	wait := limiter.NextWait(indexer, nil)
+	wait := limiter.NextWait(indexer)
 	if wait > 0 {
 		t.Fatalf("expected zero wait for fresh indexer, got %v", wait)
 	}
@@ -1122,12 +1053,12 @@ func TestRateLimiter_NextWaitReturnsZeroWhenReady(t *testing.T) {
 func TestRateLimiter_GetCooldownIndexers(t *testing.T) {
 	limiter := NewRateLimiter(time.Millisecond)
 
-	limiter.SetCooldown(1, time.Now().Add(100*time.Millisecond))
-	limiter.SetCooldown(2, time.Now().Add(20*time.Millisecond))
+	limiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(100*time.Millisecond))
+	limiter.SetCooldown(2, rateLimitScopeQuery, time.Now().Add(20*time.Millisecond))
 
 	time.Sleep(40 * time.Millisecond)
 
-	cooldowns := limiter.GetCooldownIndexers()
+	cooldowns := limiter.GetCooldownIndexers(rateLimitScopeQuery)
 
 	if _, ok := cooldowns[1]; !ok {
 		t.Fatalf("expected indexer 1 to still be in cooldown")
@@ -1140,9 +1071,9 @@ func TestRateLimiter_GetCooldownIndexers(t *testing.T) {
 func TestRateLimiter_IsInCooldown(t *testing.T) {
 	limiter := NewRateLimiter(time.Millisecond)
 
-	limiter.SetCooldown(1, time.Now().Add(20*time.Millisecond))
+	limiter.SetCooldown(1, rateLimitScopeQuery, time.Now().Add(20*time.Millisecond))
 
-	inCooldown, resumeAt := limiter.IsInCooldown(1)
+	inCooldown, resumeAt := limiter.IsInCooldown(1, rateLimitScopeQuery)
 	if !inCooldown {
 		t.Fatalf("expected indexer to be in cooldown immediately after SetCooldown")
 	}
@@ -1152,36 +1083,18 @@ func TestRateLimiter_IsInCooldown(t *testing.T) {
 
 	time.Sleep(30 * time.Millisecond)
 
-	inCooldown, _ = limiter.IsInCooldown(1)
+	inCooldown, _ = limiter.IsInCooldown(1, rateLimitScopeQuery)
 	if inCooldown {
 		t.Fatalf("expected cooldown to expire")
 	}
 }
 
-func TestRateLimiter_NextWaitWithPriorityMultiplier(t *testing.T) {
-	limiter := NewRateLimiter(100 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
-
-	limiter.RecordRequestComplete(indexer.ID, time.Now())
-
-	// Interactive priority has 0.1x multiplier, so min interval = 10ms
-	opts := &RateLimitOptions{
-		Priority: RateLimitPriorityInteractive,
-	}
-
-	wait := limiter.NextWait(indexer, opts)
-	// With 0.1x multiplier on 100ms, effective interval is 10ms
-	if wait > 15*time.Millisecond {
-		t.Fatalf("expected short wait due to interactive priority multiplier, got %v", wait)
-	}
-}
-
 func TestRateLimiter_RecordRequestComplete(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
 	// Should be ready before recording
-	wait := limiter.NextWait(indexer, nil)
+	wait := limiter.NextWait(indexer)
 	if wait > 0 {
 		t.Fatalf("expected zero wait before recording request")
 	}
@@ -1189,7 +1102,7 @@ func TestRateLimiter_RecordRequestComplete(t *testing.T) {
 	limiter.RecordRequestComplete(indexer.ID, time.Time{})
 
 	// Should need to wait now
-	wait = limiter.NextWait(indexer, nil)
+	wait = limiter.NextWait(indexer)
 	if wait < 40*time.Millisecond {
 		t.Fatalf("expected wait after recording request, got %v", wait)
 	}
@@ -1197,19 +1110,19 @@ func TestRateLimiter_RecordRequestComplete(t *testing.T) {
 
 func TestRateLimiter_WaitForMinInterval_ReservesSlot(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
 	limiter.RecordRequestComplete(indexer.ID, time.Time{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	if err := limiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground}); err != nil {
+	if err := limiter.WaitForMinInterval(ctx, indexer); err != nil {
 		t.Fatalf("WaitForMinInterval returned error: %v", err)
 	}
 
 	// We just reserved a slot; immediately after, there should be some wait remaining.
-	wait := limiter.NextWait(indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground})
+	wait := limiter.NextWait(indexer)
 	if wait <= 0 {
 		t.Fatalf("expected positive wait after reserving slot, got %v", wait)
 	}
@@ -1217,15 +1130,15 @@ func TestRateLimiter_WaitForMinInterval_ReservesSlot(t *testing.T) {
 
 func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
 	limiter := NewRateLimiter(50 * time.Millisecond)
-	indexer := &models.TorznabIndexer{ID: 1}
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
-	limiter.SetCooldown(indexer.ID, time.Now().Add(1*time.Hour))
+	limiter.SetCooldown(indexer.ID, rateLimitScopeGrab, time.Now().Add(1*time.Hour))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	if err := limiter.WaitForMinInterval(ctx, indexer, &RateLimitOptions{Priority: RateLimitPriorityBackground}); err != nil {
+	if err := limiter.WaitForMinInterval(ctx, indexer); err != nil {
 		t.Fatalf("WaitForMinInterval returned error: %v", err)
 	}
 	if time.Since(start) > 150*time.Millisecond {
@@ -1233,41 +1146,113 @@ func TestRateLimiter_WaitForMinInterval_IgnoresCooldown(t *testing.T) {
 	}
 }
 
-func TestRateLimiter_ClearCooldown(t *testing.T) {
-	limiter := NewRateLimiter(5 * time.Millisecond)
+func TestWithMinRequestInterval(t *testing.T) {
+	indexer := &models.TorznabIndexer{ID: 1, Backend: models.TorznabBackendNative}
 
-	limiter.SetCooldown(1, time.Now().Add(1*time.Hour))
+	paced := NewService(nil)
+	paced.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
+	require.Greater(t, paced.rateLimiter.NextWait(indexer), time.Second, "default pacing should make the next request wait")
 
-	inCooldown, _ := limiter.IsInCooldown(1)
-	if !inCooldown {
-		t.Fatalf("expected indexer to be in cooldown")
-	}
-
-	limiter.ClearCooldown(1)
-
-	inCooldown, _ = limiter.IsInCooldown(1)
-	if inCooldown {
-		t.Fatalf("expected cooldown to be cleared")
-	}
+	fast := NewService(nil, WithMinRequestInterval(time.Millisecond))
+	fast.rateLimiter.RecordRequestComplete(indexer.ID, time.Now())
+	require.LessOrEqual(t, fast.rateLimiter.NextWait(indexer), time.Millisecond)
 }
 
-func TestRateLimiter_LoadCooldowns(t *testing.T) {
-	limiter := NewRateLimiter(5 * time.Millisecond)
-
-	cooldowns := map[int]time.Time{
-		1: time.Now().Add(100 * time.Millisecond),
-		2: time.Now().Add(50 * time.Millisecond),
+func TestSchedulerGetStatusOrdersTasksDeterministically(t *testing.T) {
+	base := time.Now()
+	newItem := func(taskID uint64, indexerID int, priority int, age time.Duration) *taskItem {
+		return &taskItem{
+			task: workerTask{
+				jobID:   1,
+				taskID:  taskID,
+				indexer: &models.TorznabIndexer{ID: indexerID, Name: "Indexer"},
+			},
+			priority: priority,
+			created:  base.Add(age),
+		}
 	}
 
-	limiter.LoadCooldowns(cooldowns)
-
-	inCooldown, _ := limiter.IsInCooldown(1)
-	if !inCooldown {
-		t.Fatalf("expected indexer 1 to be in cooldown after LoadCooldowns")
+	s := &searchScheduler{
+		inFlight:   make(map[int]*taskItem),
+		jobs:       make(map[uint64]*jobState),
+		workerPool: make(chan struct{}, 4),
 	}
 
-	inCooldown, _ = limiter.IsInCooldown(2)
-	if !inCooldown {
-		t.Fatalf("expected indexer 2 to be in cooldown after LoadCooldowns")
+	// Queued: a push order whose heap array is [4 5 1 2 3 6], so the raw array
+	// cannot pass for dequeue order. Tasks 1 and 6 share a priority and a
+	// creation time, so the task ID has to break the tie.
+	queuedItems := []*taskItem{
+		newItem(1, 11, 2, time.Second),
+		newItem(2, 12, 2, 2*time.Second),
+		newItem(3, 13, 1, 3*time.Second),
+		newItem(4, 14, 0, 4*time.Second),
+		newItem(5, 15, 1, time.Second),
+		newItem(6, 16, 2, time.Second),
+	}
+	for _, item := range queuedItems {
+		heap.Push(&s.taskQueue, item)
+	}
+
+	// In-flight: two tasks share a creation time so the task ID has to break the tie.
+	for _, item := range []*taskItem{
+		newItem(20, 20, 0, 3*time.Second),
+		newItem(22, 22, 0, time.Second),
+		newItem(21, 21, 0, time.Second),
+	} {
+		s.inFlight[item.task.indexer.ID] = item
+	}
+
+	s.jobs[7] = &jobState{totalTasks: 1}
+	s.jobs[3] = &jobState{totalTasks: 1}
+	s.jobs[5] = &jobState{totalTasks: 1}
+
+	wantQueued := []uint64{4, 5, 3, 1, 6, 2}
+	wantInFlight := []uint64{21, 22, 20}
+	wantJobs := []uint64{3, 5, 7}
+
+	for range 20 {
+		status := s.GetStatus()
+
+		gotQueued := make([]uint64, 0, len(status.QueuedTasks))
+		for _, task := range status.QueuedTasks {
+			gotQueued = append(gotQueued, task.TaskID)
+		}
+		if !slices.Equal(gotQueued, wantQueued) {
+			t.Fatalf("queued order = %v, want %v", gotQueued, wantQueued)
+		}
+
+		gotInFlight := make([]uint64, 0, len(status.InFlightTasks))
+		for _, task := range status.InFlightTasks {
+			gotInFlight = append(gotInFlight, task.TaskID)
+		}
+		if !slices.Equal(gotInFlight, wantInFlight) {
+			t.Fatalf("in-flight order = %v, want %v", gotInFlight, wantInFlight)
+		}
+
+		gotJobs := make([]uint64, 0, len(status.ActiveJobs))
+		for _, job := range status.ActiveJobs {
+			gotJobs = append(gotJobs, job.JobID)
+		}
+		if !slices.Equal(gotJobs, wantJobs) {
+			t.Fatalf("active job order = %v, want %v", gotJobs, wantJobs)
+		}
+	}
+
+	// The same task set pushed in the opposite order gives a different heap
+	// array, and must still come back in the same order.
+	reversed := &searchScheduler{
+		inFlight:   make(map[int]*taskItem),
+		jobs:       make(map[uint64]*jobState),
+		workerPool: make(chan struct{}, 4),
+	}
+	for _, item := range slices.Backward(queuedItems) {
+		heap.Push(&reversed.taskQueue, item)
+	}
+	gotQueued := make([]uint64, 0, len(queuedItems))
+	for _, task := range reversed.GetStatus().QueuedTasks {
+		gotQueued = append(gotQueued, task.TaskID)
+	}
+	if !slices.Equal(gotQueued, wantQueued) {
+		t.Fatalf("queued order after reversed pushes = %v, want %v", gotQueued, wantQueued)
 	}
 }

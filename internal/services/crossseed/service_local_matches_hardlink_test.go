@@ -14,6 +14,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -48,11 +50,17 @@ func writeHardlinkFixture(t *testing.T, fileName string, link bool) (sourceDir, 
 }
 
 func hardlinkTestService(files map[string]qbt.TorrentFiles) *Service {
-	return &Service{
+	svc := &Service{
 		releaseCache:     NewReleaseCache(),
 		syncManager:      &localMatchSyncManager{files: files},
 		stringNormalizer: stringutils.NewDefaultNormalizer(),
 	}
+	svc.SetBackendPool(fsops.NewPool(&mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {ID: 1, HasLocalFilesystemAccess: true},
+		},
+	}, local.NewBackend()))
+	return svc
 }
 
 func hardlinkTestCandidate(candidateDir string) *qbittorrent.CrossInstanceTorrentView {
@@ -243,6 +251,141 @@ func TestLocalLinkedMatchType_MagnetCandidate_SkippedSilently(t *testing.T) {
 	require.NoError(t, matchCtx.candidateFilesErr)
 }
 
+// countingInstanceStore serves the first failAfter Get calls from its map and
+// fails every one after that, so a test can pick which backend resolution in a
+// call chain fails. localLinkedMatchType resolves backends sequentially in one
+// goroutine, so the counter needs no mutex.
+type countingInstanceStore struct {
+	instances map[int]*models.Instance
+	failAfter int
+	err       error
+	calls     int
+}
+
+func (c *countingInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	c.calls++
+	if c.calls > c.failAfter {
+		return nil, c.err
+	}
+	instance, ok := c.instances[id]
+	if !ok {
+		return nil, models.ErrInstanceNotFound
+	}
+	return instance, nil
+}
+
+func TestGetSourceFileIDs_BackendResolutionFailure_RecordedForStrictMode(t *testing.T) {
+	// A backend outage discards ALL hardlink evidence for the source instance,
+	// so it must be recorded rather than read as "no shared files".
+	fileName := "Movie.2023.1080p.WEB.mkv"
+	sourceDir, _ := writeHardlinkFixture(t, fileName, true)
+
+	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{normalizeHash(hlSourceHash): files})
+	// An empty store cannot resolve instance 1.
+	svc.SetBackendPool(fsops.NewPool(&mockInstanceStore{instances: map[int]*models.Instance{}}, local.NewBackend()))
+
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+
+	require.Nil(t, matchCtx.getSourceFileIDs())
+	require.ErrorIs(t, matchCtx.verificationErr, models.ErrInstanceNotFound)
+	require.ErrorContains(t, matchCtx.verificationErr, "resolve filesystem backend for instance 1")
+}
+
+func TestLocalLinkedMatchType_CandidateBackendFailure_RecordedForStrictMode(t *testing.T) {
+	// The source resolves, the candidate's instance does not: without the
+	// candidate backend there is no evidence either way, so the check must fail
+	// closed instead of returning "not hardlinked".
+	fileName := "Movie.2023.1080p.WEB.mkv"
+	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, true)
+
+	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    files,
+		normalizeHash(hlCandidateHash): files,
+	})
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+
+	// The candidate lives on instance 2, which the pool's store does not know.
+	candidateInstance := &models.Instance{ID: 2, HasLocalFilesystemAccess: true}
+	candidate := hardlinkTestCandidate(candidateDir)
+	candidate.InstanceID = candidateInstance.ID
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, candidateInstance, candidate))
+	require.ErrorIs(t, matchCtx.verificationErr, models.ErrInstanceNotFound)
+	require.ErrorContains(t, matchCtx.verificationErr, "resolve filesystem backend for instance 2")
+}
+
+func TestLocalLinkedMatchType_SourceBackendReresolveFailure_RecordedForStrictMode(t *testing.T) {
+	// No shared inode, so the shared-extent probe runs and re-resolves the source
+	// backend. That third resolution is its own failure point and must fail closed
+	// like the other two.
+	fileName := "Movie.2023.1080p.WEB.mkv"
+	sourceDir, candidateDir := writeHardlinkFixture(t, fileName, false)
+
+	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	svc := hardlinkTestService(map[string]qbt.TorrentFiles{
+		normalizeHash(hlSourceHash):    files,
+		normalizeHash(hlCandidateHash): files,
+	})
+	backendErr := errors.New("backend pool offline")
+	store := &countingInstanceStore{
+		instances: map[int]*models.Instance{1: {ID: 1, HasLocalFilesystemAccess: true}},
+		failAfter: 2, // source (getSourceFileIDs) and candidate succeed; the source re-resolve fails
+		err:       backendErr,
+	}
+	svc.SetBackendPool(fsops.NewPool(store, local.NewBackend()))
+	svc.filesShareAllocation = func(string, string) (bool, error) { return false, nil }
+
+	matchCtx := hardlinkTestMatchCtx(svc, sourceDir)
+	instance := &models.Instance{ID: 1, HasLocalFilesystemAccess: true}
+
+	require.Empty(t, svc.localLinkedMatchType(matchCtx, instance, hardlinkTestCandidate(candidateDir)))
+	// Exact count: it is what places the failure at the re-resolve rather than
+	// at an earlier lookup. A refactor that resolves the source backend once and
+	// threads it would drop this to 2 and delete the site under test, so this
+	// assertion is meant to be re-read, not just re-numbered.
+	require.Equal(t, 3, store.calls, "expected source, candidate and source re-resolve backend lookups")
+	require.ErrorIs(t, matchCtx.verificationErr, backendErr)
+	require.ErrorContains(t, matchCtx.verificationErr, "resolve filesystem backend for instance 1")
+}
+
+func TestFindLocalMatches_BackendFailure_FailsStrictMode(t *testing.T) {
+	// The recorded backend error has to reach the strict-mode caller (delete
+	// dialogs), which is the whole reason the fail-closed sites record it.
+	fileName := "shared.mkv"
+	files := qbt.TorrentFiles{{Name: fileName, Size: 4}}
+	sourceDir, candidateDir := writeIndependentLocalMatchFiles(t, files, files)
+	source := qbt.Torrent{
+		Hash:        hlSourceHash,
+		Name:        "Movie.2023.1080p.WEB-GROUP",
+		SavePath:    sourceDir,
+		ContentPath: filepath.Join(sourceDir, fileName),
+	}
+	syncManager := &reflinkFindLocalMatchesSyncManager{
+		files: map[string]qbt.TorrentFiles{
+			normalizeHash(hlSourceHash):    files,
+			normalizeHash(hlCandidateHash): files,
+		},
+		source:    source,
+		candidate: *hardlinkTestCandidate(candidateDir),
+	}
+	backendErr := errors.New("backend pool offline")
+	svc := &Service{
+		instanceStore: newOrderedInstanceStore(&models.Instance{ID: 1, Name: "local", IsActive: true, HasLocalFilesystemAccess: true}),
+		syncManager:   syncManager,
+		releaseCache:  NewReleaseCache(),
+	}
+	// The pool's store fails every resolution, so the very first backend lookup
+	// (getSourceFileIDs) records the error.
+	svc.SetBackendPool(fsops.NewPool(&countingInstanceStore{err: backendErr}, local.NewBackend()))
+
+	response, err := svc.FindLocalMatches(context.Background(), 1, source.Hash, true)
+
+	require.Nil(t, response)
+	require.ErrorIs(t, err, backendErr)
+	require.ErrorContains(t, err, "failed to verify local file relationship")
+}
+
 func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 	fileName := "Movie.2023.1080p.WEB.mkv"
 	sourceDir, _ := writeHardlinkFixture(t, fileName, true)
@@ -260,7 +403,7 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 	}
 
 	var visited int
-	forEachLocalFileID(sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(context.Background(), local.NewBackend(), sourceDir, files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})
@@ -268,11 +411,11 @@ func TestForEachLocalFileID_SkipsUnsafePaths(t *testing.T) {
 
 	// Relative or empty save paths are refused outright.
 	visited = 0
-	forEachLocalFileID("relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(context.Background(), local.NewBackend(), "relative/path", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})
-	forEachLocalFileID("", files, func(_ hardlink.FileID, _ uint64) bool {
+	forEachLocalFileID(context.Background(), local.NewBackend(), "", files, func(_ hardlink.FileID, _ uint64) bool {
 		visited++
 		return true
 	})

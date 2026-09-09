@@ -96,6 +96,7 @@ interface GlobalCrossSeedSettings {
   findIndividualEpisodes: boolean
   categoryMappingRules: CategoryMappingRule[]
   autoResumeMaxDownloadMb: number
+  pooledPartialCompletionEnabled: boolean
   useCategoryFromIndexer: boolean
   useCrossCategoryAffix: boolean
   categoryAffixMode: "prefix" | "suffix"
@@ -170,6 +171,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   findIndividualEpisodes: false,
   categoryMappingRules: [],
   autoResumeMaxDownloadMb: DEFAULT_AUTO_RESUME_MAX_DOWNLOAD_MB,
+  pooledPartialCompletionEnabled: false,
   useCategoryFromIndexer: false,
   useCrossCategoryAffix: true,
   categoryAffixMode: "suffix",
@@ -212,7 +214,6 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   webhookSourceTags: [],
   webhookSourceExcludeCategories: [],
   webhookSourceExcludeTags: [],
-  // Note: Hardlink mode is now per-instance (configured in Instance Settings)
 }
 
 function normalizeStringList(values: string[]): string[] {
@@ -306,9 +307,9 @@ export function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
-            {run.torrentsFailed > 0 && (
-              <Badge variant="destructive" className="text-xs">{t("automation.failedCount", { count: run.torrentsFailed })}</Badge>
+            <Badge variant="secondary" className="text-xs">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
+            {run.candidatesFailed > 0 && (
+              <Badge variant="destructive" className="text-xs">{t("automation.failedCount", { count: run.candidatesFailed })}</Badge>
             )}
             <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
             {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -548,8 +549,14 @@ function SeasonPackRunsPanel({
   )
 }
 
-/** Per-instance hardlink/reflink mode settings component */
-function HardlinkModeSettings() {
+/** Per-instance hardlink/reflink mode settings plus the global pooled-completion checkbox. */
+function HardlinkModeSettings({
+  pooledPartialCompletionEnabled,
+  onPooledPartialCompletionEnabledChange,
+}: {
+  pooledPartialCompletionEnabled: boolean
+  onPooledPartialCompletionEnabledChange: (checked: boolean) => void
+}) {
   const { t } = useTranslation("crossseed")
   const { instances, updateInstance, isUpdating } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
@@ -666,6 +673,14 @@ function HardlinkModeSettings() {
     })
   }
 
+  const pooledCompletionSetting = (
+    <PooledCompletionSetting
+      id="pooled-partial-completion"
+      checked={pooledPartialCompletionEnabled}
+      onCheckedChange={onPooledPartialCompletionEnabledChange}
+    />
+  )
+
   if (!activeInstances.length) {
     return (
       <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
@@ -674,8 +689,9 @@ function HardlinkModeSettings() {
           <ChevronDown className="h-4 w-4 transition-transform duration-200" />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t border-border/70 p-4 pt-4">
+          <div className="border-t border-border/70 p-4 pt-4 space-y-4">
             <p className="text-sm text-muted-foreground">{t("rules.noActiveInstances")}</p>
+            {pooledCompletionSetting}
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -855,6 +871,8 @@ function HardlinkModeSettings() {
               )
             })}
           </Accordion>
+
+          {pooledCompletionSetting}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -871,6 +889,35 @@ export function TitleRescueSetting({ checked, disabled = false, onCheckedChange 
         <p className="text-xs text-muted-foreground">{t("rules.safety.rescueTitleMismatchesDescription")}</p>
       </div>
       <Switch id="rescue-title-mismatches" checked={checked} disabled={disabled} onCheckedChange={value => onCheckedChange(!!value)} />
+    </div>
+  )
+}
+
+/** Renders the global pooled partial completion checkbox. */
+export function PooledCompletionSetting({
+  id,
+  checked,
+  onCheckedChange,
+}: {
+  id: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  const { t } = useTranslation("crossseed")
+
+  return (
+    <div className="flex items-center gap-3">
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={value => onCheckedChange(value === true)}
+      />
+      <div className="flex items-center gap-1.5">
+        <Label htmlFor={id} className="font-medium cursor-pointer">
+          {t("rules.postInjection.pooledPartialCompletion")}
+        </Label>
+        <FieldHelp>{t("rules.postInjection.pooledPartialCompletionDescription")}</FieldHelp>
+      </div>
     </div>
   )
 }
@@ -1128,6 +1175,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         findIndividualEpisodes: settings.findIndividualEpisodes,
         categoryMappingRules: settings.categoryMappingRules ?? [],
         autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
+        pooledPartialCompletionEnabled: settings.pooledPartialCompletionEnabled ?? false,
         useCategoryFromIndexer,
         useCrossCategoryAffix,
         categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1170,7 +1218,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         seasonPackCategoryRules: settings.seasonPackCategoryRules ?? [],
         seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
         seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
-        // Note: Hardlink mode is now per-instance (configured in Instance Settings)
       })
       setGlobalSettingsInitialized(true)
     }
@@ -1233,6 +1280,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       findIndividualEpisodes: settings.findIndividualEpisodes,
       categoryMappingRules: settings.categoryMappingRules ?? [],
       autoResumeMaxDownloadMb: settings.autoResumeMaxDownloadMb,
+      pooledPartialCompletionEnabled: settings.pooledPartialCompletionEnabled ?? false,
       useCategoryFromIndexer: fallbackIndexer,
       useCrossCategoryAffix: fallbackAffix,
       categoryAffixMode: settings.categoryAffixMode ?? "suffix",
@@ -1272,12 +1320,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackCategoryRules: settings.seasonPackCategoryRules ?? [],
       seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
       seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
-      // Note: Hardlink mode is now per-instance
     }
 
     return {
       findIndividualEpisodes: globalSource.findIndividualEpisodes,
       categoryMappingRules: globalSource.categoryMappingRules,
+      pooledPartialCompletionEnabled: globalSource.pooledPartialCompletionEnabled,
       autoResumeMaxDownloadMb: globalSource.autoResumeMaxDownloadMb,
       useCategoryFromIndexer: globalSource.useCategoryFromIndexer,
       useCrossCategoryAffix: globalSource.useCrossCategoryAffix,
@@ -1321,7 +1369,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackCategoryRules: globalSource.seasonPackCategoryRules,
       seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
       seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
-      // Note: Hardlink mode is now per-instance (see Instance Settings)
     }
   }, [
     settings,
@@ -1928,8 +1975,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
     }
     return {
-      totalAdded: runs.reduce((sum, run) => sum + run.torrentsAdded, 0),
-      totalFailed: runs.reduce((sum, run) => sum + run.torrentsFailed, 0),
+      totalAdded: runs.reduce((sum, run) => sum + run.crossSeedsAdded, 0),
+      totalFailed: runs.reduce((sum, run) => sum + run.candidatesFailed, 0),
       totalRuns: runs.length,
     }
   }, [runs])
@@ -1939,7 +1986,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return { totalAdded: 0, totalFailed: 0, totalRuns: 0 }
     }
     return {
-      totalAdded: searchRuns.reduce((sum, run) => sum + run.torrentsAdded, 0),
+      totalAdded: searchRuns.reduce((sum, run) => sum + run.crossSeedsAdded, 0),
       totalFailed: searchRuns.reduce((sum, run) => sum + run.torrentsFailed, 0),
       totalRuns: searchRuns.length,
     }
@@ -2023,7 +2070,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("overview.seededSearch.recentRuns")}</span>
-              <span className="font-medium">{t("overview.seededSearch.runsCount", { count: searchRuns?.length ?? 0 })} • +{searchRuns?.reduce((sum, run) => sum + run.torrentsAdded, 0) ?? 0}</span>
+              <span className="font-medium">{t("scan.runSummary", { runs: searchRunStats.totalRuns, added: searchRunStats.totalAdded })}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("overview.seededSearch.now")}</span>
@@ -2669,14 +2716,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   )}
                   <div className="grid gap-2 text-xs">
                     <div className="flex items-center gap-4">
-                      <span className="text-muted-foreground">{t("scan.progress")}</span>
+                      <span className="text-muted-foreground flex items-center gap-1">
+                        {t("scan.progress")}
+                        <FieldHelp>{t("scan.dueCandidatesHelp")}</FieldHelp>
+                      </span>
                       <span className="font-medium">{t("scan.torrentsProgress", { processed: activeSearchRun.processed, total: activeSearchRun.totalTorrents || "?" })}</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-muted-foreground">{t("scan.results")}</span>
                       <span className="font-medium">
-                        {t("scan.resultsDetail", { added: activeSearchRun.torrentsAdded, skipped: activeSearchRun.torrentsSkipped, failed: activeSearchRun.torrentsFailed })}
+                        {t("scan.resultsDetail", { added: activeSearchRun.torrentsWithCrossSeeds, skipped: activeSearchRun.torrentsSkipped, failed: activeSearchRun.torrentsFailed })}
                       </span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-muted-foreground">{t("scan.crossSeedsAdded")}</span>
+                      <span className="font-medium">{activeSearchRun.crossSeedsAdded}</span>
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-muted-foreground">{t("scan.started")}</span>
@@ -2742,7 +2796,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
-                                      <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
+                                      <Badge variant="secondary" className="text-xs">{t("scan.crossSeedsAddedBadge", { count: run.crossSeedsAdded })}</Badge>
                                       {run.torrentsFailed > 0 && (
                                         <Badge variant="destructive" className="text-xs">{t("scan.failedCount", { count: run.torrentsFailed })}</Badge>
                                       )}
@@ -2862,7 +2916,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <CardDescription>{t("rules.description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <HardlinkModeSettings />
+              <HardlinkModeSettings
+                pooledPartialCompletionEnabled={globalSettings.pooledPartialCompletionEnabled}
+                onPooledPartialCompletionEnabledChange={pooledPartialCompletionEnabled => setGlobalSettings(prev => ({ ...prev, pooledPartialCompletionEnabled }))}
+              />
 
               <div className="flex items-center gap-2 pt-1">
                 <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 shrink-0">{t("rules.sections.matching")}</span>
@@ -3450,25 +3507,22 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, skipAutoResumeWebhook: !value }))}
                       />
                     </div>
-                  </div>
-                </div>
 
-                <div className="space-y-2 pt-3 border-t border-border/50">
-                  <div className="flex items-center gap-1.5">
-                    <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
-                    <FieldHelp>{t("rules.postInjection.maxAutoResumeDownloadDescription")}</FieldHelp>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <Label htmlFor="global-auto-resume-max-download">{t("rules.postInjection.maxAutoResumeDownload")}</Label>
+                        <FieldHelp>{t("rules.postInjection.maxAutoResumeDownloadDescription")}</FieldHelp>
+                      </div>
+                      <Input
+                        id="global-auto-resume-max-download"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={globalSettings.autoResumeMaxDownloadMb}
+                        onChange={event => setGlobalSettings(prev => ({ ...prev, autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value) }))}
+                      />
+                    </div>
                   </div>
-                  <Input
-                    id="global-auto-resume-max-download"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={globalSettings.autoResumeMaxDownloadMb}
-                    onChange={event => setGlobalSettings(prev => ({
-                      ...prev,
-                      autoResumeMaxDownloadMb: parseNonNegativeInt(event.target.value),
-                    }))}
-                  />
                 </div>
 
                 <div className="space-y-2 pt-3 border-t border-border/50">

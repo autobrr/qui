@@ -36,7 +36,7 @@ docker run -d \
   ghcr.io/autobrr/qui:latest
 ```
 
-## macOS Container
+## macOS container
 
 On macOS, [Apple Container](https://github.com/apple/container/releases) runs the same image. Create the host folders first, then use `container` in place of `docker`:
 
@@ -49,9 +49,9 @@ container run -d \
 
 ## Permissions
 
-By default the container runs as root. You can run qui as a different user in two ways. Use one or the other, not both.
+By default, the container runs as root. You can run qui as a different user in two ways. Use one or the other, not both.
 
-With either method, qui needs write access to more than `/config`. Cross-seed hardlink and reflink mode create files in their base directory, and orphan scan deletes from your scan paths. Those paths live on the data volumes (see [Local Filesystem Access](#local-filesystem-access)), so run qui as the user that owns that data, or as a member of its group.
+With either method, qui needs write access to more than `/config`. Cross-seed hardlink and reflink mode create files in their base directory, and orphan scan deletes files from your scan paths. Those paths live on the data volumes (see [Local filesystem access](#local-filesystem-access)). Run qui as the user that owns that data, or as a member of its group.
 
 ### `user:` (standard Docker)
 
@@ -68,20 +68,20 @@ services:
       - "7476:7476"
 ```
 
-With this method, make sure that the host folder mounted at `/config` is writable for that user:
+If you use this method, make sure that the host folder mounted at `/config` is writable for that user:
 
 ```bash
 chown -R 1000:1000 ./qui
 ```
 ### PUID/PGID (automatic ownership)
 
-Set both `PUID` and `PGID` environment variables (required together). The entrypoint then:
+Set both `PUID` and `PGID` environment variables. If you set only one variable, the container refuses to start. The entrypoint then:
 
-1. Creates a user and group with those IDs
-2. Runs `chown -R` on the `/config` directory
+1. Creates a user and a group with those IDs
+2. Corrects the owner of every file under `/config` that does not match those IDs
 3. Runs qui as that user
 
-The result is the same as `user:`, but the entrypoint corrects the ownership of `/config` for you. This helps when `/config` already contains root-owned files from an earlier run, or when the host folder has the wrong owner.
+The result matches `user:`, but the entrypoint corrects the ownership of `/config` for you. If `/config` still contains root-owned files from an earlier run, or if the host folder has the wrong owner, this fixes the ownership.
 
 ```yaml title="docker-compose.yml"
 services:
@@ -106,37 +106,41 @@ docker run -d \
 ```
 
 :::note
-Do not combine `user:` with `PUID`/`PGID`. The entrypoint can only create users and change ownership when the container starts as root. If you switch to `PUID`/`PGID`, remove any `user:` or `--user` setting first.
+Do not combine `user:` with `PUID`/`PGID`. If the container does not start as root, the entrypoint cannot create users or change ownership. If you switch to `PUID`/`PGID`, remove any `user:` or `--user` setting first.
 :::
 
-The entrypoint walks `/config` only, never your data volumes, so a wrong `PUID` cannot chown your media library. That also means a switch from root needs one manual step: if qui already created hardlink or reflink trees as root, chown those directories once yourself:
+The entrypoint walks `/config` only, never your data volumes. As a result, a wrong `PUID` cannot chown your media library. A switch from root needs one manual step for the same reason. If qui already created hardlink or reflink trees as root, chown those directories once yourself:
 
 ```bash
 find /data/cross-seed -type d -exec chown 1000:1000 {} +
 ```
 
-Directories only: hardlinked files share their inode with the source download, so a recursive `chown -R` here would change the owner of your library files too. qui only needs write access to the directories.
+Chown the directories only. Hardlinked files share their inode with the source download. If you run a recursive `chown -R`, that command also changes the owner of your library files. qui needs write access to the directories only.
 
 ### UMASK
 
-Optional, works with both methods. qui reads `UMASK` at startup and applies it to the files and directories that it creates, for example the cross-seed hardlink and reflink trees. If the value is not valid octal, qui logs a warning and keeps the inherited umask. Common values:
+Optional. The qui binary reads `UMASK` at startup and applies it to new files and directories, such as cross-seed hardlink and reflink trees. If the value is not valid octal in the range 000 to 777, qui logs a warning and keeps the inherited umask.
 
-- `022` - owner read/write, group/others read-only (typical default)
-- `002` - owner and group read/write, others read-only (group-writable)
-- `077` - owner only, no group/others access (private)
+The binary applies `UMASK`, not the entrypoint. As a result, `UMASK` works with both methods above. If you start a non-root container with `user:` or `--user`, `UMASK` also works.
+
+Common values:
+
+- `022`: owner read/write, group and others read-only (typical default)
+- `002`: owner and group read/write, others read-only (group-writable)
+- `077`: owner only, no access for group and others (private)
 
 Two exceptions:
 
-- qui always creates security-sensitive files (the database, `config.toml`, backup manifests) owner-only (`0600`), regardless of `UMASK`.
+- Regardless of `UMASK`, qui always creates security-sensitive files (the database, `config.toml`, backup manifests) with owner-only mode (`0600`).
 - Hardlinked files share the inode with the source file. They keep the owner and permissions of the original download. See [Directory permissions and umask](../features/cross-seed/troubleshooting.md#directory-permissions-and-umask).
 
-## Local Filesystem Access
+## Local filesystem access
 
 <LocalFilesystemDocker />
 
 ## Unraid
 
-Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm64`, and friends) and publishes them to `ghcr.io/autobrr/qui`, so the container should work on Unraid out of the box.
+The release workflow builds images for `linux/amd64`, `linux/arm64`, and ARM v6/v7, and publishes them to `ghcr.io/autobrr/qui`. The container runs on Unraid without extra steps.
 
 ### Deploy from the Docker tab
 
@@ -149,19 +153,19 @@ Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm
 7. Enable **Advanced View** (top right)
 8. Set **Icon URL** to `https://raw.githubusercontent.com/autobrr/qui/main/web/public/icon.png`
 9. Set **WebUI** to `http://[IP]:[PORT:7476]`
-10. Add environment variables `PUID` = `99` and `PGID` = `100`. The entrypoint then corrects the ownership of `/config` and runs qui as uid 99 (`nobody` on Unraid). If **Extra Parameters** contains `--user`, remove it first, and if qui ran as root before, fix your data directories once (see [Permissions](#permissions))
-11. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
+10. Add environment variables `PUID` = `99` and `PGID` = `100`. The entrypoint then corrects the ownership of `/config` and runs qui as uid 99 (`nobody` on Unraid). If **Extra Parameters** contains `--user`, remove it first. If qui ran as root before, fix your data directories once (see [Permissions](#permissions))
+11. (Optional) add environment variables for advanced configuration (for example `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
 12. Click **Apply** to pull the image and start the container
 
-The `/config` mount stores `config.toml`, logs, tracker icon cache, and other runtime assets. If you use the default SQLite engine, `qui.db` is stored there too. Point it at your preferred appdata share so settings persist across upgrades.
+By default, the `/config` mount stores `config.toml`, logs, the tracker icon cache, and other runtime assets. If you use the default SQLite engine, qui stores `qui.db` there too. An absolute `logPath` or a custom `dataDir` moves those files. `config.toml` always stays in `/config` (see the [configuration reference](../configuration/reference.md)). Point the mount at your appdata share so your configuration survives upgrades.
 
-If the app logs to stdout, check logs via Docker → qui → Logs; if it writes to files, they'll be under `/config`.
+qui logs to stdout by default. Read the logs under **Docker → qui → Logs**. If you configure a relative log file path, qui writes it under `/config`.
 
 ### Updating
 
-- Use Unraid's **Check for Updates** action to pull a newer `latest` image
-- If you pinned a specific version tag, edit the repository field to the new tag when you're ready to upgrade
-- Restart the container if needed after the image update so the new binary is loaded
+- Pull a newer `latest` image with Unraid's **Check for Updates** action
+- If you pinned a version tag, edit the repository field to the new tag
+- Restart the container after the image update to load the new binary
 
 ## Updating
 

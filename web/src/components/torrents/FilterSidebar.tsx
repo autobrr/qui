@@ -71,6 +71,7 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { CategoryTree } from "./CategoryTree"
+import { FilterClearButton } from "./FilterClearButton"
 import { FilterViewsSection } from "./FilterViewsSection"
 import {
   CreateCategoryDialog,
@@ -226,14 +227,8 @@ const FilterSidebarComponent = ({
   const preferenceUseSubcategories = preferences?.use_subcategories
   const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false))): Boolean(useSubcategories)
 
-  // View mode syncs with the torrent list (table on desktop, cards on mobile).
-  // Desktop supports all modes including "dense" (compact table rows).
-  // Mobile excludes "dense" since TorrentCardsMobile uses card layouts, not table rows.
-  // Passing undefined for desktop allows all modes; mobile restricts to card-compatible modes.
-  const { viewMode, cycleViewMode } = usePersistedCompactViewState(
-    "compact",
-    isMobile ? ["normal", "compact", "ultra-compact"] : undefined
-  )
+  // Match the preference to the layout this sidebar controls.
+  const { viewMode, cycleViewMode } = usePersistedCompactViewState(isMobile ? "mobile" : "desktop")
 
   // Helper function to get count display - shows 0 when loading to prevent showing stale counts from previous instance
   const getDisplayCount = useCallback((key: string, fallbackCount?: number): string => {
@@ -1691,7 +1686,7 @@ const FilterSidebarComponent = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Virtualizers are stable refs, only re-measure on viewMode change
   }, [viewMode])
 
-  const clearFilters = () => {
+  const clearSidebarFilters = () => {
     applyFilterChange({
       status: [],
       excludeStatus: [],
@@ -1701,10 +1696,8 @@ const FilterSidebarComponent = ({
       excludeTags: [],
       trackers: [],
       excludeTrackers: [],
-      expr: undefined, // Clear custom expression filters
+      expr: undefined,
     })
-    // Optionally reset accordion state to defaults
-    // setExpandedItems(['status', 'categories', 'tags'])
   }
 
   const clearStatusFilter = () => {
@@ -1879,14 +1872,11 @@ const FilterSidebarComponent = ({
                 <span className="text-xs text-muted-foreground animate-pulse">{t("filterSidebar.loading")}</span>
               )}
             </div>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground shrink-0"
-              >
-                {t("filterSidebar.clearAll")}
-              </button>
-            )}
+            <FilterClearButton
+              instanceId={instanceId}
+              hasSidebarFilters={hasActiveFilters}
+              onClearSidebar={clearSidebarFilters}
+            />
           </div>
 
           {/* View Mode Toggle - only show on mobile */}

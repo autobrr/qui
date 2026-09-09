@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/autobrr/qui/internal/models"
+	gojackett "github.com/autobrr/qui/pkg/gojackett"
 )
 
 // TorznabCaps captures the parsed capability and category data from a Torznab caps response.
@@ -24,10 +25,13 @@ type TorznabCaps struct {
 const defaultTorznabLimit = 100
 
 type torznabCapsResponse struct {
-	XMLName    xml.Name              `xml:"caps"`
-	Searching  torznabSearchingCaps  `xml:"searching"`
-	Categories []torznabCategoryNode `xml:"categories>category"`
-	Limits     struct {
+	XMLName          xml.Name
+	ErrorCode        string                `xml:"code,attr"`
+	ErrorDescription string                `xml:"description,attr"`
+	Text             string                `xml:",chardata"`
+	Searching        torznabSearchingCaps  `xml:"searching"`
+	Categories       []torznabCategoryNode `xml:"categories>category"`
+	Limits           struct {
 		Default string `xml:"default,attr"`
 		Max     string `xml:"max,attr"`
 	} `xml:"limits"`
@@ -59,9 +63,27 @@ type torznabSubcatNode struct {
 }
 
 func parseTorznabCaps(r io.Reader) (*TorznabCaps, error) {
+	return parseTorznabCapsResponse(r, "")
+}
+
+func parseTorznabCapsResponse(r io.Reader, retryAfter string) (*TorznabCaps, error) {
 	var resp torznabCapsResponse
 	if err := xml.NewDecoder(r).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("decode caps response: %w", err)
+	}
+	if resp.XMLName.Local == "error" {
+		message := strings.TrimSpace(resp.ErrorDescription)
+		if message == "" {
+			message = strings.TrimSpace(resp.Text)
+		}
+		return nil, &gojackett.TorznabError{
+			Code:       resp.ErrorCode,
+			Message:    message,
+			RetryAfter: retryAfter,
+		}
+	}
+	if resp.XMLName.Local != "caps" {
+		return nil, fmt.Errorf("decode caps response: expected element type <caps> but have <%s>", resp.XMLName.Local)
 	}
 
 	caps := &TorznabCaps{

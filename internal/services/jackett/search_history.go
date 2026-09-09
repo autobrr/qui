@@ -42,13 +42,6 @@ type SearchHistoryEntry struct {
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
-// SearchHistoryResponse is the API response for search history queries.
-type SearchHistoryResponse struct {
-	Entries []SearchHistoryEntry `json:"entries"`
-	Total   int                  `json:"total"`
-	Source  string               `json:"source"` // "memory" or "database"
-}
-
 // SearchHistoryBuffer is a thread-safe ring buffer for live search history.
 type SearchHistoryBuffer struct {
 	mu       sync.RWMutex
@@ -115,73 +108,11 @@ func (b *SearchHistoryBuffer) GetRecent(limit int) []SearchHistoryEntry {
 	return result
 }
 
-// GetByIndexer returns recent entries for a specific indexer.
-func (b *SearchHistoryBuffer) GetByIndexer(indexerID int, limit int) []SearchHistoryEntry {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	if limit <= 0 {
-		limit = b.count
-	}
-
-	result := make([]SearchHistoryEntry, 0, limit)
-
-	// Start from the most recent entry
-	idx := (b.head - 1 + b.capacity) % b.capacity
-	for i := 0; i < b.count && len(result) < limit; i++ {
-		if b.entries[idx].IndexerID == indexerID {
-			result = append(result, b.entries[idx])
-		}
-		idx = (idx - 1 + b.capacity) % b.capacity
-	}
-
-	return result
-}
-
 // Count returns the current number of entries in the buffer.
 func (b *SearchHistoryBuffer) Count() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	return b.count
-}
-
-// Stats returns basic statistics about the buffer.
-type SearchHistoryStats struct {
-	Count       int            `json:"count"`
-	Capacity    int            `json:"capacity"`
-	ByStatus    map[string]int `json:"byStatus"`
-	ByPriority  map[string]int `json:"byPriority"`
-	AvgDuration float64        `json:"avgDurationMs"`
-}
-
-func (b *SearchHistoryBuffer) Stats() SearchHistoryStats {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	stats := SearchHistoryStats{
-		Count:      b.count,
-		Capacity:   b.capacity,
-		ByStatus:   make(map[string]int),
-		ByPriority: make(map[string]int),
-	}
-
-	if b.count == 0 {
-		return stats
-	}
-
-	var totalDuration int64
-	idx := (b.head - 1 + b.capacity) % b.capacity
-	for i := 0; i < b.count; i++ {
-		entry := b.entries[idx]
-		stats.ByStatus[entry.Status]++
-		stats.ByPriority[entry.Priority]++
-		totalDuration += int64(entry.DurationMs)
-		idx = (idx - 1 + b.capacity) % b.capacity
-	}
-
-	stats.AvgDuration = float64(totalDuration) / float64(b.count)
-
-	return stats
 }
 
 // HistoryRecorder is the interface for recording search history.

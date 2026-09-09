@@ -1,8 +1,6 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-//go:build !windows
-
 package automations
 
 import (
@@ -11,8 +9,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/sys/unix"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
@@ -59,52 +55,17 @@ func GetFreeSpaceRuleKey(rule *models.Automation) string {
 	return GetFreeSpaceSourceKey(rule.FreeSpaceSource) + fmt.Sprintf("|rule:%d", rule.ID)
 }
 
-// GetFreeSpaceBytesForSource returns the free space in bytes for the given source.
-// This is the preferred function as it doesn't require a full rule.
-func GetFreeSpaceBytesForSource(
-	ctx context.Context,
-	syncManager *qbittorrent.SyncManager,
-	instance *models.Instance,
-	src *models.FreeSpaceSource,
-) (int64, error) {
-	resolved := resolveFreeSpaceSource(src)
-
-	switch resolved.Type {
-	case models.FreeSpaceSourceQBittorrent, "":
-		// Default: use qBittorrent's reported free space
-		if syncManager == nil {
-			return 0, errors.New("syncManager is nil")
-		}
-		if instance == nil {
-			return 0, errors.New("instance required for qBittorrent free space source")
-		}
-		freeSpace, err := syncManager.GetFreeSpace(ctx, instance.ID)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get free space from qBittorrent: %w", err)
-		}
-		return freeSpace, nil
-
-	case models.FreeSpaceSourcePath:
-		// Read free space from local filesystem path
-		if instance == nil || !instance.HasLocalFilesystemAccess {
-			return 0, errors.New("path-based free space source requires local filesystem access")
-		}
-		return getLocalFreeSpaceBytes(resolved.Path)
-
-	default:
-		// Future: add "agentPath" type for remote agent-based free space checks
-		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)
+// qbtFreeSpace returns qBittorrent's reported free space for the instance.
+func qbtFreeSpace(ctx context.Context, syncManager *qbittorrent.SyncManager, instance *models.Instance) (int64, error) {
+	if syncManager == nil {
+		return 0, errors.New("syncManager is nil")
 	}
-}
-
-// getLocalFreeSpaceBytes returns the available bytes on the filesystem containing the given path.
-func getLocalFreeSpaceBytes(path string) (int64, error) {
-	var stat unix.Statfs_t
-	if err := unix.Statfs(path, &stat); err != nil {
-		return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", path, err)
+	if instance == nil {
+		return 0, errors.New("instance required for qBittorrent free space source")
 	}
-	// Bavail is the number of free blocks available to unprivileged users
-	// Bsize is the fundamental block size
-	//nolint:gosec,unconvert // uint64 to int64 conversion is safe: disk free space won't exceed int64 max (~8 EiB). Bsize is int64 on linux but uint32 on darwin, so the conversion only reads as redundant on one of them.
-	return int64(stat.Bavail) * int64(stat.Bsize), nil
+	freeSpace, err := syncManager.GetFreeSpace(ctx, instance.ID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get free space from qBittorrent: %w", err)
+	}
+	return freeSpace, nil
 }

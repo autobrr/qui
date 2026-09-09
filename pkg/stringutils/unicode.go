@@ -106,8 +106,10 @@ func normalized(s string) string {
 	s = strings.ReplaceAll(s, "\u02bc", "") // Modifier letter apostrophe
 	s = strings.ReplaceAll(s, "`", "")      // Backtick
 
-	// Remove colons - "csi: miami" → "csi miami"
-	s = strings.ReplaceAll(s, ":", "")
+	// Colons become spaces - "csi: miami" → "csi miami", "re:zero" → "re zero".
+	// A file name cannot hold a colon, so on-disk names space it while an
+	// arr-built announce name keeps it. Trade: "re:zero" no longer folds to "rezero".
+	s = strings.ReplaceAll(s, ":", " ")
 
 	// Remove exclamation and question marks - scene naming drops them,
 	// so "Overtake!" announces as "Overtake.S01..."
@@ -150,7 +152,8 @@ func NormalizeUnicode(s string) string {
 //   - Unicode normalization (removes diacritics, decomposes ligatures)
 //   - Lowercase
 //   - Strip apostrophes (including Unicode variants)
-//   - Strip colons, exclamation and question marks
+//   - Convert colons to spaces
+//   - Strip exclamation and question marks
 //   - Convert commas to spaces
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces

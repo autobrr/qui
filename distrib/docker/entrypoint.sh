@@ -4,6 +4,11 @@ set -e
 # UMASK is handled by the qui binary itself (applyUmask in cmd/qui),
 # so the entrypoint does not touch it.
 
+# Docker's user setting has already dropped privileges, so run qui directly.
+if [ "$(id -u)" -ne 0 ]; then
+    exec /usr/local/bin/qui "$@"
+fi
+
 # Fail fast if only one of PUID/PGID is set
 if { [ -n "$PUID" ] && [ -z "$PGID" ]; } || { [ -z "$PUID" ] && [ -n "$PGID" ]; }; then
     echo >&2 "ERROR: PUID and PGID must be set together"

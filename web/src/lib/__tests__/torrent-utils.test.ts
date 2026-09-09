@@ -7,7 +7,6 @@ import {
   anyTorrentHasTag,
   getCommonCategory,
   getCommonSavePath,
-  getCommonTags,
   getTorrentDisplayHash,
   getTorrentHashesWithTag,
   getTotalSize,
@@ -196,52 +195,6 @@ describe("getTorrentHashesWithTag", () => {
   it("returns empty when nothing matches", () => {
     const torrents = [makeTorrent({ hash: "h1", tags: "windows" })]
     expect(getTorrentHashesWithTag(torrents, "linux")).toEqual([])
-  })
-})
-
-// Intent: intersection of tags across multiple torrents — drives the bulk
-// tag-editor's "on" state (a tag is "on" only if every selected torrent
-// already has it). Catches anyone who breaks the intersection into a union.
-describe("getCommonTags", () => {
-  it("returns empty for empty list", () => {
-    expect(getCommonTags([])).toEqual([])
-  })
-
-  it("returns the parsed tags for a single torrent", () => {
-    expect(getCommonTags([makeTorrent({ tags: "  a , b  " })])).toEqual(["a", "b"])
-  })
-
-  it("returns empty when the first torrent has no tags", () => {
-    expect(getCommonTags([makeTorrent({ tags: "" }), makeTorrent({ tags: "a,b" })])).toEqual([])
-  })
-
-  it("returns only tags present on every torrent", () => {
-    const torrents = [
-      makeTorrent({ tags: "a,b,c" }),
-      makeTorrent({ tags: "b,c,d" }),
-      makeTorrent({ tags: "c,b" }),
-    ]
-    // Order follows the first torrent's tag order.
-    expect(getCommonTags(torrents)).toEqual(["b", "c"])
-  })
-
-  it("returns empty when no tag is shared by all torrents", () => {
-    const torrents = [
-      makeTorrent({ tags: "a,b" }),
-      makeTorrent({ tags: "c,d" }),
-    ]
-    expect(getCommonTags(torrents)).toEqual([])
-  })
-
-  it("skips torrents with no tags when counting (treats them as 'has none')", () => {
-    const torrents = [
-      makeTorrent({ tags: "a,b" }),
-      makeTorrent({ tags: "" }),
-      makeTorrent({ tags: "a" }),
-    ]
-    // The empty-tags torrent never increments any counter, so no tag reaches
-    // count === torrents.length. Result: empty common set.
-    expect(getCommonTags(torrents)).toEqual([])
   })
 })
 

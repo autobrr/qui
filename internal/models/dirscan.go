@@ -874,22 +874,6 @@ func scanRunsFromRows(rows *sql.Rows) ([]*DirScanRun, error) {
 	return runs, nil
 }
 
-// HasActiveRun checks if there's an active run for a directory.
-func (s *DirScanStore) HasActiveRun(ctx context.Context, directoryID int) (bool, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM dir_scan_runs
-		WHERE directory_id = ?
-		  AND status IN ('queued', 'scanning', 'searching', 'injecting')
-	`, directoryID)
-
-	var count int
-	if err := row.Scan(&count); err != nil {
-		return false, fmt.Errorf("scan active run count: %w", err)
-	}
-	return count > 0, nil
-}
-
 // GetActiveRun returns the active run for a directory, if any.
 func (s *DirScanStore) GetActiveRun(ctx context.Context, directoryID int) (*DirScanRun, error) {
 	row := s.db.QueryRowContext(ctx, `
@@ -1550,10 +1534,15 @@ func scanFilesFromRows(rows *sql.Rows) ([]*DirScanFile, error) {
 
 // RequeueNoMatchFiles resets no_match rows for a directory to pending so the
 // next scan searches them again. Matched and already-seeding rows are kept.
+//
+// It deliberately leaves last_processed_at alone: that column records when a scan
+// last saw the file on disk, and a requeue never visits the filesystem. Writing it
+// here would let a requeue racing a scan pass off untouched rows as freshly seen,
+// which is what PruneMissingFiles reads to judge whether a scan had real coverage.
 func (s *DirScanStore) RequeueNoMatchFiles(ctx context.Context, directoryID int) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE dir_scan_files
-		SET status = ?, searched_indexer_ids = NULL, last_processed_at = CURRENT_TIMESTAMP
+		SET status = ?, searched_indexer_ids = NULL
 		WHERE directory_id = ? AND status = ?
 	`, DirScanFileStatusPending, directoryID, DirScanFileStatusNoMatch)
 	if err != nil {
@@ -1573,4 +1562,121 @@ func (s *DirScanStore) DeleteFilesForDirectory(ctx context.Context, directoryID 
 		return fmt.Errorf("delete files for directory: %w", err)
 	}
 	return nil
+}
+
+// dirScanPruneGraceRuns is how many consecutive successful scans must miss a tracked
+// file before its row is removed. A scan does not always reach every live file, so a
+// single miss is not evidence the file is gone.
+const dirScanPruneGraceRuns = 3
+
+// dirScanPruneMinRefreshPercent blocks the prune when the latest scan refreshed too
+// small a share of the rows still inside the grace window. A filesystem that is
+// mounted but empty walks cleanly and completes, so run status alone is not evidence
+// that a scan saw real data.
+const dirScanPruneMinRefreshPercent = 50
+
+// PruneMissingFiles removes rows whose file was absent from the last
+// dirScanPruneGraceRuns successful scans of the directory and returns how many it
+// removed. It removes nothing when the directory has too little successful scan
+// history to judge, or when the latest scan refreshed too few rows to be trusted.
+func (s *DirScanStore) PruneMissingFiles(ctx context.Context, directoryID int) (int64, error) {
+	if s == nil || s.db == nil || directoryID <= 0 {
+		return 0, nil
+	}
+
+	const (
+		latestRun        = 0
+		graceBoundaryRun = dirScanPruneGraceRuns - 1
+	)
+
+	// Rows already past the grace window are left out of the denominator so a
+	// directory that genuinely loses most of its files still prunes once the window
+	// passes, instead of blocking itself forever. A directory without enough full
+	// scans to judge yields no boundary, which counts nothing and prunes nothing.
+	inGrace, err := s.countFilesProcessedSinceFullScan(ctx, directoryID, graceBoundaryRun)
+	if err != nil {
+		return 0, err
+	}
+
+	refreshed, err := s.countFilesProcessedSinceFullScan(ctx, directoryID, latestRun)
+	if err != nil {
+		return 0, err
+	}
+
+	// An empty grace window means recent scans refreshed nothing at all. A directory
+	// whose files were all deleted, a directory whose filesystem is mounted but empty,
+	// and a directory that simply tracks no files produce that identically, down to
+	// files_found, so nothing in the stored state separates them. Keep the rows: the
+	// cost of guessing wrong is deleting a live directory's entire history during an
+	// outage, and a genuinely emptied directory can be cleared with Reset Scan
+	// Progress. Nothing is wrong here, so say nothing.
+	if inGrace == 0 {
+		return 0, nil
+	}
+
+	if refreshed*100 < inGrace*dirScanPruneMinRefreshPercent {
+		log.Warn().
+			Int("directoryID", directoryID).
+			Int64("refreshed", refreshed).
+			Int64("inGrace", inGrace).
+			Msg("dirscan: skipped stale file prune, latest scan refreshed too few tracked files")
+		return 0, nil
+	}
+
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM dir_scan_files
+		WHERE directory_id = ?
+		  AND last_processed_at IS NOT NULL
+		  AND last_processed_at < (`+fullScanStartedAtQuery+`)
+	`, directoryID, directoryID, DirScanRunStatusSuccess, graceBoundaryRun)
+	if err != nil {
+		return 0, fmt.Errorf("prune missing files: %w", err)
+	}
+
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+
+	return removed, nil
+}
+
+// fullScanStartedAtQuery selects the start time of the offset-th most recent
+// successful run that covered a whole directory. Parameters: directory id, run
+// status, offset.
+//
+// Webhook and manual runs can carry a scan_root that narrows the walk to a subfolder
+// (executeScan resolves it), and such a run only refreshes the rows beneath that
+// subfolder. Letting one define the prune window would make a run over one subfolder
+// look like evidence about the entire directory, and delete every live row outside it.
+//
+// It stays a subquery rather than a value read into Go on purpose. Both engines write
+// these columns with CURRENT_TIMESTAMP, and SQLite compares timestamps as text: a
+// value read out and rebound arrives as time.Time.String(), which no longer matches
+// the stored 19-character form, and comparisons against it quietly fail.
+const fullScanStartedAtQuery = `
+		SELECT run.started_at
+		FROM dir_scan_runs run
+		JOIN dir_scan_directories dir ON dir.id = run.directory_id
+		WHERE run.directory_id = ? AND run.status = ?
+		  AND (run.scan_root IS NULL OR run.scan_root = dir.path)
+		ORDER BY run.started_at DESC, run.id DESC
+		LIMIT 1 OFFSET ?`
+
+// countFilesProcessedSinceFullScan counts a directory's tracked files whose last scan
+// visit is at or after the offset-th most recent full scan of it. A directory with
+// fewer full scans than that yields no boundary, and so counts nothing.
+func (s *DirScanStore) countFilesProcessedSinceFullScan(ctx context.Context, directoryID, offset int) (int64, error) {
+	var count int64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT count(*)
+		FROM dir_scan_files
+		WHERE directory_id = ?
+		  AND last_processed_at IS NOT NULL
+		  AND last_processed_at >= (`+fullScanStartedAtQuery+`)
+	`, directoryID, directoryID, DirScanRunStatusSuccess, offset).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count processed files: %w", err)
+	}
+
+	return count, nil
 }

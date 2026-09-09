@@ -43,6 +43,21 @@ type InstanceReannounceSettings struct {
 	UpdatedAt                 time.Time `json:"updatedAt"`
 }
 
+// CanMatchTorrents reports whether any torrent can match these settings: the
+// feature is on, and the scope is either MonitorAll or at least one inclusion
+// list. A scope that matches nothing lets callers skip the client fetch.
+func (s *InstanceReannounceSettings) CanMatchTorrents() bool {
+	if s == nil || !s.Enabled {
+		return false
+	}
+	if s.MonitorAll {
+		return true
+	}
+	return (len(s.Categories) > 0 && !s.ExcludeCategories) ||
+		(len(s.Tags) > 0 && !s.ExcludeTags) ||
+		(len(s.Trackers) > 0 && !s.ExcludeTrackers)
+}
+
 // InstanceReannounceStore manages persistence for InstanceReannounceSettings.
 type InstanceReannounceStore struct {
 	db dbinterface.Querier
@@ -63,7 +78,7 @@ func DefaultInstanceReannounceSettings(instanceID int) *InstanceReannounceSettin
 		MaxAgeSeconds:             defaultMaxAgeSeconds,
 		MaxRetries:                defaultMaxRetries,
 		Aggressive:                false,
-		MonitorAll:                false,
+		MonitorAll:                true,
 		ExcludeCategories:         false,
 		Categories:                []string{},
 		ExcludeTags:               false,

@@ -1,6 +1,6 @@
 {
   "pageTitle": "인덱서 검색",
-  "pageDescription": "활성화된 모든 인덱서에서 검색합니다. 쿼리 유형을 선택하거나 자동으로 두면 카테고리가 자동으로 감지됩니다.",
+  "pageDescription": "활성화된 모든 인덱서에서 검색합니다. 검색 유형을 선택하세요.",
   "indexerSummary": {
     "label": "인덱서",
     "noEnabled": "활성화된 인덱서 없음",
@@ -44,11 +44,6 @@
     "indexersPage": "인덱서 페이지"
   },
   "searchTypes": {
-    "auto": {
-      "label": "자동 감지",
-      "description": "올바른 카테고리를 자동으로 추론합니다",
-      "placeholder": "예: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", 또는 \"Example Artist – Example Album\""
-    },
     "movies": {
       "label": "영화",
       "placeholder": "예: \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""

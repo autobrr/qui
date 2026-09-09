@@ -89,26 +89,12 @@ type TorznabIndexerUpdateParams struct {
 	TimeoutSeconds *int
 }
 
-// TorznabIndexerCapability represents a search capability
-type TorznabIndexerCapability struct {
-	IndexerID      int    `json:"indexer_id"`
-	CapabilityType string `json:"capability_type"`
-}
-
 // TorznabIndexerCategory represents a category supported by an indexer
 type TorznabIndexerCategory struct {
 	IndexerID      int    `json:"indexer_id"`
 	CategoryID     int    `json:"category_id"`
 	CategoryName   string `json:"category_name"`
 	ParentCategory *int   `json:"parent_category_id,omitempty"`
-}
-
-// TorznabIndexerCooldown captures a persisted rate-limit suspension window for an indexer.
-type TorznabIndexerCooldown struct {
-	IndexerID int           `json:"indexer_id"`
-	ResumeAt  time.Time     `json:"resume_at"`
-	Cooldown  time.Duration `json:"cooldown"`
-	Reason    string        `json:"reason,omitempty"`
 }
 
 // TorznabIndexerError represents an error that occurred with an indexer
@@ -120,16 +106,6 @@ type TorznabIndexerError struct {
 	OccurredAt   time.Time  `json:"occurred_at"`
 	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
 	ErrorCount   int        `json:"error_count"`
-}
-
-// TorznabIndexerLatency represents a latency measurement
-type TorznabIndexerLatency struct {
-	ID            int       `json:"id"`
-	IndexerID     int       `json:"indexer_id"`
-	OperationType string    `json:"operation_type"`
-	LatencyMs     int       `json:"latency_ms"`
-	Success       bool      `json:"success"`
-	MeasuredAt    time.Time `json:"measured_at"`
 }
 
 // TorznabIndexerLatencyStats represents aggregated latency statistics
@@ -805,19 +781,6 @@ func (s *TorznabIndexerStore) GetDecryptedBasicPassword(indexer *TorznabIndexer)
 	return s.decrypt(*indexer.BasicPasswordEncrypted)
 }
 
-// Test tests the connection to a Torznab indexer by querying its capabilities
-func (s *TorznabIndexerStore) Test(ctx context.Context, baseURL, apiKey string) error {
-	// This would be implemented by calling the caps endpoint
-	// For now, just validate the parameters
-	if baseURL == "" {
-		return errors.New("base URL is required")
-	}
-	if apiKey == "" {
-		return errors.New("API key is required")
-	}
-	return nil
-}
-
 // GetCapabilities retrieves all capabilities for an indexer
 func (s *TorznabIndexerStore) GetCapabilities(ctx context.Context, indexerID int) ([]string, error) {
 	query := `
@@ -1100,19 +1063,6 @@ func (s *TorznabIndexerStore) RecordError(ctx context.Context, indexerID int, er
 	return nil
 }
 
-// ResolveErrors marks all unresolved errors for an indexer as resolved
-func (s *TorznabIndexerStore) ResolveErrors(ctx context.Context, indexerID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE torznab_indexer_errors
-		SET resolved_at = CURRENT_TIMESTAMP
-		WHERE indexer_id = ? AND resolved_at IS NULL
-	`, indexerID)
-	if err != nil {
-		return fmt.Errorf("failed to resolve errors: %w", err)
-	}
-	return nil
-}
-
 // GetRecentErrors retrieves recent errors for an indexer
 func (s *TorznabIndexerStore) GetRecentErrors(ctx context.Context, indexerID int, limit int) ([]TorznabIndexerError, error) {
 	query := `
@@ -1277,64 +1227,4 @@ func (s *TorznabIndexerStore) CleanupOldLatency(ctx context.Context, olderThan t
 	}
 
 	return rowsAffected, nil
-}
-
-// ListRateLimitCooldowns returns any persisted cooldown windows for Torznab indexers.
-func (s *TorznabIndexerStore) ListRateLimitCooldowns(ctx context.Context) ([]TorznabIndexerCooldown, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT indexer_id, resume_at, cooldown_seconds, COALESCE(reason, '')
-		FROM torznab_indexer_cooldowns
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list torznab cooldowns: %w", err)
-	}
-	defer rows.Close()
-
-	cooldowns := make([]TorznabIndexerCooldown, 0)
-	for rows.Next() {
-		var (
-			c       TorznabIndexerCooldown
-			seconds int64
-		)
-		if err := rows.Scan(&c.IndexerID, &c.ResumeAt, &seconds, &c.Reason); err != nil {
-			return nil, fmt.Errorf("scan torznab cooldown: %w", err)
-		}
-		c.Cooldown = time.Duration(seconds) * time.Second
-		cooldowns = append(cooldowns, c)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate torznab cooldowns: %w", err)
-	}
-
-	return cooldowns, nil
-}
-
-// UpsertRateLimitCooldown stores or updates the cooldown window for an indexer.
-func (s *TorznabIndexerStore) UpsertRateLimitCooldown(ctx context.Context, indexerID int, resumeAt time.Time, cooldown time.Duration, reason string) error {
-	seconds := max(int64(cooldown.Seconds()), 0)
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO torznab_indexer_cooldowns (indexer_id, resume_at, cooldown_seconds, reason)
-		VALUES (?, ?, ?, ?)
-		ON CONFLICT(indexer_id)
-		DO UPDATE SET resume_at = excluded.resume_at,
-			cooldown_seconds = excluded.cooldown_seconds,
-			reason = excluded.reason,
-			updated_at = CURRENT_TIMESTAMP
-	`, indexerID, resumeAt.UTC(), seconds, reason)
-	if err != nil {
-		return fmt.Errorf("upsert torznab cooldown: %w", err)
-	}
-	return nil
-}
-
-// DeleteRateLimitCooldown removes any persisted cooldown for the provided indexer ID.
-func (s *TorznabIndexerStore) DeleteRateLimitCooldown(ctx context.Context, indexerID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		DELETE FROM torznab_indexer_cooldowns WHERE indexer_id = ?
-	`, indexerID)
-	if err != nil {
-		return fmt.Errorf("delete torznab cooldown: %w", err)
-	}
-	return nil
 }

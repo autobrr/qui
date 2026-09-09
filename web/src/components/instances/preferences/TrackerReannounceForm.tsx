@@ -25,6 +25,7 @@ import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { DEFAULT_REANNOUNCE_SETTINGS } from "@/lib/instance-validation"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
 import { cn, copyTextToClipboard, formatErrorReason, normalizeTrackerDomains } from "@/lib/utils"
 import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceActivity, type InstanceReannounceSettings } from "@/types"
@@ -42,22 +43,6 @@ interface TrackerReannounceFormProps {
   variant?: "card" | "embedded"
   /** Form ID for external submit button. When provided, the internal submit button is hidden. */
   formId?: string
-}
-
-const DEFAULT_SETTINGS: InstanceReannounceSettings = {
-  enabled: false,
-  initialWaitSeconds: 15,
-  reannounceIntervalSeconds: 7,
-  maxAgeSeconds: 600,
-  maxRetries: 50,
-  aggressive: false,
-  monitorAll: false,
-  excludeCategories: false,
-  categories: [],
-  excludeTags: false,
-  tags: [],
-  excludeTrackers: false,
-  trackers: [],
 }
 
 const GLOBAL_SCAN_INTERVAL_SECONDS = 7
@@ -292,7 +277,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const sanitized = sanitizeSettings(settings)
-    const wasEnabled = instance?.reannounceSettings?.enabled ?? DEFAULT_SETTINGS.enabled
+    const wasEnabled = instance?.reannounceSettings?.enabled ?? DEFAULT_REANNOUNCE_SETTINGS.enabled
 
     if (!wasEnabled && sanitized.enabled) {
       setPendingEnableSettings(sanitized)
@@ -909,7 +894,7 @@ function NumberField({ id, label, description, tooltip, value, min, max, onChang
 
 function cloneSettings(settings?: InstanceReannounceSettings): InstanceReannounceSettings {
   if (!settings) {
-    return { ...DEFAULT_SETTINGS }
+    return { ...DEFAULT_REANNOUNCE_SETTINGS }
   }
   return {
     enabled: settings.enabled,
@@ -938,10 +923,10 @@ function sanitizeSettings(settings: InstanceReannounceSettings): InstanceReannou
 
   return {
     enabled: settings.enabled,
-    initialWaitSeconds: clamp(settings.initialWaitSeconds, DEFAULT_SETTINGS.initialWaitSeconds, REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT),
-    reannounceIntervalSeconds: clamp(settings.reannounceIntervalSeconds, DEFAULT_SETTINGS.reannounceIntervalSeconds, REANNOUNCE_CONSTRAINTS.MIN_INTERVAL),
-    maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_SETTINGS.maxAgeSeconds, REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE),
-    maxRetries: clamp(settings.maxRetries, DEFAULT_SETTINGS.maxRetries, REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES, REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES),
+    initialWaitSeconds: clamp(settings.initialWaitSeconds, DEFAULT_REANNOUNCE_SETTINGS.initialWaitSeconds, REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT),
+    reannounceIntervalSeconds: clamp(settings.reannounceIntervalSeconds, DEFAULT_REANNOUNCE_SETTINGS.reannounceIntervalSeconds, REANNOUNCE_CONSTRAINTS.MIN_INTERVAL),
+    maxAgeSeconds: clamp(settings.maxAgeSeconds, DEFAULT_REANNOUNCE_SETTINGS.maxAgeSeconds, REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE),
+    maxRetries: clamp(settings.maxRetries, DEFAULT_REANNOUNCE_SETTINGS.maxRetries, REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES, REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES),
     monitorAll: settings.monitorAll,
     excludeCategories: settings.excludeCategories,
     categories: normalizeList(settings.categories),

@@ -90,6 +90,9 @@ VOLUME /config
 COPY --from=go-builder /app/qui /usr/local/bin/
 COPY distrib/docker/entrypoint.sh /entrypoint.sh
 
+# Verify Compose user mode still works when shared PUID/PGID variables are present.
+RUN PUID=99 PGID=100 su-exec 99:100 /entrypoint.sh --version
+
 EXPOSE 7476
 
 # Health check

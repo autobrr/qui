@@ -15,10 +15,10 @@ func TestSizeMismatchLogLevel(t *testing.T) {
 
 	s := &Service{}
 
-	require.Equal(t, zerolog.WarnLevel, s.sizeMismatchLogLevel("src-a", "match-1"), "first rejection of a pair warns")
+	require.Equal(t, zerolog.DebugLevel, s.sizeMismatchLogLevel("src-a", "match-1"), "first rejection of a pair logs at debug")
 	require.Equal(t, zerolog.TraceLevel, s.sizeMismatchLogLevel("src-a", "match-1"), "repeat of the same pair drops to trace")
 	require.Equal(t, zerolog.TraceLevel, s.sizeMismatchLogLevel("src-a", "match-1"), "further repeats stay trace")
 
-	require.Equal(t, zerolog.WarnLevel, s.sizeMismatchLogLevel("src-a", "match-2"), "same source against another local copy warns")
-	require.Equal(t, zerolog.WarnLevel, s.sizeMismatchLogLevel("src-b", "match-1"), "different source against the same local copy warns")
+	require.Equal(t, zerolog.DebugLevel, s.sizeMismatchLogLevel("src-a", "match-2"), "same source against another local copy logs at debug")
+	require.Equal(t, zerolog.DebugLevel, s.sizeMismatchLogLevel("src-b", "match-1"), "different source against the same local copy logs at debug")
 }

@@ -664,6 +664,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const previewRequestRef = useRef(0)
   const [livePreviewResult, setLivePreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [isLivePreviewLoading, setIsLivePreviewLoading] = useState(false)
   const [livePreviewError, setLivePreviewError] = useState<string | null>(null)
@@ -774,6 +776,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     highlightedIndex: freeSpaceHighlightedIndex,
     showSuggestions: showFreeSpaceSuggestions,
     inputRef: freeSpacePathInputRef,
+    listRef: freeSpaceListRef,
   } = usePathAutocomplete(handleFreeSpacePathSelect, instanceId)
 
   // Container and position for autocomplete dropdown portal (inside dialog, outside scroll)
@@ -1667,7 +1670,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   )
 
   const previewMutation = useMutation({
-    mutationFn: async ({ input, view }: { input: FormState; view: PreviewView }) => {
+    mutationFn: async ({ input, view }: { input: FormState; view: PreviewView; requestId: number }) => {
       const payload = {
         ...buildPayload(input),
         previewLimit: previewPageSize,
@@ -1684,18 +1687,33 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         throw error
       }
     },
-    onSuccess: (result, { input }) => {
+    onSuccess: (result, { input, requestId }) => {
+      // Ignore results that arrive after the user saved without waiting.
+      if (requestId !== previewRequestRef.current) return
       // Last warning before enabling a delete rule (even if 0 matches right now).
       setPreviewInput(input)
       setPreviewResult(result)
       setIsInitialLoading(false)
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.previewFailed"))
+    onError: (error, { requestId }) => {
+      if (requestId !== previewRequestRef.current) return
+      // Keep the dialog open: the user can still save without a preview.
+      setPreviewError(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.previewFailed"))
       setIsInitialLoading(false)
-      setShowConfirmDialog(false)
     },
   })
+
+  const startPreview = useCallback((input: FormState) => {
+    // Reset preview view to "needed" when starting a new preview
+    setPreviewView("needed")
+    // Open dialog immediately with loading state
+    setPreviewResult(null)
+    setPreviewError(null)
+    setIsInitialLoading(true)
+    setShowConfirmDialog(true)
+    previewRequestRef.current += 1
+    previewMutation.mutate({ input, view: "needed", requestId: previewRequestRef.current })
+  }, [previewMutation])
 
   const loadMorePreview = useMutation({
     mutationFn: async () => {
@@ -1926,13 +1944,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
       setEnabledBeforePreview(formState.enabled)
       setFormState(nextState)
-      // Reset preview view to "needed" when starting a new preview
-      setPreviewView("needed")
-      // Open dialog immediately with loading state
-      setPreviewResult(null)
-      setIsInitialLoading(true)
-      setShowConfirmDialog(true)
-      previewMutation.mutate({ input: nextState, view: "needed" })
+      startPreview(nextState)
       return
     }
 
@@ -1941,7 +1953,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, isTagRule, previewMutation, t, validateExportTarget, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, isTagRule, startPreview, t, validateExportTarget, validateFreeSpaceSource])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -2183,13 +2195,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // For delete and category rules, show preview as a last warning before enabling.
     const needsPreview = (isDeleteRule || isCategoryRule) && submitState.enabled
     if (needsPreview) {
-      // Reset preview view to "needed" when starting a new preview
-      setPreviewView("needed")
-      // Open dialog immediately with loading state
-      setPreviewResult(null)
-      setIsInitialLoading(true)
-      setShowConfirmDialog(true)
-      previewMutation.mutate({ input: submitState, view: "needed" })
+      startPreview(submitState)
     } else {
       createOrUpdate.mutate(submitState)
     }
@@ -2198,6 +2204,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const handleConfirmSave = () => {
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
+    // Drop any preview still in flight; the user chose to save without it.
+    previewRequestRef.current += 1
     if (!validateFreeSpaceSource(formState)) {
       return
     }
@@ -3941,6 +3949,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         {dropdownRect && dropdownContainerRef.current && createPortal(
                           <div
+                            ref={freeSpaceListRef}
                             className="absolute rounded-md border bg-popover text-popover-foreground shadow-md pointer-events-auto"
                             style={{
                               top: dropdownRect.top,
@@ -4199,8 +4208,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               setFormState(prev => ({ ...prev, enabled: enabledBeforePreview }))
               setEnabledBeforePreview(null)
             }
+            previewRequestRef.current += 1
             setPreviewResult(null)
             setPreviewInput(null)
+            setPreviewError(null)
             setIsInitialLoading(false)
           }
           setShowConfirmDialog(open)
@@ -4262,6 +4273,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         preview={previewResult}
         condition={previewInput?.actionCondition ?? formState.actionCondition}
         onConfirm={handleConfirmSave}
+        previewError={previewError}
         onLoadMore={handleLoadMore}
         isLoadingMore={loadMorePreview.isPending}
         confirmLabel={t("preferences.workflowDialog.saveRule")}

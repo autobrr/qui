@@ -47,7 +47,9 @@ type Backend interface {
 	// hits an unrecoverable error. Callers must drain the channel or cancel
 	// ctx; abandoning it leaks the walk goroutine. Entries whose metadata
 	// cannot be read are skipped, not emitted — WalkEntry.Err carries only
-	// enumeration-level walk failures.
+	// enumeration-level walk failures. Setting opts.EmitStatErrors emits
+	// those entries instead, with WalkEntry.StatErr set and only Path/RelPath
+	// valid, so delete preflights can fail closed on unverifiable paths.
 	WalkDir(ctx context.Context, root string, opts WalkOptions) (<-chan WalkEntry, error)
 
 	// Statfs returns free/total bytes for the filesystem containing path.
