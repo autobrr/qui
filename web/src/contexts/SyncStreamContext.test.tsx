@@ -4,6 +4,7 @@
  */
 
 import { api } from "@/lib/api"
+import { resolveStreamRow } from "@/lib/torrent-utils"
 import {
   createStreamKey,
   isClientConnectionErrorCode,
@@ -361,6 +362,50 @@ describe("SyncStreamContext", () => {
       expect(controls.getState().error).toBeNull()
       expect(controls.payloads).toHaveLength(1)
       expect(controls.payloads[0].type).toBe("update")
+    })
+
+    it("restores a listener's row baseline after a stream error without reconnecting", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+      const key = createStreamKey(BASE_PARAMS)
+      const row = { hash: "a", name: "Synthetic torrent", ratio: 2 }
+      act(() => {
+        source.emitOpen()
+        source.emit("init", {
+          type: "init", version: { major: 1, minor: 1 },
+          meta: { streamKey: key }, data: { torrents: [row], total: 1 },
+        })
+        source.emit("stream-error", {
+          type: "stream-error", error: "Temporary sync failure", meta: { streamKey: key },
+        })
+      })
+      expect(controls.getState().connected).toBe(false)
+      expect(controls.getState().initialized).toBe(true)
+      act(() => source.emit("delta", {
+        type: "delta", version: { major: 1, minor: 2 },
+        delta: { baseVersion: { major: 1, minor: 1 } },
+        meta: { streamKey: key }, data: { torrents: [], total: 1 },
+      }))
+      expect(controls.payloads.map(payload => payload.type)).toEqual(["init", "stream-error", "init"])
+      expect(resolveStreamRow(null, controls.payloads[2].data!)).toEqual(row)
+      expect(controls.payloads[2].version).toEqual({ major: 1, minor: 2 })
+      expect(controls.payloads[2].delta).toBeUndefined()
+      expect(source.closed).toBe(false)
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(0)
+      act(() => {
+        source.emit("stream-error", {
+          type: "stream-error", error: "Temporary sync failure", meta: { streamKey: key },
+        })
+        source.emit("delta", {
+          type: "delta", version: { major: 1, minor: 4 },
+          delta: { baseVersion: { major: 1, minor: 3 } },
+          meta: { streamKey: key }, data: { torrents: [], total: 0 },
+        })
+      })
+      expect(source.closed).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
     })
 
     it("coalesces recovery when a delta does not continue the accepted version", () => {
@@ -1113,19 +1158,20 @@ describe("SyncStreamContext", () => {
       expect(controlsB.getState().connected).toBe(true)
     })
 
-    it("requests one shared init when a listener remounts without a baseline", () => {
+    it.each([false, true])("replays the current snapshot on remount without reconnecting, cross=%s", async cross => {
+      const params = makeParams(cross ? { instanceId: 0, instanceIds: [1] } : {})
+      const field = cross ? "cross_instance_torrents" : "torrents"
+      const row = { hash: "a", name: "Original", ...(cross ? { instance_id: 1, instance_name: "Synthetic" } : {}) }
       const controlsA: HarnessControls = { getState: () => DEFAULT, payloads: [] }
       const controlsB: HarnessControls = { getState: () => DEFAULT, payloads: [] }
       let setMounted: (mounted: boolean) => void = () => {}
-
       function Subscriber({ controls }: { controls: HarnessControls }) {
-        const state = useSyncStream(makeParams(), {
+        const state = useSyncStream(params, {
           onMessage: payload => controls.payloads.push(payload),
         })
         controls.getState = () => state
         return null
       }
-
       function Root() {
         const [mounted, updateMounted] = useState(true)
         setMounted = updateMounted
@@ -1136,50 +1182,34 @@ describe("SyncStreamContext", () => {
           </TestProviders>
         )
       }
-
-      act(() => {
-        render(<Root />)
-      })
+      render(<Root />)
       flushConnectionQueue()
-
-      const key = createStreamKey(makeParams())
-      const first = MockEventSource.instances[0]
+      const key = createStreamKey(params)
+      const source = MockEventSource.instances[0]
       act(() => {
-        first.emitOpen()
-        first.emit("init", {
-          type: "init",
-          version: { major: 4, minor: 1 },
-          meta: { instanceId: 1, timestamp: "now", streamKey: key },
-          data: { torrents: [], total: 0 },
+        source.emitOpen()
+        source.emit("init", {
+          type: "init", version: { major: 4, minor: 1 }, meta: { streamKey: key },
+          data: { [field]: [row], total: 1, counts: { total: 1 } },
+        })
+        source.emit("delta", {
+          type: "delta", version: { major: 4, minor: 2 },
+          delta: { baseVersion: { major: 4, minor: 1 } }, meta: { streamKey: key },
+          data: { [field]: [{ ...row, name: "Updated" }], total: 1 },
         })
       })
-      expect(controlsA.payloads).toHaveLength(1)
-      expect(controlsB.payloads).toHaveLength(1)
-
       act(() => setMounted(false))
-      act(() => setMounted(true))
-      expect(controlsA.getState().initialized).toBe(false)
+      await act(async () => setMounted(true))
       flushConnectionQueue()
-
-      expect(first.closed).toBe(true)
-      expect(MockEventSource.instances).toHaveLength(2)
-      const replacement = MockEventSource.instances[1]
-      act(() => {
-        replacement.emitOpen()
-        replacement.emit("init", {
-          type: "init",
-          version: { major: 4, minor: 1 },
-          meta: { instanceId: 1, timestamp: "now", streamKey: key },
-          data: { torrents: [], total: 0 },
-        })
-      })
-
-      // The already-mounted listener receives the same replacement baseline; it
-      // is not left on a different sequence when the remounted listener recovers.
-      expect(controlsA.payloads.map(payload => payload.type)).toEqual(["init", "init"])
-      expect(controlsB.payloads.map(payload => payload.type)).toEqual(["init", "init"])
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
       expect(controlsA.getState().initialized).toBe(true)
-      expect(controlsB.getState().initialized).toBe(true)
+      expect(controlsA.payloads.map(payload => payload.type)).toEqual(["init", "delta"])
+      expect(controlsB.payloads.map(payload => payload.type)).toEqual(["init", "delta", "init"])
+      expect(controlsB.payloads.at(-1)).toMatchObject({
+        version: { major: 4, minor: 2 },
+        data: { [field]: [{ ...row, name: "Updated" }], total: 1, counts: { total: 1 } },
+      })
     })
 
     it("opens distinct EventSources for differing params", () => {

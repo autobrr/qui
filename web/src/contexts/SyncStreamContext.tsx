@@ -5,7 +5,8 @@
 
 import { api } from "@/lib/api"
 import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
-import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload, TorrentStreamVersion } from "@/types"
+import { applyStreamDelta, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
+import type { ActivityEvent, ActivityStreamPayload, TorrentFilters, TorrentResponse, TorrentStreamMeta, TorrentStreamPayload, TorrentStreamVersion } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
@@ -132,6 +133,7 @@ interface StreamEntry {
   error: string | null
   lastMeta?: TorrentStreamMeta
   version?: TorrentStreamVersion
+  snapshot?: TorrentResponse
   handoffTimer?: number
   handoffPending?: boolean
   // Set once the replacement connection's socket has demonstrably opened during a
@@ -597,7 +599,6 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (payload.type === "stream-error" && payload.error) {
           entry.error = payload.error
           entry.connected = false
-          entry.initialized = false
         } else if (payload.type === "init" || payload.type === "update" || payload.type === "delta") {
           const nextVersion = payload.version
           const baseVersion = payload.delta?.baseVersion
@@ -624,10 +625,20 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             return
           }
 
+          const restoreSnapshot = payload.type === "delta" && Boolean(entry.error)
           entry.error = null
           entry.connected = true
           entry.initialized = true
           entry.version = nextVersion
+          if (payload.data) {
+            entry.snapshot = payload.type === "delta" && entry.snapshot
+              ? applyStreamDelta(entry.snapshot, payload, Boolean(entry.params.instanceIds?.length)).data
+              : normalizeStreamedSnapshot(payload.data)
+          }
+          if (restoreSnapshot && entry.snapshot) {
+            // Some listeners discard their row baseline while fallback polling runs.
+            payload = { ...payload, type: "init", data: entry.snapshot, delta: undefined }
+          }
           if (connection.recovering && normalized.every(({ key }) => {
             const candidate = streamsRef.current[key]
             return !candidate || candidate.initialized
@@ -945,7 +956,19 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const entry = ensureStream(params, options)
       const needsInit = entry.connected || entry.initialized
       entry.listeners.add(listener)
-      if (needsInit) {
+      if (entry.initialized && entry.snapshot) {
+        // Let mount effects reset their local state before replaying the baseline.
+        queueMicrotask(() => {
+          if (!entry.listeners.has(listener) || !entry.initialized || !entry.snapshot) {
+            return
+          }
+          try {
+            listener({ type: "init", data: entry.snapshot, version: entry.version, meta: entry.lastMeta })
+          } catch (err) {
+            console.error("SyncStream snapshot listener failed", err)
+          }
+        })
+      } else if (needsInit) {
         entry.initialized = false
         entry.version = undefined
         queueConnectionUpdate({ preserveState: true, force: true })
