@@ -51,7 +51,7 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return p.local, nil
 	case models.FilesystemModeRemote:
 		return nil, fmt.Errorf("instance %d: %w", instanceID, ErrRemoteBackendNotImplemented)
+	default:
+		return noopBackend{}, nil
 	}
-
-	return noopBackend{}, nil
 }
