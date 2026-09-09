@@ -539,7 +539,7 @@ func TestRuleContentTypeInfo(t *testing.T) {
 		{contentType: "comic", wantSearch: "book"},
 		{contentType: "game", wantSearch: "search"},
 		{contentType: "app", wantSearch: "search"},
-		{contentType: "adult"},
+		{contentType: "adult", wantSearch: "search"},
 		{contentType: "unknown"},
 		{contentType: ""},
 	}
@@ -556,6 +556,10 @@ func TestRuleContentTypeInfo(t *testing.T) {
 			assert.Equal(t, tt.wantSearch, info.SearchType)
 			assert.Equal(t, tt.wantIsMusic, info.IsMusic)
 			assert.NotEmpty(t, info.Categories)
+			if tt.contentType == "adult" {
+				assert.Equal(t, []int{6000}, info.Categories)
+				assert.Empty(t, info.RequiredCaps)
+			}
 		})
 	}
 }

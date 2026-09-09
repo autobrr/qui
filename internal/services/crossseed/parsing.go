@@ -266,6 +266,13 @@ func RuleContentTypeInfo(contentType string) (ContentTypeInfo, bool) {
 		releaseType = rls.Game
 	case "app":
 		releaseType = rls.App
+	case "adult":
+		return ContentTypeInfo{
+			ContentType:  "adult",
+			Categories:   []int{6000},
+			SearchType:   "search",
+			RequiredCaps: []string{},
+		}, true
 	default:
 		return ContentTypeInfo{}, false
 	}

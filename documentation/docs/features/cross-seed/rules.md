@@ -56,7 +56,7 @@ In both examples, the torrent is in a category that you control. A rule on that 
 4. Select or type one or more qBittorrent categories.
 5. Select the content type in the **search as** list.
 
-The content types are Movie, TV, Music, Audiobook, Book, Comic, Game, and App.
+The content types are Movie, TV, Music, Adult, Audiobook, Book, Comic, Game, and App.
 
 ### How rules match
 

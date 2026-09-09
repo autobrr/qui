@@ -23,6 +23,11 @@ func TestNormalizeCategoryMappingRules(t *testing.T) {
 			want: []models.CategoryMappingRule{{Categories: []string{"music", "flac"}, ContentType: "music"}},
 		},
 		{
+			name: "accepts adult content type",
+			in:   []models.CategoryMappingRule{{Categories: []string{"adult"}, ContentType: "adult"}},
+			want: []models.CategoryMappingRule{{Categories: []string{"adult"}, ContentType: "adult"}},
+		},
+		{
 			name: "keeps category case, qBittorrent categories are case-sensitive",
 			in:   []models.CategoryMappingRule{{Categories: []string{"Music"}, ContentType: "music"}},
 			want: []models.CategoryMappingRule{{Categories: []string{"Music"}, ContentType: "music"}},

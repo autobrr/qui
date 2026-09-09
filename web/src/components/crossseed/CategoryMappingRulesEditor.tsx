@@ -13,7 +13,7 @@ import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
 // Content types a rule may force (mirrors the backend list).
-const CONTENT_TYPE_OPTIONS = ["movie", "tv", "music", "audiobook", "book", "comic", "game", "app"] as const
+const CONTENT_TYPE_OPTIONS = ["movie", "tv", "music", "audiobook", "book", "comic", "game", "app", "adult"] as const
 
 interface CategoryMappingRulesEditorProps {
   value: CategoryMappingRule[]

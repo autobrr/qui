@@ -43,7 +43,7 @@ type SeasonPackCategoryRule struct {
 // signal.
 type CategoryMappingRule struct {
 	Categories  []string `json:"categories"`  // qBittorrent category names, exact match
-	ContentType string   `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app
+	ContentType string   `json:"contentType"` // movie, tv, music, audiobook, book, comic, game, app, adult
 }
 
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.

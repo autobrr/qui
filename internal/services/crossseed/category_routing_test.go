@@ -6,6 +6,7 @@ package crossseed
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/moistari/rls"
@@ -296,6 +297,7 @@ func TestContentTypeFromCategoryRule(t *testing.T) {
 			return &models.CrossSeedAutomationSettings{
 				CategoryMappingRules: []models.CategoryMappingRule{
 					{Categories: []string{"music"}, ContentType: "music"},
+					{Categories: []string{"adult"}, ContentType: "adult"},
 				},
 			}, nil
 		},
@@ -307,6 +309,14 @@ func TestContentTypeFromCategoryRule(t *testing.T) {
 	}
 	if info.ContentType != "music" || !info.IsMusic {
 		t.Errorf("contentTypeFromCategoryRule() = %+v, want music content info", info)
+	}
+
+	adultInfo, ok := svc.contentTypeFromCategoryRule(context.Background(), "adult")
+	if !ok {
+		t.Fatal("expected a match for the adult mapped category")
+	}
+	if adultInfo.ContentType != "adult" || adultInfo.SearchType != "search" || !slices.Equal(adultInfo.Categories, []int{6000}) {
+		t.Errorf("contentTypeFromCategoryRule() = %+v, want adult content info", adultInfo)
 	}
 
 	if _, ok := svc.contentTypeFromCategoryRule(context.Background(), "movies"); ok {
