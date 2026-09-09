@@ -10,8 +10,9 @@ Fixes # (issue)
 
 ## Performance
 
-<!--- Complete the mandatory benchmark steps in AGENTS.md#mandatory-benchmarks.
-      Record the performance risks and the required comparison here, or link to the benchmark results.
+<!--- Follow AGENTS.md#mandatory-performance-checks.
+      Include before/after measurements and a conclusion for changes that can affect performance.
+      Describe the workload and measurement method, or link to the results.
       If no performance risk applies, explain why. Keep this section. --->
 
 ## Screenshots (for UI changes)
@@ -24,7 +25,7 @@ Fixes # (issue)
 
 - [ ] My PR title follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#summary) format (it becomes the squashed commit message)
 - [ ] If this changes the database schema, I have added migrations for both SQLite and PostgreSQL
-- [ ] I completed the [mandatory benchmark steps](https://github.com/autobrr/qui/blob/develop/AGENTS.md#mandatory-benchmarks) and recorded the outcome in Performance
+- [ ] I completed the [mandatory performance checks](https://github.com/autobrr/qui/blob/develop/AGENTS.md#mandatory-performance-checks) and recorded the outcome in Performance
 
 ## AI disclosure
 
