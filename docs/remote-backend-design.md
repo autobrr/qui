@@ -205,12 +205,15 @@ backend domain end to end.
   Mechanically this stays the product's one crypto pattern — the same
   AES-GCM/`sessionSecret` helpers the existing credential stores use,
   with an AAD argument those stores simply haven't passed before.
-- Key derivation: `GetEncryptionKey` truncates `sessionSecret` to 32 bytes
-  instead of deriving from it. Moving to HKDF is tracked in #2521. It has
-  to land before the first release that writes SSH rows, unless it ships a
-  decidable ciphertext format so rows encrypted under the truncated key
-  still decrypt after the switch. That ordering is why #2521 is sequenced
-  against #1917.
+- Key derivation: `GetEncryptionKey` now derives the key from the whole
+  `sessionSecret` with HKDF-SHA256 rather than truncating it (#2521), and
+  new writes carry a `qui2:` prefix so the stored format is decidable.
+  Rows written under the truncated key stay readable through
+  `GetLegacyEncryptionKey` and each store rewrites its own on first
+  start. If #2521 lands first, SSH writes go through the cipher and are
+  versioned from day one. If #1917 lands first, its two AAD-bound SSH
+  columns need a per-column AAD hook in the rewrite pass before they can
+  migrate, and until then they stay readable through the legacy key.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
