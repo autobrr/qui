@@ -41,6 +41,11 @@ func mustCwd() string {
 func TestPruneNestedScanRoots(t *testing.T) {
 	t.Parallel()
 
+	base := t.TempDir()
+	data := func(parts ...string) string {
+		return filepath.Join(append([]string{base}, parts...)...)
+	}
+
 	tests := []struct {
 		name  string
 		roots []string
@@ -82,11 +87,50 @@ func TestPruneNestedScanRoots(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := pruneNestedScanRoots(tt.roots)
+			for _, root := range tt.roots {
+				if err := os.MkdirAll(root, 0o750); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := pruneNestedScanRoots(t.Context(), tt.roots, newTestBackend())
 			if !slices.Equal(got, tt.want) {
 				t.Fatalf("pruneNestedScanRoots(%v) = %v, want %v", tt.roots, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPruneNestedScanRoots_PreservesRootsThroughSymlinks(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	outside := mkdirs(t, t.TempDir(), "downloads")
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	nested := filepath.Join(link, "downloads")
+	orphan := filepath.Join(nested, "orphan.txt")
+	writeFile(t, orphan)
+	backend := newTestBackend()
+
+	for _, ancestor := range []string{root, link} {
+		roots := []string{ancestor, nested}
+		walkRoots := pruneNestedScanRoots(t.Context(), roots, backend)
+		if !slices.Equal(walkRoots, roots) {
+			t.Fatalf("walk roots = %v, want %v", walkRoots, roots)
+		}
+		var found []OrphanFile
+		for _, walkRoot := range walkRoots {
+			orphans, _, err := walkScanRoot(t.Context(), walkRoot, NewTorrentFileMap(), nil, 0, 0, backend)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found = append(found, orphans...)
+		}
+		if len(found) != 1 || found[0].Path != orphan {
+			t.Fatalf("orphans = %v, want %q", found, orphan)
+		}
 	}
 }
 
@@ -196,7 +240,7 @@ func TestBuildFileMap_DefaultSavePathRootIsOptIn(t *testing.T) {
 	}
 
 	// The nested torrent root is already covered, so only one tree is walked.
-	walkRoots := pruneNestedScanRoots(on.scanRoots)
+	walkRoots := pruneNestedScanRoots(t.Context(), on.scanRoots, newTestBackend())
 	if !slices.Equal(walkRoots, []string{defaultSavePath}) {
 		t.Fatalf("walk roots = %v, want only %q", walkRoots, defaultSavePath)
 	}

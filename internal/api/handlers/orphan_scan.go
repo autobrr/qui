@@ -213,6 +213,7 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 	if payload.ScanCategoryPaths != nil {
 		settings.ScanCategoryPaths = *payload.ScanCategoryPaths
 	}
+	settings.ScanCategoryPaths = settings.ScanDefaultSavePath && settings.ScanCategoryPaths
 	if payload.DeleteAbandonedDirs != nil {
 		settings.DeleteAbandonedDirs = *payload.DeleteAbandonedDirs
 	}

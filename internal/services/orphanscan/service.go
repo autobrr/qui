@@ -263,7 +263,7 @@ func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string,
 // pruneNestedScanRoots drops roots already covered by another root in the set so
 // an ancestor and its descendants are not walked twice. Callers keep the full
 // set for run.ScanPaths; only the walk is narrowed.
-func pruneNestedScanRoots(roots []string) []string {
+func pruneNestedScanRoots(ctx context.Context, roots []string, backend fsops.Backend) []string {
 	cleaned := make([]string, len(roots))
 	for i, root := range roots {
 		cleaned[i] = filepath.Clean(root)
@@ -274,8 +274,22 @@ func pruneNestedScanRoots(roots []string) []string {
 		covered := false
 		for j := range roots {
 			// Keep case-distinct trees: a folded match does not prove walk coverage.
-			if isPathUnderNormalized(cleaned[i], cleaned[j]) {
-				covered = true
+			if !isPathUnderNormalized(cleaned[i], cleaned[j]) {
+				continue
+			}
+			covered = true
+			// WalkDir skips symlinks, including a root that is itself a symlink.
+			for dir := filepath.Dir(cleaned[i]); ; dir = filepath.Dir(dir) {
+				info, err := backend.Lstat(ctx, dir)
+				if err != nil || !info.IsDir || info.IsSymlink {
+					covered = false
+					break
+				}
+				if dir == cleaned[j] {
+					break
+				}
+			}
+			if covered {
 				break
 			}
 		}
@@ -735,7 +749,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// run.ScanPaths keeps every root so deletion still resolves the narrowest
 	// one per file, but walking an ancestor already covers its descendants.
-	walkRoots := pruneNestedScanRoots(scanRoots)
+	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
 	walkErrors = append(walkErrors, unreachableCoveredRoots(ctx, scanRoots, walkRoots, backend)...)
 
 	var fileFreeDirs []AbandonedDir
