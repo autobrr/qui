@@ -30,7 +30,7 @@ const minContainsNameLength = 10
 type CategoryEntry struct {
 	Hash           string // torrent hash for self-exclusion
 	Name           string // lowercased name (for EXISTS_IN exact match)
-	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
+	NormalizedName string // normalizeName(Name) result, used for CONTAINS_IN matching
 }
 
 // FreeSpaceSourceState tracks free space projection state for a single source.
@@ -150,9 +150,9 @@ var separatorReplacer = strings.NewReplacer(".", " ", "_", " ", "-", " ")
 // whitespaceCollapser collapses multiple spaces into one.
 var whitespaceCollapser = regexp.MustCompile(`\s+`)
 
-// normalizeName normalizes a torrent name for CONTAINS_IN comparison:
-// lowercase + replace . _ - with space + collapse whitespace.
+// Lowercase before Unicode folding for ẞ, and after for letters produced by decomposition.
 func normalizeName(s string) string {
+	s = stringutils.NormalizeUnicode(normalizeLower(s))
 	s = normalizeLower(s)
 	s = separatorReplacer.Replace(s)
 	s = whitespaceCollapser.ReplaceAllString(s, " ")

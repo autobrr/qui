@@ -252,7 +252,7 @@ Both fields require **qBittorrent 5.1+** (Web API 2.11.4+). On older instances, 
 **Cross-Category (Name field only):**
 
 - `EXISTS_IN`: exact name match in the target category
-- `CONTAINS_IN`: partial or normalized name match in the target category
+- `CONTAINS_IN`: partial name match in the target category. The comparison is case-insensitive and accent-insensitive, and treats `.`, `_` and `-` as spaces, so "Amélie.2001" matches "Amelie 2001".
 
 ### Regex support
 

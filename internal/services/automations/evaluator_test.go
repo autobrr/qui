@@ -1678,6 +1678,97 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 	}
 }
 
+// TestEvaluateCondition_ContainsIn_Diacritics verifies that CONTAINS_IN matches
+// names that differ only by diacritics or ligatures, and that the match is
+// symmetric regardless of which side carries the accent.
+func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
+	cond := &RuleCondition{
+		Field:    FieldName,
+		Operator: OperatorContainsIn,
+		Value:    "imported",
+	}
+
+	tests := []struct {
+		name          string
+		categoryName  string // name stored in the "imported" category
+		evaluatedName string // name of the torrent being evaluated (category "tv")
+		expected      bool
+	}{
+		{
+			// Accented query is a substring of the longer ASCII category member.
+			name:          "accented query partial-matches ASCII category member",
+			categoryName:  "Amelie.2001.1080p.BluRay.x264-GROUP",
+			evaluatedName: "Am\u00e9lie.2001.1080p",
+			expected:      true,
+		},
+		{
+			name:          "accented category member partial-matches ASCII query",
+			categoryName:  "Am\u00e9lie.2001.1080p",
+			evaluatedName: "Amelie.2001.1080p.BluRay.x264-GROUP",
+			expected:      true,
+		},
+		{
+			name:          "Nordic letter folds to match a longer member",
+			categoryName:  "Aeon.Flux.2005.1080p.BluRay.x264-GROUP",
+			evaluatedName: "\u00c6on.Flux.2005.1080p",
+			expected:      true,
+		},
+		{
+			name:          "uppercase sharp S query matches lowercase category member",
+			categoryName:  "Gro\u00dfstadt.2024",
+			evaluatedName: "GRO\u1e9eSTADT.2024",
+			expected:      true,
+		},
+		{
+			name:          "uppercase sharp S category member matches lowercase query",
+			categoryName:  "GRO\u1e9eSTADT.2024",
+			evaluatedName: "Gro\u00dfstadt.2024",
+			expected:      true,
+		},
+		{
+			name:          "unrelated accented name still does not match",
+			categoryName:  "Am\u00e9lie.2001.1080p.BluRay",
+			evaluatedName: "Bj\u00f6rk.Concert.2018.1080p",
+			expected:      false,
+		},
+		{
+			// A query of only combining marks folds to empty; the length guard
+			// must skip it, or an empty needle would match every member.
+			name:          "empty-folding query is skipped",
+			categoryName:  "Some.Long.Release.Name.2024",
+			evaluatedName: "\u0301\u0301\u0301\u0301\u0301",
+			expected:      false,
+		},
+		{
+			// Same guard on the category side.
+			name:          "empty-folding category member is skipped",
+			categoryName:  "\u0301\u0301\u0301\u0301\u0301",
+			evaluatedName: "Some.Long.Release.Name.2024",
+			expected:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{Hash: "hashCat", Name: tt.categoryName, Category: "imported"},
+			}
+			categoryIndex, categoryNames := BuildCategoryIndex(torrents)
+			evalCtx := &EvalContext{
+				CategoryIndex: categoryIndex,
+				CategoryNames: categoryNames,
+			}
+
+			torrent := qbt.Torrent{Hash: "hashEval", Name: tt.evaluatedName, Category: "tv"}
+			result := EvaluateConditionWithContext(cond, torrent, evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("CONTAINS_IN %q against category member %q = %v, expected %v",
+					tt.evaluatedName, tt.categoryName, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestBuildCategoryIndex(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "hash1", Name: "Test.Torrent.A", Category: "movies"},
@@ -1746,6 +1837,17 @@ func TestNormalizeName(t *testing.T) {
 		{"UPPERCASE.NAME", "uppercase name"},
 		{"already normal", "already normal"},
 		{"", ""},
+		// Accents and the Nordic/Germanic letters fold to their ASCII base, so
+		// accented names match their plain form.
+		{"Am\u00e9lie.2001.1080p", "amelie 2001 1080p"},
+		{"\u0130stanbul.Nights.2019", "istanbul nights 2019"},
+		{"Bj\u00f6rk.Concert.2018", "bjork concert 2018"},
+		{"na\u00efve.Detective.S01", "naive detective s01"},
+		{"\u00c6on.Flux.2005.1080p", "aeon flux 2005 1080p"},
+		{"Stra\u00dfe.Berlin.2020", "strasse berlin 2020"},
+		{"GRO\u1e9eSTADT.2024", "grossstadt 2024"},
+		{"\U0001d400lpha.2024", "alpha 2024"},      // mathematical capital A decomposes to uppercase ASCII
+		{"Cafe\u0301.Noir.2021", "cafe noir 2021"}, // decomposed accent (e + combining acute)
 	}
 
 	for _, tt := range tests {
