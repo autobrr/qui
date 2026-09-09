@@ -50,18 +50,13 @@ func hostKeyPinAAD(instanceID int, host string, port int) []byte {
 // Changing the host or port drops any existing pin: the pin was confirmed for
 // one endpoint, and the new one has never been seen before.
 func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, host string, port int, username, privateKey string) error {
-	// Lowercased so that re-saving "Example.com" as "example.com" is not an
-	// endpoint change that silently drops a good pin.
-	host = strings.ToLower(strings.TrimSpace(host))
+	host, err := normalizeSSHHost(host)
+	if err != nil {
+		return err
+	}
 	username = strings.TrimSpace(username)
 
 	switch {
-	case host == "":
-		return errors.New("ssh host is required")
-	case strings.ContainsFunc(host, func(r rune) bool { return !unicode.IsPrint(r) }):
-		return fmt.Errorf("ssh host %q contains non-printable characters", host)
-	case !isIPLiteral(host) && strings.ContainsAny(host, "/\\:@ "):
-		return fmt.Errorf("ssh host %q must be a bare hostname or IP, without scheme, port or credentials", host)
 	case port < 1 || port > 65535:
 		return fmt.Errorf("ssh port %d out of range", port)
 	case username == "":
@@ -94,11 +89,27 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, host, port, username, encryptedKey, host, port, instanceID)
 }
 
-// isIPLiteral lets a bare IPv6 address through the hostname character check;
-// it is stored unbracketed and net.JoinHostPort brackets it at dial time.
-func isIPLiteral(host string) bool {
-	_, err := netip.ParseAddr(host)
-	return err == nil
+// normalizeSSHHost returns the one stored form of a host so that a cosmetic
+// re-save ("Example.com", "fd00:0:0:0:0:0:0:1") is not an endpoint change that
+// drops a good pin. IP literals take netip's canonical text, which keeps an
+// IPv6 zone's case: interface names match exactly. The literal is stored
+// unbracketed and net.JoinHostPort brackets it at dial time.
+func normalizeSSHHost(host string) (string, error) {
+	host = strings.TrimSpace(host)
+	switch {
+	case host == "":
+		return "", errors.New("ssh host is required")
+	case strings.ContainsFunc(host, func(r rune) bool { return !unicode.IsPrint(r) }):
+		return "", fmt.Errorf("ssh host %q contains non-printable characters", host)
+	}
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return addr.String(), nil
+	}
+	host = strings.ToLower(host)
+	if strings.ContainsAny(host, "/\\:@ ") {
+		return "", fmt.Errorf("ssh host %q must be a bare hostname or IP, without scheme, port or credentials", host)
+	}
+	return host, nil
 }
 
 // ClearSSHCredentials removes the credentials but keeps the pin: the pin
@@ -112,15 +123,21 @@ func (s *InstanceStore) ClearSSHCredentials(ctx context.Context, instanceID int)
 	return s.execInstanceUpdate(ctx, ErrInstanceNotFound, query, instanceID)
 }
 
-// SetHostKeyPin pins the marshaled host public key for an instance. The
-// endpoint comes from the stored row rather than the caller so the pin can
-// never be bound to a host the instance is not actually configured for.
+// SetHostKeyPin pins the marshaled host public key the caller confirmed for
+// host and port. The endpoint comes from the caller, not the stored row: a key
+// confirmed for one host must not be pinned to whatever host the row carries by
+// the time the confirmation lands, so a row whose endpoint no longer matches is
+// refused with ErrSSHEndpointChanged.
 //
 // Pinning an already-pinned instance is refused: overwriting a live pin is
 // exactly the silent re-pin the mismatch flow exists to prevent, so replacing
 // one has to be asked for by name rather than fallen into.
-func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, marshaledKey []byte) error {
+func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
 	if err := validateMarshaledHostKey(marshaledKey); err != nil {
+		return err
+	}
+	host, err := normalizeSSHHost(host)
+	if err != nil {
 		return err
 	}
 
@@ -135,7 +152,7 @@ func (s *InstanceStore) SetHostKeyPin(ctx context.Context, instanceID int, marsh
 		return ErrSSHHostKeyAlreadyPinned
 	}
 
-	return s.setHostKeyPinFor(ctx, instanceID, instance.SSHHost, instance.SSHPort, marshaledKey)
+	return s.setHostKeyPinFor(ctx, instanceID, host, port, marshaledKey)
 }
 
 // validateMarshaledHostKey enforces that the column only ever holds SSH wire

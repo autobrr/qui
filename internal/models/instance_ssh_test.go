@@ -104,7 +104,7 @@ func configureSSH(t *testing.T, store *InstanceStore, instanceID int) {
 
 	ctx := t.Context()
 	require.NoError(t, store.SetSSHCredentials(ctx, instanceID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
-	require.NoError(t, store.SetHostKeyPin(ctx, instanceID, testHostKey))
+	require.NoError(t, store.SetHostKeyPin(ctx, instanceID, testSSHHost, testSSHKeyPort, testHostKey))
 }
 
 func TestSSHCredentialsRoundTrip(t *testing.T) {
@@ -253,7 +253,7 @@ func TestRedirectedInstanceDropsPin(t *testing.T) {
 
 	t.Run("new port drops the pin", func(t *testing.T) {
 		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
-		require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, testHostKey))
+		require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, testHostKey))
 		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, 2222, testSSHUser, testSSHKey))
 
 		stored, err := store.Get(ctx, instance.ID)
@@ -365,11 +365,59 @@ func TestSetSSHCredentialsAcceptsIPLiterals(t *testing.T) {
 	}
 }
 
+// A key confirmed for one endpoint must not be pinned to another: between the
+// confirmation and the write the instance may have been pointed elsewhere, and
+// the row's current endpoint is not the one the user looked at.
+func TestSetHostKeyPinRefusesAnUnconfirmedEndpoint(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+	instance := newSSHTestInstance(t, store, "remote")
+	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
+	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, "moved.example.com", testSSHKeyPort, testSSHUser, testSSHKey))
+
+	err := store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, testHostKey)
+	require.ErrorIs(t, err, ErrSSHEndpointChanged)
+
+	stored, err := store.Get(ctx, instance.ID)
+	require.NoError(t, err)
+	_, err = store.GetHostKeyPin(stored)
+	require.ErrorIs(t, err, ErrSSHHostKeyNotPinned, "the moved endpoint must stay unpinned")
+}
+
+// IP literals are stored in netip's canonical text so a re-typed address is not
+// an endpoint change, while an IPv6 zone keeps its case: interface names match
+// exactly.
+func TestIPLiteralHostsAreCanonical(t *testing.T) {
+	store, ctx := newSSHTestStore(t)
+
+	t.Run("zone case is preserved", func(t *testing.T) {
+		instance := newSSHTestInstance(t, store, "zoned")
+		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, "fe80::1%enP5p1s0", 22, testSSHUser, testSSHKey))
+
+		stored, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "fe80::1%enP5p1s0", stored.SSHHost)
+	})
+
+	t.Run("expanded form keeps the pin", func(t *testing.T) {
+		instance := newSSHTestInstance(t, store, "v6")
+		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, "fd00::1", 22, testSSHUser, testSSHKey))
+		require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, "FD00:0:0:0:0:0:0:1", 22, testHostKey))
+		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, "fd00:0:0:0:0:0:0:1", 22, testSSHUser, testSSHKey))
+
+		stored, err := store.Get(ctx, instance.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "fd00::1", stored.SSHHost)
+		pin, err := store.GetHostKeyPin(stored)
+		require.NoError(t, err, "a re-typed literal is not an endpoint change")
+		assert.Equal(t, testHostKey, pin)
+	})
+}
+
 func TestSSHUpdatesRequireAnExistingInstance(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 
 	require.ErrorIs(t, store.SetSSHCredentials(ctx, 404, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey), ErrInstanceNotFound)
-	require.ErrorIs(t, store.SetHostKeyPin(ctx, 404, testHostKey), ErrInstanceNotFound)
+	require.ErrorIs(t, store.SetHostKeyPin(ctx, 404, testSSHHost, testSSHKeyPort, testHostKey), ErrInstanceNotFound)
 	require.ErrorIs(t, store.ClearSSHCredentials(ctx, 404), ErrInstanceNotFound)
 }
 
@@ -377,9 +425,9 @@ func TestSetHostKeyPinRequiresHostAndKey(t *testing.T) {
 	store, ctx := newSSHTestStore(t)
 	instance := newSSHTestInstance(t, store, "remote")
 
-	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, nil), "an empty host key is not a pin")
+	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, nil), "an empty host key is not a pin")
 
-	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testHostKey), "cannot pin a host that is not configured")
+	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, testHostKey), "cannot pin a host that is not configured")
 }
 
 // A pin is written for the endpoint it was confirmed against. If a credential
@@ -428,7 +476,7 @@ func TestSetHostKeyPinRefusesAnAlreadyPinnedInstance(t *testing.T) {
 	configureSSH(t, store, instance.ID)
 
 	otherKey := generateTestHostKey()
-	require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, otherKey), ErrSSHHostKeyAlreadyPinned)
+	require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, otherKey), ErrSSHHostKeyAlreadyPinned)
 
 	stored, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err)
@@ -445,7 +493,7 @@ func TestSetHostKeyPinRequiresWireFormat(t *testing.T) {
 	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, testSSHHost, testSSHKeyPort, testSSHUser, testSSHKey))
 
 	displayForm := []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexample")
-	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, displayForm), "authorized_keys display form is not a marshaled key")
+	require.Error(t, store.SetHostKeyPin(ctx, instance.ID, testSSHHost, testSSHKeyPort, displayForm), "authorized_keys display form is not a marshaled key")
 
 	stored, err := store.Get(ctx, instance.ID)
 	require.NoError(t, err)

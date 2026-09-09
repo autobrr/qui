@@ -57,7 +57,7 @@ func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Q
 	privateKey := sshTestPrivateKey(t)
 
 	require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, sshTestHost, sshTestPort, sshTestUser, privateKey))
-	require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, hostKey))
+	require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHost, sshTestPort, hostKey))
 
 	reload := func(t *testing.T) *models.Instance {
 		t.Helper()
@@ -75,7 +75,7 @@ func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Q
 	})
 
 	t.Run("re-pinning a live endpoint is refused", func(t *testing.T) {
-		require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHostKey(t)), models.ErrSSHHostKeyAlreadyPinned)
+		require.ErrorIs(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHost, sshTestPort, sshTestHostKey(t)), models.ErrSSHHostKeyAlreadyPinned)
 
 		pin, err := store.GetHostKeyPin(reload(t))
 		require.NoError(t, err)
@@ -101,7 +101,7 @@ func runInstanceSSHLifecycle(ctx context.Context, t *testing.T, db dbinterface.Q
 
 	t.Run("a new port drops the pin", func(t *testing.T) {
 		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, sshTestHost, sshTestPort, sshTestUser, privateKey))
-		require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, hostKey))
+		require.NoError(t, store.SetHostKeyPin(ctx, instance.ID, sshTestHost, sshTestPort, hostKey))
 		require.NoError(t, store.SetSSHCredentials(ctx, instance.ID, sshTestHost, 2222, sshTestUser, privateKey))
 
 		_, err := store.GetHostKeyPin(reload(t))
