@@ -773,7 +773,7 @@ func prepareRuleForDryRun(rule *models.Automation, instanceID int) *models.Autom
 // PreviewResult contains torrents that would match a rule.
 type PreviewResult struct {
 	TotalMatches   int              `json:"totalMatches"`
-	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (for category preview)
+	CrossSeedCount int              `json:"crossSeedCount,omitempty"` // Count of cross-seeds included (category and tag preview)
 	Examples       []PreviewTorrent `json:"examples"`
 }
 
