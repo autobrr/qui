@@ -777,36 +777,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		previewSort = "size_desc"
 	}
 
-	sort.Slice(allOrphans, func(i, j int) bool {
-		a, b := allOrphans[i], allOrphans[j]
-
-		// This ordering decides truncation, not display: the preview re-sorts
-		// on read. Among abandoned directories the deepest must come first, or
-		// the cap can keep a parent while cutting its child, and that parent can
-		// never be removed because the child still blocks it. Every later scan
-		// would then re-select the same parent and nothing would ever go.
-		if a.IsAbandonedDir && b.IsAbandonedDir && len(a.Path) != len(b.Path) {
-			return len(a.Path) > len(b.Path)
-		}
-
-		switch previewSort {
-		case "directory_size_desc":
-			da := strings.ToLower(filepath.Clean(filepath.Dir(a.Path)))
-			db := strings.ToLower(filepath.Clean(filepath.Dir(b.Path)))
-			if da != db {
-				return da < db
-			}
-			if a.Size != b.Size {
-				return a.Size > b.Size
-			}
-			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
-		default: // "size_desc"
-			if a.Size != b.Size {
-				return a.Size > b.Size
-			}
-			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
-		}
-	})
+	less := truncationLess(previewSort)
+	sort.Slice(allOrphans, func(i, j int) bool { return less(allOrphans[i], allOrphans[j]) })
 
 	maxFiles := settings.MaxFilesPerRun
 	if maxFiles <= 0 {
@@ -906,6 +878,50 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// Check if auto-cleanup should be triggered for scheduled scans
 	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
+}
+
+// truncationLess orders the entries a run stores. This decides what the
+// max-files cap keeps, not what the preview shows: the preview re-sorts on read.
+//
+// Files and directories are ranked separately, and files first. One comparator
+// spanning both is cyclic, because a file can sort between a directory and its
+// child under previewSort while the depth rule puts the child first, and
+// sort.Slice on a cyclic comparator returns an arbitrary order.
+func truncationLess(previewSort string) func(a, b OrphanFile) bool {
+	return func(a, b OrphanFile) bool {
+		if a.IsAbandonedDir != b.IsAbandonedDir {
+			return !a.IsAbandonedDir
+		}
+
+		// The deepest directory has to come first, or the cap can keep a parent
+		// while cutting its child, and that parent can never be removed because
+		// the child still blocks it. Every later scan would re-select the same
+		// parent and nothing would ever go.
+		if a.IsAbandonedDir {
+			if len(a.Path) != len(b.Path) {
+				return len(a.Path) > len(b.Path)
+			}
+			return a.Path < b.Path
+		}
+
+		switch previewSort {
+		case "directory_size_desc":
+			da := strings.ToLower(filepath.Clean(filepath.Dir(a.Path)))
+			db := strings.ToLower(filepath.Clean(filepath.Dir(b.Path)))
+			if da != db {
+				return da < db
+			}
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
+		default: // "size_desc"
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
+		}
+	}
 }
 
 func dedupeOrphans(allOrphans []OrphanFile) []OrphanFile {
@@ -1048,10 +1064,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	})
 
 	// The declared roots have to be in place before cross-instance overlap
-	// detection decides whose torrents to merge into the protection map. A run
-	// with directories still pending also needs the category destinations, even
-	// if the operator has since turned the option off: those directories were
-	// judged against a category list and must be judged against it again.
+	// detection decides whose torrents to merge into the protection map.
 	// Category destinations are needed for every path that removes a directory,
 	// not just the abandoned-directory pass: deleting an orphan out of a category
 	// folder empties it, and the follow-up cleanup would then remove it.

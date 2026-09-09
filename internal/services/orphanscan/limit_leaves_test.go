@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -160,4 +161,37 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, run.ErrorMessage, nested,
 		"a nested save path that is not on disk must still be reported, not hidden by pruning")
+}
+
+// TestTruncationLess_OrdersFilesThenDeepestDirectories pins the order the cap
+// truncates against. A file whose name falls between a directory and its child
+// ("d-f" sorts after "d" and before "d/x", since '-' < '/' and '-' < '\\') used
+// to make the comparator cyclic, and sort.Slice on a cyclic comparator returns
+// an order that depends on how the entries arrived — which is map order, from
+// dedupeOrphans. Every permutation must give the same answer.
+func TestTruncationLess_OrdersFilesThenDeepestDirectories(t *testing.T) {
+	t.Parallel()
+
+	parent := OrphanFile{Path: "d", IsAbandonedDir: true}
+	child := OrphanFile{Path: filepath.Join("d", "x"), IsAbandonedDir: true}
+	file := OrphanFile{Path: "d-f"}
+
+	// Files come first, then directories deepest first, so the child is always
+	// listed before the parent whose removal it blocks.
+	want := []string{file.Path, child.Path, parent.Path}
+
+	entries := []OrphanFile{parent, child, file}
+	for _, previewSort := range []string{"size_desc", "directory_size_desc"} {
+		less := truncationLess(previewSort)
+		for _, perm := range [][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}} {
+			in := []OrphanFile{entries[perm[0]], entries[perm[1]], entries[perm[2]]}
+			sort.Slice(in, func(i, j int) bool { return less(in[i], in[j]) })
+
+			got := make([]string, len(in))
+			for i, o := range in {
+				got[i] = o.Path
+			}
+			require.Equal(t, want, got, "previewSort %q, input order %v", previewSort, perm)
+		}
+	}
 }
