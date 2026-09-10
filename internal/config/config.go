@@ -942,7 +942,7 @@ func (c *AppConfig) validateSessionSecret() error {
 		return nil
 	}
 
-	return errors.New("sessionSecret is empty, which is not allowed. Set sessionSecret in config.toml or QUI__SESSION_SECRET to a random value of at least 32 characters. Credentials stored while the secret was empty cannot be decrypted under the new value, so enter them again in the UI")
+	return errors.New("sessionSecret is empty. Set it in config.toml or QUI__SESSION_SECRET to a random value of at least 32 characters. Credentials saved while it was empty will not decrypt under the new value, so enter them again in the UI")
 }
 
 // warnWeakSessionSecret reports a session secret shorter than the key HKDF
