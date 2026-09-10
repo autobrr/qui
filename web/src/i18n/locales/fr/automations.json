@@ -100,6 +100,7 @@
     "groupTooltip": "Ce groupe s'applique uniquement à cette ligne de condition. Utilisez des groupes différents sur d'autres lignes GROUP_SIZE/IS_GROUPED si nécessaire.",
     "min": "Min",
     "max": "Max",
+    "wrappingRangeHint": "La plage boucle : correspond à {{min}} et au-dessus, puis à tout ce qui est en dessous de {{max}}.",
     "selectState": "Sélectionner un état",
     "selectScope": "Sélectionner une portée",
     "selectTrackerStatus": "Sélectionner un statut",

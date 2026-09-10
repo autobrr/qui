@@ -100,6 +100,7 @@
     "groupTooltip": "Este grupo se aplica apenas a esta linha de condição. Use grupos diferentes em outras linhas de GROUP_SIZE/IS_GROUPED se necessário.",
     "min": "Mín",
     "max": "Máx",
+    "wrappingRangeHint": "O intervalo dá a volta: corresponde a {{min}} e acima, depois a tudo abaixo de {{max}}.",
     "selectState": "Selecionar estado",
     "selectScope": "Selecionar escopo",
     "selectTrackerStatus": "Selecionar status",

@@ -100,6 +100,7 @@
     "groupTooltip": "Tato skupina se vztahuje pouze na tuto řádku podmínky. Použijte různé skupiny na ostatních řádcích GROUP_SIZE/IS_GROUPED (velikost skupiny/je seskupená), pokud je třeba.",
     "min": "Min",
     "max": "Max",
+    "wrappingRangeHint": "Rozsah přechází přes konec: odpovídá {{min}} a výše, potom všemu pod {{max}}.",
     "selectState": "Vybrat stav",
     "selectScope": "Vybrat rozsah",
     "true": "Pravda",

@@ -786,6 +786,21 @@ func (f ConditionField) IsNumeric() bool {
 	}
 }
 
+// WrapsBetween reports whether a BETWEEN range on this field wraps when the
+// minimum is greater than the maximum. Clock fields cycle, so 20 to 6 on the
+// hour means the night that crosses midnight. SYSTEM_DAY and SYSTEM_YEAR do not:
+// a month boundary depends on the month length, and years do not cycle.
+//
+//nolint:exhaustive // Only cyclic clock fields belong here.
+func (f ConditionField) WrapsBetween() bool {
+	switch f {
+	case FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemMonth:
+		return true
+	default:
+		return false
+	}
+}
+
 //nolint:exhaustive // Only sortable string fields belong here.
 func (f ConditionField) IsString() bool {
 	switch f {

@@ -4164,3 +4164,88 @@ func TestEvaluateCondition_TrackerFields_AllTrackers(t *testing.T) {
 		})
 	}
 }
+
+// TestEvaluateCondition_BetweenWrapsClockFields pins the wrap semantics of BETWEEN.
+// A reversed range on a clock field crosses the wrap point: it matches from min
+// through the top of the field and from the bottom up to, but not including, max.
+// Every other numeric field treats a reversed range as empty.
+func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
+	// atHour returns an EvalContext whose evaluation time falls in the given hour.
+	atHour := func(hour int) *EvalContext {
+		return &EvalContext{NowUnix: time.Date(2025, time.August, 15, hour, 30, 0, 0, time.Local).Unix()}
+	}
+	atMinute := func(minute int) *EvalContext {
+		return &EvalContext{NowUnix: time.Date(2025, time.August, 15, 14, minute, 0, 0, time.Local).Unix()}
+	}
+	// atWeekday returns an EvalContext on the given weekday; 2025-08-10 is a Sunday (0).
+	atWeekday := func(weekday int) *EvalContext {
+		return &EvalContext{NowUnix: time.Date(2025, time.August, 10+weekday, 14, 30, 0, 0, time.Local).Unix()}
+	}
+	atMonth := func(month int) *EvalContext {
+		return &EvalContext{NowUnix: time.Date(2025, time.Month(month), 15, 14, 30, 0, 0, time.Local).Unix()}
+	}
+	between := func(field models.ConditionField, minValue, maxValue float64) *RuleCondition {
+		return &RuleCondition{Field: field, Operator: OperatorBetween, MinValue: &minValue, MaxValue: &maxValue}
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		evalCtx  *EvalContext
+		expected bool
+	}{
+		// SYSTEM_HOUR 20..6: the reported case, active 20:00 through 05:59.
+		{name: "hour wrap below min", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(19), expected: false},
+		{name: "hour wrap at min", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(20), expected: true},
+		{name: "hour wrap above min", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(22), expected: true},
+		{name: "hour wrap at wrap point", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(0), expected: true},
+		{name: "hour wrap below max", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(5), expected: true},
+		{name: "hour wrap at max is excluded", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(6), expected: false},
+		{name: "hour wrap above max", cond: between(models.FieldSystemHour, 20, 6), evalCtx: atHour(12), expected: false},
+		// A forward hour range keeps inclusive bounds on both ends.
+		{name: "hour forward at min", cond: between(models.FieldSystemHour, 6, 20), evalCtx: atHour(6), expected: true},
+		{name: "hour forward at max", cond: between(models.FieldSystemHour, 6, 20), evalCtx: atHour(20), expected: true},
+		{name: "hour forward outside", cond: between(models.FieldSystemHour, 6, 20), evalCtx: atHour(21), expected: false},
+
+		// SYSTEM_MINUTE 50..10.
+		{name: "minute wrap below min", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(49), expected: false},
+		{name: "minute wrap at min", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(50), expected: true},
+		{name: "minute wrap above min", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(55), expected: true},
+		{name: "minute wrap at wrap point", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(0), expected: true},
+		{name: "minute wrap below max", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(9), expected: true},
+		{name: "minute wrap at max is excluded", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(10), expected: false},
+		{name: "minute wrap above max", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(30), expected: false},
+
+		// SYSTEM_DAY_OF_WEEK 5..1: Friday and Saturday, ending before Monday.
+		{name: "weekday wrap below min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(4), expected: false},
+		{name: "weekday wrap at min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(5), expected: true},
+		{name: "weekday wrap above min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(6), expected: true},
+		{name: "weekday wrap at wrap point", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(0), expected: true},
+		{name: "weekday wrap at max is excluded", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(1), expected: false},
+		{name: "weekday wrap above max", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(3), expected: false},
+
+		// SYSTEM_MONTH 11..3: the winter months, ending before March.
+		{name: "month wrap below min", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(10), expected: false},
+		{name: "month wrap at min", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(11), expected: true},
+		{name: "month wrap above min", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(12), expected: true},
+		{name: "month wrap at wrap point", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(1), expected: true},
+		{name: "month wrap below max", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(2), expected: true},
+		{name: "month wrap at max is excluded", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(3), expected: false},
+		{name: "month wrap above max", cond: between(models.FieldSystemMonth, 11, 3), evalCtx: atMonth(7), expected: false},
+
+		// Non-clock fields treat a reversed range as empty, not as a wrap.
+		{name: "seeds reversed range stays false", cond: between(FieldNumSeeds, 10, 5), torrent: qbt.Torrent{NumSeeds: 12}, expected: false},
+		{name: "ratio reversed range stays false", cond: between(FieldRatio, 2, 1), torrent: qbt.Torrent{Ratio: 3}, expected: false},
+		{name: "system day reversed range stays false", cond: between(models.FieldSystemDay, 28, 3), evalCtx: atHour(14), expected: false},
+		{name: "system year reversed range stays false", cond: between(models.FieldSystemYear, 2026, 2024), evalCtx: atHour(14), expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.evalCtx, 0); result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}

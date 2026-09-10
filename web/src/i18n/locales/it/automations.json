@@ -100,6 +100,7 @@
     "groupTooltip": "Questo gruppo si applica solo a questa riga di condizione. Usa gruppi diversi su altre righe GROUP_SIZE/IS_GROUPED se necessario.",
     "min": "Min",
     "max": "Max",
+    "wrappingRangeHint": "L'intervallo si avvolge: corrisponde a {{min}} e oltre, poi a tutto ciò che è sotto {{max}}.",
     "selectState": "Seleziona uno stato",
     "selectScope": "Seleziona un ambito",
     "selectTrackerStatus": "Seleziona uno stato",
