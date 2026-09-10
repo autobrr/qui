@@ -328,10 +328,12 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	require.FileExists(t, stray, "a file another local instance now seeds must not be deleted")
 }
 
-// TestExecuteDeletion_RemovesNoDirectoriesWhenTheOptionIsOff covers a run with
-// abandoned-directory cleanup off. Deleting the orphan empties the category
-// folder, but a run that previewed no directories removes none.
-func TestExecuteDeletion_RemovesNoDirectoriesWhenTheOptionIsOff(t *testing.T) {
+// TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone covers a scan
+// run with abandoned-directory cleanup off. Deleting the orphan empties the
+// category folder, but nothing removes a directory the preview did not list.
+// Turning the option off after a preview is a different case: those directories
+// are already listed and confirmed, and the run still removes them.
+func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing.T) {
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
