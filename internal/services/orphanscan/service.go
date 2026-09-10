@@ -906,7 +906,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	// Runs without orphan results do not need a deletion preview.
 	if len(allOrphans) == 0 {
-		if err := s.store.UpdateRunCompleted(ctx, runID, 0, 0, 0); err != nil {
+		if err := s.store.UpdateRunCompleted(ctx, runID, 0, 0, 0, scanWarning); err != nil {
 			if ctx.Err() != nil {
 				log.Info().Int64("run", runID).Msg("orphanscan: scan canceled before marking completed")
 				return
@@ -1345,13 +1345,10 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	warningMessage := run.ErrorMessage
 	if failedDeletes > 0 {
 		warningMessage = strings.TrimSpace(warningMessage + "\n\n" + failureMessage)
-		if err := s.store.UpdateRunWarning(ctx, runID, warningMessage); err != nil {
-			log.Error().Err(err).Msg("orphanscan: failed to update run warning")
-		}
 	}
 
 	// Mark as completed (possibly with partial failure warning)
-	if err := s.store.UpdateRunCompleted(ctx, runID, filesDeleted, foldersDeleted, bytesReclaimed); err != nil {
+	if err := s.store.UpdateRunCompleted(ctx, runID, filesDeleted, foldersDeleted, bytesReclaimed, warningMessage); err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
 		return
 	}

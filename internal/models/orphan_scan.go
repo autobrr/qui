@@ -493,13 +493,13 @@ func (s *OrphanScanStore) UpdateRunFoundStats(ctx context.Context, runID int64, 
 	return err
 }
 
-// UpdateRunCompleted marks a run as completed with stats.
-func (s *OrphanScanStore) UpdateRunCompleted(ctx context.Context, runID int64, filesDeleted, foldersDeleted int, bytesReclaimed int64) error {
+// UpdateRunCompleted saves completion, stats, and the warning in one update.
+func (s *OrphanScanStore) UpdateRunCompleted(ctx context.Context, runID int64, filesDeleted, foldersDeleted int, bytesReclaimed int64, warningMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
-		SET status = 'completed', files_deleted = ?, folders_deleted = ?, bytes_reclaimed = ?, completed_at = CURRENT_TIMESTAMP
+		SET status = 'completed', files_deleted = ?, folders_deleted = ?, bytes_reclaimed = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, filesDeleted, foldersDeleted, bytesReclaimed, runID)
+	`, filesDeleted, foldersDeleted, bytesReclaimed, warningMessage, runID)
 	return err
 }
 
