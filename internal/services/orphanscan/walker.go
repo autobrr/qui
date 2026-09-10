@@ -282,7 +282,7 @@ func walkScanRootWithUnitFilter(
 		}
 
 		if entry.Err != nil {
-			if errors.Is(entry.Err, fs.ErrPermission) {
+			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root {
 				continue
 			}
 			return nil, nil, false, entry.Err

@@ -15,6 +15,10 @@ qui manages torrent-client state and workflows for a self-hosted installation.
 - **Column filters**: Torrent conditions set through table column controls, such as a ratio below 1. _Avoid_: Column sorting.
 - **Torrent search**: A query entered in the torrent search box to select matching torrents. _Avoid_: Global filter.
 
+## Orphan scan
+
+- **Partial scan**: An orphan scan that completed at least one selected scan path but could not complete every selected scan path. _Avoid_: Clean scan, failed scan.
+
 ## Cross-seed search
 
 - **Usable result**: A search hit that survives release and size filtering. Retry passes gate on usable results, never on raw hit counts. _Avoid_: Hit, raw result (when gating is meant).
