@@ -12,7 +12,63 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
+
+type directoryReadCounter struct {
+	fsops.Backend
+	reads int
+}
+
+func (b *directoryReadCounter) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
+	b.reads++
+	return b.Backend.ReadDir(ctx, path)
+}
+
+func TestAbandonedDirs_SkipsReadsForKnownKeptFiles(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		freshName string
+		disc      bool
+		wantReads int
+		wantDirs  int
+	}{
+		{name: "orphan only", wantReads: 1, wantDirs: 1},
+		{name: "fresh file before orphan", freshName: "a-fresh.mkv"},
+		{name: "fresh file after orphan", freshName: "z-fresh.mkv"},
+		{name: "disc count still requires reread", freshName: "z-fresh.mkv", disc: true, wantReads: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			dir := filepath.Join(root, "candidate")
+			orphan := filepath.Join(dir, "orphan.mkv")
+			if tt.disc {
+				orphan = filepath.Join(dir, "disc", "BDMV", "STREAM", "00001.m2ts")
+			}
+			writeFile(t, orphan)
+			backdate(t, orphan)
+			if tt.freshName != "" {
+				writeFile(t, filepath.Join(dir, tt.freshName))
+			}
+			backdate(t, dir)
+
+			backend := &directoryReadCounter{Backend: newTestBackend()}
+			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, NewTorrentFileMap(), nil, time.Hour, backend)
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.reads = 0
+			got := abandonedDirCandidates(t.Context(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, time.Hour, backend)
+			if len(got) != tt.wantDirs || backend.reads != tt.wantReads {
+				t.Fatalf("directories = %v, reads = %d; want %d directories and %d reads", got, backend.reads, tt.wantDirs, tt.wantReads)
+			}
+		})
+	}
+}
 
 // mkdirs creates each relative directory under root and returns root.
 func mkdirs(t *testing.T, root string, rel ...string) string {
@@ -41,12 +97,12 @@ func abandonedPaths(t *testing.T, root string, categoryPaths []string, ignorePat
 	t.Helper()
 
 	backend := newTestBackend()
-	_, dirs, _, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), ignorePaths, 0, 0, backend)
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), ignorePaths, 0, backend)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), []string{root}, ignorePaths, categoryPaths, 0, backend)
+	candidates := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, ignorePaths, categoryPaths, 0, backend)
 	paths := make([]string, 0, len(candidates))
 	for _, c := range candidates {
 		if !c.IsAbandonedDir {
@@ -87,19 +143,165 @@ func TestAbandonedDirs_EmptyTreeIsRemovedDeepestFirst(t *testing.T) {
 	}
 }
 
-func TestAbandonedDirs_DirectoryHoldingAFileIsKept(t *testing.T) {
+func TestAbandonedDirs_DirectoryHoldingOnlyOrphansIsRemoved(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	// A file anywhere below keeps the whole chain, even though the file itself
-	// is reported separately as an orphan.
-	writeFile(t, filepath.Join(root, "keep", "nested", "payload.mkv"))
+	// Nothing owns payload.mkv, so deleting it empties both directories above.
+	writeFile(t, filepath.Join(root, "show", "season", "payload.mkv"))
 	mkdirs(t, root, "gone")
 
 	got := abandonedPaths(t, root, nil, nil)
 
+	want := []string{
+		filepath.Join(root, "gone"),
+		filepath.Join(root, "show"),
+		filepath.Join(root, "show", "season"),
+	}
+	sorted := slices.Clone(got)
+	slices.Sort(sorted)
+	if !slices.Equal(sorted, want) {
+		t.Fatalf("abandoned dirs = %v, want %v", sorted, want)
+	}
+}
+
+func TestAbandonedDirs_DirectoryHoldingAKeptFileIsKept(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	owned := filepath.Join(root, "keep", "nested", "payload.mkv")
+	writeFile(t, owned)
+	mkdirs(t, root, "gone")
+
+	backend := newTestBackend()
+	tfm := NewTorrentFileMap()
+	tfm.Add(normalizePath(owned))
+
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+
+	got := make([]string, 0, len(dirs))
+	for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend) {
+		got = append(got, c.Path)
+	}
+
 	if !slices.Equal(got, []string{filepath.Join(root, "gone")}) {
-		t.Fatalf("abandoned dirs = %v, want only the file-free directory", got)
+		t.Fatalf("abandoned dirs = %v, want only the directory the run empties", got)
+	}
+}
+
+// TestAbandonedDirs_DiscUnitInternalsFollowTheUnit covers an empty directory
+// inside a disc layout. When the unit is deleted the file pass takes the whole
+// tree, so the directory is not listed on its own. When a torrent owns part of
+// the layout the unit stays, and the empty directory is a plain candidate, in
+// whichever order the walk met the owned and the orphan file.
+func TestAbandonedDirs_DiscUnitInternalsFollowTheUnit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		owned      string // relative to Feature/BDMV; "" means the whole layout is orphaned
+		wantBackup bool
+	}{
+		{name: "whole layout orphaned", owned: "", wantBackup: false},
+		// Lexical walk order: BACKUP/, STREAM/00001.m2ts, index.bdmv.
+		{name: "owned file met after the orphan", owned: "index.bdmv", wantBackup: true},
+		{name: "owned file met before the orphan", owned: filepath.Join("STREAM", "00001.m2ts"), wantBackup: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			bdmv := filepath.Join(root, "Feature", "BDMV")
+			writeFile(t, filepath.Join(bdmv, "STREAM", "00001.m2ts"))
+			writeFile(t, filepath.Join(bdmv, "index.bdmv"))
+			backup := filepath.Join(bdmv, "BACKUP")
+			mkdirs(t, root, filepath.Join("Feature", "BDMV", "BACKUP"))
+
+			tfm := NewTorrentFileMap()
+			if tt.owned != "" {
+				tfm.Add(normalizePath(filepath.Join(bdmv, tt.owned)))
+			}
+
+			backend := newTestBackend()
+			orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, tfm, nil, 0, backend)
+			if err != nil {
+				t.Fatalf("walk: %v", err)
+			}
+
+			got := make([]string, 0, len(dirs))
+			for _, c := range abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend) {
+				got = append(got, c.Path)
+			}
+			if slices.Contains(got, backup) != tt.wantBackup {
+				t.Fatalf("BACKUP listed = %v, want %v (orphans %v, candidates %v)", !tt.wantBackup, tt.wantBackup, orphans, got)
+			}
+			if tt.owned == "" {
+				for _, c := range got {
+					if c == filepath.Join(root, "Feature") || isPathUnderNormalized(normalizePath(c), normalizePath(filepath.Join(root, "Feature"))) {
+						t.Fatalf("%q is inside the deleted unit and must not be listed separately: %v", c, got)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestAbandonedDirs_NestedScanRootIsNeverRemoved covers a scan root that sits
+// inside another root's walk. It holds only orphans, so nothing but the root
+// check keeps it off the preview.
+func TestAbandonedDirs_NestedScanRootIsNeverRemoved(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	nested := filepath.Join(root, "torrents")
+	writeFile(t, filepath.Join(nested, "stale.mkv"))
+
+	backend := newTestBackend()
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, backend)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root, nested}, nil, nil, 0, backend)
+	if len(got) != 0 {
+		t.Fatalf("a nested scan root must be kept even when it holds only orphans, got %v", got)
+	}
+}
+
+// TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks covers a symlink whose
+// name differs only by case from an orphan in the same directory. The walk skips
+// symlinks, so only childrenAllKept sees it, and it must not pass for the
+// orphan. Needs a case-sensitive filesystem.
+func TestAbandonedDirs_CaseTwinOfADeletedOrphanStillBlocks(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := mkdirs(t, filepath.Join(base, "root"), "a")
+	dir := filepath.Join(root, "a")
+	writeFile(t, filepath.Join(dir, "Junk.mkv"))
+	target := filepath.Join(base, "outside.txt")
+	writeFile(t, target)
+	if err := os.Symlink(target, filepath.Join(dir, "junk.mkv")); err != nil {
+		if os.IsExist(err) {
+			t.Skip("case-insensitive filesystem")
+		}
+		t.Skipf("symlinks are unavailable on this host: %v", err)
+	}
+
+	backend := newTestBackend()
+	orphans, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, backend)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, 0, backend)
+	if len(got) != 0 {
+		t.Fatalf("a directory still holding the symlink must be kept, got %v", got)
 	}
 }
 
@@ -167,12 +369,12 @@ func TestAbandonedDirs_GracePeriodHoldsFreshDirectories(t *testing.T) {
 	root := mkdirs(t, t.TempDir(), "fresh")
 	backend := newTestBackend()
 
-	_, dirs, _, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, 0, backend)
+	_, dirs, err := walkScanRootCollectingDirs(context.Background(), root, NewTorrentFileMap(), nil, 0, backend)
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
 
-	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), []string{root}, nil, nil, time.Hour, backend)
+	got := abandonedDirCandidates(context.Background(), sortDeepestFirst(dirs), nil, []string{root}, nil, nil, time.Hour, backend)
 	if len(got) != 0 {
 		t.Fatalf("a directory younger than the grace period must be held, got %v", got)
 	}

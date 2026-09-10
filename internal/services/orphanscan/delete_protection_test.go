@@ -54,79 +54,26 @@ type deletionFixture struct {
 func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 	t.Helper()
 
-	base := t.TempDir()
-	defaultSavePath := filepath.Join(base, "torrents")
-	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
-	abandoned := filepath.Join(defaultSavePath, "leftover")
-	strayFile := filepath.Join(defaultSavePath, "stray.txt")
-	// A folder that holds an orphan is not file-free, so it never reaches the
-	// abandoned-directory pass; it is emptied by the file deletion and only the
-	// follow-up cleanup can remove it.
-	categoryFolder := filepath.Join(defaultSavePath, "movies")
-	orphanInCategory := filepath.Join(categoryFolder, "junk.txt")
+	var abandoned, strayFile, categoryFolder, orphanInCategory string
+	f := newOrphanOnlyFixture(t, dbName, orphanOnlyOptions{}, func(defaultSavePath string) {
+		abandoned = filepath.Join(defaultSavePath, "leftover")
+		strayFile = filepath.Join(defaultSavePath, "stray.txt")
+		// A folder holding nothing but an orphan: the run empties it, so it is
+		// previewed as a directory too.
+		categoryFolder = filepath.Join(defaultSavePath, "movies")
+		orphanInCategory = filepath.Join(categoryFolder, "junk.txt")
 
-	require.NoError(t, os.MkdirAll(torrentSavePath, 0o750))
-	require.NoError(t, os.MkdirAll(abandoned, 0o750))
-	require.NoError(t, os.MkdirAll(categoryFolder, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(torrentSavePath, "owned.mkv"), []byte("x"), 0o600))
-	require.NoError(t, os.WriteFile(strayFile, []byte("junk"), 0o600))
-	require.NoError(t, os.WriteFile(orphanInCategory, []byte("junk"), 0o600))
-
-	db := testdb.NewMigratedSQLite(t, dbName)
-	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-	_, err = instanceStore.Create(t.Context(), "test", "http://127.0.0.1:8080", "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
-		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
-	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
-		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
-	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
-	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
-	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
-
-	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
-		InstanceID:          1,
-		GracePeriodMinutes:  0,
-		IgnorePaths:         []string{},
-		ScanIntervalHours:   24,
-		PreviewSort:         "size_desc",
-		MaxFilesPerRun:      1000,
-		AutoCleanupMaxFiles: 100,
-		ScanDefaultSavePath: true,
-		DeleteAbandonedDirs: true,
+		mkdirs(t, defaultSavePath, "leftover")
+		writeFile(t, strayFile)
+		writeFile(t, orphanInCategory)
 	})
-	require.NoError(t, err)
-
-	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
-	require.NoError(t, err)
-	svc.executeScan(context.Background(), 1, runID)
-
-	run, err := store.GetRun(t.Context(), runID)
-	require.NoError(t, err)
-	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 
 	return &deletionFixture{
-		svc:              svc,
-		store:            store,
-		db:               db,
-		runID:            runID,
-		defaultSavePath:  defaultSavePath,
+		svc:              f.svc,
+		store:            f.store,
+		db:               f.db,
+		runID:            f.runID,
+		defaultSavePath:  f.defaultSavePath,
 		abandoned:        abandoned,
 		strayFile:        strayFile,
 		categoryFolder:   categoryFolder,
@@ -198,12 +145,12 @@ func TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-dirs-count")
 
 	// Leave the abandoned directory as the only entry that can succeed: park
-	// every real orphan, then add one whose path no scan root covers, which
+	// every other entry, then add one whose path no scan root covers, which
 	// fails deterministically on every OS.
 	pending, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
 	require.NoError(t, err)
 	for _, file := range pending {
-		if !file.IsAbandonedDir {
+		if file.FilePath != f.abandoned {
 			f.svc.updateFileStatus(t.Context(), file.ID, "skipped", "parked by the test")
 		}
 	}
@@ -237,10 +184,11 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 	require.FileExists(t, f.strayFile, "nothing may be deleted when the scope cannot be determined")
 }
 
-// TestExecuteDeletion_SecondCleanupPassRespectsCategories covers a category
-// folder emptied by deleting an orphan inside it. That folder never reaches the
-// abandoned-directory pass, so the follow-up cleanup has to protect it too.
-func TestExecuteDeletion_SecondCleanupPassRespectsCategories(t *testing.T) {
+// TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun covers a category
+// folder the run empties by deleting the orphan inside it. It was previewed
+// while no category pointed at it, so the re-check at deletion time is what
+// refuses it.
+func TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-second-pass")
 
 	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -379,11 +327,12 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	require.FileExists(t, stray, "a file another local instance now seeds must not be deleted")
 }
 
-// TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs
-// covers a run that previewed no directories at all, with abandoned-directory
-// cleanup off. Deleting the orphan still empties the category folder, and the
-// follow-up cleanup must not remove it.
-func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t *testing.T) {
+// TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone covers a scan
+// run with abandoned-directory cleanup off. Deleting the orphan empties the
+// category folder, but nothing removes a directory the preview did not list.
+// Turning the option off after a preview is a different case: those directories
+// are already listed and confirmed, and the run still removes them.
+func TestExecuteDeletion_RemovesNoDirectoriesWhenTheScanPreviewedNone(t *testing.T) {
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
@@ -449,7 +398,11 @@ func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t 
 	svc.executeDeletion(context.Background(), 1, runID)
 
 	require.NoFileExists(t, orphan, "the orphan should be deleted")
-	require.DirExists(t, categoryFolder, "the follow-up cleanup must not remove a category destination")
+	require.DirExists(t, categoryFolder, "a directory nobody previewed must not be removed")
+
+	run, err := store.GetRun(t.Context(), runID)
+	require.NoError(t, err)
+	require.Zero(t, run.FoldersDeleted, "a run that previewed no directories must remove none")
 }
 
 // TestResolveCategoryPath_DeepInheritanceIsNotDropped guards the parent walk

@@ -1009,7 +1009,7 @@
       "scanCategoryPathsLabel": "包含分类路径",
       "scanCategoryPathsTooltip": "同时遍历每个分类的目标位置：分类自行设置的保存路径，或在继承时为默认保存路径 / 分类名称。当分类指向默认保存路径之外时很有用。",
       "deleteAbandonedDirsLabel": "删除废弃目录",
-      "deleteAbandonedDirsTooltip": "报告在任何层级都不含文件的目录，以便清除移动后残留的空目录。扫描根目录和分类目标位置即使为空也永不删除。",
+      "deleteAbandonedDirsTooltip": "报告本次运行会清空的目录：在任何层级都不含文件的目录，以及其下所有文件都是本次运行将删除的孤立文件的目录。扫描根目录和分类目标位置即使为空也永不删除。",
       "exclusions": "排除项",
       "ignorePaths": "忽略路径",
       "ignorePathsTooltip": "从扫描中排除的路径。这些目录中的文件永远不会被标记为孤立文件。每行输入一个路径。",

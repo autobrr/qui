@@ -1027,7 +1027,7 @@
       "scanCategoryPathsLabel": "Včetně cest kategorií",
       "scanCategoryPathsTooltip": "Projít i každý cíl kategorie: cestu nastavenou kategorií, nebo výchozí cestu pro ukládání / název kategorie, pokud ji dědí. Užitečné, když kategorie míří mimo výchozí cestu pro ukládání.",
       "deleteAbandonedDirsLabel": "Mazat opuštěné adresáře",
-      "deleteAbandonedDirsTooltip": "Hlásit adresáře, které v žádné hloubce neobsahují soubory, aby šlo odstranit zbytky po přesunech. Kořeny skenování a cíle kategorií se nikdy nemažou, ani když jsou prázdné.",
+      "deleteAbandonedDirsTooltip": "Hlásit adresáře, které tento běh vyprázdní: ty, které v žádné hloubce neobsahují soubory, a ty, kde je každý soubor pod nimi osiřelý a běh ho smaže. Kořeny skenování a cíle kategorií se nikdy nemažou, ani když jsou prázdné.",
       "exclusions": "Vyloučení",
       "ignorePaths": "Ignorování cest",
       "ignorePathsTooltip": "Cesty, které mají být vyloučeny z vyhledávání. Soubory v těchto adresářích nebudou nikdy označeny jako nepárové. Zadejte jednu cestu na řádek.",

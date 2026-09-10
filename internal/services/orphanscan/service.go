@@ -225,7 +225,7 @@ func validDefaultSavePath(reported string) (string, error) {
 	return savePath, nil
 }
 
-// walkForScope walks one root, collecting file-free directories only when the
+// walkForScope walks one root, collecting directory candidates only when the
 // run will actually use them.
 func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignorePaths []string,
 	gracePeriod time.Duration, backend fsops.Backend, collectDirs bool,
@@ -234,8 +234,7 @@ func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignoreP
 		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
 		return orphans, nil, err
 	}
-	orphans, dirs, _, err := walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
-	return orphans, dirs, err
+	return walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, backend)
 }
 
 // isMissingRoot separates "not there" from "could not be read". qBittorrent
@@ -787,7 +786,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 	walkErrors, missingRoots := unreachableCoveredRoots(ctx, scanRoots, walkRoots, expectedAbsent, backend)
 
-	var fileFreeDirs []AbandonedDir
+	var orphanOnlyDirs []AbandonedDir
 
 	for _, root := range walkRoots {
 		if ctx.Err() != nil {
@@ -814,19 +813,22 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 
 		allOrphans = append(allOrphans, orphans...)
-		fileFreeDirs = append(fileFreeDirs, dirs...)
+		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	if scope.AbandonedDirs {
-		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(fileFreeDirs), scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
-		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
-		allOrphans = append(allOrphans, abandoned...)
-	}
-
-	// Deduplicate across scan roots.
-	// Some instances can produce overlapping scan roots (e.g. /data and /data/subdir),
-	// which would otherwise result in the same absolute path appearing multiple times.
 	allOrphans = dedupeOrphans(allOrphans)
+	maxFiles := settings.MaxFilesPerRun
+	if maxFiles <= 0 {
+		maxFiles = DefaultSettings().MaxFilesPerRun
+	}
+
+	// Files rank first. If they already exceed the cap, no directory can enter
+	// the preview. At the cap, still check directories to set Truncated correctly.
+	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
+		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
+		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
+		allOrphans = dedupeOrphans(append(allOrphans, abandoned...))
+	}
 
 	previewSort := strings.TrimSpace(settings.PreviewSort)
 	if previewSort == "" {
@@ -836,10 +838,6 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	less := truncationLess(previewSort)
 	sort.Slice(allOrphans, func(i, j int) bool { return less(allOrphans[i], allOrphans[j]) })
 
-	maxFiles := settings.MaxFilesPerRun
-	if maxFiles <= 0 {
-		maxFiles = DefaultSettings().MaxFilesPerRun
-	}
 	truncated := maxFiles > 0 && len(allOrphans) > maxFiles
 	if truncated {
 		allOrphans = allOrphans[:maxFiles]
@@ -933,7 +931,15 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
 
 	// Check if auto-cleanup should be triggered for scheduled scans
-	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
+	// The threshold is a file count: directories are zero-risk removals and
+	// must not push a small cleanup over it.
+	filesFound := 0
+	for i := range allOrphans {
+		if !allOrphans[i].IsAbandonedDir {
+			filesFound++
+		}
+	}
+	s.maybeAutoCleanup(ctx, instanceID, runID, settings, filesFound)
 }
 
 // truncationLess orders the entries a run stores. This decides what the
@@ -1121,9 +1127,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// The declared roots have to be in place before cross-instance overlap
 	// detection decides whose torrents to merge into the protection map.
-	// Category destinations are needed for every path that removes a directory,
-	// not just the abandoned-directory pass: deleting an orphan out of a category
-	// folder empties it, and the follow-up cleanup would then remove it.
+	// Recheck category protection for previewed directories even if the user
+	// disabled directory cleanup after the scan.
 	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
 	scope.AbandonedDirs = true
 
@@ -1145,7 +1150,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	var filesDeleted int
 	var bytesReclaimed int64
-	var deletedOrMissingPaths []string
 
 	// Track deletion failures for user-facing error reporting
 	var failedDeletes int
@@ -1188,14 +1192,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, f.ID, "skipped", "file is now in use by a torrent")
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
-			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		case deleteDispositionSkippedIgnored:
 			s.updateFileStatus(ctx, f.ID, "skipped", "path is protected by ignore paths")
 		case deleteDispositionDeleted:
 			s.updateFileStatus(ctx, f.ID, "deleted", "")
 			filesDeleted++
 			bytesReclaimed += f.FileSize
-			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		default:
 			s.updateFileStatus(ctx, f.ID, "failed", "unknown delete result")
 			failedDeletes++
@@ -1247,36 +1249,27 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		if err := safeDeleteEmptyDir(ctx, scanRoot, d.FilePath, deleteBackend); err != nil {
+		disp, err := safeDeleteEmptyDir(ctx, scanRoot, d.FilePath, deleteBackend)
+		if err != nil {
 			s.updateFileStatus(ctx, d.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", d.FilePath).Msg("orphanscan: failed to delete abandoned directory")
 			failedDeletes++
 			continue
 		}
-		s.updateFileStatus(ctx, d.ID, "deleted", "")
-		foldersDeleted++
-	}
 
-	// Clean up directories the file deletions emptied, reusing the batch's backend.
-	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
-	for _, dir := range candidateDirs {
-		if ctx.Err() != nil {
-			break
-		}
-
-		scanRoot := findScanRoot(dir, run.ScanPaths)
-		if scanRoot == "" {
-			continue
-		}
-		// Emptying a category folder by deleting an orphan inside it must not
-		// remove the folder either.
-		normDir := normalizePath(dir)
-		if slices.Contains(normScanRoots, normDir) || isCategoryDestinationNormalized(normDir, normCategoryPaths) {
-			continue
-		}
-
-		if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
+		switch disp {
+		case deleteDispositionSkippedMissing:
+			s.updateFileStatus(ctx, d.ID, "skipped", "directory no longer exists")
+		case deleteDispositionSkippedNotDirectory:
+			s.updateFileStatus(ctx, d.ID, "skipped", "path is no longer a directory")
+		case deleteDispositionSkippedNotEmpty:
+			s.updateFileStatus(ctx, d.ID, "skipped", "directory still holds something this run did not delete")
+		case deleteDispositionDeleted:
+			s.updateFileStatus(ctx, d.ID, "deleted", "")
 			foldersDeleted++
+		default:
+			s.updateFileStatus(ctx, d.ID, "failed", "unknown delete result")
+			failedDeletes++
 		}
 	}
 

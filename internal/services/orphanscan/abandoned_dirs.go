@@ -94,24 +94,40 @@ func sortDeepestFirst(dirs []AbandonedDir) []AbandonedDir {
 	return sorted
 }
 
-// abandonedDirCandidates narrows file-free directories to those safe to remove.
-// Deepest first, so removing them in order never meets a non-empty directory.
+// abandonedDirCandidates narrows directories to those safe to remove. deleted
+// are the orphans this run removes, so a directory holding only those counts as
+// empty, and one inside a deleted disc unit goes with the unit. Deepest first,
+// so removing them in order never meets a non-empty directory.
 func abandonedDirCandidates(
 	ctx context.Context,
 	dirs []AbandonedDir,
+	deleted []OrphanFile,
 	scanRoots, ignorePaths, categoryPaths []string,
 	gracePeriod time.Duration,
 	backend fsops.Backend,
 ) []OrphanFile {
+	if len(dirs) == 0 {
+		return nil
+	}
+
 	// The protected sets are the same for every candidate, so normalize them
 	// once rather than once per directory.
 	normRoots := normalizePaths(scanRoots)
 	normCategories := normalizePaths(categoryPaths)
+	// Keyed like kept, by the spelling the walk produced: case-folding here
+	// would let a surviving case-twin pass for the deleted orphan.
+	deletedPaths := make(map[string]struct{}, len(deleted))
+	for i := range deleted {
+		deletedPaths[deleted[i].Path] = struct{}{}
+	}
 
 	kept := make(map[string]struct{}, len(dirs))
 	out := make([]OrphanFile, 0, len(dirs))
 
 	for _, dir := range dirs {
+		if underDeletedPath(dir.Path, deletedPaths) {
+			continue
+		}
 		normDir := normalizePath(dir.Path)
 		if slices.Contains(normRoots, normDir) {
 			continue
@@ -125,7 +141,7 @@ func abandonedDirCandidates(
 		if !dir.ModTime.IsZero() && time.Since(dir.ModTime) < gracePeriod {
 			continue
 		}
-		if !childrenAllKept(ctx, dir.Path, kept, backend) {
+		if !childrenAllKept(ctx, dir.Path, kept, deletedPaths, backend) {
 			continue
 		}
 
@@ -142,8 +158,9 @@ func abandonedDirCandidates(
 }
 
 // childrenAllKept reports whether dir can be emptied by removing directories
-// already kept, so an ignored subtree or a symlink leaves it alone.
-func childrenAllKept(ctx context.Context, dir string, kept map[string]struct{}, backend fsops.Backend) bool {
+// already kept and the orphans the file pass deletes, so a file the run leaves
+// behind, an ignored subtree or a symlink leaves it alone.
+func childrenAllKept(ctx context.Context, dir string, kept, deletedPaths map[string]struct{}, backend fsops.Backend) bool {
 	entries, err := backend.ReadDir(ctx, dir)
 	if err != nil {
 		log.Debug().Err(err).Str("dir", dir).Msg("orphanscan: could not read directory, not treating it as abandoned")
@@ -151,14 +168,38 @@ func childrenAllKept(ctx context.Context, dir string, kept map[string]struct{}, 
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir || entry.IsSymlink {
+		// The walk never reports a symlink, so one can never be in deletedPaths.
+		if entry.IsSymlink {
 			return false
 		}
-		if _, ok := kept[filepath.Join(dir, entry.Name)]; !ok {
+		child := filepath.Join(dir, entry.Name)
+		if _, gone := deletedPaths[child]; gone {
+			continue
+		}
+		if !entry.IsDir {
+			return false
+		}
+		if _, ok := kept[child]; !ok {
 			return false
 		}
 	}
 	return true
+}
+
+// underDeletedPath reports whether dir is, or sits inside, a path the file pass
+// removes. Only a disc unit is a directory-shaped orphan, and the file pass
+// removes the whole unit, so nothing below it is left for the directory pass.
+func underDeletedPath(dir string, deletedPaths map[string]struct{}) bool {
+	for {
+		if _, gone := deletedPaths[dir]; gone {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
 }
 
 // normalizePaths normalizes a whole list once, for repeated membership tests.

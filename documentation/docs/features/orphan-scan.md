@@ -16,7 +16,7 @@ Orphan scan finds and removes files in your download directories that no torrent
 1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
 2. qui flags files that no torrent references as orphans.
 3. Before you confirm deletion, you preview the list.
-4. After file deletion, qui removes empty directories.
+4. qui deletes the files, then removes the directories the preview listed.
 
 :::note
 When matching paths, qui normalizes Unicode paths to canonical NFC form. If the filesystem and qBittorrent report composed and decomposed forms of the same name, this normalization prevents false orphans. On normalization-sensitive filesystems, qui treats two byte-distinct canonical-equivalent names as one logical path.
@@ -66,7 +66,9 @@ These paths come from qBittorrent, so they are paths as qBittorrent sees them. I
 
 Moves and deletions leave empty directories behind. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
 
-Turn on **Delete Abandoned Directories** to include them. qui reports a directory when it holds no files at any depth, and lists it in the preview alongside the orphan files, marked with a folder icon and no size.
+Turn on **Delete Abandoned Directories** to include them. qui reports a directory when this run empties it: either it holds no files at any depth, or every file below it is an orphan the run is about to delete. Each one is listed in the preview alongside the orphan files, marked with a folder icon and no size.
+
+A single file that survives the run keeps its whole chain of parent directories. That covers a file a torrent owns, a file still inside the grace period, a file under your ignore paths, and a file the max-files cap pushed out of this run.
 
 These are never reported, even when empty:
 
@@ -76,7 +78,7 @@ These are never reported, even when empty:
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
 
-Directories are removed after the files, so a tree this run empties goes in one pass. That includes a directory left empty only because the run deleted the last file in it, which is why the folder count can be higher than the number of directories you saw listed. Anything that changed between the preview and your confirmation is skipped rather than removed.
+Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the folder count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
 
 ## Settings
 
@@ -88,9 +90,9 @@ Directories are removed after the files, so a tree this run empties goes in one 
 | Max files per run | Maximum orphan preview entries saved for a run (also caps what qui can delete from that run) | 1,000 |
 | Scan default save path | Also walk qBittorrent's default save path, including directories no torrent uses | Disabled |
 | Including category paths | Also walk every category destination, explicit or inherited | Disabled |
-| Delete abandoned directories | Report directories that hold no files at any depth | Disabled |
+| Delete abandoned directories | Report directories this run empties | Disabled |
 | Auto-cleanup | Delete orphans from scheduled scans without manual confirmation | Disabled |
-| Max files threshold | If the orphan count is at or below this threshold, auto-delete orphans | 100 |
+| Max files threshold | If the orphan file count is at or below this threshold, auto-delete orphans. Directories do not count. | 100 |
 
 <OrphanScanDefaultIgnores />
 
@@ -115,7 +117,7 @@ No. Each run scans all roots. If orphan candidates exceed the per-run preview ca
 1. Trigger a manual or scheduled scan.
 2. Review the preview list of orphan files.
 3. Confirm deletion.
-4. qui deletes the files and removes empty directories.
+4. qui deletes the files, then removes the directories you saw in the preview.
 
 ## Preview features
 
