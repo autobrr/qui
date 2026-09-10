@@ -1359,8 +1359,11 @@ func localFileSizeKey(name string, size int64) string {
 	return name + "|" + strconv.FormatInt(size, 10)
 }
 
+// normalizeTorrentRelativePath keys a name for pairing. Every name reaching it
+// has already cleared resolveLocalTorrentFile, so backslashes were refused, not
+// rewritten.
 func normalizeTorrentRelativePath(name string) string {
-	return strings.ToLower(path.Clean(strings.ReplaceAll(name, `\`, "/")))
+	return strings.ToLower(path.Clean(name))
 }
 
 // forEachLocalTorrentFile resolves each torrent file under savePath and invokes fn
