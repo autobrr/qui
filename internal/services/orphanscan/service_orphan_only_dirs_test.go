@@ -13,6 +13,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
@@ -22,6 +23,7 @@ import (
 type orphanOnlyFixture struct {
 	svc             *Service
 	store           *models.OrphanScanStore
+	db              dbinterface.Querier
 	runID           int64
 	defaultSavePath string
 	torrentSavePath string
@@ -35,6 +37,10 @@ type orphanOnlyOptions struct {
 	// torrentFileName is the seeded torrent's file, slash-delimited the way
 	// qBittorrent reports it.
 	torrentFileName string
+	// scheduled triggers the run the way the scheduler does, which is the only
+	// path that can auto-clean; autoCleanupMaxFiles turns auto-cleanup on.
+	scheduled           bool
+	autoCleanupMaxFiles int
 }
 
 // newOrphanOnlyFixture lays out defaultSavePath with one seeded torrent under
@@ -90,6 +96,10 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 	if maxFiles == 0 {
 		maxFiles = 1000
 	}
+	autoCleanupMaxFiles := opts.autoCleanupMaxFiles
+	if autoCleanupMaxFiles == 0 {
+		autoCleanupMaxFiles = 100
+	}
 	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
 		InstanceID:          1,
 		GracePeriodMinutes:  opts.gracePeriodMinutes,
@@ -97,23 +107,30 @@ func newOrphanOnlyFixture(t *testing.T, dbName string, opts orphanOnlyOptions, b
 		ScanIntervalHours:   24,
 		PreviewSort:         "size_desc",
 		MaxFilesPerRun:      maxFiles,
-		AutoCleanupMaxFiles: 100,
+		AutoCleanupEnabled:  opts.autoCleanupMaxFiles > 0,
+		AutoCleanupMaxFiles: autoCleanupMaxFiles,
 		ScanDefaultSavePath: true,
 		DeleteAbandonedDirs: true,
 	})
 	require.NoError(t, err)
 
-	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
+	trigger := "manual"
+	if opts.scheduled {
+		trigger = "scheduled"
+	}
+	runID, err := store.CreateRunIfNoActive(t.Context(), 1, trigger)
 	require.NoError(t, err)
 	svc.executeScan(context.Background(), 1, runID)
 
 	run, err := store.GetRun(t.Context(), runID)
 	require.NoError(t, err)
-	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
+	// A scheduled run within the auto-cleanup threshold moves on by itself.
+	require.Contains(t, []string{"preview_ready", "deleting", "completed"}, run.Status, "run error: %s", run.ErrorMessage)
 
 	return &orphanOnlyFixture{
 		svc:             svc,
 		store:           store,
+		db:              db,
 		runID:           runID,
 		defaultSavePath: defaultSavePath,
 		torrentSavePath: torrentSavePath,
@@ -153,8 +170,7 @@ func TestExecuteScan_PreviewsDirectoryHoldingOnlyOrphans(t *testing.T) {
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-dir", orphanOnlyOptions{}, func(defaultSavePath string) {
 		leftover = filepath.Join(defaultSavePath, "leftover")
 		orphan = filepath.Join(leftover, "junk.mkv")
-		require.NoError(t, os.MkdirAll(leftover, 0o750))
-		require.NoError(t, os.WriteFile(orphan, []byte("junk"), 0o600))
+		writeFile(t, orphan)
 	})
 
 	require.Equal(t, []string{leftover}, f.previewedDirs(t))
@@ -175,8 +191,8 @@ func TestExecuteScan_PreviewsTheWholeCascade(t *testing.T) {
 		dirA = filepath.Join(defaultSavePath, "a")
 		dirB = filepath.Join(dirA, "b")
 		orphan = filepath.Join(dirA, "file.mkv")
-		require.NoError(t, os.MkdirAll(dirB, 0o750))
-		require.NoError(t, os.WriteFile(orphan, []byte("junk"), 0o600))
+		mkdirs(t, dirA, "b")
+		writeFile(t, orphan)
 	})
 
 	previewed := f.previewedDirs(t)
@@ -200,9 +216,8 @@ func TestExecuteScan_KeepsDirectoryHoldingAFileHeldByTheGracePeriod(t *testing.T
 		mixed = filepath.Join(defaultSavePath, "mixed")
 		orphan = filepath.Join(mixed, "settled.mkv")
 		fresh = filepath.Join(mixed, "downloading.mkv")
-		require.NoError(t, os.MkdirAll(mixed, 0o750))
-		require.NoError(t, os.WriteFile(orphan, []byte("junk"), 0o600))
-		require.NoError(t, os.WriteFile(fresh, []byte("new"), 0o600))
+		writeFile(t, orphan)
+		writeFile(t, fresh)
 		backdate(t, orphan)
 		// Last, so writing the files does not leave the directory itself inside
 		// the grace period and pass the test for the wrong reason.
@@ -228,8 +243,7 @@ func TestExecuteScan_KeepsDirectoryHoldingATorrentOwnedFile(t *testing.T) {
 	}, func(defaultSavePath string) {
 		payloadDir = filepath.Join(defaultSavePath, "mydata", "show")
 		orphan = filepath.Join(payloadDir, "junk.mkv")
-		require.NoError(t, os.MkdirAll(payloadDir, 0o750))
-		require.NoError(t, os.WriteFile(orphan, []byte("junk"), 0o600))
+		writeFile(t, orphan)
 	})
 
 	require.NotContains(t, f.previewedDirs(t), payloadDir)
@@ -290,9 +304,8 @@ func TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots(t *testing.T) 
 	}, func(defaultSavePath string) {
 		category := filepath.Join(defaultSavePath, "movies")
 		orphanInCategory = filepath.Join(category, "junk.mkv")
-		require.NoError(t, os.MkdirAll(category, 0o750))
-		require.NoError(t, os.MkdirAll(filepath.Join(defaultSavePath, "tv"), 0o750))
-		require.NoError(t, os.WriteFile(orphanInCategory, []byte("junk"), 0o600))
+		mkdirs(t, defaultSavePath, "tv")
+		writeFile(t, orphanInCategory)
 	})
 
 	previewed := f.previewedDirs(t)
@@ -308,4 +321,84 @@ func TestExecuteScan_NeverPreviewsCategoryDestinationsOrScanRoots(t *testing.T) 
 	require.DirExists(t, filepath.Join(f.defaultSavePath, "tv"))
 	require.DirExists(t, f.defaultSavePath)
 	require.DirExists(t, f.torrentSavePath)
+}
+
+// TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed covers a
+// previewed directory whose only file the run ends up keeping: here an ignore
+// path added between preview and confirmation. Nothing went wrong, so the
+// directory is reported skipped and the run completes, instead of the
+// directory failing on rmdir and, with nothing else deleted, failing the run.
+func TestExecuteDeletion_DirectoryWhoseFileWasKeptIsSkippedNotFailed(t *testing.T) {
+	var leftover, orphan string
+	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-kept-at-deletion", orphanOnlyOptions{}, func(defaultSavePath string) {
+		leftover = filepath.Join(defaultSavePath, "leftover")
+		orphan = filepath.Join(leftover, "junk.mkv")
+		writeFile(t, orphan)
+	})
+	require.Equal(t, []string{leftover}, f.previewedDirs(t))
+
+	_, err := f.store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID:          1,
+		GracePeriodMinutes:  0,
+		IgnorePaths:         []string{orphan},
+		ScanIntervalHours:   24,
+		PreviewSort:         "size_desc",
+		MaxFilesPerRun:      1000,
+		AutoCleanupMaxFiles: 100,
+		ScanDefaultSavePath: true,
+		DeleteAbandonedDirs: true,
+	})
+	require.NoError(t, err)
+
+	f.svc.executeDeletion(context.Background(), 1, f.runID)
+
+	require.FileExists(t, orphan)
+	require.DirExists(t, leftover)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", run.Status, "a skip is not a failure: %s", run.ErrorMessage)
+	require.Empty(t, run.ErrorMessage)
+	require.Zero(t, run.FoldersDeleted)
+
+	files, err := f.store.ListFiles(t.Context(), f.runID, 100, 0, "size_desc")
+	require.NoError(t, err)
+	for _, file := range files {
+		require.Equal(t, "skipped", file.Status, "%s must be skipped, not %s: %s", file.FilePath, file.Status, file.ErrorMessage)
+	}
+}
+
+// TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories covers the
+// scheduled-scan threshold. Every orphan now tends to bring its parent chain
+// into the preview, and counting those entries would push a small cleanup over
+// a threshold the settings describe as a file count.
+func TestExecuteScan_AutoCleanupThresholdCountsFilesNotDirectories(t *testing.T) {
+	var orphans, dirs []string
+	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-autocleanup", orphanOnlyOptions{
+		scheduled:           true,
+		autoCleanupMaxFiles: 2,
+	}, func(defaultSavePath string) {
+		for _, name := range []string{"one", "two"} {
+			dir := filepath.Join(defaultSavePath, name)
+			dirs = append(dirs, dir)
+			orphans = append(orphans, filepath.Join(dir, "junk.mkv"))
+			writeFile(t, orphans[len(orphans)-1])
+		}
+	})
+	require.Eventually(t, func() bool {
+		run, err := f.store.GetRun(t.Context(), f.runID)
+		return err == nil && run.Status == "completed"
+	}, 10*time.Second, 50*time.Millisecond, "two orphan files are within a threshold of two, whatever their directories add")
+
+	// Two files and two directories: four entries, two of them files.
+	entries, err := f.store.ListFiles(t.Context(), f.runID, 100, 0, "size_desc")
+	require.NoError(t, err)
+	require.Len(t, entries, 4)
+
+	for _, orphan := range orphans {
+		require.NoFileExists(t, orphan)
+	}
+	for _, dir := range dirs {
+		require.NoDirExists(t, dir)
+	}
 }

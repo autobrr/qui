@@ -54,78 +54,26 @@ type deletionFixture struct {
 func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 	t.Helper()
 
-	base := t.TempDir()
-	defaultSavePath := filepath.Join(base, "torrents")
-	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
-	abandoned := filepath.Join(defaultSavePath, "leftover")
-	strayFile := filepath.Join(defaultSavePath, "stray.txt")
-	// A folder holding nothing but an orphan: the run empties it, so it is
-	// previewed as a directory too.
-	categoryFolder := filepath.Join(defaultSavePath, "movies")
-	orphanInCategory := filepath.Join(categoryFolder, "junk.txt")
+	var abandoned, strayFile, categoryFolder, orphanInCategory string
+	f := newOrphanOnlyFixture(t, dbName, orphanOnlyOptions{}, func(defaultSavePath string) {
+		abandoned = filepath.Join(defaultSavePath, "leftover")
+		strayFile = filepath.Join(defaultSavePath, "stray.txt")
+		// A folder holding nothing but an orphan: the run empties it, so it is
+		// previewed as a directory too.
+		categoryFolder = filepath.Join(defaultSavePath, "movies")
+		orphanInCategory = filepath.Join(categoryFolder, "junk.txt")
 
-	require.NoError(t, os.MkdirAll(torrentSavePath, 0o750))
-	require.NoError(t, os.MkdirAll(abandoned, 0o750))
-	require.NoError(t, os.MkdirAll(categoryFolder, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(torrentSavePath, "owned.mkv"), []byte("x"), 0o600))
-	require.NoError(t, os.WriteFile(strayFile, []byte("junk"), 0o600))
-	require.NoError(t, os.WriteFile(orphanInCategory, []byte("junk"), 0o600))
-
-	db := testdb.NewMigratedSQLite(t, dbName)
-	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
-	require.NoError(t, err)
-	_, err = instanceStore.Create(t.Context(), "test", "http://127.0.0.1:8080", "user", "pass", nil, nil, false, nil)
-	require.NoError(t, err)
-
-	store := models.NewOrphanScanStore(db)
-	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
-	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
-		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
-	}
-	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
-		return []*models.Instance{{ID: 1, Name: "test", IsActive: true, HasLocalFilesystemAccess: true}}, nil
-	}
-	svc.getAllTorrentsProvider = func(_ context.Context, _ int) ([]qbt.Torrent, error) {
-		return []qbt.Torrent{{Hash: "owned", SavePath: torrentSavePath, State: qbt.TorrentStatePausedUp}}, nil
-	}
-	svc.getTorrentFilesBatchProvider = func(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
-		return map[string]qbt.TorrentFiles{"owned": {{Name: "owned.mkv", Size: 1}}}, nil
-	}
-	svc.getAppPreferencesProvider = func(_ context.Context, _ int) (qbt.AppPreferences, error) {
-		return qbt.AppPreferences{SavePath: defaultSavePath}, nil
-	}
-	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
-	svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
-		return map[string]qbt.Category{}, nil
-	}
-
-	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
-		InstanceID:          1,
-		GracePeriodMinutes:  0,
-		IgnorePaths:         []string{},
-		ScanIntervalHours:   24,
-		PreviewSort:         "size_desc",
-		MaxFilesPerRun:      1000,
-		AutoCleanupMaxFiles: 100,
-		ScanDefaultSavePath: true,
-		DeleteAbandonedDirs: true,
+		mkdirs(t, defaultSavePath, "leftover")
+		writeFile(t, strayFile)
+		writeFile(t, orphanInCategory)
 	})
-	require.NoError(t, err)
-
-	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
-	require.NoError(t, err)
-	svc.executeScan(context.Background(), 1, runID)
-
-	run, err := store.GetRun(t.Context(), runID)
-	require.NoError(t, err)
-	require.Equal(t, "preview_ready", run.Status, "run error: %s", run.ErrorMessage)
 
 	return &deletionFixture{
-		svc:              svc,
-		store:            store,
-		db:               db,
-		runID:            runID,
-		defaultSavePath:  defaultSavePath,
+		svc:              f.svc,
+		store:            f.store,
+		db:               f.db,
+		runID:            f.runID,
+		defaultSavePath:  f.defaultSavePath,
 		abandoned:        abandoned,
 		strayFile:        strayFile,
 		categoryFolder:   categoryFolder,

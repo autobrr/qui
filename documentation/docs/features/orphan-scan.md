@@ -78,7 +78,7 @@ These are never reported, even when empty:
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
 
-Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the folder count always matches what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed.
+Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the folder count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
 
 :::note
 Older versions also removed a directory left empty only because the run deleted the last file in it, without listing it, and did so whether or not **Delete Abandoned Directories** was on. That silent pass is gone. A run with the option off now removes no directories at all, and one with it on may list directories you did not see before.
@@ -96,7 +96,7 @@ Older versions also removed a directory left empty only because the run deleted 
 | Including category paths | Also walk every category destination, explicit or inherited | Disabled |
 | Delete abandoned directories | Report directories this run empties | Disabled |
 | Auto-cleanup | Delete orphans from scheduled scans without manual confirmation | Disabled |
-| Max files threshold | If the orphan count is at or below this threshold, auto-delete orphans | 100 |
+| Max files threshold | If the orphan file count is at or below this threshold, auto-delete orphans. Directories do not count. | 100 |
 
 <OrphanScanDefaultIgnores />
 

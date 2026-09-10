@@ -17,7 +17,7 @@ type scanScope struct {
 	DefaultSavePath bool
 	// CategoryPaths adds every category destination as a scan root.
 	CategoryPaths bool
-	// AbandonedDirs reports file-free directories for removal, and pulls in the
+	// AbandonedDirs reports directories the run empties, and pulls in the
 	// category destinations so an empty category folder is not one of them.
 	AbandonedDirs bool
 	// PersistedRoots are the roots a previous run recorded; deletion is still

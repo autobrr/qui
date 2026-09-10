@@ -23,6 +23,8 @@ const (
 	deleteDispositionSkippedInUse
 	deleteDispositionSkippedMissing
 	deleteDispositionSkippedIgnored
+	deleteDispositionSkippedNotEmpty
+	deleteDispositionSkippedNotDirectory
 )
 
 // withinScanRoot checks that target is an absolute path strictly below scanRoot.
@@ -197,31 +199,41 @@ func safeDeleteDirectory(ctx context.Context, target string, tfm *TorrentFileMap
 	return deleteDispositionDeleted, nil
 }
 
-// safeDeleteEmptyDir removes a directory only if empty. Never recursive.
-//
-// The type is re-checked first: Remove would happily delete a regular file, and
-// a file standing where the preview saw a directory is new data that was never
-// reviewed.
-func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) error {
+// safeDeleteEmptyDir removes a previewed directory. A directory that is not
+// empty now, or is no longer a directory, is reported as skipped rather than
+// failed: a file inside it that the run kept is the usual reason, and nothing
+// went wrong. Remove still refuses a non-empty directory, so the check before it
+// only decides how the outcome is reported.
+func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) (deleteDisposition, error) {
 	if err := withinScanRoot(scanRoot, target); err != nil {
-		return err
+		return 0, err
 	}
 
 	info, err := backend.Lstat(ctx, target)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil // Already gone
+		return deleteDispositionSkippedMissing, nil
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if !info.IsDir {
-		return fmt.Errorf("refusing to remove %s: it is no longer a directory", target)
+		return deleteDispositionSkippedNotDirectory, nil
 	}
 
-	// Remove on a directory only succeeds if it's empty
+	entries, err := backend.ReadDir(ctx, target)
+	if err != nil {
+		return 0, err
+	}
+	if len(entries) > 0 {
+		return deleteDispositionSkippedNotEmpty, nil
+	}
+
 	err = backend.Remove(ctx, target, fsops.RemoveOptions{})
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil // Already gone
+		return deleteDispositionSkippedMissing, nil
 	}
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return deleteDispositionDeleted, nil
 }

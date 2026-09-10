@@ -225,7 +225,7 @@ func validDefaultSavePath(reported string) (string, error) {
 	return savePath, nil
 }
 
-// walkForScope walks one root, collecting file-free directories only when the
+// walkForScope walks one root, collecting directory candidates only when the
 // run will actually use them.
 func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignorePaths []string,
 	gracePeriod time.Duration, backend fsops.Backend, collectDirs bool,
@@ -234,8 +234,7 @@ func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignoreP
 		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
 		return orphans, nil, err
 	}
-	orphans, dirs, _, err := walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
-	return orphans, dirs, err
+	return walkScanRootCollectingDirs(ctx, root, tfm, ignorePaths, gracePeriod, backend)
 }
 
 // isMissingRoot separates "not there" from "could not be read". qBittorrent
@@ -817,9 +816,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	// allOrphans still holds only files here, which is what a directory is
-	// judged against. The cap runs later and ranks files ahead of directories,
-	// so a run that drops a file keeps no directory either.
+	// allOrphans holds the complete orphan list here, before the cap, and that
+	// is what a directory is judged against. truncationLess ranks files ahead
+	// of directories, so a run that drops a file keeps no directory either.
 	if scope.AbandonedDirs {
 		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
@@ -936,7 +935,15 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
 
 	// Check if auto-cleanup should be triggered for scheduled scans
-	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
+	// The threshold is a file count: directories are zero-risk removals and
+	// must not push a small cleanup over it.
+	filesFound := 0
+	for i := range allOrphans {
+		if !allOrphans[i].IsAbandonedDir {
+			filesFound++
+		}
+	}
+	s.maybeAutoCleanup(ctx, instanceID, runID, settings, filesFound)
 }
 
 // truncationLess orders the entries a run stores. This decides what the
@@ -1124,9 +1131,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// The declared roots have to be in place before cross-instance overlap
 	// detection decides whose torrents to merge into the protection map.
-	// Category destinations are needed for every path that removes a directory,
-	// not just the abandoned-directory pass: deleting an orphan out of a category
-	// folder empties it, and the follow-up cleanup would then remove it.
+	// Category destinations are resolved whatever the option says now: the
+	// pending directories were judged against them and are judged again below.
 	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
 	scope.AbandonedDirs = true
 
@@ -1247,14 +1253,28 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		if err := safeDeleteEmptyDir(ctx, scanRoot, d.FilePath, deleteBackend); err != nil {
+		disp, err := safeDeleteEmptyDir(ctx, scanRoot, d.FilePath, deleteBackend)
+		if err != nil {
 			s.updateFileStatus(ctx, d.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", d.FilePath).Msg("orphanscan: failed to delete abandoned directory")
 			failedDeletes++
 			continue
 		}
-		s.updateFileStatus(ctx, d.ID, "deleted", "")
-		foldersDeleted++
+
+		switch disp {
+		case deleteDispositionSkippedMissing:
+			s.updateFileStatus(ctx, d.ID, "skipped", "directory no longer exists")
+		case deleteDispositionSkippedNotDirectory:
+			s.updateFileStatus(ctx, d.ID, "skipped", "path is no longer a directory")
+		case deleteDispositionSkippedNotEmpty:
+			s.updateFileStatus(ctx, d.ID, "skipped", "directory still holds something this run did not delete")
+		case deleteDispositionDeleted:
+			s.updateFileStatus(ctx, d.ID, "deleted", "")
+			foldersDeleted++
+		default:
+			s.updateFileStatus(ctx, d.ID, "failed", "unknown delete result")
+			failedDeletes++
+		}
 	}
 
 	// Build user-facing error message if deletion failures occurred
