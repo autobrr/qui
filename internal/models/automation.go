@@ -961,7 +961,7 @@ type TagAction struct {
 // CategoryAction configures category assignment with optional conditions.
 type CategoryAction struct {
 	Enabled           bool   `json:"enabled"`
-	Category          string `json:"category"`                    // Target category name
+	Category          string `json:"category"`                    // Empty clears the category
 	IncludeCrossSeeds bool   `json:"includeCrossSeeds,omitempty"` // Also move cross-seeds to same category
 	GroupID           string `json:"groupId,omitempty"`           // Optional grouping ID for expanding category changes
 	// BlockIfCrossSeedInCategories prevents category changes when any other cross-seed torrent

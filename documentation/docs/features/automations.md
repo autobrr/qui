@@ -599,7 +599,7 @@ Quick troubleshooting:
 
 ### Category
 
-Move torrents to a different category.
+Move torrents to a different category. Select **Uncategorized** to remove their category.
 
 Options:
 
