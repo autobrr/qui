@@ -335,7 +335,8 @@ func TestSessionSecretRejectsEmpty(t *testing.T) {
 
 // TestSessionSecretFileRejectsEmptyFile covers the _FILE source.
 // bindOrReadFromFile refuses an empty file with log.Fatal, so this needs a
-// subprocess.
+// subprocess. The child builds its own paths: passing an env-derived path into
+// New puts production code on gosec's G703 taint path.
 func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
 	if os.Getenv("QUI_TEST_EMPTY_SECRET_FILE") == "1" {
 		dir := t.TempDir()

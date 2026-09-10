@@ -609,8 +609,9 @@ func legacyReadCases() []legacyReadCase {
 
 // TestStoresReadLegacyCredentialsBeforeRewrite goes through each store's real
 // constructor and its own accessors, with no rewrite pass in between. The
-// without-option half is what would catch WithLegacyEncryptionKey being dropped
-// from a single call site in main.go, which compiles and then fails at runtime.
+// without-option half pins the store-level contract only: a store built without
+// the legacy key returns the explicit missing-key error instead of guessing.
+// Nothing here exercises the wiring in main.go.
 func TestStoresReadLegacyCredentialsBeforeRewrite(t *testing.T) {
 	legacyKey := testKey(t, 100)
 

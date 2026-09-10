@@ -206,8 +206,8 @@ backend domain end to end.
   AES-GCM/`sessionSecret` helpers the existing credential stores use,
   with an AAD argument those stores simply haven't passed before.
 - Key derivation: `GetEncryptionKey` now derives the key from the whole
-  `sessionSecret` with HKDF-SHA256 rather than truncating it (#2521), and
-  new writes carry a `qui2:` prefix so the stored format is decidable.
+  `sessionSecret` with HKDF-SHA256 rather than truncating it (#2521). New
+  writes carry a `qui2:` prefix, so the stored format is decidable.
   Rows written under the truncated key stay readable through
   `GetLegacyEncryptionKey`, and each store rewrites its own on first
   start. A row that does not decrypt is left alone and warns on every
