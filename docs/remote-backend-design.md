@@ -209,11 +209,9 @@ backend domain end to end.
   `sessionSecret` with HKDF-SHA256 rather than truncating it (#2521), and
   new writes carry a `qui2:` prefix so the stored format is decidable.
   Rows written under the truncated key stay readable through
-  `GetLegacyEncryptionKey` and each store rewrites its own on first
-  start. If #2521 lands first, SSH writes go through the cipher and are
-  versioned from day one. If #1917 lands first, its two AAD-bound SSH
-  columns need a per-column AAD hook in the rewrite pass before they can
-  migrate, and until then they stay readable through the legacy key.
+  `GetLegacyEncryptionKey`, and each store rewrites its own on first
+  start. A row that does not decrypt is left alone and warns on every
+  start until the credential is entered again.
 - Host key verification is TOFU with explicit confirmation: the first-seen
   key is held ephemeral and surfaced as a fingerprint via the ssh-test
   flow; it is persisted and enforced only after the user confirms it (or
