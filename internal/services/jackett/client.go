@@ -468,7 +468,10 @@ func (c *Client) Download(ctx context.Context, downloadURL string) ([]byte, erro
 		return nil, fmt.Errorf("torrent download exceeded %d bytes limit", maxTorrentDownloadBytes)
 	}
 	mi, parseErr := metainfo.Load(bytes.NewReader(data))
-	if parseErr != nil || len(mi.InfoBytes) == 0 {
+	if parseErr == nil {
+		_, parseErr = mi.UnmarshalInfo()
+	}
+	if parseErr != nil {
 		return nil, fmt.Errorf("%w (Content-Type: %q)", ErrInvalidTorrentPayload, resp.Header.Get("Content-Type"))
 	}
 

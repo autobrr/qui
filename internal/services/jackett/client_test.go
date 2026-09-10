@@ -227,6 +227,7 @@ func TestDownloadRejectsNonTorrentPayloads(t *testing.T) {
 		{name: "bencoded list", contentType: "application/x-bittorrent", body: "le", wantError: true},
 		{name: "dict-prefixed garbage", contentType: "application/x-bittorrent", body: "dnot-a-valid-torrent", wantError: true},
 		{name: "bencoded dict without info", contentType: "application/x-bittorrent", body: "d4:name8:test.bine", wantError: true},
+		{name: "non-dictionary info", contentType: "application/x-bittorrent", body: "d4:info4:spame", wantError: true},
 		{name: "torrent", contentType: "application/x-bittorrent", body: torrentBody},
 		{name: "plain text torrent", contentType: "text/plain", body: torrentBody},
 		{name: "torrent without content type", body: torrentBody},
