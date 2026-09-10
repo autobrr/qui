@@ -172,7 +172,7 @@ func (s *Service) contentPrefilterReleasesMatch(sourceRelease *rls.Release, sour
 		return false
 	}
 
-	sourceFileRelease := s.parseReleaseName(fileBaseName(sourceFileName))
+	sourceFileRelease := s.parseFileRelease(fileBaseName(sourceFileName))
 	matched, _ := s.releasesMatchWithReasonAndNames(sourceFileRelease, candidateRelease, fileBaseName(sourceFileName), candidateName, false)
 	return matched
 }
