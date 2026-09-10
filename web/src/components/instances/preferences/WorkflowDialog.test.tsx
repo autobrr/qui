@@ -47,6 +47,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -67,6 +68,11 @@ const key = (suffix: string) => `preferences.workflowDialog.${suffix}`
 
 describe("WorkflowDialog category validation", () => {
   it("rejects an unselected category for save, enable, and dry run, but accepts Uncategorized", async () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
     // Radix scrolls focused select options; jsdom has no layout.
     Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: vi.fn() })
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
