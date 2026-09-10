@@ -1,0 +1,203 @@
+package orphanscan
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"sort"
+	"testing"
+	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
+)
+
+// TestExecuteScan_LimitTakesRemovableLeavesFirst covers a limit smaller than the
+// number of abandoned directories. Sorting parents first would keep a directory
+// that cannot be removed while its child is still there, and every later scan
+// would re-select the same parent, so the tree could never drain.
+func TestExecuteScan_LimitTakesRemovableLeavesFirst(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "torrents")
+	a := filepath.Join(root, "a")
+	b := filepath.Join(a, "b")
+	seeded := filepath.Join(root, "seeded")
+	claimed := filepath.Join(root, "claimed")
+
+	require.NoError(t, os.MkdirAll(b, 0o750))
+	require.NoError(t, os.MkdirAll(seeded, 0o750))
+	require.NoError(t, os.MkdirAll(claimed, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(seeded, "owned.mkv"), []byte("x"), 0o600))
+
+	db := testdb.NewMigratedSQLite(t, "orphanscan-limit-leaves")
+	is, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	_, err = is.Create(t.Context(), "t", "http://127.0.0.1:8080", "u", "p", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewOrphanScanStore(db)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
+	}
+	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
+	}
+	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{{Hash: "o", SavePath: root, State: qbt.TorrentStatePausedUp}}, nil
+	}
+	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{"o": {
+			{Name: "seeded/owned.mkv", Size: 1},
+			{Name: "claimed/unwritten.mkv", Size: 1},
+		}}, nil
+	}
+	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: root}, nil
+	}
+	svc.subcategoriesEnabledProvider = func(_ context.Context, _ int) (bool, error) { return false, nil }
+	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{}, nil
+	}
+
+	// MaxFilesPerRun = 1 is the reported trigger.
+	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID: 1, GracePeriodMinutes: 0, IgnorePaths: []string{},
+		ScanIntervalHours: 24, PreviewSort: "size_desc", MaxFilesPerRun: 1,
+		AutoCleanupMaxFiles: 100, ScanDefaultSavePath: true, DeleteAbandonedDirs: true,
+	})
+	require.NoError(t, err)
+
+	// The deepest directory has to be taken first, then its parent on the next
+	// run, exactly as the documentation promises.
+	runLeaf := runCycle(t, svc, store)
+	require.Equal(t, []string{b}, runLeaf, "the first run must take the leaf, not the parent that cannot be removed")
+	require.NoDirExists(t, b)
+	require.DirExists(t, a)
+
+	runParent := runCycle(t, svc, store)
+	require.Equal(t, []string{a}, runParent, "the parent becomes removable once the leaf is gone")
+	require.NoDirExists(t, a)
+	require.DirExists(t, claimed, "a claimed directory must not occupy the preview cap or be removed")
+}
+
+// runCycle scans, returns what the run previewed, and confirms the deletion.
+func runCycle(t *testing.T, svc *Service, store *models.OrphanScanStore) []string {
+	t.Helper()
+
+	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
+	require.NoError(t, err)
+	svc.executeScan(context.Background(), 1, runID)
+
+	files, err := store.GetFilesForDeletion(t.Context(), runID)
+	require.NoError(t, err)
+	previewed := make([]string, 0, len(files))
+	for _, f := range files {
+		previewed = append(previewed, f.FilePath)
+	}
+
+	svc.executeDeletion(context.Background(), 1, runID)
+	return previewed
+}
+
+// TestExecuteScan_MissingNestedRootStillWarns covers a save path that is nested
+// under another scan root and absent from disk, such as an unmounted volume.
+// Pruning stops it being walked, so without an explicit check its absence would
+// read as a clean scan (discussion #2483).
+func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
+	base := t.TempDir()
+	parent := filepath.Join(base, "data")
+	nested := filepath.Join(parent, "movies") // never created: the volume is not mounted
+
+	require.NoError(t, os.MkdirAll(parent, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(parent, "owned.mkv"), []byte("x"), 0o600))
+
+	db := testdb.NewMigratedSQLite(t, "orphanscan-missing-nested-root")
+	is, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	_, err = is.Create(t.Context(), "t", "http://127.0.0.1:8080", "u", "p", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewOrphanScanStore(db)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, fsops.NewPool(stubInstanceGetter{}, local.NewBackend()))
+	svc.getClientProvider = func(context.Context, int) (healthChecker, error) {
+		return stubHealthChecker{healthy: true, lastSync: time.Now().Add(-time.Minute)}, nil
+	}
+	svc.listInstancesProvider = func(context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{{ID: 1, Name: "t", IsActive: true, HasLocalFilesystemAccess: true}}, nil
+	}
+	// Two torrents: one in the parent, one on the volume that is not mounted.
+	svc.getAllTorrentsProvider = func(context.Context, int) ([]qbt.Torrent, error) {
+		return []qbt.Torrent{
+			{Hash: "here", SavePath: parent, State: qbt.TorrentStatePausedUp},
+			{Hash: "gone", SavePath: nested, State: qbt.TorrentStatePausedUp},
+		}, nil
+	}
+	svc.getTorrentFilesBatchProvider = func(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
+		return map[string]qbt.TorrentFiles{
+			"here": {{Name: "owned.mkv", Size: 1}},
+			"gone": {{Name: "unreachable.mkv", Size: 1}},
+		}, nil
+	}
+	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: parent}, nil
+	}
+	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{}, nil
+	}
+
+	_, err = store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID: 1, GracePeriodMinutes: 0, IgnorePaths: []string{},
+		ScanIntervalHours: 24, PreviewSort: "size_desc", MaxFilesPerRun: 1000,
+		AutoCleanupMaxFiles: 100,
+	})
+	require.NoError(t, err)
+
+	runID, err := store.CreateRunIfNoActive(t.Context(), 1, "manual")
+	require.NoError(t, err)
+	svc.executeScan(context.Background(), 1, runID)
+
+	run, err := store.GetRun(t.Context(), runID)
+	require.NoError(t, err)
+	require.Contains(t, run.ErrorMessage, nested,
+		"a nested save path that is not on disk must still be reported, not hidden by pruning")
+}
+
+// TestTruncationLess_OrdersFilesThenDeepestDirectories pins the order the cap
+// truncates against. A file whose name falls between a directory and its child
+// ("d-f" sorts after "d" and before "d/x", since '-' < '/' and '-' < '\\') used
+// to make the comparator cyclic, and sort.Slice on a cyclic comparator returns
+// an order that depends on how the entries arrived — which is map order, from
+// dedupeOrphans. Every permutation must give the same answer.
+func TestTruncationLess_OrdersFilesThenDeepestDirectories(t *testing.T) {
+	t.Parallel()
+
+	parent := OrphanFile{Path: "d", IsAbandonedDir: true}
+	child := OrphanFile{Path: filepath.Join("d", "x"), IsAbandonedDir: true}
+	file := OrphanFile{Path: "d-f"}
+
+	// Files come first, then directories deepest first, so the child is always
+	// listed before the parent whose removal it blocks.
+	want := []string{file.Path, child.Path, parent.Path}
+
+	entries := []OrphanFile{parent, child, file}
+	for _, previewSort := range []string{"size_desc", "directory_size_desc"} {
+		less := truncationLess(previewSort)
+		for _, perm := range [][]int{{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}} {
+			in := []OrphanFile{entries[perm[0]], entries[perm[1]], entries[perm[2]]}
+			sort.Slice(in, func(i, j int) bool { return less(in[i], in[j]) })
+
+			got := make([]string, len(in))
+			for i, o := range in {
+				got[i] = o.Path
+			}
+			require.Equal(t, want, got, "previewSort %q, input order %v", previewSort, perm)
+		}
+	}
+}

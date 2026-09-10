@@ -199,13 +199,28 @@ func safeDeleteDirectory(ctx context.Context, target string, tfm *TorrentFileMap
 }
 
 // safeDeleteEmptyDir removes a directory only if empty. Never recursive.
+//
+// The type is re-checked first: Remove would happily delete a regular file, and
+// a file standing where the preview saw a directory is new data that was never
+// reviewed.
 func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fsops.Backend) error {
 	if err := withinScanRoot(scanRoot, target); err != nil {
 		return err
 	}
 
+	info, err := backend.Lstat(ctx, target)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil // Already gone
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir {
+		return fmt.Errorf("refusing to remove %s: it is no longer a directory", target)
+	}
+
 	// Remove on a directory only succeeds if it's empty
-	err := backend.Remove(ctx, target, fsops.RemoveOptions{})
+	err = backend.Remove(ctx, target, fsops.RemoveOptions{})
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil // Already gone
 	}

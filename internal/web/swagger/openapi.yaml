@@ -1,7 +1,11 @@
 openapi: 3.1.0
 info:
   title: qui API
-  description: qui API for managing multiple qBittorrent instances
+  description: |
+    qui API for managing multiple qBittorrent instances.
+    For automation create and update requests, set `conditions.category.enabled` to `true`
+    and `conditions.category.category` to an empty string to remove the torrent category.
+    Set `conditions.category.enabled` to `false` to disable the category action.
   version: 1.0.0
   license:
     name: GPL-2.0-or-later
@@ -8898,6 +8902,15 @@ components:
         maxFilesPerRun:
           type: integer
           description: Maximum orphan files to record per run (prevents DB bloat)
+        scanDefaultSavePath:
+          type: boolean
+          description: Also scan qBittorrent's default save path, even when no torrent points into it
+        scanCategoryPaths:
+          type: boolean
+          description: Also scan every qBittorrent category destination; false when scanDefaultSavePath is false
+        deleteAbandonedDirs:
+          type: boolean
+          description: Report directories that hold no files at any depth so they can be removed
         createdAt:
           type: string
           format: date-time
@@ -8926,6 +8939,13 @@ components:
         maxFilesPerRun:
           type: integer
           minimum: 1
+        scanDefaultSavePath:
+          type: boolean
+        scanCategoryPaths:
+          type: boolean
+          description: Cleared when scanDefaultSavePath is false
+        deleteAbandonedDirs:
+          type: boolean
 
     OrphanScanRun:
       type: object
@@ -9034,11 +9054,20 @@ components:
           format: int64
         filePath:
           type: string
-          description: Absolute path to the orphan file
+          description: >-
+            Absolute path to the entry. Usually a file, but a disc unit
+            (BDMV/VIDEO_TS) is reported as a single entry whose path is its
+            directory, and an abandoned directory is a directory too.
         fileSize:
           type: integer
           format: int64
-          description: File size in bytes
+          description: Entry size in bytes; always 0 for an abandoned directory
+        isAbandonedDir:
+          type: boolean
+          description: >-
+            True only for an abandoned directory, which holds no files and is
+            removed with rmdir. False for orphan content, whose path may still
+            be a directory when it is a disc unit.
         modifiedAt:
           type: string
           format: date-time

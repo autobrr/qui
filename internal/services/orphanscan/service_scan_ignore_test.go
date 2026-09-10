@@ -101,16 +101,17 @@ func runScanForTest(t *testing.T, svc *Service, store *models.OrphanScanStore) *
 	return run
 }
 
-// An unreachable save path fails the whole run today. Ignoring that path must
-// drop the scan root instead of walking it (issue #2483).
+// Ignoring an unreachable save path must drop the scan root instead of walking
+// it (issue #2483). An absent root no longer fails the run, so the first pass
+// completes with the root still recorded; ignoring it takes it off the list.
 func TestExecuteScan_IgnorePathDropsUnreachableScanRoot(t *testing.T) {
 	t.Parallel()
 
 	svc, store, presentRoot, missingRoot := newScanTestService(t)
 
-	failed := runScanForTest(t, svc, store)
-	assert.Equal(t, "failed", failed.Status)
-	assert.Contains(t, failed.ErrorMessage, missingRoot)
+	before := runScanForTest(t, svc, store)
+	assert.Equal(t, "completed", before.Status)
+	assert.Contains(t, before.ScanPaths, filepath.Clean(missingRoot))
 
 	setIgnorePaths(t, store, []string{missingRoot})
 	run := runScanForTest(t, svc, store)
@@ -130,4 +131,86 @@ func TestExecuteScan_IgnorePathsCoverEveryScanRoot(t *testing.T) {
 	run := runScanForTest(t, svc, store)
 	assert.Equal(t, "failed", run.Status)
 	assert.Equal(t, "no scan roots left: ignore paths cover every scan path", run.ErrorMessage)
+}
+
+// A scan root that is not on disk must be reported without failing the run.
+// Scanning category paths turns every unused category into a root, and
+// qBittorrent creates a category directory only on the first torrent.
+func TestExecuteScan_MissingScanRootDoesNotFailRun(t *testing.T) {
+	t.Parallel()
+
+	svc, store, presentRoot, missingRoot := newScanTestService(t)
+
+	run := runScanForTest(t, svc, store)
+
+	assert.Equal(t, "completed", run.Status)
+	assert.Contains(t, run.ErrorMessage, missingRoot)
+	assert.Equal(t, 0, run.FilesFound)
+	assert.Contains(t, run.ScanPaths, filepath.Clean(presentRoot))
+}
+
+// A category destination qBittorrent has not created yet is absent by design,
+// so it must not raise a partial-scan warning. A save path a torrent points at
+// is a different story and still gets reported.
+func TestExecuteScan_AbsentCategoryPathStaysQuiet(t *testing.T) {
+	t.Parallel()
+
+	svc, store, _, missingRoot := newScanTestService(t)
+	unusedCategory := filepath.Join(t.TempDir(), "unused")
+
+	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
+	}
+	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+		return map[string]qbt.Category{"unused": {Name: "unused", SavePath: unusedCategory}}, nil
+	}
+
+	defaults := DefaultSettings()
+	_, err := store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID: 1, Enabled: true, GracePeriodMinutes: 0, IgnorePaths: []string{},
+		ScanIntervalHours: defaults.ScanIntervalHours, PreviewSort: defaults.PreviewSort,
+		MaxFilesPerRun: defaults.MaxFilesPerRun, AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
+		ScanCategoryPaths: true,
+	})
+	require.NoError(t, err)
+
+	run := runScanForTest(t, svc, store)
+
+	assert.Equal(t, "completed", run.Status)
+	assert.Contains(t, run.ScanPaths, filepath.Clean(unusedCategory))
+	assert.NotContains(t, run.ErrorMessage, unusedCategory)
+	assert.Contains(t, run.ErrorMessage, missingRoot)
+}
+
+// A category destination a torrent actually saves into is not expected to be
+// absent: it went missing after the fact, which is the unmounted-volume case
+// discussion #2483 is about, so the warning must survive.
+func TestExecuteScan_AbsentCategoryPathWithTorrentStillWarns(t *testing.T) {
+	t.Parallel()
+
+	svc, store, _, missingRoot := newScanTestService(t)
+
+	svc.getAppPreferencesProvider = func(context.Context, int) (qbt.AppPreferences, error) {
+		return qbt.AppPreferences{SavePath: filepath.Dir(missingRoot)}, nil
+	}
+	svc.subcategoriesEnabledProvider = func(context.Context, int) (bool, error) { return false, nil }
+	svc.getCategoriesProvider = func(context.Context, int) (map[string]qbt.Category, error) {
+		// The same path the "missing" torrent saves into.
+		return map[string]qbt.Category{"movies": {Name: "movies", SavePath: missingRoot}}, nil
+	}
+
+	defaults := DefaultSettings()
+	_, err := store.UpsertSettings(t.Context(), &models.OrphanScanSettings{
+		InstanceID: 1, Enabled: true, GracePeriodMinutes: 0, IgnorePaths: []string{},
+		ScanIntervalHours: defaults.ScanIntervalHours, PreviewSort: defaults.PreviewSort,
+		MaxFilesPerRun: defaults.MaxFilesPerRun, AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
+		ScanCategoryPaths: true,
+	})
+	require.NoError(t, err)
+
+	run := runScanForTest(t, svc, store)
+
+	assert.Equal(t, "completed", run.Status)
+	assert.Contains(t, run.ErrorMessage, missingRoot)
 }

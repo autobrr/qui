@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -29,10 +28,18 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 		candidateName = "Azure.Compass.S01E05.1080p.WEB-DL.H.265-KIRI"
 		reportedSize  = int64(2_147_483_648)
 	)
+	candidateData := createTestTorrent(t, candidateName, []string{"payload.mkv"}, 256*1024)
 
 	var searchRequests atomic.Int32
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/candidate.torrent" {
+			w.Header().Set("Content-Type", "application/x-bittorrent")
+			if _, err := w.Write(candidateData); err != nil {
+				t.Errorf("write candidate torrent: %v", err)
+			}
+			return
+		}
 		if r.URL.Query().Get("t") == "caps" {
 			w.Header().Set("Content-Type", "application/xml")
 			_, err := fmt.Fprint(w, `<caps><limits default="100" max="100"/><searching>
@@ -96,16 +103,13 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
 		},
-		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
-			return []byte("torrent"), nil
-		},
 		crossSeedInvoker: func(_ context.Context, request *CrossSeedRequest) (*CrossSeedResponse, error) {
 			captured = request
 			return &CrossSeedResponse{Success: true}, nil
 		},
 	}
 
-	err := service.executeCompletionSearch(context.Background(), instanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{
+	err := service.executeCompletionSearch(t.Context(), instanceID, &source, settings, &models.InstanceCrossSeedCompletionSettings{
 		InstanceID: instanceID,
 		Enabled:    true,
 		IndexerIDs: []int{indexerID},

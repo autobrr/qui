@@ -5443,6 +5443,28 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 	return false
 }
 
+// SubcategoriesEnabled reports whether an instance nests categories. qBittorrent
+// 5.2 dropped use_subcategories, so the preference cannot be read on its own.
+// resolveUseSubcategories below answers the same from main data.
+func (sm *SyncManager) SubcategoriesEnabled(ctx context.Context, instanceID int) (bool, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get client: %w", err)
+	}
+	if !client.SupportsSubcategories() {
+		return false, nil
+	}
+	if client.SubcategoriesAlwaysEnabled() {
+		return true, nil
+	}
+
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get app preferences: %w", err)
+	}
+	return prefs.UseSubcategories, nil
+}
+
 func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
 	if !supports {
 		return false

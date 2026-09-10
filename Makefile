@@ -111,7 +111,7 @@ test:
 	@echo "Running tests..."
 	go test -race -v ./...
 
-# Run all backend tests with a temporary Postgres server.
+# Run Postgres integration tests with a temporary server.
 test-postgres:
 	go run ./internal/testutil/postgres
 
@@ -251,7 +251,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test           - Run all Go tests with race detection"
-	@echo "  make test-postgres  - Run all Go tests with a temporary Postgres server"
+	@echo "  make test-postgres  - Run Postgres integration tests with a temporary server"
 	@echo "  make test-frontend  - Run frontend vitest suite"
 	@echo "  make test-openapi   - Validate OpenAPI specification"
 	@echo ""

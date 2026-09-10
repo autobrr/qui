@@ -20,28 +20,15 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 )
 
-func TestOpenPostgres(t *testing.T) {
+func TestCleanupUnusedStringsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	db, ctx := openPostgresTestDB(t)
-
-	if got := db.Dialect(); got != string(DialectPostgres) {
-		t.Fatalf("unexpected dialect: %s", got)
-	}
+	require.Equal(t, string(DialectPostgres), db.Dialect())
 
 	var count int
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count); err != nil {
-		t.Fatalf("query migrations table: %v", err)
-	}
-	if count == 0 {
-		t.Fatalf("expected at least one postgres migration row, got %d", count)
-	}
-}
-
-func TestCleanupUnusedStringsPostgres(t *testing.T) {
-	t.Parallel()
-
-	db, ctx := openPostgresTestDB(t)
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT COUNT(*) FROM migrations").Scan(&count))
+	require.Positive(t, count)
 
 	// Through the DB wrapper, not db.Conn(): the raw handle skips the ?-to-$n
 	// rebinding, so every placeholder below would reach Postgres verbatim.
@@ -70,7 +57,7 @@ func TestCleanupUnusedStringsPostgres(t *testing.T) {
 	require.Zero(t, deletedAgain)
 }
 
-func TestMigratedSQLiteFilesmanagerCleanupPostgres(t *testing.T) {
+func TestMigratedSQLiteFilesmanagerCleanupPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	ctx, testDSN := openPostgresTestSchema(t)
@@ -219,13 +206,13 @@ func dsnWithSearchPath(t *testing.T, dsn string, schema string) string {
 	return parsed.String()
 }
 
-// TestPostgresImportForeignKeysIgnoreOtherSchemas pins both catalog queries to
+// TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration pins both catalog queries to
 // the active schema. A foreign key referencing another schema's same-named
 // table used to survive: regclass text output qualifies only what search_path
 // cannot reach, and stripping that qualifier turned the reference into a local
 // one. That invents an import dependency (here a cycle, which fails the order)
 // and hands the row filter a parent table that is not the one being referenced.
-func TestPostgresImportForeignKeysIgnoreOtherSchemas(t *testing.T) {
+func TestImportForeignKeysIgnoreOtherSchemasPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	ctx, testDSN := openPostgresTestSchema(t)

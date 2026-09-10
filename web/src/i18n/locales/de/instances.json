@@ -984,7 +984,8 @@
         "deletionFailed": "Löschung konnte nicht gestartet werden",
         "exportedFiles": "{{count}} Dateien als CSV exportiert",
         "exportFailed": "Dateien konnten nicht exportiert werden"
-      }
+      },
+      "emptyDirectory": "Leeres Verzeichnis"
     },
     "orphanScanSettings": {
       "settingsTitle": "Einstellungen",
@@ -1020,6 +1021,13 @@
       "maxFilesThreshold": "Schwellwert für max. Dateien",
       "maxFilesThresholdTooltip": "Sicherheitslimit: Findet ein Scan mehr Dateien als dieser Schwellwert, überspringt er das Auto-Cleanup und erfordert eine manuelle Prüfung. Das fängt Anomalien wie falsch konfigurierte Ignore-Pfade ab.",
       "files": "Dateien",
+      "scanScope": "Scan-Umfang",
+      "scanDefaultSavePathLabel": "Standard-Speicherpfad scannen",
+      "scanDefaultSavePathTooltip": "Standardmäßig durchläuft der Scan nur Verzeichnisse, auf die bereits ein Torrent verweist; eine einzelne Datei direkt im Standard-Speicherpfad wird deshalb nie erkannt. Aktiviere diese Option, um auch den Standard-Speicherpfad der Instanz zu durchlaufen, einschließlich Unterverzeichnissen, die kein Torrent verwendet.",
+      "scanCategoryPathsLabel": "Einschließlich Kategoriepfade",
+      "scanCategoryPathsTooltip": "Auch jedes Kategorieziel durchlaufen: den von der Kategorie gesetzten Speicherpfad oder Standard-Speicherpfad / Kategoriename, wenn sie ihn erbt. Nützlich, wenn eine Kategorie außerhalb des Standard-Speicherpfads liegt.",
+      "deleteAbandonedDirsLabel": "Verwaiste Verzeichnisse löschen",
+      "deleteAbandonedDirsTooltip": "Verzeichnisse melden, die in keiner Tiefe Dateien enthalten, damit Überbleibsel von Verschiebungen entfernt werden können. Scan-Wurzeln und Kategorieziele werden nie entfernt, auch wenn sie leer sind.",
       "exclusions": "Ausschlüsse",
       "ignorePaths": "Ignore-Pfade",
       "ignorePathsTooltip": "Pfade, die vom Scan ausgeschlossen werden. Dateien in diesen Verzeichnissen werden nie als Orphans markiert. Gib einen Pfad pro Zeile ein.",
