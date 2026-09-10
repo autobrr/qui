@@ -13,7 +13,7 @@ Orphan scan finds and removes files in your download directories that no torrent
 
 ## How it works
 
-1. qui builds the scan roots from the save paths of your current torrents, not from qBittorrent's default download directory.
+1. qui builds the scan roots from the save paths of your current torrents. It does not scan qBittorrent's default save path unless you turn on **Scan Default Save Path**.
 2. qui flags files that no torrent references as orphans.
 3. Before you confirm deletion, you preview the list.
 4. After file deletion, qui removes empty directories.
@@ -34,11 +34,49 @@ qui does not protect disabled instances. If a disabled instance with local files
 
 <LocalFilesystemDocker />
 
-## Abandoned directories
+## Directories no torrent points at
 
-qui scans a directory only if at least one torrent points to it. If you delete all torrents from a directory, that directory stops being a scan root. qui does not detect leftover files there.
+By default, qui scans a directory only if at least one torrent points to it. If you delete all torrents from a directory, that directory stops being a scan root. qui does not detect leftover files there.
 
 **Example:** You have torrents in `/downloads/old-stuff/`. If you delete all those torrents, orphan scan stops tracking `/downloads/old-stuff/` and does not clean it up.
+
+The same gap applies one level up. If your torrents all save to `/data/torrents/mydata/`, a stray `/data/torrents/test.txt` is never walked, because no torrent points at `/data/torrents/`.
+
+## Scanning the default save path
+
+Turn on **Scan Default Save Path** to close that gap. qui reads the default save path from the instance's own qBittorrent settings and walks it as a scan root, including subdirectories that no torrent uses.
+
+Turn on **Including Category Paths** underneath it to also walk every category destination: the save path a category sets, or `default save path / category name` for a category that inherits it. This matters when a category points somewhere outside the default save path, which the first toggle alone would not reach. It is available only while **Scan Default Save Path** is on.
+
+Both are off by default. Turning them on widens what a scan can flag, so review the preview before you confirm a deletion.
+
+Everything else still applies inside the wider roots:
+
+- Files that torrents reference are protected, including torrents on other active instances with local filesystem access.
+- Ignore paths, the grace period, and max files per run all apply.
+- A save path missing from disk, such as an unmounted volume, is reported rather than treated as scanned, even when a wider root covers it.
+
+If qui cannot read the default save path or the category list from qBittorrent, or qBittorrent reports an empty or relative default save path, the run fails and names the cause. qui does not fall back to a narrower scan, because a narrower scan would report a clean result over a tree you asked it to check.
+
+:::note
+These paths come from qBittorrent, so they are paths as qBittorrent sees them. If qui runs in a different container, they must resolve to the same directories on the host that runs qui.
+:::
+
+## Abandoned directories
+
+Moves and deletions leave empty directories behind. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
+
+Turn on **Delete Abandoned Directories** to include them. qui reports a directory when it holds no files at any depth, and lists it in the preview alongside the orphan files, marked with a folder icon and no size.
+
+These are never reported, even when empty:
+
+- A scan root itself.
+- A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's folder the same way qBittorrent does, including one that inherits from a parent category.
+- Anything under your ignore paths.
+- A directory changed more recently than the grace period.
+- A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
+
+Directories are removed after the files, so a tree this run empties goes in one pass. That includes a directory left empty only because the run deleted the last file in it, which is why the folder count can be higher than the number of directories you saw listed. Anything that changed between the preview and your confirmation is skipped rather than removed.
 
 ## Settings
 
@@ -48,6 +86,9 @@ qui scans a directory only if at least one torrent points to it. If you delete a
 | Ignore paths | Directories to exclude from scanning | - |
 | Scan interval | How often scheduled scans run | 24 hours |
 | Max files per run | Maximum orphan preview entries saved for a run (also caps what qui can delete from that run) | 1,000 |
+| Scan default save path | Also walk qBittorrent's default save path, including directories no torrent uses | Disabled |
+| Including category paths | Also walk every category destination, explicit or inherited | Disabled |
+| Delete abandoned directories | Report directories that hold no files at any depth | Disabled |
 | Auto-cleanup | Delete orphans from scheduled scans without manual confirmation | Disabled |
 | Max files threshold | If the orphan count is at or below this threshold, auto-delete orphans | 100 |
 

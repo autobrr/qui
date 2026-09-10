@@ -984,7 +984,8 @@
         "deleted": "Eliminato",
         "skipped": "Ignorato",
         "failed": "Non riuscito"
-      }
+      },
+      "emptyDirectory": "Cartella vuota"
     },
     "orphanScanSettings": {
       "settingsTitle": "Impostazioni",
@@ -1020,6 +1021,13 @@
       "maxFilesThreshold": "Soglia massima di file",
       "maxFilesThresholdTooltip": "Limite di sicurezza: se una scansione trova più file di questa soglia, salterà la pulizia automatica e richiederà una revisione manuale. In questo modo vengono rilevate anomalie come percorsi da ignorare configurati male.",
       "files": "file",
+      "scanScope": "Ambito della scansione",
+      "scanDefaultSavePathLabel": "Scansiona il percorso di salvataggio predefinito",
+      "scanDefaultSavePathTooltip": "Per impostazione predefinita la scansione percorre solo le cartelle a cui un torrent punta già, quindi un file isolato che si trova direttamente nel percorso di salvataggio predefinito non viene mai rilevato. Attiva questa opzione per percorrere anche il percorso di salvataggio predefinito dell'istanza, incluse le sottocartelle che nessun torrent utilizza.",
+      "scanCategoryPathsLabel": "Incluse le cartelle delle categorie",
+      "scanCategoryPathsTooltip": "Percorrere anche ogni destinazione di categoria: il percorso impostato dalla categoria, oppure percorso di salvataggio predefinito / nome categoria quando lo eredita. Utile quando una categoria punta fuori dal percorso di salvataggio predefinito.",
+      "deleteAbandonedDirsLabel": "Elimina le cartelle abbandonate",
+      "deleteAbandonedDirsTooltip": "Segnalare le cartelle che non contengono file a nessuna profondità, così da rimuovere i resti degli spostamenti. Le radici di scansione e le destinazioni delle categorie non vengono mai rimosse, nemmeno se vuote.",
       "exclusions": "Esclusioni",
       "ignorePaths": "Percorsi da ignorare",
       "ignorePathsTooltip": "Percorsi da escludere dalla scansione. I file in queste cartelle non verranno mai contrassegnati come orfani. Inserisci un percorso per riga.",

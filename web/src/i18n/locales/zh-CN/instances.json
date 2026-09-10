@@ -966,7 +966,8 @@
         "deletionFailed": "启动删除失败",
         "exportedFiles": "已导出 {{count}} 个文件到 CSV",
         "exportFailed": "导出文件失败"
-      }
+      },
+      "emptyDirectory": "空目录"
     },
     "orphanScanSettings": {
       "settingsTitle": "设置",
@@ -1002,6 +1003,13 @@
       "maxFilesThreshold": "最大文件阈值",
       "maxFilesThresholdTooltip": "安全限制：如果扫描发现的文件数超过此阈值，将跳过自动清理并要求人工审核。这可以捕获忽略路径配置错误等异常情况。",
       "files": "个文件",
+      "scanScope": "扫描范围",
+      "scanDefaultSavePathLabel": "扫描默认保存路径",
+      "scanDefaultSavePathTooltip": "默认情况下，扫描只会遍历已有种子指向的目录，因此直接放在默认保存路径下的散落文件永远不会被发现。开启此选项后，还会遍历该实例的默认保存路径，包括没有任何种子使用的子目录。",
+      "scanCategoryPathsLabel": "包含分类路径",
+      "scanCategoryPathsTooltip": "同时遍历每个分类的目标位置：分类自行设置的保存路径，或在继承时为默认保存路径 / 分类名称。当分类指向默认保存路径之外时很有用。",
+      "deleteAbandonedDirsLabel": "删除废弃目录",
+      "deleteAbandonedDirsTooltip": "报告在任何层级都不含文件的目录，以便清除移动后残留的空目录。扫描根目录和分类目标位置即使为空也永不删除。",
       "exclusions": "排除项",
       "ignorePaths": "忽略路径",
       "ignorePathsTooltip": "从扫描中排除的路径。这些目录中的文件永远不会被标记为孤立文件。每行输入一个路径。",

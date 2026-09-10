@@ -978,7 +978,8 @@
         "deletionFailed": "Échec du démarrage de la suppression",
         "exportedFiles": "{{count}} fichiers exportés vers CSV",
         "exportFailed": "Échec de l'exportation des fichiers"
-      }
+      },
+      "emptyDirectory": "Dossier vide"
     },
     "orphanScanSettings": {
       "settingsTitle": "Paramètres",
@@ -1014,6 +1015,13 @@
       "maxFilesThreshold": "Seuil maximum de fichiers",
       "maxFilesThresholdTooltip": "Limite de sécurité pour éviter la suppression automatique lors d'anomalies.",
       "files": "fichiers",
+      "scanScope": "Portée de l'analyse",
+      "scanDefaultSavePathLabel": "Analyser le dossier de sauvegarde par défaut",
+      "scanDefaultSavePathTooltip": "Par défaut, l'analyse ne parcourt que les dossiers vers lesquels un torrent pointe déjà : un fichier isolé placé directement dans le dossier de sauvegarde par défaut n'est donc jamais vu. Activez cette option pour parcourir aussi le dossier de sauvegarde par défaut de l'instance, y compris les sous-dossiers qu'aucun torrent n'utilise.",
+      "scanCategoryPathsLabel": "Y compris les dossiers de catégories",
+      "scanCategoryPathsTooltip": "Parcourir aussi chaque destination de catégorie : le dossier défini par la catégorie, ou dossier de sauvegarde par défaut / nom de la catégorie lorsqu'elle en hérite. Utile quand une catégorie pointe hors du dossier de sauvegarde par défaut.",
+      "deleteAbandonedDirsLabel": "Supprimer les dossiers abandonnés",
+      "deleteAbandonedDirsTooltip": "Signaler les dossiers qui ne contiennent aucun fichier, à quelque profondeur que ce soit, afin de supprimer les restes des déplacements. Les racines d'analyse et les destinations de catégories ne sont jamais supprimées, même vides.",
       "exclusions": "Exclusions",
       "ignorePaths": "Chemins ignorés",
       "ignorePathsTooltip": "Chemins à exclure de l'analyse (un par ligne).",
