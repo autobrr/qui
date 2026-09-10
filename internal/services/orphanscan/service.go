@@ -238,26 +238,38 @@ func walkForScope(ctx context.Context, root string, tfm *TorrentFileMap, ignoreP
 	return orphans, dirs, err
 }
 
+// isMissingRoot separates "not there" from "could not be read". qBittorrent
+// creates a category directory only on the first torrent, so an unused category
+// is a root that does not exist and cannot hide an orphan. Every other error
+// still means the tree went unread, which must not report clean (#2365).
+func isMissingRoot(err error) bool {
+	return errors.Is(err, os.ErrNotExist)
+}
+
 // unreachableCoveredRoots reports the roots pruning dropped that are not on
 // disk. Pruning is a walk optimisation, not a coverage decision: without this an
 // unmounted save path nested under a walked parent reads as a clean scan
 // (discussion #2483).
-func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string, backend fsops.Backend) []string {
+func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string, backend fsops.Backend) (errs, missing []string) {
 	walked := make(map[string]struct{}, len(walkRoots))
 	for _, root := range walkRoots {
 		walked[root] = struct{}{}
 	}
 
-	var errs []string
 	for _, root := range scanRoots {
 		if _, ok := walked[root]; ok {
 			continue
 		}
-		if _, err := backend.Stat(ctx, root); err != nil {
+		_, err := backend.Stat(ctx, root)
+		switch {
+		case err == nil:
+		case isMissingRoot(err):
+			missing = append(missing, fmt.Sprintf("%s: %v", root, err))
+		default:
 			errs = append(errs, fmt.Sprintf("%s: %v", root, err))
 		}
 	}
-	return errs
+	return errs, missing
 }
 
 // pruneNestedScanRoots drops roots already covered by another root in the set so
@@ -745,12 +757,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// We want the max-files cap to be applied *after sorting* so the preview
 	// and truncation reflect the user's configured ordering.
 	var allOrphans []OrphanFile
-	var walkErrors []string
 
 	// run.ScanPaths keeps every root so deletion still resolves the narrowest
 	// one per file, but walking an ancestor already covers its descendants.
 	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
-	walkErrors = append(walkErrors, unreachableCoveredRoots(ctx, scanRoots, walkRoots, backend)...)
+	walkErrors, missingRoots := unreachableCoveredRoots(ctx, scanRoots, walkRoots, backend)
 
 	var fileFreeDirs []AbandonedDir
 
@@ -765,6 +776,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, instanceID, runID)
 				return
+			}
+			if isMissingRoot(err) {
+				log.Debug().Err(err).Str("root", root).Msg("orphanscan: scan root is not on disk")
+				missingRoots = append(missingRoots, fmt.Sprintf("%s: %v", root, err))
+				continue
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
 			walkErrors = append(walkErrors, fmt.Sprintf("%s: %v", root, err))
@@ -816,8 +832,8 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 
 	// Surface partial failures as warning (but continue with found orphans)
-	if len(walkErrors) > 0 {
-		warnMsg := fmt.Sprintf("Partial scan: %d path(s) inaccessible:\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
+	if inaccessible := slices.Concat(walkErrors, missingRoots); len(inaccessible) > 0 {
+		warnMsg := fmt.Sprintf("Partial scan: %d path(s) inaccessible:\n%s", len(inaccessible), strings.Join(inaccessible, "\n"))
 		s.warnRun(ctx, runID, warnMsg)
 	}
 

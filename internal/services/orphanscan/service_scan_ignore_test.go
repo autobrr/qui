@@ -101,16 +101,17 @@ func runScanForTest(t *testing.T, svc *Service, store *models.OrphanScanStore) *
 	return run
 }
 
-// An unreachable save path fails the whole run today. Ignoring that path must
-// drop the scan root instead of walking it (issue #2483).
+// Ignoring an unreachable save path must drop the scan root instead of walking
+// it (issue #2483). An absent root no longer fails the run, so the first pass
+// completes with the root still recorded; ignoring it takes it off the list.
 func TestExecuteScan_IgnorePathDropsUnreachableScanRoot(t *testing.T) {
 	t.Parallel()
 
 	svc, store, presentRoot, missingRoot := newScanTestService(t)
 
-	failed := runScanForTest(t, svc, store)
-	assert.Equal(t, "failed", failed.Status)
-	assert.Contains(t, failed.ErrorMessage, missingRoot)
+	before := runScanForTest(t, svc, store)
+	assert.Equal(t, "completed", before.Status)
+	assert.Contains(t, before.ScanPaths, filepath.Clean(missingRoot))
 
 	setIgnorePaths(t, store, []string{missingRoot})
 	run := runScanForTest(t, svc, store)
@@ -130,4 +131,20 @@ func TestExecuteScan_IgnorePathsCoverEveryScanRoot(t *testing.T) {
 	run := runScanForTest(t, svc, store)
 	assert.Equal(t, "failed", run.Status)
 	assert.Equal(t, "no scan roots left: ignore paths cover every scan path", run.ErrorMessage)
+}
+
+// A scan root that is not on disk must be reported without failing the run.
+// Scanning category paths turns every unused category into a root, and
+// qBittorrent creates a category directory only on the first torrent.
+func TestExecuteScan_MissingScanRootDoesNotFailRun(t *testing.T) {
+	t.Parallel()
+
+	svc, store, presentRoot, missingRoot := newScanTestService(t)
+
+	run := runScanForTest(t, svc, store)
+
+	assert.Equal(t, "completed", run.Status)
+	assert.Contains(t, run.ErrorMessage, missingRoot)
+	assert.Equal(t, 0, run.FilesFound)
+	assert.Contains(t, run.ScanPaths, filepath.Clean(presentRoot))
 }
