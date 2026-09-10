@@ -14,30 +14,46 @@ import (
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
-// The upsert guard is SQL, and the two engines differ on null comparison and
-// numeric affinity, so every case below runs against both. The Postgres half
-// skips unless QUI_TEST_POSTGRES_DSN is set.
-func forEachBackend(t *testing.T, run func(ctx context.Context, t *testing.T, db *database.DB)) {
+type testDBOpener func(testing.TB, string) *database.DB
+
+func TestFilesmanagerSQLite(t *testing.T) {
+	t.Parallel()
+	runFilesmanagerTests(t, testdb.NewMigratedSQLite)
+}
+
+func TestFilesmanagerPostgresIntegration(t *testing.T) {
+	t.Parallel()
+	runFilesmanagerTests(t, testdb.NewMigratedPostgres)
+}
+
+func runFilesmanagerTests(t *testing.T, open testDBOpener) {
 	t.Helper()
 
-	backends := []struct {
+	tests := []struct {
 		name string
-		open func(t *testing.T) *database.DB
+		run  func(*testing.T, testDBOpener)
 	}{
-		{"sqlite", func(t *testing.T) *database.DB { return testdb.NewMigratedSQLite(t, "filesmanager-guard") }},
-		{"postgres", func(t *testing.T) *database.DB { return testdb.NewMigratedPostgres(t, "filesmanager-guard") }},
+		{"UpsertFilesSkipsUnchangedRows", testUpsertFilesSkipsUnchangedRows},
+		{"UpsertFilesWritesChangedRows", testUpsertFilesWritesChangedRows},
+		{"UpsertFilesGuardIsNullSafe", testUpsertFilesGuardIsNullSafe},
+		{"UpsertFilesGuardIsPerRowAcrossBatches", testUpsertFilesGuardIsPerRowAcrossBatches},
+		{"CacheFilesBatchAcrossQueryBatches", testCacheFilesBatchAcrossQueryBatches},
 	}
 
-	for _, backend := range backends {
-		t.Run(backend.name, func(t *testing.T) {
-			t.Parallel()
-
-			db := backend.open(t)
-			ctx := context.Background()
-			seedInstance(ctx, t, db)
-			run(ctx, t, db)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.run(t, open)
 		})
 	}
+}
+
+func withTestDB(t *testing.T, open testDBOpener, run func(context.Context, *testing.T, *database.DB)) {
+	t.Helper()
+
+	db := open(t, "filesmanager")
+	ctx := t.Context()
+	seedInstance(ctx, t, db)
+	run(ctx, t, db)
 }
 
 // seedInstance creates the instance row the cache rows point at.
@@ -91,10 +107,10 @@ func baseFile() CachedFile {
 
 // A complete, seeding torrent re-synced with identical data must produce no row
 // writes at all. This is the case that dominates a steady-state library.
-func TestUpsertFilesSkipsUnchangedRows(t *testing.T) {
+func testUpsertFilesSkipsUnchangedRows(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
-	forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 		repo := NewRepository(db)
 
 		files := []CachedFile{baseFile()}
@@ -107,7 +123,7 @@ func TestUpsertFilesSkipsUnchangedRows(t *testing.T) {
 }
 
 // Each guarded column must still let a real change through on its own.
-func TestUpsertFilesWritesChangedRows(t *testing.T) {
+func testUpsertFilesWritesChangedRows(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
 	tests := []struct {
@@ -128,7 +144,7 @@ func TestUpsertFilesWritesChangedRows(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+			withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 				repo := NewRepository(db)
 
 				require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{baseFile()}))
@@ -159,13 +175,13 @@ func TestUpsertFilesWritesChangedRows(t *testing.T) {
 
 // is_seed is nullable, so the guard must be null-safe. A plain `<>` would yield
 // NULL for these comparisons and silently drop the change.
-func TestUpsertFilesGuardIsNullSafe(t *testing.T) {
+func testUpsertFilesGuardIsNullSafe(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
 	t.Run("null stays null", func(t *testing.T) {
 		t.Parallel()
 
-		forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 			repo := NewRepository(db)
 
 			nullSeed := baseFile()
@@ -181,7 +197,7 @@ func TestUpsertFilesGuardIsNullSafe(t *testing.T) {
 	t.Run("null to value", func(t *testing.T) {
 		t.Parallel()
 
-		forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 			repo := NewRepository(db)
 
 			nullSeed := baseFile()
@@ -203,7 +219,7 @@ func TestUpsertFilesGuardIsNullSafe(t *testing.T) {
 	t.Run("value to null", func(t *testing.T) {
 		t.Parallel()
 
-		forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+		withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 			repo := NewRepository(db)
 
 			require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{baseFile()}))
@@ -225,10 +241,10 @@ func TestUpsertFilesGuardIsNullSafe(t *testing.T) {
 
 // A sync sweep touches many torrents at once; only the rows that actually moved
 // should be written, and only within the batch that contains them.
-func TestUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T) {
+func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) {
 	t.Parallel()
 
-	forEachBackend(t, func(ctx context.Context, t *testing.T, db *database.DB) {
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
 		repo := NewRepository(db)
 
 		// Span more than one batch so the guard is exercised on a full-batch query
