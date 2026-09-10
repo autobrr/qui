@@ -816,19 +816,19 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
-	// allOrphans holds the complete orphan list here, before the cap, and that
-	// is what a directory is judged against. truncationLess ranks files ahead
-	// of directories, so a run that drops a file keeps no directory either.
-	if scope.AbandonedDirs {
-		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
-		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
-		allOrphans = append(allOrphans, abandoned...)
+	allOrphans = dedupeOrphans(allOrphans)
+	maxFiles := settings.MaxFilesPerRun
+	if maxFiles <= 0 {
+		maxFiles = DefaultSettings().MaxFilesPerRun
 	}
 
-	// Deduplicate across scan roots.
-	// Some instances can produce overlapping scan roots (e.g. /data and /data/subdir),
-	// which would otherwise result in the same absolute path appearing multiple times.
-	allOrphans = dedupeOrphans(allOrphans)
+	// Files rank first. If they already exceed the cap, no directory can enter
+	// the preview. At the cap, still check directories to set Truncated correctly.
+	if scope.AbandonedDirs && len(allOrphans) <= maxFiles {
+		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
+		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
+		allOrphans = dedupeOrphans(append(allOrphans, abandoned...))
+	}
 
 	previewSort := strings.TrimSpace(settings.PreviewSort)
 	if previewSort == "" {
@@ -838,10 +838,6 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	less := truncationLess(previewSort)
 	sort.Slice(allOrphans, func(i, j int) bool { return less(allOrphans[i], allOrphans[j]) })
 
-	maxFiles := settings.MaxFilesPerRun
-	if maxFiles <= 0 {
-		maxFiles = DefaultSettings().MaxFilesPerRun
-	}
 	truncated := maxFiles > 0 && len(allOrphans) > maxFiles
 	if truncated {
 		allOrphans = allOrphans[:maxFiles]
@@ -1131,8 +1127,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	// The declared roots have to be in place before cross-instance overlap
 	// detection decides whose torrents to merge into the protection map.
-	// Category destinations are resolved whatever the option says now: the
-	// pending directories were judged against them and are judged again below.
+	// Recheck category protection for previewed directories even if the user
+	// disabled directory cleanup after the scan.
 	scope := scopeFromSettings(settings).withPersistedRoots(run.ScanPaths)
 	scope.AbandonedDirs = true
 

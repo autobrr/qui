@@ -230,10 +230,8 @@ func (w *scanWalker) orphans() []OrphanFile {
 	return orphans
 }
 
-// walkScanRootCollectingDirs is walkScanRoot plus the unclaimed directories the
-// walk saw, for the abandoned-directory option. It never caps the walk: the
-// directories are judged against the complete orphan list, and the run's cap is
-// applied afterwards.
+// walkScanRootCollectingDirs also returns candidates for empty-directory cleanup.
+// It never caps the walk; the run's cap applies afterwards.
 func walkScanRootCollectingDirs(ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, backend fsops.Backend,
 ) ([]OrphanFile, []AbandonedDir, error) {

@@ -81,7 +81,7 @@ These are never reported, even when empty:
 Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the folder count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
 
 :::note
-Older versions also removed a directory left empty only because the run deleted the last file in it, without listing it, and did so whether or not **Delete Abandoned Directories** was on. That silent pass is gone. A run with the option off now removes no directories at all, and one with it on may list directories you did not see before.
+Older versions also removed folders left empty after file deletion without listing them, even with **Delete Abandoned Directories** off. That silent cleanup is gone. With the option off, qui leaves empty folders in place. With it on, the preview can include more folders. Orphan disc folders still appear as one item and are deleted as a whole.
 :::
 
 ## Settings
