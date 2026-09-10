@@ -1158,7 +1158,7 @@ describe("SyncStreamContext", () => {
       expect(controlsB.getState().connected).toBe(true)
     })
 
-    it.each([false, true])("replays the current snapshot on remount without reconnecting, cross=%s", async cross => {
+    it.each([false, true])("replays healthy snapshots on remount and waits for recovery after errors, cross=%s", async cross => {
       const params = makeParams(cross ? { instanceId: 0, instanceIds: [1] } : {})
       const field = cross ? "cross_instance_torrents" : "torrents"
       const row = { hash: "a", name: "Original", ...(cross ? { instance_id: 1, instance_name: "Synthetic" } : {}) }
@@ -1190,12 +1190,12 @@ describe("SyncStreamContext", () => {
         source.emitOpen()
         source.emit("init", {
           type: "init", version: { major: 4, minor: 1 }, meta: { streamKey: key },
-          data: { [field]: [row], total: 1, counts: { total: 1 } },
+          data: { [field]: [row], total: 1, counts: { total: 1 }, activeTaskCount: 1 },
         })
         source.emit("delta", {
           type: "delta", version: { major: 4, minor: 2 },
           delta: { baseVersion: { major: 4, minor: 1 } }, meta: { streamKey: key },
-          data: { [field]: [{ ...row, name: "Updated" }], total: 1 },
+          data: { [field]: [{ ...row, name: "Updated" }], total: 1, activeTaskCount: 1 },
         })
       })
       act(() => setMounted(false))
@@ -1210,6 +1210,30 @@ describe("SyncStreamContext", () => {
         version: { major: 4, minor: 2 },
         data: { [field]: [{ ...row, name: "Updated" }], total: 1, counts: { total: 1 } },
       })
+
+      act(() => setMounted(false))
+      act(() => source.emit("stream-error", {
+        type: "stream-error", error: "Temporary sync failure", meta: { streamKey: key },
+      }))
+      await act(async () => setMounted(true))
+      flushConnectionQueue()
+      expect(controlsB.payloads).toHaveLength(3)
+      expect(controlsB.getState()).toMatchObject({ connected: false, initialized: true, error: "Temporary sync failure" })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      act(() => source.emit("delta", {
+        type: "delta", version: { major: 4, minor: 3 },
+        delta: { baseVersion: { major: 4, minor: 2 } }, meta: { streamKey: key },
+        data: { [field]: [], total: 1, activeTaskCount: 0 },
+      }))
+      expect(controlsB.payloads).toHaveLength(4)
+      expect(controlsB.payloads.at(-1)).toMatchObject({
+        type: "init", version: { major: 4, minor: 3 },
+        data: { [field]: [{ ...row, name: "Updated" }], total: 1, counts: { total: 1 }, activeTaskCount: 0 },
+      })
+      expect(controlsB.getState()).toMatchObject({ connected: true, initialized: true, error: null, retryAttempt: 0 })
+      expect(MockEventSource.instances).toHaveLength(1)
     })
 
     it("opens distinct EventSources for differing params", () => {

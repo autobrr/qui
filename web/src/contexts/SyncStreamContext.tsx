@@ -959,7 +959,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       if (entry.initialized && entry.snapshot) {
         // Let mount effects reset their local state before replaying the baseline.
         queueMicrotask(() => {
-          if (!entry.listeners.has(listener) || !entry.initialized || !entry.snapshot) {
+          if (!entry.listeners.has(listener) || !entry.initialized || !entry.snapshot || !entry.connected || entry.error) {
             return
           }
           try {
