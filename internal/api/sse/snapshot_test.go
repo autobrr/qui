@@ -66,6 +66,42 @@ func TestBaselineOwnsPageRows(t *testing.T) {
 	}
 }
 
+func TestBaselineRefreshesVolatileFieldsWithoutResendingRows(t *testing.T) {
+	for _, cross := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cross=%t", cross), func(t *testing.T) {
+			response := snapshotPage(1000, 1, cross)
+			opts := StreamOptions{InstanceID: 1}
+			if cross {
+				opts = StreamOptions{InstanceIDs: []int{1}}
+			}
+			group := &subscriptionGroup{}
+			first := group.buildInitPayload(opts, response, &StreamMeta{})
+			var source, original *qbt.Torrent
+			if cross {
+				source = response.CrossInstanceTorrents[0].Torrent
+				original = first.Data.CrossInstanceTorrents[0].Torrent
+			} else {
+				source = response.Torrents[0].Torrent
+				original = first.Data.Torrents[0].Torrent
+			}
+			before := *original
+			source.NumSeeds = 7
+			source.TimeActive = 102
+			source.Reannounce = 1798
+
+			delta := group.buildUpdatePayload(opts, response, &StreamMeta{})
+			require.Equal(t, streamEventDelta, delta.Type)
+			require.Empty(t, delta.Data.Torrents)
+			require.Empty(t, delta.Data.CrossInstanceTorrents)
+			require.Nil(t, delta.Delta.Order)
+			latest := group.buildInitPayload(opts, nil, &StreamMeta{})
+			require.Equal(t, response, latest.Data)
+			require.Equal(t, delta.Version, latest.Version)
+			require.Equal(t, before, *original)
+		})
+	}
+}
+
 func BenchmarkBuildUpdatePayload(b *testing.B) {
 	for _, cross := range []bool{false, true} {
 		for _, pageSize := range []int{1, 300, 2000} {

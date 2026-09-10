@@ -65,12 +65,7 @@ func (g *subscriptionGroup) buildUpdatePayload(opts StreamOptions, resp *qbittor
 	// complete snapshot represented by this frame before retaining it for joiners.
 	// Explicit JSON null remains non-nil and therefore still clears preferences.
 	snapshot := *resp
-	if g.baselineSnapshot != nil && len(changedIdx) == 0 && slices.Equal(order, g.baselineOrder) {
-		snapshot.Torrents = g.baselineSnapshot.Torrents
-		snapshot.CrossInstanceTorrents = g.baselineSnapshot.CrossInstanceTorrents
-	} else {
-		detachSnapshotRows(&snapshot)
-	}
+	detachSnapshotRows(&snapshot)
 	if g.baselineSnapshot != nil {
 		if snapshot.AppPreferences == nil {
 			snapshot.AppPreferences = g.baselineSnapshot.AppPreferences
