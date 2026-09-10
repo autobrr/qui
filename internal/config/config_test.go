@@ -333,10 +333,9 @@ func TestSessionSecretRejectsEmpty(t *testing.T) {
 	})
 }
 
-// TestSessionSecretFileRejectsEmptyFile covers the _FILE source. bindOrReadFromFile
-// refuses an empty file with log.Fatal, so this needs a subprocess. The child
-// builds its own paths rather than taking them from the environment, which keeps
-// an env-derived path out of New and off gosec's taint path.
+// TestSessionSecretFileRejectsEmptyFile covers the _FILE source.
+// bindOrReadFromFile refuses an empty file with log.Fatal, so this needs a
+// subprocess.
 func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
 	if os.Getenv("QUI_TEST_EMPTY_SECRET_FILE") == "1" {
 		dir := t.TempDir()
@@ -349,7 +348,7 @@ func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestSessionSecretFileRejectsEmptyFile") //nolint:gosec // the test binary re-executes itself
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSessionSecretFileRejectsEmptyFile$", "-test.timeout=30s")
 	cmd.Env = append(os.Environ(), "QUI_TEST_EMPTY_SECRET_FILE=1")
 
 	output, err := cmd.CombinedOutput()
