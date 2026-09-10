@@ -5,10 +5,9 @@ package database
 
 import "testing"
 
-// The Postgres half of TestInstanceSSHStatementsSQLite. The name carries the
-// TestOpenPostgres prefix because that is what the Postgres CI job's -run
-// filter selects on.
-func TestOpenPostgresInstanceSSHStatements(t *testing.T) {
+// The Postgres half of TestInstanceSSHStatementsSQLite. The PostgresIntegration
+// suffix is what the Postgres CI job's -run filter selects on.
+func TestInstanceSSHStatementsPostgresIntegration(t *testing.T) {
 	t.Parallel()
 
 	db, ctx := openPostgresTestDB(t)
