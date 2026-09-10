@@ -246,11 +246,28 @@ func isMissingRoot(err error) bool {
 	return errors.Is(err, os.ErrNotExist)
 }
 
+// rootsNoTorrentPointsAt returns the declared roots that no torrent save path
+// already covers. Their absence is expected, so it is not worth reporting.
+func rootsNoTorrentPointsAt(declared, derived []string) []string {
+	fromTorrent := make(map[string]struct{}, len(derived))
+	for _, root := range derived {
+		fromTorrent[filepath.Clean(root)] = struct{}{}
+	}
+
+	var only []string
+	for _, root := range declared {
+		if _, ok := fromTorrent[filepath.Clean(root)]; !ok {
+			only = append(only, filepath.Clean(root))
+		}
+	}
+	return only
+}
+
 // unreachableCoveredRoots reports the roots pruning dropped that are not on
 // disk. Pruning is a walk optimisation, not a coverage decision: without this an
 // unmounted save path nested under a walked parent reads as a clean scan
 // (discussion #2483).
-func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string, backend fsops.Backend) (errs, missing []string) {
+func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string, expectedAbsent map[string]struct{}, backend fsops.Backend) (errs, missing []string) {
 	walked := make(map[string]struct{}, len(walkRoots))
 	for _, root := range walkRoots {
 		walked[root] = struct{}{}
@@ -264,6 +281,9 @@ func unreachableCoveredRoots(ctx context.Context, scanRoots, walkRoots []string,
 		switch {
 		case err == nil:
 		case isMissingRoot(err):
+			if _, expected := expectedAbsent[filepath.Clean(root)]; expected {
+				continue
+			}
 			missing = append(missing, fmt.Sprintf("%s: %v", root, err))
 		default:
 			errs = append(errs, fmt.Sprintf("%s: %v", root, err))
@@ -761,7 +781,11 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	// run.ScanPaths keeps every root so deletion still resolves the narrowest
 	// one per file, but walking an ancestor already covers its descendants.
 	walkRoots := pruneNestedScanRoots(ctx, scanRoots, backend)
-	walkErrors, missingRoots := unreachableCoveredRoots(ctx, scanRoots, walkRoots, backend)
+	expectedAbsent := make(map[string]struct{}, len(result.declaredOnlyRoots))
+	for _, root := range result.declaredOnlyRoots {
+		expectedAbsent[root] = struct{}{}
+	}
+	walkErrors, missingRoots := unreachableCoveredRoots(ctx, scanRoots, walkRoots, expectedAbsent, backend)
 
 	var fileFreeDirs []AbandonedDir
 
@@ -779,7 +803,9 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			}
 			if isMissingRoot(err) {
 				log.Debug().Err(err).Str("root", root).Msg("orphanscan: scan root is not on disk")
-				missingRoots = append(missingRoots, fmt.Sprintf("%s: %v", root, err))
+				if _, expected := expectedAbsent[filepath.Clean(root)]; !expected {
+					missingRoots = append(missingRoots, fmt.Sprintf("%s: %v", root, err))
+				}
 				continue
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
@@ -1628,7 +1654,11 @@ type buildFileMapResult struct {
 	skippedRoots  []string
 	metadataRoots []string
 	categoryPaths []string
-	torrentCount  int
+	// declaredOnlyRoots are scope roots no torrent points at. qBittorrent
+	// creates a category directory only on the first torrent, so these are
+	// allowed to be absent and say nothing about the health of the library.
+	declaredOnlyRoots []string
+	torrentCount      int
 }
 
 func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
@@ -1806,6 +1836,7 @@ func (s *Service) buildFileMap(ctx context.Context, instanceID int, backend fsop
 		return nil, err
 	}
 	result.categoryPaths = categoryPaths
+	result.declaredOnlyRoots = rootsNoTorrentPointsAt(extraRoots, result.scanRoots)
 	// Deletion stays bounded by the roots the run recorded, so those roots must
 	// take part in overlap detection even when the settings behind them have
 	// since changed. Without this a file another local instance picked up after
