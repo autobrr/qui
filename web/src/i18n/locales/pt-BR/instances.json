@@ -985,7 +985,8 @@
         "deletionFailed": "Falha ao excluir",
         "exportedFiles": "Exportado {{count}} p/ CSV",
         "exportFailed": "Falha ao exportar"
-      }
+      },
+      "emptyDirectory": "Diretório vazio"
     },
     "orphanScanSettings": {
       "settingsTitle": "Configurações",
@@ -1021,6 +1022,13 @@
       "maxFilesThreshold": "Limite Máximo para Auto-Limpeza",
       "maxFilesThresholdTooltip": "Se encontrar mais arquivos que o definido aqui, o modo automático aborta a limpeza.",
       "files": "arquivos",
+      "scanScope": "Escopo da varredura",
+      "scanDefaultSavePathLabel": "Varrer o caminho de salvamento padrão",
+      "scanDefaultSavePathTooltip": "Por padrão, a varredura percorre apenas os diretórios para os quais algum torrent já aponta, portanto um arquivo solto diretamente no caminho de salvamento padrão nunca é encontrado. Ative esta opção para percorrer também o caminho de salvamento padrão da instância, incluindo subdiretórios que nenhum torrent usa.",
+      "scanCategoryPathsLabel": "Incluindo caminhos de categorias",
+      "scanCategoryPathsTooltip": "Percorrer também cada destino de categoria: o caminho definido pela categoria, ou caminho de salvamento padrão / nome da categoria quando ela o herda. Útil quando uma categoria aponta para fora do caminho de salvamento padrão.",
+      "deleteAbandonedDirsLabel": "Excluir diretórios abandonados",
+      "deleteAbandonedDirsTooltip": "Relatar diretórios que esta execução esvazia: os que não contêm arquivos em nenhuma profundidade e os em que todo arquivo abaixo é um órfão que a execução exclui. Raízes de varredura e destinos de categorias nunca são removidos, mesmo vazios.",
       "exclusions": "Exclusões",
       "ignorePaths": "Caminhos Ignorados",
       "ignorePathsTooltip": "Arquivos nesses caminhos jamais serão identificados como órfãos.",

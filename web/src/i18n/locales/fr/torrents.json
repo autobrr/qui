@@ -1642,6 +1642,39 @@
     "applyFailed": "Échec du cross-seed : {{message}}",
     "addOptionTitle": "Ajouter comme cross-seed",
     "addOptionDescription": "Associer ce torrent à un torrent existant au lieu de le télécharger.",
-    "addOptionButton": "Associer manuellement"
+    "addOptionButton": "Associer manuellement",
+    "pack": {
+      "description": "Sélectionnez un torrent pour une correspondance manuelle, ou plusieurs épisodes pour assembler cette saison.",
+      "targetLabel": "Torrents cibles",
+      "checking": "Vérification des épisodes sélectionnés...",
+      "checkFailed": "Impossible de vérifier cette sélection.",
+      "coverage": "{{matched}} épisodes sur {{total}} · {{percent}}% de couverture",
+      "missing": "{{size}} manquants",
+      "recheck": "Le pack est ajouté en pause et vérifié. Il reprend lorsque la vérification atteint la proportion des octets liés.",
+      "reviewRules": "Consulter la protection dans Cross-seed → Règles",
+      "proposalLimit": "Ce pack contient {{count}} épisodes. Les propositions sont limitées à {{limit}} torrents. Utilisez la recherche pour ajouter les cibles manquantes.",
+      "dropped": "Pack ajouté. Cibles écartées : {{names}}",
+      "rejected": "{{name}} : {{reason}}",
+      "reasons": {
+        "no_filesystem_access": "Cette instance nécessite un accès au système de fichiers local pour assembler un pack.",
+        "no_link_mode": "Activez les liens physiques ou les reflinks sur cette instance pour sélectionner plusieurs cibles.",
+        "no_base_directory": "Configurez un répertoire de base pour les liens sur cette instance.",
+        "no_episode_files": "Aucun fichier vidéo d’épisode trouvé dans ce pack.",
+        "target_not_found": "Cible introuvable dans cette instance.",
+        "incomplete": "Le téléchargement de la cible est incomplet.",
+        "no_episode_identity": "Le numéro d’épisode est illisible.",
+        "file_list_unavailable": "La liste des fichiers de la cible est indisponible.",
+        "episode_file_invalid": "La cible doit contenir un seul fichier vidéo correspondant à cet épisode.",
+        "size_mismatch": "La taille du fichier local diffère de celle du pack.",
+        "release_mismatch": "La version ne correspond pas au pack.",
+        "local_file_unavailable": "Le fichier local est absent ou indisponible.",
+        "not_paired": "Cette cible ne fournit aucun épisode du pack, ou une autre cible sélectionnée le couvre déjà.",
+        "layout_mismatch": "Les fichiers sélectionnés ne permettent pas de créer des liens sûrs.",
+        "unsafe_piece_boundary": "La protection des limites de pièces a bloqué ce pack car les fichiers sélectionnés et manquants partagent un bloc de données. Le téléchargement de ce bloc peut modifier vos fichiers originaux via les liens physiques. Le seuil de couverture ne concerne pas l’assemblage manuel.",
+        "already_exists": "Ce torrent existe déjà.",
+        "link_failed": "Impossible de créer les liens.",
+        "add_failed": "Impossible d’ajouter le torrent."
+      }
+    }
   }
 }

@@ -882,6 +882,99 @@ func TestEvaluateCondition_Negate(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_NegateFilesystemData(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "torrent"}
+	for _, field := range []ConditionField{FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles} {
+		t.Run(string(field), func(t *testing.T) {
+			value := HardlinkScopeOutsideQBitTorrent
+			if field == FieldHasMissingFiles {
+				value = "true"
+			}
+			cond := &RuleCondition{Field: field, Operator: OperatorEqual, Value: value}
+			for _, tc := range []struct {
+				name    string
+				ctx     *EvalContext
+				known   bool
+				matches bool
+			}{
+				{name: "nil context"},
+				{name: "nil maps", ctx: &EvalContext{InstanceHasLocalAccess: true}},
+				{name: "missing hash", ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{"other": HardlinkScopeNone},
+					HardlinkCrossScopeByHash: map[string]string{"other": HardlinkScopeNone},
+					HasMissingFilesByHash:    map[string]bool{"other": false},
+				}},
+				{name: "no local access", ctx: &EvalContext{
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+				}},
+				{name: "known none", known: true, ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeNone},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeNone},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+				}},
+				{name: "known torrents only", known: true, ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeTorrentsOnly},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: false},
+				}},
+				{name: "known match", known: true, matches: true, ctx: &EvalContext{
+					InstanceHasLocalAccess:   true,
+					HardlinkScopeByHash:      map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
+					HardlinkCrossScopeByHash: map[string]string{torrent.Hash: HardlinkScopeOutsideQBitTorrent},
+					HasMissingFilesByHash:    map[string]bool{torrent.Hash: true},
+				}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					for _, negate := range []bool{false, true} {
+						cond.Negate = negate
+						want := tc.known && (tc.matches != negate)
+						if got := EvaluateConditionWithContext(cond, torrent, tc.ctx, 0); got != want {
+							t.Errorf("negate=%v: got %v, want %v", negate, got, want)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_NegateUnknownGroups(t *testing.T) {
+	unknown := &RuleCondition{Field: FieldHardlinkScope, Operator: OperatorEqual, Value: HardlinkScopeOutsideQBitTorrent, Negate: true}
+	match := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "movies"}
+	noMatch := &RuleCondition{Field: FieldCategory, Operator: OperatorEqual, Value: "tv"}
+	for _, tc := range []struct {
+		name     string
+		operator ConditionOperator
+		children []*RuleCondition
+		negate   bool
+		want     bool
+	}{
+		{name: "and", operator: OperatorAnd, children: []*RuleCondition{match, unknown}},
+		{name: "negated and", operator: OperatorAnd, children: []*RuleCondition{match, unknown}, negate: true},
+		{name: "negated and non-match first", operator: OperatorAnd, children: []*RuleCondition{noMatch, unknown}, negate: true},
+		{name: "negated and non-match last", operator: OperatorAnd, children: []*RuleCondition{unknown, noMatch}, negate: true},
+		{name: "negated or", operator: OperatorOr, children: []*RuleCondition{noMatch, unknown}, negate: true},
+		{name: "or independent match first", operator: OperatorOr, children: []*RuleCondition{match, unknown}, want: true},
+		{name: "or independent match last", operator: OperatorOr, children: []*RuleCondition{unknown, match}, want: true},
+		{name: "negated or independent match", operator: OperatorOr, children: []*RuleCondition{unknown, match}, negate: true},
+		{name: "nested negation", operator: OperatorAnd, negate: true, children: []*RuleCondition{
+			{Operator: OperatorOr, Negate: true, Conditions: []*RuleCondition{unknown}},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cond := &RuleCondition{Operator: tc.operator, Conditions: tc.children, Negate: tc.negate}
+			if got := EvaluateConditionWithContext(cond, qbt.Torrent{Category: "movies"}, &EvalContext{InstanceHasLocalAccess: true}, 0); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_ANDGroup(t *testing.T) {
 	torrent := qbt.Torrent{
 		Name:        "Test.Movie.2024.1080p.BluRay",
@@ -1585,6 +1678,97 @@ func TestEvaluateCondition_ContainsIn(t *testing.T) {
 	}
 }
 
+// TestEvaluateCondition_ContainsIn_Diacritics verifies that CONTAINS_IN matches
+// names that differ only by diacritics or ligatures, and that the match is
+// symmetric regardless of which side carries the accent.
+func TestEvaluateCondition_ContainsIn_Diacritics(t *testing.T) {
+	cond := &RuleCondition{
+		Field:    FieldName,
+		Operator: OperatorContainsIn,
+		Value:    "imported",
+	}
+
+	tests := []struct {
+		name          string
+		categoryName  string // name stored in the "imported" category
+		evaluatedName string // name of the torrent being evaluated (category "tv")
+		expected      bool
+	}{
+		{
+			// Accented query is a substring of the longer ASCII category member.
+			name:          "accented query partial-matches ASCII category member",
+			categoryName:  "Amelie.2001.1080p.BluRay.x264-GROUP",
+			evaluatedName: "Am\u00e9lie.2001.1080p",
+			expected:      true,
+		},
+		{
+			name:          "accented category member partial-matches ASCII query",
+			categoryName:  "Am\u00e9lie.2001.1080p",
+			evaluatedName: "Amelie.2001.1080p.BluRay.x264-GROUP",
+			expected:      true,
+		},
+		{
+			name:          "Nordic letter folds to match a longer member",
+			categoryName:  "Aeon.Flux.2005.1080p.BluRay.x264-GROUP",
+			evaluatedName: "\u00c6on.Flux.2005.1080p",
+			expected:      true,
+		},
+		{
+			name:          "uppercase sharp S query matches lowercase category member",
+			categoryName:  "Gro\u00dfstadt.2024",
+			evaluatedName: "GRO\u1e9eSTADT.2024",
+			expected:      true,
+		},
+		{
+			name:          "uppercase sharp S category member matches lowercase query",
+			categoryName:  "GRO\u1e9eSTADT.2024",
+			evaluatedName: "Gro\u00dfstadt.2024",
+			expected:      true,
+		},
+		{
+			name:          "unrelated accented name still does not match",
+			categoryName:  "Am\u00e9lie.2001.1080p.BluRay",
+			evaluatedName: "Bj\u00f6rk.Concert.2018.1080p",
+			expected:      false,
+		},
+		{
+			// A query of only combining marks folds to empty; the length guard
+			// must skip it, or an empty needle would match every member.
+			name:          "empty-folding query is skipped",
+			categoryName:  "Some.Long.Release.Name.2024",
+			evaluatedName: "\u0301\u0301\u0301\u0301\u0301",
+			expected:      false,
+		},
+		{
+			// Same guard on the category side.
+			name:          "empty-folding category member is skipped",
+			categoryName:  "\u0301\u0301\u0301\u0301\u0301",
+			evaluatedName: "Some.Long.Release.Name.2024",
+			expected:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrents := []qbt.Torrent{
+				{Hash: "hashCat", Name: tt.categoryName, Category: "imported"},
+			}
+			categoryIndex, categoryNames := BuildCategoryIndex(torrents)
+			evalCtx := &EvalContext{
+				CategoryIndex: categoryIndex,
+				CategoryNames: categoryNames,
+			}
+
+			torrent := qbt.Torrent{Hash: "hashEval", Name: tt.evaluatedName, Category: "tv"}
+			result := EvaluateConditionWithContext(cond, torrent, evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("CONTAINS_IN %q against category member %q = %v, expected %v",
+					tt.evaluatedName, tt.categoryName, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestBuildCategoryIndex(t *testing.T) {
 	torrents := []qbt.Torrent{
 		{Hash: "hash1", Name: "Test.Torrent.A", Category: "movies"},
@@ -1653,6 +1837,17 @@ func TestNormalizeName(t *testing.T) {
 		{"UPPERCASE.NAME", "uppercase name"},
 		{"already normal", "already normal"},
 		{"", ""},
+		// Accents and the Nordic/Germanic letters fold to their ASCII base, so
+		// accented names match their plain form.
+		{"Am\u00e9lie.2001.1080p", "amelie 2001 1080p"},
+		{"\u0130stanbul.Nights.2019", "istanbul nights 2019"},
+		{"Bj\u00f6rk.Concert.2018", "bjork concert 2018"},
+		{"na\u00efve.Detective.S01", "naive detective s01"},
+		{"\u00c6on.Flux.2005.1080p", "aeon flux 2005 1080p"},
+		{"Stra\u00dfe.Berlin.2020", "strasse berlin 2020"},
+		{"GRO\u1e9eSTADT.2024", "grossstadt 2024"},
+		{"\U0001d400lpha.2024", "alpha 2024"},      // mathematical capital A decomposes to uppercase ASCII
+		{"Cafe\u0301.Noir.2021", "cafe noir 2021"}, // decomposed accent (e + combining acute)
 	}
 
 	for _, tt := range tests {

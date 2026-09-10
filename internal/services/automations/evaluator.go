@@ -30,7 +30,7 @@ const minContainsNameLength = 10
 type CategoryEntry struct {
 	Hash           string // torrent hash for self-exclusion
 	Name           string // lowercased name (for EXISTS_IN exact match)
-	NormalizedName string // normalized name for CONTAINS_IN (separators → space)
+	NormalizedName string // normalizeName(Name) result, used for CONTAINS_IN matching
 }
 
 // FreeSpaceSourceState tracks free space projection state for a single source.
@@ -150,9 +150,9 @@ var separatorReplacer = strings.NewReplacer(".", " ", "_", " ", "-", " ")
 // whitespaceCollapser collapses multiple spaces into one.
 var whitespaceCollapser = regexp.MustCompile(`\s+`)
 
-// normalizeName normalizes a torrent name for CONTAINS_IN comparison:
-// lowercase + replace . _ - with space + collapse whitespace.
+// Lowercase before Unicode folding for ẞ, and after for letters produced by decomposition.
 func normalizeName(s string) string {
+	s = stringutils.NormalizeUnicode(normalizeLower(s))
 	s = normalizeLower(s)
 	s = separatorReplacer.Replace(s)
 	s = whitespaceCollapser.ReplaceAllString(s, " ")
@@ -297,8 +297,15 @@ func evaluateTime(ctx *EvalContext) time.Time {
 // EvaluateConditionWithContext recursively evaluates a condition against a torrent with optional context.
 // Returns true if the torrent matches the condition.
 func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) bool {
+	matched, known := evaluateCondition(cond, torrent, ctx, depth)
+	return known && matched
+}
+
+// evaluateCondition keeps unknown filesystem data separate from a known non-match.
+// Negation cannot turn unknown data into a match, including inside nested groups.
+func evaluateCondition(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) (matched, known bool) {
 	if cond == nil || depth > maxConditionDepth {
-		return false
+		return false, true
 	}
 
 	// Compile regex if needed, but skip for EXISTS_IN/CONTAINS_IN operators
@@ -311,12 +318,13 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 					Str("field", string(cond.Field)).
 					Str("pattern", cond.Value).
 					Msg("automations: regex compilation failed")
-				return false
+				return false, true
 			}
 		}
 	}
 
 	var result bool
+	known = true
 
 	// Handle logical operators (AND/OR) with child conditions
 	if cond.IsGroup() {
@@ -325,8 +333,14 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 			// OR: at least one child must match
 			result = false
 			for _, child := range cond.Conditions {
-				if EvaluateConditionWithContext(child, torrent, ctx, depth+1) {
+				childMatch, childKnown := evaluateCondition(child, torrent, ctx, depth+1)
+				if !childKnown {
+					known = false
+					continue
+				}
+				if childMatch {
 					result = true
+					known = true
 					break
 				}
 			}
@@ -334,10 +348,9 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 			// AND: all children must match
 			result = true
 			for _, child := range cond.Conditions {
-				if !EvaluateConditionWithContext(child, torrent, ctx, depth+1) {
-					result = false
-					break
-				}
+				childMatch, childKnown := evaluateCondition(child, torrent, ctx, depth+1)
+				known = known && childKnown
+				result = result && childMatch
 			}
 		default:
 			// A group carrying a leaf operator has no children to combine.
@@ -345,7 +358,14 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 		}
 	} else {
 		// Leaf condition: evaluate against the torrent
+		if !conditionDataKnown(cond.Field, torrent.Hash, ctx) {
+			return false, false
+		}
 		result = evaluateLeaf(cond, torrent, ctx)
+	}
+
+	if !known {
+		return false, false
 	}
 
 	// Apply negation if specified
@@ -353,7 +373,29 @@ func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx 
 		result = !result
 	}
 
-	return result
+	return result, true
+}
+
+func conditionDataKnown(field ConditionField, hash string, ctx *EvalContext) bool {
+	switch field {
+	case FieldHardlinkScope, FieldHardlinkScopeCross, FieldHasMissingFiles:
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+	default:
+		return true
+	}
+
+	var known bool
+	switch field {
+	case FieldHardlinkScope:
+		_, known = ctx.HardlinkScopeByHash[hash]
+	case FieldHardlinkScopeCross:
+		_, known = ctx.HardlinkCrossScopeByHash[hash]
+	case FieldHasMissingFiles:
+		_, known = ctx.HasMissingFilesByHash[hash]
+	}
+	return known
 }
 
 // evaluateLeaf evaluates a leaf condition (not a group) against a torrent.
@@ -568,52 +610,13 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareBool(isUnregistered, cond)
 
 	case FieldHardlinkScope:
-		// Instances without local filesystem access cannot detect hardlink scope.
-		// Return false so the condition doesn't match and rules won't trigger unintended actions.
-		// Note: Automations using HARDLINK_SCOPE are validated at creation time to require local access.
-		if ctx == nil || !ctx.InstanceHasLocalAccess {
-			return false
-		}
-		// If scope couldn't be computed for this torrent (files inaccessible, stat failures, etc.),
-		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
-		if ctx.HardlinkScopeByHash == nil {
-			return false
-		}
-		scope, ok := ctx.HardlinkScopeByHash[torrent.Hash]
-		if !ok {
-			return false // Unknown scope - don't match
-		}
-		return compareHardlinkScope(scope, cond)
+		return compareHardlinkScope(ctx.HardlinkScopeByHash[torrent.Hash], cond)
 
 	case FieldHardlinkScopeCross:
-		if ctx == nil || !ctx.InstanceHasLocalAccess {
-			return false
-		}
-		if ctx.HardlinkCrossScopeByHash == nil {
-			return false
-		}
-		scope, ok := ctx.HardlinkCrossScopeByHash[torrent.Hash]
-		if !ok {
-			return false
-		}
-		return compareHardlinkScope(scope, cond)
+		return compareHardlinkScope(ctx.HardlinkCrossScopeByHash[torrent.Hash], cond)
 
 	case FieldHasMissingFiles:
-		// Instances without local filesystem access cannot detect missing files.
-		// Return false so the condition doesn't match and rules won't trigger unintended actions.
-		if ctx == nil || !ctx.InstanceHasLocalAccess {
-			return false
-		}
-		// If missing files couldn't be computed for this torrent (incomplete, etc.),
-		// treat as "unknown" and don't match any condition to prevent unintended rule triggers.
-		if ctx.HasMissingFilesByHash == nil {
-			return false
-		}
-		hasMissing, ok := ctx.HasMissingFilesByHash[torrent.Hash]
-		if !ok {
-			return false // Unknown state - don't match
-		}
-		return compareBool(hasMissing, cond)
+		return compareBool(ctx.HasMissingFilesByHash[torrent.Hash], cond)
 
 	case FieldHasSkippedFiles:
 		if ctx == nil {

@@ -35,6 +35,16 @@ Before changing cross-module data flow, service boundaries, API routing, or long
 
 CI runs `make test` on every push. Run the full suite locally only when asked, or when one change crosses many packages.
 
+## Mandatory performance checks
+
+Before opening or updating a PR, complete these steps for the full PR diff:
+
+1. Review changed code and its callers for backend and frontend performance risks. Include shared helpers, dependencies, and configuration. Consider call frequency and data size when assessing allocations, nested scans, queries, concurrency, rendering, and requests. If no performance risk applies, explain why in the PR's Performance section.
+2. If a change can affect performance, you must measure before and after. If the risk is unclear, measure it. Use the merge-base with the PR's target branch as the baseline. Compare it against the latest PR code under the same workload and environment. Use representative synthetic data and local stubs for external services. Repeat runs to distinguish regressions from measurement noise.
+3. Use existing benchmarks, profilers, or repeatable browser measurements. Temporary measurement code is sufficient. Committing benchmark files is optional. For Go benchmarks, measure without `-race`. For rendering and interaction changes, measure the browser with a production build.
+4. Record the affected paths, revisions, workload size, environment, and measurement method in the PR's Performance section. Include before/after numbers, the measured differences, and your conclusion. Choose relevant metrics, such as time, memory, allocations, request counts, or bundle size. CI results qualify only when they provide this comparison. Otherwise, measure locally, even when CI covers the tests.
+5. Investigate regressions beyond measurement noise. Fix them or obtain explicit maintainer acceptance of the measured cost before declaring the PR ready. After further code changes, repeat the affected measurements. If measurements are blocked, report the blocker and keep this step incomplete.
+
 ## Lint / Format
 
 - `make precommit` = fmt + gofix changed files + lint changed files.
@@ -64,6 +74,14 @@ CI runs `make test` on every push. Run the full suite locally only when asked, o
 - If multiple `switch` cases equal `default`, collapse them.
 - Boolean classifiers should list exceptional `true`/error cases; let `default` handle common path.
 - Do not add documentation-only branches unless compiler/linter/tests enforce value.
+
+## Comments
+
+A comment caches what the code cannot show: why this shape, the bug a guard prevents, a coupling to another file. Caching what the line does buys nothing and rots first. One line is the norm.
+
+- Change a line, change its comment, in the same diff. A stale-comment finding from a review bot is right; a docstring coverage percentage is not.
+- An invariant a future change must hold is a test, not a sentence with "must not" in it.
+- Doc-comment an exported identifier when its name leaves the contract unclear.
 
 ## Paths / Security
 
