@@ -79,6 +79,9 @@ func New(configDirOrPath string, versions ...string) (*AppConfig, error) {
 	// Resolve data directory after config is unmarshaled
 	c.resolveDataDir()
 
+	if err := c.validateSessionSecret(); err != nil {
+		return nil, err
+	}
 	c.warnWeakSessionSecret()
 
 	// Watch for config changes
@@ -928,10 +931,24 @@ func (c *AppConfig) GetLegacyEncryptionKey() []byte {
 	return padded
 }
 
+// validateSessionSecret rejects an empty session secret. Viper only falls back
+// to the generated default when the key is absent, so an explicit empty value in
+// config.toml survives loading. Every install would then derive the same
+// credential key from the empty string.
+func (c *AppConfig) validateSessionSecret() error {
+	// Validated on the trimmed value but never stored trimmed. Rewriting the
+	// secret would change the derived key and break stored credentials.
+	if strings.TrimSpace(c.Config.SessionSecret) != "" {
+		return nil
+	}
+
+	return errors.New("sessionSecret is empty, which is not allowed. Set sessionSecret in config.toml or QUI__SESSION_SECRET to a random value of at least 32 characters. Credentials stored while the secret was empty cannot be decrypted under the new value, so enter them again in the UI")
+}
+
 // warnWeakSessionSecret reports a session secret shorter than the key HKDF
-// derives from it. HKDF spreads the secret over 32 bytes but cannot add entropy
-// the secret does not have, and lengthening the secret now would make every
-// stored credential undecryptable, so this warns and never refuses.
+// derives from it. HKDF spreads the secret over 32 bytes. It cannot add entropy
+// the secret does not have. This warns and never refuses, because lengthening
+// the secret would make every stored credential undecryptable.
 func (c *AppConfig) warnWeakSessionSecret() {
 	length := len(c.Config.SessionSecret)
 	if length >= encryptionKeySize {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -267,10 +268,99 @@ func TestGetEncryptionKey(t *testing.T) {
 	})
 }
 
+func TestSessionSecretRejectsEmpty(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr bool
+		// wantGenerated asserts the default 64-character hex secret survived.
+		wantGenerated bool
+	}{
+		{
+			name:    "explicit_empty",
+			content: "host = \"localhost\"\nsessionSecret = \"\"\n",
+			wantErr: true,
+		},
+		{
+			name:    "whitespace_only",
+			content: "host = \"localhost\"\nsessionSecret = \"   \\t \"\n",
+			wantErr: true,
+		},
+		{
+			name:          "absent_key_keeps_the_generated_default",
+			content:       "host = \"localhost\"\nport = 8080\n",
+			wantGenerated: true,
+		},
+		{
+			name:    "short_secret_is_accepted_with_a_warning",
+			content: "host = \"localhost\"\nsessionSecret = \"short\"\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(tt.content), 0o600))
+
+			cfg, err := New(dir)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "sessionSecret is empty")
+				assert.Nil(t, cfg)
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.wantGenerated {
+				assert.Len(t, cfg.Config.SessionSecret, encryptionKeySize*2, "the generated default is hex of 32 random bytes")
+				return
+			}
+			assert.Equal(t, "short", cfg.Config.SessionSecret)
+		})
+	}
+
+	// An empty QUI__SESSION_SECRET reads as unset, because viper's AllowEmptyEnv
+	// is off, so the file value or the generated default still applies. Empty
+	// therefore never becomes the key from this source either.
+	t.Run("empty_env_var_reads_as_unset", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("sessionSecret = \"from-the-file-abcdefghijklmnop\"\n"), 0o600))
+		t.Setenv("QUI__SESSION_SECRET", "")
+
+		cfg, err := New(dir)
+		require.NoError(t, err)
+		assert.Equal(t, "from-the-file-abcdefghijklmnop", cfg.Config.SessionSecret)
+	})
+}
+
+// TestSessionSecretFileRejectsEmptyFile covers the _FILE source. bindOrReadFromFile
+// refuses an empty file with log.Fatal, so this needs a subprocess. The child
+// builds its own paths rather than taking them from the environment, which keeps
+// an env-derived path out of New and off gosec's taint path.
+func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
+	if os.Getenv("QUI_TEST_EMPTY_SECRET_FILE") == "1" {
+		dir := t.TempDir()
+		secretFile := filepath.Join(dir, "secret")
+		require.NoError(t, os.WriteFile(secretFile, []byte("   \n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("host = \"localhost\"\n"), 0o600))
+		t.Setenv("QUI__SESSION_SECRET_FILE", secretFile)
+
+		_, _ = New(dir)
+		return
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestSessionSecretFileRejectsEmptyFile") //nolint:gosec // the test binary re-executes itself
+	cmd.Env = append(os.Environ(), "QUI_TEST_EMPTY_SECRET_FILE=1")
+
+	output, err := cmd.CombinedOutput()
+	require.Error(t, err, "an empty secret file must not load: %s", output)
+	assert.Contains(t, string(output), "file is empty")
+}
+
 // TestGetEncryptionKeyGoldenVector freezes the hash, the nil salt and the info
-// string together. Rows sealed under a different derivation carry the same qui2
-// prefix, so the rewrite pass skips them and the legacy key does not apply,
-// which makes every stored credential permanently unreadable with no warning.
+// string together. A row sealed under a different derivation still carries the
+// qui2 prefix, so the rewrite pass skips it and the legacy key does not apply.
+// Every stored credential then becomes permanently unreadable, with no warning.
 // Changing this constant means changing that contract, not fixing a test.
 func TestGetEncryptionKeyGoldenVector(t *testing.T) {
 	cfg := &AppConfig{Config: &domain.Config{SessionSecret: "qui-golden-vector-session-secret"}}
