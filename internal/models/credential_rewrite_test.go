@@ -166,7 +166,7 @@ func TestRewriteLegacyCredentialsSQLite(t *testing.T) {
 	runRewriteLegacyCredentialsTests(t, testdb.NewMigratedSQLite)
 }
 
-func TestRewriteLegacyCredentialsPostgres(t *testing.T) {
+func TestRewriteLegacyCredentialsPostgresIntegration(t *testing.T) {
 	runRewriteLegacyCredentialsTests(t, testdb.NewMigratedPostgres)
 }
 
