@@ -93,11 +93,10 @@ type scanWalker struct {
 	unitFilter  func(unitPath string, isDiscUnit bool) bool
 	backend     fsops.Backend
 
-	// seenDirs records every directory the walk visited with its mtime, for the
-	// abandoned-directory candidates (#1400). Only filled when the caller asked
-	// for directories. abandonedDirCandidates decides which ones go.
+	// seenDirs records directory mtimes and direct file counts when requested.
+	// abandonedDirCandidates makes the final removal decision.
 	collectDirs bool
-	seenDirs    map[string]time.Time
+	seenDirs    map[string]*AbandonedDir
 
 	orphanUnits    map[string]*OrphanFile
 	discUnitsInUse map[string]struct{}
@@ -128,21 +127,33 @@ func newScanWalker(
 		discUnitPaths:  make(map[string]struct{}),
 		seenFileIDs:    make(map[hardlink.FileID]struct{}),
 		collectDirs:    collectDirs,
-		seenDirs:       make(map[string]time.Time),
+		seenDirs:       make(map[string]*AbandonedDir),
 	}
 }
 
-// candidateDirs returns every directory the walk visited that no torrent has
-// claimed. Which of them the run empties is decided later against the orphan
-// list, so a directory holding only orphans is a candidate too.
-func (w *scanWalker) candidateDirs() []AbandonedDir {
-	dirs := make([]AbandonedDir, 0, len(w.seenDirs))
-	for dir, modTime := range w.seenDirs {
-		// A torrent that has not written its payload yet still owns its save path.
-		if w.tfm.HasAnyInDir(normalizePath(dir)) {
+// candidateDirs excludes directories with known retained files. The counts
+// only reject candidates; abandonedDirCandidates checks all remaining ones.
+func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
+	if len(w.seenDirs) == 0 {
+		return nil
+	}
+	for _, file := range deleted {
+		if dir := w.seenDirs[filepath.Dir(file.Path)]; dir != nil {
+			dir.directFiles--
+		}
+	}
+	var dirs []AbandonedDir
+	for _, dir := range w.seenDirs {
+		// ponytail: disc children can lower this count; exclude their paths
+		// from subtraction if the extra rereads become costly.
+		if dir.directFiles > 0 {
 			continue
 		}
-		dirs = append(dirs, AbandonedDir{Path: dir, ModTime: modTime})
+		// A torrent that has not written its payload yet still owns its save path.
+		if w.tfm.HasAnyInDir(normalizePath(dir.Path)) {
+			continue
+		}
+		dirs = append(dirs, *dir)
 	}
 	return dirs
 }
@@ -289,13 +300,19 @@ func walkScanRootWithUnitFilter(
 			// Directories are never orphan files; they feed disc-unit detection and
 			// the abandoned-directory candidates.
 			if w.collectDirs && entry.Path != w.root {
-				w.seenDirs[entry.Path] = entry.ModTime
+				w.seenDirs[entry.Path] = &AbandonedDir{Path: entry.Path, ModTime: entry.ModTime}
 			}
 			continue
 		}
 
 		// Handle files
 		path := entry.Path
+		if w.collectDirs {
+			parent := filepath.Dir(path)
+			if dir := w.seenDirs[parent]; dir != nil {
+				dir.directFiles++
+			}
+		}
 		if isIgnoredPath(path, w.ignorePaths) {
 			continue
 		}
@@ -347,21 +364,20 @@ func walkScanRootWithUnitFilter(
 		}
 	}
 
-	if err := ctx.Err(); err != nil {
-		return w.orphans(), w.candidateDirs(), w.truncated, err
-	}
-
-	return w.orphans(), w.candidateDirs(), w.truncated, nil
+	orphans := w.orphans()
+	return orphans, w.candidateDirs(orphans), w.truncated, ctx.Err()
 }
 
 // findDiscMarker scans path segments for a disc-layout marker (BDMV, VIDEO_TS).
 // Returns the marker index, actual on-disk segment name, and uppercase marker.
-func findDiscMarker(segments []string) (markerIndex int, markerSegment, markerUpper string, found bool) {
-	for i, seg := range segments {
+func findDiscMarker(relDir string) (markerIndex int, markerSegment, markerUpper string, found bool) {
+	i := 0
+	for seg := range strings.SplitSeq(relDir, string(filepath.Separator)) {
 		segUpper := strings.ToUpper(seg)
 		if slices.Contains(discLayoutMarkers, segUpper) {
 			return i, seg, segUpper, true
 		}
+		i++
 	}
 	return -1, "", "", false
 }
@@ -408,23 +424,18 @@ func chooseDiscUnit(ctx context.Context, candidateAbs, markerAbs, markerUpper st
 	return discUnitDecision{chosenUnit: markerAbs}
 }
 
-// discOrphanUnitWithContext detects whether a file path belongs to a disc-layout folder.
-// If so, it returns the deletion unit path (directory) that should represent the disc.
-//
-// Note: sibling orphan files are suppressed at the end of the scan if a parent disc unit is chosen.
-// Respects ignorePaths to prevent grouping that would delete ignored content.
-func discRelativeSegments(root, path string) ([]string, bool) {
+func discRelativeDir(root, path string) (string, bool) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		return nil, false
+		return "", false
 	}
 
 	relDir := filepath.Dir(rel)
 	if relDir == "." {
-		return nil, false
+		return "", false
 	}
 
-	return strings.Split(relDir, string(filepath.Separator)), true
+	return relDir, true
 }
 
 func discUnitFromParentMarker(
@@ -457,21 +468,23 @@ func discUnitFromParentMarker(
 	return decision.chosenUnit, true
 }
 
+// discOrphanUnitWithContext groups disc files without including ignored content.
+// Sibling orphans are suppressed after the walk if it selects a parent disc unit.
 func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, tfm *TorrentFileMap, unitCache map[string]discUnitDecision, ignorePaths []string, backend fsops.Backend) (unitPath string, ok bool) {
 	root := filepath.Clean(scanRoot)
 	path := filepath.Clean(filePath)
 
-	segments, ok := discRelativeSegments(root, path)
+	relDir, ok := discRelativeDir(root, path)
 	if !ok {
 		return path, false
 	}
 
-	markerIndex, markerSegment, markerUpper, found := findDiscMarker(segments)
+	markerIndex, markerSegment, markerUpper, found := findDiscMarker(relDir)
 	if !found {
 		return path, false
 	}
 
-	candidateAbs, markerAbs := buildDiscCandidatePaths(root, segments, markerIndex, markerSegment)
+	candidateAbs, markerAbs := buildDiscCandidatePaths(root, strings.Split(relDir, string(filepath.Separator)), markerIndex, markerSegment)
 	if candidateAbs == root {
 		return markerAbs, true
 	}

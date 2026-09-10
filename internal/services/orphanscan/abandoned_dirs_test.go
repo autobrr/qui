@@ -12,7 +12,63 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+
+	"github.com/autobrr/qui/internal/fsops"
 )
+
+type directoryReadCounter struct {
+	fsops.Backend
+	reads int
+}
+
+func (b *directoryReadCounter) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
+	b.reads++
+	return b.Backend.ReadDir(ctx, path)
+}
+
+func TestAbandonedDirs_SkipsReadsForKnownKeptFiles(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		freshName string
+		disc      bool
+		wantReads int
+		wantDirs  int
+	}{
+		{name: "orphan only", wantReads: 1, wantDirs: 1},
+		{name: "fresh file before orphan", freshName: "a-fresh.mkv"},
+		{name: "fresh file after orphan", freshName: "z-fresh.mkv"},
+		{name: "disc count still requires reread", freshName: "z-fresh.mkv", disc: true, wantReads: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			dir := filepath.Join(root, "candidate")
+			orphan := filepath.Join(dir, "orphan.mkv")
+			if tt.disc {
+				orphan = filepath.Join(dir, "disc", "BDMV", "STREAM", "00001.m2ts")
+			}
+			writeFile(t, orphan)
+			backdate(t, orphan)
+			if tt.freshName != "" {
+				writeFile(t, filepath.Join(dir, tt.freshName))
+			}
+			backdate(t, dir)
+
+			backend := &directoryReadCounter{Backend: newTestBackend()}
+			orphans, dirs, err := walkScanRootCollectingDirs(t.Context(), root, NewTorrentFileMap(), nil, time.Hour, backend)
+			if err != nil {
+				t.Fatal(err)
+			}
+			backend.reads = 0
+			got := abandonedDirCandidates(t.Context(), sortDeepestFirst(dirs), orphans, []string{root}, nil, nil, time.Hour, backend)
+			if len(got) != tt.wantDirs || backend.reads != tt.wantReads {
+				t.Fatalf("directories = %v, reads = %d; want %d directories and %d reads", got, backend.reads, tt.wantDirs, tt.wantReads)
+			}
+		})
+	}
+}
 
 // mkdirs creates each relative directory under root and returns root.
 func mkdirs(t *testing.T, root string, rel ...string) string {
