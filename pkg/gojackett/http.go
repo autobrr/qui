@@ -157,6 +157,7 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 		}),
 		retry.Attempts(5),
 		retry.MaxJitter(time.Second*1),
+		retry.Context(ctx),
 	)
 
 	if err != nil {

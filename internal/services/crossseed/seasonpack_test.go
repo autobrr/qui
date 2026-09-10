@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -698,6 +699,15 @@ func TestMatchEpisodeCandidates_ExcludesIncompleteEpisodes(t *testing.T) {
 // candidates. The loop reads every cached episode, so a reason that means "belongs to
 // another show or another pack" must stay off the default level.
 func TestMatchEpisodeCandidates_FilterLogLevels(t *testing.T) {
+	// Run in a separate process so search goroutines cannot race with this test's logger.
+	if os.Getenv("QUI_TEST_FILTER_LOG_LEVELS_CHILD") != "1" {
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestMatchEpisodeCandidates_FilterLogLevels$", "-test.timeout=30s")
+		cmd.Env = append(os.Environ(), "QUI_TEST_FILTER_LOG_LEVELS_CHILD=1")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", output)
+		return
+	}
+
 	parsedPack := rls.ParseString("Cool.Show.S03.1080p.WEB.x264-GRP")
 	packRelease := &parsedPack
 
