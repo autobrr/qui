@@ -24,9 +24,9 @@ import (
 const credentialKeySize = 32
 
 // credentialCipherPrefix marks a value sealed under the HKDF-derived key. The
-// stored bytes start with a random nonce, so a version byte inside the payload
-// could not be told apart from legacy ciphertext and the marker has to sit
-// outside the base64.
+// stored bytes start with a random nonce. A version byte inside the payload
+// could not be told apart from legacy ciphertext, so the marker sits outside
+// the base64.
 const credentialCipherPrefix = "qui2:"
 
 // CredentialCipher seals the credentials the stores keep in the database. It
@@ -102,8 +102,8 @@ func (c *CredentialCipher) Decrypt(ciphertext string, aad []byte) (string, error
 	encoded := ciphertext
 	if isLegacyCiphertext(ciphertext) {
 		// Trying the current key here would turn a missing legacy key into an
-		// authentication failure, which reads exactly like a changed session
-		// secret and would make correct wiring opt-in.
+		// authentication failure. That reads exactly like a changed session
+		// secret, and it would make correct wiring opt-in.
 		if c.legacy == nil {
 			return "", errors.New("legacy ciphertext but no legacy key configured")
 		}
@@ -177,10 +177,11 @@ func (c *CredentialCipher) rewriteLegacyRows(ctx context.Context, db dbinterface
 	return rewritten, nil
 }
 
-// resealLegacyRows reads the table and re-encrypts what it can, so the update
-// statements below run after the result set is closed. A row that will not
-// decrypt is left exactly as it is: an operator who changed sessionSecret has
-// credentials to re-enter, and overwriting them here would destroy the evidence.
+// resealLegacyRows reads the table and re-encrypts what it can. It returns
+// before its caller issues any UPDATE, so the result set is closed by then.
+// A row that will not decrypt is left exactly as it is. An operator who changed
+// sessionSecret has credentials to re-enter. Overwriting them here would destroy
+// the evidence.
 func (c *CredentialCipher) resealLegacyRows(ctx context.Context, db dbinterface.Querier, spec legacyCredentialTable) ([]resealedRow, error) {
 	query := fmt.Sprintf("SELECT id, %s FROM %s", strings.Join(spec.columns, ", "), spec.table)
 	rows, err := db.QueryContext(ctx, query)
@@ -210,12 +211,15 @@ func (c *CredentialCipher) resealLegacyRows(ctx context.Context, db dbinterface.
 
 			plaintext, err := c.Decrypt(value.String, nil)
 			if err != nil {
+				// The whole row is abandoned, so its other columns are neither
+				// tried nor logged. One failing column means the key changed,
+				// which breaks every column of every row at once.
 				log.Warn().
 					Err(err).
 					Str("table", spec.table).
 					Int64("id", id).
 					Str("column", spec.columns[i]).
-					Msg("Leaving a credential in the legacy format: it does not decrypt, most likely because sessionSecret changed")
+					Msg("Leaving this row in the legacy format: a credential does not decrypt, most likely because sessionSecret changed")
 				row.columns = nil
 				break
 			}

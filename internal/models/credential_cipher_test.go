@@ -115,8 +115,8 @@ func TestCredentialCipherDecryptRejects(t *testing.T) {
 	sealed, err := cipherUnderTest.Encrypt("secret", []byte("bound"))
 	require.NoError(t, err)
 
-	// Flip a byte of the sealed payload itself, not of its base64 text, so the
-	// case reaches the GCM tag check rather than failing in the decoder.
+	// Flip a byte of the sealed payload itself, not of its base64 text. The case
+	// then reaches the GCM tag check rather than failing in the decoder.
 	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(sealed, "qui2:"))
 	require.NoError(t, err)
 	payload[len(payload)-1] ^= 0x01

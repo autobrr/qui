@@ -264,6 +264,44 @@ func TestRewriteLegacyCredentialsKeepsNullColumnsNull(t *testing.T) {
 	assert.Nil(t, basicPassword)
 }
 
+// TestRewriteLegacyCredentialsSkipsMixedRows pins the whole-row skip. One column
+// that does not decrypt abandons the row. A sibling that would have decrypted is
+// left legacy too, rather than leaving the row in two formats.
+func TestRewriteLegacyCredentialsSkipsMixedRows(t *testing.T) {
+	db := testdb.NewMigratedSQLite(t, "rewrite-mixed-row")
+	currentKey := testKey(t, 0)
+	legacyKey := testKey(t, 100)
+	strangerKey := testKey(t, 200)
+
+	seedStore, err := models.NewInstanceStore(db, legacyKey)
+	require.NoError(t, err)
+	basicUsername, basicPassword := "basic-user", "instance-basic-password"
+	created, err := seedStore.Create(t.Context(), "mixed-row", "http://localhost:8080", "user", "instance-password", &basicUsername, &basicPassword, false, nil, "instance-api-key")
+	require.NoError(t, err)
+	id := int64(created.ID)
+
+	// password_encrypted opens under the legacy key, basic_password_encrypted
+	// does not. The pass must rewrite neither.
+	writeLegacyCredentials(t, db, "instances", id, legacyKey, map[string]string{"password_encrypted": "instance-password"})
+	writeLegacyCredentials(t, db, "instances", id, strangerKey, map[string]string{"basic_password_encrypted": "instance-basic-password"})
+
+	before := map[string]string{
+		"password_encrypted":       readCredentialColumn(t, db, "instances", "password_encrypted", id),
+		"basic_password_encrypted": readCredentialColumn(t, db, "instances", "basic_password_encrypted", id),
+	}
+	require.False(t, strings.HasPrefix(before["password_encrypted"], "qui2:"), "the good column starts legacy")
+
+	store, err := models.NewInstanceStore(db, currentKey, models.WithLegacyEncryptionKey(legacyKey))
+	require.NoError(t, err)
+	rewritten, err := store.RewriteLegacyCredentials(t.Context())
+	require.NoError(t, err)
+	assert.Zero(t, rewritten)
+
+	for column, stored := range before {
+		assert.Equal(t, stored, readCredentialColumn(t, db, "instances", column, id), "column %s must be byte-identical", column)
+	}
+}
+
 // TestRewriteLegacyCredentialsKeepsEmptyColumnsEmpty covers the NOT NULL columns
 // that default to the empty string, where an empty value means "not configured".
 // Sealing an empty string would produce a real ciphertext, which HasAPIKey,
@@ -386,4 +424,215 @@ func TestRewriteLegacyCredentialsKeepsInstanceReadable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, decryptedBasic)
 	assert.Equal(t, "instance-basic-password", *decryptedBasic)
+}
+
+// legacyReadCase reads a store's credentials back through its own accessors.
+// The opts are threaded through so the same closure runs with and without the
+// legacy key, which is what makes the missing-option case observable.
+type legacyReadCase struct {
+	name  string
+	table string
+	// credentials maps each encrypted column to the plaintext seeded into it.
+	credentials map[string]string
+	seed        func(t *testing.T, db *database.DB, key []byte) int64
+	read        func(t *testing.T, db *database.DB, id int64, opts ...models.CredentialCipherOption) (map[string]string, error)
+}
+
+func legacyReadCases() []legacyReadCase {
+	return []legacyReadCase{
+		{
+			name:  "instances",
+			table: "instances",
+			credentials: map[string]string{
+				"password_encrypted":       "instance-password",
+				"api_key_encrypted":        "instance-api-key",
+				"basic_password_encrypted": "instance-basic-password",
+			},
+			seed: func(t *testing.T, db *database.DB, key []byte) int64 {
+				t.Helper()
+
+				store, err := models.NewInstanceStore(db, key)
+				require.NoError(t, err)
+				basicUsername, basicPassword := "basic-user", "instance-basic-password"
+				instance, err := store.Create(t.Context(), "legacy-read", "http://localhost:8080", "user", "instance-password", &basicUsername, &basicPassword, false, nil, "instance-api-key")
+				require.NoError(t, err)
+				return int64(instance.ID)
+			},
+			read: func(t *testing.T, db *database.DB, id int64, opts ...models.CredentialCipherOption) (map[string]string, error) {
+				t.Helper()
+
+				store, err := models.NewInstanceStore(db, testKey(t, 0), opts...)
+				require.NoError(t, err)
+				instance, err := store.Get(t.Context(), int(id))
+				require.NoError(t, err)
+
+				password, err := store.GetDecryptedPassword(instance)
+				if err != nil {
+					return nil, err
+				}
+				apiKey, err := store.GetDecryptedAPIKey(instance)
+				if err != nil {
+					return nil, err
+				}
+				basicPassword, err := store.GetDecryptedBasicPassword(instance)
+				if err != nil {
+					return nil, err
+				}
+				require.NotNil(t, basicPassword)
+
+				return map[string]string{
+					"password_encrypted":       password,
+					"api_key_encrypted":        apiKey,
+					"basic_password_encrypted": *basicPassword,
+				}, nil
+			},
+		},
+		{
+			name:  "arr_instances",
+			table: "arr_instances",
+			credentials: map[string]string{
+				"api_key_encrypted":        "arr-api-key",
+				"basic_password_encrypted": "arr-basic-password",
+			},
+			seed: func(t *testing.T, db *database.DB, key []byte) int64 {
+				t.Helper()
+
+				store, err := models.NewArrInstanceStore(db, key)
+				require.NoError(t, err)
+				basicUsername, basicPassword := "basic-user", "arr-basic-password"
+				instance, err := store.Create(t.Context(), models.ArrInstanceTypeSonarr, "legacy-read-arr", "http://sonarr.invalid", "arr-api-key", &basicUsername, &basicPassword, true, 0, 15)
+				require.NoError(t, err)
+				return int64(instance.ID)
+			},
+			read: func(t *testing.T, db *database.DB, id int64, opts ...models.CredentialCipherOption) (map[string]string, error) {
+				t.Helper()
+
+				store, err := models.NewArrInstanceStore(db, testKey(t, 0), opts...)
+				require.NoError(t, err)
+				instance, err := store.Get(t.Context(), int(id))
+				require.NoError(t, err)
+
+				apiKey, err := store.GetDecryptedAPIKey(instance)
+				if err != nil {
+					return nil, err
+				}
+				basicPassword, err := store.GetDecryptedBasicPassword(instance)
+				if err != nil {
+					return nil, err
+				}
+
+				return map[string]string{
+					"api_key_encrypted":        apiKey,
+					"basic_password_encrypted": basicPassword,
+				}, nil
+			},
+		},
+		{
+			name:  "torznab_indexers",
+			table: "torznab_indexers",
+			credentials: map[string]string{
+				"api_key_encrypted":        "torznab-api-key",
+				"basic_password_encrypted": "torznab-basic-password",
+			},
+			seed: func(t *testing.T, db *database.DB, key []byte) int64 {
+				t.Helper()
+
+				store, err := models.NewTorznabIndexerStore(db, key)
+				require.NoError(t, err)
+				basicUsername, basicPassword := "basic-user", "torznab-basic-password"
+				indexer, err := store.Create(t.Context(), "legacy-read-indexer", "http://indexer.invalid", "torznab-api-key", &basicUsername, &basicPassword, true, 0, 30)
+				require.NoError(t, err)
+				return int64(indexer.ID)
+			},
+			read: func(t *testing.T, db *database.DB, id int64, opts ...models.CredentialCipherOption) (map[string]string, error) {
+				t.Helper()
+
+				store, err := models.NewTorznabIndexerStore(db, testKey(t, 0), opts...)
+				require.NoError(t, err)
+				indexer, err := store.Get(t.Context(), int(id))
+				require.NoError(t, err)
+
+				apiKey, err := store.GetDecryptedAPIKey(indexer)
+				if err != nil {
+					return nil, err
+				}
+				basicPassword, err := store.GetDecryptedBasicPassword(indexer)
+				if err != nil {
+					return nil, err
+				}
+
+				return map[string]string{
+					"api_key_encrypted":        apiKey,
+					"basic_password_encrypted": basicPassword,
+				}, nil
+			},
+		},
+		{
+			name:  "cross_seed_settings",
+			table: "cross_seed_settings",
+			credentials: map[string]string{
+				"season_pack_tvdb_api_key_encrypted": "tvdb-api-key",
+				"season_pack_tvdb_pin_encrypted":     "tvdb-pin",
+			},
+			seed: func(t *testing.T, db *database.DB, key []byte) int64 {
+				t.Helper()
+
+				store, err := models.NewCrossSeedStore(db, key)
+				require.NoError(t, err)
+				_, err = store.UpsertSettings(t.Context(), &models.CrossSeedAutomationSettings{
+					RunIntervalMinutes:   120,
+					SeasonPackTVDBAPIKey: "tvdb-api-key",
+					SeasonPackTVDBPIN:    "tvdb-pin",
+				})
+				require.NoError(t, err)
+				return 1
+			},
+			read: func(t *testing.T, db *database.DB, _ int64, opts ...models.CredentialCipherOption) (map[string]string, error) {
+				t.Helper()
+
+				store, err := models.NewCrossSeedStore(db, testKey(t, 0), opts...)
+				require.NoError(t, err)
+
+				apiKey, pin, err := store.GetDecryptedSeasonPackTVDBCredentials(t.Context())
+				if err != nil {
+					return nil, err
+				}
+
+				return map[string]string{
+					"season_pack_tvdb_api_key_encrypted": apiKey,
+					"season_pack_tvdb_pin_encrypted":     pin,
+				}, nil
+			},
+		},
+	}
+}
+
+// TestStoresReadLegacyCredentialsBeforeRewrite goes through each store's real
+// constructor and its own accessors, with no rewrite pass in between. The
+// without-option half is what would catch WithLegacyEncryptionKey being dropped
+// from a single call site in main.go, which compiles and then fails at runtime.
+func TestStoresReadLegacyCredentialsBeforeRewrite(t *testing.T) {
+	legacyKey := testKey(t, 100)
+
+	for _, tc := range legacyReadCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			db := testdb.NewMigratedSQLite(t, "legacy-read-"+tc.name)
+			id := tc.seed(t, db, legacyKey)
+			writeLegacyCredentials(t, db, tc.table, id, legacyKey, tc.credentials)
+
+			t.Run("with_the_legacy_key", func(t *testing.T) {
+				got, err := tc.read(t, db, id, models.WithLegacyEncryptionKey(legacyKey))
+				require.NoError(t, err)
+				for column, plaintext := range tc.credentials {
+					assert.Equal(t, plaintext, got[column], "column %s", column)
+				}
+			})
+
+			t.Run("without_the_legacy_key", func(t *testing.T) {
+				_, err := tc.read(t, db, id)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "no legacy key configured")
+			})
+		})
+	}
 }
