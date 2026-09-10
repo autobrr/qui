@@ -1345,6 +1345,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return true
   }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource, t])
 
+  const validateCategory = useCallback((state: FormState): boolean => {
+    if (state.categoryEnabled && state.exprCategory === undefined) {
+      toast.error(t("preferences.workflowDialog.toast.selectCategory"))
+      return false
+    }
+    return true
+  }, [t])
+
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
@@ -1792,6 +1800,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!open) return null
     if (!(isDeleteRule || isCategoryRule)) return null
     if (isDeleteRule && !formState.actionCondition) return null
+    if (isCategoryRule && formState.exprCategory === undefined) return null
     if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
     if (!hasValidFreeSpaceSourceForLivePreview(formState)) return null
 
@@ -1856,6 +1865,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const handleRunDryRunNow = () => {
     const dryRunInput: FormState = { ...formState }
 
+    if (!validateCategory(dryRunInput)) return
     if (!validateFreeSpaceSource(dryRunInput)) return
     if (!dryRunInput.name.trim()) {
       toast.error(t("preferences.workflowDialog.toast.nameRequired"))
@@ -1920,6 +1930,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
       return
     }
+    if (checked && !validateCategory(formState)) return
     if (checked && !validateExportTarget(formState)) {
       return
     }
@@ -1944,7 +1955,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, startPreview, t, validateExportTarget, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -2142,12 +2153,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
-    if (submitState.categoryEnabled) {
-      if (submitState.exprCategory === undefined) {
-        toast.error(t("preferences.workflowDialog.toast.selectCategory"))
-        return
-      }
-    }
+    if (!validateCategory(submitState)) return
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
         toast.error(t("preferences.workflowDialog.toast.selectExternalProgram"))
@@ -2193,6 +2199,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }
 
   const handleConfirmSave = () => {
+    if (!validateCategory(formState)) return
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
     // Drop any preview still in flight; the user chose to save without it.
