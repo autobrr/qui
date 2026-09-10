@@ -12,6 +12,10 @@ If your provider advertises PKCE (`S256`) support, qui uses it for the authoriza
 To make sure that PKCE is active, inspect `/api/auth/oidc/config`. The `authorizationUrl` must include both `code_challenge=` and `code_challenge_method=S256`.
 qui does not emit a dedicated "PKCE enabled" log line, so check the authorization URL directly.
 
+qui accepts every identity that the provider permits for the qui client. qui has one user and no identity allowlist of its own. Restrict the client on the provider side, for example with a group or user assignment, so that only you can sign in.
+
+An `https://` redirect URL marks the session cookie as Secure, so the browser sends it only over HTTPS. See [Sessions](./reference.md#sessions).
+
 For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference.md).
 
 ## Configuration options

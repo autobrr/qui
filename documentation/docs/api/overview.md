@@ -23,6 +23,10 @@ curl -H "X-API-Key: YOUR_API_KEY_HERE" \
   http://localhost:7476/api/instances
 ```
 
+## Session cookies
+
+The session cookie is for the qui web UI. Use an API key for scripts. See [Sessions](../configuration/reference.md#sessions) for the rules that apply to cookie requests.
+
 ## Torrent updates
 
 `GET /api/stream` sends torrent updates through Server-Sent Events. See `/api/docs` for subscription parameters and event examples.

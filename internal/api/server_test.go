@@ -43,7 +43,6 @@ type routeKey struct {
 }
 
 var undocumentedRoutes = map[routeKey]struct{}{
-	{Method: http.MethodGet, Path: "/api/auth/validate"}:                                            {},
 	{Method: http.MethodGet, Path: "/api/torznab/activity"}:                                         {},
 	{Method: http.MethodGet, Path: "/api/torznab/indexers"}:                                         {},
 	{Method: http.MethodPost, Path: "/api/torznab/indexers"}:                                        {},

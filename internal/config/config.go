@@ -209,6 +209,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
 	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
+	c.viper.BindEnv("sessionCookieSecure", envPrefix+"SESSION_COOKIE_SECURE")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
@@ -327,6 +328,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.BaseURL = httphelpers.NormalizeBasePath(c.viper.GetString("baseUrl")) + "/"
 	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
+	c.Config.SessionCookieSecure = c.viper.GetBool("sessionCookieSecure")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
 	c.Config.LogPath = c.viper.GetString("logPath")
@@ -492,6 +494,12 @@ port = {{ .port }}
 # WARNING: Changing this value will break decryption of existing instance passwords!
 # If changed, you'll need to re-enter passwords for all existing qBittorrent instances in the UI.
 sessionSecret = "{{ .sessionSecret }}"
+
+# Send the browser session cookie only over HTTPS
+# Enable this when qui is served through an HTTPS reverse proxy.
+# With this enabled, login over plain HTTP does not work.
+# An HTTPS oidcRedirectUrl enables it automatically.
+#sessionCookieSecure = false
 
 # Log file path
 # If not defined, logs to stdout

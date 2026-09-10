@@ -91,6 +91,8 @@
                 tagsSorter: "alpha",  // Sort tags alphabetically
                 operationsSorter: "alpha",  // Sort operations alphabetically within tags
                 requestInterceptor: (request) => {
+                    // Cookie-authenticated writes must carry this header.
+                    request.headers['X-Requested-With'] = 'XMLHttpRequest';
                     // Add API key from authorization if present
                     if (window.ui && window.ui.authSelectors) {
                         const apiKey = window.ui.authSelectors.authorized()?.ApiKeyAuth?.value;
