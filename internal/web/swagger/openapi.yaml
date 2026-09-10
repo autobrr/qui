@@ -1,7 +1,11 @@
 openapi: 3.1.0
 info:
   title: qui API
-  description: qui API for managing multiple qBittorrent instances
+  description: |
+    qui API for managing multiple qBittorrent instances.
+    For automation create and update requests, set `conditions.category.enabled` to `true`
+    and `conditions.category.category` to an empty string to remove the torrent category.
+    Set `conditions.category.enabled` to `false` to disable the category action.
   version: 1.0.0
   license:
     name: GPL-2.0-or-later

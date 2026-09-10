@@ -488,7 +488,7 @@ type FormState = {
   // Tag action settings
   exprTagActions: TagActionForm[]
   // Category action settings
-  exprCategory: string
+  exprCategory: string | undefined
   exprIncludeCrossSeeds: boolean
   exprCategoryGroupId: string
   exprBlockIfCrossSeedInCategories: string[]
@@ -557,7 +557,7 @@ const emptyFormState: FormState = {
   exprFreeSpaceSourceType: "qbittorrent",
   exprFreeSpaceSourcePath: "",
   exprTagActions: [createDefaultTagAction()],
-  exprCategory: "",
+  exprCategory: undefined,
   exprIncludeCrossSeeds: false,
   exprCategoryGroupId: "",
   exprBlockIfCrossSeedInCategories: [],
@@ -798,7 +798,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Build category options for the category action dropdown
   const categoryOptions = useMemo(() => {
     if (!metadata?.categories) return []
-    const selected = [formState.exprCategory, ...formState.exprBlockIfCrossSeedInCategories].filter(Boolean)
+    const selected = [formState.exprCategory, ...formState.exprBlockIfCrossSeedInCategories].filter((category): category is string => !!category)
     return buildCategorySelectOptions(metadata.categories, selected)
   }, [metadata?.categories, formState.exprCategory, formState.exprBlockIfCrossSeedInCategories])
 
@@ -1005,7 +1005,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
         let exprFreeSpaceSourcePath = ""
         let exprTagActions: TagActionForm[] = [createDefaultTagAction()]
-        let exprCategory = ""
+        let exprCategory: string | undefined
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
         let sortingType: FormState["sortingType"] = "default"
@@ -1345,6 +1345,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return true
   }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource, t])
 
+  const validateCategory = useCallback((state: FormState): boolean => {
+    if (state.categoryEnabled && state.exprCategory === undefined) {
+      toast.error(t("preferences.workflowDialog.toast.selectCategory"))
+      return false
+    }
+    return true
+  }, [t])
+
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
     if (!usesFreeSpace || state.exprFreeSpaceSourceType !== "path") {
@@ -1485,7 +1493,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         conditions.tag = tagActions[0]
       }
     }
-    if (input.categoryEnabled) {
+    if (input.categoryEnabled && input.exprCategory !== undefined) {
       conditions.category = {
         enabled: true,
         category: input.exprCategory,
@@ -1616,6 +1624,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   // Check if current form state represents a delete or category rule (both need previews)
   const isDeleteRule = formState.deleteEnabled
   const isCategoryRule = formState.categoryEnabled
+  const previewCategory = (previewInput?.exprCategory ?? formState.exprCategory) || t("preferences.workflowDialog.uncategorized")
 
   // Check if condition uses FREE_SPACE field (for free space source UI - shown regardless of action)
   const conditionUsesFreeSpace = useMemo(() => {
@@ -1791,6 +1800,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!open) return null
     if (!(isDeleteRule || isCategoryRule)) return null
     if (isDeleteRule && !formState.actionCondition) return null
+    if (isCategoryRule && formState.exprCategory === undefined) return null
     if (!formState.applyToAllTrackers && normalizeTrackerDomains(formState.trackerDomains).length === 0) return null
     if (!hasValidFreeSpaceSourceForLivePreview(formState)) return null
 
@@ -1855,6 +1865,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const handleRunDryRunNow = () => {
     const dryRunInput: FormState = { ...formState }
 
+    if (!validateCategory(dryRunInput)) return
     if (!validateFreeSpaceSource(dryRunInput)) return
     if (!dryRunInput.name.trim()) {
       toast.error(t("preferences.workflowDialog.toast.nameRequired"))
@@ -1919,6 +1930,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
       return
     }
+    if (checked && !validateCategory(formState)) return
     if (checked && !validateExportTarget(formState)) {
       return
     }
@@ -1943,7 +1955,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, startPreview, t, validateExportTarget, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, startPreview, t, validateCategory, validateExportTarget, validateFreeSpaceSource])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -2141,12 +2153,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
-    if (submitState.categoryEnabled) {
-      if (!submitState.exprCategory) {
-        toast.error(t("preferences.workflowDialog.toast.selectCategory"))
-        return
-      }
-    }
+    if (!validateCategory(submitState)) return
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
         toast.error(t("preferences.workflowDialog.toast.selectExternalProgram"))
@@ -2192,6 +2199,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }
 
   const handleConfirmSave = () => {
+    if (!validateCategory(formState)) return
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
     // Drop any preview still in flight; the user chose to save without it.
@@ -3418,7 +3426,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <div className="space-y-1">
                             <Label className="text-xs">{t("preferences.workflowDialog.category.moveToCategory")}</Label>
                             <Select
-                              value={formState.exprCategory === "" ? CATEGORY_UNCATEGORIZED_VALUE : formState.exprCategory}
+                              value={formState.exprCategory === "" ? CATEGORY_UNCATEGORIZED_VALUE : formState.exprCategory ?? ""}
                               onValueChange={(value) => setFormState(prev => ({
                                 ...prev,
                                 exprCategory: value === CATEGORY_UNCATEGORIZED_VALUE ? "" : value,
@@ -3441,7 +3449,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </SelectContent>
                             </Select>
                           </div>
-                          {formState.exprCategory && (
+                          {formState.exprCategory !== undefined && (
                             <div className="flex items-center gap-2 mt-5">
                               <Switch
                                 id="include-crossseeds"
@@ -4192,7 +4200,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         }}
         title={
           isDeleteRule? (formState.enabled? t("preferences.workflowDialog.preview.confirmDeleteRule"): t("preferences.workflowDialog.preview.previewDeleteRule")): t("preferences.workflowDialog.preview.confirmCategoryChange", {
-            category: previewInput?.exprCategory ?? formState.exprCategory,
+            category: previewCategory,
           })
         }
         description={
@@ -4221,7 +4229,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   {previewResult.crossSeedCount ? (
                     <> {t("preferences.workflowDialog.preview.and")} <strong>{previewResult.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: previewResult.crossSeedCount })}</>
                   ) : null}
-                  {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{previewInput?.exprCategory ?? formState.exprCategory}"</strong>.
+                  {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{previewCategory}"</strong>.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
               </>
