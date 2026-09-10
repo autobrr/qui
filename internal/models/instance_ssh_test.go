@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/pem"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -500,13 +501,17 @@ func TestSetHostKeyPinRequiresWireFormat(t *testing.T) {
 	assert.Empty(t, stored.SSHHostKeyEncrypted, "a rejected pin must not be written")
 }
 
-func flipLastByte(t *testing.T, encoded string) string {
+// flipLastByte corrupts the sealed payload behind the qui2: prefix so the
+// failure is the authentication tag, not the format marker.
+func flipLastByte(t *testing.T, stored string) string {
 	t.Helper()
 
+	encoded, ok := strings.CutPrefix(stored, credentialCipherPrefix)
+	require.True(t, ok, "SSH columns are written in the versioned format")
 	raw, err := base64.StdEncoding.DecodeString(encoded)
 	require.NoError(t, err)
 	require.NotEmpty(t, raw)
 
 	raw[len(raw)-1] ^= 0xFF
-	return base64.StdEncoding.EncodeToString(raw)
+	return credentialCipherPrefix + base64.StdEncoding.EncodeToString(raw)
 }

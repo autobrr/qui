@@ -5,15 +5,10 @@ package models
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -196,84 +191,40 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 }
 
 type InstanceStore struct {
-	db            dbinterface.Querier
-	encryptionKey []byte
+	db     dbinterface.Querier
+	cipher *CredentialCipher
 }
 
-func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte) (*InstanceStore, error) {
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("encryption key must be 32 bytes")
+func NewInstanceStore(db dbinterface.Querier, encryptionKey []byte, opts ...CredentialCipherOption) (*InstanceStore, error) {
+	credentialCipher, err := NewCredentialCipher(encryptionKey, opts...)
+	if err != nil {
+		return nil, err
 	}
 
-	return &InstanceStore{
-		db:            db,
-		encryptionKey: encryptionKey,
-	}, nil
+	return &InstanceStore{db: db, cipher: credentialCipher}, nil
 }
 
 // encrypt encrypts a string using AES-GCM
 func (s *InstanceStore) encrypt(plaintext string) (string, error) {
-	return s.encryptWithAAD(plaintext, nil)
-}
-
-// encryptWithAAD encrypts a string using AES-GCM, binding the ciphertext to
-// additionalData. Passing nil is the unbound form the older credential columns
-// use; see instance_ssh.go for what the SSH columns bind to and why.
-func (s *InstanceStore) encryptWithAAD(plaintext string, additionalData []byte) (string, error) {
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), additionalData)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return s.cipher.Encrypt(plaintext, nil)
 }
 
 // decrypt decrypts a string encrypted with encrypt
 func (s *InstanceStore) decrypt(ciphertext string) (string, error) {
-	return s.decryptWithAAD(ciphertext, nil)
+	return s.cipher.Decrypt(ciphertext, nil)
 }
 
-// decryptWithAAD decrypts a string encrypted with encryptWithAAD. Mismatched
-// additionalData fails authentication, which is the point: it is how a
-// transplanted or redirected credential is caught.
-func (s *InstanceStore) decryptWithAAD(ciphertext string, additionalData []byte) (string, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return "", err
-	}
-
-	block, err := aes.NewCipher(s.encryptionKey)
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", err
-	}
-
-	if len(data) < gcm.NonceSize() {
-		return "", errors.New("malformed ciphertext")
-	}
-
-	nonce, ciphertextBytes := data[:gcm.NonceSize()], data[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, additionalData)
-	if err != nil {
-		return "", err
-	}
-
-	return string(plaintext), nil
+// RewriteLegacyCredentials re-encrypts stored qBittorrent instance credentials that still
+// carry the pre-HKDF format and reports how many rows it rewrote.
+func (s *InstanceStore) RewriteLegacyCredentials(ctx context.Context) (int, error) {
+	return s.cipher.rewriteLegacyRows(ctx, s.db, legacyCredentialTable{
+		table: "instances",
+		columns: []string{
+			"password_encrypted",
+			"api_key_encrypted",
+			"basic_password_encrypted",
+		},
+	})
 }
 
 // validateAndNormalizeHost validates and normalizes a qBittorrent instance host URL

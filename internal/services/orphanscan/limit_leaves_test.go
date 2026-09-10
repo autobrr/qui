@@ -165,6 +165,8 @@ func TestExecuteScan_MissingNestedRootStillWarns(t *testing.T) {
 
 	run, err := store.GetRun(t.Context(), runID)
 	require.NoError(t, err)
+	require.Equal(t, "completed", run.Status)
+	require.True(t, run.Partial)
 	require.Contains(t, run.ErrorMessage, nested,
 		"a nested save path that is not on disk must still be reported, not hidden by pruning")
 }

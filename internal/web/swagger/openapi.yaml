@@ -8910,7 +8910,7 @@ components:
           description: Also scan every qBittorrent category destination; false when scanDefaultSavePath is false
         deleteAbandonedDirs:
           type: boolean
-          description: Report directories that hold no files at any depth so they can be removed
+          description: Report directories the run empties, so they can be removed with the orphan files
         createdAt:
           type: string
           format: date-time
@@ -8965,7 +8965,7 @@ components:
           type: array
           items:
             type: string
-          description: Directories that were scanned (derived from torrent SavePath values)
+          description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
         filesFound:
           type: integer
           description: Number of orphan files found
@@ -8982,6 +8982,9 @@ components:
         truncated:
           type: boolean
           description: True if max_files_per_run was reached and more orphans may exist
+        partial:
+          type: boolean
+          description: True when some selected scan paths could not be scanned. Automatic cleanup is skipped for this run.
         errorMessage:
           type: string
           nullable: true
@@ -9065,9 +9068,10 @@ components:
         isAbandonedDir:
           type: boolean
           description: >-
-            True only for an abandoned directory, which holds no files and is
-            removed with rmdir. False for orphan content, whose path may still
-            be a directory when it is a disc unit.
+            True only for an abandoned directory: one the run empties, either
+            already holding no files or holding only orphans listed in the same
+            run, and removed with rmdir after them. False for orphan content,
+            whose path may still be a directory when it is a disc unit.
         modifiedAt:
           type: string
           format: date-time

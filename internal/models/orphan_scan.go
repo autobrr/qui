@@ -48,6 +48,7 @@ type OrphanScanRun struct {
 	FoldersDeleted int        `json:"foldersDeleted"`
 	BytesReclaimed int64      `json:"bytesReclaimed"`
 	Truncated      bool       `json:"truncated"`
+	Partial        bool       `json:"partial,omitzero"`
 	ErrorMessage   string     `json:"errorMessage,omitempty"`
 	StartedAt      time.Time  `json:"startedAt"`
 	CompletedAt    *time.Time `json:"completedAt,omitempty"`
@@ -205,7 +206,7 @@ func (s *OrphanScanStore) GetRun(ctx context.Context, runID int64) (*OrphanScanR
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at
+		       error_message, started_at, completed_at, partial
 		FROM orphan_scan_runs
 		WHERE id = ?
 	`, runID)
@@ -218,7 +219,7 @@ func (s *OrphanScanStore) GetRunByInstance(ctx context.Context, instanceID int, 
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at
+		       error_message, started_at, completed_at, partial
 		FROM orphan_scan_runs
 		WHERE id = ? AND instance_id = ?
 	`, runID, instanceID)
@@ -247,6 +248,7 @@ func (s *OrphanScanStore) scanRun(row *sql.Row) (*OrphanScanRun, error) {
 		&errorMessage,
 		&run.StartedAt,
 		&completedAt,
+		&run.Partial,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -303,6 +305,7 @@ func (s *OrphanScanStore) scanRunsFromRows(rows *sql.Rows) ([]*OrphanScanRun, er
 			&errorMessage,
 			&run.StartedAt,
 			&completedAt,
+			&run.Partial,
 		); err != nil {
 			return nil, err
 		}
@@ -342,7 +345,7 @@ func (s *OrphanScanStore) listRunsRecent(ctx context.Context, instanceID, limit 
 	query := `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at
+		       error_message, started_at, completed_at, partial
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		ORDER BY started_at DESC
@@ -355,7 +358,7 @@ func (s *OrphanScanStore) listRunsActive(ctx context.Context, instanceID int) ([
 	query := `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at
+		       error_message, started_at, completed_at, partial
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
@@ -431,7 +434,7 @@ func (s *OrphanScanStore) GetLastCompletedRun(ctx context.Context, instanceID in
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at
+		       error_message, started_at, completed_at, partial
 		FROM orphan_scan_runs
 		WHERE instance_id = ? AND status = 'completed'
 		ORDER BY completed_at DESC
@@ -447,7 +450,7 @@ func (s *OrphanScanStore) GetMostRecentActiveRun(ctx context.Context, instanceID
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, status, triggered_by, scan_paths, files_found,
 		       files_deleted, folders_deleted, bytes_reclaimed, truncated,
-		       error_message, started_at, completed_at
+		       error_message, started_at, completed_at, partial
 		FROM orphan_scan_runs
 		WHERE instance_id = ?
 		  AND (status IN ('pending', 'scanning', 'deleting')
@@ -490,13 +493,13 @@ func (s *OrphanScanStore) UpdateRunFoundStats(ctx context.Context, runID int64, 
 	return err
 }
 
-// UpdateRunCompleted marks a run as completed with stats.
-func (s *OrphanScanStore) UpdateRunCompleted(ctx context.Context, runID int64, filesDeleted, foldersDeleted int, bytesReclaimed int64) error {
+// UpdateRunCompleted saves completion, stats, and the warning in one update.
+func (s *OrphanScanStore) UpdateRunCompleted(ctx context.Context, runID int64, filesDeleted, foldersDeleted int, bytesReclaimed int64, warningMessage string) error {
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE orphan_scan_runs
-		SET status = 'completed', files_deleted = ?, folders_deleted = ?, bytes_reclaimed = ?, completed_at = CURRENT_TIMESTAMP
+		SET status = 'completed', files_deleted = ?, folders_deleted = ?, bytes_reclaimed = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP
 		WHERE id = ?
-	`, filesDeleted, foldersDeleted, bytesReclaimed, runID)
+	`, filesDeleted, foldersDeleted, bytesReclaimed, warningMessage, runID)
 	return err
 }
 
@@ -507,6 +510,14 @@ func (s *OrphanScanStore) UpdateRunFailed(ctx context.Context, runID int64, erro
 		SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, errorMessage, runID)
+	return err
+}
+
+// UpdateRunPartial records incomplete scan coverage and its warning.
+func (s *OrphanScanStore) UpdateRunPartial(ctx context.Context, runID int64, warningMessage string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE orphan_scan_runs SET partial = 1, error_message = ? WHERE id = ?
+	`, warningMessage, runID)
 	return err
 }
 

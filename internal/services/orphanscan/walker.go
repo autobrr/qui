@@ -76,7 +76,7 @@ type discUnitDecision struct {
 }
 
 // walkScanRoot walks a directory tree and returns orphan files not in the TorrentFileMap.
-// Only files are returned as orphans - directories are cleaned up separately after file deletion.
+// Only files are returned as orphans; directories go through walkScanRootCollectingDirs.
 func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend) ([]OrphanFile, bool, error) {
 	orphans, _, truncated, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, false)
@@ -93,15 +93,10 @@ type scanWalker struct {
 	unitFilter  func(unitPath string, isDiscUnit bool) bool
 	backend     fsops.Backend
 
-	// seenDirs records every directory the walk visited with its mtime;
-	// dirsWithFiles marks a directory when any file exists at or below it, so
-	// the difference is the set of file-free subtrees (#1400). Both are only
-	// filled when the caller asked for directories, so a scan that does not use
-	// them pays nothing per file.
-	collectDirs   bool
-	normRoot      string
-	seenDirs      map[string]time.Time
-	dirsWithFiles map[string]struct{}
+	// seenDirs records directory mtimes and direct file counts when requested.
+	// abandonedDirCandidates makes the final removal decision.
+	collectDirs bool
+	seenDirs    map[string]*AbandonedDir
 
 	orphanUnits    map[string]*OrphanFile
 	discUnitsInUse map[string]struct{}
@@ -132,43 +127,33 @@ func newScanWalker(
 		discUnitPaths:  make(map[string]struct{}),
 		seenFileIDs:    make(map[hardlink.FileID]struct{}),
 		collectDirs:    collectDirs,
-		normRoot:       normalizePath(root),
-		seenDirs:       make(map[string]time.Time),
-		dirsWithFiles:  make(map[string]struct{}),
+		seenDirs:       make(map[string]*AbandonedDir),
 	}
 }
 
-// markDirsWithFile records every ancestor of path, up to and including the scan
-// root, as holding a file.
-func (w *scanWalker) markDirsWithFile(path string) {
-	dir := filepath.Dir(path)
-	for {
-		if _, done := w.dirsWithFiles[dir]; done {
-			return
-		}
-		w.dirsWithFiles[dir] = struct{}{}
-		if normalizePath(dir) == w.normRoot {
-			return
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return
-		}
-		dir = parent
+// candidateDirs excludes directories with known retained files. The counts
+// only reject candidates; abandonedDirCandidates checks all remaining ones.
+func (w *scanWalker) candidateDirs(deleted []OrphanFile) []AbandonedDir {
+	if len(w.seenDirs) == 0 {
+		return nil
 	}
-}
-
-// fileFreeDirs excludes torrent-owned directories even before their files exist.
-func (w *scanWalker) fileFreeDirs() []AbandonedDir {
-	dirs := make([]AbandonedDir, 0, len(w.seenDirs))
-	for dir, modTime := range w.seenDirs {
-		if _, hasFiles := w.dirsWithFiles[dir]; hasFiles {
+	for _, file := range deleted {
+		if dir := w.seenDirs[filepath.Dir(file.Path)]; dir != nil {
+			dir.directFiles--
+		}
+	}
+	var dirs []AbandonedDir
+	for _, dir := range w.seenDirs {
+		// ponytail: disc children can lower this count; exclude their paths
+		// from subtraction if the extra rereads become costly.
+		if dir.directFiles > 0 {
 			continue
 		}
-		if w.tfm.HasAnyInDir(normalizePath(dir)) {
+		// A torrent that has not written its payload yet still owns its save path.
+		if w.tfm.HasAnyInDir(normalizePath(dir.Path)) {
 			continue
 		}
-		dirs = append(dirs, AbandonedDir{Path: dir, ModTime: modTime})
+		dirs = append(dirs, *dir)
 	}
 	return dirs
 }
@@ -256,12 +241,13 @@ func (w *scanWalker) orphans() []OrphanFile {
 	return orphans
 }
 
-// walkScanRootCollectingDirs is walkScanRoot plus the file-free directories the
-// walk saw, for the abandoned-directory option.
+// walkScanRootCollectingDirs also returns candidates for empty-directory cleanup.
+// It never caps the walk; the run's cap applies afterwards.
 func walkScanRootCollectingDirs(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend,
-) ([]OrphanFile, []AbandonedDir, bool, error) {
-	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil, backend, true)
+	ignorePaths []string, gracePeriod time.Duration, backend fsops.Backend,
+) ([]OrphanFile, []AbandonedDir, error) {
+	orphans, dirs, _, err := walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, 0, nil, backend, true)
+	return orphans, dirs, err
 }
 
 func walkScanRootWithUnitFilter(
@@ -296,7 +282,7 @@ func walkScanRootWithUnitFilter(
 		}
 
 		if entry.Err != nil {
-			if errors.Is(entry.Err, fs.ErrPermission) {
+			if errors.Is(entry.Err, fs.ErrPermission) && entry.Path != root {
 				continue
 			}
 			return nil, nil, false, entry.Err
@@ -314,18 +300,18 @@ func walkScanRootWithUnitFilter(
 			// Directories are never orphan files; they feed disc-unit detection and
 			// the abandoned-directory candidates.
 			if w.collectDirs && entry.Path != w.root {
-				w.seenDirs[entry.Path] = entry.ModTime
+				w.seenDirs[entry.Path] = &AbandonedDir{Path: entry.Path, ModTime: entry.ModTime}
 			}
 			continue
 		}
 
 		// Handle files
 		path := entry.Path
-
-		// Any file at all keeps its ancestors out of the abandoned set, before
-		// ignore rules and the grace period narrow what counts as an orphan.
 		if w.collectDirs {
-			w.markDirsWithFile(path)
+			parent := filepath.Dir(path)
+			if dir := w.seenDirs[parent]; dir != nil {
+				dir.directFiles++
+			}
 		}
 		if isIgnoredPath(path, w.ignorePaths) {
 			continue
@@ -378,21 +364,20 @@ func walkScanRootWithUnitFilter(
 		}
 	}
 
-	if err := ctx.Err(); err != nil {
-		return w.orphans(), w.fileFreeDirs(), w.truncated, err
-	}
-
-	return w.orphans(), w.fileFreeDirs(), w.truncated, nil
+	orphans := w.orphans()
+	return orphans, w.candidateDirs(orphans), w.truncated, ctx.Err()
 }
 
 // findDiscMarker scans path segments for a disc-layout marker (BDMV, VIDEO_TS).
 // Returns the marker index, actual on-disk segment name, and uppercase marker.
-func findDiscMarker(segments []string) (markerIndex int, markerSegment, markerUpper string, found bool) {
-	for i, seg := range segments {
+func findDiscMarker(relDir string) (markerIndex int, markerSegment, markerUpper string, found bool) {
+	i := 0
+	for seg := range strings.SplitSeq(relDir, string(filepath.Separator)) {
 		segUpper := strings.ToUpper(seg)
 		if slices.Contains(discLayoutMarkers, segUpper) {
 			return i, seg, segUpper, true
 		}
+		i++
 	}
 	return -1, "", "", false
 }
@@ -439,23 +424,18 @@ func chooseDiscUnit(ctx context.Context, candidateAbs, markerAbs, markerUpper st
 	return discUnitDecision{chosenUnit: markerAbs}
 }
 
-// discOrphanUnitWithContext detects whether a file path belongs to a disc-layout folder.
-// If so, it returns the deletion unit path (directory) that should represent the disc.
-//
-// Note: sibling orphan files are suppressed at the end of the scan if a parent disc unit is chosen.
-// Respects ignorePaths to prevent grouping that would delete ignored content.
-func discRelativeSegments(root, path string) ([]string, bool) {
+func discRelativeDir(root, path string) (string, bool) {
 	rel, err := filepath.Rel(root, path)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		return nil, false
+		return "", false
 	}
 
 	relDir := filepath.Dir(rel)
 	if relDir == "." {
-		return nil, false
+		return "", false
 	}
 
-	return strings.Split(relDir, string(filepath.Separator)), true
+	return relDir, true
 }
 
 func discUnitFromParentMarker(
@@ -488,21 +468,23 @@ func discUnitFromParentMarker(
 	return decision.chosenUnit, true
 }
 
+// discOrphanUnitWithContext groups disc files without including ignored content.
+// Sibling orphans are suppressed after the walk if it selects a parent disc unit.
 func discOrphanUnitWithContext(ctx context.Context, scanRoot, filePath string, tfm *TorrentFileMap, unitCache map[string]discUnitDecision, ignorePaths []string, backend fsops.Backend) (unitPath string, ok bool) {
 	root := filepath.Clean(scanRoot)
 	path := filepath.Clean(filePath)
 
-	segments, ok := discRelativeSegments(root, path)
+	relDir, ok := discRelativeDir(root, path)
 	if !ok {
 		return path, false
 	}
 
-	markerIndex, markerSegment, markerUpper, found := findDiscMarker(segments)
+	markerIndex, markerSegment, markerUpper, found := findDiscMarker(relDir)
 	if !found {
 		return path, false
 	}
 
-	candidateAbs, markerAbs := buildDiscCandidatePaths(root, segments, markerIndex, markerSegment)
+	candidateAbs, markerAbs := buildDiscCandidatePaths(root, strings.Split(relDir, string(filepath.Separator)), markerIndex, markerSegment)
 	if candidateAbs == root {
 		return markerAbs, true
 	}

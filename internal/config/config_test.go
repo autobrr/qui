@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -241,8 +243,8 @@ func TestGetEncryptionKey(t *testing.T) {
 		name   string
 		secret string
 	}{
-		{name: "truncates_long_secret", secret: strings.Repeat("a", encryptionKeySize+8)},
-		{name: "pads_short_secret", secret: "short"},
+		{name: "long_secret", secret: strings.Repeat("a", encryptionKeySize+8)},
+		{name: "short_secret", secret: "short"},
 	}
 
 	for _, tt := range tests {
@@ -251,14 +253,176 @@ func TestGetEncryptionKey(t *testing.T) {
 
 			key := cfg.GetEncryptionKey()
 			require.Len(t, key, encryptionKeySize)
+			assert.Equal(t, key, cfg.GetEncryptionKey(), "derivation must be deterministic")
+			assert.NotEqual(t, cfg.GetLegacyEncryptionKey(), key, "derived key must differ from the truncated secret")
+		})
+	}
 
-			if len(tt.secret) >= encryptionKeySize {
-				assert.Equal(t, []byte(tt.secret[:encryptionKeySize]), key)
-			} else {
-				expected := make([]byte, encryptionKeySize)
-				copy(expected, tt.secret)
-				assert.Equal(t, expected, key)
+	t.Run("distinguishes_secrets_sharing_a_prefix", func(t *testing.T) {
+		prefix := strings.Repeat("a", encryptionKeySize)
+		first := &AppConfig{Config: &domain.Config{SessionSecret: prefix + "one"}}
+		second := &AppConfig{Config: &domain.Config{SessionSecret: prefix + "two"}}
+
+		assert.NotEqual(t, first.GetEncryptionKey(), second.GetEncryptionKey())
+		assert.Equal(t, first.GetLegacyEncryptionKey(), second.GetLegacyEncryptionKey(), "the legacy key only saw the shared prefix")
+	})
+}
+
+func TestSessionSecretRejectsEmpty(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		wantErr bool
+		// wantGenerated asserts the default 64-character hex secret survived.
+		wantGenerated bool
+	}{
+		{
+			name:    "explicit_empty",
+			content: "host = \"localhost\"\nsessionSecret = \"\"\n",
+			wantErr: true,
+		},
+		{
+			name:    "whitespace_only",
+			content: "host = \"localhost\"\nsessionSecret = \"   \\t \"\n",
+			wantErr: true,
+		},
+		{
+			name:          "absent_key_keeps_the_generated_default",
+			content:       "host = \"localhost\"\nport = 8080\n",
+			wantGenerated: true,
+		},
+		{
+			name:    "short_secret_is_accepted_with_a_warning",
+			content: "host = \"localhost\"\nsessionSecret = \"short\"\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(tt.content), 0o600))
+
+			cfg, err := New(dir)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "sessionSecret is empty")
+				assert.Nil(t, cfg)
+				return
 			}
+
+			require.NoError(t, err)
+			if tt.wantGenerated {
+				assert.Len(t, cfg.Config.SessionSecret, encryptionKeySize*2, "the generated default is hex of 32 random bytes")
+				return
+			}
+			assert.Equal(t, "short", cfg.Config.SessionSecret)
+		})
+	}
+
+	// An empty QUI__SESSION_SECRET reads as unset, because viper's AllowEmptyEnv
+	// is off, so the file value or the generated default still applies. Empty
+	// therefore never becomes the key from this source either.
+	t.Run("empty_env_var_reads_as_unset", func(t *testing.T) {
+		dir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("sessionSecret = \"from-the-file-abcdefghijklmnop\"\n"), 0o600))
+		t.Setenv("QUI__SESSION_SECRET", "")
+
+		cfg, err := New(dir)
+		require.NoError(t, err)
+		assert.Equal(t, "from-the-file-abcdefghijklmnop", cfg.Config.SessionSecret)
+	})
+}
+
+// TestSessionSecretFileRejectsEmptyFile covers the _FILE source.
+// bindOrReadFromFile refuses an empty file with log.Fatal, so this needs a
+// subprocess. The child builds its own paths: passing an env-derived path into
+// New puts production code on gosec's G703 taint path.
+func TestSessionSecretFileRejectsEmptyFile(t *testing.T) {
+	if os.Getenv("QUI_TEST_EMPTY_SECRET_FILE") == "1" {
+		dir := t.TempDir()
+		secretFile := filepath.Join(dir, "secret")
+		require.NoError(t, os.WriteFile(secretFile, []byte("   \n"), 0o600))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte("host = \"localhost\"\n"), 0o600))
+		t.Setenv("QUI__SESSION_SECRET_FILE", secretFile)
+
+		_, _ = New(dir)
+		return
+	}
+
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSessionSecretFileRejectsEmptyFile$", "-test.timeout=30s")
+	cmd.Env = append(os.Environ(), "QUI_TEST_EMPTY_SECRET_FILE=1")
+
+	output, err := cmd.CombinedOutput()
+	require.Error(t, err, "an empty secret file must not load: %s", output)
+	assert.Contains(t, string(output), "file is empty")
+}
+
+// TestGetEncryptionKeyGoldenVector freezes the hash, the nil salt and the info
+// string together. A row sealed under a different derivation still carries the
+// qui2 prefix, so the rewrite pass skips it and the legacy key does not apply.
+// Every stored credential then becomes permanently unreadable, with no warning.
+// Changing this constant means changing that contract, not fixing a test.
+func TestGetEncryptionKeyGoldenVector(t *testing.T) {
+	cfg := &AppConfig{Config: &domain.Config{SessionSecret: "qui-golden-vector-session-secret"}}
+
+	assert.Equal(t, "8ced9a614da47fa9d7868174b649cba66c236a66b2866801cd2f0af68423f531", hex.EncodeToString(cfg.GetEncryptionKey()))
+}
+
+func TestGetLegacyEncryptionKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		secret   string
+		expected []byte
+	}{
+		{
+			name:     "truncates_long_secret",
+			secret:   strings.Repeat("a", encryptionKeySize+8),
+			expected: []byte(strings.Repeat("a", encryptionKeySize)),
+		},
+		{
+			name:     "pads_short_secret",
+			secret:   "short",
+			expected: append([]byte("short"), make([]byte, encryptionKeySize-len("short"))...),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &AppConfig{Config: &domain.Config{SessionSecret: tt.secret}}
+
+			key := cfg.GetLegacyEncryptionKey()
+			require.Len(t, key, encryptionKeySize)
+			assert.Equal(t, tt.expected, key)
+		})
+	}
+}
+
+func TestWarnWeakSessionSecret(t *testing.T) {
+	tests := []struct {
+		name       string
+		secret     string
+		expectWarn bool
+	}{
+		{name: "short_secret_warns", secret: "short", expectWarn: true},
+		{name: "long_secret_stays_quiet", secret: strings.Repeat("a", encryptionKeySize), expectWarn: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs strings.Builder
+			previous := log.Logger
+			log.Logger = zerolog.New(&logs)
+			t.Cleanup(func() { log.Logger = previous })
+
+			cfg := &AppConfig{Config: &domain.Config{SessionSecret: tt.secret}}
+			cfg.warnWeakSessionSecret()
+
+			if tt.expectWarn {
+				assert.Contains(t, logs.String(), "sessionSecret is shorter than 32 characters")
+				assert.Contains(t, logs.String(), "On a new install set at least 32 characters", "the warning has to name a path forward")
+				return
+			}
+			assert.Empty(t, logs.String())
 		})
 	}
 }

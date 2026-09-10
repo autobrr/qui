@@ -66,12 +66,13 @@ type OrphanFile struct {
 	IsAbandonedDir bool
 }
 
-// AbandonedDir is a directory that holds no files at any depth. Whether it may
-// be removed is decided later, against the scan roots, ignore paths, category
-// destinations and the grace period.
+// AbandonedDir is a visited directory. The candidate pass decides whether the
+// run can empty it without removing protected content.
 type AbandonedDir struct {
 	Path    string
 	ModTime time.Time
+	// directFiles counts observed files; the walker subtracts orphan children.
+	directFiles int
 }
 
 // Settings represents orphan scan settings for an instance.

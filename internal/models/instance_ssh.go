@@ -75,7 +75,7 @@ func (s *InstanceStore) SetSSHCredentials(ctx context.Context, instanceID int, h
 		return fmt.Errorf("parse ssh private key: %w", err)
 	}
 
-	encryptedKey, err := s.encryptWithAAD(privateKey, sshKeyAAD(instanceID))
+	encryptedKey, err := s.cipher.Encrypt(privateKey, sshKeyAAD(instanceID))
 	if err != nil {
 		return fmt.Errorf("encrypt ssh key: %w", err)
 	}
@@ -173,7 +173,7 @@ func validateMarshaledHostKey(marshaledKey []byte) error {
 // an interleaved credential update would otherwise leave a pin that can never
 // decrypt again, with nothing pointing at why.
 func (s *InstanceStore) setHostKeyPinFor(ctx context.Context, instanceID int, host string, port int, marshaledKey []byte) error {
-	encrypted, err := s.encryptWithAAD(string(marshaledKey), hostKeyPinAAD(instanceID, host, port))
+	encrypted, err := s.cipher.Encrypt(string(marshaledKey), hostKeyPinAAD(instanceID, host, port))
 	if err != nil {
 		return fmt.Errorf("encrypt host key pin: %w", err)
 	}
@@ -193,7 +193,7 @@ func (s *InstanceStore) GetDecryptedSSHKey(instance *Instance) (string, error) {
 		return "", nil
 	}
 
-	return s.decryptWithAAD(instance.SSHKeyEncrypted, sshKeyAAD(instance.ID))
+	return s.cipher.Decrypt(instance.SSHKeyEncrypted, sshKeyAAD(instance.ID))
 }
 
 // GetHostKeyPin returns the marshaled host public key confirmed for this
@@ -205,7 +205,7 @@ func (s *InstanceStore) GetHostKeyPin(instance *Instance) ([]byte, error) {
 		return nil, ErrSSHHostKeyNotPinned
 	}
 
-	pin, err := s.decryptWithAAD(instance.SSHHostKeyEncrypted, hostKeyPinAAD(instance.ID, instance.SSHHost, instance.SSHPort))
+	pin, err := s.cipher.Decrypt(instance.SSHHostKeyEncrypted, hostKeyPinAAD(instance.ID, instance.SSHHost, instance.SSHPort))
 	if err != nil {
 		return nil, fmt.Errorf("decrypt host key pin: %w", err)
 	}
