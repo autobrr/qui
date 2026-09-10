@@ -16,9 +16,40 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
+
+type disappearingDirBackend struct {
+	fsops.Backend
+}
+
+func (b disappearingDirBackend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
+	if err := b.Remove(ctx, path, fsops.RemoveOptions{}); err != nil {
+		return nil, err
+	}
+	return b.Backend.ReadDir(ctx, path)
+}
+
+func TestSafeDeleteEmptyDir_SkipsDirectoryRemovedBeforeReadDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	target := filepath.Join(root, "gone")
+	if err := os.Mkdir(target, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	backend := disappearingDirBackend{Backend: newTestBackend()}
+	disp, err := safeDeleteEmptyDir(t.Context(), root, target, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disp != deleteDispositionSkippedMissing {
+		t.Fatalf("disposition = %v, want skipped missing", disp)
+	}
+}
 
 func TestSafeDeleteFile(t *testing.T) {
 	t.Parallel()

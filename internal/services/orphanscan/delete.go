@@ -221,6 +221,9 @@ func safeDeleteEmptyDir(ctx context.Context, scanRoot, target string, backend fs
 	}
 
 	entries, err := backend.ReadDir(ctx, target)
+	if errors.Is(err, fs.ErrNotExist) {
+		return deleteDispositionSkippedMissing, nil
+	}
 	if err != nil {
 		return 0, err
 	}
