@@ -1320,6 +1320,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	// records neither count.
 	if failedDeletes > 0 && filesDeleted == 0 && foldersDeleted == 0 {
 		// All deletions failed - mark as failed
+		failureMessage = strings.TrimSpace(run.ErrorMessage + "\n\n" + failureMessage)
 		if err := s.store.UpdateRunFailed(ctx, runID, failureMessage); err != nil {
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return

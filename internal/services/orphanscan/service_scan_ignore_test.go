@@ -243,6 +243,47 @@ func TestExecuteScan_AllPathsUnavailableFails(t *testing.T) {
 	require.Contains(t, run.ErrorMessage, missingRoot)
 }
 
+type removalDeniedBackend struct {
+	fsops.Backend
+}
+
+func (removalDeniedBackend) Remove(context.Context, string, fsops.RemoveOptions) error {
+	return os.ErrPermission
+}
+
+func TestExecuteDeletion_AllFailuresPreservePartialWarning(t *testing.T) {
+	t.Parallel()
+	svc, store, presentRoot, missingRoot := newScanTestService(t)
+	setIgnorePaths(t, store, nil)
+	orphanPath := filepath.Join(presentRoot, "orphan.mkv")
+	require.NoError(t, os.WriteFile(orphanPath, []byte("orphan"), 0o600))
+	run := runScanForTest(t, svc, store)
+	require.Equal(t, "preview_ready", run.Status)
+	require.True(t, run.Partial)
+	require.Contains(t, run.ErrorMessage, missingRoot)
+
+	svc.backendPool = fsops.NewPool(stubInstanceGetter{}, removalDeniedBackend{Backend: newTestBackend()})
+	events := make(chan notifications.Event, 1)
+	svc.notifier = scanNotifier{events: events}
+	svc.executeDeletion(t.Context(), 1, run.ID)
+
+	failed, err := store.GetRun(t.Context(), run.ID)
+	require.NoError(t, err)
+	require.Equal(t, "failed", failed.Status)
+	require.True(t, failed.Partial)
+	require.Contains(t, failed.ErrorMessage, run.ErrorMessage)
+	require.Contains(t, failed.ErrorMessage, "Deletion failed for 1 item(s)")
+	require.FileExists(t, orphanPath)
+	require.FileExists(t, filepath.Join(presentRoot, "owned.mkv"))
+	select {
+	case event := <-events:
+		require.Equal(t, notifications.EventOrphanScanFailed, event.Type)
+		require.Equal(t, failed.ErrorMessage, event.ErrorMessage)
+	default:
+		t.Fatal("failed deletion did not send a notification")
+	}
+}
+
 func TestExecuteScan_PrunedRootsWithFailedWalk(t *testing.T) {
 	t.Parallel()
 	svc, store, presentRoot, _ := newScanTestService(t)

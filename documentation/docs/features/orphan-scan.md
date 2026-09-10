@@ -83,21 +83,29 @@ Directories are removed after the files, so a tree this run empties goes in one 
 ## Partial scans
 
 A directory can disappear while a scan runs, for example when an automation removes a torrent and its files.
-If some selected paths cannot be scanned, qui reports **Partial scan** and keeps the results from paths that completed.
+If at least one scan path completes but another is unavailable, qui reports **Partial scan** and keeps the results from completed paths.
+This also applies when qui skips paths because qBittorrent temporarily cannot provide torrent file lists.
 This result applies even when qui finds no orphan files.
-The run details list the unavailable paths and their errors.
-The selected scan paths list includes these unavailable paths.
+
+The run details and deletion preview show the warning with the affected paths and reasons.
+The selected scan paths list includes paths that failed during scanning.
+Paths skipped before scanning appear in the warning.
 
 Partial scans skip automatic cleanup.
 You can review the warning and delete the listed orphan files manually.
 Before deletion, qui refreshes torrent ownership data and applies its normal deletion checks.
+After successful manual deletion, the run keeps its **Partial scan** label.
+If all deletion attempts fail, the run shows **Failed** and keeps both the scan warning and the deletion error.
+
 If you enable orphan-scan completion notifications, partial scans send a warning through that setting, including when results await manual review.
+The completion notification after manual deletion also includes the scan warning.
 
 Use **Scan Now** to try again, or wait for the next scheduled scan.
 qui does not retry immediately.
-If paths are unavailable and no scan root completes, the run fails.
+If paths are unavailable or skipped and no scan path completes, the run fails.
 The run also fails if qui cannot establish torrent ownership.
-Unused default or category paths that qBittorrent has not created do not make a scan partial.
+qui ignores a missing default or category path only if no torrent uses the same path as a scan root.
+Otherwise, qui reports the path as unavailable.
 
 ## Settings
 
@@ -110,7 +118,7 @@ Unused default or category paths that qBittorrent has not created do not make a 
 | Scan default save path | Also walk qBittorrent's default save path, including directories no torrent uses | Disabled |
 | Including category paths | Also walk every category destination, explicit or inherited | Disabled |
 | Delete abandoned directories | Report directories this run empties | Disabled |
-| Auto-cleanup | Delete orphans from scheduled scans without manual confirmation | Disabled |
+| Auto-cleanup | Delete orphans from complete scheduled scans without manual confirmation | Disabled |
 | Max files threshold | If the orphan file count is at or below this threshold, auto-delete orphans. Directories do not count. | 100 |
 
 <OrphanScanDefaultIgnores />
@@ -119,7 +127,7 @@ If an ignore path is a scan path, or a directory above a scan path, qui removes 
 
 ## Max files per run behavior
 
-1. qui walks all scan roots during each run to keep the scan scope complete.
+1. qui attempts to scan all selected paths. A wider directory can cover nested scan paths. Unavailable paths follow the [partial scan rules](#partial-scans).
 2. qui sorts the orphan candidates by your selected preview sort.
 3. qui applies `Max files per run`. If more candidates exist than the cap, qui marks the run as truncated.
 4. qui deletes only the files saved in that run's preview list.
@@ -129,7 +137,7 @@ If an ignore path is a scan path, or a directory above a scan path, qui removes 
 ### FAQ
 
 **Do I need multiple runs to scan everything?**
-No. Each run scans all roots. If orphan candidates exceed the per-run preview cap, delete the files in the current preview first. The next scan then returns the next set of candidates.
+No. qui applies the preview cap after scanning. If orphan candidates exceed the cap, delete the files in the current preview first. The next scan returns the next set of candidates. If paths were unavailable, restore access and run another scan.
 
 ## Workflow
 
