@@ -109,7 +109,7 @@ func TestRequireAllowedHostsHealthProbes(t *testing.T) {
 	handler := guard(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	for _, path := range []string{"/health", "/healthz/readiness", "/healthz/liveness", "/health/", "/qui/health", "/api/auth/me"} {
+	for _, path := range []string{"/health", "/healthz/readiness", "/healthz/liveness", "/%68ealth", "/healthz%2Freadiness", "/healthz/live%6Eess", "/health/", "/qui/health", "/api/auth/me"} {
 		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodOptions} {
 			for _, peer := range []string{"127.0.0.1:1234", "[::1]:1234", "[::ffff:127.0.0.1]:1234", "192.0.2.1:1234", "invalid"} {
 				t.Run(method+path+peer, func(t *testing.T) {

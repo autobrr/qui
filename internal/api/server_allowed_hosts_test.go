@@ -36,6 +36,8 @@ func TestAllowedHostsAdmission(t *testing.T) {
 		{"preflight", "OPTIONS", "/api/auth/me", "attacker.test", "127.0.0.1:1234", 400},
 		{"local health", "GET", "/health", "attacker.test", "127.0.0.1:1234", 200},
 		{"IPv6 health outside IP list", "GET", "/healthz/liveness", "attacker.test", "[::1]:1234", 200},
+		{"encoded health with unlisted host", "GET", "/%68ealth", "attacker.test", "127.0.0.1:1234", 400},
+		{"encoded health outside IP list", "GET", "/%68ealth", "localhost", "[::1]:1234", 403},
 		{"remote health", "GET", "/health", "attacker.test", "192.0.2.1:1234", 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

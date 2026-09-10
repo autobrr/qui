@@ -18,7 +18,7 @@ func RequireAllowedHosts(entries []string) (func(http.Handler) http.Handler, err
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if (r.Method == http.MethodGet || r.Method == http.MethodHead) && isBuiltInHealthEndpoint(r.URL.Path) {
+			if (r.Method == http.MethodGet || r.Method == http.MethodHead) && isBuiltInHealthEndpoint(r.URL.EscapedPath()) {
 				if addr, err := parseRemoteAddrIP(r.RemoteAddr); err == nil && addr.IsLoopback() {
 					next.ServeHTTP(w, r)
 					return
