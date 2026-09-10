@@ -165,6 +165,38 @@ func TestExecuteScan_PreviewsDirectoryHoldingOnlyOrphans(t *testing.T) {
 	require.NoDirExists(t, leftover, "the previewed directory should be removed")
 }
 
+func TestExecuteScan_PreviewsParentOfDiscWithMetadata(t *testing.T) {
+	var outer, disc string
+	f := newOrphanOnlyFixture(t, "orphanscan-disc-parent-metadata", orphanOnlyOptions{}, func(defaultSavePath string) {
+		outer = filepath.Join(defaultSavePath, "outer")
+		disc = filepath.Join(outer, "disc")
+		writeFile(t, filepath.Join(disc, "BDMV", "STREAM", "00001.m2ts"))
+		writeFile(t, filepath.Join(disc, ".DS_Store"))
+	})
+
+	require.Equal(t, []string{outer}, f.previewedDirs(t))
+	f.svc.executeDeletion(t.Context(), 1, f.runID)
+	require.NoDirExists(t, disc)
+	require.NoDirExists(t, outer)
+
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, 1, run.FilesDeleted)
+	require.Equal(t, 1, run.FoldersDeleted)
+}
+
+func TestExecuteScan_DirectoryBeyondExactFileCapMarksRunTruncated(t *testing.T) {
+	f := newOrphanOnlyFixture(t, "orphanscan-directory-at-cap", orphanOnlyOptions{maxFilesPerRun: 1}, func(defaultSavePath string) {
+		writeFile(t, filepath.Join(defaultSavePath, "leftover", "orphan.mkv"))
+	})
+
+	require.Empty(t, f.previewedDirs(t))
+	run, err := f.store.GetRun(t.Context(), f.runID)
+	require.NoError(t, err)
+	require.Equal(t, 1, run.FilesFound)
+	require.True(t, run.Truncated)
+}
+
 // TestExecuteScan_PreviewsTheWholeCascade covers the case that proved the two
 // removal paths disagreed: an orphan in a/ beside an empty a/b/. The old
 // abandoned-directory pass previewed a/b only, then the follow-up cleanup removed
@@ -192,18 +224,18 @@ func TestExecuteScan_PreviewsTheWholeCascade(t *testing.T) {
 	require.Equal(t, len(previewed), run.FoldersDeleted, "the run must remove exactly the directories it previewed")
 }
 
-// TestExecuteScan_KeepsDirectoryHoldingAFileHeldByTheGracePeriod covers a
-// directory one of whose files is too fresh to touch yet.
+// A fresh file keeps its parent and ancestors, even when their timestamps are old.
 func TestExecuteScan_KeepsDirectoryHoldingAFileHeldByTheGracePeriod(t *testing.T) {
 	var mixed, orphan, fresh string
 	f := newOrphanOnlyFixture(t, "orphanscan-orphan-only-grace", orphanOnlyOptions{gracePeriodMinutes: 60}, func(defaultSavePath string) {
 		mixed = filepath.Join(defaultSavePath, "mixed")
 		orphan = filepath.Join(mixed, "settled.mkv")
-		fresh = filepath.Join(mixed, "downloading.mkv")
-		require.NoError(t, os.MkdirAll(mixed, 0o750))
+		fresh = filepath.Join(mixed, "nested", "downloading.mkv")
+		require.NoError(t, os.MkdirAll(filepath.Dir(fresh), 0o750))
 		require.NoError(t, os.WriteFile(orphan, []byte("junk"), 0o600))
 		require.NoError(t, os.WriteFile(fresh, []byte("new"), 0o600))
 		backdate(t, orphan)
+		backdate(t, filepath.Dir(fresh))
 		// Last, so writing the files does not leave the directory itself inside
 		// the grace period and pass the test for the wrong reason.
 		backdate(t, mixed)

@@ -94,11 +94,10 @@ type scanWalker struct {
 	backend     fsops.Backend
 
 	// seenDirs records every directory the walk visited with its mtime;
-	// dirsWithKeptFiles marks a directory when a file this run will not delete
-	// exists at or below it (#1400). childrenAllKept decides; this map keeps
+	// dirsWithKeptFiles marks the immediate parent of a skipped file (#1400).
+	// childrenAllKept checks ancestors after disc units are known; this map keeps
 	// that read off every directory in the tree.
 	collectDirs       bool
-	normRoot          string
 	seenDirs          map[string]time.Time
 	dirsWithKeptFiles map[string]struct{}
 
@@ -131,40 +130,22 @@ func newScanWalker(
 		discUnitPaths:     make(map[string]struct{}),
 		seenFileIDs:       make(map[hardlink.FileID]struct{}),
 		collectDirs:       collectDirs,
-		normRoot:          normalizePath(root),
 		seenDirs:          make(map[string]time.Time),
 		dirsWithKeptFiles: make(map[string]struct{}),
 	}
 }
 
-// markKeptFile records every ancestor of a file this run leaves on disk, up to
-// and including the scan root.
+// A skipped file can still leave with a disc unit. Do not mark its ancestors.
 func (w *scanWalker) markKeptFile(path string) {
 	if !w.collectDirs {
 		return
 	}
-
-	dir := filepath.Dir(path)
-	for {
-		if _, done := w.dirsWithKeptFiles[dir]; done {
-			return
-		}
-		w.dirsWithKeptFiles[dir] = struct{}{}
-		if normalizePath(dir) == w.normRoot {
-			return
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return
-		}
-		dir = parent
-	}
+	w.dirsWithKeptFiles[filepath.Dir(path)] = struct{}{}
 }
 
-// orphanOnlyDirs returns the directories whose every file, at any depth, is an
-// orphan this walk reported, so deleting those files empties them. It excludes
-// torrent-owned directories even before their files exist, and directories at
-// or below a disc unit, which the file pass removes as one tree.
+// orphanOnlyDirs returns candidates for abandonedDirCandidates to check.
+// Disc units leave as whole trees. Torrent-owned directories stay protected
+// even before their files exist.
 func (w *scanWalker) orphanOnlyDirs() []AbandonedDir {
 	// A walk that stopped at the cap never saw the rest of the tree.
 	if w.truncated {
@@ -276,8 +257,7 @@ func (w *scanWalker) orphans() []OrphanFile {
 	return orphans
 }
 
-// walkScanRootCollectingDirs is walkScanRoot plus the file-free directories the
-// walk saw, for the abandoned-directory option.
+// walkScanRootCollectingDirs also returns candidates for empty-directory cleanup.
 func walkScanRootCollectingDirs(ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int, backend fsops.Backend,
 ) ([]OrphanFile, []AbandonedDir, bool, error) {
