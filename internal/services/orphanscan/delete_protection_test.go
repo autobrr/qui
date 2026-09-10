@@ -146,8 +146,7 @@ func TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome(t *testing.T) {
 
 	// Leave the abandoned directory as the only entry that can succeed: park
 	// every other entry, then add one whose path no scan root covers, which
-	// fails deterministically on every OS. Directories have to be parked too, or
-	// one whose orphan was parked is still non-empty and fails on removal.
+	// fails deterministically on every OS.
 	pending, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
 	require.NoError(t, err)
 	for _, file := range pending {
