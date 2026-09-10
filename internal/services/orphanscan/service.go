@@ -787,7 +787,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 	walkErrors, missingRoots := unreachableCoveredRoots(ctx, scanRoots, walkRoots, expectedAbsent, backend)
 
-	var fileFreeDirs []AbandonedDir
+	var orphanOnlyDirs []AbandonedDir
 
 	for _, root := range walkRoots {
 		if ctx.Err() != nil {
@@ -814,11 +814,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 
 		allOrphans = append(allOrphans, orphans...)
-		fileFreeDirs = append(fileFreeDirs, dirs...)
+		orphanOnlyDirs = append(orphanOnlyDirs, dirs...)
 	}
 
+	// allOrphans still holds only files here, which is what a directory is
+	// judged against. The cap runs later and ranks files ahead of directories,
+	// so a run that drops a file keeps no directory either.
 	if scope.AbandonedDirs {
-		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(fileFreeDirs), scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
+		abandoned := abandonedDirCandidates(ctx, sortDeepestFirst(orphanOnlyDirs), allOrphans, scanRoots, ignorePaths, result.categoryPaths, gracePeriod, backend)
 		log.Info().Int("abandonedDirs", len(abandoned)).Msg("orphanscan: collected abandoned directories")
 		allOrphans = append(allOrphans, abandoned...)
 	}
@@ -1145,7 +1148,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 
 	var filesDeleted int
 	var bytesReclaimed int64
-	var deletedOrMissingPaths []string
 
 	// Track deletion failures for user-facing error reporting
 	var failedDeletes int
@@ -1188,14 +1190,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			s.updateFileStatus(ctx, f.ID, "skipped", "file is now in use by a torrent")
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
-			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		case deleteDispositionSkippedIgnored:
 			s.updateFileStatus(ctx, f.ID, "skipped", "path is protected by ignore paths")
 		case deleteDispositionDeleted:
 			s.updateFileStatus(ctx, f.ID, "deleted", "")
 			filesDeleted++
 			bytesReclaimed += f.FileSize
-			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
 		default:
 			s.updateFileStatus(ctx, f.ID, "failed", "unknown delete result")
 			failedDeletes++
@@ -1255,29 +1255,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		}
 		s.updateFileStatus(ctx, d.ID, "deleted", "")
 		foldersDeleted++
-	}
-
-	// Clean up directories the file deletions emptied, reusing the batch's backend.
-	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
-	for _, dir := range candidateDirs {
-		if ctx.Err() != nil {
-			break
-		}
-
-		scanRoot := findScanRoot(dir, run.ScanPaths)
-		if scanRoot == "" {
-			continue
-		}
-		// Emptying a category folder by deleting an orphan inside it must not
-		// remove the folder either.
-		normDir := normalizePath(dir)
-		if slices.Contains(normScanRoots, normDir) || isCategoryDestinationNormalized(normDir, normCategoryPaths) {
-			continue
-		}
-
-		if err := safeDeleteEmptyDir(ctx, scanRoot, dir, deleteBackend); err == nil {
-			foldersDeleted++
-		}
 	}
 
 	// Build user-facing error message if deletion failures occurred

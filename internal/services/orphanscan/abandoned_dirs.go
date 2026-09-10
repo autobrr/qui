@@ -94,11 +94,14 @@ func sortDeepestFirst(dirs []AbandonedDir) []AbandonedDir {
 	return sorted
 }
 
-// abandonedDirCandidates narrows file-free directories to those safe to remove.
-// Deepest first, so removing them in order never meets a non-empty directory.
+// abandonedDirCandidates narrows directories to those safe to remove. deleted
+// are the orphans this run removes, so a directory holding only those counts as
+// empty. Deepest first, so removing them in order never meets a non-empty
+// directory.
 func abandonedDirCandidates(
 	ctx context.Context,
 	dirs []AbandonedDir,
+	deleted []OrphanFile,
 	scanRoots, ignorePaths, categoryPaths []string,
 	gracePeriod time.Duration,
 	backend fsops.Backend,
@@ -107,6 +110,10 @@ func abandonedDirCandidates(
 	// once rather than once per directory.
 	normRoots := normalizePaths(scanRoots)
 	normCategories := normalizePaths(categoryPaths)
+	deletedPaths := make(map[string]struct{}, len(deleted))
+	for _, orphan := range deleted {
+		deletedPaths[normalizePath(orphan.Path)] = struct{}{}
+	}
 
 	kept := make(map[string]struct{}, len(dirs))
 	out := make([]OrphanFile, 0, len(dirs))
@@ -125,7 +132,7 @@ func abandonedDirCandidates(
 		if !dir.ModTime.IsZero() && time.Since(dir.ModTime) < gracePeriod {
 			continue
 		}
-		if !childrenAllKept(ctx, dir.Path, kept, backend) {
+		if !childrenAllKept(ctx, dir.Path, kept, deletedPaths, backend) {
 			continue
 		}
 
@@ -142,8 +149,9 @@ func abandonedDirCandidates(
 }
 
 // childrenAllKept reports whether dir can be emptied by removing directories
-// already kept, so an ignored subtree or a symlink leaves it alone.
-func childrenAllKept(ctx context.Context, dir string, kept map[string]struct{}, backend fsops.Backend) bool {
+// already kept and the orphans the file pass deletes, so a file the run leaves
+// behind, an ignored subtree or a symlink leaves it alone.
+func childrenAllKept(ctx context.Context, dir string, kept, deletedPaths map[string]struct{}, backend fsops.Backend) bool {
 	entries, err := backend.ReadDir(ctx, dir)
 	if err != nil {
 		log.Debug().Err(err).Str("dir", dir).Msg("orphanscan: could not read directory, not treating it as abandoned")
@@ -151,10 +159,14 @@ func childrenAllKept(ctx context.Context, dir string, kept map[string]struct{}, 
 	}
 
 	for _, entry := range entries {
+		child := filepath.Join(dir, entry.Name)
+		if _, gone := deletedPaths[normalizePath(child)]; gone {
+			continue
+		}
 		if !entry.IsDir || entry.IsSymlink {
 			return false
 		}
-		if _, ok := kept[filepath.Join(dir, entry.Name)]; !ok {
+		if _, ok := kept[child]; !ok {
 			return false
 		}
 	}
@@ -176,6 +188,16 @@ func normalizePaths(paths []string) []string {
 func isCategoryDestinationNormalized(normPath string, normCategories []string) bool {
 	for _, nCategory := range normCategories {
 		if normPath == nCategory || isPathUnderNormalized(nCategory, normPath) {
+			return true
+		}
+	}
+	return false
+}
+
+// isAtOrUnderAny reports whether normPath is one of normBases or sits below one.
+func isAtOrUnderAny(normPath string, normBases []string) bool {
+	for _, base := range normBases {
+		if normPath == base || isPathUnderNormalized(normPath, base) {
 			return true
 		}
 	}

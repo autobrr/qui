@@ -94,14 +94,13 @@ type scanWalker struct {
 	backend     fsops.Backend
 
 	// seenDirs records every directory the walk visited with its mtime;
-	// dirsWithFiles marks a directory when any file exists at or below it, so
-	// the difference is the set of file-free subtrees (#1400). Both are only
-	// filled when the caller asked for directories, so a scan that does not use
-	// them pays nothing per file.
-	collectDirs   bool
-	normRoot      string
-	seenDirs      map[string]time.Time
-	dirsWithFiles map[string]struct{}
+	// dirsWithKeptFiles marks a directory when a file this run will not delete
+	// exists at or below it (#1400). childrenAllKept decides; this map keeps
+	// that read off every directory in the tree.
+	collectDirs       bool
+	normRoot          string
+	seenDirs          map[string]time.Time
+	dirsWithKeptFiles map[string]struct{}
 
 	orphanUnits    map[string]*OrphanFile
 	discUnitsInUse map[string]struct{}
@@ -118,35 +117,39 @@ func newScanWalker(
 	backend fsops.Backend, collectDirs bool,
 ) *scanWalker {
 	return &scanWalker{
-		ctx:            ctx,
-		root:           root,
-		tfm:            tfm,
-		ignorePaths:    ignorePaths,
-		gracePeriod:    gracePeriod,
-		maxFiles:       maxFiles,
-		unitFilter:     unitFilter,
-		backend:        backend,
-		orphanUnits:    make(map[string]*OrphanFile),
-		discUnitsInUse: make(map[string]struct{}),
-		discUnitCache:  make(map[string]discUnitDecision),
-		discUnitPaths:  make(map[string]struct{}),
-		seenFileIDs:    make(map[hardlink.FileID]struct{}),
-		collectDirs:    collectDirs,
-		normRoot:       normalizePath(root),
-		seenDirs:       make(map[string]time.Time),
-		dirsWithFiles:  make(map[string]struct{}),
+		ctx:               ctx,
+		root:              root,
+		tfm:               tfm,
+		ignorePaths:       ignorePaths,
+		gracePeriod:       gracePeriod,
+		maxFiles:          maxFiles,
+		unitFilter:        unitFilter,
+		backend:           backend,
+		orphanUnits:       make(map[string]*OrphanFile),
+		discUnitsInUse:    make(map[string]struct{}),
+		discUnitCache:     make(map[string]discUnitDecision),
+		discUnitPaths:     make(map[string]struct{}),
+		seenFileIDs:       make(map[hardlink.FileID]struct{}),
+		collectDirs:       collectDirs,
+		normRoot:          normalizePath(root),
+		seenDirs:          make(map[string]time.Time),
+		dirsWithKeptFiles: make(map[string]struct{}),
 	}
 }
 
-// markDirsWithFile records every ancestor of path, up to and including the scan
-// root, as holding a file.
-func (w *scanWalker) markDirsWithFile(path string) {
+// markKeptFile records every ancestor of a file this run leaves on disk, up to
+// and including the scan root.
+func (w *scanWalker) markKeptFile(path string) {
+	if !w.collectDirs {
+		return
+	}
+
 	dir := filepath.Dir(path)
 	for {
-		if _, done := w.dirsWithFiles[dir]; done {
+		if _, done := w.dirsWithKeptFiles[dir]; done {
 			return
 		}
-		w.dirsWithFiles[dir] = struct{}{}
+		w.dirsWithKeptFiles[dir] = struct{}{}
 		if normalizePath(dir) == w.normRoot {
 			return
 		}
@@ -158,14 +161,31 @@ func (w *scanWalker) markDirsWithFile(path string) {
 	}
 }
 
-// fileFreeDirs excludes torrent-owned directories even before their files exist.
-func (w *scanWalker) fileFreeDirs() []AbandonedDir {
+// orphanOnlyDirs returns the directories whose every file, at any depth, is an
+// orphan this walk reported, so deleting those files empties them. It excludes
+// torrent-owned directories even before their files exist, and directories at
+// or below a disc unit, which the file pass removes as one tree.
+func (w *scanWalker) orphanOnlyDirs() []AbandonedDir {
+	// A walk that stopped at the cap never saw the rest of the tree.
+	if w.truncated {
+		return nil
+	}
+
+	normDiscUnits := make([]string, 0, len(w.discUnitPaths))
+	for unit := range w.discUnitPaths {
+		normDiscUnits = append(normDiscUnits, normalizePath(unit))
+	}
+
 	dirs := make([]AbandonedDir, 0, len(w.seenDirs))
 	for dir, modTime := range w.seenDirs {
-		if _, hasFiles := w.dirsWithFiles[dir]; hasFiles {
+		if _, kept := w.dirsWithKeptFiles[dir]; kept {
 			continue
 		}
-		if w.tfm.HasAnyInDir(normalizePath(dir)) {
+		normDir := normalizePath(dir)
+		if w.tfm.HasAnyInDir(normDir) {
+			continue
+		}
+		if isAtOrUnderAny(normDir, normDiscUnits) {
 			continue
 		}
 		dirs = append(dirs, AbandonedDir{Path: dir, ModTime: modTime})
@@ -320,46 +340,9 @@ func walkScanRootWithUnitFilter(
 		}
 
 		// Handle files
-		path := entry.Path
-
-		// Any file at all keeps its ancestors out of the abandoned set, before
-		// ignore rules and the grace period narrow what counts as an orphan.
-		if w.collectDirs {
-			w.markDirsWithFile(path)
-		}
-		if isIgnoredPath(path, w.ignorePaths) {
-			continue
-		}
-
-		unitPath, isDiscUnit := discOrphanUnitWithContext(ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
-		normPath := normalizePath(path)
-		if w.tfm.Has(normPath) {
-			w.markInUse(unitPath, isDiscUnit)
-			w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
-			continue
-		}
-		if entry.StatErr != nil {
-			continue
-		}
-
-		name := filepath.Base(path)
-		if isIgnoredOrphanFileName(name) {
-			continue
-		}
-
-		if !entry.ModTime.IsZero() && time.Since(entry.ModTime) < w.gracePeriod {
-			continue
-		}
-		if w.shouldSkipDuplicate(entry.FileID, entry.Nlinks) {
-			continue
-		}
-		if isDiscUnit {
-			if w.isDiscUnitInUse(unitPath) {
-				continue
-			}
-			w.discUnitPaths[unitPath] = struct{}{}
-		}
-		if w.unitFilter != nil && !w.unitFilter(unitPath, isDiscUnit) {
+		unitPath, ok := w.orphanUnitFor(entry)
+		if !ok {
+			w.markKeptFile(entry.Path)
 			continue
 		}
 
@@ -378,11 +361,53 @@ func walkScanRootWithUnitFilter(
 		}
 	}
 
+	orphans := w.orphans()
+	dirs := w.orphanOnlyDirs()
 	if err := ctx.Err(); err != nil {
-		return w.orphans(), w.fileFreeDirs(), w.truncated, err
+		return orphans, dirs, w.truncated, err
 	}
 
-	return w.orphans(), w.fileFreeDirs(), w.truncated, nil
+	return orphans, dirs, w.truncated, nil
+}
+
+// orphanUnitFor returns the deletion unit a file belongs to, or ok=false when
+// the run leaves the file on disk: ignored, torrent-owned, unstatable, a name
+// the scan never reports, inside the grace period, a second path to a file
+// already counted, or rejected by the caller's unit filter.
+func (w *scanWalker) orphanUnitFor(entry fsops.WalkEntry) (unitPath string, ok bool) {
+	path := entry.Path
+	if isIgnoredPath(path, w.ignorePaths) {
+		return "", false
+	}
+
+	unitPath, isDiscUnit := discOrphanUnitWithContext(w.ctx, w.root, path, w.tfm, w.discUnitCache, w.ignorePaths, w.backend)
+	if w.tfm.Has(normalizePath(path)) {
+		w.markInUse(unitPath, isDiscUnit)
+		w.shouldSkipDuplicate(entry.FileID, entry.Nlinks)
+		return "", false
+	}
+	if entry.StatErr != nil {
+		return "", false
+	}
+	if isIgnoredOrphanFileName(filepath.Base(path)) {
+		return "", false
+	}
+	if !entry.ModTime.IsZero() && time.Since(entry.ModTime) < w.gracePeriod {
+		return "", false
+	}
+	if w.shouldSkipDuplicate(entry.FileID, entry.Nlinks) {
+		return "", false
+	}
+	if isDiscUnit {
+		if w.isDiscUnitInUse(unitPath) {
+			return "", false
+		}
+		w.discUnitPaths[unitPath] = struct{}{}
+	}
+	if w.unitFilter != nil && !w.unitFilter(unitPath, isDiscUnit) {
+		return "", false
+	}
+	return unitPath, true
 }
 
 // findDiscMarker scans path segments for a disc-layout marker (BDMV, VIDEO_TS).

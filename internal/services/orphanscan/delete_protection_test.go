@@ -59,9 +59,8 @@ func newDeletionFixture(t *testing.T, dbName string) *deletionFixture {
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
 	abandoned := filepath.Join(defaultSavePath, "leftover")
 	strayFile := filepath.Join(defaultSavePath, "stray.txt")
-	// A folder that holds an orphan is not file-free, so it never reaches the
-	// abandoned-directory pass; it is emptied by the file deletion and only the
-	// follow-up cleanup can remove it.
+	// A folder holding nothing but an orphan: the run empties it, so it is
+	// previewed as a directory too.
 	categoryFolder := filepath.Join(defaultSavePath, "movies")
 	orphanInCategory := filepath.Join(categoryFolder, "junk.txt")
 
@@ -198,12 +197,13 @@ func TestExecuteDeletion_DirectoriesCountTowardsTheRunOutcome(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-dirs-count")
 
 	// Leave the abandoned directory as the only entry that can succeed: park
-	// every real orphan, then add one whose path no scan root covers, which
-	// fails deterministically on every OS.
+	// every other entry, then add one whose path no scan root covers, which
+	// fails deterministically on every OS. Directories have to be parked too, or
+	// one whose orphan was parked is still non-empty and fails on removal.
 	pending, err := f.store.GetFilesForDeletion(t.Context(), f.runID)
 	require.NoError(t, err)
 	for _, file := range pending {
-		if !file.IsAbandonedDir {
+		if file.FilePath != f.abandoned {
 			f.svc.updateFileStatus(t.Context(), file.ID, "skipped", "parked by the test")
 		}
 	}
@@ -237,10 +237,11 @@ func TestExecuteDeletion_FailsWhenSettingsCannotBeRead(t *testing.T) {
 	require.FileExists(t, f.strayFile, "nothing may be deleted when the scope cannot be determined")
 }
 
-// TestExecuteDeletion_SecondCleanupPassRespectsCategories covers a category
-// folder emptied by deleting an orphan inside it. That folder never reaches the
-// abandoned-directory pass, so the follow-up cleanup has to protect it too.
-func TestExecuteDeletion_SecondCleanupPassRespectsCategories(t *testing.T) {
+// TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun covers a category
+// folder the run empties by deleting the orphan inside it. It was previewed
+// while no category pointed at it, so the re-check at deletion time is what
+// refuses it.
+func TestExecuteDeletion_SkipsCategoryFolderEmptiedByTheRun(t *testing.T) {
 	f := newDeletionFixture(t, "orphanscan-delete-second-pass")
 
 	f.svc.getCategoriesProvider = func(_ context.Context, _ int) (map[string]qbt.Category, error) {
@@ -379,11 +380,10 @@ func TestExecuteDeletion_ProtectsAnotherInstanceThatOverlapsThePreviewedRoots(t 
 	require.FileExists(t, stray, "a file another local instance now seeds must not be deleted")
 }
 
-// TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs
-// covers a run that previewed no directories at all, with abandoned-directory
-// cleanup off. Deleting the orphan still empties the category folder, and the
-// follow-up cleanup must not remove it.
-func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t *testing.T) {
+// TestExecuteDeletion_RemovesNoDirectoriesWhenTheOptionIsOff covers a run with
+// abandoned-directory cleanup off. Deleting the orphan empties the category
+// folder, but a run that previewed no directories removes none.
+func TestExecuteDeletion_RemovesNoDirectoriesWhenTheOptionIsOff(t *testing.T) {
 	base := t.TempDir()
 	defaultSavePath := filepath.Join(base, "torrents")
 	torrentSavePath := filepath.Join(defaultSavePath, "mydata")
@@ -449,7 +449,11 @@ func TestExecuteDeletion_FollowUpCleanupRespectsCategoriesWithNoPreviewedDirs(t 
 	svc.executeDeletion(context.Background(), 1, runID)
 
 	require.NoFileExists(t, orphan, "the orphan should be deleted")
-	require.DirExists(t, categoryFolder, "the follow-up cleanup must not remove a category destination")
+	require.DirExists(t, categoryFolder, "a directory nobody previewed must not be removed")
+
+	run, err := store.GetRun(t.Context(), runID)
+	require.NoError(t, err)
+	require.Zero(t, run.FoldersDeleted, "a run that previewed no directories must remove none")
 }
 
 // TestResolveCategoryPath_DeepInheritanceIsNotDropped guards the parent walk
