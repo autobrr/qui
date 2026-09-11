@@ -100,6 +100,7 @@
     "groupTooltip": "This group applies only to this condition row. Use different groups on other GROUP_SIZE/IS_GROUPED rows if needed.",
     "min": "Min",
     "max": "Max",
+    "wrappingRangeHint": "Range wraps: matches {{min}} and above, then everything below {{max}}.",
     "selectState": "Select state",
     "selectScope": "Select scope",
     "selectTrackerStatus": "Select status",

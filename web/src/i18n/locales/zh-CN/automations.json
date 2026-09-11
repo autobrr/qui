@@ -100,6 +100,7 @@
     "groupTooltip": "此组仅应用于此条件行。如需在其他 GROUP_SIZE/IS_GROUPED 行上使用不同的组。",
     "min": "最小",
     "max": "最大",
+    "wrappingRangeHint": "范围跨越循环：匹配 {{min}} 及以上，然后匹配 {{max}} 以下的所有值。",
     "selectState": "选择状态",
     "selectScope": "选择范围",
     "selectTrackerStatus": "选择状态",
