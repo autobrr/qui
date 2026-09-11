@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -939,4 +940,31 @@ func TestReadOnlyTransactionConcurrency(t *testing.T) {
 
 	// Commit the write transaction
 	require.NoError(t, txWrite.Commit())
+}
+
+// Concurrent misses on one query must converge on a single cached statement;
+// the losers close theirs instead of leaking a driver-side prepared statement.
+func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := t.Context()
+	const query = "SELECT 1"
+
+	stmts := make([]*sql.Stmt, 32)
+	errs := make([]error, len(stmts))
+	var wg sync.WaitGroup
+	for i := range stmts {
+		wg.Go(func() {
+			stmts[i], errs[i] = db.getStmt(ctx, query, nil)
+		})
+	}
+	wg.Wait()
+
+	cached, found := db.readerStmts.Get(query)
+	require.True(t, found)
+	for i, s := range stmts {
+		require.NoError(t, errs[i])
+		require.Same(t, cached, s)
+		var n int
+		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
+	}
 }

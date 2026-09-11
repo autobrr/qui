@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
@@ -72,7 +72,7 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 		Progress:  1,
 	}
 	settings := models.DefaultCrossSeedAutomationSettings()
-	filterCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{})
+	filterCache := ttlcache.New[string, *AsyncIndexerFilteringState]()
 	filterCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
 		CapabilitiesCompleted: true,
 		ContentCompleted:      true,
@@ -98,7 +98,7 @@ func TestExecuteCompletionSearchPropagatesExactSizeDecision(t *testing.T) {
 		}),
 		asyncFilteringCache: filterCache,
 		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		searchResultCache:   ttlcache.New[string, cachedTorrentSearchResults](),
 		stringNormalizer:    stringutils.NewDefaultNormalizer(),
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return settings, nil
