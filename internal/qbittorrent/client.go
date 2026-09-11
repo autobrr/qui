@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/avast/retry-go"
 	"github.com/pkg/errors"
@@ -186,8 +186,8 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		instanceID:      instanceID,
 		lastHealthCheck: time.Now(),
 		isHealthy:       true,
-		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
-			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
+		optimisticUpdates: ttlcache.New[string, *OptimisticTorrentUpdate](
+			ttlcache.SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*peerSyncEntry),
 		completionState:   make(map[string]bool),
@@ -1129,12 +1129,7 @@ func (c *Client) clearTrackerExclusions(domains []string) {
 
 // getOptimisticUpdates returns all current optimistic updates
 func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
-	updates := make(map[string]*OptimisticTorrentUpdate)
-	for _, key := range c.optimisticUpdates.GetKeys() {
-		if val, found := c.optimisticUpdates.Get(key); found {
-			updates[key] = val
-		}
-	}
+	updates := maps.Collect(c.optimisticUpdates.All())
 	return updates
 }
 

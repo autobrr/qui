@@ -35,7 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/autobrr/autobrr/pkg/ttlcache"
+	"github.com/autobrr/go-cache/ttlcache"
 	mediainfo "github.com/autobrr/go-mediainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/metainfo"
@@ -568,20 +568,21 @@ func NewService(
 	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error),
 	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error),
 ) *Service {
-	searchCache := ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}.
-		SetDefaultTTL(searchResultCacheTTL))
+	searchCache := ttlcache.New[string, cachedTorrentSearchResults](
+		ttlcache.SetDefaultTTL(searchResultCacheTTL))
 
-	asyncFilteringCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}.
-		SetDefaultTTL(searchResultCacheTTL). // Use same TTL as search results
+	asyncFilteringCache := ttlcache.New[string, *AsyncIndexerFilteringState](
+		ttlcache.SetDefaultTTL(searchResultCacheTTL), // Use same TTL as search results
 		// The cache holds live state pointers; the TTL-refresh write-back on Get
 		// could restore a replaced entry (autobrr#2637), so disable it.
-		DisableUpdateTime(true))
-	indexerDomainCache := ttlcache.New(ttlcache.Options[string, string]{}.
-		SetDefaultTTL(indexerDomainCacheTTL))
-	contentFilesCache := ttlcache.New(ttlcache.Options[string, qbt.TorrentFiles]{}.
-		SetDefaultTTL(5 * time.Minute))
-	dedupCache := ttlcache.New(ttlcache.Options[string, *dedupCacheEntry]{}.
-		SetDefaultTTL(5 * time.Minute))
+		ttlcache.DisableUpdateTime(true),
+	)
+	indexerDomainCache := ttlcache.New[string, string](
+		ttlcache.SetDefaultTTL(indexerDomainCacheTTL))
+	contentFilesCache := ttlcache.New[string, qbt.TorrentFiles](
+		ttlcache.SetDefaultTTL(5 * time.Minute))
+	dedupCache := ttlcache.New[string, *dedupCacheEntry](
+		ttlcache.SetDefaultTTL(5 * time.Minute))
 
 	recheckCtx, recheckCancel := context.WithCancel(context.Background()) //nolint:gosec // G118: service-lifetime context, cancelled on shutdown
 	var arrLookup arrLookupService
