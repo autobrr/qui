@@ -48,7 +48,7 @@
     "globPattern": "Motif Glob...",
     "smartSearchTitle": "Fonctionnalités de recherche intelligente :",
     "smartSearchGlob": "Motifs Glob :",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Recherche floue :",
     "smartSearchFuzzyExample": "\"breaking bad\" trouve \"Breaking.Bad\"",
     "smartSearchDots": "Gère les points, tirets bas et crochets",

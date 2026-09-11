@@ -1495,7 +1495,7 @@
       "title": "Search Torrents",
       "description": "Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.",
       "placeholder": "Search torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Auto-searches after typing"
     },
     "shareLimit": {

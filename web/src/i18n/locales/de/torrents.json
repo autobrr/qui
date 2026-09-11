@@ -1495,7 +1495,7 @@
       "title": "Torrents durchsuchen",
       "description": "Suche nach Name, Kategorie oder Tags. Unterstützt Glob-Muster wie *.mkv oder *1080p*.",
       "placeholder": "Torrents durchsuchen...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Sucht automatisch nach der Eingabe"
     },
     "shareLimit": {

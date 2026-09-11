@@ -48,7 +48,7 @@
     "globPattern": "Glob шаблон...",
     "smartSearchTitle": "Можливості розумного пошуку:",
     "smartSearchGlob": "Glob шаблони:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Нечіткий пошук:",
     "smartSearchFuzzyExample": "\"breaking bad\" знайде \"Breaking.Bad\"",
     "smartSearchDots": "Обробляє крапки, підкреслення та дужки",

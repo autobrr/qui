@@ -1432,7 +1432,7 @@
       "title": "搜尋種子",
       "description": "按名稱、分類或標籤搜尋。支援 glob 模式，如 *.mkv 或 *1080p*。",
       "placeholder": "搜尋種子...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "輸入後自動搜尋"
     },
     "shareLimit": {
