@@ -24,9 +24,9 @@ func TestAllowedHostsConfiguration(t *testing.T) {
 	}{
 		{name: "unset"},
 		{name: "empty list", toml: "allowedHosts = []"},
-		{name: "international final dot", toml: `allowedHosts = ["bücher.test。"]`, want: []string{"bücher.test。"}},
-		{name: "hosts", toml: `allowedHosts = ["qui.example.test", "::1", "*.home.test", "bücher.test"]`, want: []string{"qui.example.test", "::1", "*.home.test", "bücher.test"}},
-		{name: "environment", toml: `allowedHosts = ["old.test"]`, env: new("qui.test, [::1]"), want: []string{"qui.test", " [::1]"}},
+		{name: "international final dot", toml: `allowedHosts = ["bücher.test。"]`, want: withLocalHosts([]string{"bücher.test。"})},
+		{name: "hosts", toml: `allowedHosts = ["qui.example.test", "::1", "*.home.test", "bücher.test"]`, want: withLocalHosts([]string{"qui.example.test", "::1", "*.home.test", "bücher.test"})},
+		{name: "environment", toml: `allowedHosts = ["old.test"]`, env: new("qui.test, [::1]"), want: withLocalHosts([]string{"qui.test", "[::1]"})},
 		{name: "empty environment", toml: `allowedHosts = ["old.test"]`, env: new("")},
 		{name: "string instead of array", toml: `allowedHosts = "qui.test"`, invalid: true},
 		{name: "number", toml: `allowedHosts = 42`, invalid: true},
@@ -75,10 +75,16 @@ func TestAllowedHostsRequiresRestart(t *testing.T) {
 			require.NoError(t, os.WriteFile(path, []byte("allowedHosts = "+next), 0o600))
 			select {
 			case hosts := <-reloaded:
-				require.Equal(t, []string{"qui.test"}, hosts)
+				require.Equal(t, withLocalHosts([]string{"qui.test"}), hosts)
 			case <-time.After(5 * time.Second):
 				t.Fatal("configuration watcher did not reload")
 			}
 		})
 	}
+}
+
+func TestWithLocalHosts(t *testing.T) {
+	hosts := withLocalHosts([]string{"qui.test", "localhost"})
+	require.Equal(t, []string{"qui.test", "localhost", "127.0.0.1", "::1"}, hosts[:4])
+	require.LessOrEqual(t, len(hosts), 5) // the machine hostname, when valid
 }

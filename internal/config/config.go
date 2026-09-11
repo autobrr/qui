@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"text/template"
@@ -337,6 +338,9 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
+	if c.Config.IsAuthDisabled() && len(c.Config.AllowedHosts) == 0 {
+		log.Warn().Msg("allowedHosts is not configured, so qui accepts requests for any hostname while authentication is disabled. Set allowedHosts to block DNS rebinding.")
+	}
 
 	c.notifyListeners()
 }
@@ -420,11 +424,37 @@ func (c *AppConfig) loadAllowedHosts() error {
 			return errors.New("allowedHosts must be an array of strings")
 		}
 	}
+	entries = slices.Clone(entries)
+	for i, entry := range entries {
+		entries[i] = strings.TrimSpace(entry)
+	}
 	if _, err := httphelpers.NewHostAllowlist(entries); err != nil {
 		return err
 	}
-	c.Config.AllowedHosts = entries
+	if len(entries) == 0 {
+		log.Info().Msg("allowedHosts is not configured, accepting requests for any host")
+		return nil
+	}
+	c.Config.AllowedHosts = withLocalHosts(entries)
+	log.Info().Strs("allowedHosts", c.Config.AllowedHosts).Msg("Accepting requests only for the listed hosts")
 	return nil
+}
+
+// withLocalHosts admits loopback names and the machine hostname, as Sonarr and Radarr do,
+// so a list that names only the public hostname does not lock out local access.
+func withLocalHosts(entries []string) []string {
+	local := []string{"localhost", "127.0.0.1", "::1"}
+	if name, err := os.Hostname(); err == nil {
+		if _, err := httphelpers.NewHostAllowlist([]string{name}); err == nil {
+			local = append(local, name)
+		}
+	}
+	for _, host := range local {
+		if !slices.Contains(entries, host) {
+			entries = append(entries, host)
+		}
+	}
+	return entries
 }
 
 func (c *AppConfig) getNormalizedStringSlice(key string) []string {

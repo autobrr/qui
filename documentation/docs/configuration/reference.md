@@ -158,6 +158,9 @@ Matching rules:
 The restriction covers all requests on the main HTTP listener, including authenticated requests, static files, and the qBittorrent proxy.
 With a configured list, a missing, invalid, or unlisted Host returns HTTP 400.
 Your own browser and API requests must also use a listed hostname or address.
+qui always adds `localhost`, `127.0.0.1`, `::1`, and the hostname of the machine to a configured list, so local access keeps working.
+qui logs the full list at startup.
+When authentication is disabled and the list is empty, qui logs a warning at startup.
 
 Health `GET` and `HEAD` requests to `/health`, `/healthz/readiness`, and `/healthz/liveness` bypass the list when the immediate connection peer is a loopback address.
 This includes external health requests forwarded by a local reverse proxy.

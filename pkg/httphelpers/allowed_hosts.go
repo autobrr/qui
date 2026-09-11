@@ -40,7 +40,7 @@ func NewHostAllowlist(entries []string) (*HostAllowlist, error) {
 	return list, nil
 }
 
-// Allows ignores the request port and compares canonical host names and IPs.
+// Allows reports whether host, ignoring any port, matches a listed host name or IP.
 func (list *HostAllowlist) Allows(host string) bool {
 	if len(list.hosts) == 0 {
 		return true
