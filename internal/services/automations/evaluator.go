@@ -1096,13 +1096,23 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 	case OperatorLessThanOrEqual:
 		return value <= condValue
 	case OperatorBetween:
-		if cond.MinValue == nil || cond.MaxValue == nil {
-			return false
-		}
-		return float64(value) >= *cond.MinValue && float64(value) <= *cond.MaxValue
+		return matchesBetween(float64(value), cond)
 	default:
 		return false
 	}
+}
+
+// matchesBetween reports whether value falls inside the condition's BETWEEN range.
+// A reversed range wraps on a clock field and stops before the maximum, so hour 20
+// to 6 is 20:00 to 05:59; on any other field a reversed range stays empty.
+func matchesBetween(value float64, cond *RuleCondition) bool {
+	if cond.MinValue == nil || cond.MaxValue == nil {
+		return false
+	}
+	if *cond.MinValue > *cond.MaxValue && cond.Field.WrapsBetween() {
+		return value >= *cond.MinValue || value < *cond.MaxValue
+	}
+	return value >= *cond.MinValue && value <= *cond.MaxValue
 }
 
 // compareFloat64 compares a float64 value against the condition.
@@ -1128,10 +1138,7 @@ func compareFloat64(value float64, cond *RuleCondition) bool {
 	case OperatorLessThanOrEqual:
 		return value <= condValue
 	case OperatorBetween:
-		if cond.MinValue == nil || cond.MaxValue == nil {
-			return false
-		}
-		return value >= *cond.MinValue && value <= *cond.MaxValue
+		return matchesBetween(value, cond)
 	default:
 		return false
 	}

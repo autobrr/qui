@@ -12,7 +12,7 @@ import { api } from "@/lib/api"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { formatBytes } from "@/lib/utils"
 import type { OrphanScanFile } from "@/types"
-import { Download, Loader2, Trash2 } from "lucide-react"
+import { Download, Folder, Loader2, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -97,8 +97,9 @@ export function OrphanScanPreviewDialog({
   // CSV columns for orphan files export
   const csvColumns: CsvColumn<OrphanScanFile>[] = [
     { header: "Path", accessor: f => f.filePath },
-    { header: "Size", accessor: f => formatBytes(f.fileSize) },
-    { header: "Size (bytes)", accessor: f => f.fileSize },
+    { header: "Type", accessor: f => f.isAbandonedDir ? "directory" : "file" },
+    { header: "Size", accessor: f => f.isAbandonedDir ? "" : formatBytes(f.fileSize) },
+    { header: "Size (bytes)", accessor: f => f.isAbandonedDir ? "" : f.fileSize },
     { header: "Modified", accessor: f => f.modifiedAt ?? "" },
   ]
 
@@ -148,6 +149,13 @@ export function OrphanScanPreviewDialog({
           </div>
         )}
 
+        {run?.errorMessage && (
+          <div role="alert" className="shrink-0 max-h-40 overflow-auto rounded-md border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-400">
+            {run.partial && <p className="mb-1 font-medium">{t("preferences.orphanScanOverview.statusPartial")}</p>}
+            <p className="whitespace-pre-wrap break-all">{run.errorMessage}</p>
+          </div>
+        )}
+
         <div className="flex-1 min-h-0 overflow-hidden border rounded-lg">
           <div className="overflow-auto max-h-[50vh]">
             <table className="w-full text-sm">
@@ -163,10 +171,18 @@ export function OrphanScanPreviewDialog({
                 {files.map((f) => (
                   <tr key={f.id} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="p-2 max-w-[520px]">
-                      <PathCell path={f.filePath} />
+                      <div className="flex items-center gap-1.5">
+                        {f.isAbandonedDir && (
+                          <Folder
+                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                            aria-label={t("preferences.orphanScanPreview.emptyDirectory")}
+                          />
+                        )}
+                        <PathCell path={f.filePath} />
+                      </div>
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                      {formatBytes(f.fileSize)}
+                      {f.isAbandonedDir ? "-" : formatBytes(f.fileSize)}
                     </td>
                     <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                       {f.modifiedAt ? formatISOTimestamp(f.modifiedAt) : "-"}

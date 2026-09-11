@@ -48,7 +48,7 @@
     "globPattern": "Vzorové hledání...",
     "smartSearchTitle": "Inteligentní hledání:",
     "smartSearchGlob": "Vzorové hledání:",
-    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
     "smartSearchFuzzy": "Hrubé hledání:",
     "smartSearchFuzzyExample": "\"breaking bad\" najde \"Breaking.Bad\"",
     "smartSearchDots": "Zpracovává tečky, podtržítka a závorky",

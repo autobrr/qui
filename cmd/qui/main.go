@@ -578,7 +578,9 @@ func (app *Application) runServer() {
 
 	// Initialize stores
 	licenseRepo := database.NewLicenseRepo(db)
-	instanceStore, err := models.NewInstanceStore(db, cfg.GetEncryptionKey())
+	encryptionKey := cfg.GetEncryptionKey()
+	legacyEncryptionKey := models.WithLegacyEncryptionKey(cfg.GetLegacyEncryptionKey())
+	instanceStore, err := models.NewInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		//nolint:gocritic // exitAfterDefer: a startup failure exits the process; the OS closes the database handle and SQLite recovers from the WAL
 		log.Fatal().Err(err).Msg("Failed to initialize instance store")
@@ -599,7 +601,7 @@ func (app *Application) runServer() {
 
 	clientAPIKeyStore := models.NewClientAPIKeyStore(db)
 	externalProgramStore := models.NewExternalProgramStore(db)
-	arrInstanceStore, err := models.NewArrInstanceStore(db, cfg.GetEncryptionKey())
+	arrInstanceStore, err := models.NewArrInstanceStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize ARR instance store")
 	}
@@ -638,7 +640,7 @@ func (app *Application) runServer() {
 	)
 
 	// Initialize Torznab indexer store
-	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, cfg.GetEncryptionKey())
+	torznabIndexerStore, err := models.NewTorznabIndexerStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize torznab indexer store")
 	}
@@ -699,10 +701,20 @@ func (app *Application) runServer() {
 	jackettService.SetActivityPublisher(activityHub)
 
 	// Initialize cross-seed automation store and service
-	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
+	crossSeedStore, err := models.NewCrossSeedStore(db, encryptionKey, legacyEncryptionKey)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
 	}
+
+	// Runs once the four credential stores exist rather than next to each one.
+	// Placement is free: consumers built earlier decrypt either format through
+	// the legacy key, and nothing before this point writes a credential column.
+	rewriteLegacyCredentials(context.Background(), []legacyCredentialStore{
+		{table: "instances", store: instanceStore},
+		{table: "arr_instances", store: arrInstanceStore},
+		{table: "torznab_indexers", store: torznabIndexerStore},
+		{table: "cross_seed_settings", store: crossSeedStore},
+	})
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
@@ -1028,4 +1040,35 @@ func (a *torrentHashAdapter) GetAllTorrentHashes(ctx context.Context, instanceID
 		hashes[i] = torrents[i].Hash
 	}
 	return hashes, nil
+}
+
+// legacyCredentialRewriter is implemented by every store that seals credentials
+// with the key derived from sessionSecret.
+type legacyCredentialRewriter interface {
+	RewriteLegacyCredentials(ctx context.Context) (int, error)
+}
+
+type legacyCredentialStore struct {
+	table string
+	store legacyCredentialRewriter
+}
+
+// rewriteLegacyCredentials moves stored credentials to the versioned ciphertext
+// format. A failure leaves readable legacy rows behind, so it logs the rows that
+// did commit and lets startup continue.
+func rewriteLegacyCredentials(ctx context.Context, stores []legacyCredentialStore) {
+	for _, s := range stores {
+		rewritten, err := s.store.RewriteLegacyCredentials(ctx)
+		if err != nil {
+			event := log.Error().Err(err).Str("table", s.table)
+			if rewritten > 0 {
+				event = event.Int("rows", rewritten)
+			}
+			event.Msg("Failed to re-encrypt legacy credentials")
+			continue
+		}
+		if rewritten > 0 {
+			log.Info().Str("table", s.table).Int("rows", rewritten).Msg("Re-encrypted legacy credentials under the derived key")
+		}
+	}
 }

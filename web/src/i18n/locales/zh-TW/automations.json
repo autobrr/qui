@@ -100,6 +100,7 @@
     "groupTooltip": "此組僅應用於此條件行。如需在其他 GROUP_SIZE/IS_GROUPED 行上使用不同的組。",
     "min": "最小",
     "max": "最大",
+    "wrappingRangeHint": "範圍跨越循環：符合 {{min}} 及以上，然後符合 {{max}} 以下的所有值。",
     "selectState": "選擇狀態",
     "selectScope": "選擇範圍",
     "selectTrackerStatus": "選擇狀態",

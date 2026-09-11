@@ -1495,7 +1495,7 @@
       "title": "Rechercher des torrents",
       "description": "Recherche par nom, catégorie, ou tags. Supporte les modèles globaux comme *.mkv ou *1080p*.",
       "placeholder": "Chercher des torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Recherche automatique pendant la frappe"
     },
     "shareLimit": {

@@ -7,6 +7,10 @@ info:
     returns HTTP 400 before authentication or routing. X-Forwarded-Host is ignored.
     Request ports do not affect matching. Only direct loopback GET and HEAD
     requests to /health, /healthz/readiness, and /healthz/liveness bypass the list.
+
+    For automation create and update requests, set `conditions.category.enabled` to `true`
+    and `conditions.category.category` to an empty string to remove the torrent category.
+    Set `conditions.category.enabled` to `false` to disable the category action.
   version: 1.0.0
   license:
     name: GPL-2.0-or-later
@@ -8903,6 +8907,15 @@ components:
         maxFilesPerRun:
           type: integer
           description: Maximum orphan files to record per run (prevents DB bloat)
+        scanDefaultSavePath:
+          type: boolean
+          description: Also scan qBittorrent's default save path, even when no torrent points into it
+        scanCategoryPaths:
+          type: boolean
+          description: Also scan every qBittorrent category destination; false when scanDefaultSavePath is false
+        deleteAbandonedDirs:
+          type: boolean
+          description: Report directories the run empties, so they can be removed with the orphan files
         createdAt:
           type: string
           format: date-time
@@ -8931,6 +8944,13 @@ components:
         maxFilesPerRun:
           type: integer
           minimum: 1
+        scanDefaultSavePath:
+          type: boolean
+        scanCategoryPaths:
+          type: boolean
+          description: Cleared when scanDefaultSavePath is false
+        deleteAbandonedDirs:
+          type: boolean
 
     OrphanScanRun:
       type: object
@@ -8950,7 +8970,7 @@ components:
           type: array
           items:
             type: string
-          description: Directories that were scanned (derived from torrent SavePath values)
+          description: Directories selected for scanning. Some paths can be unavailable during a partial scan.
         filesFound:
           type: integer
           description: Number of orphan files found
@@ -8967,6 +8987,9 @@ components:
         truncated:
           type: boolean
           description: True if max_files_per_run was reached and more orphans may exist
+        partial:
+          type: boolean
+          description: True when some selected scan paths could not be scanned. Automatic cleanup is skipped for this run.
         errorMessage:
           type: string
           nullable: true
@@ -9039,11 +9062,21 @@ components:
           format: int64
         filePath:
           type: string
-          description: Absolute path to the orphan file
+          description: >-
+            Absolute path to the entry. Usually a file, but a disc unit
+            (BDMV/VIDEO_TS) is reported as a single entry whose path is its
+            directory, and an abandoned directory is a directory too.
         fileSize:
           type: integer
           format: int64
-          description: File size in bytes
+          description: Entry size in bytes; always 0 for an abandoned directory
+        isAbandonedDir:
+          type: boolean
+          description: >-
+            True only for an abandoned directory: one the run empties, either
+            already holding no files or holding only orphans listed in the same
+            run, and removed with rmdir after them. False for orphan content,
+            whose path may still be a directory when it is a disc unit.
         modifiedAt:
           type: string
           format: date-time

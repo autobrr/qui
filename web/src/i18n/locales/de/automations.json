@@ -100,6 +100,7 @@
     "groupTooltip": "Diese Gruppe gilt nur für diese Bedingungszeile. Verwende bei Bedarf unterschiedliche Gruppen für andere GROUP_SIZE/IS_GROUPED-Zeilen.",
     "min": "Min",
     "max": "Max",
+    "wrappingRangeHint": "Bereich läuft um: trifft auf {{min}} und höher zu, dann auf alles unter {{max}}.",
     "selectState": "Status auswählen",
     "selectScope": "Bereich auswählen",
     "selectTrackerStatus": "Status auswählen",

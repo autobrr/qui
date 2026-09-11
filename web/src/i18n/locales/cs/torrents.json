@@ -1487,7 +1487,7 @@
       "title": "Hledat torrenty",
       "description": "Hledat podle názvu, kategorie nebo tagů. Podporuje globální vzory jako *.mkv nebo *1080p*.",
       "placeholder": "Hledat torrenty...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Automatické hledání po zadání"
     },
     "shareLimit": {

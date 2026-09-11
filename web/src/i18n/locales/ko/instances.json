@@ -911,7 +911,7 @@
       "scanTruncated": " (스캔이 잘렸으며, 파일이 더 있을 수 있습니다)",
       "viewPreview": "미리 보기",
       "recentScans": "최근 스캔",
-      "scannedPaths": "스캔한 경로 ({{total}})",
+      "scannedPaths": "선택한 검사 경로 ({{total}})",
       "zeroOrphans": "고아 파일 0개",
       "deletedStats": "{{deleted}}개 삭제됨 · {{size}}",
       "partialFailure": "부분 실패 - 최근 스캔을 확인하세요",
@@ -919,6 +919,7 @@
       "copiedToClipboard": "클립보드에 복사됨",
       "noScansYet": "아직 실행된 스캔이 없습니다. \"지금 스캔\"을 클릭하여 고아 파일을 찾으세요.",
       "statusClean": "정리됨",
+      "statusPartial": "부분 검사",
       "statusStarting": "시작 중...",
       "statusScanning": "스캔 중...",
       "statusReadyForReview": "검토 준비됨",
@@ -966,7 +967,8 @@
         "deletionFailed": "삭제를 시작하지 못했습니다",
         "exportedFiles": "파일 {{count}}개를 CSV로 내보냈습니다",
         "exportFailed": "파일을 내보내지 못했습니다"
-      }
+      },
+      "emptyDirectory": "빈 디렉터리"
     },
     "orphanScanSettings": {
       "settingsTitle": "설정",
@@ -1002,6 +1004,13 @@
       "maxFilesThreshold": "최대 파일 임계값",
       "maxFilesThresholdTooltip": "안전 제한: 스캔에서 이 임계값보다 많은 파일을 찾으면 자동 정리를 건너뛰고 수동 검토를 요구합니다. 잘못 구성된 무시 경로 같은 이상을 포착합니다.",
       "files": "파일",
+      "scanScope": "검사 범위",
+      "scanDefaultSavePathLabel": "기본 저장 경로 검사",
+      "scanDefaultSavePathTooltip": "기본적으로 검사는 토런트가 이미 가리키는 디렉터리만 탐색하므로, 기본 저장 경로에 바로 놓인 파일은 발견되지 않습니다. 이 옵션을 켜면 어떤 토런트도 사용하지 않는 하위 디렉터리를 포함해 인스턴스의 기본 저장 경로도 탐색합니다.",
+      "scanCategoryPathsLabel": "카테고리 경로 포함",
+      "scanCategoryPathsTooltip": "각 카테고리 대상도 탐색합니다. 카테고리가 지정한 저장 경로, 또는 상속하는 경우 기본 저장 경로 / 카테고리 이름입니다. 카테고리가 기본 저장 경로 밖을 가리킬 때 유용합니다.",
+      "deleteAbandonedDirsLabel": "버려진 디렉터리 삭제",
+      "deleteAbandonedDirsTooltip": "이 실행으로 비워지는 디렉터리를 보고합니다: 어떤 깊이에도 파일이 없는 디렉터리와, 하위의 모든 파일이 이 실행에서 삭제되는 고아 파일인 디렉터리입니다. 스캔 루트와 카테고리 대상은 비어 있어도 절대 삭제되지 않습니다.",
       "exclusions": "제외",
       "ignorePaths": "무시 경로",
       "ignorePathsTooltip": "스캔에서 제외할 경로입니다. 이 디렉터리의 파일은 절대 고아 파일로 표시되지 않습니다. 한 줄에 경로 하나를 입력하세요.",

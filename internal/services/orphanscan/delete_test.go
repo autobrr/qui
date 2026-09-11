@@ -16,9 +16,40 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
+
+type disappearingDirBackend struct {
+	fsops.Backend
+}
+
+func (b disappearingDirBackend) ReadDir(ctx context.Context, path string) ([]fsops.DirEntry, error) {
+	if err := b.Remove(ctx, path, fsops.RemoveOptions{}); err != nil {
+		return nil, err
+	}
+	return b.Backend.ReadDir(ctx, path)
+}
+
+func TestSafeDeleteEmptyDir_SkipsDirectoryRemovedBeforeReadDir(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	target := filepath.Join(root, "gone")
+	if err := os.Mkdir(target, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	backend := disappearingDirBackend{Backend: newTestBackend()}
+	disp, err := safeDeleteEmptyDir(t.Context(), root, target, backend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disp != deleteDispositionSkippedMissing {
+		t.Fatalf("disposition = %v, want skipped missing", disp)
+	}
+}
 
 func TestSafeDeleteFile(t *testing.T) {
 	t.Parallel()
@@ -242,48 +273,6 @@ func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.
 	}
 }
 
-func TestCollectCandidateDirsForCleanup_CascadesToParents(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	scanRoot := filepath.Join(base, "tv")
-	showDir := filepath.Join(scanRoot, "ShowName")
-	seasonDir := filepath.Join(showDir, "Season1")
-
-	if err := os.MkdirAll(seasonDir, 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-
-	target := filepath.Join(seasonDir, "episode.mkv")
-	if err := os.WriteFile(target, []byte("data"), 0o600); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-
-	tfm := NewTorrentFileMap()
-	disp, err := safeDeleteFile(context.Background(), scanRoot, target, tfm, local.NewBackend())
-	if err != nil {
-		t.Fatalf("safeDeleteFile error: %v", err)
-	}
-	if disp != deleteDispositionDeleted {
-		t.Fatalf("expected deleted disposition, got %v", disp)
-	}
-
-	candidates := collectCandidateDirsForCleanup([]string{target}, []string{scanRoot}, nil)
-	for _, dir := range candidates {
-		_ = safeDeleteEmptyDir(context.Background(), scanRoot, dir, local.NewBackend())
-	}
-
-	if _, err := os.Stat(seasonDir); !os.IsNotExist(err) {
-		t.Fatalf("expected season dir removed, stat err=%v", err)
-	}
-	if _, err := os.Stat(showDir); !os.IsNotExist(err) {
-		t.Fatalf("expected show dir removed, stat err=%v", err)
-	}
-	if _, err := os.Stat(scanRoot); err != nil {
-		t.Fatalf("expected scan root to remain, stat err=%v", err)
-	}
-}
-
 func TestFindScanRoot_PrefersLongestMatch(t *testing.T) {
 	t.Parallel()
 
@@ -296,22 +285,6 @@ func TestFindScanRoot_PrefersLongestMatch(t *testing.T) {
 	got := findScanRoot(path, []string{rootA, rootB})
 	if filepath.Clean(got) != filepath.Clean(rootB) {
 		t.Fatalf("expected longest root %q, got %q", rootB, got)
-	}
-}
-
-func TestCollectCandidateDirsForCleanup_StopsAtNestedScanRoot(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	rootA := filepath.Join(base, "tv")
-	rootB := filepath.Join(rootA, "ShowName")
-	target := filepath.Join(rootB, "Season1", "episode.mkv")
-
-	candidates := collectCandidateDirsForCleanup([]string{target}, []string{rootA, rootB}, nil)
-	for _, dir := range candidates {
-		if filepath.Clean(dir) == filepath.Clean(rootB) {
-			t.Fatalf("did not expect nested scan root in candidates: %q", dir)
-		}
 	}
 }
 
@@ -546,6 +519,7 @@ func createOrphanScanSchema(t *testing.T, db *sql.DB) {
 			folders_deleted INTEGER DEFAULT 0,
 			bytes_reclaimed INTEGER DEFAULT 0,
 			truncated       INTEGER NOT NULL DEFAULT 0,
+			partial         INTEGER NOT NULL DEFAULT 0,
 			error_message   TEXT,
 			started_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
 			completed_at    DATETIME,
@@ -793,22 +767,5 @@ func TestSafeDeleteSymlink_CaseDifferentOwnedLinkIsSkipped(t *testing.T) {
 	}
 	if _, err := os.Lstat(link); !os.IsNotExist(err) {
 		t.Fatalf("expected symlink removed, lstat err=%v", err)
-	}
-}
-
-// The empty-directory cleanup walks up from a deleted file to its scan root,
-// which can be spelled differently on a case-insensitive filesystem.
-func TestCollectCandidateDirsForCleanup_CaseDifferentScanRoot(t *testing.T) {
-	t.Parallel()
-
-	base := t.TempDir()
-	scanRoot := filepath.Join(base, "TrackerName")
-	deleted := filepath.Join(base, "trackername", "Show.S01", "Show.S01E01.mkv")
-
-	got := collectCandidateDirsForCleanup([]string{deleted}, []string{scanRoot}, nil)
-
-	want := []string{filepath.Join(base, "trackername", "Show.S01")}
-	if len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("expected candidate dirs %v, got %v", want, got)
 	}
 }

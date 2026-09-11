@@ -1432,7 +1432,7 @@
       "title": "搜索种子",
       "description": "按名称、分类或标签搜索。支持 glob 模式，如 *.mkv 或 *1080p*。",
       "placeholder": "搜索种子...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "输入后自动搜索"
     },
     "shareLimit": {

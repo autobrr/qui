@@ -929,7 +929,7 @@
       "scanTruncated": " (scan byl zkrácen, může existovat více souborů)",
       "viewPreview": "Zobrazit náhled",
       "recentScans": "Nedávné vyhledávání",
-      "scannedPaths": "Prohledané cesty ({{total}})",
+      "scannedPaths": "Vybrané cesty ke skenování ({{total}})",
       "zeroOrphans": "0 nepárových souborů",
       "deletedStats": "{{deleted}} smazáno · {{size}}",
       "partialFailure": "Částečná chyba - zkontrolujte nedávná vyhledávání",
@@ -937,6 +937,7 @@
       "copiedToClipboard": "Zkopírováno do schránky",
       "noScansYet": "Žádné vyhledávání nebylo spuštěno. Klikněte na \"Vyhledat\" pro vyhledání nepárových souborů.",
       "statusClean": "Čisté",
+      "statusPartial": "Částečné skenování",
       "statusStarting": "Spouští se...",
       "statusScanning": "Vyhledává se...",
       "statusReadyForReview": "Připraveno k revizi",
@@ -984,7 +985,8 @@
         "deleted": "Smazáno",
         "skipped": "Přeskočeno",
         "failed": "Selhalo"
-      }
+      },
+      "emptyDirectory": "Prázdný adresář"
     },
     "orphanScanSettings": {
       "settingsTitle": "Nastavení",
@@ -1020,6 +1022,13 @@
       "maxFilesThreshold": "Maximální počet souborů",
       "maxFilesThresholdTooltip": "Bezpečnostní limit: pokud je vyhledávání nalezeno více souborů než tento limit, bude automatické vyčištění přeskočeno a vyžaduje manuální revizi. Toto zachytí anomálie jako nesprávně nakonfigurované ignorované cesty.",
       "files": "soubory",
+      "scanScope": "Rozsah skenování",
+      "scanDefaultSavePathLabel": "Skenovat výchozí cestu pro ukládání",
+      "scanDefaultSavePathTooltip": "Ve výchozím nastavení skenování prochází jen adresáře, na které už nějaký torrent odkazuje, takže osamocený soubor ležící přímo ve výchozí cestě pro ukládání se nikdy nenajde. Zapnutím této volby se projde i výchozí cesta pro ukládání dané instance včetně podadresářů, které žádný torrent nepoužívá.",
+      "scanCategoryPathsLabel": "Včetně cest kategorií",
+      "scanCategoryPathsTooltip": "Projít i každý cíl kategorie: cestu nastavenou kategorií, nebo výchozí cestu pro ukládání / název kategorie, pokud ji dědí. Užitečné, když kategorie míří mimo výchozí cestu pro ukládání.",
+      "deleteAbandonedDirsLabel": "Mazat opuštěné adresáře",
+      "deleteAbandonedDirsTooltip": "Hlásit adresáře, které tento běh vyprázdní: ty, které v žádné hloubce neobsahují soubory, a ty, kde je každý soubor pod nimi osiřelý a běh ho smaže. Kořeny skenování a cíle kategorií se nikdy nemažou, ani když jsou prázdné.",
       "exclusions": "Vyloučení",
       "ignorePaths": "Ignorování cest",
       "ignorePathsTooltip": "Cesty, které mají být vyloučeny z vyhledávání. Soubory v těchto adresářích nebudou nikdy označeny jako nepárové. Zadejte jednu cestu na řádek.",

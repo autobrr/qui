@@ -911,7 +911,7 @@
       "scanTruncated": "（扫描已截断，可能还有更多文件）",
       "viewPreview": "查看预览",
       "recentScans": "近期扫描",
-      "scannedPaths": "已扫描路径（{{total}}）",
+      "scannedPaths": "选定的扫描路径（{{total}}）",
       "zeroOrphans": "0 个孤立文件",
       "deletedStats": "已删除 {{deleted}} · {{size}}",
       "partialFailure": "部分失败 - 请查看近期扫描",
@@ -919,6 +919,7 @@
       "copiedToClipboard": "已复制到剪贴板",
       "noScansYet": "尚未运行扫描。点击\"立即扫描\"查找孤立文件。",
       "statusClean": "清洁",
+      "statusPartial": "部分扫描",
       "statusStarting": "启动中...",
       "statusScanning": "扫描中...",
       "statusReadyForReview": "待审核",
@@ -966,7 +967,8 @@
         "deletionFailed": "启动删除失败",
         "exportedFiles": "已导出 {{count}} 个文件到 CSV",
         "exportFailed": "导出文件失败"
-      }
+      },
+      "emptyDirectory": "空目录"
     },
     "orphanScanSettings": {
       "settingsTitle": "设置",
@@ -1002,6 +1004,13 @@
       "maxFilesThreshold": "最大文件阈值",
       "maxFilesThresholdTooltip": "安全限制：如果扫描发现的文件数超过此阈值，将跳过自动清理并要求人工审核。这可以捕获忽略路径配置错误等异常情况。",
       "files": "个文件",
+      "scanScope": "扫描范围",
+      "scanDefaultSavePathLabel": "扫描默认保存路径",
+      "scanDefaultSavePathTooltip": "默认情况下，扫描只会遍历已有种子指向的目录，因此直接放在默认保存路径下的散落文件永远不会被发现。开启此选项后，还会遍历该实例的默认保存路径，包括没有任何种子使用的子目录。",
+      "scanCategoryPathsLabel": "包含分类路径",
+      "scanCategoryPathsTooltip": "同时遍历每个分类的目标位置：分类自行设置的保存路径，或在继承时为默认保存路径 / 分类名称。当分类指向默认保存路径之外时很有用。",
+      "deleteAbandonedDirsLabel": "删除废弃目录",
+      "deleteAbandonedDirsTooltip": "报告本次运行会清空的目录：在任何层级都不含文件的目录，以及其下所有文件都是本次运行将删除的孤立文件的目录。扫描根目录和分类目标位置即使为空也永不删除。",
       "exclusions": "排除项",
       "ignorePaths": "忽略路径",
       "ignorePathsTooltip": "从扫描中排除的路径。这些目录中的文件永远不会被标记为孤立文件。每行输入一个路径。",
