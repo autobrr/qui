@@ -1463,6 +1463,9 @@
     "descending": "降序",
     "sortDirection": "{{direction}}排序",
     "toggleColumns": "切換列顯示",
+    "stretchMode": "延展模式",
+    "scrollMode": "捲動模式",
+    "reorderColumn": "拖曳以重新排序 {{column}}",
     "tableAriaLabel": "種子表格"
   },
   "tableColumns": {

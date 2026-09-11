@@ -1526,6 +1526,9 @@
     "descending": "decrescente",
     "sortDirection": "Ordenar de forma {{direction}}",
     "toggleColumns": "Alternar colunas",
+    "stretchMode": "Modo esticado",
+    "scrollMode": "Modo de rolagem",
+    "reorderColumn": "Arraste para reordenar {{column}}",
     "tableAriaLabel": "Tabela de torrents"
   },
   "sort": {

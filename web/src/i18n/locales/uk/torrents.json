@@ -1644,6 +1644,9 @@
     "descending": "спадання",
     "sortDirection": "Сортувати {{direction}}",
     "toggleColumns": "Перемикати стовпці",
+    "stretchMode": "Режим розтягування",
+    "scrollMode": "Режим прокручування",
+    "reorderColumn": "Перетягніть, щоб змінити порядок {{column}}",
     "tableAriaLabel": "Таблиця торентів"
   },
   "sort": {

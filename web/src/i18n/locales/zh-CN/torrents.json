@@ -1463,6 +1463,9 @@
     "descending": "降序",
     "sortDirection": "{{direction}}排序",
     "toggleColumns": "切换列显示",
+    "stretchMode": "拉伸模式",
+    "scrollMode": "滚动模式",
+    "reorderColumn": "拖动以重新排序 {{column}}",
     "tableAriaLabel": "种子表格"
   },
   "tableColumns": {

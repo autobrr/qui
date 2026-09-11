@@ -1518,6 +1518,9 @@
     "descending": "sestupně",
     "sortDirection": "Řadit {{direction}}",
     "toggleColumns": "Přepnout sloupce",
+    "stretchMode": "Režim roztažení",
+    "scrollMode": "Režim posouvání",
+    "reorderColumn": "Přetažením změníte pořadí {{column}}",
     "tableAriaLabel": "Tabulka torrentů"
   },
   "sort": {

@@ -1526,6 +1526,9 @@
     "descending": "absteigend",
     "sortDirection": "{{direction}} sortieren",
     "toggleColumns": "Spalten umschalten",
+    "stretchMode": "Streckmodus",
+    "scrollMode": "Scrollmodus",
+    "reorderColumn": "Ziehen, um {{column}} neu anzuordnen",
     "tableAriaLabel": "Torrent-Tabelle"
   },
   "sort": {

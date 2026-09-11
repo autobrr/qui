@@ -1463,6 +1463,9 @@
     "descending": "내림차순",
     "sortDirection": "{{direction}} 정렬",
     "toggleColumns": "열 전환",
+    "stretchMode": "늘리기 모드",
+    "scrollMode": "스크롤 모드",
+    "reorderColumn": "{{column}} 순서를 변경하려면 드래그",
     "tableAriaLabel": "토렌트 테이블"
   },
   "sort": {
