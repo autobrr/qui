@@ -1432,7 +1432,7 @@
       "title": "토렌트 검색",
       "description": "이름, 카테고리 또는 태그로 검색합니다. *.mkv 또는 *1080p* 같은 glob 패턴을 지원합니다.",
       "placeholder": "토렌트 검색...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "입력 후 자동 검색"
     },
     "shareLimit": {

@@ -1495,7 +1495,7 @@
       "title": "Pesquisar Torrents",
       "description": "Pesquise por nome, categoria ou tags. Suporta padrões glob (ex: *.mkv).",
       "placeholder": "Pesquisar torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Pesquisa automática ao digitar"
     },
     "shareLimit": {
