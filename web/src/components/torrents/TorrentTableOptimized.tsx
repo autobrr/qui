@@ -806,7 +806,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }, 0)
   }, [columns, columnVisibility, columnSizing])
   const availableWidth = containerWidth - (showRowGutter ? SPREADSHEET_ROW_GUTTER_WIDTH : 0)
-  const effectiveStretch = stretchNameColumn && fixedColsWidth + NAME_COLUMN_MIN_WIDTH < availableWidth
+  const effectiveStretch = stretchNameColumn && fixedColsWidth + NAME_COLUMN_MIN_WIDTH <= availableWidth
   const effectiveColumnSizing = useMemo(() => {
     if (!effectiveStretch) return columnSizing
     return { ...columnSizing, name: availableWidth - fixedColsWidth }
