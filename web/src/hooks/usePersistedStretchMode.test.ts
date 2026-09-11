@@ -33,6 +33,24 @@ describe("usePersistedStretchMode", () => {
     expect(second.result.current[0]).toBe(true)
   })
 
+  it("reloads the saved choice when the instance changes", () => {
+    window.localStorage.setItem("qui-stretch-name-column:1", "false")
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: number }) => usePersistedStretchMode(id),
+      { initialProps: { id: 1 } }
+    )
+    expect(result.current[0]).toBe(false)
+
+    rerender({ id: 2 })
+    expect(result.current[0]).toBe(true)
+
+    act(() => result.current[1]())
+
+    expect(window.localStorage.getItem("qui-stretch-name-column:2")).toBe("false")
+    expect(window.localStorage.getItem("qui-stretch-name-column:1")).toBe("false")
+  })
+
   it("uses the shared key when no instance is selected", () => {
     const { result } = renderHook(() => usePersistedStretchMode(0))
 

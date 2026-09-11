@@ -3,39 +3,23 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useState } from "react"
+import { useCallback } from "react"
 
-function storageKey(instanceId: number) {
-  return instanceId > 0 ? `qui-stretch-name-column:${instanceId}` : "qui-stretch-name-column"
+import { useClientSetting } from "@/lib/client-settings"
+
+const BASE_STORAGE_KEY = "qui-stretch-name-column"
+
+function parseStretch(raw: string): boolean {
+  return raw !== "false"
 }
 
 /**
- * Persists whether the Name column should stretch to fill the table (true)
- * or stay fixed-width so the table side-scrolls (false). Defaults to stretch.
+ * Whether the Name column stretches to fill the table (true) or keeps a fixed
+ * width so the table side-scrolls (false). Stored per instance; defaults to stretch.
  */
 export function usePersistedStretchMode(instanceId: number): [boolean, () => void] {
-  const key = storageKey(instanceId)
-
-  const [stretch, setStretch] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem(key)
-      return stored === null ? true : stored !== "false"
-    } catch {
-      return true
-    }
-  })
-
-  const toggle = useCallback(() => {
-    setStretch((current) => {
-      const next = !current
-      try {
-        localStorage.setItem(key, String(next))
-      } catch {
-        // ignore
-      }
-      return next
-    })
-  }, [key])
-
+  const key = instanceId > 0 ? `${BASE_STORAGE_KEY}:${instanceId}` : BASE_STORAGE_KEY
+  const [stretch, setStretch] = useClientSetting<boolean>(key, { defaultValue: true, parse: parseStretch })
+  const toggle = useCallback(() => setStretch((current) => !current), [setStretch])
   return [stretch, toggle]
 }

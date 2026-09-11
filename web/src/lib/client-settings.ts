@@ -56,6 +56,7 @@ const SYNCED_KEYS = new Set<string>([
   TORRENT_VIEW_MODE_KEYS.desktop,
   "qui-unified-instance-filter",
   "torrent-details-last-tab",
+  "qui-stretch-name-column",
 ])
 const SYNCED_PREFIXES = [
   "qui-start-paused-instance-",
@@ -65,6 +66,7 @@ const SYNCED_PREFIXES = [
   "qui-column-order:",
   "qui-column-sorting:",
   "qui-column-sizing:",
+  "qui-stretch-name-column:",
   "qui-column-filters-",
   "qui-collapsed-categories-",
   "qui-filters-",
