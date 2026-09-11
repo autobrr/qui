@@ -161,6 +161,10 @@ const DEFAULT_COLUMN_VISIBILITY = {
 const DEFAULT_COLUMN_SIZING = {}
 const STREAM_STATUS_TRANSITION_DELAY_MS = 800
 const NAME_COLUMN_MIN_WIDTH = 160
+// ResizeObserver fires every frame while a window or panel is dragged, and a width
+// commit from that callback re-renders the whole table at ~10x the cost of the same
+// update from an event handler. Commit once the size has settled instead.
+const STRETCH_RESIZE_SETTLE_MS = 120
 // Must match the .ss-row-gutter width in spreadsheet-chrome.css.
 const SPREADSHEET_ROW_GUTTER_WIDTH = 44
 // TanStack's defaultColumnSizing, mirrored so widths can be summed before the table exists.
@@ -807,16 +811,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     if (!effectiveStretch) return columnSizing
     return { ...columnSizing, name: availableWidth - fixedColsWidth }
   }, [effectiveStretch, columnSizing, availableWidth, fixedColsWidth])
-  // Resizing Name while stretched would only write an invisible width to storage.
-  const tableColumns = useMemo(() => {
-    if (!effectiveStretch) return columns
-    return columns.map(col => (columnDefId(col) === "name" ? { ...col, enableResizing: false } : col))
-  }, [columns, effectiveStretch])
 
   const table = useTable({
     features: torrentTableFeatures,
     data: sortedTorrents,
-    columns: tableColumns,
+    columns,
     // For cross-seed filtering, enable client-side sorting and filtering
     // For regular filtering, backend handles sorting and column filters
     manualSorting: !isCrossSeedFiltering,
@@ -1063,9 +1062,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     const el = parentRef.current
     if (!el) return
     setContainerWidth(el.clientWidth)
-    const observer = new ResizeObserver(() => setContainerWidth(el.clientWidth))
+    let settleTimer: ReturnType<typeof setTimeout> | undefined
+    const observer = new ResizeObserver(() => {
+      clearTimeout(settleTimer)
+      settleTimer = setTimeout(() => setContainerWidth(el.clientWidth), STRETCH_RESIZE_SETTLE_MS)
+    })
     observer.observe(el)
-    return () => observer.disconnect()
+    return () => {
+      clearTimeout(settleTimer)
+      observer.disconnect()
+    }
   }, [parentRef])
 
   // Keyed on the state that changes widths, not on the per-render `table` object.
@@ -1600,6 +1606,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                 minTableWidth={minTableWidth}
                 viewMode={desktopViewMode}
                 showRowGutter={showRowGutter}
+                stretchedColumnId={effectiveStretch ? "name" : undefined}
               />
 
               {/* Body */}
