@@ -1129,8 +1129,7 @@ func (c *Client) clearTrackerExclusions(domains []string) {
 
 // getOptimisticUpdates returns all current optimistic updates
 func (c *Client) getOptimisticUpdates() map[string]*OptimisticTorrentUpdate {
-	updates := maps.Collect(c.optimisticUpdates.All())
-	return updates
+	return maps.Collect(c.optimisticUpdates.All())
 }
 
 // clearOptimisticUpdate removes an optimistic update for a specific torrent

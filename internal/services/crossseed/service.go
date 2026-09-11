@@ -572,7 +572,9 @@ func NewService(
 		ttlcache.SetDefaultTTL(searchResultCacheTTL))
 
 	asyncFilteringCache := ttlcache.New[string, *AsyncIndexerFilteringState](
-		ttlcache.SetDefaultTTL(searchResultCacheTTL)) // Use same TTL as search results
+		ttlcache.SetDefaultTTL(searchResultCacheTTL),
+		// The UI polls this state, so a refreshing Get would never let it expire.
+		ttlcache.DisableUpdateTime(true))
 	indexerDomainCache := ttlcache.New[string, string](
 		ttlcache.SetDefaultTTL(indexerDomainCacheTTL))
 	contentFilesCache := ttlcache.New[string, qbt.TorrentFiles](

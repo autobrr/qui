@@ -12,7 +12,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/autobrr/go-cache/ttlcache"
 	"github.com/rs/zerolog/log"
 
 	// Register pgx as database/sql driver.
@@ -98,15 +97,6 @@ func newPostgres(dsn string, opts OpenOptions) (*DB, error) {
 	go db.stringPoolCleanupLoop(cleanupCtx)
 
 	return db, nil
-}
-
-func newStmtCache() *ttlcache.Cache[string, *sql.Stmt] {
-	return ttlcache.New[string, *sql.Stmt](
-		ttlcache.SetDefaultTTL(5*time.Minute),
-		ttlcache.SetDeallocationFunc(func(_ string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
-			_ = s.Close()
-		}),
-	)
 }
 
 func (db *DB) migratePostgres() error {

@@ -589,6 +589,15 @@ func secureDatabaseFiles(databasePath string) error {
 	return nil
 }
 
+func newStmtCache() *ttlcache.Cache[string, *sql.Stmt] {
+	return ttlcache.New[string, *sql.Stmt](
+		ttlcache.SetDefaultTTL(5*time.Minute),
+		ttlcache.SetDeallocationFunc(func(_ string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
+			_ = s.Close()
+		}),
+	)
+}
+
 // New opens the SQLite database at databasePath, creating the parent directory
 // and applying any pending migrations. The returned DB routes writes through a
 // single serialized connection and reads through a read-only pool.
