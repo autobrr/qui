@@ -90,7 +90,7 @@ When qui evaluates a rule, these fields use qui's current system time. Use them 
 | System Month | Current month (`1-12`) |
 | System Year | Current year |
 
-##### Ranges that cross midnight
+##### Ranges that wrap
 
 On System Hour, System Minute, System Day of Week and System Month, a **between** range whose minimum is above its maximum wraps past the end of the field. For example, System Hour between `20` and `6` is true from 20:00 through 05:59, and false from 06:00 through 19:59. The minimum is included and the maximum is not, so set the maximum to the hour the window must stop.
 
@@ -251,7 +251,7 @@ Both fields require **qBittorrent 5.1+** (Web API 2.11.4+). On older instances, 
 
 **Numeric:** `=`, `!=`, `>`, `>=`, `<`, `<=`, between
 
-A **between** range includes both ends. The one exception is a range that wraps on a clock field, described in [Ranges that cross midnight](#ranges-that-cross-midnight).
+A **between** range includes both ends. The one exception is a range that wraps on a clock field, described in [Ranges that wrap](#ranges-that-wrap).
 
 **Boolean:** is, is not
 

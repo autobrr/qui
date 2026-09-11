@@ -4217,7 +4217,7 @@ func TestEvaluateCondition_BetweenWrapsClockFields(t *testing.T) {
 		{name: "minute wrap at max is excluded", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(10), expected: false},
 		{name: "minute wrap above max", cond: between(models.FieldSystemMinute, 50, 10), evalCtx: atMinute(30), expected: false},
 
-		// SYSTEM_DAY_OF_WEEK 5..1: Friday and Saturday, ending before Monday.
+		// SYSTEM_DAY_OF_WEEK 5..1: Friday through Sunday, ending before Monday.
 		{name: "weekday wrap below min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(4), expected: false},
 		{name: "weekday wrap at min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(5), expected: true},
 		{name: "weekday wrap above min", cond: between(models.FieldSystemDayOfWeek, 5, 1), evalCtx: atWeekday(6), expected: true},
