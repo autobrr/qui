@@ -1,12 +1,12 @@
 ---
 sidebar_position: 14
 title: Torrent Management
-description: Tags, categories, saved filter views, keyboard control, torrent creation, export, MediaInfo, and BDInfo.
+description: Tags, categories, saved filter views, keyboard control, table columns, torrent creation, export, MediaInfo, and BDInfo.
 ---
 
 # Torrent Management
 
-qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
+qui provides tools to manage torrent lists: tags, categories, saved filter views, keyboard control, table columns, a torrent creator, `.torrent` export, MediaInfo, and BDInfo Disc reports. For queue, speed, and share limits, see [qBittorrent Preferences](./instance-settings.md#qbittorrent-preferences).
 
 ## Tags and categories
 
@@ -66,6 +66,12 @@ A view stores the sidebar filter selection only. It does not include search text
 | Escape | Closes the details panel and clears the selection |
 
 The arrow keys replace the selection with the focused row, the same as a plain click. When the details panel is open, it follows the arrow keys. If you type in an input field or open a dialog, hotkeys are inactive.
+
+## Table columns
+
+**Toggle columns** in the table toolbar shows or hides columns. Drag the handle next to a column in that menu to change its position, or drag a column header directly.
+
+The button next to it switches the Name column between two modes. In **stretch mode** the Name column takes whatever width the other columns leave, so the table fills the window. In **scroll mode** the Name column keeps its own width and the table scrolls sideways. qui falls back to scrolling on its own while the visible columns do not fit, and remembers the choice per instance.
 
 ## Torrent creator
 
