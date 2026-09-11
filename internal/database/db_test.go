@@ -950,19 +950,19 @@ func TestGetStmtConcurrentMissSharesOneStatement(t *testing.T) {
 	const query = "SELECT 1"
 
 	stmts := make([]*sql.Stmt, 32)
+	errs := make([]error, len(stmts))
 	var wg sync.WaitGroup
 	for i := range stmts {
 		wg.Go(func() {
-			s, err := db.getStmt(ctx, query, nil)
-			require.NoError(t, err)
-			stmts[i] = s
+			stmts[i], errs[i] = db.getStmt(ctx, query, nil)
 		})
 	}
 	wg.Wait()
 
 	cached, found := db.readerStmts.Get(query)
 	require.True(t, found)
-	for _, s := range stmts {
+	for i, s := range stmts {
+		require.NoError(t, errs[i])
 		require.Same(t, cached, s)
 		var n int
 		require.NoError(t, s.QueryRowContext(ctx).Scan(&n))
