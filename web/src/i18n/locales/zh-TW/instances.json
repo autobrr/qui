@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "實例設定"
   },
-  "proxySettings": {
-    "loading": "正在載入代理設定...",
-    "title": "代理配置",
-    "proxyType": "代理類型",
-    "proxyTypeDescription": "選擇用於路由連線的代理類型",
-    "serverTitle": "代理伺服器",
-    "serverLabel": "代理伺服器",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "代理伺服器主機名或 IP 位址",
-    "port": "連接埠",
-    "portDescription": "代理伺服器連接埠",
-    "authTitle": "認證",
-    "useAuth": "使用認證",
-    "useAuthDescription": "如果您的代理伺服器需要使用者名稱/密碼，請啟用此選項",
-    "username": "使用者名稱",
-    "password": "密碼",
-    "optionsTitle": "代理選項",
-    "peerConnections": "對節點連線使用代理",
-    "peerConnectionsDescription": "透過代理路由 BitTorrent 節點連線",
-    "torrentsOnly": "僅對種子使用代理",
-    "torrentsOnlyDescription": "僅對 BitTorrent 流量使用代理，不用於其他連線",
-    "hostnameLookup": "透過代理進行主機名查詢",
-    "hostnameLookupDescription": "透過代理伺服器解析主機名",
-    "update": "更新代理設定",
-    "updating": "更新中...",
-    "types": {
-      "none": "無",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "代理設定更新成功",
-      "failed": "代理設定更新失敗"
-    }
-  },
   "passwordBanner": {
     "title": "檢測到密碼問題",
     "description": "部分實例無法解密其儲存的密碼，可能是由於配置變更所致。請檢查下方受影響的實例以解決此問題。"
@@ -658,20 +622,7 @@
       "fullSync": "完全同步",
       "addOnly": "僅新增",
       "removeOnly": "僅移除",
-      "deleteDialog": {
-        "title": "刪除規則",
-        "description": "確定要刪除\"{{name}}\"嗎？此操作無法復原。",
-        "cancel": "取消",
-        "delete": "刪除"
-      },
-      "actionCount_other": "{{count}} 個操作",
-      "toast": {
-        "workflowDeleted": "工作流已刪除",
-        "deleteAutomationFailed": "刪除自動化失敗",
-        "toggleRuleFailed": "切換規則失敗",
-        "workflowsApplied": "工作流已應用",
-        "applyAutomationsFailed": "應用自動化失敗"
-      }
+      "actionCount_other": "{{count}} 個操作"
     },
     "workflowsOverview": {
       "title": "工作流",
@@ -739,8 +690,7 @@
       "xsSafe": "輔種安全",
       "plusXs": "+ 輔種",
       "plusFiles": "+ 檔案",
-      "tagActions": "{{count}} 個標籤操作",
-      "tagActions_plural": "{{count}} 個標籤操作",
+      "tagActions_other": "{{count}} 個標籤操作",
       "program": "程式",
       "runDryRunNow": "立即模擬執行",
       "duplicate": "複製",
@@ -1049,14 +999,11 @@
       "allTags": "所有標籤",
       "allIndexers": "所有索引器",
       "allCategoriesIncluded": "將包含所有分類。",
-      "selectedCategories": "僅匹配已選擇的 {{count}} 個分類。",
-      "selectedCategories_plural": "僅匹配已選擇的 {{count}} 個分類。",
+      "selectedCategories_other": "僅匹配已選擇的 {{count}} 個分類。",
       "allTagsIncluded": "將包含所有標籤。",
-      "selectedTags": "僅匹配已選擇的 {{count}} 個標籤。",
-      "selectedTags_plural": "僅匹配已選擇的 {{count}} 個標籤。",
+      "selectedTags_other": "僅匹配已選擇的 {{count}} 個標籤。",
       "allIndexersSearched": "將搜尋所有已啟用的索引器。",
-      "selectedIndexers": "僅查詢已選擇的 {{count}} 個索引器。",
-      "selectedIndexers_plural": "僅查詢已選擇的 {{count}} 個索引器。",
+      "selectedIndexers_other": "僅查詢已選擇的 {{count}} 個索引器。",
       "skipCategoriesDescription": "跳過這些分類中的種子。",
       "skipTagsDescription": "跳過帶有這些標籤的種子。",
       "none": "無",

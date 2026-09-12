@@ -31,13 +31,6 @@
       "performance": "시드됨"
     }
   },
-  "speedLimits": {
-    "title": "속도 제한",
-    "download": "다운로드",
-    "upload": "업로드",
-    "current": "현재: {{speed}}",
-    "unlimited": "무제한"
-  },
   "instanceCard": {
     "loadingStats": "통계 불러오는 중...",
     "failedToLoadStats": "통계를 불러오지 못했습니다",
@@ -186,8 +179,7 @@
       "invalidDomains": "잘못된 항목: domains는 비어 있지 않은 배열이어야 합니다",
       "invalidJson": "잘못된 JSON",
       "newCount": "신규 {{count}}개",
-      "conflictCount": "충돌 {{count}}개",
-      "conflictCount_plural": "충돌 {{count}}개",
+      "conflictCount_other": "충돌 {{count}}개",
       "unchangedCount": "변경 없음 {{count}}개",
       "resolveConflicts": "충돌 해결",
       "conflictsWith": "충돌 대상: {{name}}",
@@ -206,8 +198,7 @@
       "deleteFailed": "트래커 사용자 지정을 삭제하지 못했습니다",
       "failedToImport": "가져오지 못했습니다: {{names}}",
       "importedAndSkipped": "{{imported}}개 가져옴, {{skipped}}개 건너뜀",
-      "importedCount": "사용자 지정 {{count}}개 가져옴",
-      "importedCount_plural": "사용자 지정 {{count}}개 가져옴",
+      "importedCount_other": "사용자 지정 {{count}}개 가져옴",
       "noCustomizationsImported": "가져온 사용자 지정이 없습니다"
     }
   },

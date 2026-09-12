@@ -1463,6 +1463,10 @@
     "descending": "降序",
     "sortDirection": "{{direction}}排序",
     "toggleColumns": "切換列顯示",
+    "stretchMode": "延展名稱欄位以填滿表格",
+    "scrollMode": "自行設定名稱欄位寬度並橫向捲動",
+    "stretchInactive": "已暫停，因為可見欄位已填滿表格",
+    "reorderColumn": "拖曳以重新排序 {{column}}",
     "tableAriaLabel": "種子表格"
   },
   "tableColumns": {

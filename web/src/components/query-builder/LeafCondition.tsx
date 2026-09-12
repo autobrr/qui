@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
+  WRAPPING_BETWEEN_FIELDS,
   getFieldType,
   getOperatorsForField,
   getTranslatedOperatorsForField,
@@ -436,6 +437,14 @@ export function LeafCondition({
 
   const betweenPercentageDisplay = (fieldType === "percentage" && condition.operator === "BETWEEN") ? getBetweenPercentageDisplay() : null;
 
+  // A reversed range on a clock field is a wrap, not a mistake, so say what it covers.
+  const wrapsBetween = condition.operator === "BETWEEN" &&
+    condition.field !== undefined &&
+    WRAPPING_BETWEEN_FIELDS.has(condition.field) &&
+    condition.minValue !== undefined &&
+    condition.maxValue !== undefined &&
+    condition.minValue > condition.maxValue;
+
   return (
     <div
       ref={setNodeRef}
@@ -634,22 +643,29 @@ export function LeafCondition({
             <span className="text-sm text-muted-foreground">%</span>
           </div>
         ) : condition.operator === "BETWEEN" ? (
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              className="h-8 w-20"
-              value={condition.minValue ?? ""}
-              onChange={(e) => handleMinValueChange(e.target.value)}
-              placeholder={t("queryBuilder.min")}
-            />
-            <span className="text-muted-foreground">-</span>
-            <Input
-              type="number"
-              className="h-8 w-20"
-              value={condition.maxValue ?? ""}
-              onChange={(e) => handleMaxValueChange(e.target.value)}
-              placeholder={t("queryBuilder.max")}
-            />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                className="h-8 w-20"
+                value={condition.minValue ?? ""}
+                onChange={(e) => handleMinValueChange(e.target.value)}
+                placeholder={t("queryBuilder.min")}
+              />
+              <span className="text-muted-foreground">-</span>
+              <Input
+                type="number"
+                className="h-8 w-20"
+                value={condition.maxValue ?? ""}
+                onChange={(e) => handleMaxValueChange(e.target.value)}
+                placeholder={t("queryBuilder.max")}
+              />
+            </div>
+            {wrapsBetween && (
+              <span className="text-xs text-muted-foreground">
+                {t("queryBuilder.wrappingRangeHint", { min: condition.minValue, max: condition.maxValue })}
+              </span>
+            )}
           </div>
         ) : fieldType === "trackerStatus" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>

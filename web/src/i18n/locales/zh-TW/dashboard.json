@@ -31,13 +31,6 @@
       "performance": "做種量"
     }
   },
-  "speedLimits": {
-    "title": "速度限制",
-    "download": "下載",
-    "upload": "上傳",
-    "current": "目前：{{speed}}",
-    "unlimited": "無限制"
-  },
   "instanceCard": {
     "loadingStats": "正在載入統計資訊……",
     "failedToLoadStats": "載入統計資訊失敗",
@@ -186,8 +179,7 @@
       "invalidDomains": "條目無效：domains 必須是非空陣列",
       "invalidJson": "JSON 格式無效",
       "newCount": "{{count}} 個新增",
-      "conflictCount": "{{count}} 個衝突",
-      "conflictCount_plural": "{{count}} 個衝突",
+      "conflictCount_other": "{{count}} 個衝突",
       "unchangedCount": "{{count}} 個未變更",
       "resolveConflicts": "解決衝突",
       "conflictsWith": "與以下條目衝突：{{name}}",
@@ -206,8 +198,7 @@
       "deleteFailed": "刪除 Tracker 自訂配置失敗",
       "failedToImport": "匯入失敗：{{names}}",
       "importedAndSkipped": "已匯入 {{imported}} 項，跳過 {{skipped}} 項",
-      "importedCount": "已匯入 {{count}} 項自訂配置",
-      "importedCount_plural": "已匯入 {{count}} 項自訂配置",
+      "importedCount_other": "已匯入 {{count}} 項自訂配置",
       "noCustomizationsImported": "未匯入任何自訂配置"
     }
   },

@@ -10,6 +10,7 @@ require (
 	github.com/andybalholm/brotli v1.2.3
 	github.com/autobrr/autobrr v1.85.0
 	github.com/autobrr/go-bdinfo v0.4.3-0.20260905142019-c391e265ec72
+	github.com/autobrr/go-cache v1.0.0-rc1
 	github.com/autobrr/go-mediainfo v0.8.0
 	github.com/autobrr/go-qbittorrent v1.18.1-0.20260825200055-b0abc1c0134d
 	github.com/autobrr/go-torrent v1.1.1

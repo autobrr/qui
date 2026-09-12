@@ -4,6 +4,7 @@
  */
 
 import { getColumnType, type ColumnFilter } from "@/lib/column-filter-utils"
+import { columnLabel } from "@/lib/torrent-table/column-label"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender } from "@tanstack/react-table"
@@ -59,9 +60,10 @@ interface DraggableTableHeaderProps {
   columnFilters?: ColumnFilter[]
   viewMode?: ViewMode
   onFilterChange?: (columnId: string, filter: ColumnFilter | null) => void
+  stretched?: boolean
 }
 
-export function DraggableTableHeader({ header, columnFilters = [], viewMode = "normal", onFilterChange }: DraggableTableHeaderProps) {
+export function DraggableTableHeader({ header, columnFilters = [], viewMode = "normal", onFilterChange, stretched = false }: DraggableTableHeaderProps) {
   const { column } = header
 
   const isSelectHeader = column.id === "select"
@@ -86,8 +88,9 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const table = header.getContext().table
   const trackerColumn = isTrackerIconHeader ? table.getColumn("tracker") : null
 
-  const canResize = column.getCanResize()
-  const shouldShowSeparator = canResize || column.columnDef.enableResizing === false
+  // A stretched column's width is derived, so resizing it would only store an invisible value.
+  const canResize = column.getCanResize() && !stretched
+  const shouldShowSeparator = canResize || stretched || column.columnDef.enableResizing === false
   const shouldShowSortIndicator = !isSelectHeader && column.getIsSorted() && (isPriorityHeader || !isCompactHeader)
   const canSort = column.getCanSort() || (!!trackerColumn && trackerColumn.getCanSort())
   const toggleSortingHandler = column.getToggleSortingHandler()
@@ -152,8 +155,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
             <span className={columnFilterIconVisibilityClassName}>
               <ColumnFilterPopover
                 columnId={column.id}
-                columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
-                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                columnName={columnLabel(column)}
                 columnType={getColumnType(column.id)}
                 currentFilter={columnFilters.find(f => f.columnId === column.id)}
                 onApply={(filter) => onFilterChange(column.id, filter)}

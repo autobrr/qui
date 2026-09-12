@@ -1526,6 +1526,10 @@
     "descending": "absteigend",
     "sortDirection": "{{direction}} sortieren",
     "toggleColumns": "Spalten umschalten",
+    "stretchMode": "Spalte Name auf die Tabellenbreite strecken",
+    "scrollMode": "Breite der Spalte Name selbst festlegen und seitlich scrollen",
+    "stretchInactive": "Pausiert, weil die sichtbaren Spalten die Tabelle bereits füllen",
+    "reorderColumn": "Ziehen, um {{column}} neu anzuordnen",
     "tableAriaLabel": "Torrent-Tabelle"
   },
   "sort": {

@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "인스턴스 설정"
   },
-  "proxySettings": {
-    "loading": "프록시 설정 불러오는 중...",
-    "title": "프록시 구성",
-    "proxyType": "프록시 유형",
-    "proxyTypeDescription": "연결 라우팅을 위한 프록시 유형 선택",
-    "serverTitle": "프록시 서버",
-    "serverLabel": "프록시 서버",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "프록시 서버 호스트 이름 또는 IP 주소",
-    "port": "포트",
-    "portDescription": "프록시 서버 포트",
-    "authTitle": "인증",
-    "useAuth": "인증 사용",
-    "useAuthDescription": "프록시 서버에 사용자 이름/비밀번호가 필요하면 활성화하세요",
-    "username": "사용자 이름",
-    "password": "비밀번호",
-    "optionsTitle": "프록시 옵션",
-    "peerConnections": "피어 연결에 프록시 사용",
-    "peerConnectionsDescription": "BitTorrent 피어 연결을 프록시를 통해 라우팅",
-    "torrentsOnly": "토렌트에만 프록시 사용",
-    "torrentsOnlyDescription": "다른 연결이 아닌 BitTorrent 트래픽에만 프록시 사용",
-    "hostnameLookup": "호스트 이름 조회에 프록시 사용",
-    "hostnameLookupDescription": "프록시 서버를 통해 호스트 이름 확인",
-    "update": "프록시 설정 업데이트",
-    "updating": "업데이트 중...",
-    "types": {
-      "none": "없음",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "프록시 설정이 업데이트되었습니다",
-      "failed": "프록시 설정을 업데이트하지 못했습니다"
-    }
-  },
   "passwordBanner": {
     "title": "비밀번호 문제 감지됨",
     "description": "일부 인스턴스가 구성 변경으로 인해 저장된 비밀번호를 해독할 수 없습니다. 이 문제를 해결하려면 아래의 영향받는 인스턴스를 확인하세요."
@@ -658,20 +622,7 @@
       "fullSync": "전체 동기화",
       "addOnly": "추가만",
       "removeOnly": "제거만",
-      "deleteDialog": {
-        "title": "규칙 삭제",
-        "description": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
-        "cancel": "취소",
-        "delete": "삭제"
-      },
-      "actionCount_other": "작업 {{count}}개",
-      "toast": {
-        "workflowDeleted": "워크플로가 삭제되었습니다",
-        "deleteAutomationFailed": "자동화를 삭제하지 못했습니다",
-        "toggleRuleFailed": "규칙을 전환하지 못했습니다",
-        "workflowsApplied": "워크플로가 적용되었습니다",
-        "applyAutomationsFailed": "자동화를 적용하지 못했습니다"
-      }
+      "actionCount_other": "작업 {{count}}개"
     },
     "workflowsOverview": {
       "title": "워크플로",
@@ -739,8 +690,7 @@
       "xsSafe": "XS 안전",
       "plusXs": "+ XS",
       "plusFiles": "+ 파일",
-      "tagActions": "태그 작업 {{count}}개",
-      "tagActions_plural": "태그 작업 {{count}}개",
+      "tagActions_other": "태그 작업 {{count}}개",
       "program": "프로그램",
       "runDryRunNow": "지금 모의 실행",
       "duplicate": "복제",
@@ -1049,14 +999,11 @@
       "allTags": "모든 태그",
       "allIndexers": "모든 인덱서",
       "allCategoriesIncluded": "모든 카테고리가 포함됩니다.",
-      "selectedCategories": "선택한 카테고리 {{count}}개만 일치됩니다.",
-      "selectedCategories_plural": "선택한 카테고리 {{count}}개만 일치됩니다.",
+      "selectedCategories_other": "선택한 카테고리 {{count}}개만 일치됩니다.",
       "allTagsIncluded": "모든 태그가 포함됩니다.",
-      "selectedTags": "선택한 태그 {{count}}개만 일치됩니다.",
-      "selectedTags_plural": "선택한 태그 {{count}}개만 일치됩니다.",
+      "selectedTags_other": "선택한 태그 {{count}}개만 일치됩니다.",
       "allIndexersSearched": "활성화된 모든 인덱서가 검색됩니다.",
-      "selectedIndexers": "선택한 인덱서 {{count}}개만 쿼리됩니다.",
-      "selectedIndexers_plural": "선택한 인덱서 {{count}}개만 쿼리됩니다.",
+      "selectedIndexers_other": "선택한 인덱서 {{count}}개만 쿼리됩니다.",
       "skipCategoriesDescription": "이 카테고리의 토렌트를 건너뜁니다.",
       "skipTagsDescription": "이 태그가 있는 토렌트를 건너뜁니다.",
       "none": "없음",

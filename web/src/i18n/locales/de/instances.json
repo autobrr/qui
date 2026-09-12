@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Instanz-Einstellungen"
   },
-  "proxySettings": {
-    "loading": "Proxy-Einstellungen werden geladen...",
-    "title": "Proxy-Konfiguration",
-    "proxyType": "Proxy-Typ",
-    "proxyTypeDescription": "Wähle den Proxy-Typ für das Routing von Verbindungen",
-    "serverTitle": "Proxy-Server",
-    "serverLabel": "Proxy-Server",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Hostname oder IP-Adresse des Proxy-Servers",
-    "port": "Port",
-    "portDescription": "Port des Proxy-Servers",
-    "authTitle": "Authentifizierung",
-    "useAuth": "Authentifizierung verwenden",
-    "useAuthDescription": "Aktivieren, wenn dein Proxy-Server Benutzername/Passwort erfordert",
-    "username": "Benutzername",
-    "password": "Passwort",
-    "optionsTitle": "Proxy-Optionen",
-    "peerConnections": "Proxy für Peer-Verbindungen verwenden",
-    "peerConnectionsDescription": "BitTorrent-Peer-Verbindungen über den Proxy leiten",
-    "torrentsOnly": "Proxy nur für Torrents verwenden",
-    "torrentsOnlyDescription": "Proxy nur für BitTorrent-Traffic verwenden, nicht für andere Verbindungen",
-    "hostnameLookup": "Proxy für Hostname-Auflösungen verwenden",
-    "hostnameLookupDescription": "Hostnamen über den Proxy-Server auflösen",
-    "update": "Proxy-Einstellungen aktualisieren",
-    "updating": "Wird aktualisiert...",
-    "types": {
-      "none": "Keine",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Proxy-Einstellungen erfolgreich aktualisiert",
-      "failed": "Aktualisieren der Proxy-Einstellungen fehlgeschlagen"
-    }
-  },
   "passwordBanner": {
     "title": "Passwort-Probleme erkannt",
     "description": "Einige Instanzen können ihre gespeicherten Passwörter nicht entschlüsseln, vermutlich aufgrund einer Konfigurationsänderung. Prüfe die betroffenen Instanzen unten, um dieses Problem zu beheben."
@@ -658,21 +622,8 @@
       "fullSync": "Voller Sync",
       "addOnly": "Nur hinzufügen",
       "removeOnly": "Nur entfernen",
-      "deleteDialog": {
-        "title": "Regel löschen",
-        "description": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
-        "cancel": "Abbrechen",
-        "delete": "Löschen"
-      },
       "actionCount_one": "{{count}} Aktion",
-      "actionCount_other": "{{count}} Aktionen",
-      "toast": {
-        "workflowDeleted": "Workflow gelöscht",
-        "deleteAutomationFailed": "Löschen der Automatisierung fehlgeschlagen",
-        "toggleRuleFailed": "Umschalten der Regel fehlgeschlagen",
-        "workflowsApplied": "Workflows angewendet",
-        "applyAutomationsFailed": "Anwenden der Automatisierungen fehlgeschlagen"
-      }
+      "actionCount_other": "{{count}} Aktionen"
     },
     "workflowsOverview": {
       "title": "Workflows",
@@ -740,8 +691,8 @@
       "xsSafe": "XS-sicher",
       "plusXs": "+ XS",
       "plusFiles": "+ Dateien",
-      "tagActions": "{{count}} Tag-Aktion",
-      "tagActions_plural": "{{count}} Tag-Aktionen",
+      "tagActions_one": "{{count}} Tag-Aktion",
+      "tagActions_other": "{{count}} Tag-Aktionen",
       "program": "Programm",
       "runDryRunNow": "Probelauf jetzt starten",
       "duplicate": "Duplizieren",
@@ -1073,14 +1024,14 @@
       "allTags": "Alle Tags",
       "allIndexers": "Alle Indexer",
       "allCategoriesIncluded": "Alle Kategorien werden einbezogen.",
-      "selectedCategories": "Nur {{count}} ausgewählte Kategorie wird abgeglichen.",
-      "selectedCategories_plural": "Nur {{count}} ausgewählte Kategorien werden abgeglichen.",
+      "selectedCategories_one": "Nur {{count}} ausgewählte Kategorie wird abgeglichen.",
+      "selectedCategories_other": "Nur {{count}} ausgewählte Kategorien werden abgeglichen.",
       "allTagsIncluded": "Alle Tags werden einbezogen.",
-      "selectedTags": "Nur {{count}} ausgewählter Tag wird abgeglichen.",
-      "selectedTags_plural": "Nur {{count}} ausgewählte Tags werden abgeglichen.",
+      "selectedTags_one": "Nur {{count}} ausgewählter Tag wird abgeglichen.",
+      "selectedTags_other": "Nur {{count}} ausgewählte Tags werden abgeglichen.",
       "allIndexersSearched": "Alle aktivierten Indexer werden durchsucht.",
-      "selectedIndexers": "Nur {{count}} ausgewählter Indexer wird abgefragt.",
-      "selectedIndexers_plural": "Nur {{count}} ausgewählte Indexer werden abgefragt.",
+      "selectedIndexers_one": "Nur {{count}} ausgewählter Indexer wird abgefragt.",
+      "selectedIndexers_other": "Nur {{count}} ausgewählte Indexer werden abgefragt.",
       "skipCategoriesDescription": "Torrents in diesen Kategorien überspringen.",
       "skipTagsDescription": "Torrents mit diesen Tags überspringen.",
       "none": "Keine",

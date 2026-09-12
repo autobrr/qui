@@ -1518,6 +1518,10 @@
     "descending": "sestupně",
     "sortDirection": "Řadit {{direction}}",
     "toggleColumns": "Přepnout sloupce",
+    "stretchMode": "Roztáhnout sloupec Název na šířku tabulky",
+    "scrollMode": "Nastavit šířku sloupce Název ručně a posouvat do stran",
+    "stretchInactive": "Pozastaveno, protože viditelné sloupce už tabulku vyplňují",
+    "reorderColumn": "Přetažením změníte pořadí {{column}}",
     "tableAriaLabel": "Tabulka torrentů"
   },
   "sort": {
