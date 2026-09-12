@@ -71,7 +71,7 @@ The arrow keys replace the selection with the focused row, the same as a plain c
 
 **Toggle columns** in the table toolbar shows or hides columns. Drag the handle next to a column in that menu to change its position, or drag a column header directly.
 
-The button next to it switches the Name column between two modes. In **stretch mode** the Name column takes whatever width the other columns leave, so the table fills the window. In **scroll mode** the Name column keeps its own width and the table scrolls sideways. qui falls back to scrolling on its own while the visible columns do not fit, and remembers the choice per instance.
+The button next to it switches the Name column between two modes. In **stretch mode**, the default, the Name column takes whatever width the other columns leave, so the table fills the window. In **scroll mode** the Name column keeps its own width and the table scrolls sideways. qui falls back to scrolling on its own while the visible columns do not fit, and the button turns grey to show that. The choice is remembered per instance.
 
 ## Torrent creator
 

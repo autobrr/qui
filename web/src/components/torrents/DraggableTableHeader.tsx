@@ -4,6 +4,7 @@
  */
 
 import { getColumnType, type ColumnFilter } from "@/lib/column-filter-utils"
+import { columnLabel } from "@/lib/torrent-table/column-label"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { flexRender } from "@tanstack/react-table"
@@ -154,8 +155,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
             <span className={columnFilterIconVisibilityClassName}>
               <ColumnFilterPopover
                 columnId={column.id}
-                columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
-                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                columnName={columnLabel(column)}
                 columnType={getColumnType(column.id)}
                 currentFilter={columnFilters.find(f => f.columnId === column.id)}
                 onApply={(filter) => onFilterChange(column.id, filter)}

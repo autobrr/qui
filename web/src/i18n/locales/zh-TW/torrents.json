@@ -1465,6 +1465,7 @@
     "toggleColumns": "切換列顯示",
     "stretchMode": "延展模式",
     "scrollMode": "捲動模式",
+    "stretchInactive": "未生效：可見欄位沒有為名稱欄位留出空間",
     "reorderColumn": "拖曳以重新排序 {{column}}",
     "tableAriaLabel": "種子表格"
   },

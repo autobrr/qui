@@ -1520,6 +1520,7 @@
     "toggleColumns": "Přepnout sloupce",
     "stretchMode": "Režim roztažení",
     "scrollMode": "Režim posouvání",
+    "stretchInactive": "Neaktivní: viditelné sloupce nenechávají místo pro sloupec Název",
     "reorderColumn": "Přetažením změníte pořadí {{column}}",
     "tableAriaLabel": "Tabulka torrentů"
   },

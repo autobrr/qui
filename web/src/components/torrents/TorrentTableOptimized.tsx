@@ -167,9 +167,6 @@ const NAME_COLUMN_MIN_WIDTH = 160
 const STRETCH_RESIZE_SETTLE_MS = 120
 // Must match the .ss-row-gutter width in spreadsheet-chrome.css.
 const SPREADSHEET_ROW_GUTTER_WIDTH = 44
-// TanStack's defaultColumnSizing, mirrored so widths can be summed before the table exists.
-const TANSTACK_DEFAULT_COLUMN_SIZE = 150
-const TANSTACK_DEFAULT_COLUMN_MIN_SIZE = 20
 
 function columnDefId(col: TorrentTableColumnDef): string | null {
   if ("id" in col && col.id) return col.id
@@ -793,16 +790,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Stretch mode pushes Name's width through TanStack's columnSizing rather than CSS,
   // so header drag/resize geometry stays correct. Summed from the column defs because
-  // the table (and its getSize) does not exist yet.
+  // the table (and its getSize) does not exist yet; every def sets a size.
   const [containerWidth, setContainerWidth] = useState(0)
   const fixedColsWidth = useMemo(() => {
     return columns.reduce((sum, col) => {
       const id = columnDefId(col)
       if (!id || id === "name" || columnVisibility[id] === false) return sum
-      const size = columnSizing[id] ?? col.size ?? TANSTACK_DEFAULT_COLUMN_SIZE
-      const minSize = col.minSize ?? TANSTACK_DEFAULT_COLUMN_MIN_SIZE
-      const maxSize = col.maxSize ?? Number.MAX_SAFE_INTEGER
-      return sum + Math.min(Math.max(minSize, size), maxSize)
+      return sum + (columnSizing[id] ?? col.size ?? 0)
     }, 0)
   }, [columns, columnVisibility, columnSizing])
   const availableWidth = containerWidth - (showRowGutter ? SPREADSHEET_ROW_GUTTER_WIDTH : 0)
@@ -1489,14 +1483,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       <>
                         <Tooltip disableHoverableContent={true}>
                           <TooltipTrigger asChild onFocus={(e) => e.preventDefault()}>
-                            <Button variant="outline" size="icon" onClick={toggleStretchNameColumn}>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              // Muted while the preference is on but the visible columns do not leave room for Name.
+                              className={stretchNameColumn && !effectiveStretch ? "text-muted-foreground" : undefined}
+                              onClick={toggleStretchNameColumn}
+                            >
                               {stretchNameColumn
                                 ? <Minimize2 className="h-4 w-4" />
                                 : <Maximize2 className="h-4 w-4" />}
                               <span className="sr-only">{stretchNameColumn ? t("tableView.scrollMode") : t("tableView.stretchMode")}</span>
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>{stretchNameColumn ? t("tableView.scrollMode") : t("tableView.stretchMode")}</TooltipContent>
+                          <TooltipContent>
+                            {stretchNameColumn ? t("tableView.scrollMode") : t("tableView.stretchMode")}
+                            {stretchNameColumn && !effectiveStretch && (
+                              <span className="block text-muted-foreground">{t("tableView.stretchInactive")}</span>
+                            )}
+                          </TooltipContent>
                         </Tooltip>
 
                         <DropdownMenu>
@@ -1504,7 +1509,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <TooltipTrigger
                               asChild
                               onFocus={(e) => {
-                              // Prevent tooltip from showing on focus - only show on hover
+                                // Prevent tooltip from showing on focus - only show on hover
                                 e.preventDefault()
                               }}
                             >
@@ -1526,7 +1531,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             <ColumnOrderMenu
                               table={table}
                               columnOrder={columnOrder}
-                              setColumnOrder={setColumnOrder}
+                              sensors={sensors}
+                              onDragEnd={onDragEnd}
                             />
                           </DropdownMenuContent>
                         </DropdownMenu>

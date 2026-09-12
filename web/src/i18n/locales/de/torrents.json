@@ -1528,6 +1528,7 @@
     "toggleColumns": "Spalten umschalten",
     "stretchMode": "Streckmodus",
     "scrollMode": "Scrollmodus",
+    "stretchInactive": "Inaktiv: Die sichtbaren Spalten lassen keinen Platz für die Spalte Name",
     "reorderColumn": "Ziehen, um {{column}} neu anzuordnen",
     "tableAriaLabel": "Torrent-Tabelle"
   },

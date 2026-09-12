@@ -1528,6 +1528,7 @@
     "toggleColumns": "Attiva/disattiva colonne",
     "stretchMode": "Modalità estesa",
     "scrollMode": "Modalità scorrimento",
+    "stretchInactive": "Inattivo: le colonne visibili non lasciano spazio alla colonna Nome",
     "reorderColumn": "Trascina per riordinare {{column}}",
     "tableAriaLabel": "Tabella dei torrent"
   },

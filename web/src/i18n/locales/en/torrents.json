@@ -1528,6 +1528,7 @@
     "toggleColumns": "Toggle columns",
     "stretchMode": "Stretch mode",
     "scrollMode": "Scroll mode",
+    "stretchInactive": "Inactive: the visible columns do not leave room for the Name column",
     "reorderColumn": "Drag to reorder {{column}}",
     "tableAriaLabel": "Torrents table"
   },

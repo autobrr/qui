@@ -1528,6 +1528,7 @@
     "toggleColumns": "Alternar colunas",
     "stretchMode": "Modo esticado",
     "scrollMode": "Modo de rolagem",
+    "stretchInactive": "Inativo: as colunas visíveis não deixam espaço para a coluna Nome",
     "reorderColumn": "Arraste para reordenar {{column}}",
     "tableAriaLabel": "Tabela de torrents"
   },

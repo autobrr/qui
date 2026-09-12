@@ -5,21 +5,17 @@
 
 import { useCallback } from "react"
 
-import { useClientSetting } from "@/lib/client-settings"
+import { parseJsonBoolean, useClientSetting } from "@/lib/client-settings"
 
 const BASE_STORAGE_KEY = "qui-stretch-name-column"
 
-function parseStretch(raw: string): boolean {
-  return raw !== "false"
-}
-
 /**
  * Whether the Name column stretches to fill the table (true) or keeps a fixed
- * width so the table side-scrolls (false). Stored per instance; defaults to stretch.
+ * width so the table side-scrolls (false). Stored per instance (0 is the
+ * all-instances view, matching the other column hooks); defaults to stretch.
  */
 export function usePersistedStretchMode(instanceId: number): [boolean, () => void] {
-  const key = instanceId > 0 ? `${BASE_STORAGE_KEY}:${instanceId}` : BASE_STORAGE_KEY
-  const [stretch, setStretch] = useClientSetting<boolean>(key, { defaultValue: true, parse: parseStretch })
+  const [stretch, setStretch] = useClientSetting<boolean>(`${BASE_STORAGE_KEY}:${instanceId}`, { defaultValue: true, parse: parseJsonBoolean })
   const toggle = useCallback(() => setStretch((current) => !current), [setStretch])
   return [stretch, toggle]
 }

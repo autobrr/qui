@@ -51,11 +51,20 @@ describe("usePersistedStretchMode", () => {
     expect(window.localStorage.getItem("qui-stretch-name-column:1")).toBe("false")
   })
 
-  it("uses the shared key when no instance is selected", () => {
+  it("scopes the all-instances view to instance 0 like the other column hooks", () => {
     const { result } = renderHook(() => usePersistedStretchMode(0))
 
     act(() => result.current[1]())
 
-    expect(window.localStorage.getItem("qui-stretch-name-column")).toBe("false")
+    expect(window.localStorage.getItem("qui-stretch-name-column:0")).toBe("false")
+    expect(window.localStorage.getItem("qui-stretch-name-column")).toBeNull()
+  })
+
+  it("falls back to the default on a value that is not a boolean", () => {
+    window.localStorage.setItem("qui-stretch-name-column:1", "garbage")
+
+    const { result } = renderHook(() => usePersistedStretchMode(1))
+
+    expect(result.current[0]).toBe(true)
   })
 })
