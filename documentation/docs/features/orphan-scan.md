@@ -53,7 +53,7 @@ Both are off by default. Turning them on widens what a scan can flag, so review 
 Everything else still applies inside the wider roots:
 
 - Files that torrents reference are protected, including torrents on other active instances with local filesystem access.
-- Ignore paths, the grace period, and max files per run all apply.
+- Ignore paths, the grace period, and max items per run all apply.
 - A save path missing from disk, such as an unmounted volume, is reported rather than treated as scanned, even when a wider root covers it.
 
 If qui cannot read the default save path or the category list from qBittorrent, or qBittorrent reports an empty or relative default save path, the run fails and names the cause. qui does not fall back to a narrower scan, because a narrower scan would report a clean result over a tree you asked it to check.
@@ -66,19 +66,19 @@ These paths come from qBittorrent, so they are paths as qBittorrent sees them. I
 
 Moves and deletions leave empty directories behind. Orphan scan reports files, so an empty directory is never flagged, and the tree fills up with them over time.
 
-Turn on **Delete Abandoned Directories** to include them. qui reports a directory when this run empties it: either it holds no files at any depth, or every file below it is an orphan the run is about to delete. Each one is listed in the preview alongside the orphan files, marked with a folder icon and no size.
+Turn on **Delete Abandoned Directories** to include them. qui reports a directory when this run empties it: either it holds no files at any depth, or every file below it is an orphan the run is about to delete. Each one is listed in the preview alongside the orphan files, marked with a directory icon and no size.
 
-A single file that survives the run keeps its whole chain of parent directories. That covers a file a torrent owns, a file still inside the grace period, a file under your ignore paths, and a file the max-files cap pushed out of this run.
+A single file that survives the run keeps its whole chain of parent directories. That covers a file a torrent owns, a file still inside the grace period, a file under your ignore paths, and a file the max-items cap pushed out of this run.
 
 These are never reported, even when empty:
 
 - A scan root itself.
-- A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's folder the same way qBittorrent does, including one that inherits from a parent category.
+- A category destination, or any directory above one. qBittorrent will save into it again. qui works out a category's directory the same way qBittorrent does, including one that inherits from a parent category.
 - Anything under your ignore paths.
 - A directory changed more recently than the grace period.
 - A directory holding anything qui did not itself list for removal, such as an ignored subdirectory or a symlink.
 
-Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the folder count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
+Directories are removed after the files, so a tree this run empties goes in one pass. qui removes only the directories the preview listed, so the directory count never exceeds what you saw. Anything that changed between the preview and your confirmation is skipped rather than removed: a directory that still holds a file the run kept, one that gained content, or one that has since become a scan root or a category destination is reported as skipped, not failed.
 
 ## Partial scans
 
@@ -114,7 +114,7 @@ Otherwise, qui reports the path as unavailable.
 | Grace period | Skip files modified within this window | 10 minutes |
 | Ignore paths | Directories to exclude from scanning | - |
 | Scan interval | How often scheduled scans run | 24 hours |
-| Max files per run | Maximum orphan preview entries saved for a run (also caps what qui can delete from that run) | 1,000 |
+| Max items per run | Maximum orphan preview entries, files and directories together, saved for a run (also caps what qui can delete from that run) | 1,000 |
 | Scan default save path | Also walk qBittorrent's default save path, including directories no torrent uses | Disabled |
 | Including category paths | Also walk every category destination, explicit or inherited | Disabled |
 | Delete abandoned directories | Report directories this run empties | Disabled |
@@ -125,24 +125,24 @@ Otherwise, qui reports the path as unavailable.
 
 If an ignore path is a scan path, or a directory above a scan path, qui removes that scan path from the run. Use this when a save path is not available on the host that runs qui. If the ignore paths remove all scan paths, the run fails and tells you that the ignore paths cover every scan path.
 
-## Max files per run behavior
+## Max items per run behavior
 
 1. qui attempts to scan all selected paths. A wider directory can cover nested scan paths. Unavailable paths follow the [partial scan rules](#partial-scans).
 2. qui sorts the orphan candidates by your selected preview sort.
-3. qui applies `Max files per run`. If more candidates exist than the cap, qui marks the run as truncated.
-4. qui deletes only the files saved in that run's preview list.
+3. qui applies `Max items per run`. If more candidates exist than the cap, qui marks the run as truncated.
+4. qui deletes only the items saved in that run's preview list: orphan files and the abandoned directories they empty.
 
-**Example:** If qui finds 2,000 orphan candidates among 5,000 total files and `Max files per run` is 1,000, qui scans all 5,000 files, saves the top 1,000 candidates for preview and deletion, and marks the run as truncated.
+**Example:** If qui finds 2,000 orphan candidates among 5,000 total files and `Max items per run` is 1,000, qui scans all 5,000 files, saves the top 1,000 candidates for preview and deletion, and marks the run as truncated.
 
 ### FAQ
 
 **Do I need multiple runs to scan everything?**
-No. qui applies the preview cap after scanning. If orphan candidates exceed the cap, delete the files in the current preview first. The next scan returns the next set of candidates. If paths were unavailable, restore access and run another scan.
+No. qui applies the preview cap after scanning. If orphan candidates exceed the cap, delete the items in the current preview first. The next scan returns the next set of candidates. If paths were unavailable, restore access and run another scan.
 
 ## Workflow
 
 1. Trigger a manual or scheduled scan.
-2. Review the preview list of orphan files.
+2. Review the preview list of orphan files and directories.
 3. Confirm deletion.
 4. qui deletes the files, then removes the directories you saw in the preview.
 

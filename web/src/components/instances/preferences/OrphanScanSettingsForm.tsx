@@ -242,13 +242,13 @@ export function OrphanScanSettingsForm({
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="max-files" className="text-sm font-medium">{t("preferences.orphanScanSettings.maxFiles")}</Label>
+              <Label htmlFor="max-files" className="text-sm font-medium">{t("preferences.orphanScanSettings.maxItems")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[250px]">
-                  <p>{t("preferences.orphanScanSettings.maxFilesTooltip")}</p>
+                  <p>{t("preferences.orphanScanSettings.maxItemsTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
