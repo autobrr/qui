@@ -186,8 +186,8 @@
       "invalidDomains": "Invalid entry: domains must be a non-empty array",
       "invalidJson": "Invalid JSON",
       "newCount": "{{count}} new",
-      "conflictCount": "{{count}} conflict",
-      "conflictCount_plural": "{{count}} conflicts",
+      "conflictCount_one": "{{count}} conflict",
+      "conflictCount_other": "{{count}} conflicts",
       "unchangedCount": "{{count}} unchanged",
       "resolveConflicts": "Resolve conflicts",
       "conflictsWith": "Conflicts with: {{name}}",
@@ -206,8 +206,8 @@
       "deleteFailed": "Failed to delete tracker customization",
       "failedToImport": "Failed to import: {{names}}",
       "importedAndSkipped": "Imported {{imported}}, skipped {{skipped}}",
-      "importedCount": "Imported {{count}} customization",
-      "importedCount_plural": "Imported {{count}} customizations",
+      "importedCount_one": "Imported {{count}} customization",
+      "importedCount_other": "Imported {{count}} customizations",
       "noCustomizationsImported": "No customizations imported"
     }
   },

@@ -186,8 +186,8 @@
       "invalidDomains": "Entrada inválida: domains deve ser um array não vazio",
       "invalidJson": "JSON inválido",
       "newCount": "{{count}} novo",
-      "conflictCount": "{{count}} conflito",
-      "conflictCount_plural": "{{count}} conflitos",
+      "conflictCount_one": "{{count}} conflito",
+      "conflictCount_other": "{{count}} conflitos",
       "unchangedCount": "{{count}} inalterado",
       "resolveConflicts": "Resolver conflitos",
       "conflictsWith": "Em conflito com: {{name}}",
@@ -206,8 +206,8 @@
       "deleteFailed": "Falha ao excluir personalização do tracker",
       "failedToImport": "Falha ao importar: {{names}}",
       "importedAndSkipped": "Importados {{imported}}, ignorados {{skipped}}",
-      "importedCount": "{{count}} personalização importada",
-      "importedCount_plural": "{{count}} personalizações importadas",
+      "importedCount_one": "{{count}} personalização importada",
+      "importedCount_other": "{{count}} personalizações importadas",
       "noCustomizationsImported": "Nenhuma personalização importada"
     }
   },
