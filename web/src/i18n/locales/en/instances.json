@@ -938,7 +938,7 @@
       },
       "toast": {
         "deletionStarted": "Deletion started",
-        "deletionDescription": "Orphan files and directories are being removed",
+        "deletionDescription": "Orphan files and abandoned directories are being removed",
         "deletionFailed": "Failed to start deletion",
         "exportedItems_one": "Exported {{count}} item to CSV",
         "exportedItems_other": "Exported {{count}} items to CSV",

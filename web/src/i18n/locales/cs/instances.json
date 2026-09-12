@@ -570,7 +570,7 @@
       "saving": "Ukládání..."
     },
     "orphanScan": {
-      "configureTitle": "Nastavení skenování sirotčích souborů",
+      "configureTitle": "Nastavení vyhledávání sirotků",
       "saveChanges": "Uložit změny",
       "collapse": "Sbalit",
       "expand": "Rozbalit"
@@ -857,12 +857,12 @@
       "skipPreviewHint": "Pravidlo se při dalším spuštění stejně použije na každý odpovídající torrent. Můžete uložit bez čekání na náhled."
     },
     "orphanScanOverview": {
-      "title": "Vyhledání nepárových souborů",
+      "title": "Vyhledání sirotků",
       "noInstancesDescription": "Žádné instance nenastaveny. Přidejte jednu v Nastavení pro použití této služby.",
       "tooltip": "Vyhledává soubory na disku, které nejsou přidruženy k žádnému torrentu v qBittorrentu.\nVyžaduje povolený přístup k místnímu souborovému systému pro každou instanci.",
       "description": "Vyhledává soubory v adresářích pro stahování a identifikuje nepárové soubory (sirotky) pro vyčištění.",
       "noLocalAccess": "Žádný přístup k místnímu souborovému systému",
-      "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání nepárových souborů.",
+      "noLocalAccessTooltip": "qui a qBittorrent musí běžet na stejném stroji. Povolte \"Místní souborový systém\" v nastavení instance pro použití vyhledávání sirotků.",
       "on": "Zapnuto",
       "off": "Vypnuto",
       "settingsSummary": "Lhůta {{grace}}min · Interval {{interval}}h · Max {{max}} položek",
@@ -943,7 +943,7 @@
       "deleteItems": "Smazat",
       "toast": {
         "deletionStarted": "Smazání spuštěno",
-        "deletionDescription": "Nepárové soubory a adresáře jsou odstraňovány",
+        "deletionDescription": "Nepárové soubory a opuštěné adresáře jsou odstraňovány",
         "deletionFailed": "Selhalo spuštění smazání",
         "exportedItems_one": "Exportována {{count}} položka do CSV",
         "exportedItems_few": "Exportovány {{count}} položky do CSV",
@@ -1007,7 +1007,7 @@
       "saving": "Ukládá se...",
       "saveChanges": "Uložit změny",
       "toast": {
-        "settingsSaved": "Vyhledávání nepárových souborů aktualizováno",
+        "settingsSaved": "Vyhledávání sirotků aktualizováno",
         "updateFailed": "Selhala aktualizace",
         "updateFailedDescription": "Nelze aktualizovat nastavení"
       }

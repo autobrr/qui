@@ -932,7 +932,7 @@
       "deleteItems": "Elimina",
       "toast": {
         "deletionStarted": "Eliminazione avviata",
-        "deletionDescription": "I file e le cartelle orfani sono in fase di rimozione",
+        "deletionDescription": "I file orfani e le cartelle abbandonate sono in fase di rimozione",
         "deletionFailed": "Impossibile avviare l'eliminazione",
         "exportedItems_one": "Esportato {{count}} elemento in CSV",
         "exportedItems_other": "Esportati {{count}} elementi in CSV",

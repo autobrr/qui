@@ -980,7 +980,7 @@
       "deleteItems": "Видалити",
       "toast": {
         "deletionStarted": "Розпочато видалення",
-        "deletionDescription": "Осиротілі файли та каталоги видаляються",
+        "deletionDescription": "Осиротілі файли та покинуті каталоги видаляються",
         "deletionFailed": "Не вдалося розпочати видалення",
         "exportedItems_one": "Експортовано {{count}} елемент до CSV",
         "exportedItems_few": "Експортовано {{count}} елементи до CSV",

@@ -570,7 +570,7 @@
       "saving": "保存中..."
     },
     "orphanScan": {
-      "configureTitle": "配置孤立文件扫描",
+      "configureTitle": "配置孤立项目扫描",
       "saveChanges": "保存更改",
       "collapse": "收起",
       "expand": "展开"
@@ -837,12 +837,12 @@
       "skipPreviewHint": "规则在下次运行时仍会作用于每个匹配的种子。您可以不等待预览直接保存。"
     },
     "orphanScanOverview": {
-      "title": "孤立文件扫描",
+      "title": "孤立项目扫描",
       "noInstancesDescription": "未配置实例。请在设置中添加实例以使用此服务。",
       "tooltip": "查找磁盘上与 qBittorrent 中任何种子都不关联的文件。\n需要为每个实例启用本地文件系统访问。",
       "description": "扫描下载目录并识别孤立文件以进行清理。",
       "noLocalAccess": "无本地访问权限",
-      "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立文件扫描。",
+      "noLocalAccessTooltip": "qui 和 qBittorrent 必须运行在同一台机器上。在实例设置中启用\"本地文件系统访问\"以使用孤立项目扫描。",
       "on": "开",
       "off": "关",
       "settingsSummary": "宽限期 {{grace}} 分钟 · 间隔 {{interval}} 小时 · 最多 {{max}} 个项目",
@@ -914,7 +914,7 @@
       },
       "toast": {
         "deletionStarted": "删除已开始",
-        "deletionDescription": "正在移除孤立文件和目录",
+        "deletionDescription": "正在移除孤立文件和废弃目录",
         "deletionFailed": "启动删除失败",
         "exportedItems_other": "已导出 {{count}} 个项目到 CSV",
         "exportFailed": "导出失败"
@@ -969,7 +969,7 @@
       "saving": "保存中...",
       "saveChanges": "保存更改",
       "toast": {
-        "settingsSaved": "孤立文件扫描已更新",
+        "settingsSaved": "孤立项目扫描已更新",
         "updateFailed": "更新失败",
         "updateFailedDescription": "无法更新设置"
       }

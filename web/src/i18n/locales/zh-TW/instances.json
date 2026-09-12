@@ -570,7 +570,7 @@
       "saving": "儲存中..."
     },
     "orphanScan": {
-      "configureTitle": "配置孤立檔案掃描",
+      "configureTitle": "配置孤立項目掃描",
       "saveChanges": "儲存更改",
       "collapse": "收起",
       "expand": "展開"
@@ -837,12 +837,12 @@
       "skipPreviewHint": "規則在下次執行時仍會作用於每個符合的種子。您可以不等待預覽直接儲存。"
     },
     "orphanScanOverview": {
-      "title": "孤立檔案掃描",
+      "title": "孤立項目掃描",
       "noInstancesDescription": "未配置實例。請在設定中新增實例以使用此服務。",
       "tooltip": "查詢磁碟上與 qBittorrent 中任何種子都不關聯的檔案。\n需要為每個實例啟用本機檔案系統存取。",
       "description": "掃描下載目錄並識別孤立檔案以進行清理。",
       "noLocalAccess": "無本機存取權限",
-      "noLocalAccessTooltip": "qui 和 qBittorrent 必須執行在同一臺機器上。在實例設定中啟用\"本機檔案系統存取\"以使用孤立檔案掃描。",
+      "noLocalAccessTooltip": "qui 和 qBittorrent 必須執行在同一臺機器上。在實例設定中啟用\"本機檔案系統存取\"以使用孤立項目掃描。",
       "on": "開",
       "off": "關",
       "settingsSummary": "寬限期 {{grace}} 分鐘 · 間隔 {{interval}} 小時 · 最多 {{max}} 個項目",
@@ -914,7 +914,7 @@
       },
       "toast": {
         "deletionStarted": "刪除已開始",
-        "deletionDescription": "正在移除孤立檔案和目錄",
+        "deletionDescription": "正在移除孤立檔案和廢棄目錄",
         "deletionFailed": "啟動刪除失敗",
         "exportedItems_other": "已匯出 {{count}} 個項目到 CSV",
         "exportFailed": "匯出失敗"
@@ -969,7 +969,7 @@
       "saving": "儲存中...",
       "saveChanges": "儲存更改",
       "toast": {
-        "settingsSaved": "孤立檔案掃描已更新",
+        "settingsSaved": "孤立項目掃描已更新",
         "updateFailed": "更新失敗",
         "updateFailedDescription": "無法更新設定"
       }

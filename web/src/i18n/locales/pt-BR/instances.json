@@ -570,7 +570,7 @@
       "saving": "Salvando..."
     },
     "orphanScan": {
-      "configureTitle": "Configurar Varredura",
+      "configureTitle": "Configurar Varredura de Órfãos",
       "saveChanges": "Salvar",
       "collapse": "Colapsar",
       "expand": "Expandir"
@@ -856,7 +856,7 @@
       "skipPreviewHint": "A regra ainda age em todos os torrents correspondentes na próxima execução. Você pode salvar sem esperar pela pré-visualização."
     },
     "orphanScanOverview": {
-      "title": "Arquivos Órfãos",
+      "title": "Varredura de Órfãos",
       "noInstancesDescription": "Nenhuma instância configurada.",
       "tooltip": "Busca arquivos no disco que não fazem mais parte do qBittorrent.",
       "description": "Analise seus diretórios e ache arquivos não associados a torrents para limpar o disco.",
@@ -938,7 +938,7 @@
       },
       "toast": {
         "deletionStarted": "Exclusão iniciada",
-        "deletionDescription": "Arquivos e diretórios órfãos estão sendo removidos",
+        "deletionDescription": "Arquivos órfãos e diretórios abandonados estão sendo removidos",
         "deletionFailed": "Falha ao excluir",
         "exportedItems_one": "Exportado {{count}} item p/ CSV",
         "exportedItems_other": "Exportados {{count}} itens p/ CSV",
@@ -994,7 +994,7 @@
       "saving": "Salvando...",
       "saveChanges": "Salvar",
       "toast": {
-        "settingsSaved": "Configurações atualizadas",
+        "settingsSaved": "Varredura de órfãos atualizada",
         "updateFailed": "Erro ao atualizar",
         "updateFailedDescription": "Falha ao salvar as opções de varredura."
       }

@@ -938,7 +938,7 @@
       },
       "toast": {
         "deletionStarted": "Löschung gestartet",
-        "deletionDescription": "Orphan-Dateien und -Verzeichnisse werden entfernt",
+        "deletionDescription": "Orphan-Dateien und verwaiste Verzeichnisse werden entfernt",
         "deletionFailed": "Löschung konnte nicht gestartet werden",
         "exportedItems_one": "{{count}} Eintrag als CSV exportiert",
         "exportedItems_other": "{{count}} Einträge als CSV exportiert",

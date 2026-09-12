@@ -570,7 +570,7 @@
       "saving": "저장 중..."
     },
     "orphanScan": {
-      "configureTitle": "고아 파일 스캔 구성",
+      "configureTitle": "고아 항목 스캔 구성",
       "saveChanges": "변경 사항 저장",
       "collapse": "접기",
       "expand": "펼치기"
@@ -837,12 +837,12 @@
       "skipPreviewHint": "규칙은 다음 실행 시 일치하는 모든 토렌트에 그대로 적용됩니다. 미리보기를 기다리지 않고 저장할 수 있습니다."
     },
     "orphanScanOverview": {
-      "title": "고아 파일 스캔",
+      "title": "고아 항목 스캔",
       "noInstancesDescription": "구성된 인스턴스가 없습니다. 이 서비스를 사용하려면 설정에서 인스턴스를 추가하세요.",
       "tooltip": "qBittorrent의 어떤 토렌트와도 연결되지 않은 디스크상의 파일을 찾습니다.\n각 인스턴스에 로컬 파일시스템 접근이 활성화되어 있어야 합니다.",
       "description": "다운로드 디렉터리를 스캔하여 정리할 고아 파일을 식별합니다.",
       "noLocalAccess": "로컬 접근 없음",
-      "noLocalAccessTooltip": "qui와 qBittorrent은 동일한 컴퓨터에서 실행되어야 합니다. 고아 파일 스캔을 사용하려면 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하세요.",
+      "noLocalAccessTooltip": "qui와 qBittorrent은 동일한 컴퓨터에서 실행되어야 합니다. 고아 항목 스캔을 사용하려면 인스턴스 설정에서 \"로컬 파일시스템 접근\"을 활성화하세요.",
       "on": "켜짐",
       "off": "꺼짐",
       "settingsSummary": "유예 {{grace}}분 · 간격 {{interval}}시간 · 최대 {{max}}개 항목",
@@ -914,7 +914,7 @@
       },
       "toast": {
         "deletionStarted": "삭제가 시작되었습니다",
-        "deletionDescription": "고아 파일과 디렉터리가 제거되고 있습니다",
+        "deletionDescription": "고아 파일과 버려진 디렉터리가 제거되고 있습니다",
         "deletionFailed": "삭제를 시작하지 못했습니다",
         "exportedItems_other": "항목 {{count}}개를 CSV로 내보냈습니다",
         "exportFailed": "내보내지 못했습니다"
@@ -969,7 +969,7 @@
       "saving": "저장 중...",
       "saveChanges": "변경 사항 저장",
       "toast": {
-        "settingsSaved": "고아 파일 스캔이 업데이트되었습니다",
+        "settingsSaved": "고아 항목 스캔이 업데이트되었습니다",
         "updateFailed": "업데이트 실패",
         "updateFailedDescription": "설정을 업데이트할 수 없습니다"
       }
