@@ -985,7 +985,7 @@
         "deletionFailed": "Échec du démarrage de la suppression",
         "exportedItems_one": "{{count}} élément exporté vers CSV",
         "exportedItems_other": "{{count}} éléments exportés vers CSV",
-        "exportFailed": "Échec de l'exportation des fichiers"
+        "exportFailed": "Échec de l'exportation"
       },
       "directory": "Dossier"
     },
@@ -1017,9 +1017,9 @@
       "autoCleanupLabel": "Nettoyage automatique pour les analyses planifiées",
       "autoCleanupTooltip": "Si activé, les analyses planifiées supprimeront automatiquement les orphelins. Les analyses manuelles afficheront toujours un aperçu.",
       "autoDeleteWarningTitle": "La suppression automatique effacera définitivement des fichiers et des dossiers",
-      "autoDeleteWarningBody": "Les fichiers identifiés comme orphelins seront supprimés automatiquement sans examen manuel. Si l'analyse de répertoire est configurée en mode normal, tous les fichiers des répertoires analysés qui <span class='font-medium'>ne correspondent pas à un torrent seront signalés comme orphelins</span> et supprimés.",
+      "autoDeleteWarningBody": "Les fichiers identifiés comme orphelins seront supprimés automatiquement sans examen manuel, ainsi que les dossiers abandonnés qu'ils laissent vides lorsque l'option Supprimer les dossiers abandonnés est activée. Si l'analyse de répertoire est configurée en mode normal, tous les fichiers des répertoires analysés qui <span class='font-medium'>ne correspondent pas à un torrent seront signalés comme orphelins</span> et supprimés.",
       "autoDeleteWarningPaths": "Assurez-vous que vos <span class=\"font-medium\">chemins ignorés</span> soient corrects ou utilisez le mode hardlink.",
-      "autoDeleteAcknowledge": "J'ai vérifié mes paramètres et compris que les fichiers seront supprimés définitivement",
+      "autoDeleteAcknowledge": "J'ai vérifié mes paramètres et compris que les fichiers et les dossiers seront supprimés définitivement",
       "maxFilesThreshold": "Seuil maximum de fichiers",
       "maxFilesThresholdTooltip": "Limite de sécurité pour éviter la suppression automatique lors d'anomalies. Les dossiers ne comptent pas dans ce seuil.",
       "files": "fichiers",

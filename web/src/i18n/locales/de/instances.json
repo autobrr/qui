@@ -991,7 +991,7 @@
         "deletionFailed": "Löschung konnte nicht gestartet werden",
         "exportedItems_one": "{{count}} Eintrag als CSV exportiert",
         "exportedItems_other": "{{count}} Einträge als CSV exportiert",
-        "exportFailed": "Dateien konnten nicht exportiert werden"
+        "exportFailed": "Export fehlgeschlagen"
       },
       "directory": "Verzeichnis"
     },
@@ -1023,9 +1023,9 @@
       "autoCleanupLabel": "Auto-Cleanup für geplante Scans",
       "autoCleanupTooltip": "Wenn aktiviert, löschen geplante Scans Orphans automatisch, ohne dass eine manuelle Bestätigung erforderlich ist. Manuelle Scans zeigen immer zuerst eine Vorschau.",
       "autoDeleteWarningTitle": "Auto-Löschung entfernt Dateien und Verzeichnisse dauerhaft",
-      "autoDeleteWarningBody": "Als Orphans markierte Dateien werden automatisch ohne manuelle Prüfung gelöscht. Wenn der Dir-Scan im normalen Modus konfiguriert ist, werden alle Dateien in den gescannten Verzeichnissen, die <span class=\"font-medium\">keinem Torrent zugeordnet sind, als Orphans markiert</span> und gelöscht.",
+      "autoDeleteWarningBody": "Als Orphans markierte Dateien werden automatisch ohne manuelle Prüfung gelöscht, zusammen mit den verwaisten Verzeichnissen, die dadurch leer werden, sofern Verwaiste Verzeichnisse löschen aktiviert ist. Wenn der Dir-Scan im normalen Modus konfiguriert ist, werden alle Dateien in den gescannten Verzeichnissen, die <span class=\"font-medium\">keinem Torrent zugeordnet sind, als Orphans markiert</span> und gelöscht.",
       "autoDeleteWarningPaths": "Stelle sicher, dass deine <span class=\"font-medium\">Ignore-Pfade</span> korrekt konfiguriert sind, oder nutze den hardlink/reflink-Modus für den Dir-Scan.",
-      "autoDeleteAcknowledge": "Ich habe meine Einstellungen geprüft und verstehe, dass Dateien dauerhaft gelöscht werden",
+      "autoDeleteAcknowledge": "Ich habe meine Einstellungen geprüft und verstehe, dass Dateien und Verzeichnisse dauerhaft gelöscht werden",
       "maxFilesThreshold": "Schwellwert für max. Dateien",
       "maxFilesThresholdTooltip": "Sicherheitslimit: Findet ein Scan mehr Dateien als dieser Schwellwert, überspringt er das Auto-Cleanup und erfordert eine manuelle Prüfung. Verzeichnisse zählen nicht mit. Das fängt Anomalien wie falsch konfigurierte Ignore-Pfade ab.",
       "files": "Dateien",

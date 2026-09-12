@@ -1023,7 +1023,7 @@
       "autoCleanupLabel": "Ativar Exclusão Automática",
       "autoCleanupTooltip": "Quando ativo, escaneamentos automáticos excluirão os órfãos imediatamente.",
       "autoDeleteWarningTitle": "A auto-exclusão removerá arquivos e diretórios permanentemente.",
-      "autoDeleteWarningBody": "Os arquivos marcados como órfãos não aparecerão para revisão. Se um diretório for monitorado e contiver outros arquivos <span class=\"font-medium\">que não pertençam aos torrents</span>, eles também serão excluídos.",
+      "autoDeleteWarningBody": "Os arquivos marcados como órfãos serão excluídos automaticamente, sem revisão manual, junto com os diretórios abandonados que eles esvaziam quando Excluir diretórios abandonados estiver ativo. Se um diretório for monitorado e contiver outros arquivos <span class=\"font-medium\">que não pertençam aos torrents</span>, eles também serão excluídos.",
       "autoDeleteWarningPaths": "Verifique seus caminhos na <span class=\"font-medium\">Lista de Ignorados</span>.",
       "autoDeleteAcknowledge": "Estou ciente e aceito os riscos.",
       "maxFilesThreshold": "Limite Máximo para Auto-Limpeza",

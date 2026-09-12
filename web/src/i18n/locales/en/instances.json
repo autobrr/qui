@@ -991,7 +991,7 @@
         "deletionFailed": "Failed to start deletion",
         "exportedItems_one": "Exported {{count}} item to CSV",
         "exportedItems_other": "Exported {{count}} items to CSV",
-        "exportFailed": "Failed to export files"
+        "exportFailed": "Failed to export"
       },
       "directory": "Directory"
     },
@@ -1023,9 +1023,9 @@
       "autoCleanupLabel": "Auto-Cleanup for Scheduled Scans",
       "autoCleanupTooltip": "When enabled, scheduled scans will automatically delete orphans without requiring manual confirmation. Manual scans will always show a preview first.",
       "autoDeleteWarningTitle": "Auto-delete will permanently remove files and directories",
-      "autoDeleteWarningBody": "Files flagged as orphans will be deleted automatically without manual review. If dir scan is configured in regular mode, any files in scanned directories that <span class=\"font-medium\">are not matched by a torrent will be flagged as orphans</span> and deleted.",
+      "autoDeleteWarningBody": "Files flagged as orphans will be deleted automatically without manual review, along with the abandoned directories they empty when Delete Abandoned Directories is on. If dir scan is configured in regular mode, any files in scanned directories that <span class=\"font-medium\">are not matched by a torrent will be flagged as orphans</span> and deleted.",
       "autoDeleteWarningPaths": "Ensure your <span class=\"font-medium\">Ignore Paths</span> are correctly configured or use hardlink/reflink mode for dir scan.",
-      "autoDeleteAcknowledge": "I have reviewed my settings and understand files will be permanently deleted",
+      "autoDeleteAcknowledge": "I have reviewed my settings and understand files and directories will be permanently deleted",
       "maxFilesThreshold": "Max Files Threshold",
       "maxFilesThresholdTooltip": "Safety limit: if a scan finds more files than this threshold, it will skip auto-cleanup and require manual review. Directories do not count toward it. This catches anomalies like misconfigured ignore paths.",
       "files": "files",

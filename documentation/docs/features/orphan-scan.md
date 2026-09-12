@@ -130,14 +130,14 @@ If an ignore path is a scan path, or a directory above a scan path, qui removes 
 1. qui attempts to scan all selected paths. A wider directory can cover nested scan paths. Unavailable paths follow the [partial scan rules](#partial-scans).
 2. qui sorts the orphan candidates by your selected preview sort.
 3. qui applies `Max items per run`. If more candidates exist than the cap, qui marks the run as truncated.
-4. qui deletes only the files saved in that run's preview list.
+4. qui deletes only the items saved in that run's preview list: orphan files and the abandoned directories they empty.
 
 **Example:** If qui finds 2,000 orphan candidates among 5,000 total files and `Max items per run` is 1,000, qui scans all 5,000 files, saves the top 1,000 candidates for preview and deletion, and marks the run as truncated.
 
 ### FAQ
 
 **Do I need multiple runs to scan everything?**
-No. qui applies the preview cap after scanning. If orphan candidates exceed the cap, delete the files in the current preview first. The next scan returns the next set of candidates. If paths were unavailable, restore access and run another scan.
+No. qui applies the preview cap after scanning. If orphan candidates exceed the cap, delete the items in the current preview first. The next scan returns the next set of candidates. If paths were unavailable, restore access and run another scan.
 
 ## Workflow
 

@@ -985,7 +985,7 @@
         "deletionFailed": "Impossibile avviare l'eliminazione",
         "exportedItems_one": "Esportato {{count}} elemento in CSV",
         "exportedItems_other": "Esportati {{count}} elementi in CSV",
-        "exportFailed": "Impossibile esportare i file"
+        "exportFailed": "Impossibile esportare"
       },
       "statusLabels": {
         "pending": "In attesa",
@@ -1023,9 +1023,9 @@
       "autoCleanupLabel": "Pulizia automatica per le scansioni pianificate",
       "autoCleanupTooltip": "Se abilitata, le scansioni pianificate elimineranno automaticamente gli orfani senza richiedere conferma manuale. Le scansioni manuali mostreranno sempre prima un'anteprima.",
       "autoDeleteWarningTitle": "L'eliminazione automatica rimuoverà file e cartelle in modo permanente",
-      "autoDeleteWarningBody": "I file contrassegnati come orfani verranno eliminati automaticamente senza revisione manuale. Se la scansione delle cartelle è configurata in modalità normale, tutti i file nelle cartelle scansionate che <span class=\"font-medium\">non corrispondono a un torrent verranno contrassegnati come orfani</span> ed eliminati.",
+      "autoDeleteWarningBody": "I file contrassegnati come orfani verranno eliminati automaticamente senza revisione manuale, insieme alle cartelle abbandonate che rimangono vuote quando l'opzione Elimina le cartelle abbandonate è attiva. Se la scansione delle cartelle è configurata in modalità normale, tutti i file nelle cartelle scansionate che <span class=\"font-medium\">non corrispondono a un torrent verranno contrassegnati come orfani</span> ed eliminati.",
       "autoDeleteWarningPaths": "Assicurati che i tuoi <span class=\"font-medium\">percorsi da ignorare</span> siano configurati correttamente oppure usa la modalità hardlink/reflink per la scansione delle cartelle.",
-      "autoDeleteAcknowledge": "Ho rivisto le mie impostazioni e ho compreso che i file verranno eliminati in modo permanente",
+      "autoDeleteAcknowledge": "Ho rivisto le mie impostazioni e ho compreso che i file e le cartelle verranno eliminati in modo permanente",
       "maxFilesThreshold": "Soglia massima di file",
       "maxFilesThresholdTooltip": "Limite di sicurezza: se una scansione trova più file di questa soglia, salterà la pulizia automatica e richiederà una revisione manuale. Le cartelle non vengono conteggiate. In questo modo vengono rilevate anomalie come percorsi da ignorare configurati male.",
       "files": "file",
