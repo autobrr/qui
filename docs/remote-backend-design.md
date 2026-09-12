@@ -221,9 +221,18 @@ backend domain end to end.
   display string; later connects constrain `HostKeyAlgorithms` to the
   pinned type, so a key-type change is a mismatch, never a negotiation
   accident. Fingerprints render as `SHA256:` for humans only.
-- A host-key change after pinning fails closed: no automatic re-pin, and
-  no fallback to TOFU if the stored pin is missing or unreadable. The
-  mismatch surfaces both fingerprints and both key types behind a
+- A host-key change after pinning fails closed: no automatic re-pin. A
+  pin that fails to decrypt is a hard error, never "unpinned". An empty
+  pin column is unpinned and takes the first-contact flow: there is no
+  separate "was pinned" state, so a database writer who clears the column
+  is not detected. What that buys them is a first-contact confirmation the
+  user sees in place of the mismatch flow, not a silent re-pin; the AAD
+  binding above still refuses the transplant and redirect edits. Writing
+  the pin is one-shot:
+  `SetHostKeyPin` refuses an instance that is already pinned, so
+  replacing a live pin is a separate, named operation on the
+  confirmed-mismatch path. The mismatch surfaces both fingerprints and
+  both key types behind a
   confirmation deliberately heavier than first contact, one that names
   interception as a possible cause and points at out-of-band
   verification. A legitimate re-key and an interception look identical to
