@@ -14,11 +14,6 @@ const pluralSuffixPattern = /_(?:ordinal_)?(?:zero|one|two|few|many|other)$/
 // prose out of the reference set.
 const keyPathPattern = /^[A-Za-z0-9_$-]+(?::[A-Za-z0-9_$-]+)?(?:\.[A-Za-z0-9_$-]+)*$/
 
-function stripNamespace(value) {
-  const separatorIndex = value.indexOf(":")
-  return separatorIndex === -1 ? value : value.slice(separatorIndex + 1)
-}
-
 function collectLeafKeys(node, prefix, leaves) {
   for (const [segment, value] of Object.entries(node)) {
     const keyPath = prefix ? `${prefix}.${segment}` : segment
@@ -67,7 +62,8 @@ export function collectLocaleKeys(namespaceBundles) {
  *
  * Literals are collected from anywhere in the file, not just inside `t(...)`: keys
  * travel through `labelKey` fields and `<Trans i18nKey>` attributes as often as they
- * are passed directly.
+ * are passed directly. Literals and prefixes keep a `namespace:` qualifier when the
+ * source writes one.
  */
 export function collectKeyReferencesFromSource(source, fileName) {
   const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true)
@@ -75,8 +71,7 @@ export function collectKeyReferencesFromSource(source, fileName) {
   const prefixes = new Set()
   const suffixes = new Set()
 
-  function addLiteral(rawValue) {
-    const value = stripNamespace(rawValue)
+  function addLiteral(value) {
     if (keyPathPattern.test(value)) {
       literals.add(value)
     }
@@ -90,7 +85,7 @@ export function collectKeyReferencesFromSource(source, fileName) {
       return
     }
 
-    const prefix = stripNamespace(headText.slice(0, lastDotIndex))
+    const prefix = headText.slice(0, lastDotIndex)
     if (prefix && keyPathPattern.test(prefix)) {
       prefixes.add(prefix)
     }
@@ -243,13 +238,17 @@ const knownUnusedKeys = new Set([
   "torrents:trackersTable.tier",
 ])
 
-function isReachable(key, references) {
-  if (references.literals.has(key)) {
+// A `namespace:` reference reaches only that namespace. An unqualified one may resolve in
+// any namespace, because its default comes from the caller's useTranslation or `ns` option.
+function isReachable(namespace, key, references) {
+  const qualifiedKey = `${namespace}:${key}`
+  if (references.literals.has(key) || references.literals.has(qualifiedKey)) {
     return true
   }
 
   for (const prefix of references.prefixes) {
-    if (key === prefix || key.startsWith(`${prefix}.`)) {
+    const candidate = prefix.includes(":") ? qualifiedKey : key
+    if (candidate === prefix || candidate.startsWith(`${prefix}.`)) {
       return true
     }
   }
@@ -265,7 +264,7 @@ function isReachable(key, references) {
 
 export function findUnusedKeys(localeKeys, references) {
   return localeKeys
-    .filter(({ key }) => !isReachable(key, references))
+    .filter(({ namespace, key }) => !isReachable(namespace, key, references))
     .map(({ namespace, key }) => `${namespace}:${key}`)
     .sort()
 }

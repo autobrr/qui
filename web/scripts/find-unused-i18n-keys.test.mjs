@@ -147,3 +147,29 @@ test("plural leaves are checked as one base key, but a pre-v4 _plural leaf is it
     "instances:preferences.orphanScanOverview.pathsIgnored_plural",
   ])
 })
+
+test("a namespace-qualified reference keeps only that namespace's key alive", () => {
+  const bundles = {
+    common: { actions: { cancel: "Cancel" }, labels: { status: "Status" } },
+    torrents: { actions: { cancel: "Cancel" }, labels: { status: "Status" } },
+  }
+
+  const sources = [
+    `t("common:actions.cancel")`,
+    "t(`common:labels.${field}`)",
+  ]
+
+  assert.deepEqual(unusedKeysFor(bundles, sources), [
+    "torrents:actions.cancel",
+    "torrents:labels.status",
+  ])
+})
+
+test("an unqualified reference can resolve in any namespace", () => {
+  const bundles = {
+    common: { actions: { cancel: "Cancel" } },
+    torrents: { actions: { cancel: "Cancel" } },
+  }
+
+  assert.deepEqual(unusedKeysFor(bundles, [`t("actions.cancel")`]), [])
+})
