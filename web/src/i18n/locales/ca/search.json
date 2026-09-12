@@ -1,0 +1,189 @@
+{
+  "pageTitle": "Cerca als indexadors",
+  "pageDescription": "Cerca a tots els indexadors activats. Tria un tipus de cerca.",
+  "indexerSummary": {
+    "label": "Indexadors",
+    "noEnabled": "No hi ha cap indexador activat",
+    "allEnabled": "Tots activats ({{count}})",
+    "selected": "{{selected}} de {{total}} seleccionats"
+  },
+  "indexerSheet": {
+    "title": "Selecció d'indexadors",
+    "description": "Tria quins indexadors s'inclouen a les cerques.",
+    "selectAll": "Selecciona'ls tots",
+    "clearSelection": "Neteja la selecció",
+    "noCategories": "Cap categoria",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Natiu",
+      "jackett": "Jackett"
+    },
+    "footer": "{{selected}} de {{total}} indexadors activats seleccionats",
+    "done": "Fet"
+  },
+  "instanceSelector": {
+    "chooseTarget": "Tria la instància de destinació",
+    "noInstances": "Cap instància",
+    "offline": "Fora de línia",
+    "targetNamed": "Destinació: {{name}}",
+    "targetNamedOffline": "Destinació: {{name}} (fora de línia)",
+    "clearSelection": "Neteja la selecció",
+    "noInstancesConfigured": "No hi ha cap instància configurada",
+    "addInstanceNote": "Afegeix una instància de baixada a Configuració > Instàncies."
+  },
+  "searchForm": {
+    "advanced": "Avançat",
+    "active": "Actiu",
+    "clear": "Neteja",
+    "searching": "S'està cercant...",
+    "search": "Cerca",
+    "advancedNote": "Paràmetres de Torznab opcionals (però recomanats).",
+    "searchType": "Tipus de cerca",
+    "searchQuery": "Consulta de cerca",
+    "noIndexers": "No hi ha cap indexador activat disponible. Afegeix i activa indexadors a la",
+    "indexersPage": "pàgina Indexadors"
+  },
+  "searchTypes": {
+    "movies": {
+      "label": "Pel·lícules",
+      "placeholder": "p. ex., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "p. ex., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Música",
+      "placeholder": "p. ex., \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Llibres i còmics",
+      "placeholder": "p. ex., \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Aplicacions i jocs",
+      "placeholder": "p. ex., \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Adults",
+      "placeholder": "Introdueix el nom d'una release per a adults concreta"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "ID d'IMDb",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "ID de TVDb",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Any",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Temporada",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episodi",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Artista",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Àlbum",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Límit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Desplaçament",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "Es mostren {{filtered}} de {{total}} resultats",
+    "filterPlaceholder": "Filtra els resultats...",
+    "clearSearch": "Neteja la cerca",
+    "clearAllFilters": "Neteja tots els filtres de columna",
+    "pickInstance": "Tria una instància",
+    "download": "Baixa",
+    "viewDetails": "Mostra els detalls",
+    "clearSelectionButton": "Neteja la selecció",
+    "actions": "Accions",
+    "quickAddTo": "Addició ràpida a...",
+    "cachedSummary": "A la memòria cau {{cached}} · Caduca {{expires}}",
+    "cacheSource": "Origen: {{source}} · Àmbit: {{scope}}",
+    "refreshReadyIn": "A punt d'aquí a {{seconds}} s",
+    "refreshFromIndexers": "Actualitza des dels indexadors",
+    "noValue": "-",
+    "categoryFallback": "Categoria {{id}}",
+    "noResultsFor": "No s'ha trobat cap resultat per a \"{{query}}\"",
+    "enterQuery": "Introdueix una consulta de cerca per començar",
+    "free": "Gratuït",
+    "freeNeutral": "Neutre",
+    "noInfoUrlAvailable": "No hi ha cap URL d'informació disponible"
+  },
+  "historyMeta": "{{type}} · {{count}} resultats · {{timestamp}}",
+  "table": {
+    "title": "Títol",
+    "indexer": "Indexador",
+    "size": "Mida",
+    "seeders": "Llavors",
+    "category": "Categoria",
+    "source": "Origen",
+    "collection": "Col·lecció",
+    "group": "Grup",
+    "freeleech": "Freeleech",
+    "published": "Publicat",
+    "actions": "Accions",
+    "downloadTorrent": "Baixa el .torrent",
+    "viewDetails": "Mostra els detalls",
+    "noInfoUrl": "Sense URL d'informació"
+  },
+  "refreshDialog": {
+    "title": "Vols ometre la memòria cau?",
+    "description": "Això enviarà la petició directament a cada indexador seleccionat. Fes-ho servir amb moderació per evitar els límits de freqüència. Podràs tornar a actualitzar després d'una breu espera.",
+    "cancel": "Cancel·la",
+    "refreshNow": "Actualitza ara"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + live",
+    "cacheHit": "Cache hit",
+    "liveFetch": "Live fetch"
+  },
+  "card": {
+    "actions": "Accions",
+    "addToInstance": "Afegeix a la instància",
+    "addToNamed": "Afegeix a {{name}}",
+    "addToNamedOffline": "Afegeix a {{name}} (fora de línia)",
+    "quickAddTo": "Addició ràpida a...",
+    "download": "Baixa",
+    "viewDetails": "Mostra els detalls",
+    "clearSelection": "Neteja la selecció",
+    "seeders": "{{count}} llavors",
+    "published": "Publicat el {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "Introdueix una consulta de cerca o omple els paràmetres avançats",
+    "selectIndexer": "Selecciona com a mínim un indexador",
+    "noEnabledIndexers": "No hi ha cap indexador activat disponible. Primer afegeix i activa indexadors.",
+    "noResults": "No s'ha trobat cap resultat",
+    "foundResults": "S'han trobat {{total}} resultats{{suffix}}",
+    "cached": " (a la memòria cau)",
+    "searchFailed": "La cerca ha fallat: {{error}}",
+    "failedToLoadIndexers": "No s'han pogut carregar els indexadors",
+    "addInstanceFirst": "Afegeix una instància de baixada a Configuració -> Instàncies",
+    "chooseInstance": "Tria una instància per afegir-hi torrents",
+    "noDownloadUrl": "Aquest resultat no té cap URL de baixada disponible",
+    "noInfoUrl": "Aquest resultat no té informació addicional disponible",
+    "invalidProtocol": "El protocol de l'URL no és vàlid",
+    "invalidUrl": "El format de l'URL no és vàlid"
+  }
+}
