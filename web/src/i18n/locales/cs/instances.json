@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Nastavení instance"
   },
-  "proxySettings": {
-    "loading": "Načítám proxy nastavení...",
-    "title": "Proxy konfigurace",
-    "proxyType": "Proxy typ",
-    "proxyTypeDescription": "Vyberte proxy typ pro směrování připojení",
-    "serverTitle": "Proxy server",
-    "serverLabel": "Proxy server",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Proxy server hostname nebo IP adresa",
-    "port": "Port",
-    "portDescription": "Proxy server port",
-    "authTitle": "Autentizace",
-    "useAuth": "Použít autentizaci",
-    "useAuthDescription": "Povolte, pokud váš proxy server vyžaduje uživatelské jméno/heslo",
-    "username": "Uživatelské jméno",
-    "password": "Heslo",
-    "optionsTitle": "Proxy možnosti",
-    "peerConnections": "Použít proxy pro peer připojení",
-    "peerConnectionsDescription": "Směrovat BitTorrent peer připojení přes proxy",
-    "torrentsOnly": "Použít proxy pouze pro torrenty",
-    "torrentsOnlyDescription": "Použít proxy pouze pro BitTorrent provoz, ne pro jiná připojení",
-    "hostnameLookup": "Použít proxy pro hledání hostname",
-    "hostnameLookupDescription": "Vyhledat hostname přes proxy server",
-    "update": "Aktualizovat proxy nastavení",
-    "updating": "Aktualizuji...",
-    "types": {
-      "none": "Žádný",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Proxy nastavení aktualizována úspěšně",
-      "failed": "Nepodařilo se aktualizovat proxy nastavení"
-    }
-  },
   "passwordBanner": {
     "title": "Detekovány problémy s heslem",
     "description": "Některé instance nemohou dešifrovat svá uložená hesla, pravděpodobně kvůli změně konfigurace. Zkontrolujte postižené instance níže a vyřešte tento problém."
@@ -658,21 +622,8 @@
       "fullSync": "Úplná synchronizace",
       "addOnly": "Přidat pouze",
       "removeOnly": "Odebrat pouze",
-      "deleteDialog": {
-        "title": "Smazat pravidlo",
-        "description": "Jste si jisti, že chcete smazat \"{{name}}\"? Tato akce nemůže být vrácena.",
-        "cancel": "Zrušit",
-        "delete": "Smazat"
-      },
       "actionCount_one": "{{count}} akce",
-      "actionCount_other": "{{count}} akcí",
-      "toast": {
-        "workflowDeleted": "Automatizace smazána",
-        "deleteAutomationFailed": "Nepodařilo se smazat automatizaci",
-        "toggleRuleFailed": "Nepodařilo se přepnout pravidlo",
-        "workflowsApplied": "Automatizace použity",
-        "applyAutomationsFailed": "Nepodařilo se použít automatizace"
-      }
+      "actionCount_other": "{{count}} akcí"
     },
     "workflowsOverview": {
       "title": "Postupy automatizace",

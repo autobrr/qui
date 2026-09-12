@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "实例设置"
   },
-  "proxySettings": {
-    "loading": "正在加载代理设置...",
-    "title": "代理配置",
-    "proxyType": "代理类型",
-    "proxyTypeDescription": "选择用于路由连接的代理类型",
-    "serverTitle": "代理服务器",
-    "serverLabel": "代理服务器",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "代理服务器主机名或 IP 地址",
-    "port": "端口",
-    "portDescription": "代理服务器端口",
-    "authTitle": "认证",
-    "useAuth": "使用认证",
-    "useAuthDescription": "如果你的代理服务器需要用户名/密码，请启用此选项",
-    "username": "用户名",
-    "password": "密码",
-    "optionsTitle": "代理选项",
-    "peerConnections": "对节点连接使用代理",
-    "peerConnectionsDescription": "通过代理路由 BitTorrent 节点连接",
-    "torrentsOnly": "仅对种子使用代理",
-    "torrentsOnlyDescription": "仅对 BitTorrent 流量使用代理，不用于其他连接",
-    "hostnameLookup": "通过代理进行主机名查找",
-    "hostnameLookupDescription": "通过代理服务器解析主机名",
-    "update": "更新代理设置",
-    "updating": "更新中...",
-    "types": {
-      "none": "无",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "代理设置更新成功",
-      "failed": "代理设置更新失败"
-    }
-  },
   "passwordBanner": {
     "title": "检测到密码问题",
     "description": "部分实例无法解密其保存的密码，可能是由于配置变更所致。请检查下方受影响的实例以解决此问题。"
@@ -658,20 +622,7 @@
       "fullSync": "完全同步",
       "addOnly": "仅添加",
       "removeOnly": "仅移除",
-      "deleteDialog": {
-        "title": "删除规则",
-        "description": "确定要删除\"{{name}}\"吗？此操作无法撤销。",
-        "cancel": "取消",
-        "delete": "删除"
-      },
-      "actionCount_other": "{{count}} 个操作",
-      "toast": {
-        "workflowDeleted": "工作流已删除",
-        "deleteAutomationFailed": "删除自动化失败",
-        "toggleRuleFailed": "切换规则失败",
-        "workflowsApplied": "工作流已应用",
-        "applyAutomationsFailed": "应用自动化失败"
-      }
+      "actionCount_other": "{{count}} 个操作"
     },
     "workflowsOverview": {
       "title": "工作流",

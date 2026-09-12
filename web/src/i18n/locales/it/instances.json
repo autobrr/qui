@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Impostazioni istanza"
   },
-  "proxySettings": {
-    "loading": "Caricamento delle impostazioni proxy...",
-    "title": "Configurazione proxy",
-    "proxyType": "Tipo di proxy",
-    "proxyTypeDescription": "Seleziona il tipo di proxy per l'instradamento delle connessioni",
-    "serverTitle": "Server proxy",
-    "serverLabel": "Server proxy",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Nome host o indirizzo IP del server proxy",
-    "port": "Porta",
-    "portDescription": "Porta del server proxy",
-    "authTitle": "Autenticazione",
-    "useAuth": "Usa autenticazione",
-    "useAuthDescription": "Abilita se il tuo server proxy richiede nome utente/password",
-    "username": "Nome utente",
-    "password": "Password",
-    "optionsTitle": "Opzioni proxy",
-    "peerConnections": "Usa il proxy per le connessioni ai peer",
-    "peerConnectionsDescription": "Instrada le connessioni ai peer BitTorrent attraverso il proxy",
-    "torrentsOnly": "Usa il proxy solo per i torrent",
-    "torrentsOnlyDescription": "Usa il proxy solo per il traffico BitTorrent, non per le altre connessioni",
-    "hostnameLookup": "Usa il proxy per le risoluzioni dei nomi host",
-    "hostnameLookupDescription": "Risolvi i nomi host tramite il server proxy",
-    "update": "Aggiorna impostazioni proxy",
-    "updating": "Aggiornamento...",
-    "types": {
-      "none": "Nessuno",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Impostazioni proxy aggiornate correttamente",
-      "failed": "Impossibile aggiornare le impostazioni proxy"
-    }
-  },
   "passwordBanner": {
     "title": "Rilevati problemi con le password",
     "description": "Alcune istanze non riescono a decifrare le password salvate, probabilmente a causa di una modifica della configurazione. Controlla le istanze interessate qui sotto per risolvere il problema."
@@ -658,21 +622,8 @@
       "fullSync": "Sincronizzazione completa",
       "addOnly": "Solo aggiunta",
       "removeOnly": "Solo rimozione",
-      "deleteDialog": {
-        "title": "Elimina regola",
-        "description": "Sei sicuro di voler eliminare \"{{name}}\"? Questa azione non può essere annullata.",
-        "cancel": "Annulla",
-        "delete": "Elimina"
-      },
       "actionCount_one": "{{count}} azione",
-      "actionCount_other": "{{count}} azioni",
-      "toast": {
-        "workflowDeleted": "Workflow eliminato",
-        "deleteAutomationFailed": "Impossibile eliminare l'automazione",
-        "toggleRuleFailed": "Impossibile attivare/disattivare la regola",
-        "workflowsApplied": "Workflow applicati",
-        "applyAutomationsFailed": "Impossibile applicare le automazioni"
-      }
+      "actionCount_other": "{{count}} azioni"
     },
     "workflowsOverview": {
       "title": "Workflow",

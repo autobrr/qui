@@ -31,13 +31,6 @@
       "performance": "Роздано"
     }
   },
-  "speedLimits": {
-    "title": "Ліміти швидкості",
-    "download": "Завантаження",
-    "upload": "Вивантаження",
-    "current": "Поточна: {{speed}}",
-    "unlimited": "Без обмежень"
-  },
   "instanceCard": {
     "loadingStats": "Завантаження статистики...",
     "failedToLoadStats": "Не вдалося завантажити статистику",

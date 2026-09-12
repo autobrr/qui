@@ -31,13 +31,6 @@
       "performance": "시드됨"
     }
   },
-  "speedLimits": {
-    "title": "속도 제한",
-    "download": "다운로드",
-    "upload": "업로드",
-    "current": "현재: {{speed}}",
-    "unlimited": "무제한"
-  },
   "instanceCard": {
     "loadingStats": "통계 불러오는 중...",
     "failedToLoadStats": "통계를 불러오지 못했습니다",

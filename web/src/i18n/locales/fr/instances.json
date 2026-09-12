@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Paramètres de l'instance"
   },
-  "proxySettings": {
-    "loading": "Chargement des paramètres du proxy...",
-    "title": "Configuration du proxy",
-    "proxyType": "Type de proxy",
-    "proxyTypeDescription": "Sélectionnez le type de proxy pour le routage des connexions",
-    "serverTitle": "Serveur proxy",
-    "serverLabel": "Serveur proxy",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Nom d'hôte ou adresse IP du serveur proxy",
-    "port": "Port",
-    "portDescription": "Port du serveur proxy",
-    "authTitle": "Authentification",
-    "useAuth": "Utiliser l'authentification",
-    "useAuthDescription": "Activez si votre serveur proxy requiert un nom d'utilisateur/mot de passe",
-    "username": "Nom d'utilisateur",
-    "password": "Mot de passe",
-    "optionsTitle": "Options du proxy",
-    "peerConnections": "Utiliser le proxy pour les connexions aux pairs",
-    "peerConnectionsDescription": "Routage des connexions BitTorrent aux pairs via le proxy",
-    "torrentsOnly": "Utiliser le proxy uniquement pour les torrents",
-    "torrentsOnlyDescription": "Utiliser le proxy uniquement pour le trafic BitTorrent, pas pour les autres connexions",
-    "hostnameLookup": "Utiliser le proxy pour les résolutions d'hôtes",
-    "hostnameLookupDescription": "Résoudre les noms d'hôtes via le serveur proxy",
-    "update": "Mettre à jour les paramètres du proxy",
-    "updating": "Mise à jour en cours...",
-    "types": {
-      "none": "Aucun",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Paramètres du proxy mis à jour avec succès",
-      "failed": "Échec de la mise à jour des paramètres du proxy"
-    }
-  },
   "passwordBanner": {
     "title": "Problèmes de mot de passe détectés",
     "description": "Certaines instances ne peuvent pas déchiffrer leurs mots de passe, probablement à cause d'un changement de configuration. Vérifiez-les ci-dessous."
@@ -652,21 +616,8 @@
       "fullSync": "Synchronisation complète",
       "addOnly": "Ajout uniquement",
       "removeOnly": "Suppression uniquement",
-      "deleteDialog": {
-        "title": "Supprimer la règle",
-        "description": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
-        "cancel": "Annuler",
-        "delete": "Supprimer"
-      },
       "actionCount_one": "{{count}} action",
-      "actionCount_other": "{{count}} actions",
-      "toast": {
-        "workflowDeleted": "Workflow supprimé",
-        "deleteAutomationFailed": "Échec de la suppression de l'automatisation",
-        "toggleRuleFailed": "Échec du basculement de la règle",
-        "workflowsApplied": "Workflows appliqués",
-        "applyAutomationsFailed": "Échec de l'application des automatisations"
-      }
+      "actionCount_other": "{{count}} actions"
     },
     "workflowsOverview": {
       "title": "Workflows",

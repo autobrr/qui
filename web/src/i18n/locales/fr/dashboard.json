@@ -31,13 +31,6 @@
       "performance": "Partagé"
     }
   },
-  "speedLimits": {
-    "title": "Limites de vitesse",
-    "download": "Téléchargement",
-    "upload": "Envoi",
-    "current": "Actuelle : {{speed}}",
-    "unlimited": "Illimité"
-  },
   "instanceCard": {
     "loadingStats": "Chargement des statistiques...",
     "failedToLoadStats": "Échec du chargement des statistiques",
