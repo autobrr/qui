@@ -1065,10 +1065,6 @@
       "label": "Peery",
       "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
-    "banPeer": {
-      "title": "Zakázat peer",
-      "description": "Jste si jisti, že chcete zakázat {{address}}?"
-    },
     "banPeerPermanent": {
       "title": "Permanentně zakázán peer",
       "description": "Jste si jisti, že chcete permanentně zakázat tento peer? Tato akce nemůže být vrácena.",

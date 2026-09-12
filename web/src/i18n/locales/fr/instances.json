@@ -1599,10 +1599,6 @@
       "trackerMatchInclude": "Inclure",
       "trackerMatchExclude": "Exclure"
     },
-    "shareLimit": {
-      "global": "Global",
-      "unlimited": "Illimité"
-    },
     "orphanScan": {
       "configureTitle": "Configurer",
       "saveChanges": "Enregistrer les modifications",

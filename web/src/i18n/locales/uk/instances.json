@@ -1650,10 +1650,6 @@
       },
       "trackerMatchInclude": "Включати",
       "trackerMatchExclude": "Виключити"
-    },
-    "shareLimit": {
-      "global": "Глобальний",
-      "unlimited": "Без обмежень"
     }
   },
   "backups": {

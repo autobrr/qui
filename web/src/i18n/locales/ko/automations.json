@@ -208,10 +208,6 @@
       "hours": "시간",
       "days": "일",
       "seconds": "초"
-    },
-    "capabilityReasons": {
-      "trackerHealth": "qBittorrent 5.1+ 필요",
-      "localFilesystemAccess": "로컬 파일시스템 접근 필요"
     }
   }
 }

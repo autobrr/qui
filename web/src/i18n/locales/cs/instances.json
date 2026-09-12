@@ -1608,10 +1608,6 @@
       },
       "trackerMatchInclude": "Zahrnout",
       "trackerMatchExclude": "Vyloučit"
-    },
-    "shareLimit": {
-      "global": "Globální",
-      "unlimited": "Neomezeno"
     }
   },
   "backups": {

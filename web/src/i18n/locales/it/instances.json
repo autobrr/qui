@@ -1604,10 +1604,6 @@
       },
       "trackerMatchInclude": "Includi",
       "trackerMatchExclude": "Escludi"
-    },
-    "shareLimit": {
-      "global": "Globale",
-      "unlimited": "Illimitato"
     }
   },
   "backups": {
