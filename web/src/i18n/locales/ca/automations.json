@@ -4,81 +4,6 @@
     "description": "Serveis d'automatització a escala d'instància gestionats per qui.",
     "noInstances": "Encara no hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir els serveis."
   },
-  "reannounce": {
-    "title": "Reanuncia",
-    "noInstances": "No hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir aquest servei.",
-    "tooltip": "qBittorrent no reintenta ràpidament els anuncis fallits. Quan un tracker triga a registrar una pujada nova o retorna un error, et pots quedar esperant. qui ho gestiona automàticament sense enviar mai brossa als trackers.",
-    "description": "Vigila els torrents <strong>encallats</strong> i els reanuncia quan cap tracker no funciona correctament.",
-    "today": "{{count}} avui",
-    "failed": "{{count}} fallits",
-    "notConfigured": "Sense configurar",
-    "monitoringAll": "S'estan vigilant tots els torrents encallats",
-    "filteredBy": "Filtrat per categories/etiquetes/trackers",
-    "noFilters": "No hi ha cap filtre configurat",
-    "recentActivity": "Activitat recent",
-    "retainInfo": "Conserva els últims 100 amb èxit, 100 fallits i 50 omesos",
-    "events": "{{count}} esdeveniments",
-    "eventsFiltered": "{{filtered}} de {{total}}",
-    "showSkipped": "Mostra els omesos",
-    "hideSkipped": "Amaga els omesos",
-    "filterPlaceholder": "Filtra per nom o hash...",
-    "failedToLoad": "No s'ha pogut carregar l'activitat",
-    "checkConnection": "Comprova la connexió amb la instància.",
-    "loadingActivity": "S'està carregant l'activitat...",
-    "noMatchingEvents": "No s'ha trobat cap esdeveniment coincident.",
-    "noActivityYet": "Encara no s'ha registrat cap activitat.",
-    "tryDifferentSearch": "Prova un altre terme de cerca o neteja el filtre.",
-    "eventsAppearHere": "Els esdeveniments apareixeran aquí quan es detectin torrents encallats.",
-    "hashCopied": "S'ha copiat el hash",
-    "enableMonitoring": "Activa la vigilància per començar a fer el seguiment dels torrents encallats.",
-    "toast": {
-      "monitoringEnabled": "S'ha activat la vigilància",
-      "monitoringDisabled": "S'ha desactivat la vigilància",
-      "updateFailed": "No s'ha pogut actualitzar",
-      "updateFailedDescription": "No s'ha pogut actualitzar la configuració"
-    }
-  },
-  "orphanScan": {
-    "title": "Exploració d'orfes",
-    "noInstances": "No hi ha cap instància configurada. Afegeix-ne una a Configuració per fer servir aquest servei.",
-    "tooltip": "Troba els fitxers del disc que no estan associats a cap torrent de qBittorrent. Cal activar l'accés al sistema de fitxers local per a cada instància.",
-    "description": "Explora els directoris de baixada i identifica els fitxers orfes per netejar-los.",
-    "noLocalAccess": "Sense accés local",
-    "localAccessTooltip": "qui i qBittorrent s'han d'executar a la mateixa màquina. Activa «Accés al sistema de fitxers local» a la configuració de la instància per fer servir l'exploració d'orfes.",
-    "autoCleanupEnabled": "Neteja automàtica activada (≤{{maxFiles}} fitxers)",
-    "autoCleanupDisabled": "Neteja automàtica desactivada",
-    "pathsIgnored": "{{count}} camí ignorat",
-    "pathsIgnored_plural": "{{count}} camins ignorats",
-    "scanNow": "Explora ara",
-    "orphanFilesFound": "{{count}} fitxer orfe trobat",
-    "orphanFilesFound_plural": "{{count}} fitxers orfes trobats",
-    "scanTruncated": "(l'exploració s'ha truncat, pot ser que hi hagi més fitxers)",
-    "viewPreview": "Mostra la previsualització",
-    "recentScans": "Exploracions recents",
-    "noScansYet": "Encara no s'ha fet cap exploració. Fes clic a «Explora ara» per trobar els fitxers orfes.",
-    "partialFailure": "Error parcial: desplega'l per veure'n els detalls",
-    "partialFailureCheck": "Error parcial: comprova les exploracions recents",
-    "copiedToClipboard": "S'ha copiat al porta-retalls",
-    "clean": "Neteja",
-    "starting": "S'està iniciant...",
-    "scanning": "S'està explorant...",
-    "readyForReview": "A punt per revisar",
-    "deleting": "S'està eliminant...",
-    "completed": "Completat",
-    "failed": "Ha fallat",
-    "canceled": "Cancel·lat",
-    "zeroOrphans": "0 orfes",
-    "toast": {
-      "scheduledEnabled": "S'ha activat l'exploració programada",
-      "scheduledDisabled": "S'ha desactivat l'exploració programada",
-      "updateFailed": "No s'ha pogut actualitzar",
-      "updateFailedDescription": "No s'ha pogut actualitzar la configuració",
-      "scanStarted": "S'ha iniciat l'exploració",
-      "scanFailed": "No s'ha pogut iniciar l'exploració",
-      "scanCanceled": "S'ha cancel·lat l'exploració",
-      "cancelFailed": "No s'ha pogut cancel·lar"
-    }
-  },
   "queryBuilder": {
     "noConditions": "Cap condició",
     "matchesAllTorrents": "Coincideix amb tots els torrents (segons la selecció de trackers).",
@@ -277,12 +202,6 @@
       "tracker_error": "Error del tracker",
       "unreachable": "Inaccessible"
     },
-    "deleteModes": {
-      "delete": "Suprimeix del client",
-      "deleteWithFiles": "Suprimeix amb els fitxers",
-      "deleteWithFilesPreserveCrossSeeds": "Suprimeix amb els fitxers (conserva els cross-seed)",
-      "deleteWithFilesIncludeCrossSeeds": "Suprimeix amb els fitxers (inclou els cross-seed)"
-    },
     "durationUnits": {
       "minutes": "minuts",
       "hours": "hores",
@@ -292,6 +211,7 @@
     "capabilityReasons": {
       "trackerHealth": "Requereix qBittorrent 5.1+",
       "localFilesystemAccess": "Requereix accés al sistema de fitxers local"
-    }
+    },
+    "wrappingRangeHint": "L'interval dona la volta: agafa {{min}} i valors superiors, i després tot el que queda per sota de {{max}}."
   }
 }

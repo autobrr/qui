@@ -363,7 +363,11 @@
     "descending": "descendent",
     "sortDirection": "Ordena de manera {{direction}}",
     "toggleColumns": "Commuta les columnes",
-    "tableAriaLabel": "Taula de torrents"
+    "tableAriaLabel": "Taula de torrents",
+    "reorderColumn": "Arrossega per reordenar {{column}}",
+    "scrollMode": "Defineix tu mateix l'amplada de la columna Nom i desplaça't lateralment",
+    "stretchMode": "Estira la columna Nom fins a omplir la taula",
+    "stretchInactive": "En pausa perquè les columnes visibles ja omplen la taula"
   },
   "sort": {
     "label": "Ordena",
@@ -665,7 +669,7 @@
       "title": "Cerca torrents",
       "description": "Cerca per nom, categoria o etiquetes. Admet patrons glob com ara *.mkv o *1080p*.",
       "placeholder": "Cerca torrents...",
-      "globExamples": "*.mkv, *1080p*, S??E??",
+      "globExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
       "autoSearches": "Cerca automàticament mentre escrius"
     },
     "shareLimit": {

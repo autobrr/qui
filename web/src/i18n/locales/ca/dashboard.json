@@ -31,13 +31,6 @@
       "performance": "Sembrat"
     }
   },
-  "speedLimits": {
-    "title": "Límits de velocitat",
-    "download": "Baixada",
-    "upload": "Pujada",
-    "current": "Actual: {{speed}}",
-    "unlimited": "Il·limitat"
-  },
   "instanceCard": {
     "loadingStats": "S'estan carregant les estadístiques...",
     "failedToLoadStats": "No s'han pogut carregar les estadístiques",
@@ -186,8 +179,6 @@
       "invalidDomains": "Entrada no vàlida: domains ha de ser una matriu no buida",
       "invalidJson": "JSON no vàlid",
       "newCount": "{{count}} de nous",
-      "conflictCount": "{{count}} conflicte",
-      "conflictCount_plural": "{{count}} conflictes",
       "unchangedCount": "{{count}} sense canvis",
       "resolveConflicts": "Resol els conflictes",
       "conflictsWith": "En conflicte amb: {{name}}",
@@ -195,7 +186,9 @@
       "overwrite": "Sobreescriu",
       "cancel": "Cancel·la",
       "importing": "S'està important...",
-      "import": "Importa"
+      "import": "Importa",
+      "conflictCount_one": "{{count}} conflicte",
+      "conflictCount_other": "{{count}} conflictes"
     },
     "toasts": {
       "noCustomizationsToExport": "No hi ha cap personalització per exportar",
@@ -206,9 +199,9 @@
       "deleteFailed": "No s'ha pogut eliminar la personalització del tracker",
       "failedToImport": "No s'han pogut importar: {{names}}",
       "importedAndSkipped": "Se n'han importat {{imported}} i se n'han omès {{skipped}}",
-      "importedCount": "S'ha importat {{count}} personalització",
-      "importedCount_plural": "S'han importat {{count}} personalitzacions",
-      "noCustomizationsImported": "No s'ha importat cap personalització"
+      "noCustomizationsImported": "No s'ha importat cap personalització",
+      "importedCount_one": "S'ha importat {{count}} personalització",
+      "importedCount_other": "S'han importat {{count}} personalitzacions"
     }
   },
   "quickActions": {

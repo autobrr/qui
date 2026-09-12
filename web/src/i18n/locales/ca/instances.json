@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Configuració de la instància"
   },
-  "proxySettings": {
-    "loading": "S'està carregant la configuració del proxy...",
-    "title": "Configuració del proxy",
-    "proxyType": "Tipus de proxy",
-    "proxyTypeDescription": "Selecciona el tipus de proxy per encaminar les connexions",
-    "serverTitle": "Servidor intermediari",
-    "serverLabel": "Servidor intermediari",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Nom d'amfitrió o adreça IP del servidor intermediari",
-    "port": "Port",
-    "portDescription": "Port del servidor intermediari",
-    "authTitle": "Autenticació",
-    "useAuth": "Fes servir autenticació",
-    "useAuthDescription": "Activa-ho si el teu servidor intermediari necessita nom d'usuari i contrasenya",
-    "username": "Nom d'usuari",
-    "password": "Contrasenya",
-    "optionsTitle": "Opcions del proxy",
-    "peerConnections": "Fes servir el proxy per a les connexions amb els parells",
-    "peerConnectionsDescription": "Encamina les connexions BitTorrent amb els parells a través del proxy",
-    "torrentsOnly": "Fes servir el proxy només per als torrents",
-    "torrentsOnlyDescription": "Fes servir el proxy només per al trànsit de BitTorrent, no per a les altres connexions",
-    "hostnameLookup": "Fes servir el proxy per resoldre els noms d'amfitrió",
-    "hostnameLookupDescription": "Resol els noms d'amfitrió a través del servidor intermediari",
-    "update": "Actualitza la configuració del proxy",
-    "updating": "S'està actualitzant...",
-    "types": {
-      "none": "Cap",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "S'ha actualitzat la configuració del proxy correctament",
-      "failed": "No s'ha pogut actualitzar la configuració del proxy"
-    }
-  },
   "passwordBanner": {
     "title": "S'han detectat problemes amb les contrasenyes",
     "description": "Hi ha instàncies que no poden desxifrar les contrasenyes desades, probablement per un canvi de configuració. Revisa les instàncies afectades de sota per resoldre-ho."
@@ -662,21 +626,8 @@
       "fullSync": "Sincronització completa",
       "addOnly": "Només afegir",
       "removeOnly": "Només suprimir",
-      "deleteDialog": {
-        "title": "Elimina la regla",
-        "description": "Segur que vols eliminar \"{{name}}\"? Aquesta acció no es pot desfer.",
-        "cancel": "Cancel·la",
-        "delete": "Elimina"
-      },
       "actionCount_one": "{{count}} acció",
-      "actionCount_other": "{{count}} accions",
-      "toast": {
-        "workflowDeleted": "S'ha eliminat el workflow",
-        "deleteAutomationFailed": "No s'ha pogut eliminar l'automatització",
-        "toggleRuleFailed": "No s'ha pogut commutar la regla",
-        "workflowsApplied": "S'han aplicat els workflows",
-        "applyAutomationsFailed": "No s'han pogut aplicar les automatitzacions"
-      }
+      "actionCount_other": "{{count}} accions"
     },
     "workflowPreview": {
       "loadingPreview": "S'està carregant la previsualització. Això pot trigar una estona...",
@@ -781,8 +732,6 @@
       "xsSafe": "XS segur",
       "plusXs": "+ XS",
       "plusFiles": "+ fitxers",
-      "tagActions": "{{count}} acció d'etiqueta",
-      "tagActions_plural": "{{count}} accions d'etiqueta",
       "program": "Programa",
       "runDryRunNow": "Fes una execució de prova ara",
       "duplicate": "Duplica",
@@ -906,7 +855,9 @@
         "deleteActivityFailed": "No s'ha pogut eliminar l'activitat",
         "hashCopied": "S'ha copiat el hash"
       },
-      "exported": "Exportat"
+      "exported": "Exportat",
+      "tagActions_one": "{{count}} acció d'etiqueta",
+      "tagActions_other": "{{count}} accions d'etiqueta"
     },
     "workflowDialog": {
       "editWorkflow": "Edita el workflow",
@@ -1455,14 +1406,8 @@
       "allTags": "Totes les etiquetes",
       "allIndexers": "Tots els indexadors",
       "allCategoriesIncluded": "S'hi inclouran totes les categories.",
-      "selectedCategories": "Només es tindrà en compte {{count}} categoria seleccionada.",
-      "selectedCategories_plural": "Només es tindran en compte {{count}} categories seleccionades.",
       "allTagsIncluded": "S'hi inclouran totes les etiquetes.",
-      "selectedTags": "Només es tindrà en compte {{count}} etiqueta seleccionada.",
-      "selectedTags_plural": "Només es tindran en compte {{count}} etiquetes seleccionades.",
       "allIndexersSearched": "Es cercarà a tots els indexadors activats.",
-      "selectedIndexers": "Només es consultarà {{count}} indexador seleccionat.",
-      "selectedIndexers_plural": "Només es consultaran {{count}} indexadors seleccionats.",
       "skipCategoriesDescription": "Omet els torrents d'aquestes categories.",
       "skipTagsDescription": "Omet els torrents que tinguin aquestes etiquetes.",
       "none": "Cap",
@@ -1474,7 +1419,13 @@
       "toast": {
         "settingsSaved": "S'ha desat la configuració",
         "saveFailed": "No s'ha pogut desar la configuració"
-      }
+      },
+      "selectedCategories_one": "Només es tindrà en compte {{count}} categoria seleccionada.",
+      "selectedCategories_other": "Només es tindran en compte {{count}} categories seleccionades.",
+      "selectedIndexers_one": "Només es consultarà {{count}} indexador seleccionat.",
+      "selectedIndexers_other": "Només es consultaran {{count}} indexadors seleccionats.",
+      "selectedTags_one": "Només es tindrà en compte {{count}} etiqueta seleccionada.",
+      "selectedTags_other": "Només es tindran en compte {{count}} etiquetes seleccionades."
     },
     "activityRunDialog": {
       "run": "execució",
