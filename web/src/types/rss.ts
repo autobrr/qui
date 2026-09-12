@@ -44,11 +44,13 @@ export interface RSSRuleTorrentParams {
   content_layout?: string
   operating_mode?: string
   skip_checking?: boolean
+  seed_mode?: boolean
   upload_limit?: number
   download_limit?: number
   seeding_time_limit?: number
   inactive_seeding_time_limit?: number
   share_limit_action?: string
+  share_limits_mode?: string
   ratio_limit?: number
   stopped?: boolean
   stop_condition?: string

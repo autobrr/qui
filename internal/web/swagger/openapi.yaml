@@ -2777,10 +2777,13 @@ paths:
                       type: string
                     timeAdded:
                       type: string
+                      description: Date string. Numeric upstream timestamps become UTC RFC3339 strings.
                     timeStarted:
                       type: string
+                      description: Date string. Omitted when the task has no timeStarted value.
                     timeFinished:
                       type: string
+                      description: Date string. Omitted when the task has no timeFinished value.
                     progress:
                       type: number
                     errorMessage:
@@ -3050,8 +3053,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                description: qBittorrent preferences object with various settings
+                $ref: '#/components/schemas/QBittorrentPreferences'
     patch:
       tags:
         - Instances
@@ -3064,11 +3066,14 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              description: Partial preferences object with settings to update
+              $ref: '#/components/schemas/QBittorrentPreferences'
       responses:
         '200':
           description: Preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QBittorrentPreferences'
 
   /api/instances/{instanceID}/alternative-speed-limits:
     get:
@@ -9853,6 +9858,34 @@ components:
           nullable: true
           description: Legacy field
 
+    QBittorrentPreferences:
+      type: object
+      additionalProperties: true
+      description: qBittorrent preferences. Available fields depend on the server version.
+      properties:
+        mail_notification_encryption_type:
+          type: string
+          description: Mail encryption in qBittorrent 5.3. Values include None, STARTTLS, and SMTPS.
+        mail_notification_ssl_enabled:
+          type: boolean
+          description: Legacy mail encryption field.
+        remove_torrent_file_backup:
+          type: boolean
+        torrent_files_backup_enabled:
+          type: boolean
+        torrent_files_backup_dir:
+          type: string
+        torrent_files_finished_backup_dir_enabled:
+          type: boolean
+        torrent_files_finished_backup_dir:
+          type: string
+        export_dir:
+          type: string
+          description: Legacy torrent-file backup directory.
+        export_dir_fin:
+          type: string
+          description: Legacy finished torrent-file backup directory.
+
     RSSRuleTorrentParams:
       type: object
       properties:
@@ -9872,6 +9905,10 @@ components:
           type: string
         skip_checking:
           type: boolean
+          description: Legacy alias for seed_mode. qui returns matching values for both fields.
+        seed_mode:
+          type: boolean
+          description: Skip the initial hash check. Takes precedence over skip_checking when both are supplied.
         upload_limit:
           type: integer
         download_limit:
@@ -9881,6 +9918,8 @@ components:
         inactive_seeding_time_limit:
           type: integer
         share_limit_action:
+          type: string
+        share_limits_mode:
           type: string
         ratio_limit:
           type: number

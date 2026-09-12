@@ -12,6 +12,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"runtime"
 	"slices"
@@ -3425,4 +3426,65 @@ func TestGetTorrentsWithFiltersSingleHashSkipsLibraryCopy(t *testing.T) {
 	hashBytes := measure(byHash(target))
 	t.Logf("20 requests: expr filter %d bytes, hash filter %d bytes", exprBytes, hashBytes)
 	require.Less(t, hashBytes*10, exprBytes, "a single-hash request must allocate far less than the library scan")
+}
+
+// Cross-seed retries a failed seed-mode add after it removes skip_checking.
+// Exercise the same map through the real SyncManager and library HTTP client.
+func TestAddTorrentSeedModeRetryRequiresChecking(t *testing.T) {
+	adds := make(chan url.Values, 2)
+	var syncs atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/torrents/add":
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			defer func() { _ = r.MultipartForm.RemoveAll() }()
+			adds <- r.PostForm
+			if r.PostForm.Get("seedMode") == "true" {
+				http.Error(w, "synthetic seed-mode failure", http.StatusUnsupportedMediaType)
+				return
+			}
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/sync/maindata":
+			syncs.Add(1)
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	pool := setupTestPool(t)
+	defer pool.Close()
+	instance, err := pool.instanceStore.Create(t.Context(), "Synthetic", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL})
+	client := &Client{Client: qbtClient, instanceID: instance.ID, syncManager: qbtClient.NewSyncManager(qbt.DefaultSyncOptions())}
+	client.updateHealthStatus(true)
+	pool.clients[instance.ID] = client
+	sm := NewSyncManager(pool, nil)
+	options := map[string]string{"skip_checking": "true", "paused": "true"}
+	_, err = sm.AddTorrent(t.Context(), instance.ID, []byte("synthetic torrent"), options)
+	require.Error(t, err)
+	first := <-adds
+	require.Equal(t, "true", first.Get("skip_checking"))
+	require.Equal(t, "true", first.Get("seedMode"))
+	require.Equal(t, map[string]string{"skip_checking": "true", "paused": "true"}, options)
+
+	delete(options, "skip_checking")
+	_, err = sm.AddTorrent(t.Context(), instance.ID, []byte("synthetic torrent"), options)
+	require.NoError(t, err)
+	retry := <-adds
+	require.NotContains(t, retry, "seedMode")
+	require.NotContains(t, retry, "skip_checking")
+	require.Equal(t, "true", retry.Get("paused"))
+	require.Eventually(t, func() bool {
+		sm.syncDebounceMu.Lock()
+		defer sm.syncDebounceMu.Unlock()
+		return len(sm.debouncedSyncTimers) == 0
+	}, 5*time.Second, 10*time.Millisecond)
+	require.GreaterOrEqual(t, syncs.Load(), int64(2))
 }
