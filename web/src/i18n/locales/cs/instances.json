@@ -991,7 +991,7 @@
       "autoDeleteWarningPaths": "Ujistěte se, že jsou vaše <span class=\"font-medium\">Ignorování cest</span> správně nakonfigurovány nebo použijte režim hardlink/reflink pro vyhledávání adresáře.",
       "autoDeleteAcknowledge": "Zkontroloval jsem nastavení a rozumím, že soubory a adresáře budou trvale odstraněny",
       "maxFilesThreshold": "Maximální počet souborů",
-      "maxFilesThresholdTooltip": "Bezpečnostní limit: pokud je vyhledávání nalezeno více souborů než tento limit, bude automatické vyčištění přeskočeno a vyžaduje manuální revizi. Adresáře se do něj nepočítají. Toto zachytí anomálie jako nesprávně nakonfigurované ignorované cesty.",
+      "maxFilesThresholdTooltip": "Bezpečnostní limit: pokud vyhledávání nalezne více souborů než tento limit, bude automatické vyčištění přeskočeno a vyžaduje manuální revizi. Adresáře se do něj nepočítají. Toto zachytí anomálie jako nesprávně nakonfigurované ignorované cesty.",
       "files": "soubory",
       "scanScope": "Rozsah skenování",
       "scanDefaultSavePathLabel": "Skenovat výchozí cestu pro ukládání",

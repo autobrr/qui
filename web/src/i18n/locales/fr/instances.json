@@ -932,7 +932,7 @@
       },
       "toast": {
         "deletionStarted": "Suppression démarrée",
-        "deletionDescription": "Les fichiers et dossiers orphelins sont en cours de suppression",
+        "deletionDescription": "Les fichiers orphelins et les dossiers abandonnés sont en cours de suppression",
         "deletionFailed": "Échec du démarrage de la suppression",
         "exportedItems_one": "{{count}} élément exporté vers CSV",
         "exportedItems_other": "{{count}} éléments exportés vers CSV",
