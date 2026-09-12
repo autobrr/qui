@@ -862,7 +862,7 @@
       "recentScans": "최근 스캔",
       "scannedPaths": "선택한 검사 경로 ({{total}})",
       "zeroOrphans": "고아 항목 0개",
-      "deletedStats": "{{deleted}}개 삭제됨 · {{size}}",
+      "deletedStats": "{{deleted}} 삭제됨 · {{size}}",
       "deletedFiles_other": "파일 {{count}}개",
       "deletedDirs_other": "디렉터리 {{count}}개",
       "deletedSeparator": ", ",
