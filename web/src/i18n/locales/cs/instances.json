@@ -1432,17 +1432,21 @@
       "freeSpace": {
         "title": "Zdroj volného místa",
         "aria": "O zdroji volného místa",
-        "description": "Vyberte, kde se má číst volné místo. Výchozí používá volné místo hlášené qBittorrentem. Použijte \"Cestu na serveru\" pro kontrolu volného místa na konkrétním disku nebo montáži.",
+        "description": "Vyberte, kde se má číst volné místo. Výchozí používá volné místo hlášené qBittorrentem. Použijte \"Cestu na serveru\" pro kontrolu volného místa na konkrétním disku nebo montáži. \"Cesta na hostiteli qBittorrent\" se ptá přímo qBittorrentu a vyžaduje qBittorrent 5.3.",
         "selectSource": "Vybrat zdroj",
         "defaultSource": "Výchozí (qBittorrent)",
         "pathSource": "Cesta na serveru",
         "pathSourceWindowsUnsupported": "Cesta na serveru (nepodporováno na Windows)",
         "pathSourceLocalAccessRequired": "Cesta na serveru (vyžaduje místní přístup)",
+        "qbitPathSource": "Cesta na hostiteli qBittorrent",
+        "qbitPathSourceUnsupported": "Cesta na hostiteli qBittorrent (vyžaduje qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Zadejte cestu, na které se má kontrolovat volné místo (např. montážní bod)",
+        "qbitPathHelp": "Zadejte cestu na hostiteli qBittorrent. Volné místo měří qBittorrent, takže qui k tomuto disku nepotřebuje přístup.",
         "errors": {
           "unsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows.",
           "localAccessRequired": "Zdroj volného místa založený na cestě vyžaduje místní přístup k souborovému systému.",
+          "qbitPathUnsupported": "Tato instance je starší než qBittorrent 5.3 a neumí hlásit volné místo pro cestu.",
           "pathRequired": "Cesta je vyžadována při použití \"Cesta na serveru\"."
         }
       },
@@ -1631,6 +1635,7 @@
         "switchedDeleteModeForFreeSpace": "Přepnuto na \"Odebrat se soubory\" protože podmínka volného místa vyžaduje skutečné uvolnění místa na disku",
         "switchedIntervalForFreeSpace": "Přepnuto na 5 minutový interval, protože smazání volného místa má ~5 minutové spoždění",
         "pathSourceUnsupportedWindows": "Zdroj volného místa založený na cestě není podporován na Windows. Přepnuto na výchozí (qBittorrent).",
+        "qbitPathSourceUnsupported": "Tato instance neumí hlásit volné místo pro cestu. Přepnuto na výchozí zdroj.",
         "switchFreeSpaceSourceDefault": "Přepnout zdroj volného místa na výchozí (qBittorrent)",
         "enableLocalAccessOrDefault": "Povolit místní přístup k souborovému systému v nastavení instance, nebo použít výchozí (qBittorrent)",
         "enterPathOrDefault": "Zadejte cestu nebo přepněte zdroj volného místa zpět na výchozí (qBittorrent)",

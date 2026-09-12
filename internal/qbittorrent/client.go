@@ -43,6 +43,7 @@ var (
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
+	freeSpaceAtPathMinVersion            = semver.MustParse("2.15.2")
 )
 
 // splitHostUserinfo strips userinfo credentials from a host URL, returning the
@@ -94,6 +95,7 @@ type Client struct {
 	supportsSetRSSFeedURL      bool
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
+	supportsFreeSpaceAtPath    bool
 	lastHealthCheck            time.Time
 	isHealthy                  bool
 	syncManager                *qbt.SyncManager
@@ -473,6 +475,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
 	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
 	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
+	c.supportsFreeSpaceAtPath = !v.LessThan(freeSpaceAtPathMinVersion)
 }
 
 func (c *Client) updateServerState(data *qbt.MainData) {
@@ -619,6 +622,14 @@ func (c *Client) SupportsShareLimitsMode() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsShareLimitsMode
+}
+
+// SupportsFreeSpaceAtPath reports whether app/getFreeSpaceAtPath is available
+// (freeSpaceAtPathMinVersion, qBittorrent 5.3 / Web API 2.15.2+).
+func (c *Client) SupportsFreeSpaceAtPath() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsFreeSpaceAtPath
 }
 
 func (c *Client) GetWebAPIVersion() string {

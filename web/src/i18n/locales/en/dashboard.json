@@ -48,7 +48,7 @@
     "upload": "Upload",
     "totalSize": "Total Size",
     "totalSizeTooltip": "Total size of all torrents, including cross-seeds",
-    "freeSpace": "Free Space",
+    "freeSpace": "Free space (default path)",
     "showMore": "Show more",
     "showLess": "Show less",
     "uptime": "Uptime",

@@ -51,7 +51,7 @@ Cards with combined numbers: connected instances, total torrents, total download
 One card per instance with:
 
 - Torrent counts: **Downloading**, **Active**, **Total**
-- Current download and upload speed, total size, and free disk space
+- Current download and upload speed, total size, and free space at qBittorrent's default save path. The card and the torrent list status bar both show this default-path value, not the space of any other disk.
 - qBittorrent, Web API, and libtorrent versions, and the qBittorrent connection status (connectable, firewalled, or disconnected). The tooltip shows the listen port.
 - **Show more** reveals uptime, peer connections, queued I/O jobs, buffer sizes, and external IP addresses
 - A turtle or rabbit button that toggles alternative speed limits after a confirmation dialog

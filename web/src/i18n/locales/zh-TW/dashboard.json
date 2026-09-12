@@ -48,7 +48,7 @@
     "upload": "上傳",
     "totalSize": "總大小",
     "totalSizeTooltip": "所有種子的總大小，包括輔種",
-    "freeSpace": "可用空間",
+    "freeSpace": "可用空間（預設路徑）",
     "showMore": "展開更多",
     "showLess": "收起",
     "uptime": "執行時間",

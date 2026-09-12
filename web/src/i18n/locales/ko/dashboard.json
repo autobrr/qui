@@ -48,7 +48,7 @@
     "upload": "업로드",
     "totalSize": "전체 크기",
     "totalSizeTooltip": "cross-seed를 포함한 모든 토렌트의 전체 크기",
-    "freeSpace": "여유 공간",
+    "freeSpace": "여유 공간 (기본 경로)",
     "showMore": "더 보기",
     "showLess": "간략히 보기",
     "uptime": "가동 시간",

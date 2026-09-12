@@ -115,6 +115,7 @@
     "updating": "업데이트 중",
     "error": "오류",
     "unknown": "알 수 없음",
+    "unavailable": "사용 불가",
     "trackerError": "트래커 오류",
     "unreachable": "도달할 수 없음"
   },

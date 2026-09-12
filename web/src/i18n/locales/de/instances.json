@@ -1432,17 +1432,21 @@
       "freeSpace": {
         "title": "Quelle für freien Speicher",
         "aria": "Über die Quelle für freien Speicher",
-        "description": "Wähle, woher der freie Speicher gelesen wird. Standard nutzt den von qBittorrent gemeldeten freien Speicher. Verwende \"Pfad auf dem Server\", um den freien Speicher auf einer bestimmten Festplatte oder einem Mountpoint zu prüfen.",
+        "description": "Wähle, woher der freie Speicher gelesen wird. Standard nutzt den von qBittorrent gemeldeten freien Speicher. Verwende \"Pfad auf dem Server\", um den freien Speicher auf einer bestimmten Festplatte oder einem Mountpoint zu prüfen. \"Pfad auf dem qBittorrent-Host\" fragt qBittorrent selbst und erfordert qBittorrent 5.3.",
         "selectSource": "Quelle auswählen",
         "defaultSource": "Standard (qBittorrent)",
         "pathSource": "Pfad auf dem Server",
         "pathSourceWindowsUnsupported": "Pfad auf dem Server (unter Windows nicht unterstützt)",
         "pathSourceLocalAccessRequired": "Pfad auf dem Server (erfordert lokalen Zugriff)",
+        "qbitPathSource": "Pfad auf dem qBittorrent-Host",
+        "qbitPathSourceUnsupported": "Pfad auf dem qBittorrent-Host (erfordert qBittorrent 5.3)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "Gib den Pfad ein, auf dem der freie Speicher geprüft werden soll (z. B. einen Mountpoint)",
+        "qbitPathHelp": "Geben Sie einen Pfad auf dem qBittorrent-Host ein. qBittorrent misst den freien Speicher, qui braucht also keinen Zugriff auf diesen Datenträger.",
         "errors": {
           "unsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt.",
           "localAccessRequired": "Die pfadbasierte Quelle für freien Speicher erfordert lokalen Dateisystemzugriff.",
+          "qbitPathUnsupported": "Diese Instanz ist älter als qBittorrent 5.3 und kann keinen freien Speicher für einen Pfad melden.",
           "pathRequired": "Bei Verwendung von \"Pfad auf dem Server\" ist ein Pfad erforderlich."
         }
       },
@@ -1631,6 +1635,7 @@
         "switchedDeleteModeForFreeSpace": "Zu \"Mit Dateien entfernen\" gewechselt, da die Bedingung für freien Speicher tatsächlich freizugebenden Speicherplatz erfordert",
         "switchedIntervalForFreeSpace": "Zum 5-Minuten-Intervall gewechselt, da Löschungen für freien Speicher eine Abkühlzeit von ~5 Minuten haben",
         "pathSourceUnsupportedWindows": "Die pfadbasierte Quelle für freien Speicher wird unter Windows nicht unterstützt. Zum qBittorrent-Standard gewechselt.",
+        "qbitPathSourceUnsupported": "Diese Instanz kann keinen freien Speicher für einen Pfad melden. Zur Standardquelle gewechselt.",
         "switchFreeSpaceSourceDefault": "Quelle für freien Speicher auf Standard (qBittorrent) umstellen",
         "enableLocalAccessOrDefault": "Aktiviere den lokalen Dateisystemzugriff in den Instanzeinstellungen oder verwende Standard (qBittorrent)",
         "enterPathOrDefault": "Gib einen Pfad ein oder stelle die Quelle für freien Speicher zurück auf Standard (qBittorrent)",

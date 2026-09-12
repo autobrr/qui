@@ -1413,17 +1413,21 @@
       "freeSpace": {
         "title": "여유 공간 소스",
         "aria": "여유 공간 소스 정보",
-        "description": "여유 공간을 읽을 위치를 선택하세요. 기본값은 qBittorrent이 보고한 여유 공간을 사용합니다. 특정 디스크나 마운트 지점의 여유 공간을 확인하려면 \"서버의 경로\"를 사용하세요.",
+        "description": "여유 공간을 읽을 위치를 선택하세요. 기본값은 qBittorrent이 보고한 여유 공간을 사용합니다. 특정 디스크나 마운트 지점의 여유 공간을 확인하려면 \"서버의 경로\"를 사용하세요. \"qBittorrent 호스트의 경로\"는 qBittorrent에 직접 묻고 qBittorrent 5.3이 필요합니다.",
         "selectSource": "소스 선택",
         "defaultSource": "기본값(qBittorrent)",
         "pathSource": "서버의 경로",
         "pathSourceWindowsUnsupported": "서버의 경로(Windows에서 지원되지 않음)",
         "pathSourceLocalAccessRequired": "서버의 경로(로컬 접근 필요)",
+        "qbitPathSource": "qBittorrent 호스트의 경로",
+        "qbitPathSourceUnsupported": "qBittorrent 호스트의 경로 (qBittorrent 5.3 필요)",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "여유 공간을 확인할 경로를 입력하세요(예: 마운트 지점)",
+        "qbitPathHelp": "qBittorrent 호스트의 경로를 입력하세요. qBittorrent가 여유 공간을 측정하므로 qui는 해당 디스크에 접근할 필요가 없습니다.",
         "errors": {
           "unsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다.",
           "localAccessRequired": "경로 기반 여유 공간 소스에는 로컬 파일시스템 접근이 필요합니다.",
+          "qbitPathUnsupported": "이 인스턴스는 qBittorrent 5.3 이전 버전이라 경로의 여유 공간을 알려줄 수 없습니다.",
           "pathRequired": "\"서버의 경로\"를 사용할 때는 경로가 필요합니다."
         }
       },
@@ -1612,6 +1616,7 @@
         "switchedDeleteModeForFreeSpace": "여유 공간 조건은 실제 디스크 공간 확보가 필요하므로 \"파일과 함께 제거\"로 전환했습니다",
         "switchedIntervalForFreeSpace": "여유 공간 삭제에는 약 5분의 대기 시간이 있으므로 5분 간격으로 전환했습니다",
         "pathSourceUnsupportedWindows": "경로 기반 여유 공간 소스는 Windows에서 지원되지 않습니다. qBittorrent 기본값으로 전환했습니다.",
+        "qbitPathSourceUnsupported": "이 인스턴스는 경로의 여유 공간을 알려줄 수 없어 기본 소스로 전환했습니다.",
         "switchFreeSpaceSourceDefault": "여유 공간 소스를 기본값(qBittorrent)으로 전환",
         "enableLocalAccessOrDefault": "인스턴스 설정에서 로컬 파일시스템 접근을 활성화하거나 기본값(qBittorrent)을 사용하세요",
         "enterPathOrDefault": "경로를 입력하거나 여유 공간 소스를 기본값(qBittorrent)으로 다시 전환하세요",

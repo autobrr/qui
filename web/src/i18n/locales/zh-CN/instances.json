@@ -1413,17 +1413,21 @@
       "freeSpace": {
         "title": "可用空间来源",
         "aria": "关于可用空间来源",
-        "description": "选择从哪里读取可用空间。默认使用 qBittorrent 报告的可用空间。使用\"服务器路径\"以检查特定磁盘或挂载点的可用空间。",
+        "description": "选择从哪里读取可用空间。默认使用 qBittorrent 报告的可用空间。使用\"服务器路径\"以检查特定磁盘或挂载点的可用空间。\"qBittorrent 主机上的路径\"直接询问 qBittorrent，需要 qBittorrent 5.3。",
         "selectSource": "选择来源",
         "defaultSource": "默认（qBittorrent）",
         "pathSource": "服务器路径",
         "pathSourceWindowsUnsupported": "服务器路径（Windows 不支持）",
         "pathSourceLocalAccessRequired": "服务器路径（需要本地访问权限）",
+        "qbitPathSource": "qBittorrent 主机上的路径",
+        "qbitPathSourceUnsupported": "qBittorrent 主机上的路径（需要 qBittorrent 5.3）",
         "pathPlaceholder": "/mnt/downloads",
         "pathHelp": "输入要检查可用空间的路径（例如挂载点）",
+        "qbitPathHelp": "输入 qBittorrent 主机上的路径。可用空间由 qBittorrent 测量，qui 无需访问该磁盘。",
         "errors": {
           "unsupportedWindows": "Windows 不支持基于路径的可用空间来源。",
           "localAccessRequired": "基于路径的可用空间来源需要本地文件系统访问权限。",
+          "qbitPathUnsupported": "此实例的版本早于 qBittorrent 5.3，无法报告某个路径的可用空间。",
           "pathRequired": "使用\"服务器路径\"时，路径为必填项。"
         }
       },
@@ -1612,6 +1616,7 @@
         "switchedDeleteModeForFreeSpace": "已切换到\"移除并清除文件\"，因为可用空间条件需要实际释放磁盘空间",
         "switchedIntervalForFreeSpace": "已切换到 5 分钟间隔，因为可用空间删除有约 5 分钟的冷却时间",
         "pathSourceUnsupportedWindows": "Windows 不支持基于路径的可用空间来源。已切换到 qBittorrent 默认值。",
+        "qbitPathSourceUnsupported": "此实例无法报告某个路径的可用空间，已切换到默认来源。",
         "switchFreeSpaceSourceDefault": "将可用空间来源切换为默认（qBittorrent）",
         "enableLocalAccessOrDefault": "请在实例设置中启用本地文件系统访问，或使用默认（qBittorrent）",
         "enterPathOrDefault": "请输入路径或将可用空间来源切换回默认（qBittorrent）",

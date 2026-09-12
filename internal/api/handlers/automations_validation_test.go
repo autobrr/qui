@@ -175,6 +175,22 @@ func TestValidateFreeSpaceSource(t *testing.T) {
 			wantErr:       false,
 		},
 		{
+			name:          "qbitPath source needs no local access",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: `D:\\downloads`},
+			instance:      &models.Instance{HasLocalFilesystemAccess: false},
+			usesFreeSpace: true,
+			wantStatus:    0,
+			wantErr:       false,
+		},
+		{
+			name:          "qbitPath source without path returns 400",
+			source:        &models.FreeSpaceSource{Type: models.FreeSpaceSourceQbitPath, Path: "   "},
+			instance:      &models.Instance{HasLocalFilesystemAccess: true},
+			usesFreeSpace: true,
+			wantStatus:    http.StatusBadRequest,
+			wantErr:       true,
+		},
+		{
 			name:          "unknown type returns 400",
 			source:        &models.FreeSpaceSource{Type: "unknown"},
 			instance:      &models.Instance{HasLocalFilesystemAccess: true},
