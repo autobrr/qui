@@ -149,10 +149,11 @@ function checkMissingKeys(enFlat, csFlat, namespace) {
 // these suffixes is a valid extra key when English has the same plural base.
 const csOnlyPluralSuffixes = ["_few", "_many"]
 
-// i18next falls back _one -> _other within a language but not _few -> _other, so a
-// cs base without _few renders the English string at counts 2-4. _many is Czech's
-// decimal category; getRelativeParts floors every count before it reaches a lookup
-// (src/lib/dateTimeUtils.ts), so it stays permitted rather than required.
+// A cs base without _few renders the English string at counts 2-4: i18next has no
+// within-language fallback between plural categories, only to fallbackLng. The one
+// exception is an unsuffixed base key, which serves every category the locale omits.
+// _many is Czech's decimal category; getRelativeParts floors every count before it
+// reaches a lookup (src/lib/dateTimeUtils.ts), so it stays permitted, not required.
 const requiredCsPluralSuffixes = ["_one", "_few", "_other"]
 
 function englishPluralBases(enFlat) {
@@ -173,6 +174,8 @@ function checkPluralForms(enFlat, csFlat, namespace) {
   const errors = []
 
   for (const base of englishPluralBases(enFlat)) {
+    if (csFlat.has(base)) continue
+
     for (const suffix of requiredCsPluralSuffixes) {
       if (!csFlat.has(`${base}${suffix}`)) {
         errors.push(`${namespace}.${base}${suffix}`)

@@ -48,6 +48,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 ## i18n Commands
 
 - `pnpm check:i18n`
+- `pnpm check:i18n:plural-keys`
 - `pnpm check:i18n:hardcoded`
 - `pnpm check:i18n:raw-backend-values`
 - `pnpm check:i18n:unused`
@@ -82,7 +83,8 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
-- Plurals use the i18next v4 CLDR suffixes. English needs `_one`/`_other`; Chinese and Korean take `_other` alone; `cs` also needs `_few` (2-4) and `uk` needs `_few` and `_many`, or i18next renders the raw key at those counts. The pre-v4 `_plural` suffix no longer resolves — never add one.
+- Plurals use the i18next v4 CLDR suffixes. English needs `_one`/`_other`; Chinese and Korean take `_other` alone; `cs` also needs `_few` (2-4) and `uk` needs `_few` and `_many`. A locale missing one of those forms does not render the raw key — i18next falls back to the English string at those counts, which is why such gaps stay invisible until someone reads the locale in the running app. i18next has no within-language fallback between plural categories — a missing `_few` goes straight to `fallbackLng`. The one thing that keeps a missing category in-language is an **unsuffixed** base key next to the suffixed ones, which serves every category the locale omits. The pre-v4 `_plural` suffix no longer resolves — never add one.
+- `pnpm check:i18n` enforces the two rules above: `check-legacy-plural-keys.mjs` rejects `_plural` in every locale including `en`, and `src/i18n/plurals.test.ts` renders every plural base through the app's own i18next config and fails on a silent English fallback.
 - Product/ecosystem terms often stay English where clearer: `qBittorrent`, `Prowlarr`, `DHT`, `PEX`.
 - Chinese text should prefer full-width `，。：；！？`; half-width is fine inside URLs, IPs, paths, and technical notation.
 

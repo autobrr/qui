@@ -82,6 +82,35 @@ test("keeps _many a valid extra key", (t) => {
   assert.doesNotMatch(result.stdout, /\[Extra Keys]/)
 })
 
+// An unsuffixed key is i18next's last-resort in-language lookup: it answers every
+// category the locale omits, so a base carrying one needs no _few.
+const englishWithCatchAll = { items: "{{count}} item", ...english }
+
+test("an unsuffixed cs key covers the categories cs omits", (t) => {
+  const cs = fixture(t)
+  cs.write(englishWithCatchAll, {
+    items: "{{count}} položek",
+    items_one: "{{count}} položka",
+    items_other: "{{count}} položek",
+  })
+
+  const result = cs.run()
+  assert.equal(result.status, 0, result.stdout + result.stderr)
+  assert.doesNotMatch(result.stdout, /\[Plural Forms]/)
+})
+
+test("the catch-all has to be on the cs side to count", (t) => {
+  const cs = fixture(t)
+  cs.write(englishWithCatchAll, {
+    items_one: "{{count}} položka",
+    items_other: "{{count}} položek",
+  })
+
+  const result = cs.run()
+  assert.equal(result.status, 1, result.stdout + result.stderr)
+  assert.match(result.stdout, /\[Plural Forms] 1 error\n {2}- common\.items_few\n/)
+})
+
 test("ignores bases English does not pluralize", (t) => {
   const cs = fixture(t)
   cs.write({ label_other: "{{count}} items" }, { label_other: "{{count}} položek" })
