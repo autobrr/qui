@@ -179,8 +179,9 @@
       "invalidDomains": "Neplatná položka: domains musí být pole, které není prázdné",
       "invalidJson": "Neplatný JSON",
       "newCount": "{{count}} nových",
-      "conflictCount": "{{count}} konflikt",
-      "conflictCount_plural": "{{count}} konfliktů",
+      "conflictCount_one": "{{count}} konflikt",
+      "conflictCount_few": "{{count}} konflikty",
+      "conflictCount_other": "{{count}} konfliktů",
       "unchangedCount": "{{count}} nezměněných",
       "resolveConflicts": "Vyřešit konflikty",
       "conflictsWith": "Konflikt s: {{name}}",
@@ -199,8 +200,9 @@
       "deleteFailed": "Selhalo smazání vlastního nastavení trackeru",
       "failedToImport": "Selhalo importování: {{names}}",
       "importedAndSkipped": "Importováno {{imported}}, přeskočeno {{skipped}}",
-      "importedCount": "Importováno {{count}} vlastního nastavení trackeru",
-      "importedCount_plural": "Importováno {{count}} vlastních nastavení trackerů",
+      "importedCount_one": "Importováno {{count}} vlastního nastavení trackeru",
+      "importedCount_few": "Importována {{count}} vlastní nastavení trackerů",
+      "importedCount_other": "Importováno {{count}} vlastních nastavení trackerů",
       "noCustomizationsImported": "Žádná vlastní nastavení nejsou importována"
     }
   },
