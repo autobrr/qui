@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Configurações da Instância"
   },
-  "proxySettings": {
-    "loading": "Carregando configurações de proxy...",
-    "title": "Configuração de Proxy",
-    "proxyType": "Tipo de Proxy",
-    "proxyTypeDescription": "Selecione o tipo de proxy para rotear as conexões",
-    "serverTitle": "Servidor Proxy",
-    "serverLabel": "Servidor Proxy",
-    "serverPlaceholder": "proxy.exemplo.com",
-    "serverDescription": "Hostname ou endereço IP do servidor proxy",
-    "port": "Porta",
-    "portDescription": "Porta do servidor proxy",
-    "authTitle": "Autenticação",
-    "useAuth": "Usar autenticação",
-    "useAuthDescription": "Ative se o seu servidor proxy exigir usuário/senha",
-    "username": "Usuário",
-    "password": "Senha",
-    "optionsTitle": "Opções de Proxy",
-    "peerConnections": "Usar proxy para conexões com os pares",
-    "peerConnectionsDescription": "Rotear conexões BitTorrent de pares através do proxy",
-    "torrentsOnly": "Usar proxy apenas para torrents",
-    "torrentsOnlyDescription": "Usar proxy apenas para tráfego BitTorrent, não para outras conexões",
-    "hostnameLookup": "Usar proxy para pesquisas de hostname",
-    "hostnameLookupDescription": "Resolver hostnames através do servidor proxy",
-    "update": "Atualizar Configurações de Proxy",
-    "updating": "Atualizando...",
-    "types": {
-      "none": "Nenhum",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Configurações de proxy atualizadas com sucesso",
-      "failed": "Falha ao atualizar configurações de proxy"
-    }
-  },
   "passwordBanner": {
     "title": "Problemas de Senha Detectados",
     "description": "Algumas instâncias não conseguem descriptografar as senhas salvas, provavelmente devido a uma mudança de configuração. Verifique as instâncias afetadas abaixo para resolver isso."
@@ -658,21 +622,8 @@
       "fullSync": "Sinc. total",
       "addOnly": "Apenas adicionar",
       "removeOnly": "Apenas remover",
-      "deleteDialog": {
-        "title": "Excluir Regra",
-        "description": "Tem certeza de que deseja excluir \"{{name}}\"? Esta ação não pode ser desfeita.",
-        "cancel": "Cancelar",
-        "delete": "Excluir"
-      },
       "actionCount_one": "{{count}} ação",
-      "actionCount_other": "{{count}} ações",
-      "toast": {
-        "workflowDeleted": "Workflow excluído",
-        "deleteAutomationFailed": "Falha ao excluir",
-        "toggleRuleFailed": "Falha ao alternar status da regra",
-        "workflowsApplied": "Workflows aplicados",
-        "applyAutomationsFailed": "Falha ao aplicar"
-      }
+      "actionCount_other": "{{count}} ações"
     },
     "workflowsOverview": {
       "title": "Workflows",

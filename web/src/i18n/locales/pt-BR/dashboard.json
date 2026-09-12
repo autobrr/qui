@@ -31,13 +31,6 @@
       "performance": "Semeados"
     }
   },
-  "speedLimits": {
-    "title": "Limites de Velocidade",
-    "download": "Download",
-    "upload": "Upload",
-    "current": "Atual: {{speed}}",
-    "unlimited": "Ilimitado"
-  },
   "instanceCard": {
     "loadingStats": "Carregando estatísticas...",
     "failedToLoadStats": "Falha ao carregar estatísticas",

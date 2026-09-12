@@ -31,13 +31,6 @@
       "performance": "Geseedet"
     }
   },
-  "speedLimits": {
-    "title": "Geschwindigkeitsbegrenzungen",
-    "download": "Download",
-    "upload": "Upload",
-    "current": "Aktuell: {{speed}}",
-    "unlimited": "Unbegrenzt"
-  },
   "instanceCard": {
     "loadingStats": "Statistiken werden geladen...",
     "failedToLoadStats": "Statistiken konnten nicht geladen werden",

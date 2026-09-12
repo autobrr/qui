@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Налаштування екземпляра"
   },
-  "proxySettings": {
-    "loading": "Завантаження налаштувань проксі...",
-    "title": "Конфігурація проксі",
-    "proxyType": "Тип проксі",
-    "proxyTypeDescription": "Виберіть тип проксі для маршрутизації підключень",
-    "serverTitle": "Проксі-сервер",
-    "serverLabel": "Проксі-сервер",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Ім’я хоста проксі-сервера або адреса IP",
-    "port": "Порт",
-    "portDescription": "Порт проксі-сервера",
-    "authTitle": "Автентифікація",
-    "useAuth": "Використовуйте аутентифікацію",
-    "useAuthDescription": "Увімкніть, якщо ваш проксі-сервер вимагає ім’я користувача/пароль",
-    "username": "Ім'я користувача",
-    "password": "Пароль",
-    "optionsTitle": "Параметри проксі",
-    "peerConnections": "Використовуйте проксі для однорангових з'єднань",
-    "peerConnectionsDescription": "Направляйте однорангові з’єднання BitTorrent через проксі",
-    "torrentsOnly": "Використовувати проксі тільки для торентів",
-    "torrentsOnlyDescription": "Використовуйте проксі лише для трафіку BitTorrent, а не для інших з’єднань",
-    "hostnameLookup": "Використовуйте проксі для пошуку імен хостів",
-    "hostnameLookupDescription": "Розпізнавати імена хостів через проксі-сервер",
-    "update": "Оновіть налаштування проксі",
-    "updating": "Оновлення...",
-    "types": {
-      "none": "Немає",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Налаштування проксі успішно оновлено",
-      "failed": "Не вдалося оновити налаштування проксі"
-    }
-  },
   "passwordBanner": {
     "title": "Виявлено проблеми з паролем",
     "description": "Деякі екземпляри не можуть розшифрувати збережені паролі, ймовірно, через зміну конфігурації. Щоб вирішити цю проблему, перегляньте наведені нижче випадки, на які впливає проблема."
@@ -658,21 +622,8 @@
       "fullSync": "Повна синхронізація",
       "addOnly": "Тільки додати",
       "removeOnly": "Тільки видалити",
-      "deleteDialog": {
-        "title": "Видалити правило",
-        "description": "Ви впевнені, що хочете видалити \"{{name}}\"? Цю дію не можна скасувати.",
-        "cancel": "Скасувати",
-        "delete": "Видалити"
-      },
       "actionCount_one": "{{count}} дія",
       "actionCount_other": "{{count}} дії",
-      "toast": {
-        "workflowDeleted": "Робочий процес видалено",
-        "deleteAutomationFailed": "Не вдалося видалити автоматизацію",
-        "toggleRuleFailed": "Не вдалося перемкнути правило",
-        "workflowsApplied": "Застосовані робочі процеси",
-        "applyAutomationsFailed": "Не вдалося застосувати автоматизацію"
-      },
       "actionCount_few": "{{count}} дії",
       "actionCount_many": "{{count}} дій"
     },

@@ -118,42 +118,6 @@
   "settingsButton": {
     "tooltip": "Instance Settings"
   },
-  "proxySettings": {
-    "loading": "Loading proxy settings...",
-    "title": "Proxy Configuration",
-    "proxyType": "Proxy Type",
-    "proxyTypeDescription": "Select proxy type for routing connections",
-    "serverTitle": "Proxy Server",
-    "serverLabel": "Proxy Server",
-    "serverPlaceholder": "proxy.example.com",
-    "serverDescription": "Proxy server hostname or IP address",
-    "port": "Port",
-    "portDescription": "Proxy server port",
-    "authTitle": "Authentication",
-    "useAuth": "Use authentication",
-    "useAuthDescription": "Enable if your proxy server requires username/password",
-    "username": "Username",
-    "password": "Password",
-    "optionsTitle": "Proxy Options",
-    "peerConnections": "Use proxy for peer connections",
-    "peerConnectionsDescription": "Route BitTorrent peer connections through proxy",
-    "torrentsOnly": "Use proxy only for torrents",
-    "torrentsOnlyDescription": "Only use proxy for BitTorrent traffic, not for other connections",
-    "hostnameLookup": "Use proxy for hostname lookups",
-    "hostnameLookupDescription": "Resolve hostnames through the proxy server",
-    "update": "Update Proxy Settings",
-    "updating": "Updating...",
-    "types": {
-      "none": "None",
-      "socks4": "SOCKS4",
-      "socks5": "SOCKS5",
-      "http": "HTTP"
-    },
-    "toast": {
-      "updated": "Proxy settings updated successfully",
-      "failed": "Failed to update proxy settings"
-    }
-  },
   "passwordBanner": {
     "title": "Password Issues Detected",
     "description": "Some instances cannot decrypt their saved passwords, likely due to a configuration change. Check the affected instances below to resolve this issue."
@@ -658,21 +622,8 @@
       "fullSync": "Full sync",
       "addOnly": "Add only",
       "removeOnly": "Remove only",
-      "deleteDialog": {
-        "title": "Delete Rule",
-        "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
-        "cancel": "Cancel",
-        "delete": "Delete"
-      },
       "actionCount_one": "{{count}} action",
-      "actionCount_other": "{{count}} actions",
-      "toast": {
-        "workflowDeleted": "Workflow deleted",
-        "deleteAutomationFailed": "Failed to delete automation",
-        "toggleRuleFailed": "Failed to toggle rule",
-        "workflowsApplied": "Workflows applied",
-        "applyAutomationsFailed": "Failed to apply automations"
-      }
+      "actionCount_other": "{{count}} actions"
     },
     "workflowsOverview": {
       "title": "Workflows",

@@ -31,13 +31,6 @@
       "performance": "Sdíleno X krát"
     }
   },
-  "speedLimits": {
-    "title": "Rychlostní limity",
-    "download": "Stáhování",
-    "upload": "Uploadování",
-    "current": "Aktuální: {{speed}}",
-    "unlimited": "Neomezeno"
-  },
   "instanceCard": {
     "loadingStats": "Načítám statistiky...",
     "failedToLoadStats": "Selhalo načítání statistik",

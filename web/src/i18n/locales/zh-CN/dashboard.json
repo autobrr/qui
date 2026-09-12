@@ -31,13 +31,6 @@
       "performance": "做种量"
     }
   },
-  "speedLimits": {
-    "title": "速度限制",
-    "download": "下载",
-    "upload": "上传",
-    "current": "当前：{{speed}}",
-    "unlimited": "无限制"
-  },
   "instanceCard": {
     "loadingStats": "正在加载统计信息……",
     "failedToLoadStats": "加载统计信息失败",

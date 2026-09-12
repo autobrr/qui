@@ -31,13 +31,6 @@
       "performance": "Seeded"
     }
   },
-  "speedLimits": {
-    "title": "Speed Limits",
-    "download": "Download",
-    "upload": "Upload",
-    "current": "Current: {{speed}}",
-    "unlimited": "Unlimited"
-  },
   "instanceCard": {
     "loadingStats": "Loading stats...",
     "failedToLoadStats": "Failed to load stats",
