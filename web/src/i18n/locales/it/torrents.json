@@ -1526,9 +1526,9 @@
     "descending": "decrescente",
     "sortDirection": "Ordina {{direction}}",
     "toggleColumns": "Attiva/disattiva colonne",
-    "stretchMode": "Modalità estesa",
-    "scrollMode": "Modalità scorrimento",
-    "stretchInactive": "Inattivo: le colonne visibili non lasciano spazio alla colonna Nome",
+    "stretchMode": "Estendi la colonna Nome per riempire la tabella",
+    "scrollMode": "Imposta tu la larghezza della colonna Nome e scorri lateralmente",
+    "stretchInactive": "In pausa perché le colonne visibili riempiono già la tabella",
     "reorderColumn": "Trascina per riordinare {{column}}",
     "tableAriaLabel": "Tabella dei torrent"
   },

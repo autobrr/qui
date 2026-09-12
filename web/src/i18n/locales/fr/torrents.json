@@ -1526,9 +1526,9 @@
     "descending": "décroissant",
     "sortDirection": "Tri {{direction}}",
     "toggleColumns": "Basculer les colonnes",
-    "stretchMode": "Mode étiré",
-    "scrollMode": "Mode défilement",
-    "stretchInactive": "Inactif : les colonnes visibles ne laissent pas de place à la colonne Nom",
+    "stretchMode": "Étirer la colonne Nom pour remplir le tableau",
+    "scrollMode": "Définir vous-même la largeur de la colonne Nom et faire défiler latéralement",
+    "stretchInactive": "En pause, car les colonnes visibles remplissent déjà le tableau",
     "reorderColumn": "Glisser pour réordonner {{column}}",
     "tableAriaLabel": "Tableau des torrents"
   },

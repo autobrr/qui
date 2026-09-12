@@ -1499,7 +1499,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           <TooltipContent>
                             {stretchNameColumn ? t("tableView.scrollMode") : t("tableView.stretchMode")}
                             {stretchNameColumn && !effectiveStretch && (
-                              <span className="block text-muted-foreground">{t("tableView.stretchInactive")}</span>
+                              <span className="block font-normal">{t("tableView.stretchInactive")}</span>
                             )}
                           </TooltipContent>
                         </Tooltip>
