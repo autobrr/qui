@@ -23,6 +23,8 @@ export interface TableColumnHeaderProps {
   viewMode: ViewMode
   // Spreadsheet theme only: reserve the blank corner above the row-number gutter.
   showRowGutter?: boolean
+  // Column whose width is derived from the container (stretch mode); its resize handle is inert.
+  stretchedColumnId?: string
 }
 
 /**
@@ -40,6 +42,7 @@ export function TableColumnHeader({
   minTableWidth,
   viewMode,
   showRowGutter,
+  stretchedColumnId,
 }: TableColumnHeaderProps) {
   if (viewMode === "compact") {
     return null
@@ -71,6 +74,7 @@ export function TableColumnHeader({
                     header={header}
                     columnFilters={columnFilters}
                     viewMode={viewMode}
+                    stretched={header.column.id === stretchedColumnId}
                     onFilterChange={(columnId, filter) => {
                       if (filter === null) {
                         setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))

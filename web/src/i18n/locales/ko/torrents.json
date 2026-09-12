@@ -1463,6 +1463,10 @@
     "descending": "내림차순",
     "sortDirection": "{{direction}} 정렬",
     "toggleColumns": "열 전환",
+    "stretchMode": "이름 열을 늘려 테이블을 채우기",
+    "scrollMode": "이름 열 너비를 직접 설정하고 가로로 스크롤",
+    "stretchInactive": "표시된 열이 이미 테이블을 채우고 있어 일시 중지됨",
+    "reorderColumn": "{{column}} 순서를 변경하려면 드래그",
     "tableAriaLabel": "토렌트 테이블"
   },
   "sort": {

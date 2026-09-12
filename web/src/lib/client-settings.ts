@@ -65,6 +65,7 @@ const SYNCED_PREFIXES = [
   "qui-column-order:",
   "qui-column-sorting:",
   "qui-column-sizing:",
+  "qui-stretch-name-column:",
   "qui-column-filters-",
   "qui-collapsed-categories-",
   "qui-filters-",

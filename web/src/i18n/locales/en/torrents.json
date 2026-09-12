@@ -1526,6 +1526,10 @@
     "descending": "descending",
     "sortDirection": "Sort {{direction}}",
     "toggleColumns": "Toggle columns",
+    "stretchMode": "Stretch the Name column to fill the table",
+    "scrollMode": "Set the Name column width yourself and scroll sideways",
+    "stretchInactive": "Paused because the visible columns already fill the table",
+    "reorderColumn": "Drag to reorder {{column}}",
     "tableAriaLabel": "Torrents table"
   },
   "sort": {
