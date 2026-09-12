@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isStreamUsable } from "@/lib/sync-stream-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -167,7 +168,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       filters: hashFilter,
     }
   }, [hashFilter, instanceId, isReady])
-  const [streamTorrent, setStreamTorrent] = useState<Torrent | null>(null)
+  const [streamSnapshot, setStreamSnapshot] = useState<{ instanceId: number; hash: string; torrent: Torrent | null } | null>(null)
   const handleStreamPayload = useCallback(
     (payload: TorrentStreamPayload) => {
       if (!payload?.data || !torrent?.hash) {
@@ -175,26 +176,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       }
 
       const data = payload.data
-      setStreamTorrent(previous => resolveStreamRow(previous, data))
+      setStreamSnapshot(previous => ({
+        instanceId,
+        hash: torrent.hash,
+        torrent: resolveStreamRow(
+          previous?.instanceId === instanceId && previous.hash === torrent.hash ? previous.torrent : null,
+          data
+        ),
+      }))
     },
-    [torrent?.hash]
+    [instanceId, torrent?.hash]
   )
   const streamState = useSyncStream(streamParams, {
     enabled: Boolean(streamParams),
     onMessage: handleStreamPayload,
   })
-
-  useEffect(() => {
-    setStreamTorrent(null)
-  }, [torrent?.hash])
-
-  // Drop the streamed snapshot when the stream is not live so the merge below falls
-  // back to fresh poll data instead of freezing on a stale pre-disconnect snapshot.
-  useEffect(() => {
-    if (!streamState.connected || streamState.error) {
-      setStreamTorrent(null)
-    }
-  }, [streamState.connected, streamState.error])
+  const streamUsable = isStreamUsable(streamState)
 
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
@@ -256,7 +253,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
-  const shouldUseFallbackPolling = !!torrent && isReady && (!streamState.connected || !!streamState.error)
+  const shouldUseFallbackPolling = !!torrent && isReady && !streamUsable
 
   // SSE is primary for live row state; polling only runs while stream is unavailable.
   const { data: polledLiveTorrent } = useQuery({
@@ -274,6 +271,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
 
   // Merge live data with prop, preferring live values for frequently-changing fields
+  const streamTorrent = streamUsable && streamSnapshot?.instanceId === instanceId && streamSnapshot.hash === torrent?.hash
+    ? streamSnapshot.torrent
+    : null
   const liveTorrent = streamTorrent ?? polledLiveTorrent ?? null
   const displayTorrent = useMemo(() => {
     if (!torrent) return null

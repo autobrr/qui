@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isStreamUsable } from "@/lib/sync-stream-state"
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
@@ -478,9 +479,7 @@ export function useTorrentsList(
     lastFullSnapshotRef.current !== null
   const shouldDisablePolling =
     Boolean(streamParams) &&
-    streamState.connected &&
-    streamState.initialized &&
-    !streamState.error &&
+    isStreamUsable(streamState) &&
     hasBaselineForCurrentView
   const preferCachedQuery = currentPage === 0 && shouldDisablePolling
   // Polls the scrolled-in window while a recheck/move is in progress anywhere
@@ -575,15 +574,10 @@ export function useTorrentsList(
     gcTime: 300000, // Keep in React Query cache for 5 minutes for navigation
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
-    // Only poll the first page to get fresh data - don't poll pagination pages
-    // Reduce polling frequency for cross-instance calls since they're more expensive.
-    // When the SSE stream is connected we disable polling entirely on the first page.
-    refetchInterval:
-      currentPage === 0? (
-        pollingEnabled && !shouldDisablePolling? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
-      ): (
-        pollingEnabled && hasTransientRows? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
-      ),
+    // Fallback refreshes the loaded window; healthy streams still need REST for transient later rows.
+    refetchInterval: pollingEnabled && (!shouldDisablePolling || (currentPage > 0 && hasTransientRows))
+      ? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS)
+      : false,
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
     enabled: queryEnabled,
