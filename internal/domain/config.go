@@ -21,6 +21,8 @@ type Config struct {
 	Port               int      `toml:"port" mapstructure:"port"`
 	BaseURL            string   `toml:"baseUrl" mapstructure:"baseUrl"`
 	CORSAllowedOrigins []string `toml:"corsAllowedOrigins" mapstructure:"corsAllowedOrigins"`
+	// Loaded once at startup, so mapstructure skips it on reload.
+	AllowedHosts []string `toml:"allowedHosts" mapstructure:"-"`
 	//nolint:gosec // Config schema requires this field name; value is provided by runtime configuration.
 	SessionSecret            string `toml:"sessionSecret" mapstructure:"sessionSecret"`
 	LogLevel                 string `toml:"logLevel" mapstructure:"logLevel"`
