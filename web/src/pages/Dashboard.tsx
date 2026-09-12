@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isStreamUsable } from "@/lib/sync-stream-state"
 import { InstanceErrorDisplay } from "@/components/instances/InstanceErrorDisplay"
 import { InstanceSettingsButton } from "@/components/instances/InstanceSettingsButton"
 import { MagnetHandlerBanner } from "@/components/MagnetHandlerBanner"
@@ -583,24 +584,26 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
             return
           }
 
+          const streamUsable =
+            isStreamUsable(snapshot)
+
           applyInstanceData(instance.id, current => {
             const next: InstanceStreamData = {
               ...current,
-              streamConnected: snapshot.connected,
-              streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
-              hasLiveDashboardStatsPayload: snapshot.connected &&
-                !snapshot.error &&
+              streamConnected: streamUsable,
+              streamError: snapshot.error ?? (streamUsable ? null : current.streamError),
+              hasLiveDashboardStatsPayload: streamUsable &&
                 current.hasLiveDashboardStatsPayload,
             }
 
             if (snapshot.error) {
               next.error = snapshot.error
               next.isLoading = false
-            } else if (snapshot.connected && !current.isLoading) {
+            } else if (streamUsable && !current.isLoading) {
               next.error = null
             }
 
-            if (!snapshot.connected || snapshot.error) {
+            if (!streamUsable) {
               next.instanceMeta = null
             }
 
@@ -610,13 +613,14 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
 
         const initialSnapshot = syncStream.getState(streamKey)
         if (initialSnapshot) {
+          const streamUsable =
+            isStreamUsable(initialSnapshot)
           applyInstanceData(instance.id, current => {
             const next: InstanceStreamData = {
               ...current,
-              streamConnected: initialSnapshot.connected,
+              streamConnected: streamUsable,
               streamError: initialSnapshot.error ?? current.streamError,
-              hasLiveDashboardStatsPayload: initialSnapshot.connected &&
-                !initialSnapshot.error &&
+              hasLiveDashboardStatsPayload: streamUsable &&
                 current.hasLiveDashboardStatsPayload,
             }
 
@@ -625,7 +629,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               next.isLoading = false
             }
 
-            if (!initialSnapshot.connected || initialSnapshot.error) {
+            if (!streamUsable) {
               next.instanceMeta = null
             }
 
