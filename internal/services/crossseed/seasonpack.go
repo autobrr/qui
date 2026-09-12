@@ -469,6 +469,10 @@ func (s *Service) addSeasonPack(
 		// failed, and resuming would download over hardlinked files — those
 		// stay paused.
 		resumeThreshold := float64(planBuild.linkedBytes) / float64(planBuild.totalBytes) * seasonPackResumeSlack
+		var linkedPaths map[string]struct{}
+		if linkMode == "hardlink" {
+			linkedPaths = planBuild.materializedPaths
+		}
 		recheckHashes := collectHashes(prep.meta)
 		switch {
 		case len(recheckHashes) == 0:
@@ -481,7 +485,7 @@ func (s *Service) addSeasonPack(
 				message = "torrent added paused; automatic resume could not be queued"
 			} else if s.recheckResumeChan == nil {
 				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold); err != nil {
+			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths); err != nil {
 				message = "torrent added paused; automatic resume queue is full"
 			} else {
 				message = "torrent added paused; recheck queued"

@@ -135,6 +135,7 @@ For season-pack checks, `DEBUG` is often enough. Look for the torrent name and m
 - `unsafe piece boundary with pending files`
 - `torrent added paused; recheck queued`
 - `Recheck completed below threshold, torrent left paused for manual review`
+- `Linked file <name> does not match the torrent, left paused to protect the source`
 
 ## When Rechecks Are Required (Reuse Mode)
 
@@ -175,6 +176,7 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 - Torrents that miss more data stay paused for manual investigation
 - Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
 - Configure this limit with **Max auto-start download** in Rules
+- In hardlink mode, a linked file that fails its recheck blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 ## Hardlink mode failed
 
@@ -253,6 +255,12 @@ The incoming torrent contains files absent from your matched torrent, and those 
 - Check if the source torrent contains extra files (NFO, samples) that do not exist on disk
 - Check the "Max auto-start download" setting in Rules
 - Torrents that miss more data than the limit stay paused for manual review
+
+## Linked file does not match the torrent
+
+The log shows `Linked file <name> does not match the torrent, left paused to protect the source`. A hardlinked file failed its recheck, and the missing pieces are not on a boundary with a pending file. The local file differs from the file in the torrent, even though the name and size matched.
+
+Do not resume the torrent. A resume downloads into the linked file, and the torrent that seeds the source file then carries wrong data. Remove the torrent and its link tree, then download the torrent normally. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 ## Blu-ray or DVD cross-seed left paused
 

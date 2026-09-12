@@ -500,9 +500,9 @@ type pendingResume struct {
 	// irrelevant sidecar files are missing (forgiveness). nil = threshold mode.
 	budgetBytes        *int64
 	forgivenessGranted bool
-	// forgivenessEvalFailed marks that the LAST forgiveness evaluation could not
-	// load the file list; terminal branches keep the entry and retry instead of
-	// dropping it on a transient qBittorrent error.
+	// forgivenessEvalFailed marks that the LAST forgiveness or hardlink-gate
+	// evaluation could not load its qBittorrent evidence; terminal branches keep
+	// the entry and retry instead of dropping it on a transient error.
 	forgivenessEvalFailed         bool
 	addedAt                       time.Time
 	recoverMissingFilesWithResume bool
@@ -517,6 +517,24 @@ type pendingResume struct {
 	recheckInterrupted   bool
 	readyPolls           int
 	resumeConfirmedPolls int
+	// linkedPaths holds the torrent paths qui hardlinked before the add; nil for
+	// reflink and regular adds. A linked file that rechecks below 100% blocks the
+	// resume unless every failed piece straddles a pending file: downloading it
+	// would write into the source through the shared inode. Paths, not indexes:
+	// qBittorrent drops pad files from its file list and renumbers.
+	linkedPaths map[string]struct{}
+	// blockedLinkedFile names the linked file that tripped the gate on the last
+	// evaluation, with its missing bytes.
+	blockedLinkedFile  string
+	blockedLinkedBytes int64
+}
+
+// leftPausedMsg names the linked file that tripped the hardlink gate, else fallback.
+func (req *pendingResume) leftPausedMsg(fallback string) string {
+	if req.blockedLinkedFile == "" {
+		return fallback
+	}
+	return fmt.Sprintf("Linked file %s does not match the torrent, left paused to protect the source", req.blockedLinkedFile)
 }
 
 type cachedTorrentSearchResults struct {
@@ -6390,9 +6408,9 @@ func (s *Service) processCrossSeedCandidate(
 			case verifyBeforeSeed:
 				queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, activeHash)
 			case addPolicy.DiscLayout || linkFallbackRequiresFullRecheck:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, 0, false, nil)
 			default:
-				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false)
+				queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, activeHash, s.resumeBudgetBytes(ctx), false, nil)
 			}
 			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
@@ -6486,22 +6504,24 @@ func recheckResumeKey(instanceID int, hash string) string {
 
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit
 // verified-progress threshold. Used by the season-pack flow, which resumes once its linked bytes verify.
-func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64) error {
+func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64, linkedPaths map[string]struct{}) error {
 	return s.queuePendingResume(&pendingResume{
-		instanceID: instanceID,
-		hash:       hash,
-		threshold:  threshold,
+		instanceID:  instanceID,
+		hash:        hash,
+		threshold:   threshold,
+		linkedPaths: linkedPaths,
 	})
 }
 
 // queueRecheckResumeWithBudget adds a torrent that may auto-resume only when the missing data
 // fits budgetBytes. Budget 0 requires a fully complete recheck and disables forgiveness.
-func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool) error {
+func (s *Service) queueRecheckResumeWithBudget(instanceID int, hash string, budgetBytes int64, recoverMissingFilesWithResume bool, linkedPaths map[string]struct{}) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID:                    instanceID,
 		hash:                          hash,
 		budgetBytes:                   &budgetBytes,
 		recoverMissingFilesWithResume: recoverMissingFilesWithResume,
+		linkedPaths:                   linkedPaths,
 	})
 }
 
@@ -6572,14 +6592,99 @@ func pendingResumeBudgetForLog(req *pendingResume) int64 {
 // pendingResumeSatisfied reports whether the torrent's recheck outcome allows auto-resume.
 // Threshold mode compares verified progress. Budget mode compares missing bytes against the
 // budget, with a forgiveness pass when the shortfall beyond the budget sits in irrelevant
-// sidecar files.
+// sidecar files. Hardlink entries then pass the linked-file gate.
 func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
+	req.forgivenessEvalFailed = false
+	req.blockedLinkedFile, req.blockedLinkedBytes = "", 0
+	if !s.thresholdOrBudgetSatisfied(instanceID, req, torrent) {
+		return false
+	}
+	if req.linkedPaths == nil || torrent.AmountLeft <= 0 {
+		return true
+	}
+	return s.hardlinkResumeAllowed(instanceID, req)
+}
+
+// pieceStateReader is the sync-manager method the hardlink gate needs beyond
+// qbittorrentSync. Without piece states every incomplete linked file blocks the
+// resume; the pin keeps the real sync manager on the tolerant path without
+// widening qbittorrentSync for its 23 test doubles.
+type pieceStateReader interface {
+	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
+}
+
+var _ pieceStateReader = (*qbittorrent.SyncManager)(nil)
+
+// hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
+// that no pending file shares. Fetch failures keep the entry for a retry.
+func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
+	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	defer cancel()
+	ctx = qbittorrent.WithForceFilesRefresh(ctx)
+
+	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, []string{req.hash})
+	files := filesByHash[normalizeHash(req.hash)]
+	if err != nil || len(files) == 0 {
+		req.forgivenessEvalFailed = true
+		return false
+	}
+	var pieces []qbt.PieceState
+	if reader, ok := s.syncManager.(pieceStateReader); ok {
+		if pieces, err = reader.GetTorrentPieceStates(ctx, instanceID, req.hash); err != nil {
+			req.forgivenessEvalFailed = true
+			return false
+		}
+	}
+
+	name, missing := mismatchedLinkedFile(files, pieces, req.linkedPaths)
+	if name == "" {
+		return true
+	}
+	req.blockedLinkedFile = name
+	req.blockedLinkedBytes = missing
+	return false
+}
+
+// mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
+// be explained by a piece it shares with a pending file, with its missing bytes.
+// Without piece states every linked file below 100% counts as mismatched.
+func mismatchedLinkedFile(files qbt.TorrentFiles, pieces []qbt.PieceState, linked map[string]struct{}) (string, int64) {
+	// Only a pending file's first and last piece can reach into a neighbour.
+	shared := make([]bool, len(pieces))
+	for _, file := range files {
+		if _, ok := linked[file.Name]; ok || len(file.PieceRange) < 2 {
+			continue
+		}
+		for _, p := range file.PieceRange[:2] {
+			if p < len(shared) {
+				shared[p] = true
+			}
+		}
+	}
+	for _, file := range files {
+		if _, ok := linked[file.Name]; !ok || file.Progress >= 1 {
+			continue
+		}
+		missing := int64((1 - float64(file.Progress)) * float64(file.Size))
+		if len(file.PieceRange) < 2 || file.PieceRange[1] >= len(pieces) {
+			return file.Name, missing
+		}
+		for p := file.PieceRange[0]; p <= file.PieceRange[1]; p++ {
+			if pieces[p] != qbt.PieceStateAlreadyDownloaded && !shared[p] {
+				return file.Name, missing
+			}
+		}
+	}
+	return "", 0
+}
+
+// thresholdOrBudgetSatisfied applies the threshold or budget rule alone.
+func (s *Service) thresholdOrBudgetSatisfied(instanceID int, req *pendingResume, torrent qbt.Torrent) bool {
 	if req.budgetBytes == nil {
 		return torrent.Progress >= req.threshold
 	}
 
 	budget := *req.budgetBytes
-	req.forgivenessEvalFailed = false
 	if req.verificationRequired {
 		return torrent.Progress >= 1 && torrent.AmountLeft <= 0
 	}
@@ -6875,7 +6980,9 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Int64("amountLeft", torrent.AmountLeft).
 				Int64("budgetBytes", pendingResumeBudgetForLog(req)).
 				Str("state", string(state)).
-				Msg("Recheck resume stopped below threshold, torrent left paused for manual review")
+				Str("linkedFile", req.blockedLinkedFile).
+				Int64("linkedMissingBytes", req.blockedLinkedBytes).
+				Msg(req.leftPausedMsg("Recheck resume stopped below threshold, torrent left paused for manual review"))
 			return false
 		}
 
@@ -6949,7 +7056,9 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			Float64("threshold", req.threshold).
 			Int64("amountLeft", torrent.AmountLeft).
 			Int64("budgetBytes", pendingResumeBudgetForLog(req)).
-			Msg("Recheck completed below threshold, torrent left paused for manual review")
+			Str("linkedFile", req.blockedLinkedFile).
+			Int64("linkedMissingBytes", req.blockedLinkedBytes).
+			Msg(req.leftPausedMsg("Recheck completed below threshold, torrent left paused for manual review"))
 		return false
 	}
 
@@ -14612,6 +14721,16 @@ func treeFilesTotalSize(files []hardlinktree.TorrentFile) int64 {
 	return total
 }
 
+// linkedTreePaths collects the torrent paths of the linked tree files for the
+// hardlink resume gate.
+func linkedTreePaths(linked []hardlinktree.TorrentFile) map[string]struct{} {
+	paths := make(map[string]struct{}, len(linked))
+	for _, file := range linked {
+		paths[file.Path] = struct{}{}
+	}
+	return paths
+}
+
 func materializedCoverage(sourceFiles qbt.TorrentFiles, materializedFiles []hardlinktree.TorrentFile) (float64, int64, int64) {
 	totalBytes := sourceFilesTotalSize(sourceFiles)
 	if totalBytes <= 0 {
@@ -15122,14 +15241,15 @@ func (s *Service) processHardlinkMode(
 					Str("torrentHash", torrentHash).
 					Int("extraFiles", len(sourceFiles)-len(candidateTorrentFilesToLink)).
 					Msg("[CROSSSEED] Hardlink mode: queuing torrent for recheck resume")
+				linkedPaths := linkedTreePaths(candidateTorrentFilesToLink)
 				queueErr := error(nil)
 				switch {
 				case verifyBeforeSeed:
 					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
 				case recheckPolicy.requireComplete:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, linkedPaths)
 				default:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, false)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, false, linkedPaths)
 				}
 				if queueErr != nil {
 					statusMsg += " - auto-resume queue full, manual resume required"
@@ -15911,9 +16031,9 @@ func (s *Service) processReflinkMode(
 				case verifyBeforeSeed:
 					queueErr = s.queueVerificationRecheckResume(candidate.InstanceID, torrentHash)
 				case recheckPolicy.requireComplete:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, 0, false, nil)
 				default:
-					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, true)
+					queueErr = s.queueRecheckResumeWithBudget(candidate.InstanceID, torrentHash, resumeBudget, true, nil)
 				}
 				if queueErr != nil {
 					statusMsg += " - auto-resume queue full, manual resume required"
