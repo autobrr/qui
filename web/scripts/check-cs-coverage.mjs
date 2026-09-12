@@ -149,6 +149,40 @@ function checkMissingKeys(enFlat, csFlat, namespace) {
 // these suffixes is a valid extra key when English has the same plural base.
 const csOnlyPluralSuffixes = ["_few", "_many"]
 
+// i18next falls back _one -> _other within a language but not _few -> _other, so a
+// cs base without _few renders the English string at counts 2-4. _many is Czech's
+// decimal category; getRelativeParts floors every count before it reaches a lookup
+// (src/lib/dateTimeUtils.ts), so it stays permitted rather than required.
+const requiredCsPluralSuffixes = ["_one", "_few", "_other"]
+
+function englishPluralBases(enFlat) {
+  const bases = new Set()
+
+  for (const key of enFlat.keys()) {
+    if (!key.endsWith("_one")) continue
+    const base = key.slice(0, -4)
+    if (enFlat.has(`${base}_other`)) {
+      bases.add(base)
+    }
+  }
+
+  return bases
+}
+
+function checkPluralForms(enFlat, csFlat, namespace) {
+  const errors = []
+
+  for (const base of englishPluralBases(enFlat)) {
+    for (const suffix of requiredCsPluralSuffixes) {
+      if (!csFlat.has(`${base}${suffix}`)) {
+        errors.push(`${namespace}.${base}${suffix}`)
+      }
+    }
+  }
+
+  return errors
+}
+
 function checkExtraKeys(enFlat, csFlat, namespace) {
   const errors = []
 
@@ -305,6 +339,7 @@ if (!fs.existsSync(csRoot)) {
 const errors = {
   missingKeys: [],
   extraKeys: [],
+  pluralForms: [],
   interpolation: [],
   htmlTags: [],
   emptyStrings: [],
@@ -346,6 +381,7 @@ for (const ns of namespaces) {
 
   errors.missingKeys.push(...checkMissingKeys(enFlat, csFlat, ns))
   errors.extraKeys.push(...checkExtraKeys(enFlat, csFlat, ns))
+  errors.pluralForms.push(...checkPluralForms(enFlat, csFlat, ns))
   errors.interpolation.push(...checkInterpolation(enFlat, csFlat, ns))
   errors.htmlTags.push(...checkHtmlTags(enFlat, csFlat, ns))
   errors.emptyStrings.push(...checkEmptyStrings(csFlat, ns))
@@ -382,6 +418,7 @@ if (totalErrors > 0) {
   console.log("ERRORS:\n")
   printSection("Missing Keys", errors.missingKeys, "error")
   printSection("Extra Keys", errors.extraKeys, "error")
+  printSection("Plural Forms", errors.pluralForms, "error")
   printSection("Interpolation", errors.interpolation, "error")
   printSection("HTML Tags", errors.htmlTags, "error")
   printSection("Empty Strings", errors.emptyStrings, "error")
