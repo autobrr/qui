@@ -154,9 +154,9 @@
     "refreshNow": "Actualitza ara"
   },
   "cache": {
-    "cacheAndLive": "Cache + live",
-    "cacheHit": "Cache hit",
-    "liveFetch": "Live fetch"
+    "cacheAndLive": "Memòria cau + en directe",
+    "cacheHit": "Encert de memòria cau",
+    "liveFetch": "Consulta en directe"
   },
   "card": {
     "actions": "Accions",
