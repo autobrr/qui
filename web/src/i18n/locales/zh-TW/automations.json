@@ -208,10 +208,6 @@
       "hours": "小時",
       "days": "天",
       "seconds": "秒"
-    },
-    "capabilityReasons": {
-      "trackerHealth": "需要 qBittorrent 5.1+",
-      "localFilesystemAccess": "需要本機檔案系統存取權限"
     }
   }
 }

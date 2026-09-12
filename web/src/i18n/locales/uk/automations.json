@@ -200,10 +200,6 @@
       "days": "днів",
       "seconds": "секунд"
     },
-    "capabilityReasons": {
-      "trackerHealth": "Потребує qBittorrent 5.1+",
-      "localFilesystemAccess": "Потребує локального доступу до файлової системи"
-    },
     "selectTrackerStatus": "Вибрати статус",
     "trackerStatuses": {
       "not_contacted": "Не зв'язувалися",
