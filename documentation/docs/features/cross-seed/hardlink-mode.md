@@ -84,7 +84,7 @@ A **linked file** is a file in the added torrent that qui hardlinked from local 
 
 A hardlink shares its data with the source file. If qBittorrent downloads into a linked file, the torrent that already seeds that file gets the new data too. To protect the source, qui checks the recheck result before every automatic resume in hardlink mode. This covers cross-seeds with extra files and season packs. If a linked file is below 100% and one of its failed pieces lies outside every pending file, qui leaves the torrent paused. The log names the file: `Linked file <name> does not match the torrent, left paused to protect the source`.
 
-A piece that spans a linked file and a pending file always fails the recheck, because the pending part is absent. qui allows that piece, so a pack with such pieces still resumes. The **Piece boundary safety check** setting decides before the add whether such pieces are accepted at all.
+A piece that spans a linked file and a pending file always fails the recheck, because the pending part is absent. qui allows that piece, so a pack with such pieces stays eligible for the normal resume rules. The **Piece boundary safety check** setting decides before the add whether such pieces are accepted at all.
 
 Reflink mode does not use this check. A reflink clone is copy-on-write, so a download into the clone never reaches the source.
 

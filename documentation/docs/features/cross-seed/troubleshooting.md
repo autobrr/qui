@@ -176,7 +176,7 @@ If you enable **Skip recheck**, qui skips only decisions that require verificati
 - Torrents that miss more data stay paused for manual investigation
 - Filesystem fallback, disc-layout, title-rescue, and exact-size identity matches require 100% completion before auto-resume
 - Configure this limit with **Max auto-start download** in Rules
-- In hardlink mode, a linked file that fails its recheck blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
+- In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file blocks the auto-resume regardless of the limit. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 ## Hardlink mode failed
 
