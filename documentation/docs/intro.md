@@ -29,7 +29,7 @@ qui is a web interface for qBittorrent. It manages multiple qBittorrent instance
 - **Magnet Links**: Register qui as your browser's handler for magnet links from **Settings → Security**
 - **Reverse Proxy**: [Transparent qBittorrent proxy](./features/reverse-proxy.md) for external apps like autobrr, Sonarr, and Radarr, without credential sharing
 - **Incognito Mode**: [Disguise torrents as Linux ISOs](./features/incognito.md) for screen sharing and screenshots
-- **Multi-Language**: Interface available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese and Traditional Chinese with automatic browser-language detection
+- **Multi-Language**: Interface available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan with automatic browser-language detection
 
 ## Browser extensions
 
@@ -42,7 +42,7 @@ To register qui as your browser handler for magnet links, open **Settings → Se
 
 ## Languages
 
-qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese. The interface detects your browser language on first load and remembers your choice after that.
+qui is available in English, German, French, Italian, Czech, Ukrainian, Korean, Brazilian Portuguese, Simplified Chinese, Traditional Chinese, and Catalan. The interface detects your browser language on first load and remembers your choice after that.
 
 To change the language, click the globe icon at the bottom of the sidebar. If the sidebar is collapsed, use the globe submenu in the top-right menu. On a phone, use the globe submenu under **Settings** in the footer bar.
 

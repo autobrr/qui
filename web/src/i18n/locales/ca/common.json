@@ -1,0 +1,203 @@
+{
+  "nav": {
+    "dashboard": "Tauler",
+    "search": "Cerca",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automatitzacions",
+    "backups": "Còpies de seguretat",
+    "rss": "RSS",
+    "settings": "Configuració",
+    "logs": "Registres",
+    "instances": "Instàncies",
+    "generalSettings": "Configuració general",
+    "manageInstances": "Gestiona les instàncies",
+    "appearance": "Aspecte",
+    "instanceBackups": "Còpies de seguretat de les instàncies"
+  },
+  "sidebar": {
+    "instances": "Instàncies",
+    "allInstancesDisabled": "Totes les instàncies estan desactivades",
+    "noInstancesConfigured": "No hi ha cap instància configurada",
+    "logout": "Tanca la sessió",
+    "version": "Versió {{version}}",
+    "language": "Idioma",
+    "viewOnGitHub": "Mostra-ho a GitHub",
+    "rssRunning": "RSS en execució",
+    "rssEnabled": "RSS activat",
+    "scanRunning": "Exploració en curs",
+    "showSidebar": "Mostra la barra lateral",
+    "hideSidebar": "Amaga la barra lateral"
+  },
+  "header": {
+    "currentInstance": "Instància actual: {{name}}. Fes clic per canviar d'instància.",
+    "connected": "Connectat",
+    "disconnected": "Desconnectat",
+    "noActiveInstances": "No hi ha cap instància activa",
+    "showFilters": "Mostra els filtres",
+    "hideFilters": "Amaga els filtres",
+    "addTorrent": "Afegeix un torrent",
+    "createTorrent": "Crea un torrent",
+    "torrentCreationTasks": "Tasques de creació de torrents",
+    "instanceSettings": "Configuració de la instància",
+    "addToInstance": "Afegeix a la instància",
+    "createForInstance": "Crea per a la instància",
+    "tasksForInstance": "Tasques de la instància",
+    "settingsForInstance": "Configuració per a la instància",
+    "clearSearch": "Neteja la cerca",
+    "searchTorrents": "Cerca torrents... ({{shortcutKey}})",
+    "globPattern": "Patró glob...",
+    "smartSearchTitle": "Funcions de cerca intel·ligent:",
+    "smartSearchGlob": "Patrons glob:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S[0-9][0-9]E[0-9][0-9]*",
+    "smartSearchFuzzy": "Coincidència aproximada:",
+    "smartSearchFuzzyExample": "\"breaking bad\" troba \"Breaking.Bad\"",
+    "smartSearchDots": "Gestiona punts, guions baixos i claudàtors",
+    "smartSearchFields": "Cerca al nom, la categoria i les etiquetes",
+    "smartSearchEnter": "Prem Retorn per cercar a l'instant",
+    "smartSearchAuto": "Cerca automàticament després d'una pausa de 500 ms",
+    "torrentCreationTasksTitle": "Tasques de creació de torrents",
+    "updateAvailable": "Actualització disponible",
+    "updateVersion": "Versió {{version}}",
+    "rssRunning": "RSS en execució",
+    "rssEnabled": "RSS activat",
+    "scanRunning": "Exploració en curs",
+    "allScope": "TOTES",
+    "unified": "Unificat"
+  },
+  "unifiedScope": {
+    "unified": "Unificat",
+    "collapseScope": "Redueix l'àmbit unificat",
+    "expandScope": "Amplia l'àmbit unificat",
+    "allActive": "Totes les actives ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "Tauler",
+    "clients": "Clients",
+    "settings": "Configuració",
+    "qbittorrentClients": "Clients de qBittorrent",
+    "instances": "Instàncies",
+    "noActiveInstances": "No hi ha cap instància activa",
+    "loading": "S'està carregant...",
+    "noActiveClients": "No hi ha cap client actiu",
+    "updateAvailable": "Actualització disponible",
+    "updateVersion": "Versió {{version}}",
+    "rssRunning": "RSS en execució",
+    "rssEnabled": "RSS activat",
+    "scanRunning": "Exploració en curs",
+    "logout": "Tanca la sessió",
+    "version": "Versió {{version}}",
+    "viewOnGitHub": "Mostra-ho a GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Cancel·la",
+    "close": "Tanca",
+    "create": "Crea",
+    "copyPath": "Copia el camí",
+    "scrollToTop": "Vés a dalt de tot",
+    "search": "Cerca",
+    "select": "Selecciona",
+    "toggle": "Commuta"
+  },
+  "placeholders": {
+    "search": "Cerca...",
+    "selectItems": "Selecciona elements..."
+  },
+  "feedback": {
+    "noResultsFound": "No s'ha trobat cap resultat."
+  },
+  "status": {
+    "disabled": "Desactivat",
+    "notContacted": "No contactat",
+    "working": "Funcionant",
+    "updating": "S'està actualitzant",
+    "error": "Error",
+    "unknown": "Desconegut",
+    "trackerError": "Error del tracker",
+    "unreachable": "Inaccessible"
+  },
+  "themeToggle": {
+    "changeTheme": "Canvia el tema",
+    "appearance": "Aspecte",
+    "mode": "Mode",
+    "light": "Clar",
+    "dark": "Fosc",
+    "system": "Sistema",
+    "theme": "Tema",
+    "premium": "Premium",
+    "switchedToMode": "S'ha canviat al mode {{mode}}",
+    "switchedToTheme": "S'ha canviat al tema {{theme}}",
+    "switchedToThemeVariation": "S'ha canviat al tema {{theme}} ({{variation}})",
+    "premiumThemeError": "Aquest és un tema premium. Obre Configuració → Temes per activar una llicència.",
+    "custom": "Personalitzat"
+  },
+  "updateBanner": {
+    "updateAvailable": "Actualització disponible",
+    "versionAvailable": "La versió {{version}} ja està disponible",
+    "viewRelease": "Mostra la versió",
+    "dismiss": "Descarta"
+  },
+  "notFound": {
+    "title": "Ups! T'has perdut dins de l'eixam?",
+    "subtitle": "Sembla que t'has endinsat en terreny desconegut.",
+    "bugReport": "Si creus que això és un error i no pas un enllaç que falta,",
+    "reportTo": "no dubtis a informar-ne al nostre",
+    "githubRepository": "repositori de GitHub",
+    "getBackOnTrack": "Si no, deixa que t'ajudem a tornar al bon camí!",
+    "returnToDashboard": "Torna al tauler"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Registra qui com a gestor dels enllaços magnet",
+    "register": "Registra",
+    "dismiss": "Descarta",
+    "registrationRequested": "S'ha sol·licitat el registre del gestor de magnet",
+    "registrationFailed": "No s'ha pogut registrar el gestor de magnet",
+    "guidance": {
+      "standalone": "Obre qui en una pestanya normal del navegador per fer el registre (l'avís pot aparèixer a la barra d'adreces, que les PWA no mostren).",
+      "chromium": "Chrome sovint ho mostra com una petita icona de gestor de protocols a la barra d'adreces; si no apareix res, activa els gestors de protocols a chrome://settings/handlers.",
+      "default": "Si el navegador t'ho demana, accepta-ho per completar el registre."
+    }
+  },
+  "fieldHelp": {
+    "trigger": "Més informació"
+  },
+  "numberInput": {
+    "unlimited": "Il·limitat",
+    "useUnlimited": " (fes servir -1 per a il·limitat)"
+  },
+  "dateTime": {
+    "na": "N/D",
+    "justNow": "Ara mateix",
+    "today": "Avui",
+    "yesterday": "Ahir",
+    "past": "fa {{value}}",
+    "future": "d'aquí a {{value}}",
+    "units": {
+      "second_one": "{{count}} segon",
+      "second_other": "{{count}} segons",
+      "minute_one": "{{count}} minut",
+      "minute_other": "{{count}} minuts",
+      "hour_one": "{{count}} hora",
+      "hour_other": "{{count}} hores",
+      "day_one": "{{count}} dia",
+      "day_other": "{{count}} dies",
+      "week_one": "{{count}} setmana",
+      "week_other": "{{count}} setmanes",
+      "month_one": "{{count}} mes",
+      "month_other": "{{count}} mesos",
+      "year_one": "{{count}} any",
+      "year_other": "{{count}} anys"
+    }
+  },
+  "support": {
+    "title": "Fes costat a qui",
+    "description": "Ja tens els temes i vols fer-hi encara més un cop de mà? Tot el que hi ha a qui ja és teu. Una subscripció no desbloqueja funcions: finança el temps que es dedica a construir-les.",
+    "perkPrefix": "Els mecenes reben el rol",
+    "perkSuffix": "a Discord i el nostre agraïment etern.",
+    "yearly": "{{price}} / any",
+    "monthly": "{{price}} / mes",
+    "notLicense": "Els temes premium són una compra única a part."
+  }
+}

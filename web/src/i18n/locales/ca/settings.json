@@ -1,0 +1,1025 @@
+{
+  "title": "Configuració",
+  "description": "Gestiona les preferències i la seguretat de l'aplicació",
+  "tabs": {
+    "application": "Aplicació",
+    "instances": "Instàncies",
+    "indexers": "Indexadors",
+    "searchCache": "Memòria cau de cerca",
+    "integrations": "Integracions",
+    "clientProxy": "Proxy del client",
+    "apiKeys": "Claus API",
+    "externalPrograms": "Programes externs",
+    "notifications": "Notificacions",
+    "dateTime": "Hora i idioma",
+    "premiumThemes": "Temes premium",
+    "security": "Seguretat",
+    "logs": "Registres"
+  },
+  "language": {
+    "cardTitle": "Idioma",
+    "cardDescription": "Tria l'idioma en què vols que es mostri tot"
+  },
+  "changePassword": {
+    "currentPassword": "Contrasenya actual",
+    "newPassword": "Contrasenya nova",
+    "confirmPassword": "Confirma la contrasenya nova",
+    "submit": "Canvia la contrasenya",
+    "submitting": "S'està canviant...",
+    "toasts": {
+      "success": "S'ha canviat la contrasenya correctament",
+      "error": "No s'ha pogut canviar la contrasenya. Comprova la contrasenya actual."
+    },
+    "validation": {
+      "currentRequired": "La contrasenya actual és obligatòria",
+      "newRequired": "La contrasenya nova és obligatòria",
+      "minLength": "La contrasenya ha de tenir com a mínim 8 caràcters",
+      "confirmRequired": "Confirma la teva contrasenya",
+      "mismatch": "Les contrasenyes no coincideixen"
+    }
+  },
+  "instances": {
+    "title": "Instàncies",
+    "description": "Gestiona la configuració de connexió a qBittorrent",
+    "addButton": "Afegeix una instància",
+    "loading": "S'estan carregant les instàncies...",
+    "empty": "Encara no hi ha cap instància configurada",
+    "addFirst": "Afegeix la teva primera instància",
+    "titleBarSpeeds": {
+      "label": "Velocitats a la barra de títol",
+      "description": "Mostra les velocitats de baixada i pujada al títol de la pestanya del navegador"
+    },
+    "addDialog": {
+      "title": "Afegeix una instància",
+      "description": "Configura una instància nova de qBittorrent",
+      "cancel": "Cancel·la",
+      "submit": "Afegeix la instància",
+      "adding": "S'està afegint..."
+    },
+    "toasts": {
+      "reorderFailed": "No s'han pogut reordenar les instàncies"
+    }
+  },
+  "integrations": {
+    "title": "Integracions amb les ARR",
+    "description": "Configura instàncies de Sonarr i Radarr per millorar les cerques de cross-seed amb identificadors externs"
+  },
+  "clientApiKeys": {
+    "cardTitle": "Claus API del proxy del client",
+    "cardDescription": "Gestiona les claus API perquè les aplicacions externes es connectin a les instàncies de qBittorrent a través de qui",
+    "createButton": "Crea una clau API de client",
+    "loading": "S'estan carregant les claus API de client...",
+    "loadFailed": "No s'han pogut carregar les claus API de client",
+    "featureUnavailable": "Pot ser que aquesta funció no estigui disponible en aquesta versió",
+    "unknownError": "S'ha produït un error",
+    "instanceDeleted": "Instància eliminada",
+    "empty": "Encara no s'ha creat cap clau API de client",
+    "idLabel": "ID: {{id}}",
+    "labels": {
+      "created": "Creada:",
+      "lastUsed": "Últim ús:",
+      "host": "Amfitrió:",
+      "showHost": "Mostra l'amfitrió",
+      "hideHost": "Amaga l'amfitrió"
+    },
+    "createDialog": {
+      "title": "Crea una clau API de client",
+      "description": "Crea una clau API perquè un client concret es connecti a una instància de qBittorrent.",
+      "clientNameLabel": "Nom del client",
+      "clientNamePlaceholder": "p. ex., autobrr, tqm, sonarr, radarr, cross-seed",
+      "instanceLabel": "Instància de qBittorrent",
+      "instancePlaceholder": "Selecciona una instància",
+      "creating": "S'està creant..."
+    },
+    "newKey": {
+      "title": "S'ha creat la clau API",
+      "warning": "Aquesta informació només es mostra un cop. Desa-la al teu gestor de contrasenyes abans de tancar el diàleg.",
+      "proxyUrl": "URL del proxy",
+      "showProxyUrl": "Mostra l'URL del proxy",
+      "hideProxyUrl": "Amaga l'URL del proxy",
+      "copyProxyUrl": "Copia l'URL del proxy",
+      "done": "Fet"
+    },
+    "deleteDialog": {
+      "title": "Vols eliminar la clau API de client?",
+      "description": "Aquesta acció no es pot desfer. Qualsevol aplicació que faci servir aquesta clau perdrà l'accés a la instància de qBittorrent.",
+      "cancel": "Cancel·la",
+      "delete": "Elimina",
+      "deleteLabel": "Elimina la clau API {{name}}"
+    },
+    "toasts": {
+      "created": "S'ha creat la clau API de client correctament",
+      "createFailed": "No s'ha pogut crear la clau API de client",
+      "deleted": "S'ha eliminat la clau API de client correctament",
+      "deleteFailed": "No s'ha pogut eliminar la clau API de client: {{error}}",
+      "clientNameRequired": "El nom del client és obligatori",
+      "selectInstance": "Selecciona una instància de qBittorrent",
+      "proxyCopied": "S'ha copiat l'URL del proxy al porta-retalls",
+      "copyFailed": "No s'ha pogut copiar al porta-retalls"
+    }
+  },
+  "apiKeys": {
+    "cardTitle": "Claus API",
+    "loadingAuthMode": "S'està carregant el mode d'autenticació...",
+    "authDisabledTitle": "Les claus API no estan disponibles mentre l'autenticació integrada estigui desactivada",
+    "authDisabledDescription": "Les peticions que passin el teu proxy invers i la llista d'adreces CIDR permeses poden fer servir l'API de qui directament.",
+    "cardDescription": "Gestiona les claus API per a l'accés extern",
+    "apiDocs": "Documentació de l'API",
+    "description": "Les claus API permeten que les aplicacions externes accedeixin a les teves instàncies de qBittorrent.",
+    "createButton": "Crea una clau API",
+    "loading": "S'estan carregant les claus API...",
+    "empty": "Encara no s'ha creat cap clau API",
+    "createDialog": {
+      "title": "Crea una clau API",
+      "description": "Posa un nom descriptiu a la clau API per recordar per a què serveix.",
+      "nameLabel": "Nom",
+      "namePlaceholder": "p. ex., Script d'automatització",
+      "nameRequired": "El nom és obligatori",
+      "submit": "Crea la clau API",
+      "creating": "S'està creant..."
+    },
+    "newKey": {
+      "label": "La teva clau API nova",
+      "warning": "Desa aquesta clau ara. No la podràs tornar a veure.",
+      "done": "Fet"
+    },
+    "deleteDialog": {
+      "title": "Vols eliminar la clau API?",
+      "description": "Aquesta acció no es pot desfer. Qualsevol aplicació que faci servir aquesta clau perdrà l'accés.",
+      "cancel": "Cancel·la",
+      "delete": "Elimina"
+    },
+    "toasts": {
+      "created": "S'ha creat la clau API correctament",
+      "createFailed": "No s'ha pogut crear la clau API",
+      "deleted": "S'ha eliminat la clau API correctament",
+      "deleteFailed": "No s'ha pogut eliminar la clau API",
+      "copied": "S'ha copiat la clau API al porta-retalls",
+      "copyFailed": "No s'ha pogut copiar al porta-retalls"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "Programes externs",
+    "cardDescription": "Configura programes o scripts externs que es puguin executar des del menú contextual dels torrents",
+    "createButton": "Crea un programa extern",
+    "createTitle": "Crea un programa extern",
+    "createDescription": "Configura un programa o script extern que es pugui executar des del menú contextual dels torrents.",
+    "loading": "S'estan carregant els programes externs...",
+    "loadFailed": "No s'han pogut carregar els programes externs",
+    "unknownError": "Error desconegut",
+    "empty": "No hi ha cap programa extern configurat. Crea'n un per començar.",
+    "enabled": "Activat",
+    "disabled": "Desactivat",
+    "created": "Creat el {{date}}",
+    "updated": "Actualitzat el {{date}}",
+    "programPath": "Camí del programa:",
+    "argumentsTemplate": "Plantilla d'arguments:",
+    "editTitle": "Edita el programa extern",
+    "deleteTitle": "Elimina el programa extern",
+    "delete": "Elimina",
+    "deleteConflictIntro": "Aquest programa el fan servir les regles d'automatització següents:",
+    "deleteConflictDescription": "Si continues, l'acció del programa extern se suprimirà d'aquestes regles d'automatització.",
+    "deleteDescription": "Segur que vols eliminar \"{{name}}\"? Aquesta acció no es pot desfer.",
+    "deleteAnyway": "Elimina'l igualment",
+    "nameLabel": "Nom *",
+    "namePlaceholder": "El meu programa extern",
+    "pathLabel": "Camí del programa *",
+    "pathPlaceholder": "/usr/bin/my-script.sh o C:\\Scripts\\my-script.bat",
+    "pathDescription": "Camí complet de l'executable",
+    "argumentsLabel": "Plantilla d'arguments",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "argumentsDescription": "Camí complet de l'script amb els arguments",
+    "availablePlaceholders": "Marcadors disponibles:",
+    "pathMappings": "Assignacions de camins",
+    "remotePathPlaceholder": "Camí remot (p. ex., /mnt/remote-storage)",
+    "localPathPlaceholder": "Camí local (p. ex., /home/user/mounts/remote)",
+    "removePathMapping": "Suprimeix l'assignació de camí",
+    "addPathMapping": "Afegeix una assignació de camí",
+    "pathMappingsDescription": "Les assignacions de camins converteixen els camins remots en punts de muntatge locals. Van bé quan executes programes externs en un servidor de qui local mentre qBittorrent és remot. Els camins es fan coincidir primer pel prefix més llarg. Fes servir el mateix estil de separador de camins que la instància remota de qBittorrent (/ per a Linux, \\ per a Windows).",
+    "launchInTerminal": "Obre'l en una finestra de terminal",
+    "launchInTerminalDescription": "Quan està activat, el programa s'obre en una finestra de terminal nova. Desactiva-ho per a aplicacions gràfiques o programes que no necessitin sortida per terminal.",
+    "enableProgram": "Activa aquest programa",
+    "cancel": "Cancel·la",
+    "saving": "S'està desant...",
+    "updateButton": "Actualitza",
+    "createSubmit": "Crea",
+    "ariaLabels": {
+      "edit": "Edita {{name}}",
+      "delete": "Elimina {{name}}"
+    },
+    "toasts": {
+      "created": "S'ha creat el programa extern correctament",
+      "createFailed": "No s'ha pogut crear el programa extern: {{error}}",
+      "updated": "S'ha actualitzat el programa extern correctament",
+      "updateFailed": "No s'ha pogut actualitzar el programa extern: {{error}}",
+      "deleted": "S'ha eliminat el programa extern correctament",
+      "deleteFailed": "No s'ha pogut eliminar el programa extern: {{error}}"
+    },
+    "validation": {
+      "nameRequired": "El nom del programa és obligatori",
+      "pathRequired": "El camí del programa és obligatori"
+    },
+    "placeholders": {
+      "hash": "Hash del torrent",
+      "name": "Nom del torrent",
+      "savePath": "Camí de desada",
+      "contentPath": "Camí del contingut",
+      "category": "Categoria",
+      "tags": "Etiquetes (separades per comes)",
+      "state": "Estat del torrent",
+      "size": "Mida en bytes",
+      "progress": "Progrés (0-1)",
+      "comment": "Comentari del torrent"
+    }
+  },
+  "notifications": {
+    "cardTitle": "Notificacions",
+    "cardDescription": "Envia avisos i actualitzacions d'estat per qualsevol servei compatible amb Shoutrrr",
+    "addButton": "Afegeix una destinació de notificació",
+    "loading": "S'estan carregant les destinacions de notificació…",
+    "loadFailed": "No s'han pogut carregar les destinacions de notificació",
+    "empty": "No hi ha cap destinació de notificació configurada. Afegeix-ne una per començar a rebre avisos.",
+    "allEvents": "Tots els esdeveniments",
+    "showList": "Mostra la llista",
+    "hideList": "Amaga la llista",
+    "badges": {
+      "enabled": "Activada",
+      "disabled": "Desactivada"
+    },
+    "groups": {
+      "torrent": "Torrent",
+      "maintenance": "Manteniment",
+      "crossSeed": "Cross-seed",
+      "automations": "Automatitzacions",
+      "other": "Altres",
+      "unknown": "Desconegut"
+    },
+    "form": {
+      "name": "Nom",
+      "namePlaceholder": "El meu Discord",
+      "url": "URL de Shoutrrr",
+      "urlPlaceholder": "discord://token@id o notifiarrapi://apikey",
+      "urlDescriptionPrefix": "Fes servir qualsevol esquema d'URL compatible amb Shoutrrr. L'API de Notifiarr fa servir",
+      "urlDescriptionSuffix": "Els URL de webhook de Discord es converteixen automàticament a",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "Activada",
+      "events": "Esdeveniments",
+      "selectAll": "Selecciona'ls tots",
+      "select": "Selecciona",
+      "clear": "Neteja",
+      "loadingEventTypes": "S'estan carregant els tipus d'esdeveniment…"
+    },
+    "dialog": {
+      "newTitle": "Destinació de notificació nova",
+      "newDescription": "Configura on ha d'enviar qui els avisos i les actualitzacions d'estat.",
+      "editTitle": "Edita la destinació de notificació",
+      "editDescription": "Actualitza la configuració d'enviament d'aquesta destinació.",
+      "deleteTitle": "Vols eliminar la destinació de notificació?",
+      "deleteDescription": "Això suprimirà {{name}}. Si cal, la pots tornar a afegir més endavant.",
+      "cancel": "Cancel·la",
+      "saving": "S'està desant…",
+      "save": "Desa",
+      "delete": "Elimina"
+    },
+    "validation": {
+      "nameRequired": "El nom és obligatori",
+      "urlRequired": "L'URL de notificació és obligatori",
+      "selectEvent": "Selecciona com a mínim un esdeveniment"
+    },
+    "toasts": {
+      "created": "S'ha creat la destinació de notificació correctament",
+      "createFailed": "No s'ha pogut crear la destinació de notificació",
+      "updated": "S'ha actualitzat la destinació de notificació correctament",
+      "updateFailed": "No s'ha pogut actualitzar la destinació de notificació",
+      "deleted": "S'ha eliminat la destinació de notificació correctament",
+      "deleteFailed": "No s'ha pogut eliminar la destinació de notificació",
+      "testSent": "S'ha enviat la notificació de prova correctament",
+      "testFailed": "No s'ha pogut enviar la notificació de prova"
+    },
+    "ariaLabels": {
+      "sendTest": "Envia una prova a {{name}}",
+      "edit": "Edita {{name}}",
+      "delete": "Elimina {{name}}"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "Preferències de data i hora",
+    "cardDescription": "Configura el fus horari, el format de data i com es mostra l'hora",
+    "timezone": "Fus horari",
+    "timezoneDescription": "Selecciona el teu fus horari local perquè l'hora es mostri correctament",
+    "selectTimezone": "Selecciona un fus horari",
+    "detected": "detectat",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "Amèrica",
+      "Europe": "Europa",
+      "Asia": "Àsia",
+      "Africa": "Àfrica",
+      "Oceania": "Oceania"
+    },
+    "timeFormat": "Format de l'hora",
+    "use12Hour": "Fes servir el format de 12 hores (AM/PM)",
+    "use12HourDescription": "Commuta entre el format de 12 i el de 24 hores",
+    "dateFormat": "Format de data",
+    "dateFormatDescription": "Tria com es mostren les dates a tota l'aplicació",
+    "selectDateFormat": "Selecciona un format de data",
+    "isoFormat": "ISO 8601 (AAAA-MM-DD)",
+    "usFormat": "Format dels EUA (MM/DD/AAAA)",
+    "euFormat": "Format europeu (DD/MM/AAAA)",
+    "relativeFormat": "Relatiu (p. ex., \"fa 2 hores\")",
+    "preview": "Previsualització",
+    "previewDescription": "Així és com es mostraran les dates i les hores a l'aplicació",
+    "savePreferences": "Desa les preferències",
+    "toasts": {
+      "success": "S'han desat les preferències de data i hora",
+      "error": "No s'han pogut desar les preferències de data i hora"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "Canvia la contrasenya",
+      "description": "Actualitza la contrasenya del teu compte"
+    },
+    "browserIntegration": {
+      "title": "Integració amb el navegador",
+      "description": "Configura com gestiona els enllaços magnet el teu navegador",
+      "registerDescription": "Registra qui com a gestor dels enllaços magnet del navegador. Això et permet obrir els enllaços magnet directament a qui.",
+      "registerButton": "Registra'l com a gestor",
+      "toasts": {
+        "requested": "S'ha sol·licitat el registre del gestor de magnet",
+        "failed": "No s'ha pogut registrar el gestor de magnet"
+      }
+    }
+  },
+  "logs": {
+    "title": "Registres",
+    "description": "Consulta els registres en directe i configura'n les opcions",
+    "settingsSrOnly": "Obre la configuració dels registres",
+    "configuration": {
+      "title": "Configuració",
+      "description": "Ajusta el nivell de registre, el camí de sortida i la rotació.",
+      "level": "Nivell de registre",
+      "levelPlaceholder": "Selecciona un nivell de registre",
+      "path": "Camí del fitxer de registre",
+      "pathPlaceholder": "Deixa-ho buit per fer servir només stdout",
+      "maxSize": "Mida màxima (MB)",
+      "maxBackups": "Còpies màximes",
+      "saving": "S'està desant...",
+      "saveSettings": "Desa la configuració"
+    },
+    "viewer": {
+      "connected": "Connectat",
+      "disconnected": "Desconnectat",
+      "searchPlaceholder": "Cerca als registres...",
+      "allLevels": "Tots els nivells",
+      "all": "Tots",
+      "none": "Cap",
+      "levelCount_one": "{{count}} nivell",
+      "levelCount_other": "{{count}} nivells",
+      "mutedCount_one": "{{count}} silenciat",
+      "mutedCount_other": "{{count}} silenciats",
+      "mutedMessages": "Missatges silenciats",
+      "clearAll": "Neteja-ho tot",
+      "clear": "Neteja",
+      "autoScroll": "Desplaçament automàtic",
+      "noEntriesMatch": "Cap entrada coincideix amb el filtre actual",
+      "waiting": "S'estan esperant entrades de registre...",
+      "showing": "Es mostren {{shown}} de {{total}} entrades ({{max}} {{mode}})",
+      "maxLive": "màx.",
+      "maxPaused": "màx. en pausa",
+      "oldestEntriesDropped": "• s'han descartat les entrades més antigues",
+      "muteSimilarEntries": "Silencia les entrades semblants"
+    },
+    "entryDialog": {
+      "title": "Entrada de registre",
+      "rawLine": "Línia de registre en brut",
+      "copyRaw": "Copia-ho en brut",
+      "copyJson": "Copia el JSON",
+      "close": "Tanca"
+    },
+    "toasts": {
+      "settingsUpdated": "S'ha actualitzat la configuració dels registres",
+      "settingsFailed": "No s'ha pogut actualitzar la configuració dels registres",
+      "jsonCopied": "S'ha copiat l'entrada de registre en JSON",
+      "rawCopied": "S'ha copiat l'entrada de registre en brut",
+      "copyFailed": "No s'ha pogut copiar l'entrada de registre"
+    },
+    "files": {
+      "title": "Fitxers de registre",
+      "downloadSrOnly": "Baixa {{filename}}",
+      "toasts": {
+        "downloadFailed": "No s'ha pogut baixar {{filename}}"
+      }
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "Selecció de tema",
+      "loadingDescription": "S'estan carregant els temes disponibles...",
+      "description": "Tria entre els temes disponibles. Els temes premium necessiten una llicència vàlida.",
+      "verificationUnavailable": "La verificació de llicències no està disponible. El canvi a temes premium està desactivat temporalment.",
+      "freeBadge": "Gratuït",
+      "freeThemes": "Temes gratuïts",
+      "premiumBadge": "Premium",
+      "premiumThemes": "Temes premium",
+      "notLoaded": "Els temes premium no s'han carregat",
+      "notLoadedDescription": "Configura",
+      "notLoadedAnd": "i executa",
+      "premium": "Premium",
+      "pro": "Pro",
+      "free": "Gratuït",
+      "locked": "Bloquejat",
+      "lock": "Bloqueja"
+    },
+    "toasts": {
+      "premiumRequired": "Cal una llicència premium",
+      "premiumRequiredDescription": "Desbloqueja els temes premium afegint-hi una llicència premium vàlida."
+    },
+    "license": {
+      "loadingTitle": "Gestió de llicències",
+      "loadingDescription": "S'estan carregant les llicències dels temes...",
+      "managementTitle": "Gestió de llicències",
+      "managementDescription": "Gestiona la llicència dels temes i l'accés premium",
+      "providers": {
+        "dodoPortal": "Portal de Dodo",
+        "polarPortal": "Portal de Polar",
+        "legacyPolarPortal": "Portal antic de Polar"
+      },
+      "status": {
+        "unlockTitle": "Desbloqueja els temes premium",
+        "unlockDescription": "Paga el que vulguis (mín. 9,99 $) • Llicència vitalícia • Tots els temes",
+        "activeTitle": "Accés premium actiu",
+        "activeDescription": "Tens accés a tots els temes premium actuals i futurs",
+        "activationRequiredTitle": "Cal activar la llicència",
+        "activationRequiredDescription": "La teva llicència s'ha d'activar en aquesta màquina"
+      },
+      "portalHelp": {
+        "prefix": "Compra-ho a DodoPayments i després introdueix aquí la teva clau de llicència. Si perds la clau, recupera-la mitjançant el",
+        "suffix": "."
+      },
+      "discord": {
+        "title": "Avantatge de Discord",
+        "prefix": "Reclama el rol",
+        "afterRole": "per accedir a un canal privat.",
+        "openDiscord": "Obre el Discord de qui",
+        "opensInNewTab": "(s'obre en una pestanya nova)",
+        "afterLink": ", executa",
+        "copyVerifyAriaLabel": "Copia l'ordre /verify",
+        "copyVerifyTitle": "Fes clic per copiar-ho",
+        "verifyCommand": "/verify",
+        "afterVerify": "a",
+        "channel": "#qui",
+        "suffix": ", i inicia la sessió amb el correu de la llicència."
+      },
+      "details": {
+        "productAdded": "{{productName}} • Afegida el {{date}}",
+        "productStatusAndAdded": "{{productName}} • Estat: {{status}} • Afegida el {{date}}"
+      },
+      "invalid": {
+        "polarPrefix": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, desactiva-la a l'altra màquina on està activa, o gestiona les activacions mitjançant",
+        "polarSuffix": ".",
+        "dodo": "Aquesta llicència no està activa en aquesta màquina. Fes clic a Reactiva la llicència per fer-la servir aquí. Si has arribat al límit d'activacions, desactiva-la a l'altra màquina on està activa ara mateix."
+      },
+      "actions": {
+        "addLicense": "Afegeix una llicència",
+        "remove": "Suprimeix",
+        "removing": "S'està suprimint...",
+        "getPremium": "Aconsegueix premium",
+        "reactivate": "Reactiva la llicència",
+        "activating": "S'està activant...",
+        "copyLicenseKey": "Copia la clau de llicència",
+        "activate": "Activa la llicència",
+        "validating": "S'està validant...",
+        "openDodoCheckout": "Obre la pàgina de pagament de DodoPayments",
+        "openDodoPortal": "Obre el portal de Dodo"
+      },
+      "deleteDialog": {
+        "title": "Vols suprimir la llicència?",
+        "description": "Segur que vols suprimir aquesta llicència d'aquesta màquina? qui també intentarà alliberar la ranura d'activació remota, però la supressió local es completarà igualment si aquesta petició falla.",
+        "keyLabel": "Clau de llicència que se suprimirà:",
+        "recoverPrefix": "Si cal, la pots recuperar més endavant des del teu"
+      },
+      "addDialog": {
+        "title": "Afegeix una llicència premium",
+        "description": "Introdueix la clau de llicència dels temes premium per desbloquejar-los tots.",
+        "label": "Clau de llicència",
+        "placeholder": "Introdueix la clau de llicència dels temes premium",
+        "recoverKey": "Has perdut la clau?",
+        "validation": {
+          "required": "La clau de llicència és obligatòria"
+        }
+      },
+      "paymentDialog": {
+        "title": "Aconsegueix una llicència premium",
+        "description": "Paga el que vulguis (mín. 9,99 $) • Llicència vitalícia • Tots els temes",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "Tria un mètode de pagament",
+            "cardTitle": "Targeta o mètodes locals",
+            "cardDescription": "Paga directament a DodoPayments. Després del pagament tornaràs a qui.",
+            "cryptoTitle": "Criptomonedes",
+            "cryptoDescription": "El pagament amb criptomonedes també es completa a la pàgina de pagament de DodoPayments.",
+            "xmrHelp": "L'XMR és manual: escriu-nos a Discord o al correu s0up4200@pm.me.",
+            "cryptoSteps": {
+              "readmePrefix": "Fes la donació a les adreces que trobaràs al",
+              "readmeSuffix": ".",
+              "verifyPrefix": "Verifica-ho a",
+              "verifySuffix": "per obtenir el teu codi de descompte.",
+              "applyCode": "Obre la pàgina de pagament de DodoPayments, enganxa el codi a «Discount code» i fes clic a «Apply».",
+              "completeCheckout": "Comprova que el total sigui 0,00 $ i completa el pagament."
+            }
+          },
+          "findLicenseKey": {
+            "title": "Troba la teva clau de llicència",
+            "description": "La clau de llicència es mostra després del pagament. També la pots recuperar més endavant des del portal de clients de Dodo."
+          },
+          "activateLicense": {
+            "title": "Activa la teva llicència",
+            "description": "Quan el pagament et retorni aquí, fes servir «Afegeix una llicència» per activar la clau."
+          }
+        }
+      },
+      "copiedVerify": "S'ha copiat l'ordre de verificació",
+      "failedCopyVerify": "No s'ha pogut copiar l'ordre de verificació",
+      "toasts": {
+        "activationSuccess": "S'ha activat la llicència correctament!",
+        "activationSuccessPremium": "S'ha activat l'accés premium. Gràcies!",
+        "paymentCompleted": "S'ha completat el pagament. Afegeix la clau de llicència premium per acabar la configuració.",
+        "paymentNotCompleted": "El pagament no s'ha completat correctament.",
+        "returnedFromCheckout": "Has tornat de la pàgina de pagament. Afegeix la clau de llicència premium quan vulguis.",
+        "keyCopied": "S'ha copiat la clau de llicència al porta-retalls",
+        "copyFailed": "No s'ha pogut copiar la clau de llicència",
+        "removedFromMachine": "S'ha suprimit la llicència d'aquesta màquina",
+        "refreshedAll": "S'han actualitzat totes les llicències correctament",
+        "refreshFailed": "No s'han pogut actualitzar les llicències"
+      }
+    },
+    "custom": {
+      "badge": "Personalitzat",
+      "title": "Temes personalitzats",
+      "lockedTitle": "Els temes personalitzats són una funció premium",
+      "lockedDescription": "Desbloqueja premium per carregar els teus propis fitxers CSS de tema des d'un directori del disc.",
+      "unlockCta": "Desbloqueja premium",
+      "directoryLabel": "Directori dels temes",
+      "refresh": "Actualitza",
+      "detectedCount": "Temes trobats: {{total}}",
+      "parseErrorsTitle": "No s'han pogut analitzar aquests fitxers:",
+      "noneFound": "No s'ha trobat cap tema personalitzat. Posa un fitxer .css al directori dels temes i fes clic a Actualitza.",
+      "loadError": "No s'han pogut carregar els temes personalitzats. Comprova els registres del servidor i els permisos del directori dels temes."
+    }
+  },
+  "arrInstances": {
+    "addButton": "Afegeix una instància ARR",
+    "addDialog": {
+      "title": "Afegeix una instància ARR",
+      "description": "Configura una instància de Sonarr o Radarr per fer cerques d'identificadors durant les cerques de cross-seed."
+    },
+    "editDialog": {
+      "title": "Edita la instància ARR"
+    },
+    "deleteDialog": {
+      "title": "Vols eliminar la instància ARR?",
+      "description": "Segur que vols eliminar \"{{name}}\"? Aquesta acció no es pot desfer."
+    },
+    "badges": {
+      "enabled": "Activada",
+      "disabled": "Desactivada",
+      "connected": "Connectada",
+      "failed": "Ha fallat"
+    },
+    "loading": "S'estan carregant les instàncies ARR...",
+    "loadFailed": "No s'han pogut carregar les instàncies ARR",
+    "empty": "No hi ha cap instància ARR configurada. Afegeix una instància de Sonarr o Radarr per activar les cerques de cross-seed per identificador.",
+    "created": "Creada el {{date}}",
+    "sonarrInstances": "Instàncies de Sonarr",
+    "radarrInstances": "Instàncies de Radarr",
+    "unknownError": "Error desconegut",
+    "actions": {
+      "testConnection": "Prova la connexió",
+      "testing": "S'està provant...",
+      "cancel": "Cancel·la",
+      "delete": "Elimina",
+      "create": "Crea",
+      "update": "Actualitza",
+      "saving": "S'està desant..."
+    },
+    "form": {
+      "type": "Tipus *",
+      "selectType": "Selecciona un tipus",
+      "name": "Nom *",
+      "namePlaceholder": "El meu {{type}}",
+      "baseUrl": "URL base *",
+      "baseUrlDescription": "L'URL base de la teva instància de {{type}}",
+      "apiKey": "Clau API *",
+      "apiKeyOptional": "Clau API (deixa-ho buit per mantenir l'actual)",
+      "apiKeyPlaceholder": "Introdueix la clau API",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "La trobaràs a Configuració > General de {{type}}",
+      "basicAuth": "Autenticació bàsica",
+      "basicAuthDescription": "Fes servir l'autenticació bàsica HTTP per a les ARR que hi hagi darrere d'un proxy invers.",
+      "basicUsername": "Nom d'usuari bàsic",
+      "basicUsernamePlaceholder": "Nom d'usuari",
+      "basicPassword": "Contrasenya bàsica",
+      "basicPasswordPlaceholder": "Contrasenya",
+      "basicPasswordPlaceholderEdit": "<redacted>",
+      "basicPasswordKeep": "Deixa-ho com a <redacted> per mantenir la contrasenya existent.",
+      "priority": "Prioritat",
+      "priorityDescription": "Les instàncies amb més prioritat es consulten primer",
+      "timeoutSeconds": "Temps límit (segons)",
+      "enabled": "Activa aquesta instància",
+      "types": {
+        "sonarr": "Sonarr (sèries)",
+        "radarr": "Radarr (pel·lícules)",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      }
+    },
+    "validation": {
+      "nameRequired": "El nom és obligatori",
+      "baseUrlRequired": "L'URL base és obligatori",
+      "apiKeyRequired": "La clau API és obligatòria",
+      "baseUrlAndApiKeyRequired": "Cal l'URL base i la clau API per provar la connexió",
+      "basicUsernameRequired": "El nom d'usuari de l'autenticació bàsica és obligatori",
+      "basicPasswordRequired": "Cal la contrasenya de l'autenticació bàsica per provar la connexió",
+      "basicPasswordRequiredSubmit": "La contrasenya de l'autenticació bàsica és obligatòria",
+      "basicPasswordKeepOrEnter": "Introdueix una contrasenya nova d'autenticació bàsica o mantén l'existent"
+    },
+    "ariaLabels": {
+      "testConnection": "Prova la connexió de {{name}}",
+      "edit": "Edita {{name}}",
+      "delete": "Elimina {{name}}"
+    },
+    "toasts": {
+      "created": "S'ha creat la instància ARR correctament",
+      "createFailed": "No s'ha pogut crear la instància ARR: {{error}}",
+      "updated": "S'ha actualitzat la instància ARR correctament",
+      "updateFailed": "No s'ha pogut actualitzar la instància ARR: {{error}}",
+      "deleted": "S'ha eliminat la instància ARR correctament",
+      "deleteFailed": "No s'ha pogut eliminar la instància ARR: {{error}}",
+      "connectionSuccess": "Connexió correcta",
+      "connectionFailed": "Ha fallat la connexió: {{error}}",
+      "testFailed": "No s'ha pogut provar la connexió: {{error}}"
+    }
+  },
+  "indexers": {
+    "title": "Indexadors de Torznab",
+    "addIndexer": "Afegeix un indexador",
+    "autodiscoverProwlarr": "Descobreix automàticament des de Prowlarr",
+    "noIndexers": "Encara no hi ha cap indexador configurat.",
+    "noIndexersDescription": "Afegeix un indexador compatible amb Torznab per activar les cerques automàtiques de cross-seed.",
+    "deleteIndexer": "Elimina l'indexador",
+    "deleteIndexerDescription": "Segur que vols eliminar \"{{name}}\"? Aquesta acció no es pot desfer.",
+    "deleteAllIndexers": "Elimina tots els indexadors",
+    "deleteAllDescription": "Segur que vols eliminar els {{count}} indexadors? Aquesta acció no es pot desfer.",
+    "toast": {
+      "loadFailed": "No s'han pogut carregar els indexadors",
+      "deletedSuccess": "S'ha eliminat l'indexador",
+      "deleteFailed": "No s'ha pogut eliminar l'indexador",
+      "allDeletedSuccess": "S'han eliminat tots els indexadors",
+      "allDeletedFailed": "No s'han pogut eliminar tots els indexadors",
+      "deleteAllSuccess": "S'han eliminat els {{count}} indexadors",
+      "deleteAllPartial": "S'han eliminat {{success}} indexadors; {{failed}} han fallat: {{names}}",
+      "testSuccess": "La prova de connexió ha anat bé",
+      "noIndexersToTest": "No hi ha cap indexador per provar",
+      "testing": "S'estan provant {{count}} indexadors...",
+      "testAllSuccess": "S'han provat correctament els {{count}} indexadors",
+      "testAllPartial": "{{success}} correctes, {{failed}} fallits",
+      "failedIndexers": "Indexadors fallits: {{names}}",
+      "capsSynced": "S'han sincronitzat les capacitats des del backend",
+      "failedToSyncCaps": "No s'han pogut sincronitzar les capacitats"
+    },
+    "priorityLabels": {
+      "interactive": "Interactiu",
+      "rss": "RSS",
+      "completion": "En completar",
+      "background": "En segon pla"
+    },
+    "contentTypeLabels": {
+      "movie": "Pel·lícula",
+      "tv": "TV",
+      "tv_daily": "TV (diària)",
+      "xxx": "XXX",
+      "music": "Música",
+      "audiobook": "Audiollibre",
+      "book": "Llibre",
+      "comic": "Còmic",
+      "magazine": "Revista",
+      "education": "Educació",
+      "app": "Aplicació",
+      "game": "Joc",
+      "unknown": "Desconegut"
+    },
+    "page": {
+      "summary": "{{enabled}} activats, {{capabilities}} amb capacitats",
+      "description": "Gestiona els indexadors de Torznab servits per Jackett, Prowlarr o punts finals natius dels trackers",
+      "deleteAll": "Elimina'ls tots",
+      "discover": "Descobreix",
+      "addSingle": "Afegeix-ne un"
+    },
+    "dialog": {
+      "addTitle": "Afegeix un indexador",
+      "editTitle": "Edita l'indexador",
+      "addDescription": "Afegeix un indexador de Torznab nou per descobrir cross-seed",
+      "editDescription": "Actualitza la configuració de l'indexador",
+      "labels": {
+        "name": "Nom",
+        "backend": "Backend",
+        "baseUrl": "URL base",
+        "indexerId": "ID de l'indexador",
+        "apiKey": "Clau API",
+        "priority": "Prioritat",
+        "timeout": "Temps límit (segons)",
+        "enabled": "Activat",
+        "basicAuth": "Autenticació bàsica",
+        "basicAuthDescription": "Fes servir l'autenticació bàsica HTTP per a Torznab darrere d'un proxy invers.",
+        "basicUsername": "Nom d'usuari bàsic",
+        "basicPassword": "Contrasenya bàsica"
+      },
+      "placeholders": {
+        "name": "El meu indexador",
+        "selectBackend": "Selecciona un backend",
+        "apiKeyEdit": "Deixa-ho en blanc per mantenir l'actual",
+        "apiKeyCreate": "La teva clau API",
+        "indexerIdProwlarr": "ID de l'indexador a Prowlarr (p. ex., 1)",
+        "indexerIdJackett": "ID opcional de l'indexador a Jackett (p. ex., aither)",
+        "username": "Nom d'usuari",
+        "password": "Contrasenya"
+      },
+      "hints": {
+        "indexerIdProwlarr": "Introdueix l'ID numèric de la pàgina de detalls de l'indexador a Prowlarr.",
+        "indexerIdJackett": "Opcional per a Jackett. Deixa-ho en blanc perquè qui el dedueixi automàticament.",
+        "basicPasswordKeep": "Deixa-ho com a <redacted> per mantenir la contrasenya existent."
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "Torznab natiu"
+      },
+      "buttons": {
+        "save": "Desa",
+        "add": "Afegeix",
+        "saving": "S'està desant...",
+        "cancel": "Cancel·la"
+      },
+      "toast": {
+        "createdSuccess": "S'ha creat l'indexador correctament",
+        "createdWithWarnings": "S'ha creat l'indexador amb avisos: {{warnings}}",
+        "updatedSuccess": "S'ha actualitzat l'indexador correctament",
+        "updatedWithWarnings": "S'ha actualitzat l'indexador amb avisos: {{warnings}}",
+        "failedCreate": "No s'ha pogut crear l'indexador",
+        "failedEdit": "No s'ha pogut editar l'indexador",
+        "basicUsernameRequired": "El nom d'usuari de l'autenticació bàsica és obligatori",
+        "basicPasswordRequired": "La contrasenya de l'autenticació bàsica és obligatòria",
+        "basicPasswordRequiredOrKeep": "La contrasenya de l'autenticació bàsica és obligatòria (o deixa-hi <redacted>)"
+      }
+    },
+    "autodiscovery": {
+      "title": "Descobreix indexadors",
+      "descriptionInput": "Connecta't a Jackett o Prowlarr per descobrir els indexadors configurats",
+      "descriptionSelect": "Selecciona els indexadors que vols importar",
+      "labels": {
+        "indexerUrl": "URL de l'indexador",
+        "apiKey": "Clau API",
+        "basicAuth": "Autenticació bàsica",
+        "basicAuthDescription": "Fes servir l'autenticació bàsica HTTP per a Jackett/Prowlarr darrere d'un proxy invers.",
+        "basicUsername": "Nom d'usuari bàsic",
+        "basicPassword": "Contrasenya bàsica"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "La clau API del teu indexador",
+        "username": "Nom d'usuari",
+        "password": "Contrasenya"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr fa servir http://localhost:9696 per defecte, i Jackett http://localhost:9117."
+      },
+      "buttons": {
+        "cancel": "Cancel·la",
+        "discover": "Descobreix",
+        "discovering": "S'estan descobrint...",
+        "back": "Enrere",
+        "importing": "S'està important...",
+        "import": "Importa {{count}} indexador",
+        "importPlural": "Importa {{count}} indexadors",
+        "selectAll": "Selecciona'ls tots",
+        "deselectAll": "Desselecciona'ls tots"
+      },
+      "selectionCount": "{{selected}} de {{total}} seleccionats",
+      "noIndexersFound": "No s'ha trobat cap indexador",
+      "willUpdate": "S'actualitzarà",
+      "typeLabel": "Tipus:",
+      "backendLabel": "Backend:",
+      "notConfigured": "(Sense configurar)",
+      "unknownError": "Error desconegut",
+      "toast": {
+        "urlRequired": "L'URL de l'indexador és obligatori",
+        "basicAuthRequired": "L'autenticació bàsica necessita un nom d'usuari i una contrasenya",
+        "urlRequiredBeforeImport": "Indica un URL d'indexador abans d'importar",
+        "discoveredWithExisting": "S'han trobat {{total}} indexadors ({{existing}} ja existeixen)",
+        "discovered": "S'han trobat {{count}} indexadors",
+        "discoverFailed": "No s'han pogut descobrir els indexadors: {{error}}",
+        "importSuccess": "Correcte: {{details}}",
+        "importWithWarnings": "{{details}} ({{warningCount}} amb avisos)",
+        "moreWarnings": "...i {{count}} avisos més",
+        "importErrors": "{{details}}",
+        "moreErrors": "...i {{count}} errors més",
+        "created": "{{count}} creats",
+        "updated": "{{count}} actualitzats",
+        "failed": "{{count}} fallits"
+      },
+      "savedConnections": {
+        "title": "Connexions desades",
+        "description": "Fes servir un servidor del qual ja hagis importat abans. La clau API es queda al servidor.",
+        "manual": "Introdueix-ho manualment",
+        "storedKey": "Es fa servir la clau API desada d'aquest servidor.",
+        "indexerCount_one": "{{count}} indexador",
+        "indexerCount_other": "{{count}} indexadors"
+      }
+    },
+    "table": {
+      "name": "Nom",
+      "backend": "Backend",
+      "priority": "Prioritat",
+      "status": "Estat",
+      "testStatus": "Estat de la prova",
+      "capabilities": "Capacitats",
+      "timeout": "Temps límit",
+      "actions": "Accions",
+      "enabled": "Activat",
+      "disabled": "Desactivat",
+      "working": "Funcionant",
+      "failed": "Ha fallat",
+      "untested": "Sense provar",
+      "testAll": "Prova'ls tots",
+      "filters": "Filtres",
+      "clearFilters": "Neteja els filtres",
+      "showingCount": "Es mostren {{shown}} de {{total}} indexadors",
+      "loading": "S'està carregant...",
+      "noIndexers": "No hi ha cap indexador configurat. Afegeix-ne un per començar.",
+      "noMatch": "Cap indexador coincideix amb els filtres actuals",
+      "noCapabilities": "Cap capacitat",
+      "sync": "Sincronitza",
+      "collapse": "Redueix",
+      "filterStatus": "Estat",
+      "filterTestStatus": "Estat de la prova",
+      "filterBackend": "Backend",
+      "filterAll": "Tots",
+      "filterEnabledOnly": "Només els activats",
+      "filterDisabledOnly": "Només els desactivats",
+      "filterWorkingOnly": "Només els que funcionen",
+      "filterFailedOnly": "Només els fallits",
+      "filterUntestedOnly": "Només els que no s'han provat",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "Natiu",
+      "tooltipTest": "Prova la connexió",
+      "tooltipSyncCaps": "Sincronitza les capacitats",
+      "tooltipEdit": "Edita",
+      "tooltipDelete": "Elimina",
+      "tooltipSyncCapsFromBackend": "Sincronitza les capacitats des del backend",
+      "capability": "Capacitat: {{name}}",
+      "clickToShowAllCapabilities": "Fes clic per mostrar les {{count}} capacitats"
+    },
+    "activity": {
+      "title": "Activitat del planificador",
+      "idle": "Inactiu",
+      "queueLength": "Cua",
+      "workers": "Processos",
+      "cooldown": "Temps d'espera",
+      "running": "En execució",
+      "queued": "En cua",
+      "rateLimited": "Limitat per freqüència",
+      "noActiveTasks": "No hi ha cap tasca activa ni cap límit de freqüència",
+      "andMore": "...i {{count}} més",
+      "workersStatus": "{{used}}/{{total}} processos",
+      "runningCount": "{{count}} en execució",
+      "queuedCount": "{{count}} en cua",
+      "cooldownCount": "{{count}} en espera",
+      "ready": "A punt",
+      "left": "en queden {{time}}"
+    },
+    "searchHistory": {
+      "title": "Historial de cerques",
+      "searches": "{{count}} cerques",
+      "searchesWithErrors": "{{count}} cerques, {{errors}} errors",
+      "noSearchesYet": "Encara no hi ha cap cerca",
+      "successful": "{{count}} correctes",
+      "failed": "{{count}} fallides",
+      "source": "Origen: {{source}}",
+      "results": "{{count}} resultats",
+      "detail": {
+        "release": "Release",
+        "results": "Resultats",
+        "duration": "Durada",
+        "priority": "Prioritat",
+        "crossSeed": "Cross-seed",
+        "added": "Afegits: {{count}}",
+        "error": "Error",
+        "searchParameters": "Paràmetres de cerca",
+        "mode": "Mode:",
+        "type": "Tipus:",
+        "job": "Tasca {{id}}",
+        "statusSuccess": "Correcta",
+        "statusFailed": "Fallida",
+        "statusSkipped": "Omesa",
+        "statusRateLimited": "Limitada per freqüència",
+        "season": "Temporada",
+        "episode": "Episodi"
+      }
+    }
+  },
+  "searchCache": {
+    "title": "Memòria cau de cerca",
+    "description": "Resultats de cerca desats a la memòria cau dels indexadors de Torznab.",
+    "refreshStats": "Actualitza",
+    "configTitle": "Configuració de la memòria cau",
+    "configDescription": "Ajusta durant quant de temps es desen els resultats de cerca.",
+    "cacheTTL": "TTL de la memòria cau (minuts)",
+    "saving": "S'està desant...",
+    "saveTTL": "Desa",
+    "ttlHelper": "Mínim: {{min}} minuts. Els valors més alts redueixen la càrrega dels indexadors.",
+    "entries": "Entrades",
+    "hitCount": "Nombre d'encerts",
+    "approxSize": "Mida aprox.",
+    "ttl": "TTL",
+    "newestEntry": "Entrada més recent",
+    "lastUsed": "Últim ús",
+    "enabled": "Activada",
+    "disabled": "Desactivada",
+    "ttlValue": "{{minutes}} minuts",
+    "timestamps": {
+      "justNow": "ara mateix",
+      "ago": "fa {{duration}}",
+      "inFuture": "d'aquí a {{duration}}"
+    },
+    "toasts": {
+      "ttlUpdated": "S'ha actualitzat el TTL de la memòria cau a {{minutes}} minuts",
+      "ttlUpdateFailed": "No s'ha pogut actualitzar el TTL de la memòria cau",
+      "invalidNumber": "Introdueix un número vàlid",
+      "ttlMinimum": "El TTL ha de ser com a mínim de {{min}} minuts"
+    }
+  },
+  "application": {
+    "loading": "S'està carregant...",
+    "loadFailed": "No s'ha pogut carregar la informació de l'aplicació",
+    "build": {
+      "title": "Compilació",
+      "description": "Detalls de la versió i la compilació.",
+      "refresh": "Actualitza",
+      "version": "Versió",
+      "commit": "Commit",
+      "buildDate": "Data de compilació",
+      "updateStatus": "Estat de l'actualització",
+      "statuses": {
+        "unknown": "Desconegut",
+        "unknownDetail": "No es pot determinar l'estat de l'actualització",
+        "disabled": "Desactivada",
+        "disabledDetail": "La comprovació d'actualitzacions està desactivada",
+        "devBuild": "Compilació de desenvolupament",
+        "checking": "S'està comprovant...",
+        "checkingDetail": "S'estan comprovant les actualitzacions",
+        "updateAvailable": "Actualització disponible",
+        "upToDate": "Al dia",
+        "upToDateDetail": "S'està executant l'última versió",
+        "notCheckedYet": "Encara no s'ha comprovat",
+        "lastChecked": "Última comprovació: {{date}}"
+      }
+    },
+    "runtime": {
+      "title": "Execució",
+      "description": "Informació d'execució del servidor.",
+      "uptime": "Temps actiu",
+      "runtime": "Entorn d'execució"
+    },
+    "auth": {
+      "title": "Autenticació",
+      "description": "Configuració de l'autenticació.",
+      "currentSessionAuth": "Sessió actual",
+      "unknown": "Desconegut",
+      "loading": "S'està carregant...",
+      "unavailable": "No disponible",
+      "yes": "Sí",
+      "no": "No",
+      "oidcEnabled": "OIDC activat",
+      "builtInLoginEnabled": "Inici de sessió integrat",
+      "oidcIssuerHost": "Emissor d'OIDC"
+    },
+    "storage": {
+      "title": "Emmagatzematge",
+      "description": "Camins de la base de dades i del sistema de fitxers.",
+      "database": "Base de dades",
+      "bind": "Adreça d'escolta",
+      "configDir": "Directori de configuració",
+      "dataDir": "Directori de dades"
+    },
+    "copyTitle": "Copia {{label}}",
+    "toasts": {
+      "copied": "S'ha copiat {{label}} al porta-retalls",
+      "copyFailed": "No s'ha pogut copiar {{label}}"
+    }
+  }
+}

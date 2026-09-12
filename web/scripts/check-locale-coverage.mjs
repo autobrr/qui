@@ -4,7 +4,7 @@ import path from "node:path"
 const webRoot = path.resolve(import.meta.dirname, "..")
 const localesRoot = path.join(webRoot, "src", "i18n", "locales")
 const enRoot = path.join(localesRoot, "en")
-const supportedLocales = ["fr", "de", "it", "ko", "pt-BR"]
+const supportedLocales = ["fr", "de", "it", "ko", "pt-BR", "ca"]
 const locale = process.argv[2]
 if (!supportedLocales.includes(locale)) {
   console.error(`Unknown locale "${locale}". Use one of: ${supportedLocales.join(", ")}`)
