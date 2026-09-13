@@ -1478,6 +1478,22 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 		straddlePieces[i] = qbt.PieceStateNotDownloadYet
 	}
 
+	// An empty file reports [start, start-1]; it occupies no piece and must not
+	// excuse a neighbour. E01 fails its last piece, an empty pending file follows
+	// at [10,9], and another sits at offset zero as [0,-1].
+	emptyFiles := qbt.TorrentFiles{
+		{Name: "Show.S01/zero.txt", Progress: 1, Priority: 1, Size: 0, PieceRange: []int{0, -1}},
+		{Name: "Show.S01/Show.S01E01.mkv", Progress: 0.9, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+		{Name: "Show.S01/empty.txt", Progress: 1, Priority: 1, Size: 0, PieceRange: []int{10, 9}},
+		{Name: "Show.S01/Show.S01E02.mkv", Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+	}
+	emptyPieces := make([]qbt.PieceState, 20)
+	for i := range emptyPieces {
+		emptyPieces[i] = qbt.PieceStateAlreadyDownloaded
+	}
+	for i := 9; i < 20; i++ {
+		emptyPieces[i] = qbt.PieceStateNotDownloadYet
+	}
 	// Keyed by path: qBittorrent drops pad files from its list and renumbers indexes.
 	linked := map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}, "Show.S01/Show.S01E02.mkv": {}}
 
@@ -1525,6 +1541,14 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 			pieces:     straddlePieces,
 			wantResume: true,
 			wantKeep:   true,
+		},
+		{
+			name:        "empty pending files excuse no piece",
+			threshold:   0.6,
+			linked:      map[string]struct{}{"Show.S01/Show.S01E01.mkv": {}},
+			files:       emptyFiles,
+			pieces:      emptyPieces,
+			wantBlocked: "Show.S01/Show.S01E01.mkv",
 		},
 		{
 			name:      "no piece states retries instead of blocking a boundary pack",

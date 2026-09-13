@@ -6659,9 +6659,10 @@ func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool
 // A piece range past the end of the piece list counts as mismatched.
 func mismatchedLinkedFile(files qbt.TorrentFiles, pieces []qbt.PieceState, linked map[string]struct{}) (string, int64) {
 	// Only a pending file's first and last piece can reach into a neighbour.
+	// An empty file occupies no piece: qBittorrent reports it as [start, start-1].
 	shared := make([]bool, len(pieces))
 	for _, file := range files {
-		if _, ok := linked[file.Name]; ok || len(file.PieceRange) < 2 {
+		if _, ok := linked[file.Name]; ok || file.Size <= 0 || len(file.PieceRange) < 2 {
 			continue
 		}
 		for _, p := range file.PieceRange[:2] {
