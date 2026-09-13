@@ -6,7 +6,15 @@ description: Fast, modern interface for qBittorrent with cross-seeding, automati
 
 # qui
 
-qui is a web interface for qBittorrent. It manages multiple qBittorrent instances from one application.
+qui is a web interface for qBittorrent. It runs as one binary and connects to one or more qBittorrent instances over the Web API.
+
+Most people run qui with one qBittorrent instance. Multi-instance support is optional. If you have a seedbox and a home server, qui manages both from one page.
+
+## Where to run qui
+
+qui can run on any machine that can reach the qBittorrent Web API. A few features read files on disk and need [local filesystem access](./features/instance-settings.md#local-filesystem-access). For those, qui must run on the same host as qBittorrent, or see the same files through a shared mount.
+
+If you have one server, run qui on that server. Some seedbox providers install qui for you, see [Seedbox installers](./getting-started/seedbox-installers.md). If your provider gives you no shell, run qui at home and add the seedbox as a remote instance. A remote instance gets the interface, the automations that do not read the disk, and cross-seed in default mode.
 
 ## Features
 
