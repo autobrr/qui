@@ -8,6 +8,8 @@ description: Automatically cross-seed torrents across trackers.
 
 qui finds torrents on other trackers that match content you already seed. It adds them to your qBittorrent instances, so you seed the same content on more than one tracker.
 
+qui cross-seed is a complete setup on its own. It needs no other cross-seeding tool. If you move from one, the torrents it added stay in the client, and qui skips any infohash that is already in the instance.
+
 ## How It Works
 
 When you cross-seed a torrent, qui:
@@ -156,11 +158,3 @@ Use the per-instance blocklist to stop qui from injecting specific infohashes ag
 - **Quick add**: Delete dialog checkbox (appears only for torrents tagged `cross-seed`)
 
 The delete dialog also detects cross-seeds that the deletion affects. This includes [hardlinked copies and ReFS block clones](./hardlink-mode.md#deleting-hardlinked-cross-seeds) on instances with local filesystem access.
-
-## If you run cross-seed
-
-cross-seed (cross-seed.org) is a separate program. qui does not use it.
-
-qui cross-seed works with qBittorrent only. It finds matches through the methods in [Discovery Methods](#discovery-methods) above, plus [Dir Scan](./dir-scan.md), the [autobrr webhook](./autobrr.md), and the [OPS/RED Gazelle APIs](./gazelle-ops-red.md).
-
-You can run qui and cross-seed at the same time. Torrents that cross-seed added stay in the client. qui skips a match when the infohash is already in the instance, and adds only new matches. If both tools create links, they use different directory layouts. Read [Link Directories](./link-directories.md) before you enable hardlink mode next to cross-seed.
