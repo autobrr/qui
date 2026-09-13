@@ -6622,6 +6622,7 @@ var _ pieceStateReader = (*qbittorrent.SyncManager)(nil)
 
 // hardlinkResumeAllowed refuses the resume when a linked file has a failed piece
 // that no pending file shares. Fetch failures keep the entry for a retry.
+// Decision record: docs/adr/0004-hardlink-resume-never-writes-into-a-linked-file.md.
 func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool {
 	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 	defer cancel()
