@@ -37,6 +37,10 @@ export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsRoute,
 })
 
+// The router preloads on link hover through the route component, so the wrapper
+// forwards it to the lazy page.
+SettingsRoute.preload = () => Settings.preload?.()
+
 function SettingsRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()

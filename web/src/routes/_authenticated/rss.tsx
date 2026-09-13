@@ -19,6 +19,10 @@ export const Route = createFileRoute("/_authenticated/rss")({
   component: RSSRoute,
 })
 
+// The router preloads on link hover through the route component, so the wrapper
+// forwards it to the lazy page.
+RSSRoute.preload = () => RSSPage.preload?.()
+
 function RSSRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()

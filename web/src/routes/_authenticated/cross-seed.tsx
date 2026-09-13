@@ -17,6 +17,10 @@ export const Route = createFileRoute("/_authenticated/cross-seed")({
   component: CrossSeedRoute,
 })
 
+// The router preloads on link hover through the route component, so the wrapper
+// forwards it to the lazy page.
+CrossSeedRoute.preload = () => CrossSeedPage.preload?.()
+
 function CrossSeedRoute() {
   const search = Route.useSearch()
   const navigate = Route.useNavigate()
