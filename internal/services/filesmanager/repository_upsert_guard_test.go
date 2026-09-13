@@ -37,6 +37,7 @@ func runFilesmanagerTests(t *testing.T, open testDBOpener) {
 		{"UpsertFilesWritesChangedRows", testUpsertFilesWritesChangedRows},
 		{"UpsertFilesGuardIsNullSafe", testUpsertFilesGuardIsNullSafe},
 		{"UpsertFilesGuardIsPerRowAcrossBatches", testUpsertFilesGuardIsPerRowAcrossBatches},
+		{"UpsertFilesUnchangedRowsTakeNoRowLocks", testUpsertFilesUnchangedRowsTakeNoRowLocks},
 		{"CacheFilesBatchAcrossQueryBatches", testCacheFilesBatchAcrossQueryBatches},
 	}
 
@@ -269,5 +270,31 @@ func testUpsertFilesGuardIsPerRowAcrossBatches(t *testing.T, open testDBOpener) 
 		require.NoError(t, repo.UpsertFiles(ctx, changed))
 
 		require.Equal(t, total-3, countAtSentinel(ctx, t, db), "only the three changed rows should have been written")
+	})
+}
+
+// A guarded ON CONFLICT DO UPDATE on Postgres locks every conflicting row even when
+// the guard skips it, and each lock writes WAL. A tuple lock leaves its xid in xmax.
+func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		if db.Dialect() != "postgres" {
+			t.Skip("row locks that write WAL are a Postgres cost")
+		}
+		repo := NewRepository(db)
+
+		files := make([]CachedFile, fileBatchSize*2+5)
+		for i := range files {
+			f := baseFile()
+			f.FileIndex = i
+			files[i] = f
+		}
+		require.NoError(t, repo.UpsertFiles(ctx, files))
+		require.NoError(t, repo.UpsertFiles(ctx, files))
+
+		var locked int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache WHERE xmax::text <> '0'`).Scan(&locked))
+		require.Zero(t, locked, "an unchanged sync should not lock any row")
 	})
 }
