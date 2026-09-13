@@ -7094,11 +7094,11 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return true
 	}
 
-	// If recheck completed (not checking) with some progress but the outcome does not
-	// allow resuming, the torrent won't improve - remove it from queue.
-	// Note: We can't do this for 0% progress since we can't distinguish
-	// "queued for recheck" from "recheck completed with 0 matches".
-	if !isChecking && progress > 0 && !satisfied() {
+	// If recheck completed (not checking) but the outcome does not allow resuming,
+	// the torrent won't improve - remove it from queue. At 0% progress only an
+	// observed checking state proves the recheck ran; otherwise "queued for
+	// recheck" and "recheck completed with 0 matches" look the same.
+	if !isChecking && (progress > 0 || req.sawChecking) && !satisfied() {
 		if req.forgivenessEvalFailed {
 			// Could not load the file list - retry on the next poll instead of
 			// dropping the entry on a transient qBittorrent error.

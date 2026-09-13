@@ -1722,6 +1722,37 @@ func TestProcessPendingRecheckResumeDemotesMismatchedLinkedFiles(t *testing.T) {
 		require.Equal(t, []string{"recheck:hash1"}, sync.bulkActions)
 	})
 
+	t.Run("a zero-progress recheck demotes when checking was observed", func(t *testing.T) {
+		t.Parallel()
+		// Every linked file failed hashing: progress 0 after an observed recheck.
+		allFailed := qbt.TorrentFiles{
+			{Name: e01, Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+			{Name: e02, Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+		}
+		zero := qbt.Torrent{Hash: "hash1", Progress: 0, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}
+		for _, sawChecking := range []bool{false, true} {
+			sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": allFailed}, pieceStates: make([]qbt.PieceState, 20)}
+			service := &Service{syncManager: sync, recheckResumeCtx: t.Context()}
+			var demoted []string
+			pending := &pendingResume{
+				instanceID: 1, hash: "hash1", threshold: 0.9, linkedPaths: linked(e01, e02), sawChecking: sawChecking, addedAt: time.Now(),
+				demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+					demoted = mismatched
+					return 0, linked(), ""
+				},
+			}
+
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, zero))
+			if !sawChecking {
+				require.Empty(t, demoted, "without a checking state 0%% may still be a queued recheck")
+				require.Empty(t, sync.bulkActions)
+				continue
+			}
+			require.Equal(t, []string{e01, e02}, demoted)
+			require.Equal(t, []string{"recheck:hash1"}, sync.bulkActions)
+		}
+	})
+
 	t.Run("a refused demotion leaves the torrent paused with its message", func(t *testing.T) {
 		t.Parallel()
 		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieceStates: pieces(15)}
