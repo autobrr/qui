@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -2901,4 +2902,89 @@ func TestMatchEpisodeCandidates_MultiEpisodeLocalStaysAnEpisodeSource(t *testing
 	require.True(t, ok, "range local must be identified by its first episode")
 	require.Len(t, matches, 1)
 	require.Equal(t, "e2526", matches[0].torrentHash)
+}
+
+func TestSeasonPackDemoter_UnlinksMismatchedEpisodeAndReplans(t *testing.T) {
+	const packName = "Cool.Show.S01.1080p.WEB.x264-GRP"
+	packFile := func(i int) string { return fmt.Sprintf("Cool.Show.S01E%02d.1080p.WEB.x264-GRP.mkv", i) }
+	// E01 and E02 meet at byte 96, off the 64-byte piece grid; the E03/E04
+	// boundary at 192 is aligned, so the apply passes the boundary check with
+	// E04 pending and only a demoted E02 trips it.
+	sizes := []int{96, 32, 64, 64}
+
+	tests := []struct {
+		name          string
+		threshold     float64
+		skipBoundary  bool
+		wantRefusal   string
+		wantThreshold float64
+	}{
+		{name: "one mismatched episode demotes and lowers the threshold", threshold: 0.5, skipBoundary: true, wantThreshold: 160.0 / 256.0 * seasonPackResumeSlack},
+		{name: "coverage below the threshold stays paused", threshold: 0.75, skipBoundary: true, wantRefusal: "Demoted Cool.Show.S01.1080p.WEB.x264-GRP/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv to pending; 2/4 episodes stay linked, below the coverage threshold, left paused for review"},
+		{name: "unsafe boundary with the toggle on stays paused", threshold: 0.5, wantRefusal: "unsafe piece boundary with pending files"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir, sourceDir := t.TempDir(), t.TempDir()
+			contents := map[string][]byte{}
+			var torrents []qbt.Torrent
+			files := map[string]qbt.TorrentFiles{}
+			for i, size := range sizes {
+				name := packFile(i + 1)
+				contents[name] = bytes.Repeat([]byte{byte('A' + i)}, size)
+				if i == 3 {
+					continue // E04 is pending
+				}
+				source := filepath.Join(sourceDir, name)
+				require.NoError(t, os.WriteFile(source, contents[name], 0o600))
+				hash := fmt.Sprintf("e%02d", i+1)
+				torrents = append(torrents, qbt.Torrent{Hash: hash, Name: strings.TrimSuffix(name, ".mkv"), ContentPath: source, Progress: 1})
+				files[normalizeHash(hash)] = qbt.TorrentFiles{{Name: name, Size: int64(size)}}
+			}
+			inst := &models.Instance{ID: 1, Name: "Test", IsActive: true, HasLocalFilesystemAccess: true, UseHardlinks: true, HardlinkBaseDir: baseDir}
+			baseSM := newMultiFakeSyncManager(map[int][]qbt.Torrent{inst.ID: torrents}, map[int]*models.Instance{inst.ID: inst})
+			baseSM.files = files
+			svc := &Service{
+				instanceStore:      &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager:        &seasonPackSyncManager{fakeSyncManager: baseSM},
+				releaseCache:       NewReleaseCache(),
+				seasonPackRunStore: &stubSeasonPackRunStore{},
+				recheckResumeChan:  make(chan *pendingResume, 1),
+				automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+					return &models.CrossSeedAutomationSettings{SeasonPackEnabled: true, SeasonPackCoverageThreshold: tt.threshold, SkipPieceBoundarySafetyCheck: tt.skipBoundary}, nil
+				},
+			}
+			svc.SetBackendPool(fsops.NewPool(svc.instanceStore, local.NewBackend()))
+
+			resp, err := svc.ApplySeasonPackWebhook(t.Context(), &SeasonPackApplyRequest{
+				TorrentName: packName,
+				TorrentData: base64.StdEncoding.EncodeToString(buildMultiFileTorrent(t, packName, 64, contents)),
+				InstanceIDs: []int{inst.ID},
+			})
+			require.NoError(t, err)
+			require.True(t, resp.Applied, "%+v", resp)
+			pending := <-svc.recheckResumeChan
+			require.NotNil(t, pending.demote)
+
+			mismatched := packName + "/" + packFile(2)
+			link := filepath.Join(baseDir, packName, packFile(2))
+			require.FileExists(t, link)
+			threshold, linked, refusal := pending.demote(t.Context(), []string{mismatched})
+
+			require.NoFileExists(t, link, "the failed link leaves the pack folder")
+			source, readErr := os.ReadFile(filepath.Join(sourceDir, packFile(2)))
+			require.NoError(t, readErr)
+			require.Equal(t, contents[packFile(2)], source, "the source keeps its data")
+			require.NotContains(t, pending.linkedPaths, mismatched)
+			require.Equal(t, 2, pending.blockedRun.MatchedEpisodes, "the history row counts the episodes that stay linked")
+			require.InDelta(t, 0.5, pending.blockedRun.Coverage, 0.0001)
+			if tt.wantRefusal != "" {
+				require.Contains(t, refusal, tt.wantRefusal)
+				return
+			}
+			require.Empty(t, refusal)
+			require.InDelta(t, tt.wantThreshold, threshold, 0.0001)
+			require.Equal(t, map[string]struct{}{packName + "/" + packFile(1): {}, packName + "/" + packFile(3): {}}, linked)
+		})
+	}
 }

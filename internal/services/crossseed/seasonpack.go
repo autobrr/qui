@@ -88,9 +88,18 @@ type seasonPackPlanBuild struct {
 	backend           fsops.Backend           // the backend that created the tree; rollback must not re-resolve on a possibly-cancelled ctx
 	packDir           string                  // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
-	linkedBytes       int64
-	totalBytes        int64
-	totalFiles        int
+	// linkedFiles carries what a demotion needs per materialized path; a demotion
+	// deletes from both maps.
+	linkedFiles map[string]linkedPackFile
+	linkedBytes int64
+	totalBytes  int64
+	totalFiles  int
+}
+
+type linkedPackFile struct {
+	target  string // on-disk link path, what a demotion removes
+	size    int64
+	episode episodeIdentity
 }
 
 type seasonPackMatchOptions struct {
@@ -98,6 +107,11 @@ type seasonPackMatchOptions struct {
 	simplifyHDRCompare bool
 	simplifyWEBCompare bool
 	skipYearCompare    bool
+}
+
+// resumeThreshold is the verified-progress fraction the linked bytes must reach.
+func (b *seasonPackPlanBuild) resumeThreshold() float64 {
+	return float64(b.linkedBytes) / float64(b.totalBytes) * seasonPackResumeSlack
 }
 
 func (b *seasonPackPlanBuild) hasPendingFiles() bool {
@@ -468,9 +482,10 @@ func (s *Service) addSeasonPack(
 		// forever). A recheck materially below the linked fraction means links
 		// failed, and resuming would download over hardlinked files — those
 		// stay paused.
-		resumeThreshold := float64(planBuild.linkedBytes) / float64(planBuild.totalBytes) * seasonPackResumeSlack
+		resumeThreshold := planBuild.resumeThreshold()
 		var linkedPaths map[string]struct{}
 		var blockedRun *models.SeasonPackRun
+		var demote demoteFunc
 		if linkMode == "hardlink" {
 			linkedPaths = planBuild.materializedPaths
 			blockedRun = &models.SeasonPackRun{
@@ -482,6 +497,7 @@ func (s *Service) addSeasonPack(
 				Coverage:        float64(len(episodes)) / float64(prep.totalEpisodes),
 				LinkMode:        linkMode,
 			}
+			demote = seasonPackDemoter(prep, planBuild, torrentName, blockedRun)
 		}
 		recheckHashes := collectHashes(prep.meta)
 		switch {
@@ -495,7 +511,7 @@ func (s *Service) addSeasonPack(
 				message = "torrent added paused; automatic resume could not be queued"
 			} else if s.recheckResumeChan == nil {
 				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths, blockedRun); err != nil {
+			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths, blockedRun, demote); err != nil {
 				message = "torrent added paused; automatic resume queue is full"
 			} else {
 				message = "torrent added paused; recheck queued"
@@ -518,6 +534,44 @@ func (s *Service) addSeasonPack(
 		Coverage:        coverage,
 		LinkMode:        linkMode,
 	}, nil
+}
+
+// seasonPackDemoter returns the recheck-resume hook that turns linked files
+// which failed their recheck into pending files: it unlinks them from the pack
+// folder, so the source keeps its data and qBittorrent downloads the file fresh,
+// then applies the apply-time coverage and piece boundary rules to the new
+// pending set and returns the resume threshold for the remaining linked bytes,
+// or the message that leaves the pack paused for review. It keeps the history
+// row's episode count current. It runs on the recheck worker after the apply
+// returned, so planBuild and run are its own.
+func seasonPackDemoter(prep *seasonPackPrep, planBuild *seasonPackPlanBuild, torrentName string, run *models.SeasonPackRun) demoteFunc {
+	return func(ctx context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+		demoted := strings.Join(mismatched, ", ")
+		for i, name := range mismatched {
+			file := planBuild.linkedFiles[name]
+			if err := planBuild.backend.Remove(ctx, file.target, fsops.RemoveOptions{}); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return 0, nil, fmt.Sprintf("Demoted %s to pending; linked file %s could not be unlinked (%v), left paused to protect the source", strings.Join(mismatched[:i], ", "), name, err)
+			}
+			delete(planBuild.materializedPaths, name)
+			delete(planBuild.linkedFiles, name)
+			planBuild.linkedBytes -= file.size
+			log.Info().Str("torrentName", torrentName).Str("file", name).Msg("season pack: demoted linked file to a pending file after a failed recheck")
+		}
+		covered := make(map[episodeIdentity]struct{}, len(planBuild.linkedFiles))
+		for _, file := range planBuild.linkedFiles {
+			covered[file.episode] = struct{}{}
+		}
+		run.MatchedEpisodes, run.Coverage = len(covered), float64(len(covered))/float64(prep.totalEpisodes)
+		if !prep.manual && float64(len(covered)) < float64(prep.totalEpisodes)*prep.threshold {
+			return 0, nil, fmt.Sprintf("Demoted %s to pending; %d/%d episodes stay linked, below the coverage threshold, left paused for review", demoted, len(covered), prep.totalEpisodes)
+		}
+		if !prep.settings.SkipPieceBoundarySafetyCheck {
+			if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
+				return 0, nil, fmt.Sprintf("Demoted %s to pending; unsafe piece boundary with pending files (%s), left paused for review", demoted, result.Reason)
+			}
+		}
+		return planBuild.resumeThreshold(), planBuild.materializedPaths, ""
+	}
 }
 
 // assembleSeasonPack builds the link tree for a season pack apply.
@@ -1561,6 +1615,7 @@ func buildSeasonPackPlan(
 		plan:              plan,
 		packDir:           packDir,
 		materializedPaths: make(map[string]struct{}, len(packFiles)),
+		linkedFiles:       make(map[string]linkedPackFile, len(packFiles)),
 		totalFiles:        len(packFiles),
 	}
 
@@ -1596,6 +1651,7 @@ func buildSeasonPackPlan(
 			TargetPath: targetPath,
 		})
 		build.materializedPaths[pf.Name] = struct{}{}
+		build.linkedFiles[pf.Name] = linkedPackFile{target: targetPath, size: pf.Size, episode: id}
 		build.linkedBytes += pf.Size
 	}
 

@@ -614,7 +614,7 @@ func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95, nil, nil)
+	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95, nil, nil, nil)
 	require.NoError(t, err)
 
 	pending := <-service.recheckResumeChan
@@ -1607,7 +1607,11 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 			} else {
 				require.Empty(t, sync.bulkActions)
 			}
-			require.Equal(t, tt.wantBlocked, pending.blockedLinkedFile)
+			if tt.wantBlocked != "" {
+				require.Equal(t, []string{tt.wantBlocked}, pending.blockedLinkedFiles)
+			} else {
+				require.Empty(t, pending.blockedLinkedFiles)
+			}
 			if tt.wantBlocked == "" {
 				require.Empty(t, store.runs)
 				return
@@ -1618,4 +1622,169 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 			require.Equal(t, "Linked file "+tt.wantBlocked+" does not match the torrent, left paused to protect the source", store.runs[0].Message)
 		})
 	}
+}
+
+func TestProcessPendingRecheckResumeDemotesMismatchedLinkedFiles(t *testing.T) {
+	t.Parallel()
+
+	const e01, e02, e03 = "Show.S01/Show.S01E01.mkv", "Show.S01/Show.S01E02.mkv", "Show.S01/Show.S01E03.mkv"
+	// files reports E02 and E03 below 100% with a failed piece each; E04 is pending.
+	files := func(p02, p03 float32) qbt.TorrentFiles {
+		return qbt.TorrentFiles{
+			{Name: e01, Progress: 1, Priority: 1, Size: 1 << 30, PieceRange: []int{0, 9}},
+			{Name: e02, Progress: p02, Priority: 1, Size: 1 << 30, PieceRange: []int{10, 19}},
+			{Name: e03, Progress: p03, Priority: 1, Size: 1 << 30, PieceRange: []int{20, 29}},
+			{Name: "Show.S01/Show.S01E04.mkv", Progress: 0, Priority: 1, Size: 1 << 30, PieceRange: []int{30, 39}},
+		}
+	}
+	pieces := func(failed ...int) []qbt.PieceState {
+		out := make([]qbt.PieceState, 40)
+		for i := range out {
+			out[i] = qbt.PieceStateAlreadyDownloaded
+		}
+		for _, p := range append(failed, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39) {
+			out[p] = qbt.PieceStateNotDownloadYet
+		}
+		return out
+	}
+	linked := func(names ...string) map[string]struct{} {
+		out := make(map[string]struct{}, len(names))
+		for _, name := range names {
+			out[name] = struct{}{}
+		}
+		return out
+	}
+	torrent := qbt.Torrent{Hash: "hash1", Progress: 0.7, AmountLeft: 300 << 20, State: qbt.TorrentStatePausedDl}
+
+	t.Run("one demotion rechecks with the reduced threshold", func(t *testing.T) {
+		t.Parallel()
+		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieceStates: pieces(15)}
+		store := &stubSeasonPackRunStore{}
+		service := &Service{syncManager: sync, recheckResumeCtx: t.Context(), seasonPackRunStore: store}
+		var demoted []string
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now(),
+			blockedRun: &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+			demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+				demoted = mismatched
+				return 0.5, linked(e01, e03), ""
+			},
+		}
+
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, torrent))
+		require.Equal(t, []string{e02}, demoted)
+		require.Equal(t, []string{"recheck:hash1"}, sync.bulkActions)
+		require.InDelta(t, 0.5, pending.threshold, 0.0001)
+		require.Equal(t, linked(e01, e03), pending.linkedPaths)
+		require.Empty(t, pending.blockedLinkedFiles)
+		require.False(t, pending.sawChecking)
+		require.Empty(t, store.runs, "the outcome is recorded once the pack resumes")
+
+		// The stale snapshot already meets the lower threshold; without a
+		// checking state the entry waits out the fast-recheck window.
+		sync.filesByHash["hash1"] = files(0, 1)
+		sync.pieceStates = pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)
+		settled := qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}
+		for range recheckResumeStablePolls + 1 {
+			require.True(t, service.processPendingRecheckResume(1, "hash1", pending, settled))
+		}
+		require.Equal(t, []string{"recheck:hash1"}, sync.bulkActions)
+
+		// The clean recheck resumes with the new linked set and records the outcome.
+		pending.sawChecking = true
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, settled))
+		require.Equal(t, []string{"recheck:hash1", "resume:hash1"}, sync.bulkActions)
+		running := qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStateDownloading}
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, running))
+		require.False(t, service.processPendingRecheckResume(1, "hash1", pending, running))
+		require.Len(t, store.runs, 1)
+		require.Equal(t, "applied", store.runs[0].Status)
+		require.Equal(t, "linked_file_demoted", store.runs[0].Reason)
+		require.Contains(t, store.runs[0].Message, e02)
+	})
+
+	t.Run("a shortfall below the threshold still finds the failed links", func(t *testing.T) {
+		t.Parallel()
+		// A whole wrong episode: E02 at 0 keeps progress under the threshold.
+		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0, 1)}, pieceStates: pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19)}
+		service := &Service{syncManager: sync, recheckResumeCtx: t.Context()}
+		var demoted []string
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now(),
+			demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+				demoted = mismatched
+				return 0.45, linked(e01, e03), ""
+			},
+		}
+
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{Hash: "hash1", Progress: 0.5, AmountLeft: 2 << 30, State: qbt.TorrentStatePausedDl}))
+		require.Equal(t, []string{e02}, demoted)
+		require.Equal(t, []string{"recheck:hash1"}, sync.bulkActions)
+	})
+
+	t.Run("a refused demotion leaves the torrent paused with its message", func(t *testing.T) {
+		t.Parallel()
+		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieceStates: pieces(15)}
+		store := &stubSeasonPackRunStore{}
+		service := &Service{syncManager: sync, recheckResumeCtx: t.Context(), seasonPackRunStore: store}
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now(),
+			blockedRun: &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
+			demote: func(context.Context, []string) (float64, map[string]struct{}, string) {
+				return 0, nil, "Demoted E02 to pending; 2/4 episodes stay linked, below the coverage threshold, left paused for review"
+			},
+		}
+
+		require.False(t, service.processPendingRecheckResume(1, "hash1", pending, torrent))
+		require.Empty(t, sync.bulkActions)
+		require.Len(t, store.runs, 1)
+		require.Equal(t, "failed", store.runs[0].Status)
+		require.Equal(t, "linked_file_mismatch", store.runs[0].Reason)
+		require.Equal(t, "Demoted E02 to pending; 2/4 episodes stay linked, below the coverage threshold, left paused for review", store.runs[0].Message)
+	})
+
+	t.Run("two successive mismatches demote in two passes", func(t *testing.T) {
+		t.Parallel()
+		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0.9, 1)}, pieceStates: pieces(15)}
+		service := &Service{syncManager: sync, recheckResumeCtx: t.Context()}
+		var passes [][]string
+		current := linked(e01, e02, e03)
+		pending := &pendingResume{
+			instanceID: 1, hash: "hash1", threshold: 0.7, linkedPaths: current, sawChecking: true, addedAt: time.Now(),
+			demote: func(_ context.Context, mismatched []string) (float64, map[string]struct{}, string) {
+				passes = append(passes, mismatched)
+				for _, name := range mismatched {
+					delete(current, name)
+				}
+				return 0.2, current, ""
+			},
+		}
+
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, torrent))
+		// The second recheck finds E03 failing on its own piece.
+		sync.filesByHash["hash1"] = files(0, 0.9)
+		sync.pieceStates = pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25)
+		pending.sawChecking = true
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, torrent))
+		sync.filesByHash["hash1"] = files(0, 0)
+		sync.pieceStates = pieces(10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29)
+		pending.sawChecking = true
+		require.True(t, service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{Hash: "hash1", Progress: 0.25, AmountLeft: 3 << 30, State: qbt.TorrentStatePausedDl}))
+
+		require.Equal(t, [][]string{{e02}, {e03}}, passes)
+		require.Equal(t, []string{"recheck:hash1", "recheck:hash1", "resume:hash1"}, sync.bulkActions)
+		require.Equal(t, linked(e01), pending.linkedPaths)
+		require.Equal(t, []string{e02, e03}, pending.demoted)
+	})
+
+	t.Run("two mismatches in one recheck demote together", func(t *testing.T) {
+		t.Parallel()
+		sync := &recheckResumeSyncManager{filesByHash: map[string]qbt.TorrentFiles{"hash1": files(0.9, 0.9)}, pieceStates: pieces(15, 25)}
+		service := &Service{syncManager: sync, recheckResumeCtx: t.Context()}
+		pending := &pendingResume{instanceID: 1, hash: "hash1", threshold: 0.7, linkedPaths: linked(e01, e02, e03), sawChecking: true, addedAt: time.Now()}
+
+		require.False(t, service.processPendingRecheckResume(1, "hash1", pending, torrent))
+		require.Equal(t, []string{e02, e03}, pending.blockedLinkedFiles)
+		require.Equal(t, "Linked files "+e02+", "+e03+" do not match the torrent, left paused to protect the source", pending.leftPausedMsg(""))
+	})
 }

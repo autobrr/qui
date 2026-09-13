@@ -26,7 +26,7 @@ The webhook flow below is one of two triggers. The second trigger is [Automatic 
    - `404 Not Found`: local coverage is too low, the release is not a season pack, or the feature is disabled
 7. If qui returns `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`.
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent. qui never links a local episode file if its size or release details differ from the pack file. qui treats that episode as missing and downloads it instead. If these demotions drop coverage below the threshold, the apply fails as `drifted`.
-9. If episodes or extras are missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. qBittorrent then downloads the missing files. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, qui also leaves the torrent paused when a linked file fails its recheck on a piece it does not share with a pending file, because a download into that file would change the local episode. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck). qui reports best-effort fallbacks by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
+9. If episodes or extras are missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. qBittorrent then downloads the missing files. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file is demoted to a pending file. See [Demoted episodes](#demoted-episodes). qui reports best-effort fallbacks by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
 ## Automatic Assembly
 
@@ -118,9 +118,22 @@ When `/apply` runs, qui:
 - Leaves unmatched episodes and extras for qBittorrent to download
 - Adds the torrent paused if any files are missing
 - Attempts an automatic recheck so qBittorrent discovers the linked bytes
-- Queues automatic resume after the recheck. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes, which allows qBittorrent to download the remaining files or pieces. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file also leaves the torrent paused. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck).
+- Queues automatic resume after the recheck. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes, which allows qBittorrent to download the remaining files or pieces. If the recheck reports far fewer bytes than the linked bytes, some links are invalid, and qui leaves the torrent paused for manual review. In hardlink mode, a linked file that fails its recheck on a piece it does not share with a pending file is demoted instead. See [Demoted episodes](#demoted-episodes).
 
 If automatic recheck or resume queueing cannot start, qui reports `automatic recheck failed`, `automatic resume is unavailable`, or `automatic resume queue is full`.
+
+### Demoted episodes
+
+A hardlink shares its data with the local episode. If qBittorrent downloaded into a linked file that failed its recheck, the local episode would change. qui reads no file content itself; the recheck in qBittorrent is the only hash check. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck) for the rule that finds such a file.
+
+When the recheck of a season pack reports such a file, qui demotes the episode:
+
+1. qui removes the link from the pack folder. The local episode file keeps its data.
+2. The episode is now a pending file. qui counts the episodes that stay linked against the coverage threshold. Below the threshold, qui leaves the torrent paused for review with a message that names the demoted episode. qui does not remove the torrent or the other links.
+3. With the **Piece boundary safety check** on, qui checks the new pending file against the same rule as at apply time. An unsafe boundary leaves the torrent paused for review.
+4. Otherwise qui rechecks the torrent again with a resume threshold that covers only the remaining linked bytes, and resumes it when the recheck confirms them. qBittorrent then downloads the demoted episode fresh.
+
+Each pass demotes every linked file that failed, so one extra recheck is the normal case. The season pack history on the Cross-seed page records the outcome with the demoted files and the episode count that stays linked: reason `linked_file_demoted` once the pack resumes, or the review message when it stays paused. The manual assembly path follows the same steps without the coverage floor.
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
@@ -289,7 +302,7 @@ When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` that points to the linked tree
 - Applies the **Season pack tags** configured in **Cross-Seed > Rules > Tagging**
-- Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, or a hardlinked file fails the recheck on a piece it does not share with a pending file, the torrent remains paused for manual review.
+- Adds incomplete packs in a paused state, attempts an automatic recheck, and queues automatic resume on a best-effort basis. After the recheck, qui resumes the torrent when qBittorrent confirms the linked bytes. If the recheck reports far fewer bytes, the torrent remains paused for manual review. A hardlinked file that fails the recheck on a piece it does not share with a pending file is demoted instead. See [Demoted episodes](#demoted-episodes).
 - Resolves the category in this order:
   - The category from the matching **Category routing** rule under **Cross-Seed > Rules > Season packs**. If multiple rules apply, the most specific rule wins (an explicit-source rule beats an Any-source rule at the same resolution). This configuration integrates with Sonarr so that the pack lands in Sonarr's download-client category and uses hardlink-aware imports.
   - The **Anything else** fallback category, if set.
@@ -343,6 +356,8 @@ Look for log messages that contain the torrent name and these phrases:
 - `unsafe piece boundary with pending files`: Hardlink mode blocked an incomplete pack for safety.
 - `torrent added paused; recheck queued`: qui added the pack and queued automatic resume.
 - `Recheck completed below threshold, torrent left paused for manual review`: The recheck reported fewer bytes than qui linked, indicating bad links.
-- `Linked file <name> does not match the torrent, left paused to protect the source`: A hardlinked episode failed its recheck. qui did not resume the torrent, because the download would change that local file. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck).
+- `season pack: demoted linked file to a pending file after a failed recheck`: A hardlinked episode failed its recheck. qui removed its link and rechecks the pack again. See [Demoted episodes](#demoted-episodes).
+- `Demoted <name> to pending; ... left paused for review`: qui removed the link, but the remaining episodes fall below the coverage threshold, the new pending file has an unsafe piece boundary, or the new recheck could not start. Review the torrent before you resume it.
+- `Linked file <name> does not match the torrent, left paused to protect the source`: A hardlinked file failed its recheck and could not be demoted. qui did not resume the torrent, because the download would change that local file. See [Hardlink mode](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
 qui logs field-level matching details at `DEBUG`, which is the default level. If you upgraded from an older version, open `config.toml`. If `logLevel` holds another value, set it to `DEBUG`. Then look for `[CROSSSEED-MATCH] Release filtered` entries. Each entry names the release field that did not match.
