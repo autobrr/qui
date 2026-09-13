@@ -430,7 +430,8 @@
     },
     "phases": {
       "check": "Kontrola",
-      "apply": "Použít"
+      "apply": "Použít",
+      "resume": "Obnovit"
     }
   },
   "cancelDialog": {
