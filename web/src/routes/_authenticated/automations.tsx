@@ -3,9 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Automations } from "@/pages/Automations"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/_authenticated/automations")({
-  component: Automations,
+  component: lazyRouteComponent(() => import("@/pages/Automations"), "Automations"),
 })

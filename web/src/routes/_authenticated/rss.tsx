@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { RSSPage } from "@/pages/RSSPage"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 import { z } from "zod"
 
 const rssSearchSchema = z.object({
@@ -12,6 +11,8 @@ const rssSearchSchema = z.object({
   feedPath: z.string().optional().catch(undefined),
   ruleName: z.string().optional().catch(undefined),
 })
+
+const RSSPage = lazyRouteComponent(() => import("@/pages/RSSPage"), "RSSPage")
 
 export const Route = createFileRoute("/_authenticated/rss")({
   validateSearch: rssSearchSchema,

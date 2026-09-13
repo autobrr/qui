@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Settings } from "@/pages/Settings"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 import { z } from "zod"
 
 const settingsSearchSchema = z.object({
@@ -28,6 +27,8 @@ const settingsSearchSchema = z.object({
   status: z.string().optional().catch(undefined),
   payment_id: z.string().optional().catch(undefined),
 })
+
+const Settings = lazyRouteComponent(() => import("@/pages/Settings"), "Settings")
 
 export type SettingsSearch = z.infer<typeof settingsSearchSchema>
 

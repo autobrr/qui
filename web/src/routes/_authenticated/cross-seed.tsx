@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { CrossSeedPage } from "@/pages/CrossSeedPage"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router"
 import { z } from "zod"
 
 const crossSeedSearchSchema = z.object({
   tab: z.enum(["auto", "scan", "dir-scan", "rules", "blocklist"]).optional().catch(undefined),
 })
+
+const CrossSeedPage = lazyRouteComponent(() => import("@/pages/CrossSeedPage"), "CrossSeedPage")
 
 export const Route = createFileRoute("/_authenticated/cross-seed")({
   validateSearch: crossSeedSearchSchema,
