@@ -527,6 +527,10 @@ type pendingResume struct {
 	// evaluation, with its missing bytes.
 	blockedLinkedFile  string
 	blockedLinkedBytes int64
+	// blockedRun is the season pack history row to append when the gate blocks,
+	// since the apply row was written before the recheck ran. nil for cross-seed
+	// adds, whose result already went back to the caller.
+	blockedRun *models.SeasonPackRun
 }
 
 // leftPausedMsg names the linked file that tripped the hardlink gate, else fallback.
@@ -6504,12 +6508,13 @@ func recheckResumeKey(instanceID int, hash string) string {
 
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit
 // verified-progress threshold. Used by the season-pack flow, which resumes once its linked bytes verify.
-func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64, linkedPaths map[string]struct{}) error {
+func (s *Service) queueRecheckResumeWithThreshold(instanceID int, hash string, threshold float64, linkedPaths map[string]struct{}, blockedRun *models.SeasonPackRun) error {
 	return s.queuePendingResume(&pendingResume{
 		instanceID:  instanceID,
 		hash:        hash,
 		threshold:   threshold,
 		linkedPaths: linkedPaths,
+		blockedRun:  blockedRun,
 	})
 }
 
@@ -6606,9 +6611,9 @@ func (s *Service) pendingResumeSatisfied(instanceID int, req *pendingResume, tor
 }
 
 // pieceStateReader is the sync-manager method the hardlink gate needs beyond
-// qbittorrentSync. Without piece states every incomplete linked file blocks the
-// resume; the pin keeps the real sync manager on the tolerant path without
-// widening qbittorrentSync for its 23 test doubles.
+// qbittorrentSync. Without piece states the entry retries until the absolute
+// timeout; the pin keeps the real sync manager on the gate without widening
+// qbittorrentSync for its test doubles.
 type pieceStateReader interface {
 	GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error)
 }
@@ -6628,12 +6633,15 @@ func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool
 		req.forgivenessEvalFailed = true
 		return false
 	}
+	// Empty piece states would make every incomplete linked file look mismatched,
+	// which blocks the boundary packs the gate must let through; retry instead.
 	var pieces []qbt.PieceState
 	if reader, ok := s.syncManager.(pieceStateReader); ok {
-		if pieces, err = reader.GetTorrentPieceStates(ctx, instanceID, req.hash); err != nil {
-			req.forgivenessEvalFailed = true
-			return false
-		}
+		pieces, err = reader.GetTorrentPieceStates(ctx, instanceID, req.hash)
+	}
+	if err != nil || len(pieces) == 0 {
+		req.forgivenessEvalFailed = true
+		return false
 	}
 
 	name, missing := mismatchedLinkedFile(files, pieces, req.linkedPaths)
@@ -6647,7 +6655,7 @@ func (s *Service) hardlinkResumeAllowed(instanceID int, req *pendingResume) bool
 
 // mismatchedLinkedFile returns the first linked file whose failed pieces cannot all
 // be explained by a piece it shares with a pending file, with its missing bytes.
-// Without piece states every linked file below 100% counts as mismatched.
+// A piece range past the end of the piece list counts as mismatched.
 func mismatchedLinkedFile(files qbt.TorrentFiles, pieces []qbt.PieceState, linked map[string]struct{}) (string, int64) {
 	// Only a pending file's first and last piece can reach into a neighbour.
 	shared := make([]bool, len(pieces))
@@ -6983,6 +6991,7 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 				Str("linkedFile", req.blockedLinkedFile).
 				Int64("linkedMissingBytes", req.blockedLinkedBytes).
 				Msg(req.leftPausedMsg("Recheck resume stopped below threshold, torrent left paused for manual review"))
+			s.recordBlockedResume(req)
 			return false
 		}
 
@@ -7059,12 +7068,27 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 			Str("linkedFile", req.blockedLinkedFile).
 			Int64("linkedMissingBytes", req.blockedLinkedBytes).
 			Msg(req.leftPausedMsg("Recheck completed below threshold, torrent left paused for manual review"))
+		s.recordBlockedResume(req)
 		return false
 	}
 
 	// Torrent not ready yet - either still checking or queued for recheck (0% progress).
 	// Keep in queue until absolute timeout.
 	return true
+}
+
+// recordBlockedResume appends the hardlink gate verdict to the season pack history.
+func (s *Service) recordBlockedResume(req *pendingResume) {
+	if req.blockedRun == nil || req.blockedLinkedFile == "" || s.seasonPackRunStore == nil {
+		return
+	}
+	run := req.blockedRun
+	run.Status, run.Reason, run.Message = "failed", "linked_file_mismatch", req.leftPausedMsg("")
+	ctx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	defer cancel()
+	if _, err := s.seasonPackRunStore.Create(ctx, run); err != nil {
+		log.Warn().Err(err).Str("hash", req.hash).Msg("failed to record blocked season pack resume")
+	}
 }
 
 func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pendingResume, progress float64, state qbt.TorrentState) bool {

@@ -12,6 +12,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
@@ -613,7 +614,7 @@ func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.
 		recheckResumeChan: make(chan *pendingResume, 1),
 	}
 
-	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95, nil)
+	err := service.queueRecheckResumeWithThreshold(1, "hash1", 0.95, nil, nil)
 	require.NoError(t, err)
 
 	pending := <-service.recheckResumeChan
@@ -1502,7 +1503,7 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 		},
 		{
 			name:        "budget mode mismatched linked file stays paused",
-			budget:      new(int64(50) << 20),
+			budget:      new(int64(50 << 20)),
 			linked:      linked,
 			files:       insideFiles,
 			pieces:      insidePieces,
@@ -1526,11 +1527,11 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 			wantKeep:   true,
 		},
 		{
-			name:        "no piece states blocks every incomplete linked file",
-			threshold:   0.6,
-			linked:      linked,
-			files:       straddleFiles,
-			wantBlocked: "Show.S01/Show.S01E02.mkv",
+			name:      "no piece states retries instead of blocking a boundary pack",
+			threshold: 0.6,
+			linked:    linked,
+			files:     straddleFiles,
+			wantKeep:  true,
 		},
 		{
 			name:      "piece state fetch error retries instead of dropping",
@@ -1551,9 +1552,11 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 				pieceStates:    tt.pieces,
 				pieceStatesErr: tt.pieceErr,
 			}
+			store := &stubSeasonPackRunStore{}
 			service := &Service{
-				syncManager:      sync,
-				recheckResumeCtx: context.Background(),
+				syncManager:        sync,
+				recheckResumeCtx:   context.Background(),
+				seasonPackRunStore: store,
 			}
 			pending := &pendingResume{
 				instanceID:  1,
@@ -1561,6 +1564,7 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 				threshold:   tt.threshold,
 				budgetBytes: tt.budget,
 				linkedPaths: tt.linked,
+				blockedRun:  &models.SeasonPackRun{TorrentName: "Show.S01", Phase: "resume", LinkMode: "hardlink"},
 				addedAt:     time.Now(),
 				sawChecking: true,
 			}
@@ -1580,6 +1584,14 @@ func TestProcessPendingRecheckResumeHardlinkLinkedFileGate(t *testing.T) {
 				require.Empty(t, sync.bulkActions)
 			}
 			require.Equal(t, tt.wantBlocked, pending.blockedLinkedFile)
+			if tt.wantBlocked == "" {
+				require.Empty(t, store.runs)
+				return
+			}
+			require.Len(t, store.runs, 1)
+			require.Equal(t, "failed", store.runs[0].Status)
+			require.Equal(t, "linked_file_mismatch", store.runs[0].Reason)
+			require.Equal(t, "Linked file "+tt.wantBlocked+" does not match the torrent, left paused to protect the source", store.runs[0].Message)
 		})
 	}
 }

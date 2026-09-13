@@ -470,8 +470,18 @@ func (s *Service) addSeasonPack(
 		// stay paused.
 		resumeThreshold := float64(planBuild.linkedBytes) / float64(planBuild.totalBytes) * seasonPackResumeSlack
 		var linkedPaths map[string]struct{}
+		var blockedRun *models.SeasonPackRun
 		if linkMode == "hardlink" {
 			linkedPaths = planBuild.materializedPaths
+			blockedRun = &models.SeasonPackRun{
+				TorrentName:     torrentName,
+				Phase:           "resume",
+				InstanceID:      &inst.ID,
+				MatchedEpisodes: len(episodes),
+				TotalEpisodes:   prep.totalEpisodes,
+				Coverage:        float64(len(episodes)) / float64(prep.totalEpisodes),
+				LinkMode:        linkMode,
+			}
 		}
 		recheckHashes := collectHashes(prep.meta)
 		switch {
@@ -485,7 +495,7 @@ func (s *Service) addSeasonPack(
 				message = "torrent added paused; automatic resume could not be queued"
 			} else if s.recheckResumeChan == nil {
 				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths); err != nil {
+			} else if err := s.queueRecheckResumeWithThreshold(inst.ID, activeHash, resumeThreshold, linkedPaths, blockedRun); err != nil {
 				message = "torrent added paused; automatic resume queue is full"
 			} else {
 				message = "torrent added paused; recheck queued"

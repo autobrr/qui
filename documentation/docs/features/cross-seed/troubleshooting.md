@@ -258,7 +258,7 @@ The incoming torrent contains files absent from your matched torrent, and those 
 
 ## Linked file does not match the torrent
 
-The log shows `Linked file <name> does not match the torrent, left paused to protect the source`. A hardlinked file failed its recheck, and the missing pieces are not on a boundary with a pending file. The local file differs from the file in the torrent, even though the name and size matched.
+The season pack history or the log shows `Linked file <name> does not match the torrent, left paused to protect the source`. A hardlinked file failed its recheck, and the missing pieces are not on a boundary with a pending file. The local file differs from the file in the torrent, even though the name and size matched.
 
 Do not resume the torrent. A resume downloads into the linked file, and the torrent that seeds the source file then carries wrong data. Remove the torrent and its link tree, then download the torrent normally. See [Linked files that fail a recheck](./hardlink-mode.md#linked-files-that-fail-a-recheck).
 
