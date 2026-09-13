@@ -12,6 +12,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/go-torrent/bencode"
+	"github.com/autobrr/go-torrent/metainfo"
 	"github.com/rs/zerolog/log"
 )
 
@@ -85,6 +86,34 @@ func decodeRawValue(raw bencode.Bytes) any {
 		return nil
 	}
 	return v
+}
+
+// announceDomain returns the host of the first announce tier in a .torrent
+// payload, or "" when the payload names no tracker.
+func announceDomain(data []byte) string {
+	var meta struct {
+		Announce     string                `bencode:"announce"`
+		AnnounceList metainfo.AnnounceList `bencode:"announce-list"`
+	}
+	if err := bencode.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+
+	for _, tier := range meta.AnnounceList {
+		// BEP 12 clients reorder trackers inside a tier as announces succeed
+		// or fail, so pick by name rather than position.
+		domain := ""
+		for _, raw := range tier {
+			if host := hostFromURL(raw); host != "" && (domain == "" || host < domain) {
+				domain = host
+			}
+		}
+		if domain != "" {
+			return domain
+		}
+	}
+
+	return hostFromURL(meta.Announce)
 }
 
 func shouldInjectTrackerMetadata(apiVersion string) bool {
