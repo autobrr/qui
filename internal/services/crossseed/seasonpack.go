@@ -547,10 +547,13 @@ func (s *Service) addSeasonPack(
 func seasonPackDemoter(prep *seasonPackPrep, planBuild *seasonPackPlanBuild, torrentName string, run *models.SeasonPackRun) demoteFunc {
 	return func(ctx context.Context, mismatched []string) (float64, map[string]struct{}, string) {
 		demoted := strings.Join(mismatched, ", ")
+		// An unlink failure still recounts: the files before it are gone.
+		var unlinkFailure string
 		for i, name := range mismatched {
 			file := planBuild.linkedFiles[name]
 			if err := planBuild.backend.Remove(ctx, file.target, fsops.RemoveOptions{}); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return 0, nil, fmt.Sprintf("Demoted %s to pending; linked file %s could not be unlinked (%v), left paused to protect the source", strings.Join(mismatched[:i], ", "), name, err)
+				unlinkFailure = fmt.Sprintf("Demoted %s to pending; linked file %s could not be unlinked (%v), left paused to protect the source", strings.Join(mismatched[:i], ", "), name, err)
+				break
 			}
 			delete(planBuild.materializedPaths, name)
 			delete(planBuild.linkedFiles, name)
@@ -562,6 +565,9 @@ func seasonPackDemoter(prep *seasonPackPrep, planBuild *seasonPackPlanBuild, tor
 			covered[file.episode] = struct{}{}
 		}
 		run.MatchedEpisodes, run.Coverage = len(covered), float64(len(covered))/float64(prep.totalEpisodes)
+		if unlinkFailure != "" {
+			return 0, nil, unlinkFailure
+		}
 		if !prep.manual && float64(len(covered)) < float64(prep.totalEpisodes)*prep.threshold {
 			return 0, nil, fmt.Sprintf("Demoted %s to pending; %d/%d episodes stay linked, below the coverage threshold, left paused for review", demoted, len(covered), prep.totalEpisodes)
 		}
