@@ -3238,7 +3238,6 @@ paths:
                     provider:
                       type: string
                       enum:
-                        - polar
                         - dodo
                     createdAt:
                       type: string

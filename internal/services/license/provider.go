@@ -3,16 +3,9 @@
 
 package license
 
-import (
-	"errors"
-	"strings"
-)
+import "errors"
 
 var (
 	ErrDodoClientNotConfigured = errors.New("dodo client not configured")
 	ErrLicenseNotActive        = errors.New("license is not active")
 )
-
-func normalizeProvider(provider string) string {
-	return strings.TrimSpace(strings.ToLower(provider))
-}

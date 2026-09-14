@@ -87,7 +87,6 @@ analyses/*
 
 # Local reference dumps
 dodopayments.txt
-polar.txt
 
 # Customer exports (PII) - never commit
 polar-scripts/
