@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
@@ -42,6 +43,7 @@ func runFilesmanagerTests(t *testing.T, open testDBOpener) {
 		{"UpsertFilesGuardIsPerRowAcrossBatches", testUpsertFilesGuardIsPerRowAcrossBatches},
 		{"UpsertFilesUnchangedRowsTakeNoRowLocks", testUpsertFilesUnchangedRowsTakeNoRowLocks},
 		{"UpsertFilesComparesWithinInstance", testUpsertFilesComparesWithinInstance},
+		{"UpsertFileRowsGuardSkipsRowsAlreadyStored", testUpsertFileRowsGuardSkipsRowsAlreadyStored},
 		{"CacheFilesBatchAcrossQueryBatches", testCacheFilesBatchAcrossQueryBatches},
 		{"CacheFilesBatchConcurrentOverlap", testCacheFilesBatchConcurrentOverlap},
 		{"UpsertSyncInfoBatchConcurrentOverlap", testUpsertSyncInfoBatchConcurrentOverlap},
@@ -299,9 +301,55 @@ func testUpsertFilesUnchangedRowsTakeNoRowLocks(t *testing.T, open testDBOpener)
 		require.NoError(t, repo.UpsertFiles(ctx, files))
 		require.NoError(t, repo.UpsertFiles(ctx, files))
 
+		var stored int
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache`).Scan(&stored))
+		require.Equal(t, len(files), stored)
+
 		var locked int
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM torrent_files_cache WHERE xmax::text <> '0'`).Scan(&locked))
 		require.Zero(t, locked, "an unchanged sync should not lock any row")
+	})
+}
+
+// dropUnchangedRows reads before the upsert, so a concurrent writer can store the
+// same values in between. The SQL guard must still skip those rows.
+func testUpsertFileRowsGuardSkipsRowsAlreadyStored(t *testing.T, open testDBOpener) {
+	t.Parallel()
+
+	withTestDB(t, open, func(ctx context.Context, t *testing.T, db *database.DB) {
+		repo := NewRepository(db)
+
+		unchanged := baseFile()
+		changed := baseFile()
+		changed.FileIndex = 1
+		require.NoError(t, repo.UpsertFiles(ctx, []CachedFile{unchanged, changed}))
+		markCachedAt(ctx, t, db)
+
+		tx, err := db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback() }()
+		ids, err := dbinterface.InternStrings(ctx, tx, unchanged.TorrentHash, unchanged.Name)
+		require.NoError(t, err)
+
+		row := fileRow{
+			instanceID:      unchanged.InstanceID,
+			hashID:          ids[0],
+			nameID:          ids[1],
+			size:            unchanged.Size,
+			progress:        unchanged.Progress,
+			priority:        unchanged.Priority,
+			isSeed:          encodeNullableBoolAsInt(unchanged.IsSeed),
+			pieceRangeStart: unchanged.PieceRangeStart,
+			pieceRangeEnd:   unchanged.PieceRangeEnd,
+			availability:    unchanged.Availability,
+		}
+		moved := row
+		moved.fileIndex = 1
+		moved.progress = 0.5
+		require.NoError(t, upsertFileRows(ctx, tx, []fileRow{row, moved}))
+		require.NoError(t, tx.Commit())
+
+		require.Equal(t, 1, countAtSentinel(ctx, t, db), "only the changed row should have been written")
 	})
 }
 

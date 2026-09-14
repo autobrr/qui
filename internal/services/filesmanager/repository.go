@@ -229,6 +229,20 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 		return fmt.Errorf("failed to read cached files: %w", err)
 	}
 
+	if err := upsertFileRows(ctx, tx, allRows); err != nil {
+		return err
+	}
+
+	// Commit transaction to make all changes atomic
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// upsertFileRows writes rows to torrent_files_cache in batches.
+func upsertFileRows(ctx context.Context, tx dbinterface.TxQuerier, rows []fileRow) error {
 	// Pre-build the full query for full batches.
 	//
 	// On Postgres the guard on DO UPDATE still skips a row that a concurrent writer
@@ -266,9 +280,9 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	args := make([]any, 0, fileBatchSize*12)
 
 	// Batch insert files
-	for i := 0; i < len(allRows); i += fileBatchSize {
-		end := min(i+fileBatchSize, len(allRows))
-		batch := allRows[i:end]
+	for i := 0; i < len(rows); i += fileBatchSize {
+		end := min(i+fileBatchSize, len(rows))
+		batch := rows[i:end]
 
 		// Reset args for this batch
 		args = args[:0]
@@ -297,15 +311,9 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 			)
 		}
 
-		_, err = tx.ExecContext(ctx, query, args...)
-		if err != nil {
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 			return fmt.Errorf("failed to batch insert files: %w", err)
 		}
-	}
-
-	// Commit transaction to make all changes atomic
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
