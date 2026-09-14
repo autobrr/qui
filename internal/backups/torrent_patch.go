@@ -88,8 +88,11 @@ func decodeRawValue(raw bencode.Bytes) any {
 	return v
 }
 
-// announceDomain returns the host of the first announce tier in a .torrent
-// payload, or "" when the payload names no tracker.
+// announceDomain returns the lowest host by name in the first announce tier
+// that names one, then the announce host, or "" when the payload names no
+// tracker. On qBittorrent 4.6.x the payload was patched from the client's
+// tracker list first, so a tier with several URLs can still change between
+// runs there.
 func announceDomain(data []byte) string {
 	var meta struct {
 		Announce     string                `bencode:"announce"`
